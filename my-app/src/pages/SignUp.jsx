@@ -1,18 +1,22 @@
 import React from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Container, Button, Typography, Box, Link } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import Copyright from '../components/Copyright';
+import { useAuth } from '../context/AuthContext';
 
 
 const SignUp = () => {
+  const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSocialLogin = (provider) => {
     // In a real app, you would redirect to the provider's OAuth URL.
     // e.g., window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=...`;
-    console.log(`Redirecting to ${provider} for authentication.`);
-    // For this example, we'll navigate to a dummy callback page
-    window.location.href = `/auth/callback?code=dummy-auth-code-from-${provider}`;
+    console.log(`Simulating ${provider} signup...`);
+    // Simulate successful social login
+    login();
+    navigate('/');
   };
 
   return (
