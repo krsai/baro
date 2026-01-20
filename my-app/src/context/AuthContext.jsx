@@ -6,7 +6,6 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const login = () => {
-    // In a real app, you would handle tokens here
     setIsAuthenticated(true);
   };
 

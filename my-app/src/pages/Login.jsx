@@ -57,6 +57,19 @@ const Login = () => {
           >
             로그인
           </Button>
+          <Button
+            fullWidth
+            variant="contained"
+            sx={{ mt: 1, mb: 2, backgroundColor: '#4285F4', '&:hover': { backgroundColor: '#357ae8' } }}
+            startIcon={<span style={{ marginRight: '8px' }}>G</span>}
+            onClick={() => {
+              console.log('Dummy Google social login button clicked.');
+              login(); // Dummy login, sets isAuthenticated to true
+              navigate('/');
+            }}
+          >
+            Google 계정으로 로그인
+          </Button>
           <Link component={RouterLink} to="/signup" variant="body2">
             계정이 없으신가요? 소셜 계정으로 시작하기
           </Link>
