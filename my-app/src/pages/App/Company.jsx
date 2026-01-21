@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Container,
   Typography,
   Box,
   Button,
@@ -15,6 +14,7 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
+import AppPageContainer from '../../components/AppPageContainer'; // Import AppPageContainer
 
 const Company = () => {
   const [companyInfo, setCompanyInfo] = useState({
@@ -64,9 +64,9 @@ const Company = () => {
   );
 
   return (
-    <Container component="main" maxWidth="lg">
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', mb: 3 }}>
+    <AppPageContainer
+      header={
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
           <Typography component="h1" variant="h4">
             법인 관리
           </Typography>
@@ -78,17 +78,17 @@ const Company = () => {
             수정
           </Button>
         </Box>
-
-        <Paper sx={{ width: '100%', p: 3 }}>
-          <InfoRow label="회사명" value={companyInfo.companyName} />
-          <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
-          <InfoRow label="대표자명" value={companyInfo.representative} />
-          <InfoRow label="업종" value={companyInfo.industry} />
-          <InfoRow label="주소" value={companyInfo.address} />
-          <InfoRow label="연락처" value={companyInfo.phone} />
-          <InfoRow label="이메일" value={companyInfo.email} />
-        </Paper>
-      </Box>
+      }
+    >
+      <Paper sx={{ width: '100%', p: 3 }}>
+        <InfoRow label="회사명" value={companyInfo.companyName} />
+        <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
+        <InfoRow label="대표자명" value={companyInfo.representative} />
+        <InfoRow label="업종" value={companyInfo.industry} />
+        <InfoRow label="주소" value={companyInfo.address} />
+        <InfoRow label="연락처" value={companyInfo.phone} />
+        <InfoRow label="이메일" value={companyInfo.email} />
+      </Paper>
 
       {/* 수정 다이얼로그 */}
       <Dialog open={editMode} onClose={handleEditClose} maxWidth="sm" fullWidth>
@@ -174,7 +174,7 @@ const Company = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </AppPageContainer>
   );
 };
 

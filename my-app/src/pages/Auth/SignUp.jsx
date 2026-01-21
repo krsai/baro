@@ -2,8 +2,8 @@ import React from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Container, Button, Typography, Box, Link } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
-import Copyright from '../components/Copyright';
-import { useAuth } from '../context/AuthContext';
+import Copyright from '../../components/Copyright';
+import { useAuth } from '../../context/AuthContext';
 
 
 const SignUp = () => {

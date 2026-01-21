@@ -1,21 +1,21 @@
 import React from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
-import Login from './pages/Login';
-import SignUp from './pages/SignUp';
-import Home from './pages/Home';
-import Production from './pages/Production';
-import Company from './pages/Company';
-import Factory from './pages/Factory';
-import Employee from './pages/Employee';
-import Role from './pages/Role';
-import Permission from './pages/Permission';
-import BasicInfo from './pages/BasicInfo';
-import SystemSetting from './pages/SystemSetting';
-import Customer from './pages/Customer';
-import Style from './pages/Style';
-import WorkHistory from './pages/WorkHistory';
-import AuthCallback from './pages/AuthCallback';
+import Login from './pages/auth/Login';
+import SignUp from './pages/auth/SignUp';
+import Home from './pages/app/Home';
+import Production from './pages/app/Production';
+import Company from './pages/app/Company';
+import Factory from './pages/app/Factory';
+import Employee from './pages/app/Employee';
+import Role from './pages/app/Role';
+import Permission from './pages/app/Permission';
+import BasicInfo from './pages/app/BasicInfo';
+import SystemSetting from './pages/app/SystemSetting';
+import Customer from './pages/app/Customer';
+import Style from './pages/app/Style';
+import WorkHistory from './pages/app/WorkHistory';
+import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
 
 // Protected Route 컴포넌트

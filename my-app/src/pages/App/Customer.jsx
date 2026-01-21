@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Container,
   Typography,
   Box,
   Table,
@@ -22,6 +21,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AppPageContainer from '../../components/AppPageContainer';
 
 const Customer = () => {
   const [customers, setCustomers] = useState([
@@ -79,16 +79,18 @@ const Customer = () => {
   };
 
   return (
-    <Container component="main" maxWidth={false} sx={{ mt: 2, p: 2 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography component="h1" variant="h6">
-          고객 관리
-        </Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-          고객 추가
-        </Button>
-      </Box>
-
+    <AppPageContainer
+      header={
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+          <Typography component="h1" variant="h4">
+            고객 관리
+          </Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+            고객 추가
+          </Button>
+        </Box>
+      }
+    >
       <Paper sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">
@@ -150,7 +152,7 @@ const Customer = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </AppPageContainer>
   );
 };
 

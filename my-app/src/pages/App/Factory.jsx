@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Container,
   Typography,
   Box,
   Table,
@@ -22,7 +21,8 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../context/AppContext';
+import AppPageContainer from '../../components/AppPageContainer';
 
 const Factory = () => {
   const { factories, setFactories } = useApp();
@@ -93,9 +93,9 @@ const Factory = () => {
   };
 
   return (
-    <Container component="main" maxWidth="lg">
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', mb: 3 }}>
+    <AppPageContainer
+      header={
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
           <Typography component="h1" variant="h4">
             공장 관리
           </Typography>
@@ -107,55 +107,55 @@ const Factory = () => {
             공장 추가
           </Button>
         </Box>
-
-        <TableContainer component={Paper} sx={{ width: '100%' }}>
-          <Table>
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>공장명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>작업</TableCell>
+      }
+    >
+      <TableContainer component={Paper} sx={{ width: '100%' }}>
+        <Table>
+          <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 'bold' }}>공장명</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
+              <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>작업</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {factories.map((factory) => (
+              <TableRow key={factory.id} hover>
+                <TableCell>{factory.name}</TableCell>
+                <TableCell>{factory.address}</TableCell>
+                <TableCell>{factory.countryCode} {factory.phoneNumber}</TableCell>
+                <TableCell>{factory.manager}</TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleEditFactory(factory)}
+                    title="수정"
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleDeleteFactory(factory.id)}
+                    title="삭제"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {factories.map((factory) => (
-                <TableRow key={factory.id} hover>
-                  <TableCell>{factory.name}</TableCell>
-                  <TableCell>{factory.address}</TableCell>
-                  <TableCell>{factory.countryCode} {factory.phoneNumber}</TableCell>
-                  <TableCell>{factory.manager}</TableCell>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditFactory(factory)}
-                      title="수정"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteFactory(factory.id)}
-                      title="삭제"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-        {factories.length === 0 && (
-          <Box sx={{ width: '100%', textAlign: 'center', py: 5 }}>
-            <Typography color="text.secondary">공장 정보가 없습니다.</Typography>
-          </Box>
-        )}
-      </Box>
+      {factories.length === 0 && (
+        <Box sx={{ width: '100%', textAlign: 'center', py: 5 }}>
+          <Typography color="text.secondary">공장 정보가 없습니다.</Typography>
+        </Box>
+      )}
 
       {/* 공장 추가/수정 다이얼로그 */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -228,7 +228,7 @@ const Factory = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </AppPageContainer>
   );
 };
 

@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Container,
   Typography,
   Box,
   Table,
@@ -23,7 +22,8 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../context/AppContext';
+import AppPageContainer from '../../components/AppPageContainer';
 
 const Role = () => {
   const { roles, setRoles } = useApp();
@@ -88,9 +88,9 @@ const Role = () => {
   };
 
   return (
-    <Container component="main" maxWidth="lg">
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', mb: 3 }}>
+    <AppPageContainer
+      header={
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
           <Typography component="h1" variant="h4">
             역할 관리
           </Typography>
@@ -102,53 +102,53 @@ const Role = () => {
             역할 추가
           </Button>
         </Box>
-
-        <TableContainer component={Paper} sx={{ width: '100%' }}>
-          <Table>
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>역할</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '60%' }}>설명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center', width: '20%' }}>작업</TableCell>
+      }
+    >
+      <TableContainer component={Paper} sx={{ width: '100%' }}>
+        <Table>
+          <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>역할</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', width: '60%' }}>설명</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', textAlign: 'center', width: '20%' }}>작업</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {roles.map((role) => (
+              <TableRow key={role.id} hover>
+                <TableCell sx={{ width: '20%' }}>
+                  <Chip label={role.name} color="primary" variant="outlined" />
+                </TableCell>
+                <TableCell sx={{ width: '60%' }}>{role.description}</TableCell>
+                <TableCell sx={{ textAlign: 'center', width: '20%' }}>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleEditRole(role)}
+                    title="수정"
+                  >
+                    <EditIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => handleDeleteRole(role.id)}
+                    title="삭제"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {roles.map((role) => (
-                <TableRow key={role.id} hover>
-                  <TableCell sx={{ width: '20%' }}>
-                    <Chip label={role.name} color="primary" variant="outlined" />
-                  </TableCell>
-                  <TableCell sx={{ width: '60%' }}>{role.description}</TableCell>
-                  <TableCell sx={{ textAlign: 'center', width: '20%' }}>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditRole(role)}
-                      title="수정"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteRole(role.id)}
-                      title="삭제"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-        {roles.length === 0 && (
-          <Box sx={{ width: '100%', textAlign: 'center', py: 5 }}>
-            <Typography color="text.secondary">역할 정보가 없습니다.</Typography>
-          </Box>
-        )}
-      </Box>
+      {roles.length === 0 && (
+        <Box sx={{ width: '100%', textAlign: 'center', py: 5 }}>
+          <Typography color="text.secondary">역할 정보가 없습니다.</Typography>
+        </Box>
+      )}
 
       {/* 역할 추가/수정 다이얼로그 */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -193,7 +193,7 @@ const Role = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </AppPageContainer>
   );
 };
 

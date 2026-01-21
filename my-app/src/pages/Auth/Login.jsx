@@ -1,8 +1,8 @@
 import React from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Container, TextField, Button, Typography, Box, Link } from '@mui/material';
-import Copyright from '../components/Copyright';
-import { useAuth } from '../context/AuthContext';
+import Copyright from '../../components/Copyright';
+import { useAuth } from '../../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();

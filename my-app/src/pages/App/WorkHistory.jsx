@@ -3,14 +3,14 @@ import { Container, Typography } from '@mui/material';
 
 const WorkHistory = () => {
   return (
-    <Container>
+    <Box component="main" sx={{ flexGrow: 1 }}>
       <Typography variant="h4" component="h1" gutterBottom>
         작업 기록
       </Typography>
       <Typography>
         작업 기록 페이지입니다.
       </Typography>
-    </Container>
+    </Box>
   );
 };
 
