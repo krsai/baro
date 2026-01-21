@@ -296,7 +296,7 @@ const MainLayout = () => {
             <MenuIcon />
           </IconButton>
           <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/')}>
-            <Button color="inherit" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+            <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
               BARO
             </Button>
           </Box>
@@ -342,12 +342,12 @@ const MainLayout = () => {
         }}
       >
         <Box sx={{ pt: '64px' }} /> {/* AppBar 높이만큼 spacing */}
-        <Container maxWidth="lg" sx={{ flex: 1, py: 4 }}>
+        <Container maxWidth={false} sx={{ flex: 1, py: 3, px: 3 }}>
           <Outlet />
         </Container>
 
         {/* Footer */}
-        <Box sx={{ py: 2, textAlign: 'center', borderTop: '1px solid #ddd', backgroundColor: '#f5f5f5' }}>
+        <Box sx={{ py: 2, textAlign: 'center', borderTop: '1px solid #E0E0E0' }}>
           <p>&copy; 2026 My App. All rights reserved.</p>
         </Box>
       </Box>

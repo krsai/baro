@@ -2,50 +2,134 @@ import { createTheme } from '@mui/material/styles';
 
 const theme = createTheme({
   palette: {
+    mode: 'light',
     primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
+      main: '#0066cc',
     },
     secondary: {
-      main: '#dc004e',
-      light: '#f05545',
-      dark: '#9a0036',
-    },
-    success: {
-      main: '#2e7d32',
-    },
-    error: {
-      main: '#d32f2f',
-    },
-    warning: {
-      main: '#f57c00',
-    },
-    info: {
-      main: '#0288d1',
+      main: '#555',
     },
     background: {
-      default: '#fafafa',
-      paper: '#ffffff',
+      default: '#F5F6F8',
+      paper: '#FFFFFF',
     },
     text: {
-      primary: '#212121',
-      secondary: '#757575',
+      primary: '#111',
+      secondary: '#555',
     },
   },
-  typography: {
-    fontFamily: [
-      '-apple-system',
-      'BlinkMacSystemFont',
-      '"Segoe UI"',
-      'Roboto',
-      '"Helvetica Neue"',
-      'Arial',
-      'sans-serif',
-    ].join(','),
-  },
   shape: {
-    borderRadius: 8,
+    borderRadius: 0,
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontSize: 13, // Smaller base font size for data density
+    h4: { fontSize: '1.5rem', fontWeight: 600 },
+    h5: { fontSize: '1.25rem', fontWeight: 600 },
+    h6: { fontSize: '1.1rem', fontWeight: 600 },
+    button: {
+      textTransform: 'none',
+      fontWeight: 600,
+    },
+  },
+  spacing: 6, // Reduce spacing unit
+  transitions: {
+    // Disable all animations
+    create: () => 'none',
+  },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          elevation: 0,
+          border: '1px solid #E0E0E0',
+        },
+      },
+      defaultProps: {
+        elevation: 0,
+      },
+    },
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          elevation: 0,
+          borderBottom: '1px solid #E0E0E0',
+          backgroundColor: '#FFFFFF',
+        },
+      },
+      defaultProps: {
+        elevation: 0,
+      },
+    },
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          borderRight: '1px solid #E0E0E0',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          padding: '4px 12px',
+        },
+      },
+      defaultProps: {
+        disableElevation: true,
+      },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: {
+          padding: '6px 10px', // Compact cell padding
+          borderBottom: '1px solid #E0E0E0',
+        },
+        head: {
+          fontWeight: 600,
+          backgroundColor: '#F5F6F8',
+        },
+      },
+    },
+    MuiIconButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 0,
+          padding: '6px',
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: 0,
+        },
+      },
+    },
+    MuiCard: {
+      defaultProps: {
+        elevation: 0,
+      },
+      styleOverrides: {
+        root: {
+          borderRadius: 0,
+          border: '1px solid #E0E0E0',
+        },
+      },
+    },
+    MuiTextField: {
+      defaultProps: {
+        variant: 'outlined',
+        size: 'small',
+      },
+    },
+    MuiInputBase: {
+      styleOverrides: {
+        root: {
+          borderRadius: '0 !important',
+        },
+      },
+    },
   },
 });
 
