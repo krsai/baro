@@ -85,7 +85,7 @@ const Employee = () => {
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>소속(공장)</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>이름</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>직책(직종)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>역할</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
               </TableRow>
             </TableHead>

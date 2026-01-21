@@ -87,10 +87,6 @@ const Role = () => {
     setOpenDialog(false);
   };
 
-  // 역할을 분류 (직책 vs 직종)
-  const positions = roles.filter((r) => r.category === 'position');
-  const jobs = roles.filter((r) => r.category === 'job');
-
   return (
     <Container component="main" maxWidth="lg">
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -107,60 +103,20 @@ const Role = () => {
           </Button>
         </Box>
 
-        <TableContainer component={Paper} sx={{ width: '100%', mb: 4 }}>
-          <Table>
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>직책</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', width: '60%' }}>설명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center', width: '20%' }}>작업</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {positions.map((role) => (
-                <TableRow key={role.id} hover>
-                  <TableCell sx={{ width: '20%' }}>
-                    <Chip label={role.name} color="primary" variant="outlined" />
-                  </TableCell>
-                  <TableCell sx={{ width: '60%' }}>{role.description}</TableCell>
-                  <TableCell sx={{ textAlign: 'center', width: '20%' }}>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditRole(role)}
-                      title="수정"
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteRole(role.id)}
-                      title="삭제"
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-
         <TableContainer component={Paper} sx={{ width: '100%' }}>
           <Table>
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>직종</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>역할</TableCell>
                 <TableCell sx={{ fontWeight: 'bold', width: '60%' }}>설명</TableCell>
                 <TableCell sx={{ fontWeight: 'bold', textAlign: 'center', width: '20%' }}>작업</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {jobs.map((role) => (
+              {roles.map((role) => (
                 <TableRow key={role.id} hover>
                   <TableCell sx={{ width: '20%' }}>
-                    <Chip label={role.name} color="success" variant="outlined" />
+                    <Chip label={role.name} color="primary" variant="outlined" />
                   </TableCell>
                   <TableCell sx={{ width: '60%' }}>{role.description}</TableCell>
                   <TableCell sx={{ textAlign: 'center', width: '20%' }}>
@@ -208,7 +164,7 @@ const Role = () => {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                placeholder="예: 관리자, 봉제"
+                placeholder="예: 관리자, 작업자"
               />
             </Grid>
             <Grid item xs={12}>

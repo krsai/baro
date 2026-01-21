@@ -12,6 +12,9 @@ import Role from './pages/Role';
 import Permission from './pages/Permission';
 import BasicInfo from './pages/BasicInfo';
 import SystemSetting from './pages/SystemSetting';
+import Customer from './pages/Customer';
+import Style from './pages/Style';
+import WorkHistory from './pages/WorkHistory';
 import AuthCallback from './pages/AuthCallback';
 import { useAuth } from './context/AuthContext';
 
@@ -92,6 +95,30 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <SystemSetting />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/customer',
+        element: (
+          <ProtectedRoute>
+            <Customer />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/style',
+        element: (
+          <ProtectedRoute>
+            <Style />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/work-history',
+        element: (
+          <ProtectedRoute>
+            <WorkHistory />
           </ProtectedRoute>
         ),
       },

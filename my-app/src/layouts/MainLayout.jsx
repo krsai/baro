@@ -31,6 +31,10 @@ import SecurityIcon from '@mui/icons-material/Security';
 import InfoIcon from '@mui/icons-material/Info';
 import TuneIcon from '@mui/icons-material/Tune';
 import LogoutIcon from '@mui/icons-material/Logout';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import PeopleIcon from '@mui/icons-material/People';
+import StyleIcon from '@mui/icons-material/Style';
+import HistoryIcon from '@mui/icons-material/History';
 
 const DRAWER_WIDTH = 260;
 
@@ -41,6 +45,8 @@ const MainLayout = () => {
   const { sidebarOpen, toggleSidebar, setSidebarOpen } = useApp();
   const [adminOpen, setAdminOpen] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [productionOpen, setProductionOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -50,12 +56,22 @@ const MainLayout = () => {
   const subMenuItems = [
     { label: '법인 관리', icon: <BusinessIcon />, path: '/company' },
     { label: '공장 관리', icon: <FactoryIcon />, path: '/factory' },
-    { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
     { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
   ];
 
   const basicInfoSubMenuItems = [
+    { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
     { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
+  ];
+
+  const orderSubMenuItems = [
+    { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
+    { label: '스타일 관리', icon: <StyleIcon />, path: '/style' },
+  ];
+
+  const productionSubMenuItems = [
+    { label: '생산 현황', icon: <ProductionQuantityLimitsIcon />, path: '/production' },
+    { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
   ];
 
   const handleMenuItemClick = (path) => {
@@ -83,14 +99,49 @@ const MainLayout = () => {
           <ListItemText primary="대시보드" />
         </ListItem>
 
-        {/* 생산 관리 */}
+        {/* 주문 관리 (부모 메뉴) */}
         <ListItem
           button
-          onClick={() => handleMenuItemClick('/production')}
-          selected={location.pathname === '/production'}
+          onClick={() => setOrderOpen(!orderOpen)}
           sx={{
-            backgroundColor:
-              location.pathname === '/production' ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+          }}
+        >
+          <ListItemIcon>
+            <ShoppingCartIcon />
+          </ListItemIcon>
+          <ListItemText primary="주문 관리" />
+          {orderOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+        </ListItem>
+
+        {/* 주문 관리 서브메뉴 */}
+        <Collapse in={orderOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {orderSubMenuItems.map((item) => (
+              <ListItem
+                button
+                key={item.path}
+                onClick={() => handleMenuItemClick(item.path)}
+                selected={location.pathname === item.path}
+                sx={{
+                  pl: 4,
+                  backgroundColor:
+                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+                }}
+              >
+                <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
+
+        {/* 생산 관리 (부모 메뉴) */}
+        <ListItem
+          button
+          onClick={() => setProductionOpen(!productionOpen)}
+          sx={{
             '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
           }}
         >
@@ -98,7 +149,31 @@ const MainLayout = () => {
             <ProductionQuantityLimitsIcon />
           </ListItemIcon>
           <ListItemText primary="생산 관리" />
+          {productionOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
         </ListItem>
+
+        {/* 생산 관리 서브메뉴 */}
+        <Collapse in={productionOpen} timeout="auto" unmountOnExit>
+          <List component="div" disablePadding>
+            {productionSubMenuItems.map((item) => (
+              <ListItem
+                button
+                key={item.path}
+                onClick={() => handleMenuItemClick(item.path)}
+                selected={location.pathname === item.path}
+                sx={{
+                  pl: 4,
+                  backgroundColor:
+                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
+                }}
+              >
+                <ListItemIcon>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.label} />
+              </ListItem>
+            ))}
+          </List>
+        </Collapse>
 
         {/* 조직 관리 (부모 메뉴) */}
         <ListItem

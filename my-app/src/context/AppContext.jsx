@@ -36,14 +36,10 @@ export const AppProvider = ({ children }) => {
   ]);
 
   const [roles, setRoles] = useState([
-    { id: 1, name: '관리자', description: '전사 관리 권한', category: 'position' },
-    { id: 2, name: '운영자', description: '공장 운영 관리', category: 'position' },
-    { id: 3, name: '매니저', description: '팀 매니저', category: 'position' },
-    { id: 4, name: '작업자', description: '일반 작업자', category: 'position' },
-    { id: 5, name: '봉제', description: '봉제 작업', category: 'job' },
-    { id: 6, name: '다림질', description: '다림질 작업', category: 'job' },
-    { id: 7, name: '포장', description: '포장 작업', category: 'job' },
-    { id: 8, name: '시다', description: '시다 보조', category: 'job' },
+    { id: 1, name: '관리자', description: '전사 관리 권한' },
+    { id: 2, name: '운영자', description: '공장 운영 관리' },
+    { id: 3, name: '매니저', description: '팀 매니저' },
+    { id: 4, name: '작업자', description: '일반 작업자' },
   ]);
 
   // Helper to show notifications
