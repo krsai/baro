@@ -42,47 +42,24 @@ const Style = () => {
         </>
       }
     >
-      <Box sx={{
-        mb: 2,
-        '& .MuiToggleButtonGroup-root': {
-          backgroundColor: 'background.paper',
-          borderRadius: 1,
-          border: '1px solid',
-          borderColor: 'divider',
-        },
-        '& .MuiToggleButton-root': {
-          minWidth: 120, // Fixed width
-          borderColor: 'transparent', // Remove individual button borders
-          '&.Mui-selected': {
-            backgroundColor: 'primary.main',
-            color: 'white',
-            '&:hover': {
-              backgroundColor: 'primary.dark',
-            },
-          },
-          '&:hover': {
-            backgroundColor: 'action.hover',
-          },
-        },
-      }}>
+      <div className="toggle-button-group-wrapper">
         <ToggleButtonGroup
           value={currentTab}
           exclusive
           onChange={handleChange}
           aria-label="style management toggle"
-          size="small"
         >
-          <ToggleButton value="basicInfo" aria-label="basic info">
+          <ToggleButton value="basicInfo" aria-label="basic info" className="toggle-button">
             기본 정보
           </ToggleButton>
-          <ToggleButton value="processInfo" aria-label="process info">
+          <ToggleButton value="processInfo" aria-label="process info" className="toggle-button">
             공정 정보
           </ToggleButton>
-          <ToggleButton value="bom" aria-label="bom">
+          <ToggleButton value="bom" aria-label="bom" className="toggle-button">
             BOM
           </ToggleButton>
         </ToggleButtonGroup>
-      </Box>
+      </div>
 
       {currentTab === 'basicInfo' && <StyleBasicInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />}
       {currentTab === 'processInfo' && <StyleProcess formData={styleFormData} handleInputChange={handleStyleInputChange} />}

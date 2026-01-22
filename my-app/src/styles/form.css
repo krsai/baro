@@ -48,7 +48,6 @@ textarea:focus {
 }
 
 .btn-primary:hover {
-  background-color: darken(var(--color-primary), 10%); /* This needs SCSS/PostCSS or manual color calc */
   background-color: color-mix(in srgb, var(--color-primary) 80%, black); /* CSS color-mix() alternative */
   border-color: color-mix(in srgb, var(--color-primary) 80%, black);
 }
@@ -96,4 +95,41 @@ textarea:focus {
   font-size: var(--font-size-sm);
   color: var(--color-text-dark);
   font-weight: 500;
+}
+
+/* Toggle Button Group Styles */
+.toggle-button-group-wrapper {
+  margin-bottom: var(--spacing-md); /* Corresponds to mb: 2 (16px) */
+}
+
+/* Styles for MuiToggleButtonGroup-root - applied to the actual ToggleButtonGroup component */
+/* Note: Direct targeting of Mui components usually requires a wrapper class or global selector */
+.MuiToggleButtonGroup-root {
+  background-color: var(--color-background-light);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--color-border);
+  display: inline-flex; /* Ensure it behaves like a group */
+}
+
+/* Styles for MuiToggleButton-root - applied to individual ToggleButton components */
+.toggle-button.MuiToggleButton-root { /* Targeting with our own class for specificity */
+  min-width: 120px; /* Fixed width */
+  border-color: transparent; /* Remove individual button borders */
+  font-size: var(--font-size-sm); /* size="small" equivalent */
+  padding: var(--spacing-xs) var(--spacing-sm); /* Default padding for small buttons */
+}
+
+.toggle-button.MuiToggleButton-root.Mui-selected {
+  background-color: var(--color-primary);
+  color: var(--color-text-light);
+  border-color: var(--color-primary); /* Keep selected border visible if needed */
+}
+
+.toggle-button.MuiToggleButton-root.Mui-selected:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 80%, black);
+  border-color: color-mix(in srgb, var(--color-primary) 80%, black);
+}
+
+.toggle-button.MuiToggleButton-root:hover {
+  background-color: var(--color-background-dark); /* Simulate action.hover or a lighter background */
 }
