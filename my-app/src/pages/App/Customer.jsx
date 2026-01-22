@@ -25,15 +25,15 @@ import AppPageContainer from '../../components/AppPageContainer';
 
 const Customer = () => {
   const [customers, setCustomers] = useState([
-    { id: 1, code: 'C001', name: '더산', manager: '김철수', registeredAt: '2023-01-15' },
-    { id: 2, code: 'C002', name: '나이키', manager: '이영희', registeredAt: '2023-02-20' },
-    { id: 3, code: 'C003', name: '아디다스', manager: '박지성', registeredAt: '2023-03-10' },
+    { id: 1, code: 'C001', name: '더산', manager: '김철수', phone: '010-1111-2222', email: 'kim@thesan.com', registeredAt: '2023-01-15' },
+    { id: 2, code: 'C002', name: '나이키', manager: '이영희', phone: '010-3333-4444', email: 'lee@nike.com', registeredAt: '2023-02-20' },
+    { id: 3, code: 'C003', name: '아디다스', manager: '박지성', phone: '010-5555-6666', email: 'park@adidas.com', registeredAt: '2023-03-10' },
   ]);
 
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   
-  const initialFormData = { code: '', name: '', manager: '', registeredAt: '' };
+  const initialFormData = { code: '', name: '', manager: '', phone: '', email: '', registeredAt: '' };
   const [formData, setFormData] = useState(initialFormData);
 
   const handleAdd = () => {
@@ -96,10 +96,11 @@ const Customer = () => {
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                <TableCell>ID</TableCell>
                 <TableCell>고객 코드</TableCell>
                 <TableCell>고객사명</TableCell>
                 <TableCell>담당자</TableCell>
+                <TableCell>연락처</TableCell>
+                <TableCell>이메일</TableCell>
                 <TableCell>등록일</TableCell>
                 <TableCell align="center">작업</TableCell>
               </TableRow>
@@ -107,10 +108,11 @@ const Customer = () => {
             <TableBody>
               {customers.map((customer) => (
                 <TableRow key={customer.id} hover>
-                  <TableCell>{customer.id}</TableCell>
                   <TableCell>{customer.code}</TableCell>
                   <TableCell>{customer.name}</TableCell>
                   <TableCell>{customer.manager}</TableCell>
+                  <TableCell>{customer.phone}</TableCell>
+                  <TableCell>{customer.email}</TableCell>
                   <TableCell>{customer.registeredAt}</TableCell>
                   <TableCell align="center">
                     <IconButton color="primary" onClick={() => handleEdit(customer)} title="수정">
@@ -139,6 +141,12 @@ const Customer = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField name="manager" label="담당자" value={formData.manager} onChange={handleInputChange} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField name="phone" label="연락처" value={formData.phone} onChange={handleInputChange} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField name="email" label="이메일" type="email" value={formData.email} onChange={handleInputChange} fullWidth />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField name="registeredAt" label="등록일" type="date" value={formData.registeredAt} onChange={handleInputChange} fullWidth InputLabelProps={{ shrink: true }} />

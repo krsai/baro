@@ -30,6 +30,60 @@
 
 *이 섹션은 프로젝트 진행에 따라 지속적으로 업데이트됩니다.*
 
+### 페이지 구조 규칙 (`src/pages/App`)
+
+`src/pages/App` 디렉토리 내의 모든 관리 페이지는 사용자에게 일관된 경험을 제공하기 위해 다음 구조를 따라야 합니다. 목표는 모든 페이지가 **"제목 및 액션 영역 + 본문 영역"** 이라는 동일한 시각적 뼈대를 공유하도록 하는 것입니다.
+
+1.  **`AppPageContainer` 사용**
+    -   모든 페이지의 최상위 컴포넌트는 반드시 `<AppPageContainer>`여야 합니다.
+
+2.  **헤더(`header`) 영역 구성**
+    -   `header` prop은 항상 존재해야 합니다.
+    -   헤더는 수평으로 양쪽 정렬된 구조(`display: 'flex', justifyContent: 'space-between'`)를 유지합니다.
+    -   **좌측**: 페이지의 제목을 표시합니다. (`<Typography variant="h4">`)
+    -   **우측**: 페이지의 주요 액션 버튼(들)을 위치시킵니다. (예: "추가", "수정")
+    -   페이지에 따라 버튼이 필요 없는 경우에도, 헤더의 레이아웃 구조는 깨지지 않고 유지되어야 합니다.
+
+3.  **본문(`children`) 영역 구성**
+    -   본문은 `AppPageContainer`의 `children`으로 위치하며, 헤더 영역 아래에 렌더링됩니다.
+    -   본문의 최상위 콘텐츠는 `<Paper>` 컴포넌트나 이와 유사한 시각적 컨테이너로 감싸 배경과 구별되도록 합니다.
+    -   내부 콘텐츠(테이블, 폼, 카드 등)는 각 페이지의 기능에 맞게 자유롭게 구성할 수 있습니다.
+
+4.  **보조 UI (Dialog, Drawer 등)**
+    -   `Dialog`, `Drawer`, `Snackbar`와 같은 보조적인 UI 컴포넌트들은 페이지의 기본 레이아웃 구조에 영향을 주지 않도록 `<AppPageContainer>`의 자식 요소 중 가장 하단에 위치시킵니다.
+
+#### 예시 구조
+
+```jsx
+import AppPageContainer from '../../components/AppPageContainer';
+import { Box, Typography, Button, Paper } from '@mui/material';
+
+const ExamplePage = () => {
+  return (
+    <AppPageContainer
+      header={
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography component="h1" variant="h4">
+            페이지 제목
+          </Typography>
+          <Button variant="contained">
+            액션 버튼
+          </Button>
+        </Box>
+      }
+    >
+      <Paper sx={{ p: 3 }}>
+        {/* 페이지의 주요 본문 콘텐츠 (테이블, 폼 등) */}
+      </Paper>
+      
+      {/* 다이얼로그 등 기타 보조 UI */}
+    </AppPageContainer>
+  );
+};
+
+export default ExamplePage;
+```
+
 1.  **UI 개발**: 모든 UI 컴포넌트는 MUI를 우선적으로 사용하여 구현합니다.
 2.  **상태 관리**: 간단한 상태는 컴포넌트 내부의 `useState`를 사용하고, 여러 컴포넌트에 걸쳐 사용되는 전역 상태는 `Context API`를 활용합니다.
 3.  **파일 및 컴포넌트 명명**:
