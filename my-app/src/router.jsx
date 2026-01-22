@@ -10,7 +10,7 @@ import Factory from './pages/app/Factory';
 import Employee from './pages/app/Employee';
 import Role from './pages/app/Role';
 import Permission from './pages/app/Permission';
-import BasicInfo from './pages/app/BasicInfo';
+import BasicInfo from './pages/app/customer/BasicInfo';
 import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';

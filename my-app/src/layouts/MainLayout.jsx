@@ -313,6 +313,7 @@ const MainLayout = () => {
                     flexDirection: 'row',
                   },
                   p: '0 16px',
+                  minWidth: '120px',
                 }}
                 label={
                   <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
@@ -323,7 +324,7 @@ const MainLayout = () => {
                         size="small"
                         onClick={(e) => handleCloseTab(e, tab.id)}
                         sx={{
-                          ml: 1.5,
+                          ml: 0.5,
                           p: '2px',
                           '&:hover': {
                             bgcolor: 'rgba(0, 0, 0, 0.08)',
