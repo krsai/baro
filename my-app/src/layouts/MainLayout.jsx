@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import {
@@ -7,7 +7,6 @@ import {
   Toolbar,
   Button,
   Box,
-  Container,
   Drawer,
   List,
   ListItem,
@@ -16,6 +15,8 @@ import {
   Divider,
   IconButton,
   Collapse,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
@@ -35,14 +36,53 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
 import StyleIcon from '@mui/icons-material/Style';
 import HistoryIcon from '@mui/icons-material/History';
+import CloseIcon from '@mui/icons-material/Close';
+
+// Import all page components
+import Home from '../pages/app/Home';
+import Production from '../pages/app/Production';
+import Company from '../pages/app/Company';
+import Factory from '../pages/app/Factory';
+import Employee from '../pages/app/Employee';
+import Role from '../pages/app/Role';
+import Permission from '../pages/app/Permission';
+import SystemSetting from '../pages/app/SystemSetting';
+import Customer from '../pages/app/Customer';
+import Style from '../pages/app/Style';
+import WorkHistory from '../pages/app/WorkHistory';
+import ProtectedRoute from '../components/ProtectedRoute';
 
 const DRAWER_WIDTH = 260;
+
+const pageComponents = {
+  '/': Home,
+  '/production': Production,
+  '/company': Company,
+  '/factory': Factory,
+  '/employee': Employee,
+  '/role': Role,
+  '/permission': Permission,
+  '/system-setting': SystemSetting,
+  '/customer': Customer,
+  '/style': Style,
+  '/work-history': WorkHistory,
+};
 
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, logout } = useAuth();
-  const { sidebarOpen, toggleSidebar, setSidebarOpen } = useApp();
+  const { logout } = useAuth();
+  const {
+    sidebarOpen,
+    toggleSidebar,
+    setSidebarOpen,
+    openTabs,
+    activeTab,
+    openTab,
+    closeTab,
+    setActiveTab,
+  } = useApp();
+
   const [adminOpen, setAdminOpen] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
@@ -53,220 +93,121 @@ const MainLayout = () => {
     navigate('/login');
   };
 
-  const subMenuItems = [
-    { label: '법인 관리', icon: <BusinessIcon />, path: '/company' },
-    { label: '공장 관리', icon: <FactoryIcon />, path: '/factory' },
-    { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
-  ];
-
-  const basicInfoSubMenuItems = [
-    { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
-    { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
-  ];
-
-  const orderSubMenuItems = [
-    { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
-    { label: '스타일 관리', icon: <StyleIcon />, path: '/style' },
-  ];
-
-  const productionSubMenuItems = [
-    { label: '생산 현황', icon: <ProductionQuantityLimitsIcon />, path: '/production' },
-    { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
-  ];
-
-  const handleMenuItemClick = (path) => {
+  const handleMenuItemClick = (path, label) => {
+    openTab({ id: path, label, path });
     navigate(path);
-    setSidebarOpen(false);
+    if (window.innerWidth < 900) { // md breakpoint
+      setSidebarOpen(false);
+    }
   };
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+    navigate(newValue);
+  };
+
+  const handleCloseTab = (e, tabId) => {
+    e.stopPropagation(); // Prevent tab selection when closing
+    const newPath = closeTab(tabId);
+    if (newPath) {
+      navigate(newPath);
+    }
+  };
+
+  const menuItems = [
+    {
+      label: '대시보드',
+      icon: <HomeIcon />,
+      path: '/',
+      isParent: false,
+    },
+    {
+      label: '주문 관리',
+      icon: <ShoppingCartIcon />,
+      isParent: true,
+      isOpen: orderOpen,
+      setOpen: setOrderOpen,
+      children: [
+        { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
+        { label: '스타일 관리', icon: <StyleIcon />, path: '/style' },
+      ],
+    },
+    {
+      label: '생산 관리',
+      icon: <ProductionQuantityLimitsIcon />,
+      isParent: true,
+      isOpen: productionOpen,
+      setOpen: setProductionOpen,
+      children: [
+        { label: '생산 현황', icon: <ProductionQuantityLimitsIcon />, path: '/production' },
+        { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
+      ],
+    },
+    {
+      label: '조직 관리',
+      icon: <OrganizationIcon />,
+      isParent: true,
+      isOpen: adminOpen,
+      setOpen: setAdminOpen,
+      children: [
+        { label: '법인 관리', icon: <BusinessIcon />, path: '/company' },
+        { label: '공장 관리', icon: <FactoryIcon />, path: '/factory' },
+        { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
+      ],
+    },
+    {
+      label: '기본 정보',
+      icon: <InfoIcon />,
+      isParent: true,
+      isOpen: basicInfoOpen,
+      setOpen: setBasicInfoOpen,
+      children: [
+        { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
+        { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
+      ],
+    },
+    {
+      label: '시스템 설정',
+      icon: <TuneIcon />,
+      path: '/system-setting',
+      isParent: false,
+    },
+  ];
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <List sx={{ flex: 1 }}>
-        {/* 대시보드 */}
-        <ListItem
-          button
-          onClick={() => handleMenuItemClick('/')}
-          selected={location.pathname === '/'}
-          sx={{
-            backgroundColor:
-              location.pathname === '/' ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <HomeIcon />
-          </ListItemIcon>
-          <ListItemText primary="대시보드" />
-        </ListItem>
-
-        {/* 주문 관리 (부모 메뉴) */}
-        <ListItem
-          button
-          onClick={() => setOrderOpen(!orderOpen)}
-          sx={{
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <ShoppingCartIcon />
-          </ListItemIcon>
-          <ListItemText primary="주문 관리" />
-          {orderOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        </ListItem>
-
-        {/* 주문 관리 서브메뉴 */}
-        <Collapse in={orderOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {orderSubMenuItems.map((item) => (
-              <ListItem
-                button
-                key={item.path}
-                onClick={() => handleMenuItemClick(item.path)}
-                selected={location.pathname === item.path}
-                sx={{
-                  pl: 4,
-                  backgroundColor:
-                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-                }}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
-
-        {/* 생산 관리 (부모 메뉴) */}
-        <ListItem
-          button
-          onClick={() => setProductionOpen(!productionOpen)}
-          sx={{
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <ProductionQuantityLimitsIcon />
-          </ListItemIcon>
-          <ListItemText primary="생산 관리" />
-          {productionOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        </ListItem>
-
-        {/* 생산 관리 서브메뉴 */}
-        <Collapse in={productionOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {productionSubMenuItems.map((item) => (
-              <ListItem
-                button
-                key={item.path}
-                onClick={() => handleMenuItemClick(item.path)}
-                selected={location.pathname === item.path}
-                sx={{
-                  pl: 4,
-                  backgroundColor:
-                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-                }}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
-
-        {/* 조직 관리 (부모 메뉴) */}
-        <ListItem
-          button
-          onClick={() => setAdminOpen(!adminOpen)}
-          sx={{
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <OrganizationIcon />
-          </ListItemIcon>
-          <ListItemText primary="조직 관리" />
-          {adminOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        </ListItem>
-
-        {/* 조직 관리 서브메뉴 */}
-        <Collapse in={adminOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {subMenuItems.map((item) => (
-              <ListItem
-                button
-                key={item.path}
-                onClick={() => handleMenuItemClick(item.path)}
-                selected={location.pathname === item.path}
-                sx={{
-                  pl: 4,
-                  backgroundColor:
-                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-                }}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
-
-        {/* 기본 정보 (부모 메뉴) */}
-        <ListItem
-          button
-          onClick={() => setBasicInfoOpen(!basicInfoOpen)}
-          sx={{
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <InfoIcon />
-          </ListItemIcon>
-          <ListItemText primary="기본 정보" />
-          {basicInfoOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        </ListItem>
-
-        {/* 기본 정보 서브메뉴 */}
-        <Collapse in={basicInfoOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            {basicInfoSubMenuItems.map((item) => (
-              <ListItem
-                button
-                key={item.path}
-                onClick={() => handleMenuItemClick(item.path)}
-                selected={location.pathname === item.path}
-                sx={{
-                  pl: 4,
-                  backgroundColor:
-                    location.pathname === item.path ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                  '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-                }}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-        </Collapse>
-
-        {/* 시스템 설정 */}
-        <ListItem
-          button
-          onClick={() => handleMenuItemClick('/system-setting')}
-          selected={location.pathname === '/system-setting'}
-          sx={{
-            backgroundColor:
-              location.pathname === '/system-setting' ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-            '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' },
-          }}
-        >
-          <ListItemIcon>
-            <TuneIcon />
-          </ListItemIcon>
-          <ListItemText primary="시스템 설정" />
-        </ListItem>
+      <List sx={{ flex: 1, overflowY: 'auto' }}>
+        {menuItems.map((menu) => (
+          <React.Fragment key={menu.label}>
+            <ListItem
+              button
+              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path, menu.label)}
+              selected={!menu.isParent && activeTab === menu.path}
+            >
+              <ListItemIcon>{menu.icon}</ListItemIcon>
+              <ListItemText primary={menu.label} />
+              {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
+            </ListItem>
+            {menu.isParent && (
+              <Collapse in={menu.isOpen} timeout="auto" unmountOnExit>
+                <List component="div" disablePadding>
+                  {menu.children.map((child) => (
+                    <ListItem
+                      button
+                      key={child.path}
+                      onClick={() => handleMenuItemClick(child.path, child.label)}
+                      selected={activeTab === child.path}
+                      sx={{ pl: 4 }}
+                    >
+                      <ListItemIcon>{child.icon}</ListItemIcon>
+                      <ListItemText primary={child.label} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Collapse>
+            )}
+          </React.Fragment>
+        ))}
       </List>
 
       <Divider />
@@ -282,20 +223,20 @@ const MainLayout = () => {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.100' }}>
       {/* Header */}
-      <AppBar position="fixed" sx={{ zIndex: 1201 }}>
+      <AppBar position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
         <Toolbar>
           <IconButton
             color="inherit"
             aria-label="toggle menu"
             edge="start"
             onClick={toggleSidebar}
-            sx={{ mr: 2, display: { sm: 'block', md: 'none' } }}
+            sx={{ mr: 2, display: { md: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
-          <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => navigate('/')}>
+          <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => handleMenuItemClick('/', '대시보드')}>
             <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
               BARO
             </Button>
@@ -303,30 +244,23 @@ const MainLayout = () => {
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar - Desktop */}
-      <Box
+      {/* Sidebar */}
+      <Drawer
+        variant="permanent"
         sx={{
           display: { xs: 'none', md: 'block' },
-          width: DRAWER_WIDTH,
-          pt: '64px',
-          position: 'fixed',
-          height: '100vh',
-          borderRight: '1px solid #ddd',
-          backgroundColor: '#f5f5f5',
+          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box', top: '64px', height: 'calc(100% - 64px)', borderRight: '1px solid #ddd' },
         }}
       >
         {sidebarContent}
-      </Box>
-
-      {/* Sidebar - Mobile */}
+      </Drawer>
       <Drawer
+        variant="temporary"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         sx={{
           display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': {
-            pt: '64px',
-          },
+          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
         }}
       >
         {sidebarContent}
@@ -334,21 +268,94 @@ const MainLayout = () => {
 
       {/* Main Content */}
       <Box
+        component="main"
         sx={{
-          flex: 1,
-          ml: { xs: 0, md: `${DRAWER_WIDTH}px` },
+          flexGrow: 1,
+          pl: { md: `${DRAWER_WIDTH}px` },
+          pt: '64px',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        <Box sx={{ pt: '64px' }} /> {/* AppBar 높이만큼 spacing */}
-        <Container maxWidth={false} sx={{ flex: 1, py: 3, px: 3 }}>
-          <Outlet />
-        </Container>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            variant="scrollable"
+            scrollButtons="auto"
+            aria-label="open pages tabs"
+            sx={{
+              minHeight: '40px',
+              '& .MuiTabs-indicator': {
+                height: '2px',
+              },
+            }}
+          >
+            {openTabs.map((tab) => (
+              <Tab
+                key={tab.id}
+                value={tab.id}
+                component="div"
+                sx={{
+                  minHeight: '40px',
+                  textTransform: 'none',
+                  borderRight: 1,
+                  borderColor: 'divider',
+                  opacity: 1,
+                  '&.Mui-selected': {
+                    bgcolor: 'white',
+                    fontWeight: 'bold',
+                  },
+                  '&:not(.Mui-selected)': {
+                    bgcolor: '#f4f6f8',
+                  },
+                  '& .MuiTab-wrapper': {
+                    flexDirection: 'row',
+                  },
+                  p: '0 16px',
+                }}
+                label={
+                  <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
+                    {tab.label}
+                    {tab.id !== '/' && (
+                      <IconButton
+                        component="span"
+                        size="small"
+                        onClick={(e) => handleCloseTab(e, tab.id)}
+                        sx={{
+                          ml: 1.5,
+                          p: '2px',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.08)',
+                          },
+                        }}
+                      >
+                        <CloseIcon sx={{ fontSize: '1rem' }} />
+                      </IconButton>
+                    )}
+                  </Box>
+                }
+              />
+            ))}
+          </Tabs>
+        </Box>
 
-        {/* Footer */}
-        <Box sx={{ py: 2, textAlign: 'center', borderTop: '1px solid #E0E0E0' }}>
-          <p>&copy; 2026 My App. All rights reserved.</p>
+        <Box sx={{ flexGrow: 1, p: 0, overflow: 'auto' }}>
+          {openTabs.map((tab) => {
+            const PageComponent = pageComponents[tab.path];
+            return (
+              <Box
+                key={tab.id}
+                role="tabpanel"
+                hidden={activeTab !== tab.id}
+                sx={{ height: '100%' }}
+              >
+                <ProtectedRoute>
+                  {PageComponent ? <PageComponent /> : <p>Page not found</p>}
+                </ProtectedRoute>
+              </Box>
+            );
+          })}
         </Box>
       </Box>
     </Box>

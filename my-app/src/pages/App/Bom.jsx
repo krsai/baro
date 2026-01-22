@@ -1,12 +1,12 @@
 import React from 'react';
 import { Typography } from '@mui/material';
 
-const BasicInfo = () => {
+const Bom = () => {
   return (
     <div>
-      {/* 기본 정보 컨텐츠 */}
+      {/* BOM 컨텐츠 */}
     </div>
   );
 };
 
-export default BasicInfo;
+export default Bom;

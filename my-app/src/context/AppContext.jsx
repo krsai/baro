@@ -8,6 +8,59 @@ export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // --- Tab State ---
+  const [openTabs, setOpenTabs] = useState([
+    { id: '/', label: '대시보드', path: '/' },
+  ]);
+  const [activeTab, setActiveTab] = useState('/');
+
+  const openTab = (tab) => {
+    if (!openTabs.find((t) => t.id === tab.id)) {
+      setOpenTabs((prev) => [...prev, tab]);
+    }
+    setActiveTab(tab.id);
+  };
+
+  const closeTab = (tabId) => {
+    if (tabId === '/') return; // Cannot close the main dashboard tab
+
+    let newActivePath = null;
+    setOpenTabs((prev) => {
+      const tabIndex = prev.findIndex((t) => t.id === tabId);
+      const newTabs = prev.filter((t) => t.id !== tabId);
+
+      if (activeTab === tabId) {
+        const newActiveTab = newTabs[tabIndex - 1] || newTabs[0];
+        if (newActiveTab) {
+          setActiveTab(newActiveTab.id);
+          newActivePath = newActiveTab.path;
+        }
+      }
+      return newTabs;
+    });
+    return newActivePath;
+  };
+
+  // Helper to show notifications
+  const showNotification = (message, type = 'info', duration = 3000) => {
+    setNotification({ message, type, id: Date.now() });
+    if (duration) {
+      setTimeout(() => setNotification(null), duration);
+    }
+  };
+
+
+  // Helper to dismiss notification
+  const dismissNotification = () => {
+    setNotification(null);
+  };
+
+  // Toggle sidebar
+  const toggleSidebar = () => {
+    setSidebarOpen((prev) => !prev);
+  };
+
   const [factories, setFactories] = useState([
     {
       id: 1,
@@ -42,24 +95,6 @@ export const AppProvider = ({ children }) => {
     { id: 4, name: '작업자', description: '일반 작업자' },
   ]);
 
-  // Helper to show notifications
-  const showNotification = (message, type = 'info', duration = 3000) => {
-    setNotification({ message, type, id: Date.now() });
-    if (duration) {
-      setTimeout(() => setNotification(null), duration);
-    }
-  };
-
-  // Helper to dismiss notification
-  const dismissNotification = () => {
-    setNotification(null);
-  };
-
-  // Toggle sidebar
-  const toggleSidebar = () => {
-    setSidebarOpen((prev) => !prev);
-  };
-
   const value = {
     // Loading state
     isLoading,
@@ -74,6 +109,13 @@ export const AppProvider = ({ children }) => {
     sidebarOpen,
     setSidebarOpen,
     toggleSidebar,
+
+    // Tab state
+    openTabs,
+    activeTab,
+    setActiveTab,
+    openTab,
+    closeTab,
 
     // Factories state
     factories,
