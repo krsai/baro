@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography, TextField, Grid } from '@mui/material';
 
-const ProcessInfo = ({ formData, handleInputChange }) => {
+const StyleProcess = ({ formData, handleInputChange }) => {
   return (
     <Box sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 1, mt: 2 }}>
       <Typography variant="h6" gutterBottom>공정 정보</Typography>
@@ -30,4 +30,4 @@ const ProcessInfo = ({ formData, handleInputChange }) => {
   );
 };
 
-export default ProcessInfo;
+export default StyleProcess;

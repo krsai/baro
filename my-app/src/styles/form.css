@@ -1,0 +1,99 @@
+/* src/styles/form.css */
+
+/* Input and Select common styles */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  width: 100%;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-md);
+  color: var(--color-text-dark);
+  background-color: #fff;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(var(--color-primary), 0.2);
+  outline: none;
+}
+
+/* Button common styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  text-decoration: none; /* For button-like links */
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-text-light);
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background-color: darken(var(--color-primary), 10%); /* This needs SCSS/PostCSS or manual color calc */
+  background-color: color-mix(in srgb, var(--color-primary) 80%, black); /* CSS color-mix() alternative */
+  border-color: color-mix(in srgb, var(--color-primary) 80%, black);
+}
+
+.btn-secondary {
+  background-color: var(--color-background-dark);
+  color: var(--color-text-dark);
+  border-color: var(--color-border);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-border);
+}
+
+.btn-danger {
+  background-color: var(--color-error);
+  color: var(--color-text-light);
+  border-color: var(--color-error);
+}
+
+.btn-danger:hover {
+  background-color: color-mix(in srgb, var(--color-error) 80%, black);
+  border-color: color-mix(in srgb, var(--color-error) 80%, black);
+}
+
+.btn-outline-primary {
+  background-color: transparent;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--color-primary);
+  color: var(--color-text-light);
+}
+
+/* Form groups and labels */
+.form-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.form-label {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-dark);
+  font-weight: 500;
+}

@@ -3,7 +3,7 @@ import {  Typography, Box, ToggleButton, ToggleButtonGroup } from '@mui/material
 import AppPageContainer from '../../components/AppPageContainer';
 import StyleBasicInfo from './style/StyleBasicInfo'; // Using style-specific BasicInfo
 import StyleBom from './style/StyleBom'; // Using style-specific Bom
-import ProcessInfo from './style/ProcessInfo'; // New Process Info component
+import StyleProcess from './style/StyleProcess'; // New Process Info component
 
 const initialStyleFormData = {
   styleCode: '',
@@ -85,7 +85,7 @@ const Style = () => {
       </Box>
 
       {currentTab === 'basicInfo' && <StyleBasicInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-      {currentTab === 'processInfo' && <ProcessInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />}
+      {currentTab === 'processInfo' && <StyleProcess formData={styleFormData} handleInputChange={handleStyleInputChange} />}
       {currentTab === 'bom' && <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />}
     </AppPageContainer>
   );
