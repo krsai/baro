@@ -130,6 +130,48 @@ const theme = createTheme({
         },
       },
     },
+    MuiTabs: {
+      styleOverrides: {
+        root: {
+          minHeight: 'unset',
+          paddingLeft: '4px', // Add 4px left padding to the entire tab container
+          paddingTop: '4px', // Add 4px top padding to the entire tab container
+        },
+        indicator: {
+          display: 'none',
+        },
+        flexContainer: {
+          // Gap will be managed by Tab's marginRight
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          minWidth: 'unset',
+          // height: 38, // Removed fixed height to allow padding to take effect
+          minHeight: 38, // Use minHeight if a minimum size is desired
+          padding: '4px 12px 6px 12px', // Top 4px, others as before
+          marginRight: '4px', // Space between tabs
+          borderRadius: '8px 8px 0 0',
+          color: 'rgba(0, 0, 0, 0.85)',
+          backgroundColor: '#f0f0f0',
+          border: '1px solid #e8e8e8',
+          borderBottom: 'none',
+          '&:hover': {
+            backgroundColor: '#e6e6e6',
+          },
+          '&.Mui-selected': {
+            color: '#1890ff',
+            backgroundColor: '#fff',
+            border: '1px solid #e8e8e8',
+            borderBottomColor: '#fff',
+          },
+          transition: 'all 0.2s ease-in-out', // Added for smoother transitions
+        },
+      },
+    },
   },
 });
 

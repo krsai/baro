@@ -40,7 +40,7 @@
 2.  **헤더(`header`) 영역 구성**
     -   `header` prop은 항상 존재해야 합니다.
     -   헤더는 수평으로 양쪽 정렬된 구조(`display: 'flex', justifyContent: 'space-between'`)를 유지합니다.
-    -   **좌측**: 페이지의 제목을 표시합니다. (`<Typography variant="h4">`)
+    -   **좌측**: 페이지의 제목을 표시합니다. (`<Typography component="h1" variant="h4">`)
     -   **우측**: 페이지의 주요 액션 버튼(들)을 위치시킵니다. (예: "추가", "수정")
     -   페이지에 따라 버튼이 필요 없는 경우에도, 헤더의 레이아웃 구조는 깨지지 않고 유지되어야 합니다.
 
@@ -84,6 +84,217 @@ const ExamplePage = () => {
 export default ExamplePage;
 ```
 
+### 탭 사용 및 스타일링 (Tab Usage and Styling)
+
+애플리케이션 전체의 탭 인터페이스는 일관된 사용자 경험을 위해 전역적으로 스타일이 관리됩니다. MUI의 `Tabs` 및 `Tab` 컴포넌트를 사용하여 탭을 구현하며, "Chrome-like" 현대적인 디자인 원칙을 따릅니다.
+
+1.  **전역 스타일링**:
+    -   모든 `MuiTabs` 및 `MuiTab` 컴포넌트의 기본 스타일은 `src/theme/index.js` 파일에 정의된 테마 오버라이드를 통해 관리됩니다. 이는 탭 버튼 간 간격, 상단 및 좌측 패딩, 둥근 모서리, 활성/비활성 상태의 색상 및 테두리 등을 포함합니다.
+    -   개별 컴포넌트에서는 기본적인 탭 디자인을 위해 인라인 `sx` prop을 사용하지 않도록 권장합니다. 특정 페이지에서 전역 스타일에서 벗어나야 하는 예외적인 경우에만 `sx` prop을 사용하여 오버라이드할 수 있습니다.
+
+2.  **`Tabs` 컴포넌트**:
+    -   `<Tabs>` 컴포넌트는 탭 버튼 그룹을 감싸는 컨테이너입니다. `value` prop으로 현재 활성화된 탭의 인덱스를, `onChange` prop으로 탭 변경 핸들러를 전달해야 합니다.
+    -   `MuiTabs` 루트에는 상단 및 좌측에 4px의 패딩이 전역적으로 적용되어 있습니다.
+
+3.  **`Tab` 컴포넌트**:
+    -   각 탭 버튼은 `<Tab>` 컴포넌트를 사용합니다. `label` prop으로 탭에 표시될 텍스트를 제공합니다.
+    -   탭 버튼 사이의 간격은 `marginRight`를 통해 4px로 설정되어 있습니다.
+
+4.  **`TabPanel` 컴포넌트**:
+    -   탭 콘텐츠는 `TabPanel` 헬퍼 컴포넌트 내부에 배치되어야 합니다. 이 컴포넌트는 활성 탭에 맞춰 테두리 및 배경을 포함하여 콘텐츠 영역과 탭 간의 시각적인 연결을 자연스럽게 만듭니다.
+    -   `TabPanel`은 `value`, `index`, `children` prop을 받습니다.
+
+**예시 사용법 (Dialog 내 탭):**
+
+```jsx
+import { Tabs, Tab, Box, DialogContent } from '@mui/material';
+import { useState } from 'react';
+
+// TabPanel 헬퍼 컴포넌트 (Customer.jsx에 정의되어야 함)
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box
+          sx={{
+            p: 3,
+            border: '1px solid #e8e8e8',
+            borderTop: 'none',
+            backgroundColor: '#fff',
+            borderRadius: '0 8px 8px 8px',
+            minHeight: 200,
+          }}
+        >
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+const MyComponentWithTabs = () => {
+  const [selectedTab, setSelectedTab] = useState(0);
+  const handleTabChange = (event, newValue) => {
+    setSelectedTab(newValue);
+  };
+
+  return (
+    <DialogContent sx={{ p: 0 }}> {/* DialogContent의 패딩을 제거하여 TabPanel이 전체 영역을 차지하도록 함 */}
+      <Box sx={{ bgcolor: 'background.paper' }}> {/* 탭 컨테이너의 배경색을 설정 */}
+        <Tabs value={selectedTab} onChange={handleTabChange} aria-label="example tabs">
+          <Tab label="첫 번째 탭" />
+          <Tab label="두 번째 탭" />
+        </Tabs>
+      </Box>
+
+      <TabPanel value={selectedTab} index={0}>
+        {/* 첫 번째 탭의 콘텐츠 */}
+      </TabPanel>
+      <TabPanel value={selectedTab} index={1}>
+        {/* 두 번째 탭의 콘텐츠 */}
+      </TabPanel>
+    </DialogContent>
+  );
+};
+```
+### 탭 사용 및 스타일링 (Tab Usage and Styling)
+
+애플리케이션 전체의 탭 인터페이스는 일관된 사용자 경험을 위해 전역적으로 스타일이 관리됩니다. MUI의 `Tabs` 및 `Tab` 컴포넌트를 사용하여 탭을 구현하며, "Chrome-like" 현대적인 디자인 원칙을 따릅니다.
+
+1.  **전역 스타일링**:
+    -   모든 `MuiTabs` 및 `MuiTab` 컴포넌트의 기본 스타일은 `src/theme/index.js` 파일에 정의된 테마 오버라이드를 통해 관리됩니다. 이는 탭 버튼 간 간격, 상단 및 좌측 패딩, 둥근 모서리, 활성/비활성 상태의 색상 및 테두리 등을 포함합니다.
+    -   개별 컴포넌트에서는 기본적인 탭 디자인을 위해 인라인 `sx` prop을 사용하지 않도록 권장합니다. 특정 페이지에서 전역 스타일에서 벗어나야 하는 예외적인 경우에만 `sx` prop을 사용하여 오버라이드할 수 있습니다.
+
+2.  **`Tabs` 컴포넌트**:
+    -   `<Tabs>` 컴포넌트는 탭 버튼 그룹을 감싸는 컨테이너입니다. `value` prop으로 현재 활성화된 탭의 인덱스를, `onChange` prop으로 탭 변경 핸들러를 전달해야 합니다.
+    -   `MuiTabs` 루트에는 상단 및 좌측에 4px의 패딩이 전역적으로 적용되어 있습니다.
+
+3.  **`Tab` 컴포넌트**:
+    -   각 탭 버튼은 `<Tab>` 컴포넌트를 사용합니다. `label` prop으로 탭에 표시될 텍스트를 제공합니다.
+    -   탭 버튼 사이의 간격은 `marginRight`를 통해 4px로 설정되어 있습니다.
+
+4.  **`TabPanel` 컴포넌트**:
+    -   탭 콘텐츠는 `TabPanel` 헬퍼 컴포넌트 내부에 배치되어야 합니다. 이 컴포넌트는 활성 탭에 맞춰 테두리 및 배경을 포함하여 콘텐츠 영역과 탭 간의 시각적인 연결을 자연스럽게 만듭니다.
+    -   `TabPanel`은 `value`, `index`, `children` prop을 받습니다.
+
+**예시 사용법 (Dialog 내 탭):**
+
+```jsx
+import { Tabs, Tab, Box, DialogContent } from '@mui/material';
+import { useState } from 'react';
+
+// TabPanel 헬퍼 컴포넌트 (Customer.jsx에 정의되어야 함)
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`simple-tabpanel-${index}`}
+      aria-labelledby={`simple-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box
+          sx={{
+            p: 3,
+            border: '1px solid #e8e8e8',
+            borderTop: 'none',
+            backgroundColor: '#fff',
+            borderRadius: '0 8px 8px 8px',
+            minHeight: 200,
+          }}
+        >
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+const MyComponentWithTabs = () => {
+  const [selectedTab, setSelectedTab] = useState(0);
+  const handleTabChange = (event, newValue) => {
+    setSelectedTab(newValue);
+  };
+
+  return (
+    <DialogContent sx={{ p: 0 }}> {/* DialogContent의 패딩을 제거하여 TabPanel이 전체 영역을 차지하도록 함 */}
+      <Box sx={{ bgcolor: 'background.paper' }}> {/* 탭 컨테이너의 배경색을 설정 */}
+        <Tabs value={selectedTab} onChange={handleTabChange} aria-label="example tabs">
+          <Tab label="첫 번째 탭" />
+          <Tab label="두 번째 탭" />
+        </Tabs>
+      </Box>
+
+      <TabPanel value={selectedTab} index={0}>
+        {/* 첫 번째 탭의 콘텐츠 */}
+      </TabPanel>
+      <TabPanel value={selectedTab} index={1}>
+        {/* 두 번째 탭의 콘텐츠 */}
+      </TabPanel>
+    </DialogContent>
+  );
+};
+```
+
+### 탭 콘텐츠의 데이터 관리 (Data Management for Tab Content)
+
+탭 컴포넌트 내에서 데이터를 관리하고 표시할 때는 다음 지침을 따릅니다.
+
+1.  **타입별 컴포넌트 사용**:
+    -   각기 다른 데이터 유형(예: 고객, 스타일)에 대한 기본 정보나 BOM과 같이 유사하지만 데이터 구조가 다른 콘텐츠를 탭에 표시해야 할 경우, 각 데이터 유형에 특화된 컴포넌트를 생성하여 사용합니다.
+    -   예시: 고객 데이터의 기본 정보는 `CustomerBasicInfo.jsx` (이전 `BasicInfo.jsx`), 스타일 데이터의 기본 정보는 `StyleBasicInfo.jsx`와 같이 명확하게 구분된 컴포넌트를 사용합니다. 이는 관심사 분리를 명확히 하고 코드의 재사용성 및 유지보수성을 높입니다.
+
+2.  **`formData` 및 `handleInputChange` prop 전달**:
+    -   탭을 포함하는 상위 컴포넌트(예: `Customer.jsx`, `Style.jsx`)는 해당 탭 콘텐츠가 필요로 하는 데이터를 상태로 관리해야 합니다.
+    -   관리되는 데이터는 `formData` prop으로, 데이터 변경 핸들러는 `handleInputChange` prop으로 각 타입별 탭 콘텐츠 컴포넌트(예: `CustomerBasicInfo`, `StyleBasicInfo`)에 전달합니다.
+    -   탭 콘텐츠 컴포넌트는 전달받은 `formData`와 `handleInputChange`를 사용하여 폼 필드를 렌더링하고 사용자 입력을 처리합니다. `formData` prop은 `{} `와 같은 기본값을 가지도록 하여, 데이터가 아직 로드되지 않았거나 `undefined`인 경우에도 오류를 방지합니다.
+
+**예시 (Style.jsx의 데이터 관리):**
+
+```jsx
+// Style.jsx 내
+import { useState } from 'react';
+import StyleBasicInfo from './style/StyleBasicInfo';
+import StyleBom from './style/StyleBom';
+
+const initialStyleFormData = {
+  styleCode: '',
+  styleName: '',
+  designer: '',
+  collection: '',
+  season: '',
+  bomNotes: '',
+};
+
+const Style = () => {
+  const [styleFormData, setStyleFormData] = useState(initialStyleFormData);
+
+  const handleStyleInputChange = (e) => {
+    const { name, value } = e.target;
+    setStyleFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // ... (Tabs 및 TabPanel 렌더링 로직)
+  <TabPanel value={currentTab} index={0}>
+    <StyleBasicInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />
+  </TabPanel>
+  <TabPanel value={currentTab} index={1}>
+    <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
+  </TabPanel>
+  // ...
+};
+```
 1.  **UI 개발**: 모든 UI 컴포넌트는 MUI를 우선적으로 사용하여 구현합니다.
 2.  **상태 관리**: 간단한 상태는 컴포넌트 내부의 `useState`를 사용하고, 여러 컴포넌트에 걸쳐 사용되는 전역 상태는 `Context API`를 활용합니다.
 3.  **파일 및 컴포넌트 명명**:
