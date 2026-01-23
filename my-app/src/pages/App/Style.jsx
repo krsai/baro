@@ -1,69 +1,57 @@
-import React, { useState } from 'react';
-import {  Typography, Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import React from 'react';
+import {
+  Typography,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  Button,
+} from '@mui/material';
+import { Link } from 'react-router-dom';
 import AppPageContainer from '../../components/AppPageContainer';
-import StyleBasicInfo from './style/StyleBasicInfo'; // Using style-specific BasicInfo
-import StyleBom from './style/StyleBom'; // Using style-specific Bom
-import StyleProcess from './style/StyleProcess'; // New Process Info component
 
-const initialStyleFormData = {
-  styleCode: '',
-  styleName: '',
-  designer: '',
-  collection: '',
-  season: '',
-  bomNotes: '', // Placeholder for BOM notes
-  processName: '',
-  processDescription: '',
-};
+// Mock data for the list of styles
+const mockStyles = [
+  { id: 'S-001', name: '클래식 데님 자켓', season: '2026 S/S' },
+  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', season: '2026 S/S' },
+  { id: 'S-003', name: '오버핏 린넨 셔츠', season: '2026 F/W' },
+  { id: 'S-004', name: '플리츠 미디 스커트', season: '2026 F/W' },
+];
 
 const Style = () => {
-  const [currentTab, setCurrentTab] = useState('basicInfo');
-  const [styleFormData, setStyleFormData] = useState(initialStyleFormData);
-
-  const handleChange = (event, newValue) => {
-    // Only update if newValue is not null (prevents unselecting all)
-    if (newValue !== null) {
-      setCurrentTab(newValue);
-    }
-  };
-
-  const handleStyleInputChange = (e) => {
-    const { name, value } = e.target;
-    setStyleFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
   return (
     <AppPageContainer
       header={
-        <>
-          <Typography variant="h4" component="h1" gutterBottom>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h4" component="h1">
             스타일 관리
           </Typography>
-        </>
+          <Button
+            component={Link}
+            to="/style/new" // Assuming a route for creating a new style
+            variant="contained"
+            color="primary"
+          >
+            새 스타일 추가
+          </Button>
+        </div>
       }
     >
-      <div className="toggle-button-group-wrapper">
-        <ToggleButtonGroup
-          value={currentTab}
-          exclusive
-          onChange={handleChange}
-          aria-label="style management toggle"
-        >
-          <ToggleButton value="basicInfo" aria-label="basic info" className="toggle-button">
-            기본 정보
-          </ToggleButton>
-          <ToggleButton value="processInfo" aria-label="process info" className="toggle-button">
-            공정 정보
-          </ToggleButton>
-          <ToggleButton value="bom" aria-label="bom" className="toggle-button">
-            BOM
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </div>
-
-      {currentTab === 'basicInfo' && <StyleBasicInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-      {currentTab === 'processInfo' && <StyleProcess formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-      {currentTab === 'bom' && <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />}
+      <Paper elevation={3}>
+        <List>
+          {mockStyles.map((style) => (
+            <ListItem key={style.id} disablePadding divider>
+              <ListItemButton component={Link} to={`/style/${style.id}`}>
+                <ListItemText
+                  primary={style.name}
+                  secondary={`스타일 코드: ${style.id} | 시즌: ${style.season}`}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
     </AppPageContainer>
   );
 };

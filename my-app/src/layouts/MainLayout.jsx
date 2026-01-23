@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import {
@@ -38,35 +38,7 @@ import StyleIcon from '@mui/icons-material/Style';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
 
-// Import all page components
-import Home from '../pages/app/Home';
-import Production from '../pages/app/Production';
-import Company from '../pages/app/Company';
-import Factory from '../pages/app/Factory';
-import Employee from '../pages/app/Employee';
-import Role from '../pages/app/Role';
-import Permission from '../pages/app/Permission';
-import SystemSetting from '../pages/app/SystemSetting';
-import Customer from '../pages/app/Customer';
-import Style from '../pages/app/Style';
-import WorkHistory from '../pages/app/WorkHistory';
-import ProtectedRoute from '../components/ProtectedRoute';
-
 const DRAWER_WIDTH = 260;
-
-const pageComponents = {
-  '/': Home,
-  '/production': Production,
-  '/company': Company,
-  '/factory': Factory,
-  '/employee': Employee,
-  '/role': Role,
-  '/permission': Permission,
-  '/system-setting': SystemSetting,
-  '/customer': Customer,
-  '/style': Style,
-  '/work-history': WorkHistory,
-};
 
 const MainLayout = () => {
   const navigate = useNavigate();
@@ -341,22 +313,8 @@ const MainLayout = () => {
           </Tabs>
         </Box>
 
-        <Box sx={{ flexGrow: 1, p: 0, overflow: 'auto' }}>
-          {openTabs.map((tab) => {
-            const PageComponent = pageComponents[tab.path];
-            return (
-              <Box
-                key={tab.id}
-                role="tabpanel"
-                hidden={activeTab !== tab.id}
-                sx={{ height: '100%' }}
-              >
-                <ProtectedRoute>
-                  {PageComponent ? <PageComponent /> : <p>Page not found</p>}
-                </ProtectedRoute>
-              </Box>
-            );
-          })}
+        <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>
+          <Outlet />
         </Box>
       </Box>
     </Box>

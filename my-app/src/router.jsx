@@ -14,6 +14,7 @@ import Permission from './pages/app/Permission';
 import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
+import StyleDetail from './pages/app/style/StyleDetail';
 import WorkHistory from './pages/app/WorkHistory';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
@@ -111,6 +112,22 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <Style />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/style/new',
+        element: (
+          <ProtectedRoute>
+            <StyleDetail />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/style/:styleId',
+        element: (
+          <ProtectedRoute>
+            <StyleDetail />
           </ProtectedRoute>
         ),
       },
