@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import { useParams, useLocation } from 'react-router-dom';
-import { useApp } from '../../../context/AppContext';
+import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import StyleBasicInfo from './StyleBasicInfo';
 import StyleBom from './StyleBom';
@@ -37,19 +36,10 @@ const fetchStyleData = (styleId) => {
 
 const StyleDetail = () => {
   const { styleId } = useParams(); // Get styleId from URL
-  const { openTab } = useApp();
-  const location = useLocation();
-
   const [currentTab, setCurrentTab] = useState('basicInfo');
   
   // Initialize form data based on the fetched style data
   const [styleFormData, setStyleFormData] = useState(() => fetchStyleData(styleId));
-
-  useEffect(() => {
-    const label = styleId === 'new' ? '새 스타일' : `스타일: ${styleId}`;
-    openTab({ id: location.pathname, label, path: location.pathname });
-  }, [styleId, openTab, location.pathname]);
-
 
   const handleChange = (event, newValue) => {
     if (newValue !== null) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -49,10 +49,9 @@ const MainLayout = () => {
     toggleSidebar,
     setSidebarOpen,
     openTabs,
-    activeTab,
     openTab,
     closeTab,
-    setActiveTab,
+    setNavigateToPath,
   } = useApp();
 
   const [adminOpen, setAdminOpen] = useState(false);
@@ -60,33 +59,10 @@ const MainLayout = () => {
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  // `activeTabId` is the single source of truth for the active tab.
+  const [activeTabId, setActiveTabId] = useState(location.pathname);
 
-  const handleMenuItemClick = (path, label) => {
-    openTab({ id: path, label, path });
-    navigate(path);
-    if (window.innerWidth < 900) { // md breakpoint
-      setSidebarOpen(false);
-    }
-  };
-
-  const handleTabChange = (event, newValue) => {
-    setActiveTab(newValue);
-    navigate(newValue);
-  };
-
-  const handleCloseTab = (e, tabId) => {
-    e.stopPropagation(); // Prevent tab selection when closing
-    const newPath = closeTab(tabId);
-    if (newPath) {
-      navigate(newPath);
-    }
-  };
-
-  const menuItems = [
+  const menuItems = useMemo(() => [
     {
       label: '대시보드',
       icon: <HomeIcon />,
@@ -144,7 +120,85 @@ const MainLayout = () => {
       path: '/system-setting',
       isParent: false,
     },
-  ];
+  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen]);
+
+  // This is the ONLY effect responsible for navigation.
+  // It runs when the source of truth (`activeTabId`) changes.
+  useEffect(() => {
+    if (activeTabId !== location.pathname) {
+      navigate(activeTabId);
+    }
+  }, [activeTabId, location.pathname, navigate]);
+
+  // The core navigation logic, wrapped in useCallback for stability.
+  const handleNavigation = React.useCallback(
+    (path, options) => {
+      const openOptions = {};
+      // For style detail pages, ensure only one is open at a time.
+      if (path.startsWith('/style/') && path !== '/style') {
+        openOptions.replacePrefix = '/style/';
+      }
+      
+      // The `openTab` function from context already checks for duplicates,
+      // so we can call it directly. This removes the dependency on `openTabs`.
+      let label = options?.label;
+      if (!label) {
+        const flattenedMenuItems = menuItems.flatMap((item) =>
+          item.isParent ? item.children : [item]
+        );
+        const menuItem = flattenedMenuItems.find((item) => item.path === path);
+        label = menuItem ? menuItem.label : path;
+      }
+      openTab({ id: path, label, path }, openOptions);
+
+      // Set the active tab. The `useEffect` above will handle navigation.
+      setActiveTabId(path);
+    },
+    [menuItems, openTab, setActiveTabId] // No longer depends on openTabs
+  );
+
+  // Provide the navigation handler to the rest of the app via context.
+  useEffect(() => {
+    setNavigateToPath(() => handleNavigation);
+  }, [handleNavigation, setNavigateToPath]);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const handleMenuItemClick = (path) => {
+    handleNavigation(path); // Use the centralized handler
+    if (window.innerWidth < 900) { // md breakpoint
+      setSidebarOpen(false);
+    }
+  };
+
+  const handleTabChange = (event, newValue) => {
+    // User clicks a tab. Just update the active tab state.
+    setActiveTabId(newValue);
+  };
+
+  const handleCloseTab = (e, tabIdToClose) => {
+    e.stopPropagation();
+
+    // Prevent closing the main dashboard tab
+    if (tabIdToClose === '/') return;
+
+    const closingTabIndex = openTabs.findIndex((t) => t.id === tabIdToClose);
+    if (closingTabIndex === -1) return;
+
+    // If we are closing the currently active tab, we must first change
+    // `activeTabId` to trigger navigation.
+    if (activeTabId === tabIdToClose) {
+      const newActiveTab = openTabs[closingTabIndex - 1] || openTabs[0];
+      // Set the new active tab. This will trigger the navigation `useEffect`.
+      setActiveTabId(newActiveTab.id);
+    }
+
+    // After (potentially) setting the new active tab, remove the closed tab from the list.
+    closeTab(tabIdToClose);
+  };
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -153,8 +207,8 @@ const MainLayout = () => {
           <React.Fragment key={menu.label}>
             <ListItem
               button
-              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path, menu.label)}
-              selected={!menu.isParent && activeTab === menu.path}
+              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
+              selected={!menu.isParent && activeTabId === menu.path}
             >
               <ListItemIcon>{menu.icon}</ListItemIcon>
               <ListItemText primary={menu.label} />
@@ -167,8 +221,8 @@ const MainLayout = () => {
                     <ListItem
                       button
                       key={child.path}
-                      onClick={() => handleMenuItemClick(child.path, child.label)}
-                      selected={activeTab === child.path}
+                      onClick={() => handleMenuItemClick(child.path)}
+                      selected={activeTabId === child.path}
                       sx={{ pl: 4 }}
                     >
                       <ListItemIcon>{child.icon}</ListItemIcon>
@@ -208,7 +262,7 @@ const MainLayout = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => handleMenuItemClick('/', '대시보드')}>
+          <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => handleMenuItemClick('/')}>
             <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
               BARO
             </Button>
@@ -251,14 +305,14 @@ const MainLayout = () => {
       >
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
           <Tabs
-            value={activeTab}
+            value={activeTabId}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
             aria-label="open pages tabs"
             sx={{
               minHeight: '40px',
-              '& .MuiTabs-indicator': {
+              '& .MuiTabs-indicator': { 
                 height: '2px',
               },
             }}

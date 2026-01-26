@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 
 // Create the App Context
 const AppContext = createContext();
@@ -13,34 +13,36 @@ export const AppProvider = ({ children }) => {
   const [openTabs, setOpenTabs] = useState([
     { id: '/', label: '대시보드', path: '/' },
   ]);
-  const [activeTab, setActiveTab] = useState('/');
 
-  const openTab = (tab) => {
-    if (!openTabs.find((t) => t.id === tab.id)) {
-      setOpenTabs((prev) => [...prev, tab]);
-    }
-    setActiveTab(tab.id);
-  };
-
-  const closeTab = (tabId) => {
-    if (tabId === '/') return; // Cannot close the main dashboard tab
-
-    let newActivePath = null;
+  const openTab = useCallback((tab, options) => {
     setOpenTabs((prev) => {
-      const tabIndex = prev.findIndex((t) => t.id === tabId);
-      const newTabs = prev.filter((t) => t.id !== tabId);
+      let tabs = [...prev];
+      const pattern = options?.replacePrefix;
 
-      if (activeTab === tabId) {
-        const newActiveTab = newTabs[tabIndex - 1] || newTabs[0];
-        if (newActiveTab) {
-          setActiveTab(newActiveTab.id);
-          newActivePath = newActiveTab.path;
-        }
+      // If a replacement pattern is given, first remove old tabs matching it.
+      if (pattern) {
+        tabs = tabs.filter(t => !t.id.startsWith(pattern));
       }
-      return newTabs;
+
+      // Now, add the new tab if it's not already in the (potentially filtered) list.
+      const tabExists = tabs.some(t => t.id === tab.id);
+      if (!tabExists) {
+        tabs = [...tabs, tab];
+      }
+      
+      // If the new tab was one of the ones filtered out, this logic re-adds it.
+      // If it wasn't filtered and already existed, the list remains the same.
+      // If it's brand new, it gets added.
+      return tabs;
     });
-    return newActivePath;
-  };
+  }, []);
+
+  const closeTab = useCallback((tabId) => {
+    if (tabId === '/') return;
+    setOpenTabs((prevOpenTabs) =>
+      prevOpenTabs.filter((t) => t.id !== tabId)
+    );
+  }, []);
 
   // Helper to show notifications
   const showNotification = (message, type = 'info', duration = 3000) => {
@@ -57,9 +59,9 @@ export const AppProvider = ({ children }) => {
   };
 
   // Toggle sidebar
-  const toggleSidebar = () => {
+  const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => !prev);
-  };
+  }, []);
 
   const [factories, setFactories] = useState([
     {
@@ -95,6 +97,11 @@ export const AppProvider = ({ children }) => {
     { id: 4, name: '작업자', description: '일반 작업자' },
   ]);
 
+  // Centralized navigation handler to be implemented in MainLayout
+  const [navigateToPath, setNavigateToPath] = useState(() => () =>
+    console.warn('navigateToPath is not implemented')
+  );
+
   const value = {
     // Loading state
     isLoading,
@@ -112,8 +119,6 @@ export const AppProvider = ({ children }) => {
 
     // Tab state
     openTabs,
-    activeTab,
-    setActiveTab,
     openTab,
     closeTab,
 
@@ -124,6 +129,10 @@ export const AppProvider = ({ children }) => {
     // Roles state
     roles,
     setRoles,
+
+    // Centralized navigation
+    navigateToPath,
+    setNavigateToPath,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
