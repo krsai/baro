@@ -6,9 +6,11 @@ const AppPageContainer = ({ header, children, footer }) => {
     <Box component="main" sx={{ flexGrow: 1, p: 0 }}> {/* Root Box no longer has padding */}
       <Stack spacing={3} sx={{ height: '100%', p: 1 }}> {/* Padding moved to Stack for consistent spacing around content */}
         {/* Page Header */}
-        <Box sx={{ pb: 2, borderBottom: '1px solid #e0e0e0' }}> {/* Visual separation */}
-          {header}
-        </Box>
+        {header && (
+          <Box sx={{ pb: 2, borderBottom: '1px solid #e0e0e0' }}> {/* Visual separation */}
+            {header}
+          </Box>
+        )}
 
         {/* Page Content */}
         <Box sx={{ flexGrow: 1 }}>

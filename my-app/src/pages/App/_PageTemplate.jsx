@@ -5,7 +5,7 @@ const PageTemplate = () => {
   return (
     <div className="page-wrapper">
       <header className="page-header">
-        <h1 className="page-title">페이지 제목</h1>
+
         <div className="page-actions">
           {/* Action buttons go here */}
           <button className="btn btn-primary">액션 버튼</button>

@@ -9,6 +9,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Grid,
+  TextField,
+  Box,
 } from '@mui/material';
 import { useApp } from '../../context/AppContext';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -25,7 +28,7 @@ const Style = () => {
   const { navigateToPath } = useApp();
 
 
-  const handleRowClick = (style) => {
+  const handleRowDoubleClick = (style) => {
     navigateToPath(`/style/${style.id}`, { label: `스타일: ${style.name}` });
   };
 
@@ -34,23 +37,29 @@ const Style = () => {
   };
 
   return (
-    <AppPageContainer
-      header={
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h4" component="h1">
-            스타일 목록
-          </Typography>
-          <Button
-            onClick={handleAddNewClick}
-            variant="contained"
-            color="primary"
-          >
-            새 스타일 추가
-          </Button>
-        </div>
-      }
-    >
-      <Paper sx={{ width: '100%', overflow: 'hidden' }} elevation={3}>
+    <AppPageContainer>
+      
+      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={4}>
+            <TextField label="고객사" variant="outlined" fullWidth />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <TextField label="스타일" variant="outlined" fullWidth />
+          </Grid>
+          <Grid item xs={12} sm={4} sx={{ textAlign: 'right' }}>
+            <Button
+              onClick={handleAddNewClick}
+              variant="contained"
+              color="primary"
+            >
+              새 스타일 추가
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
         <TableContainer>
           <Table stickyHeader aria-label="style list table">
             <TableHead>
@@ -66,7 +75,7 @@ const Style = () => {
                 <TableRow
                   hover
                   key={style.id}
-                  onClick={() => handleRowClick(style)}
+                  onDoubleClick={() => handleRowDoubleClick(style)}
                   sx={{ cursor: 'pointer' }}
                 >
                   <TableCell>{style.customer}</TableCell>

@@ -367,7 +367,7 @@ const MainLayout = () => {
           </Tabs>
         </Box>
 
-        <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto' }}>
+        <Box sx={{ flexGrow: 1, p: 3, overflow: 'auto', bgcolor: 'white' }}>
           <Outlet />
         </Box>
       </Box>

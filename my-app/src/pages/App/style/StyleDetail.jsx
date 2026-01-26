@@ -53,13 +53,7 @@ const StyleDetail = () => {
   };
 
   return (
-    <AppPageContainer
-      header={
-        <Typography variant="h4" component="h1" gutterBottom>
-          {styleFormData.styleName}
-        </Typography>
-      }
-    >
+    <AppPageContainer>
       <div className="toggle-button-group-wrapper">
         <ToggleButtonGroup
           value={currentTab}
