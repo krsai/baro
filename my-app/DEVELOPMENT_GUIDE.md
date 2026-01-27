@@ -71,7 +71,7 @@
 
 *이 섹션은 좌측 네비게이션 메뉴의 구조를 정의합니다.*
 
-- **기본 정보 (Basic Info)**
+- **속성 관리 (Attribute Management)**
   - 역할 관리 (Role Management)
   - 권한 관리 (Permission Management)
 - **조직 관리 (Organization Management)**

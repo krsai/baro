@@ -37,6 +37,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import StyleIcon from '@mui/icons-material/Style';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
+import DnsIcon from '@mui/icons-material/Dns';
 
 const DRAWER_WIDTH = 260;
 
@@ -110,6 +111,7 @@ const MainLayout = () => {
       isOpen: basicInfoOpen,
       setOpen: setBasicInfoOpen,
       children: [
+        { label: '속성관리', icon: <DnsIcon />, path: '/attribute' },
         { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
         { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
       ],
@@ -209,8 +211,26 @@ const MainLayout = () => {
               button
               onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
               selected={!menu.isParent && activeTabId === menu.path}
+              sx={
+                !menu.isParent && activeTabId === menu.path
+                  ? {
+                      backgroundColor: 'rgba(25, 118, 210, 0.08)', // A light blue background
+                      color: 'primary.main',
+                      '& .MuiListItemIcon-root': {
+                        color: 'primary.main',
+                      },
+                      '&:hover': {
+                        backgroundColor: 'rgba(25, 118, 210, 0.12)',
+                      },
+                    }
+                  : {
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                      },
+                    }
+              }
             >
-              <ListItemIcon>{menu.icon}</ListItemIcon>
+              <ListItemIcon sx={{ minWidth: '40px' }}>{menu.icon}</ListItemIcon>
               <ListItemText primary={menu.label} />
               {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
             </ListItem>
@@ -222,10 +242,30 @@ const MainLayout = () => {
                       button
                       key={child.path}
                       onClick={() => handleMenuItemClick(child.path)}
-                      selected={activeTabId === child.path}
-                      sx={{ pl: 4 }}
+                      selected={activeTabId === child.path || activeTabId.startsWith(child.path + '/')}
+                      sx={
+                        activeTabId === child.path ||
+                        activeTabId.startsWith(child.path + '/')
+                          ? {
+                              pl: 4,
+                              backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                              color: 'primary.main',
+                              '& .MuiListItemIcon-root': {
+                                color: 'primary.main',
+                              },
+                              '&:hover': {
+                                backgroundColor: 'rgba(25, 118, 210, 0.12)',
+                              },
+                            }
+                          : {
+                              pl: 4,
+                              '&:hover': {
+                                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                              },
+                            }
+                      }
                     >
-                      <ListItemIcon>{child.icon}</ListItemIcon>
+                      <ListItemIcon sx={{ minWidth: '40px' }} />
                       <ListItemText primary={child.label} />
                     </ListItem>
                   ))}

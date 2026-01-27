@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Typography,
   Paper,
@@ -26,7 +26,7 @@ const mockStyles = [
 
 const Style = () => {
   const { navigateToPath } = useApp();
-
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleRowDoubleClick = (style) => {
     navigateToPath(`/style/${style.id}`, { label: `스타일: ${style.name}` });
@@ -36,28 +36,35 @@ const Style = () => {
     navigateToPath('/style/new', { label: '새 스타일' });
   };
 
+  const filteredStyles = useMemo(() => {
+    if (!searchTerm) {
+      return mockStyles;
+    }
+    return mockStyles.filter(
+      (style) =>
+        style.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        style.customer.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm]);
+
   return (
     <AppPageContainer>
-      
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4}>
-            <TextField label="고객사" variant="outlined" fullWidth />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField label="스타일" variant="outlined" fullWidth />
-          </Grid>
-          <Grid item xs={12} sm={4} sx={{ textAlign: 'right' }}>
-            <Button
-              onClick={handleAddNewClick}
-              variant="contained"
-              color="primary"
-            >
-              새 스타일 추가
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <TextField
+          label="스타일명 또는 고객사 검색"
+          variant="outlined"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ width: '400px' }}
+        />
+        <Button
+          onClick={handleAddNewClick}
+          variant="contained"
+          color="primary"
+        >
+          새 스타일 추가
+        </Button>
+      </Box>
 
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
         <TableContainer>
@@ -71,7 +78,7 @@ const Style = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {mockStyles.map((style) => (
+              {filteredStyles.map((style) => (
                 <TableRow
                   hover
                   key={style.id}

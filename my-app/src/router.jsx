@@ -18,6 +18,7 @@ import StyleDetail from './pages/app/style/StyleDetail';
 import WorkHistory from './pages/app/WorkHistory';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
+import Attribute from './pages/App/attribute/Attribute';
 
 // Protected Route 컴포넌트
 const ProtectedRoute = ({ children }) => {
@@ -136,6 +137,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute>
             <WorkHistory />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: '/attribute',
+        element: (
+          <ProtectedRoute>
+            <Attribute />
           </ProtectedRoute>
         ),
       },

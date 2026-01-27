@@ -12,25 +12,14 @@ import {
   TableRow,
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { useApp } from '../../../context/AppContext';
 import ProcessEditModal from './ProcessEditModal';
 
-// Mock data for the list of processes
-const initialProcesses = [
-  { id: 'P-001', name: '주머니 달기', smv: 10, etd: 12 },
-  { id: 'P-002', name: '소매 부착', smv: 15, etd: 16 },
-  { id: 'P-003', name: '단추 구멍', smv: 8, etd: 9 },
-  { id: 'P-004', name: '밑단 처리', smv: 20, etd: 22 },
-];
-
-const StyleProcess = () => {
-  const { navigateToPath } = useApp();
-  const [processes, setProcesses] = useState(initialProcesses);
+const StyleProcess = ({ processes, onProcessesChange }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState(null);
 
   const handleAddNewClick = () => {
-    // For now, just log the action
+    // This should also be handled by the parent in a real app
     console.log('새 공정 추가 버튼 클릭');
   };
   
@@ -48,7 +37,7 @@ const StyleProcess = () => {
     const newProcesses = processes.map((p) =>
       p.id === updatedProcess.id ? updatedProcess : p
     );
-    setProcesses(newProcesses);
+    onProcessesChange(newProcesses); // Notify parent of the change
     handleCloseModal();
   };
 
@@ -61,7 +50,7 @@ const StyleProcess = () => {
     const [reorderedItem] = newProcesses.splice(result.source.index, 1);
     newProcesses.splice(result.destination.index, 0, reorderedItem);
 
-    setProcesses(newProcesses);
+    onProcessesChange(newProcesses); // Notify parent of the change
   };
 
   return (
@@ -90,7 +79,7 @@ const StyleProcess = () => {
               <Droppable droppableId="processes">
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                    {processes.map((process, index) => (
+                    {(processes || []).map((process, index) => ( // Add guard for processes being undefined
                       <Draggable key={process.id} draggableId={process.id} index={index}>
                         {(provided) => (
                           <TableRow
