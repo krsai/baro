@@ -29,13 +29,12 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
   ];
 
   return (
-    <Box sx={{ mt: 1, display: 'flex', gap: 4 }}>
+    <Box sx={{ mt: 1, display: 'flex', gap: 3 }}>
 
       {/* Left Column: Image Preview and Upload */}
       <Box sx={{ flex: 1 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-          <Typography variant="subtitle1">미리보기</Typography>
-          <Card sx={{ width: '100%', aspectRatio: '1/1', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px dashed grey' }}>
+          <Card sx={{ width: '100%', aspectRatio: '1/1', display: 'flex', justifyContent: 'center', alignItems: 'center', borderColor: 'divider', border: '1px solid' }}>
             {imagePreviewUrl ? (
               <CardMedia
                 component="img"
@@ -65,8 +64,8 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
         </Box>
       </Box>
 
-      {/* Right Column: Data Information Area */}
-      <Box sx={{ flex: 2 }}>
+      {/* Middle Column: Data Information Area */}
+      <Box sx={{ flex: 1 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {/* Basic Information Card/Section */}
           <Card variant="outlined" sx={{ p: 2 }}>
@@ -74,7 +73,7 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
               <Stack spacing={2}>
                 {formFields.map((field) => (
                   <Box key={field.name} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Typography align="center" sx={{ width: 100, flexShrink: 0 }}>
+                    <Typography sx={{ width: 100, flexShrink: 0, textAlign: 'right' }}>
                       {field.label}
                     </Typography>
                     <TextField
@@ -94,6 +93,8 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
           </Card>
         </Box>
       </Box>
+      {/* Right Column: Empty */}
+      <Box sx={{ flex: 1 }} />
     </Box>
   );
 };

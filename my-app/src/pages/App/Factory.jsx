@@ -117,7 +117,6 @@ const Factory = () => {
               <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
               <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>작업</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -127,24 +126,6 @@ const Factory = () => {
                 <TableCell>{factory.address}</TableCell>
                 <TableCell>{factory.countryCode} {factory.phoneNumber}</TableCell>
                 <TableCell>{factory.manager}</TableCell>
-                <TableCell sx={{ textAlign: 'center' }}>
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    onClick={() => handleEditFactory(factory)}
-                    title="수정"
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleDeleteFactory(factory.id)}
-                    title="삭제"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
