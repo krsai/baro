@@ -3,8 +3,7 @@ import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
 
-
-const StyleBasicInfo = ({ formData = {}, handleInputChange, processes = [] }) => {
+const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
 
@@ -19,23 +18,26 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange, processes = [] }) =>
     }
   };
 
-  const formatTime = (value, unit = '초', notSetDisplay = '-') => {
-    if (value === null || typeof value === 'undefined' || value === '') {
-      return notSetDisplay;
-    }
-    return `${value}${unit}`;
+  // --- Dummy Data & Logic for 3rd Column ---
+  const styleDetails = {
+    'Category': 'Outer',
+    'Fabric': 'Cotton 100%',
+    'Size Spec': 'S, M, L',
+    'Colorway': 'Black, Ivory',
+    'Factory': '제일 공장',
   };
+  
+  const costData = [
+      { item: '원단 (Fabric)', cost: '$15.00' },
+      { item: '부자재 (Trims)', cost: '$3.50' },
+      { item: '공임 (CMT)', cost: '$8.00' },
+      { item: '기타 (Misc.)', cost: '$1.20' },
+  ];
 
-  const totals = (processes || []).reduce(
-    (acc, process) => {
-      if (typeof process.pt === 'number') acc.pt += process.pt;
-      if (typeof process.at === 'number') acc.at += process.at;
-      const stValue = process.st || process.smv;
-      if (typeof stValue === 'number') acc.st += stValue;
-      return acc;
-    },
-    { pt: 0, at: 0, st: 0 }
-  );
+  const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
+  const overhead = subtotal * 0.1;
+  const totalCost = subtotal + overhead;
+  // --- End of Dummy Data ---
 
   const formFields = [
     { name: 'name', label: '스타일명' },
@@ -47,109 +49,129 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange, processes = [] }) =>
   ];
 
   return (
-    <Box sx={{ mt: 1, display: 'flex', gap: 3 }}>
-      {/* Main Column (Left) */}
-      <Box sx={{ flex: 2 }}>
-        <Card variant="outlined">
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              스타일 정보
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-            <Grid container spacing={3}>
-              {/* Image Uploader */}
-              <Grid item xs={12} md={4}>
-                <Stack spacing={2} alignItems="center">
-                  <Card 
-                    variant="outlined" 
-                    sx={{ 
-                      width: '100%', 
-                      aspectRatio: '1 / 1', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      backgroundColor: 'grey.50'
-                    }}
-                  >
-                    {imagePreviewUrl ? (
-                      <CardMedia
-                        component="img"
-                        image={imagePreviewUrl}
-                        alt="Style Preview"
-                        sx={{ objectFit: 'contain', maxHeight: '100%', maxWidth: '100%' }}
-                      />
-                    ) : (
-                      <ImageIcon sx={{ fontSize: 80, color: 'grey.300' }} />
-                    )}
-                  </Card>
-                  <input
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                    id="raised-button-file"
-                    type="file"
-                    onChange={handleImageChange}
-                  />
-                  <label htmlFor="raised-button-file">
-                    <Button variant="contained" component="span" startIcon={<PhotoCamera />}>
-                      사진 올리기
-                    </Button>
-                  </label>
-                </Stack>
-              </Grid>
-              {/* Form Fields */}
-              <Grid item xs={12} md={8}>
-                <Grid container spacing={2}>
-                  {formFields.map((field) => (
-                    <Grid item xs={12} sm={6} key={field.name}>
-                      <Box>
-                        <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'text.secondary' }}>
-                          {field.label}
-                        </Typography>
-                        <TextField
-                          name={field.name}
-                          value={formData[field.name] || ''}
-                          onChange={handleInputChange}
-                          fullWidth
-                          variant="outlined"
-                          size="small"
-                          InputProps={{ readOnly: field.readOnly }}
-                        />
-                      </Box>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      </Box>
-
-      {/* Side Column (Right) */}
-      <Box sx={{ flex: 1 }}>
+    <Grid container spacing={3} sx={{ mt: 0 }}>
+      {/* 1st Column: Image Uploader */}
+      <Grid item xs={12} md={4}>
         <Card variant="outlined" sx={{ height: '100%' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              공정 시간 합계
-            </Typography>
+            <Typography variant="h6" gutterBottom>스타일 사진</Typography>
             <Divider sx={{ my: 2 }} />
-            <Stack spacing={3} sx={{ mt: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Typography variant="body1" color="text.secondary">PT (임시)</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 500 }}>{formatTime(totals.pt)}</Typography>
+            <Stack spacing={2} alignItems="center" sx={{ mt: 2 }}>
+              <Box 
+                sx={{ 
+                  width: '100%', 
+                  aspectRatio: '1 / 1', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  backgroundColor: 'grey.50',
+                  border: '1px dashed',
+                  borderColor: 'grey.300',
+                  borderRadius: 1,
+                }}
+              >
+                {imagePreviewUrl ? (
+                  <CardMedia
+                    component="img"
+                    image={imagePreviewUrl}
+                    alt="Style Preview"
+                    sx={{ objectFit: 'contain', maxHeight: '100%', maxWidth: '100%' }}
+                  />
+                ) : (
+                  <ImageIcon sx={{ fontSize: 80, color: 'grey.300' }} />
+                )}
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Typography variant="body1" color="text.secondary">AT (실측)</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 500 }}>{formatTime(totals.at, '초', '데이터 부족')}</Typography>
+              <input
+                accept="image/*"
+                style={{ display: 'none' }}
+                id="raised-button-file"
+                type="file"
+                onChange={handleImageChange}
+              />
+              <label htmlFor="raised-button-file">
+                <Button variant="contained" component="span" startIcon={<PhotoCamera />}>
+                  사진 올리기
+                </Button>
+              </label>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Grid>
+      
+      {/* 2nd Column: Form Fields */}
+      <Grid item xs={12} md={4}>
+        <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent>
+                <Typography variant="h6" gutterBottom>스타일 정보</Typography>
+                <Divider sx={{ my: 2 }} />
+                <Grid container spacing={2} sx={{ mt: 0 }}>
+                    {formFields.map((field) => (
+                        <Grid item xs={12} sm={6} key={field.name}>
+                        <Box>
+                            <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'text.secondary' }}>
+                            {field.label}
+                            </Typography>
+                            <TextField
+                            name={field.name}
+                            value={formData[field.name] || ''}
+                            onChange={handleInputChange}
+                            fullWidth
+                            variant="outlined"
+                            size="small"
+                            InputProps={{ readOnly: field.readOnly }}
+                            />
+                        </Box>
+                        </Grid>
+                    ))}
+                </Grid>
+            </CardContent>
+        </Card>
+      </Grid>
+
+      {/* 3rd Column: Details & Cost */}
+      <Grid item xs={12} md={4}>
+        <Card variant="outlined" sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>세부 정보 및 비용</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={2} mt={2}>
+              {Object.entries(styleDetails).map(([key, value]) => (
+                <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">{key}</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>{value || '-'}</Typography>
+                </Box>
+              ))}
+            </Stack>
+
+            <Divider sx={{ my: 2 }} />
+
+            <Typography variant="h6" gutterBottom>예상 원가</Typography>
+            <Stack spacing={1.5} mt={2}>
+              {costData.map((row) => (
+                  <Box key={row.item} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">{row.item}</Typography>
+                      <Typography variant="body2">{row.cost}</Typography>
+                  </Box>
+              ))}
+              <Divider sx={{ pt: 1 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>Subtotal</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>${subtotal.toFixed(2)}</Typography>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <Typography variant="body1" color="text.secondary">ST (표준)</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 500 }}>{formatTime(totals.st)}</Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">Overhead (10%)</Typography>
+                  <Typography variant="body2" color="text.secondary">${overhead.toFixed(2)}</Typography>
+              </Box>
+              <Divider sx={{ pt: 1 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Total Cost</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>${totalCost.toFixed(2)}</Typography>
               </Box>
             </Stack>
           </CardContent>
         </Card>
-      </Box>
-    </Box>
+      </Grid>
+    </Grid>
   );
 };
 
