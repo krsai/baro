@@ -10,6 +10,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableFooter,
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ProcessEditModal from './ProcessEditModal';
@@ -17,6 +18,14 @@ import ProcessEditModal from './ProcessEditModal';
 const StyleProcess = ({ processes, onProcessesChange }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState(null);
+
+  const formatTime = (value, unit = '초', notSetDisplay = '-') => {
+    // 0 is a valid value, so we check against null/undefined explicitly.
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return notSetDisplay;
+    }
+    return `${value}${unit}`;
+  };
 
   const handleAddNewClick = () => {
     // This should also be handled by the parent in a real app
@@ -53,6 +62,23 @@ const StyleProcess = ({ processes, onProcessesChange }) => {
     onProcessesChange(newProcesses); // Notify parent of the change
   };
 
+  const totals = (processes || []).reduce(
+    (acc, process) => {
+      if (typeof process.pt === 'number') {
+        acc.pt += process.pt;
+      }
+      if (typeof process.at === 'number') {
+        acc.at += process.at;
+      }
+      const stValue = process.st || process.smv;
+      if (typeof stValue === 'number') {
+        acc.st += stValue;
+      }
+      return acc;
+    },
+    { pt: 0, at: 0, st: 0 }
+  );
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -72,8 +98,9 @@ const StyleProcess = ({ processes, onProcessesChange }) => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{width: '40%'}}>공정 이름</TableCell>
-                  <TableCell sx={{width: '30%'}}>표준 공정 시간 (SMV)</TableCell>
-                  <TableCell sx={{width: '30%'}}>산출 공정 시간 (ETD)</TableCell>
+                  <TableCell sx={{width: '20%'}}>PT(임시)</TableCell>
+                  <TableCell sx={{width: '20%'}}>AT(실측)</TableCell>
+                  <TableCell sx={{width: '20%'}}>ST(표준)</TableCell>
                 </TableRow>
               </TableHead>
               <Droppable droppableId="processes">
@@ -91,8 +118,9 @@ const StyleProcess = ({ processes, onProcessesChange }) => {
                             sx={{ cursor: 'pointer' }}
                           >
                             <TableCell>{process.name}</TableCell>
-                            <TableCell>{process.smv}초</TableCell>
-                            <TableCell>{process.etd}초</TableCell>
+                            <TableCell>{formatTime(process.pt)}</TableCell>
+                            <TableCell>{formatTime(process.at, '초', '데이터 부족')}</TableCell>
+                            <TableCell>{formatTime(process.st || process.smv)}</TableCell>
                           </TableRow>
                         )}
                       </Draggable>
@@ -101,6 +129,14 @@ const StyleProcess = ({ processes, onProcessesChange }) => {
                   </TableBody>
                 )}
               </Droppable>
+              <TableFooter>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>합계</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.pt)}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.at)}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.st)}</TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </DragDropContext>
         </TableContainer>

@@ -21,17 +21,28 @@ const style = {
 
 const ProcessEditModal = ({ open, onClose, process, onSave }) => {
   const [name, setName] = useState('');
-  const [smv, setSmv] = useState('');
+  const [pt, setPt] = useState('');
+  const [at, setAt] = useState('');
+  const [st, setSt] = useState('');
 
   useEffect(() => {
     if (process) {
-      setName(process.name);
-      setSmv(process.smv);
+      setName(process.name || '');
+      setPt(process.pt || '');
+      setAt(process.at || '');
+      setSt(process.st || process.smv || ''); // Prioritize 'st', fallback to 'smv'
     }
   }, [process]);
 
   const handleSave = () => {
-    onSave({ ...process, name, smv: Number(smv) });
+    const { smv, ...rest } = process; // a trick to remove smv if it exists
+    onSave({ 
+      ...rest, 
+      name, 
+      pt: Number(pt),
+      at: Number(at), 
+      st: Number(st) 
+    });
   };
 
   return (
@@ -58,14 +69,37 @@ const ProcessEditModal = ({ open, onClose, process, onSave }) => {
         />
         <TextField
           margin="normal"
+          fullWidth
+          id="pt"
+          label="PT(임시)"
+          name="pt"
+          type="number"
+          value={pt}
+          onChange={(e) => setPt(e.target.value)}
+          helperText="관리자가 설정하는 임시 기준 시간입니다."
+        />
+        <TextField
+          margin="normal"
+          fullWidth
+          id="at"
+          label="AT(실측)"
+          name="at"
+          type="number"
+          value={at}
+          disabled
+          helperText="실제 작업 기록을 바탕으로 시스템이 자동 계산하는 평균 시간입니다."
+        />
+        <TextField
+          margin="normal"
           required
           fullWidth
-          id="smv"
-          label="표준 공정 시간 (SMV)"
-          name="smv"
+          id="st"
+          label="ST(표준)"
+          name="st"
           type="number"
-          value={smv}
-          onChange={(e) => setSmv(e.target.value)}
+          value={st}
+          onChange={(e) => setSt(e.target.value)}
+          helperText="데이터가 충분히 축적된 후, 확정하는 표준 시간입니다."
         />
         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
           <Button onClick={onClose} sx={{ mr: 1 }}>
