@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid } from '@mui/material';
+import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
 
@@ -133,28 +133,37 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
             <Divider sx={{ my: 2 }} />
 
             <Typography variant="h6" gutterBottom>예상 원가</Typography>
-            <Stack spacing={1.5} mt={2}>
-              {costData.map((row) => (
+            <Paper elevation={2} sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
+              <Stack spacing={2}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
+                  <Typography variant="body2">항목</Typography>
+                  <Typography variant="body2">금액</Typography>
+                </Box>
+                <Divider />
+                {costData.map((row) => (
                   <Box key={row.item} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">{row.item}</Typography>
-                      <Typography variant="body2">{row.cost}</Typography>
+                    <Typography variant="body2">{row.item}</Typography>
+                    <Typography variant="body2">{row.cost}</Typography>
                   </Box>
-              ))}
-              <Divider sx={{ pt: 1 }} />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>Subtotal</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 'medium' }}>${subtotal.toFixed(2)}</Typography>
-              </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">Overhead (10%)</Typography>
-                  <Typography variant="body2" color="text.secondary">${overhead.toFixed(2)}</Typography>
-              </Box>
-              <Divider sx={{ pt: 1 }} />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                ))}
+                <Divider sx={{ my: 1 }} />
+                <Stack spacing={1}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body1">Subtotal</Typography>
+                    <Typography variant="body1">${subtotal.toFixed(2)}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Overhead (10%)</Typography>
+                    <Typography variant="body2" color="text.secondary">${overhead.toFixed(2)}</Typography>
+                  </Box>
+                </Stack>
+                <Divider sx={{ my: 1 }} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Total Cost</Typography>
                   <Typography variant="h6" sx={{ fontWeight: 'bold' }}>${totalCost.toFixed(2)}</Typography>
-              </Box>
-            </Stack>
+                </Box>
+              </Stack>
+            </Paper>
           </CardContent>
         </Card>
       </Grid>
