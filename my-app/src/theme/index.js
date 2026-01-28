@@ -42,7 +42,6 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           elevation: 0,
-          border: '1px solid #E0E0E0',
         },
       },
       defaultProps: {
@@ -113,7 +112,6 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 0,
-          border: '1px solid #E0E0E0',
         },
       },
     },

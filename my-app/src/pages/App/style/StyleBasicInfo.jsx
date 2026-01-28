@@ -52,7 +52,7 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
     <Grid container spacing={3} sx={{ mt: 0 }}>
       {/* 1st Column: Image Uploader */}
       <Grid item xs={12} md={4}>
-        <Card variant="outlined" sx={{ height: '100%' }}>
+        <Card sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>스타일 사진</Typography>
             <Divider sx={{ my: 2 }} />
@@ -98,39 +98,26 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
         </Card>
       </Grid>
       
-      {/* 2nd Column: Form Fields */}
       <Grid item xs={12} md={4}>
-        <Card variant="outlined" sx={{ height: '100%' }}>
-            <CardContent>
-                <Typography variant="h6" gutterBottom>스타일 정보</Typography>
-                <Divider sx={{ my: 2 }} />
-                <Grid container spacing={2} sx={{ mt: 0 }}>
-                    {formFields.map((field) => (
-                        <Grid item xs={12} sm={6} key={field.name}>
-                        <Box>
-                            <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'text.secondary' }}>
-                            {field.label}
-                            </Typography>
-                            <TextField
-                            name={field.name}
-                            value={formData[field.name] || ''}
-                            onChange={handleInputChange}
-                            fullWidth
-                            variant="outlined"
-                            size="small"
-                            InputProps={{ readOnly: field.readOnly }}
-                            />
-                        </Box>
-                        </Grid>
-                    ))}
-                </Grid>
-            </CardContent>
+        <Card sx={{ height: '100%' }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>스타일 정보</Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={2.5} mt={2.5}>
+              {formFields.map((field) => (
+                <Box key={field.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">{field.label}</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>{formData[field.name] || '-'}</Typography>
+                </Box>
+              ))}
+            </Stack>
+          </CardContent>
         </Card>
       </Grid>
 
       {/* 3rd Column: Details & Cost */}
       <Grid item xs={12} md={4}>
-        <Card variant="outlined" sx={{ height: '100%' }}>
+        <Card sx={{ height: '100%' }}>
           <CardContent>
             <Typography variant="h6" gutterBottom>세부 정보 및 비용</Typography>
             <Divider sx={{ my: 2 }} />
