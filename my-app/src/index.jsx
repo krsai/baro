@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+
+// Global Styles: Load these before App to ensure base styles are applied first
 import './styles/base.css';
 import './styles/theme.css';
 import './styles/layout.css';

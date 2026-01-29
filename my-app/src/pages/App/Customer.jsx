@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Typography,
   Box,
   Table,
   TableBody,
@@ -79,30 +78,24 @@ const Customer = () => {
   };
 
   return (
-    <AppPageContainer
-      header={
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-          <Typography component="h1" variant="h4">
-            고객 관리
-          </Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-            고객 추가
-          </Button>
-        </Box>
-      }
-    >
-      <Paper sx={{ width: '100%' }}>
+    <AppPageContainer>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+          고객 추가
+        </Button>
+      </Box>
+      <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">
-            <TableHead>
+            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell>고객 코드</TableCell>
-                <TableCell>고객사명</TableCell>
-                <TableCell>담당자</TableCell>
-                <TableCell>연락처</TableCell>
-                <TableCell>이메일</TableCell>
-                <TableCell>등록일</TableCell>
-                <TableCell align="center">작업</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>고객 코드</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>고객사명</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>등록일</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>작업</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

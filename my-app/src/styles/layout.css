@@ -64,3 +64,18 @@
 .page-section.active-bom {
   border-color: var(--color-primary); /* Use primary color for active section */
 }
+
+/* --- Sidebar Styles --- */
+/* Apply this class to the main sidebar container (e.g., Drawer or Box) */
+.sidebar-container {
+  overflow-x: hidden; /* Prevents horizontal scrollbar */
+}
+
+/* Apply this class to the navigation menu items (e.g., ListItemText or Typography) */
+.sidebar-nav-item {
+  white-space: nowrap;      /* Keep text on a single line */
+  overflow: hidden;         /* Hide overflowed text */
+  text-overflow: ellipsis;  /* Show '...' for overflowed text */
+  display: block;           /* Ensure it behaves as a block for overflow to work */
+  width: 100%;              /* Take full width of its parent */
+}
