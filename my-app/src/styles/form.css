@@ -1,31 +1,5 @@
 /* src/styles/form.css */
 
-/* Input and Select common styles */
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="number"],
-input[type="date"],
-select,
-textarea {
-  width: 100%;
-  padding: var(--spacing-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-md);
-  color: var(--color-text-dark);
-  background-color: #fff;
-  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(var(--color-primary), 0.2);
-  outline: none;
-}
-
 /* Button common styles */
 .btn {
   display: inline-flex;
@@ -132,4 +106,31 @@ textarea:focus {
 
 .toggle-button.MuiToggleButton-root:hover {
   background-color: var(--color-background-dark); /* Simulate action.hover or a lighter background */
+}
+/* Styles for custom right-aligned form inputs in StyleBasicInfo */
+.custom-form-input .MuiInputBase-input {
+  text-align: right;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 4px 8px;
+  border-radius: 6px; /* Corresponds to theme.shape.borderRadius */
+}
+
+.custom-form-input .MuiInputBase-input:hover {
+  background-color: rgba(0, 0, 0, 0.04); /* Corresponds to theme.palette.action.hover */
+}
+
+/* For TextField to align with custom label */
+.custom-form-input.MuiTextField-root .MuiInputBase-root {
+  margin-top: 0 !important;
+}
+
+/* For Select icon position */
+.custom-form-input.MuiSelect-root .MuiSelect-icon {
+  right: -4px;
+}
+
+/* Hide the default label since a custom one is used */
+.custom-form-input .MuiInputLabel-root { 
+  display: none; 
 }

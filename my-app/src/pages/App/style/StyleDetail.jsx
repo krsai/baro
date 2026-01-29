@@ -52,6 +52,11 @@ const fetchStyleData = (styleId) => {
     designer: '김디자이너',
     collection: '2026 F/W',
     season: '가을',
+    imageUrls: [ // Add mock image URLs
+      'https://placehold.co/600x600/EEE/31343C',
+      'https://placehold.co/600x600/CCC/31343C',
+      'https://placehold.co/600x600/AAA/31343C',
+    ],
     processes: [ // Add mock processes for existing styles
       { id: 'P-001', name: '주머니 달기', smv: 10, etd: 12 },
       { id: 'P-002', name: '소매 부착', smv: 15, etd: 16 },
@@ -110,6 +115,7 @@ const StyleDetail = () => {
     designer: '디자이너',
     collection: '컬렉션',
     season: '시즌',
+    imageUrls: '스타일 사진',
     processes: '공정 목록',
     bom: 'BOM',
   };

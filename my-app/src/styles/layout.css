@@ -1,6 +1,9 @@
 /* src/styles/layout.css */
 
 .page-wrapper {
+  max-width: 1920px; /* Limit content width */
+  width: 100%;       /* Ensure it's responsive within the max-width */
+  margin: 0 auto;    /* Center the layout */
   padding: var(--spacing-lg);
   display: flex;
   flex-direction: column;

@@ -1,42 +1,63 @@
 import React, { useState } from 'react';
-import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper } from '@mui/material';
+import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper, FormControl, InputLabel, Select, MenuItem, IconButton } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
+import { Close as CloseIcon } from '@mui/icons-material';
 
 const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
-  const [selectedImages, setSelectedImages] = useState([]);
-  const [imagePreviewUrls, setImagePreviewUrls] = useState([
-    'https://placehold.co/600x600/EEE/31343C',
-    'https://placehold.co/600x600/CCC/31343C',
-  ]);
+  const { imageUrls = [] } = formData; // Use image URLs from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
 
+  // TODO: Implement adding new images, which involves creating blob URLs,
+  // uploading them, and then updating the parent state.
   const handleImageChange = (event) => {
-    const files = Array.from(event.target.files);
-    if (files.length > 0) {
-      const newImages = [...selectedImages, ...files];
-      const newImageUrls = newImages.map(file => URL.createObjectURL(file));
+    console.log("Image selection not implemented yet.");
+    // const files = Array.from(event.target.files);
+    // if (files.length > 0) {
+    //   const newImageFiles = [...(formData.newImageFiles || []), ...files];
+    //   const newImageUrls = newImageFiles.map(file => URL.createObjectURL(file));
       
-      setSelectedImages(newImages);
-      setImagePreviewUrls(newImageUrls);
-      // Reset main image to the first one if the list was empty before
-      if (selectedImages.length === 0) {
-        setMainImageIndex(0);
-      }
-    }
+    //   handleInputChange({ target: { name: 'newImageFiles', value: newImageFiles } });
+    //   // Visually, you might want to combine existing and new blob URLs for preview
+    // }
   };
 
   const handleThumbnailClick = (index) => {
     setMainImageIndex(index);
   };
 
-  // --- Dummy Data & Logic for 3rd Column ---
-  const styleDetails = {
+  const handleImageDelete = (indexToDelete) => {
+    if (window.confirm('이 이미지를 삭제하시겠습니까?')) {
+      const newImageUrls = imageUrls.filter((_, index) => index !== indexToDelete);
+      
+      // Notify parent component of the change
+      handleInputChange({
+        target: {
+          name: 'imageUrls',
+          value: newImageUrls,
+        },
+      });
+
+      // Adjust mainImageIndex after deletion
+      if (newImageUrls.length === 0) {
+        setMainImageIndex(0);
+      } else if (mainImageIndex >= indexToDelete && mainImageIndex > 0) {
+        setMainImageIndex(mainImageIndex - 1);
+      }
+    }
+  };
+
+  const [styleDetailsData, setStyleDetailsData] = useState({
     'Category': 'Outer',
     'Fabric': 'Cotton 100%',
     'Size Spec': 'S, M, L',
     'Colorway': 'Black, Ivory',
     'Factory': '제일 공장',
+  });
+
+  const handleDetailsChange = (event) => {
+    const { name, value } = event.target;
+    setStyleDetailsData(prev => ({ ...prev, [name]: value }));
   };
   
   const costData = [
@@ -82,10 +103,10 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
                 overflow: 'hidden',
               }}
             >
-              {imagePreviewUrls.length > 0 ? (
+              {imageUrls.length > 0 ? (
                 <CardMedia
                   component="img"
-                  image={imagePreviewUrls[mainImageIndex]}
+                  image={imageUrls[mainImageIndex]}
                   alt={`Style Preview ${mainImageIndex + 1}`}
                   sx={{ objectFit: 'contain', maxHeight: '100%', maxWidth: '100%' }}
                 />
@@ -97,33 +118,70 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
               )}
             </Box>
             
-            {imagePreviewUrls.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ width: '100%', overflowX: 'auto', p: 1 }}>
-                {imagePreviewUrls.map((url, index) => (
+            {imageUrls.length > 0 && (
+              <Stack direction="row" spacing={1.5} sx={{ width: '100%', overflowX: 'auto', p: 1 }}>
+                {imageUrls.map((url, index) => (
                   <Box
                     key={index}
-                    onClick={() => handleThumbnailClick(index)}
                     sx={{
+                      position: 'relative',
                       width: 60,
                       height: 60,
                       minWidth: 60,
-                      cursor: 'pointer',
-                      border: mainImageIndex === index ? '3px solid' : '1px solid',
-                      borderColor: mainImageIndex === index ? 'primary.main' : 'grey.300',
-                      borderRadius: 1,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'border-color 0.2s',
+                      '&:hover .delete-button': {
+                        opacity: 1,
+                      },
                     }}
                   >
-                    <CardMedia
-                      component="img"
-                      image={url}
-                      alt={`Thumbnail ${index + 1}`}
-                      sx={{ objectFit: 'cover', width: '100%', height: '100%' }}
-                    />
+                    <Box
+                      onClick={() => handleThumbnailClick(index)}
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        cursor: 'pointer',
+                        border: mainImageIndex === index ? '3px solid' : '1px solid',
+                        borderColor: mainImageIndex === index ? 'primary.main' : 'grey.300',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'border-color 0.2s',
+                      }}
+                    >
+                      <CardMedia
+                        component="img"
+                        image={url}
+                        alt={`Thumbnail ${index + 1}`}
+                        sx={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                      />
+                    </Box>
+                    <IconButton
+                      aria-label="delete image"
+                      className="delete-button"
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleImageDelete(index);
+                      }}
+                      sx={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        padding: '2px',
+                        color: 'text.primary',
+                        backgroundColor: 'background.paper',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        opacity: 0,
+                        transition: 'opacity 0.2s ease-in-out',
+                        '&:hover': {
+                          backgroundColor: 'grey.100',
+                        },
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: '0.875rem' }} />
+                    </IconButton>
                   </Box>
                 ))}
               </Stack>
@@ -145,7 +203,7 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
           </Stack>
         </Paper>
 
-        {/* Section 2: Style Info */}
+        {/* Section 2: Style Info & Details */}
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>스타일 정보</Typography>
           <Divider sx={{ my: 2 }} />
@@ -153,27 +211,80 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
             {formFields.map((field) => (
               <Box key={field.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">{field.label}</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>{formData[field.name] || '-'}</Typography>
+                <TextField
+                  name={field.name}
+                  value={formData[field.name] || ''}
+                  onChange={handleInputChange}
+                  variant="standard"
+                  className="custom-form-input"
+                  InputProps={{
+                    readOnly: field.readOnly,
+                  }}
+                  
+                />
+              </Box>
+            ))}
+          </Stack>
+
+          <Divider sx={{ my: 4 }} />
+          
+          <Typography variant="h6" gutterBottom>세부 정보</Typography>
+          <Divider sx={{ my: 2 }} />
+          <Stack spacing={2.5} mt={2.5}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Category</Typography>
+              <Select
+                name="Category"
+                value={styleDetailsData['Category']}
+                onChange={handleDetailsChange}
+                variant="standard"
+                className="custom-form-input"
+              >
+                <MenuItem value="Outer">Outer</MenuItem>
+                <MenuItem value="Top">Top</MenuItem>
+                <MenuItem value="Bottom">Bottom</MenuItem>
+                <MenuItem value="Dress">Dress</MenuItem>
+              </Select>
+            </Box>
+            {Object.entries(styleDetailsData).filter(([key]) => key !== 'Category').map(([key, value]) => (
+              <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">{key}</Typography>
+                <TextField
+                  name={key}
+                  value={value}
+                  onChange={handleDetailsChange}
+                  variant="standard"
+                  className="custom-form-input"
+                  InputProps={{
+                  }}
+                  
+                />
               </Box>
             ))}
           </Stack>
         </Paper>
 
-        {/* Section 3: Details & Cost */}
+        {/* Section 3: Process Summary & Cost */}
         <Paper sx={{ p: 2, width: '33.33%' }}>
-          <Typography variant="h6" gutterBottom>세부 정보 및 비용</Typography>
+          <Typography variant="h6" gutterBottom>공정 정보 요약</Typography>
           <Divider sx={{ my: 2 }} />
-          <Stack spacing={2} mt={2}>
-            {Object.entries(styleDetails).map(([key, value]) => (
-              <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">{key}</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 500 }}>{value || '-'}</Typography>
+          <Stack spacing={1.5} sx={{ mb: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>5 개</Typography>
               </Box>
-            ))}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">총 SMV</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>50.5 분</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">총 ETD</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>55.0 분</Typography>
+              </Box>
           </Stack>
 
-          <Divider sx={{ my: 2 }} />
-
+          <Divider sx={{ my: 4 }} />
+          
           <Typography variant="h6" gutterBottom>예상 원가</Typography>
           <Paper elevation={2} sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
             <Stack spacing={2}>

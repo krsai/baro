@@ -14,28 +14,40 @@ const theme = createTheme({
       paper: '#FFFFFF',
     },
     text: {
-      primary: '#111',
-      secondary: '#555',
+      primary: '#212121', // Darker for better contrast
+      secondary: '#616161', // Softer grey
     },
+    divider: '#E0E0E0',
   },
   shape: {
-    borderRadius: 0,
+    borderRadius: 6, // Rounded corners for a modern look
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-    fontSize: 13, // Smaller base font size for data density
+    fontFamily: '"Noto Sans KR", "Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontSize: 14, // Slightly larger base font size for readability
+    h1: { fontSize: '2.5rem', fontWeight: 700 },
+    h2: { fontSize: '2rem', fontWeight: 600 },
+    h3: { fontSize: '1.75rem', fontWeight: 600 },
     h4: { fontSize: '1.5rem', fontWeight: 600 },
     h5: { fontSize: '1.25rem', fontWeight: 600 },
     h6: { fontSize: '1.1rem', fontWeight: 600 },
+    body1: { fontSize: '1rem' },
+    body2: { fontSize: '0.875rem' },
     button: {
       textTransform: 'none',
       fontWeight: 600,
     },
   },
-  spacing: 6, // Reduce spacing unit
+  spacing: 8, // Standard spacing unit
   transitions: {
-    // Disable all animations
-    create: () => 'none',
+    // Re-enable transitions for a smoother feel
+    easing: {
+      easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
+    },
+    duration: {
+      enteringScreen: 225,
+      leavingScreen: 195,
+    },
   },
   components: {
     MuiPaper: {
@@ -71,7 +83,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none',
-          padding: '4px 12px',
+          padding: '6px 16px', // More generous padding
         },
       },
       defaultProps: {
@@ -81,7 +93,7 @@ const theme = createTheme({
     MuiTableCell: {
       styleOverrides: {
         root: {
-          padding: '6px 10px', // Compact cell padding
+          padding: '12px 16px', // Better padding
           borderBottom: '1px solid #E0E0E0',
         },
         head: {
@@ -93,15 +105,14 @@ const theme = createTheme({
     MuiIconButton: {
       styleOverrides: {
         root: {
-          borderRadius: 0,
-          padding: '6px',
+          padding: '8px',
         },
       },
     },
     MuiDialog: {
       styleOverrides: {
         paper: {
-          borderRadius: 0,
+          borderRadius: 6, // Use global radius
         },
       },
     },
@@ -111,20 +122,40 @@ const theme = createTheme({
       },
       styleOverrides: {
         root: {
-          borderRadius: 0,
+           // borderRadius will be inherited from shape
         },
-      },
-    },
-    MuiTextField: {
-      defaultProps: {
-        variant: 'outlined',
-        size: 'small',
       },
     },
     MuiInputBase: {
       styleOverrides: {
         root: {
-          borderRadius: '0 !important',
+          fontSize: '0.8125rem',
+        },
+      },
+    },
+    MuiTextField: {
+      defaultProps: {
+        variant: 'standard',
+        size: 'small',
+      },
+    },
+    MuiSelect: {
+      defaultProps: {
+        variant: 'standard',
+      },
+    },
+    MuiInput: {
+      styleOverrides: {
+        root: {
+          '&:before': {
+            borderBottom: '1px solid rgba(0, 0, 0, 0.42)',
+          },
+          '&:hover:not(.Mui-disabled):before': {
+            borderBottom: '1px solid rgba(0, 0, 0, 0.87)',
+          },
+          '&.Mui-focused:after': {
+            borderBottom: `2px solid #0066cc`,
+          },
         },
       },
     },
@@ -148,10 +179,9 @@ const theme = createTheme({
         root: {
           textTransform: 'none',
           minWidth: 'unset',
-          // height: 38, // Removed fixed height to allow padding to take effect
-          minHeight: 38, // Use minHeight if a minimum size is desired
-          padding: '4px 12px 6px 12px', // Top 4px, others as before
-          marginRight: '4px', // Space between tabs
+          minHeight: 38,
+          padding: '4px 12px 6px 12px',
+          marginRight: '4px',
           borderRadius: '8px 8px 0 0',
           color: 'rgba(0, 0, 0, 0.85)',
           backgroundColor: '#f0f0f0',
@@ -161,12 +191,12 @@ const theme = createTheme({
             backgroundColor: '#e6e6e6',
           },
           '&.Mui-selected': {
-            color: '#1890ff',
+            color: '#0066cc', // Use primary color for selected tab
             backgroundColor: '#fff',
             border: '1px solid #e8e8e8',
             borderBottomColor: '#fff',
           },
-          transition: 'all 0.2s ease-in-out', // Added for smoother transitions
+          transition: 'all 0.2s ease-in-out',
         },
       },
     },
