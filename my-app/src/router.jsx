@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import Login from './pages/auth/Login';
 import SignUp from './pages/auth/SignUp';
@@ -15,145 +15,25 @@ import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
 import StyleDetail from './pages/app/style/StyleDetail';
-import WorkHistory from './pages/App/production/WorkHistory';
+import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
 import Attribute from './pages/App/attribute/Attribute';
 
-// Protected Route 컴포넌트
-const ProtectedRoute = ({ children }) => {
+// 보호된 라우트들을 위한 "에이전트" 또는 "게이트키퍼" 역할을 하는 컴포넌트입니다.
+// 사용자가 인증되었는지 확인하고, 인증되지 않은 경우 로그인 페이지로 리디렉션합니다.
+// 인증된 경우, 중첩된 자식 라우트를 렌더링하기 위해 Outlet을 사용합니다.
+const ProtectedRoute = () => {
   const { isAuthenticated } = useAuth();
-  
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  
-  return children;
+
+  return <Outlet />;
 };
 
 const router = createBrowserRouter([
-  {
-    path: '/',
-    element: <MainLayout />,
-    children: [
-      {
-        path: '/',
-        element: (
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/production',
-        element: (
-          <ProtectedRoute>
-            <Production />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/company',
-        element: (
-          <ProtectedRoute>
-            <Company />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/factory',
-        element: (
-          <ProtectedRoute>
-            <Factory />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/employee',
-        element: (
-          <ProtectedRoute>
-            <Employee />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/role',
-        element: (
-          <ProtectedRoute>
-            <Role />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/permission',
-        element: (
-          <ProtectedRoute>
-            <Permission />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/system-setting',
-        element: (
-          <ProtectedRoute>
-            <SystemSetting />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/customer',
-        element: (
-          <ProtectedRoute>
-            <Customer />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/style',
-        element: (
-          <ProtectedRoute>
-            <Style />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/style/new',
-        element: (
-          <ProtectedRoute>
-            <StyleDetail />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/style/:styleId',
-        element: (
-          <ProtectedRoute>
-            <StyleDetail />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/work-history',
-        element: (
-          <ProtectedRoute>
-            <WorkHistory />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/attribute',
-        element: (
-          <ProtectedRoute>
-            <Attribute />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: '/auth/callback',
-        element: <AuthCallback />,
-      },
-    ],
-  },
   {
     path: '/login',
     element: <Login />,
@@ -161,6 +41,80 @@ const router = createBrowserRouter([
   {
     path: '/signup',
     element: <SignUp />,
+  },
+  {
+    // MainLayout을 사용하는 모든 라우트들의 부모입니다.
+    path: '/',
+    element: <MainLayout />,
+    children: [
+      // 인증 콜백과 같이 MainLayout을 사용하지만 보호되지 않는 라우트입니다.
+      {
+        path: 'auth/callback',
+        element: <AuthCallback />,
+      },
+      // 보호가 필요한 모든 라우트들은 이 `ProtectedRoute`의 자식으로 그룹화됩니다.
+      {
+        element: <ProtectedRoute />,
+        children: [
+          {
+            index: true, // '/' 경로에 해당합니다.
+            element: <Home />,
+          },
+          {
+            path: 'production',
+            element: <Production />,
+          },
+          {
+            path: 'company',
+            element: <Company />,
+          },
+          {
+            path: 'factory',
+            element: <Factory />,
+          },
+          {
+            path: 'employee',
+            element: <Employee />,
+          },
+          {
+            path: 'role',
+            element: <Role />,
+          },
+          {
+            path: 'permission',
+            element: <Permission />,
+          },
+          {
+            path: 'system-setting',
+            element: <SystemSetting />,
+          },
+          {
+            path: 'customer',
+            element: <Customer />,
+          },
+          {
+            path: 'style',
+            element: <Style />,
+          },
+          {
+            path: 'style/new',
+            element: <StyleDetail />,
+          },
+          {
+            path: 'style/:styleId',
+            element: <StyleDetail />,
+          },
+          {
+            path: 'work-history',
+            element: <Work />,
+          },
+          {
+            path: 'attribute',
+            element: <Attribute />,
+          },
+        ],
+      },
+    ],
   },
 ]);
 

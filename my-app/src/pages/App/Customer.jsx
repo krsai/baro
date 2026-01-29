@@ -9,7 +9,6 @@ import {
   TableRow,
   Paper,
   Button,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -18,8 +17,6 @@ import {
   Grid,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../components/AppPageContainer';
 
 const Customer = () => {
@@ -39,18 +36,6 @@ const Customer = () => {
     setEditingCustomer(null);
     setFormData(initialFormData);
     setOpenDialog(true);
-  };
-
-  const handleEdit = (customer) => {
-    setEditingCustomer(customer);
-    setFormData(customer);
-    setOpenDialog(true);
-  };
-
-  const handleDelete = (id) => {
-    if (window.confirm('정말로 이 고객사를 삭제하시겠습니까?')) {
-      setCustomers(customers.filter((c) => c.id !== id));
-    }
   };
 
   const handleCloseDialog = () => {
@@ -95,7 +80,6 @@ const Customer = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>등록일</TableCell>
-                <TableCell align="center" sx={{ fontWeight: 'bold' }}>작업</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -107,14 +91,6 @@ const Customer = () => {
                   <TableCell>{customer.phone}</TableCell>
                   <TableCell>{customer.email}</TableCell>
                   <TableCell>{customer.registeredAt}</TableCell>
-                  <TableCell align="center">
-                    <IconButton color="primary" onClick={() => handleEdit(customer)} title="수정">
-                      <EditIcon />
-                    </IconButton>
-                    <IconButton color="secondary" onClick={() => handleDelete(customer.id)} title="삭제">
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
