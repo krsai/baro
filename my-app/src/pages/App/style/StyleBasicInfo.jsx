@@ -5,7 +5,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import { Close as CloseIcon } from '@mui/icons-material';
 
 const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
-  const { imageUrls = [] } = formData; // Use image URLs from props
+  const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
 
   // TODO: Implement adding new images, which involves creating blob URLs,
@@ -60,6 +60,11 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
     setStyleDetailsData(prev => ({ ...prev, [name]: value }));
   };
   
+    // Calculate totals for PT, AT, ST
+  const totalPt = processes.reduce((acc, p) => acc + (p.pt || 0), 0);
+  const totalAt = processes.reduce((acc, p) => acc + (p.at || 0), 0);
+  const totalSt = processes.reduce((acc, p) => acc + (p.st || 0), 0);
+
   const costData = [
       { item: '원단 (Fabric)', cost: '$15.00' },
       { item: '부자재 (Trims)', cost: '$3.50' },
@@ -87,8 +92,7 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
         {/* Section 1: Image Uploader */}
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>스타일 사진</Typography>
-          <Divider sx={{ my: 2 }} />
-          <Stack spacing={2} alignItems="center" sx={{ mt: 2 }}>
+          <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
             <Box
               sx={{
                 width: '100%',
@@ -206,7 +210,6 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
         {/* Section 2: Style Info & Details */}
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>스타일 정보</Typography>
-          <Divider sx={{ my: 2 }} />
           <Stack spacing={2.5} mt={2.5}>
             {formFields.map((field) => (
               <Box key={field.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -229,7 +232,6 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
           <Divider sx={{ my: 4 }} />
           
           <Typography variant="h6" gutterBottom>세부 정보</Typography>
-          <Divider sx={{ my: 2 }} />
           <Stack spacing={2.5} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Category</Typography>
@@ -267,26 +269,29 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
         {/* Section 3: Process Summary & Cost */}
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>공정 정보 요약</Typography>
-          <Divider sx={{ my: 2 }} />
-          <Stack spacing={1.5} sx={{ mb: 2 }}>
+          <Stack spacing={1.5} sx={{ mt: 2.5, mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                   <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>5 개</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>{processes.length} 개</Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">총 SMV</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>50.5 분</Typography>
+                  <Typography variant="body2" color="text.secondary">총 PT</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalPt.toFixed(1)} 분</Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">총 ETD</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>55.0 분</Typography>
+                  <Typography variant="body2" color="text.secondary">총 AT</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalAt.toFixed(1)} 분</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">총 ST</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalSt.toFixed(1)} 분</Typography>
               </Box>
           </Stack>
 
           <Divider sx={{ my: 4 }} />
           
           <Typography variant="h6" gutterBottom>예상 원가</Typography>
-          <Paper elevation={2} sx={{ p: 2, mt: 2, bgcolor: 'grey.50' }}>
+          <Paper elevation={2} sx={{ p: 2, mt: 2.5, bgcolor: 'grey.50' }}>
             <Stack spacing={2}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
                 <Typography variant="body2">항목</Typography>

@@ -58,9 +58,9 @@ const fetchStyleData = (styleId) => {
       'https://placehold.co/600x600/AAA/31343C',
     ],
     processes: [ // Add mock processes for existing styles
-      { id: 'P-001', name: '주머니 달기', smv: 10, etd: 12 },
-      { id: 'P-002', name: '소매 부착', smv: 15, etd: 16 },
-      { id: 'P-003', name: '단추 구멍', smv: 8, etd: 9 },
+      { id: 'P-001', name: '주머니 달기', pt: 10, at: 10.5, st: 10 },
+      { id: 'P-002', name: '소매 부착', pt: 15, at: 16, st: 15.5 },
+      { id: 'P-003', name: '단추 구멍', pt: 8, at: 9, st: 8.5 },
     ],
     bom: [], // Initially empty
     ...style, // 기본 데이터 덮어쓰기
@@ -76,22 +76,15 @@ const StyleDetail = () => {
   // State for the form data that the user edits
   const [styleFormData, setStyleFormData] = useState(originalData);
   // State to track if the form has been changed
-  const [isDirty, setIsDirty] = useState(false);
+  // const [isDirty, setIsDirty] = useState(false);
   // State for the confirmation dialog
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   // State to hold the detected changes
   const [changes, setChanges] = useState({});
 
   const isNew = styleId === 'new';
-
-  // Effect to check if the form is dirty
-  useEffect(() => {
-    // Only run this check if it's not a new style
-    if (!isNew) {
-      const hasChanged = JSON.stringify(originalData) !== JSON.stringify(styleFormData);
-      setIsDirty(hasChanged);
-    }
-  }, [styleFormData, originalData, isNew]);
+  
+  const isDirty = !isNew && JSON.stringify(originalData) !== JSON.stringify(styleFormData);
 
   const handleChange = (event, newValue) => {
     if (newValue !== null) {
@@ -156,7 +149,7 @@ const StyleDetail = () => {
     // After a successful save, update the original data to the new state
     setOriginalData(styleFormData);
     // and reset the dirty flag
-    setIsDirty(false);
+    // setIsDirty(false);
     // Close the dialog
     handleCloseConfirm();
   };
