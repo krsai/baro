@@ -24,16 +24,27 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../../context/AppContext';
 import AppPageContainer from '../../components/AppPageContainer';
+import SearchInput from '../../components/SearchInput';
 
 const Role = () => {
   const { roles, setRoles } = useApp();
 
+  const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [editingRole, setEditingRole] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
   });
+
+  const filteredRoles = useMemo(() => {
+    if (!searchTerm) return roles;
+    const lowerTerm = searchTerm.toLowerCase();
+    return roles.filter((role) => 
+        role.name.toLowerCase().includes(lowerTerm) ||
+        role.description.toLowerCase().includes(lowerTerm)
+    );
+  }, [roles, searchTerm]);
 
   const handleAddRole = () => {
     setEditingRole(null);
@@ -104,6 +115,13 @@ const Role = () => {
         </Box>
       }
     >
+      <Box sx={{ width: '100%', mb: 2 }}>
+        <SearchInput
+          placeholder="역할명 또는 설명 검색..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </Box>
       <TableContainer component={Paper} sx={{ width: '100%' }}>
         <Table>
           <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
@@ -114,7 +132,7 @@ const Role = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {roles.map((role) => (
+            {filteredRoles.map((role) => (
               <TableRow key={role.id} hover>
                 <TableCell sx={{ width: '20%' }}>
                   <Chip label={role.name} color="primary" variant="outlined" />

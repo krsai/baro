@@ -10,11 +10,11 @@ import {
   TableHead,
   TableRow,
   Grid,
-  TextField,
   Box,
 } from '@mui/material';
 import { useApp } from '../../../context/AppContext';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SearchInput from '../../../components/SearchInput';
 
 // Mock data for the list of styles
 const mockStyles = [
@@ -50,12 +50,10 @@ const StyleList = () => {
   return (
     <AppPageContainer>
       <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <TextField
-          label="스타일명 또는 고객사 검색"
-          variant="outlined"
+        <SearchInput
+          placeholder="스타일명 또는 고객사 검색..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          sx={{ width: '400px' }}
         />
         <Button
           onClick={handleAddNewClick}

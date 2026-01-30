@@ -16,7 +16,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 import AppPageContainer from '../../components/AppPageContainer'; // Import AppPageContainer
 
-const Company = () => {
+const Business = () => {
   const [companyInfo, setCompanyInfo] = useState({
     companyName: '바로가먼트',
     businessNumber: '123-45-67890',
@@ -68,7 +68,7 @@ const Company = () => {
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
           <Typography component="h1" variant="h4">
-            법인 관리
+            사업체 관리
           </Typography>
           <Button
             variant="contained"
@@ -178,4 +178,4 @@ const Company = () => {
   );
 };
 
-export default Company;
+export default Business;

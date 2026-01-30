@@ -5,8 +5,7 @@ import Login from './pages/auth/Login';
 import SignUp from './pages/auth/SignUp';
 import Home from './pages/app/Home';
 import Production from './pages/App/production/Production';
-import Company from './pages/app/Company';
-import Factory from './pages/app/Factory';
+import Business from './pages/app/Business';
 import Employee from './pages/app/Employee';
 import Role from './pages/app/Role';
 import Permission from './pages/app/Permission';
@@ -65,12 +64,8 @@ const router = createBrowserRouter([
             element: <Production />,
           },
           {
-            path: 'company',
-            element: <Company />,
-          },
-          {
-            path: 'factory',
-            element: <Factory />,
+            path: 'business',
+            element: <Business />,
           },
           {
             path: 'employee',

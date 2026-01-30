@@ -25,7 +25,6 @@ import OrganizationIcon from '@mui/icons-material/AccountTree';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import BusinessIcon from '@mui/icons-material/Business';
-import FactoryIcon from '@mui/icons-material/Factory';
 import GroupIcon from '@mui/icons-material/Group';
 import BadgeIcon from '@mui/icons-material/Badge';
 import SecurityIcon from '@mui/icons-material/Security';
@@ -99,8 +98,7 @@ const MainLayout = () => {
       isOpen: adminOpen,
       setOpen: setAdminOpen,
       children: [
-        { label: '법인 관리', icon: <BusinessIcon />, path: '/company' },
-        { label: '공장 관리', icon: <FactoryIcon />, path: '/factory' },
+        { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
         { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
       ],
     },
