@@ -4,7 +4,7 @@ import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
 import { Close as CloseIcon } from '@mui/icons-material';
 
-const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
+const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
 
@@ -47,13 +47,23 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
     }
   };
 
-  const [styleDetailsData, setStyleDetailsData] = useState({
-    'Category': 'Outer',
-    'Fabric': 'Cotton 100%',
-    'Size Spec': 'S, M, L',
-    'Colorway': 'Black, Ivory',
-    'Factory': '제일 공장',
-  });
+  const [styleDetailsData, setStyleDetailsData] = useState(
+    isNew
+      ? {
+          Category: '',
+          Fabric: '',
+          'Size Spec': '',
+          Colorway: '',
+          Factory: '',
+        }
+      : {
+          Category: 'Outer',
+          Fabric: 'Cotton 100%',
+          'Size Spec': 'S, M, L',
+          Colorway: 'Black, Ivory',
+          Factory: '제일 공장',
+        }
+  );
 
   const handleDetailsChange = (event) => {
     const { name, value } = event.target;
@@ -65,12 +75,14 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
   const totalAt = processes.reduce((acc, p) => acc + (p.at || 0), 0);
   const totalSt = processes.reduce((acc, p) => acc + (p.st || 0), 0);
 
-  const costData = [
-      { item: '원단 (Fabric)', cost: '$15.00' },
-      { item: '부자재 (Trims)', cost: '$3.50' },
-      { item: '공임 (CMT)', cost: '$8.00' },
-      { item: '기타 (Misc.)', cost: '$1.20' },
-  ];
+  const costData = isNew
+    ? []
+    : [
+        { item: '원단 (Fabric)', cost: '$15.00' },
+        { item: '부자재 (Trims)', cost: '$3.50' },
+        { item: '공임 (CMT)', cost: '$8.00' },
+        { item: '기타 (Misc.)', cost: '$1.20' },
+      ];
 
   const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
   const overhead = subtotal * 0.1;
@@ -83,7 +95,7 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
     { name: 'designer', label: '디자이너' },
     { name: 'collection', label: '컬렉션' },
     { name: 'season', label: '시즌' },
-    { name: 'registrationDate', label: '등록일자', readOnly: true },
+    { name: 'registrationDate', label: '등록일자' },
   ];
 
   return (
@@ -328,4 +340,4 @@ const StyleBasicInfo = ({ formData = {}, handleInputChange }) => {
   );
 };
 
-export default StyleBasicInfo;
+export default StyleInfo;

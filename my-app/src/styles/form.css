@@ -107,7 +107,7 @@
 .toggle-button.MuiToggleButton-root:hover {
   background-color: var(--color-background-dark); /* Simulate action.hover or a lighter background */
 }
-/* Styles for custom right-aligned form inputs in StyleBasicInfo */
+/* Styles for custom right-aligned form inputs in StyleInfo */
 .custom-form-input .MuiInputBase-input {
   text-align: right;
   font-weight: 500;

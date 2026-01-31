@@ -13,7 +13,7 @@ import {
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
-import StyleBasicInfo from './StyleBasicInfo';
+import StyleInfo from './StyleInfo';
 import StyleBom from './StyleBom';
 import StyleProcess from './StyleProcess';
 
@@ -27,43 +27,48 @@ const mockStyles = [
 
 // Mock data fetching function based on styleId
 const fetchStyleData = (styleId) => {
+  // For new styles, return a completely blank object.
   if (styleId === 'new') {
     return {
       styleCode: '',
-      name: '새 스타일',
+      name: '',
       customer: '',
+      // Set a default registration date for convenience, but other fields are blank.
       registrationDate: new Date().toISOString().slice(0, 10),
       designer: '',
       collection: '',
       season: '',
+      imageUrls: [],
+      processes: [],
+      bom: [],
       bomNotes: '',
-      processName: '',
-      processDescription: '',
     };
   }
 
+  // For existing styles, find the data in mockStyles.
   const style = mockStyles.find(s => s.id === styleId);
 
-  // In a real application, you would fetch this data from an API
-  console.log(`Fetching data for style ID: ${styleId}`);
+  // In a real application, you would fetch this data from an API.
+  // The returned object includes the found style data, with some fallbacks.
   return {
-    styleCode: styleId,
-    name: style ? style.name : `디자인 ${styleId}`,
-    designer: '김디자이너',
-    collection: '2026 F/W',
-    season: '가을',
-    imageUrls: [ // Add mock image URLs
+    // Default values for fields that might not be in mockStyles
+    imageUrls: [
       'https://placehold.co/600x600/EEE/31343C',
       'https://placehold.co/600x600/CCC/31343C',
       'https://placehold.co/600x600/AAA/31343C',
     ],
-    processes: [ // Add mock processes for existing styles
+    processes: [
       { id: 'P-001', name: '주머니 달기', pt: 10, at: 10.5, st: 10 },
       { id: 'P-002', name: '소매 부착', pt: 15, at: 16, st: 15.5 },
       { id: 'P-003', name: '단추 구멍', pt: 8, at: 9, st: 8.5 },
     ],
-    bom: [], // Initially empty
-    ...style, // 기본 데이터 덮어쓰기
+    bom: [],
+    // Spread the actual style data from the mock array.
+    // This will overwrite defaults if they exist in the mock data.
+    ...style,
+    // Ensure styleCode and a name are present.
+    styleCode: styleId,
+    name: style ? style.name : `디자인 ${styleId}`,
   };
 };
 
@@ -75,6 +80,13 @@ const StyleDetail = () => {
   const [originalData, setOriginalData] = useState(() => fetchStyleData(styleId));
   // State for the form data that the user edits
   const [styleFormData, setStyleFormData] = useState(originalData);
+
+  useEffect(() => {
+    const newData = fetchStyleData(styleId);
+    setOriginalData(newData);
+    setStyleFormData(newData);
+  }, [styleId]);
+
   // State to track if the form has been changed
   // const [isDirty, setIsDirty] = useState(false);
   // State for the confirmation dialog
@@ -241,7 +253,7 @@ const StyleDetail = () => {
         </Box>
       </Box>
 
-      {currentTab === 'basicInfo' && <StyleBasicInfo formData={styleFormData} handleInputChange={handleStyleInputChange} />}
+      {currentTab === 'basicInfo' && <StyleInfo isNew={isNew} formData={styleFormData} handleInputChange={handleStyleInputChange} />}
       {currentTab === 'processInfo' && <StyleProcess processes={styleFormData.processes} onProcessesChange={handleProcessesChange} />}
       {currentTab === 'bom' && <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />}
 
