@@ -13,7 +13,7 @@ import Permission from './pages/app/Permission';
 import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
-import StyleDetail from './pages/app/style/StyleDetail';
+import StyleBoard from './pages/App/style/StyleBoard';
 import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
@@ -93,11 +93,11 @@ const router = createBrowserRouter([
           },
           {
             path: 'style/new',
-            element: <StyleDetail />,
+            element: <StyleBoard />,
           },
           {
             path: 'style/:styleId',
-            element: <StyleDetail />,
+            element: <StyleBoard />,
           },
           {
             path: 'work-history',

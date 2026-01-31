@@ -35,7 +35,7 @@ const WorkerLog = ({
             sx={{ width: '50%' }}
           />
         </Box>
-        <IconButton onClick={() => onRemoveWorker(log.id)} color="error" sx={{ ml: 1 }}>
+        <IconButton onClick={() => onRemoveWorker(log.id)} color="error" sx={{ ml: 1 }} tabIndex={-1}>
           <DeleteIcon />
         </IconButton>
       </Box>

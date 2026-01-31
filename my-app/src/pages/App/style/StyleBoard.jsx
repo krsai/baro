@@ -62,7 +62,7 @@ const fetchStyleData = (styleId) => {
   };
 };
 
-const StyleDetail = () => {
+const StyleBoard = () => {
   const { styleId } = useParams();
   const [currentTab, setCurrentTab] = useState('basicInfo');
 
@@ -172,72 +172,27 @@ const StyleDetail = () => {
           <ToggleButton
             value="basicInfo"
             aria-label="basic info"
-            sx={{
-              width: 110,
-              textTransform: 'none',
-              fontWeight: '600',
-              '&.Mui-selected': {
-                backgroundColor: 'primary.light',
-                color: 'primary.contrastText',
-              },
-              '&.Mui-selected:hover': {
-                backgroundColor: 'primary.main',
-              },
-            }}
           >
             기본 정보
           </ToggleButton>
           <ToggleButton
             value="processInfo"
             aria-label="process info"
-            sx={{
-              width: 110,
-              textTransform: 'none',
-              fontWeight: '600',
-              '&.Mui-selected': {
-                backgroundColor: 'primary.light',
-                color: 'primary.contrastText',
-              },
-              '&.Mui-selected:hover': {
-                backgroundColor: 'primary.main',
-              },
-            }}
           >
             공정 정보
           </ToggleButton>
           <ToggleButton
             value="bom"
             aria-label="bom"
-            sx={{
-              width: 110,
-              textTransform: 'none',
-              fontWeight: '600',
-              '&.Mui-selected': {
-                backgroundColor: 'primary.light',
-                color: 'primary.contrastText',
-              },
-              '&.Mui-selected:hover': {
-                backgroundColor: 'primary.main',
-              },
-            }}
           >
             BOM
           </ToggleButton>
         </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="outlined"
-            onClick={handleRevert}
-            disabled={isNew || !isDirty}
-          >
+          <Button variant="outlined" onClick={handleRevert} disabled={isNew || !isDirty}>
             되돌리기
           </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSave}
-            disabled={!isNew && !isDirty}
-          >
+          <Button variant="contained" color="primary" onClick={handleSave} disabled={!isNew && !isDirty}>
             저장
           </Button>
         </Box>
@@ -279,5 +234,4 @@ const StyleDetail = () => {
   );
 };
 
-export default StyleDetail;
-    
+export default StyleBoard;

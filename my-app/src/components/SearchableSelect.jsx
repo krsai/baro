@@ -12,6 +12,7 @@ import { Autocomplete, TextField } from '@mui/material';
  * @param {function} props.onChange - The function to call when the value changes. It receives (event, newValue).
  * @param {function} [props.getOptionLabel] - A function to specify the string value for each option. Defaults to option.name.
  * @param {boolean} [props.disabled] - If true, the component is disabled.
+ * @param {object} [props] - Other props to pass to the Autocomplete component.
  * @returns {React.ReactElement}
  */
 const SearchableSelect = ({ 
@@ -21,6 +22,7 @@ const SearchableSelect = ({
   onChange, 
   getOptionLabel = (option) => option.name,
   disabled = false,
+  ...props
 }) => {
   return (
     <Autocomplete
@@ -29,6 +31,7 @@ const SearchableSelect = ({
       options={options}
       getOptionLabel={getOptionLabel}
       disabled={disabled}
+      {...props}
       renderInput={(params) => <TextField {...params} label={label} />}
     />
   );

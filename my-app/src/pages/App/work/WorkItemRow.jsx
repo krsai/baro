@@ -77,13 +77,25 @@ const WorkItemRow = ({
           label="수량"
           type="number"
           value={item.quantity}
-          onChange={e => onItemChange('quantity', parseInt(e.target.value, 10) || '')}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === '') {
+              onItemChange('quantity', '');
+              return;
+            }
+            const parsed = parseInt(val, 10);
+            if (!isNaN(parsed) && parsed > 0) {
+              onItemChange('quantity', parsed);
+            }
+          }}
           onKeyDown={(e) => {
+            if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               if (onEnter) onEnter();
             }
           }}
           disabled={!item.process}
+          inputProps={{ min: 1 }}
         />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>

@@ -17,15 +17,50 @@ import WorkDetail from './WorkDetail';
 const WorkList = () => {
   // 임시 데이터 (추후 API 연동 시 교체)
   const [workLogs] = useState([
-    { id: 1, date: '2023-10-26', factory: '하노이 1공장', workerCount: 15, processCount: 4, totalAt: 1200 },
-    { id: 2, date: '2023-10-26', factory: '다낭 2공장', workerCount: 10, processCount: 3, totalAt: 850 },
-    { id: 3, date: '2023-10-25', factory: '하노이 1공장', workerCount: 14, processCount: 4, totalAt: 1150 },
+    {
+      id: 1,
+      date: '2023-10-26',
+      factory: '하노이 1공장',
+      wageStandard: 'PT',
+      workerCount: 15,
+      processCount: 4,
+      totalStandardTime: 48600,
+      totalWorkingHours: 54000,
+    },
+    {
+      id: 2,
+      date: '2023-10-26',
+      factory: '다낭 2공장',
+      wageStandard: 'ST',
+      workerCount: 10,
+      processCount: 3,
+      totalStandardTime: 32000,
+      totalWorkingHours: 36000,
+    },
+    {
+      id: 3,
+      date: '2023-10-25',
+      factory: '하노이 1공장',
+      wageStandard: 'PT',
+      workerCount: 14,
+      processCount: 4,
+      totalStandardTime: 45000,
+      totalWorkingHours: 50400,
+    },
   ]);
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const toggleDrawer = (open) => () => {
     setIsDrawerOpen(open);
+  };
+
+  const formatAverageTime = (totalSeconds, count) => {
+    if (!count) return '0시간 0분';
+    const avgSeconds = totalSeconds / count;
+    const hours = Math.floor(avgSeconds / 3600);
+    const minutes = Math.floor((avgSeconds % 3600) / 60);
+    return `${hours}시간 ${minutes}분`;
   };
 
   return (
@@ -45,7 +80,9 @@ const WorkList = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>공장</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>작업자 수</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>총 공정 종류</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>총 작업 시간(AT)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>인당 평균 작업 시간 (PT/ST)</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>인당 평균 근로 시간</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>생산 효율</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -55,7 +92,13 @@ const WorkList = () => {
                   <TableCell>{log.factory}</TableCell>
                   <TableCell>{log.workerCount}명</TableCell>
                   <TableCell>{log.processCount}개</TableCell>
-                  <TableCell>{log.totalAt.toLocaleString()}초</TableCell>
+                  <TableCell>
+                    {formatAverageTime(log.totalStandardTime, log.workerCount)} ({log.wageStandard})
+                  </TableCell>
+                  <TableCell>{formatAverageTime(log.totalWorkingHours, log.workerCount)}</TableCell>
+                  <TableCell>
+                    {((log.totalStandardTime / log.totalWorkingHours) * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

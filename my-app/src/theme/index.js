@@ -200,6 +200,21 @@ const theme = createTheme({
         },
       },
     },
+    MuiToggleButton: {
+      styleOverrides: {
+        root: ({ theme }) => ({
+          width: 120,
+          fontWeight: 'bold',
+          '&.Mui-selected': {
+            backgroundColor: theme.palette.primary.light,
+            color: theme.palette.primary.contrastText,
+            '&:hover': {
+              backgroundColor: theme.palette.primary.main,
+            },
+          },
+        }),
+      },
+    },
   },
 });
 

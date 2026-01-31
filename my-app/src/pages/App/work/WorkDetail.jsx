@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Typography, IconButton, Button, Paper, Divider, Grid } from '@mui/material';
+import { Box, Typography, IconButton, Button, Paper, Divider, Grid, TextField } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -7,6 +7,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import SearchableSelect from '../../../components/SearchableSelect';
+import { useAuth } from '../../../context/AuthContext';
 import WorkerLog from './WorkerLog';
 
 // --- Mock Data ---
@@ -36,6 +37,7 @@ const WorkDetail = ({ onClose }) => {
   const [workDate, setWorkDate] = useState(dayjs());
   const [selectedFactory, setSelectedFactory] = useState(null);
   const [workerLogs, setWorkerLogs] = useState([]);
+  const { user } = useAuth();
 
   const filteredEmployees = useMemo(() => {
     if (!selectedFactory) return [];
@@ -142,6 +144,16 @@ const WorkDetail = ({ onClose }) => {
             onChange={(e, val) => {
               setSelectedFactory(val);
               setWorkerLogs([]);
+            }}
+            sx={{ width: '100%' }}
+          />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <TextField
+            label="작성자"
+            value={user?.name || ''}
+            InputProps={{
+              readOnly: true,
             }}
             sx={{ width: '100%' }}
           />
