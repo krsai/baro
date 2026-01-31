@@ -3,6 +3,10 @@ import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
 import { Close as CloseIcon } from '@mui/icons-material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs from 'dayjs';
 
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
@@ -211,17 +215,36 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
             {formFields.map((field) => (
               <Box key={field.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">{field.label}</Typography>
-                <TextField
-                  name={field.name}
-                  value={formData[field.name] || ''}
-                  onChange={handleInputChange}
-                  variant="standard"
-                  className="custom-form-input"
-                  InputProps={{
-                    readOnly: field.readOnly,
-                  }}
-                  
-                />
+                {field.name === 'registrationDate' ? (
+                  <LocalizationProvider dateAdapter={AdapterDayjs}>
+                    <DatePicker
+                      value={formData[field.name] ? dayjs(formData[field.name]) : dayjs()}
+                      onChange={(newValue) => {
+                        handleInputChange({
+                          target: {
+                            name: field.name,
+                            value: newValue ? newValue.format('YYYY-MM-DD') : '',
+                          },
+                        });
+                      }}
+                      slotProps={{
+                        textField: { variant: 'standard', className: 'custom-form-input' },
+                      }}
+                      format="YYYY-MM-DD"
+                    />
+                  </LocalizationProvider>
+                ) : (
+                  <TextField
+                    name={field.name}
+                    value={formData[field.name] || ''}
+                    onChange={handleInputChange}
+                    variant="standard"
+                    className="custom-form-input"
+                    InputProps={{
+                      readOnly: field.readOnly,
+                    }}
+                  />
+                )}
               </Box>
             ))}
           </Stack>

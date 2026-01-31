@@ -18,10 +18,10 @@ import SearchInput from '../../../components/SearchInput';
 
 // Mock data for the list of styles
 const mockStyles = [
-  { id: 'S-001', name: '클래식 데님 자켓', customer: 'A고객사', registrationDate: '2026-01-15' },
-  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customer: 'B고객사', registrationDate: '2026-01-16' },
-  { id: 'S-003', name: '오버핏 린넨 셔츠', customer: 'A고객사', registrationDate: '2026-01-17' },
-  { id: 'S-004', name: '플리츠 미디 스커트', customer: 'C고객사', registrationDate: '2026-01-18' },
+  { id: 'S-001', name: '클래식 데님 자켓', customer: 'A고객사', registrationDate: '2026-01-15', totalSt: 120.5 },
+  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customer: 'B고객사', registrationDate: '2026-01-16', totalSt: 95.0 },
+  { id: 'S-003', name: '오버핏 린넨 셔츠', customer: 'A고객사', registrationDate: '2026-01-17', totalSt: 110.2 },
+  { id: 'S-004', name: '플리츠 미디 스커트', customer: 'C고객사', registrationDate: '2026-01-18', totalSt: 88.5 },
 ];
 
 const StyleList = () => {
@@ -60,7 +60,7 @@ const StyleList = () => {
           variant="contained"
           color="primary"
         >
-          새 스타일 추가
+          스타일 추가
         </Button>
       </Box>
 
@@ -72,6 +72,7 @@ const StyleList = () => {
                 <TableCell>고객사</TableCell>
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일코드</TableCell>
+                <TableCell>총 ST</TableCell>
                 <TableCell>등록일</TableCell>
               </TableRow>
             </TableHead>
@@ -86,6 +87,7 @@ const StyleList = () => {
                   <TableCell>{style.customer}</TableCell>
                   <TableCell>{style.name}</TableCell>
                   <TableCell>{style.id}</TableCell>
+                  <TableCell>{style.totalSt}분</TableCell>
                   <TableCell>{style.registrationDate}</TableCell>
                 </TableRow>
               ))}

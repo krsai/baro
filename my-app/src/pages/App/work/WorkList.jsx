@@ -9,8 +9,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Drawer,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import WorkDetail from './WorkDetail';
 
 const WorkList = () => {
   // 임시 데이터 (추후 API 연동 시 교체)
@@ -20,11 +22,17 @@ const WorkList = () => {
     { id: 3, date: '2023-10-25', factory: '하노이 1공장', workerCount: 14, processCount: 4, totalAt: 1150 },
   ]);
 
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const toggleDrawer = (open) => () => {
+    setIsDrawerOpen(open);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Button variant="contained" startIcon={<AddIcon />}>
-          작업 기록
+        <Button variant="contained" startIcon={<AddIcon />} onClick={toggleDrawer(true)}>
+          작업 기록 추가
         </Button>
       </Box>
 
@@ -54,6 +62,15 @@ const WorkList = () => {
           </Table>
         </TableContainer>
       </Paper>
+
+      {/* 오른쪽 슬라이드 패널 (Drawer) */}
+      <Drawer
+        anchor="right"
+        open={isDrawerOpen}
+        onClose={toggleDrawer(false)}
+      >
+        <WorkDetail onClose={toggleDrawer(false)} />
+      </Drawer>
     </Box>
   );
 };
