@@ -10,19 +10,20 @@ import {
   TableRow,
   Paper,
   Button,
-  TextField,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import SearchIcon from '@mui/icons-material/Search';
 import { useApp } from '../../../context/AppContext';
-import AppPageContainer from '../../../components/AppPageContainer';
+import SearchInput from '../../../components/SearchInput';
 
-const Employee = () => {
-  const { factories, roles } = useApp();
-  const [employees, setEmployees] = useState([
-    { id: 1, factoryId: 3, name: '김철수', roleId: 1, phone: '010-1234-5678' },
-    { id: 2, factoryId: 3, name: '이영희', roleId: 4, phone: '010-2345-6789' },
-  ]);
+// Mock Data
+const mockEmployees = [
+  { id: 1, factoryId: 3, name: '김철수', roleId: 1, phone: '010-1234-5678' },
+  { id: 2, factoryId: 3, name: '이영희', roleId: 4, phone: '010-2345-6789' },
+];
+
+const EmployeeList = () => {
+  const { factories, roles, navigateToPath } = useApp();
+  const [employees] = useState(mockEmployees);
 
   const [searchKeyword, setSearchKeyword] = useState('');
 
@@ -45,39 +46,28 @@ const Employee = () => {
   }, [employees, searchKeyword, factories, roles]);
 
   const handleAddEmployee = () => {
-    // 나중에 추가 기능 구현
-    console.log('사원 추가');
+    navigateToPath('/employee/new', { label: '새 직원' });
+  };
+
+  const handleRowDoubleClick = (employee) => {
+    navigateToPath(`/employee/${employee.id}`, { label: `직원: ${employee.name}` });
   };
 
   return (
-    <AppPageContainer
-      header={
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-          <Typography component="h1" variant="h4">
-            직원 관리
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAddEmployee}
-          >
-            직원 추가
-          </Button>
-        </Box>
-      }
-    >
-      <Box sx={{ width: '100%', mb: 2 }}>
-        <TextField
-          fullWidth
+    <Box>
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <SearchInput
           placeholder="이름, 소속, 역할로 검색..."
           value={searchKeyword}
           onChange={(e) => setSearchKeyword(e.target.value)}
-          InputProps={{
-            startAdornment: <SearchIcon sx={{ mr: 1, color: 'action.active' }} />,
-          }}
-          size="small"
-          sx={{ maxWidth: 400 }}
         />
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleAddEmployee}
+        >
+          직원 추가
+        </Button>
       </Box>
 
       <TableContainer component={Paper} sx={{ width: '100%' }}>
@@ -95,7 +85,12 @@ const Employee = () => {
               const factory = factories.find((f) => f.id === employee.factoryId);
               const role = roles.find((r) => r.id === employee.roleId);
               return (
-                <TableRow key={employee.id} hover sx={{ '&:hover': { backgroundColor: '#fafafa' } }}>
+                <TableRow
+                  key={employee.id}
+                  hover
+                  onDoubleClick={() => handleRowDoubleClick(employee)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>{factory?.name || '-'}</TableCell>
                   <TableCell>{employee.name}</TableCell>
                   <TableCell>{role?.name || '-'}</TableCell>
@@ -114,8 +109,8 @@ const Employee = () => {
           </Typography>
         </Box>
       )}
-    </AppPageContainer>
+    </Box>
   );
 };
 
-export default Employee;
+export default EmployeeList;

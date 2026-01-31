@@ -1,8 +1,8 @@
 import React from 'react';
-import EmployeeList from './employee/EmployeeList';
+import EmployeeBoard from './employee/EmployeeBoard';
 
 const Employee = () => {
-  return <EmployeeList />;
+  return <EmployeeBoard />;
 };
 
 export default Employee;
