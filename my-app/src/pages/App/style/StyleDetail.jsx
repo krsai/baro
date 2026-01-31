@@ -27,48 +27,38 @@ const mockStyles = [
 
 // Mock data fetching function based on styleId
 const fetchStyleData = (styleId) => {
-  // For new styles, return a completely blank object.
+  const emptyStyle = {
+    styleCode: '',
+    name: '',
+    customer: '',
+    registrationDate: '',
+    designer: '',
+    collection: '',
+    season: '',
+    imageUrls: [],
+    processes: [],
+    bom: [],
+    bomNotes: '',
+  };
+
   if (styleId === 'new') {
+    return emptyStyle;
+  }
+
+  const style = mockStyles.find(s => s.id === styleId);
+
+  if (!style) {
     return {
-      styleCode: '',
+      ...emptyStyle,
+      styleCode: styleId,
       name: '',
-      customer: '',
-      // Set a default registration date for convenience, but other fields are blank.
-      registrationDate: new Date().toISOString().slice(0, 10),
-      designer: '',
-      collection: '',
-      season: '',
-      imageUrls: [],
-      processes: [],
-      bom: [],
-      bomNotes: '',
     };
   }
 
-  // For existing styles, find the data in mockStyles.
-  const style = mockStyles.find(s => s.id === styleId);
-
-  // In a real application, you would fetch this data from an API.
-  // The returned object includes the found style data, with some fallbacks.
   return {
-    // Default values for fields that might not be in mockStyles
-    imageUrls: [
-      'https://placehold.co/600x600/EEE/31343C',
-      'https://placehold.co/600x600/CCC/31343C',
-      'https://placehold.co/600x600/AAA/31343C',
-    ],
-    processes: [
-      { id: 'P-001', name: '주머니 달기', pt: 10, at: 10.5, st: 10 },
-      { id: 'P-002', name: '소매 부착', pt: 15, at: 16, st: 15.5 },
-      { id: 'P-003', name: '단추 구멍', pt: 8, at: 9, st: 8.5 },
-    ],
-    bom: [],
-    // Spread the actual style data from the mock array.
-    // This will overwrite defaults if they exist in the mock data.
-    ...style,
-    // Ensure styleCode and a name are present.
-    styleCode: styleId,
-    name: style ? style.name : `디자인 ${styleId}`,
+    ...emptyStyle, // Ensures all fields are present, preventing errors
+    ...style, // Overwrites with actual data from mockStyles
+    styleCode: style.id, // Explicitly set styleCode from the found style data
   };
 };
 

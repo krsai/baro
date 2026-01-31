@@ -48,21 +48,13 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   };
 
   const [styleDetailsData, setStyleDetailsData] = useState(
-    isNew
-      ? {
-          Category: '',
-          Fabric: '',
-          'Size Spec': '',
-          Colorway: '',
-          Factory: '',
-        }
-      : {
-          Category: 'Outer',
-          Fabric: 'Cotton 100%',
-          'Size Spec': 'S, M, L',
-          Colorway: 'Black, Ivory',
-          Factory: '제일 공장',
-        }
+    {
+      Category: '',
+      Fabric: '',
+      'Size Spec': '',
+      Colorway: '',
+      Factory: '',
+    }
   );
 
   const handleDetailsChange = (event) => {
@@ -75,14 +67,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const totalAt = processes.reduce((acc, p) => acc + (p.at || 0), 0);
   const totalSt = processes.reduce((acc, p) => acc + (p.st || 0), 0);
 
-  const costData = isNew
-    ? []
-    : [
-        { item: '원단 (Fabric)', cost: '$15.00' },
-        { item: '부자재 (Trims)', cost: '$3.50' },
-        { item: '공임 (CMT)', cost: '$8.00' },
-        { item: '기타 (Misc.)', cost: '$1.20' },
-      ];
+  const costData = [];
 
   const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
   const overhead = subtotal * 0.1;
