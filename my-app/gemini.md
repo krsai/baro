@@ -91,8 +91,8 @@
   - 회사 정보 (Company Info)
   - 공장 정보 (Factory Info)
   - 직원 관리 (Employee Management)
-- **주문 관리 (Order Management)**
-  - 고객 관리 (Customer Management)
+  - 고객사 관리 (Customer Management)
+- **기준 정보 관리 (Standard Information Management)**
   - 스타일 관리 (Style Management)
 - **생산 관리 (Production Management)**
   - 생산 현황 (Production Status)
@@ -132,14 +132,14 @@
 1.  **법인 (Corporation)**: 시스템의 최상위 단위입니다. (예: `바루 가먼트`)
 2.  **공장 (Factory)**: 특정 법인에 소속된 생산 단위입니다. (예: `하노이 공장`) 모든 직원은 공장에 소속됩니다.
 3.  **직원 (Employee)**: 특정 공장에 소속된 사용자입니다. 각 직원은 시스템 내에서 정의된 역할(Role)을 가집니다.
+4.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. (예: `더산`)
 
-### 8.2. 고객 및 스타일 관리 (Customer & Style Management)
+### 8.2. 스타일 및 공정 관리 (Style & Process Management)
 
-1.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. (예: `더산`)
-2.  **스타일 (Style)**: 특정 고객사에 속한 의류 모델입니다. 하나의 스타일에는 여러 생산 공정이 포함됩니다.
+1.  **스타일 (Style)**: 특정 고객사에 속한 의류 모델입니다. 하나의 스타일에는 여러 생산 공정이 포함됩니다.
     - **이미지 관리**: 스타일 관련 이미지를 업로드 및 삭제할 수 있으며, 삭제 시 확인 절차(Confirm)를 거칩니다.
     - **데이터 통합**: 기본 정보, 공정 목록(Process), BOM 정보가 하나의 스타일 객체로 통합 관리됩니다.
-3.  **공정 (Process)**: 스타일을 생산하기 위한 개별 작업 단계입니다.
+2.  **공정 (Process)**: 스타일을 생산하기 위한 개별 작업 단계입니다.
 
 ### 8.3. 공정 시간 및 공임 산정 상세 (PT/AT/ST)
 
