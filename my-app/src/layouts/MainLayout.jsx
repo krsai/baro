@@ -37,6 +37,7 @@ import StyleIcon from '@mui/icons-material/Style';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
 import DnsIcon from '@mui/icons-material/Dns';
+import ContentCut from '@mui/icons-material/ContentCut';
 
 const DRAWER_WIDTH = 260;
 
@@ -76,7 +77,6 @@ const MainLayout = () => {
       isOpen: orderOpen,
       setOpen: setOrderOpen,
       children: [
-        { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
         { label: '스타일 관리', icon: <StyleIcon />, path: '/style' },
       ],
     },
@@ -87,7 +87,6 @@ const MainLayout = () => {
       isOpen: productionOpen,
       setOpen: setProductionOpen,
       children: [
-        { label: '생산 현황', icon: <ProductionQuantityLimitsIcon />, path: '/production' },
         { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
       ],
     },
@@ -100,6 +99,7 @@ const MainLayout = () => {
       children: [
         { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
         { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
+        { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
       ],
     },
     {
@@ -109,7 +109,8 @@ const MainLayout = () => {
       isOpen: basicInfoOpen,
       setOpen: setBasicInfoOpen,
       children: [
-        { label: '속성관리', icon: <DnsIcon />, path: '/attribute' },
+        { label: '공정 목록', icon: <ContentCut />, path: '/process'},
+        { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
         { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
         { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
       ],

@@ -12,7 +12,13 @@ const Login = () => {
     event.preventDefault();
     // In a real app, you would validate credentials against a backend
     console.log('Simulating successful login...');
-    login(); // Set the authenticated state
+    login({
+      id: 'admin01',
+      name: '김관리',
+      email: 'admin@baro.com',
+      role: 'Manager',
+      factoryId: 1,
+    }); // Set the authenticated state
     navigate('/'); // Redirect to the protected home page
   };
 
@@ -64,7 +70,13 @@ const Login = () => {
             startIcon={<span style={{ marginRight: '8px' }}>G</span>}
             onClick={() => {
               console.log('Dummy Google social login button clicked.');
-              login(); // Dummy login, sets isAuthenticated to true
+              login({
+                id: 'admin01',
+                name: '김관리',
+                email: 'admin@baro.com',
+                role: 'Manager',
+                factoryId: 1,
+              }); // Dummy login, sets isAuthenticated to true
               navigate('/');
             }}
           >

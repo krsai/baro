@@ -5,13 +5,7 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   // 프론트엔드 개발 중에는 테스트를 위해 기본 사용자 정보를 설정해둡니다.
   // 추후 백엔드 연동 시 초기값을 null로 변경하고 로그인 로직을 연결하면 됩니다.
-  const [user, setUser] = useState({
-    id: 'admin01',
-    name: '김관리',
-    email: 'admin@baro.com',
-    role: 'Manager',
-    factoryId: 1, // 예: 관리자의 소속 공장 ID
-  });
+  const [user, setUser] = useState(null);
 
   const login = (userData) => {
     setUser(userData);

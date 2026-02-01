@@ -18,7 +18,13 @@ const AuthCallback = () => {
       
       // Simulate successful login after getting the code
       console.log('Simulating successful social login...');
-      login();
+      login({
+        id: 'admin01',
+        name: '김관리',
+        email: 'admin@baro.com',
+        role: 'Manager',
+        factoryId: 1,
+      });
       
       // Redirect to home page after a short delay
       setTimeout(() => {
