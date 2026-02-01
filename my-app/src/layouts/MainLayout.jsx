@@ -109,7 +109,7 @@ const MainLayout = () => {
       isOpen: basicInfoOpen,
       setOpen: setBasicInfoOpen,
       children: [
-        { label: '공정 목록', icon: <ContentCut />, path: '/process'},
+        { label: '공정 관리', icon: <ContentCut />, path: '/process'},
         { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
         { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
         { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },

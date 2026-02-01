@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -11,116 +11,116 @@ import {
   TableHead,
   TableRow,
   TableFooter,
+  IconButton,
+  Drawer,
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import ProcessEditModal from './ProcessEditModal';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ProcessForm from '../attribute/ProcessForm';
 
-const StyleProcess = ({ processes, onProcessesChange }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedProcess, setSelectedProcess] = useState(null);
+const StyleProcess = ({ processes = [], onProcessesChange }) => {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editingProcess, setEditingProcess] = useState(null);
 
-  const formatTime = (value, unit = '초', notSetDisplay = '-') => {
-    // 0 is a valid value, so we check against null/undefined explicitly.
-    if (value === null || typeof value === 'undefined' || value === '') {
-      return notSetDisplay;
-    }
-    return `${value}${unit}`;
+  const handleOpenAddDrawer = () => {
+    setEditingProcess(null);
+    setIsDrawerOpen(true);
   };
 
-  const handleAddNewClick = () => {
-    // This should also be handled by the parent in a real app
-    console.log('새 공정 추가 버튼 클릭');
+  const handleOpenEditDrawer = (process) => {
+    setEditingProcess(process);
+    setIsDrawerOpen(true);
+  };
+
+  const handleDrawerClose = () => {
+    setIsDrawerOpen(false);
+    // It's good practice to reset the editing state when the drawer closes
+    setEditingProcess(null);
+  };
+
+  const handleSave = (data) => {
+    if (editingProcess) {
+      // Edit mode
+      const updatedProcesses = processes.map((p) =>
+        p.instanceId === editingProcess.instanceId ? { ...p, ...data } : p
+      );
+      onProcessesChange(updatedProcesses);
+    } else {
+      // Add mode
+      onProcessesChange([...processes, ...data]);
+    }
+  };
+
+  const handleRemoveProcess = (instanceId) => {
+    onProcessesChange(processes.filter((p) => p.instanceId !== instanceId));
   };
   
-  const handleRowDoubleClick = (process) => {
-    setSelectedProcess(process);
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedProcess(null);
-  };
-
-  const handleSaveProcess = (updatedProcess) => {
-    const newProcesses = processes.map((p) =>
-      p.id === updatedProcess.id ? updatedProcess : p
-    );
-    onProcessesChange(newProcesses); // Notify parent of the change
-    handleCloseModal();
-  };
-
   const onDragEnd = (result) => {
-    if (!result.destination) {
-      return;
-    }
-
+    if (!result.destination) return;
     const newProcesses = Array.from(processes);
     const [reorderedItem] = newProcesses.splice(result.source.index, 1);
     newProcesses.splice(result.destination.index, 0, reorderedItem);
-
-    onProcessesChange(newProcesses); // Notify parent of the change
+    onProcessesChange(newProcesses);
   };
 
-  const totals = (processes || []).reduce(
-    (acc, process) => {
-      if (typeof process.pt === 'number') {
-        acc.pt += process.pt;
-      }
-      if (typeof process.at === 'number') {
-        acc.at += process.at;
-      }
-      const stValue = process.st || process.smv;
-      if (typeof stValue === 'number') {
-        acc.st += stValue;
-      }
-      return acc;
-    },
-    { pt: 0, at: 0, st: 0 }
+  const totalST = useMemo(() => 
+    processes.reduce((acc, p) => acc + (p.quantity * p.st), 0),
+    [processes]
   );
+  
+  const formatTime = (value) => `${value}초`;
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">공정 목록</Typography>
-        <Button
-          onClick={handleAddNewClick}
-          variant="contained"
-          color="primary"
-        >
-          새 공정 추가
+        <Typography variant="h6">스타일 공정 목록</Typography>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddDrawer}>
+          스타일 공정 추가
         </Button>
       </Box>
+
       <Paper variant="outlined">
         <TableContainer>
           <DragDropContext onDragEnd={onDragEnd}>
-            <Table stickyHeader aria-label="process list table">
+            <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{width: '40%'}}>공정 이름</TableCell>
-                  <TableCell sx={{width: '20%'}}>PT(임시)</TableCell>
-                  <TableCell sx={{width: '20%'}}>AT(실측)</TableCell>
-                  <TableCell sx={{width: '20%'}}>ST(표준)</TableCell>
+                  <TableCell sx={{width: '5%'}}></TableCell>
+                  <TableCell>공정명</TableCell>
+                  <TableCell align="right">수량</TableCell>
+                  <TableCell align="right">표준 시간 (ST)</TableCell>
+                  <TableCell align="right">총 시간</TableCell>
+                  <TableCell align="center">삭제</TableCell>
                 </TableRow>
               </TableHead>
               <Droppable droppableId="processes">
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                    {(processes || []).map((process, index) => ( // Add guard for processes being undefined
-                      <Draggable key={process.id} draggableId={process.id} index={index}>
+                    {processes.map((process, index) => (
+                      <Draggable key={process.instanceId} draggableId={process.instanceId} index={index}>
                         {(provided) => (
-                          <TableRow
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
+                          <TableRow 
+                            ref={provided.innerRef} 
+                            {...provided.draggableProps} 
+                            {...provided.dragHandleProps} 
                             hover
-                            onDoubleClick={() => handleRowDoubleClick(process)}
+                            onDoubleClick={() => handleOpenEditDrawer(process)}
                             sx={{ cursor: 'pointer' }}
                           >
-                            <TableCell>{process.name}</TableCell>
-                            <TableCell>{formatTime(process.pt)}</TableCell>
-                            <TableCell>{formatTime(process.at, '초', '데이터 부족')}</TableCell>
-                            <TableCell>{formatTime(process.st || process.smv)}</TableCell>
+                            <TableCell sx={{ cursor: 'grab' }}>{index + 1}</TableCell>
+                            <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
+                            <TableCell align="right">{process.quantity}</TableCell>
+                            <TableCell align="right">{formatTime(process.st)}</TableCell>
+                            <TableCell align="right">{formatTime(process.quantity * process.st)}</TableCell>
+                            <TableCell align="center">
+                              <IconButton size="small" onClick={(e) => {
+                                e.stopPropagation(); // prevent double click event from firing
+                                handleRemoveProcess(process.instanceId)
+                              }}>
+                                <DeleteIcon />
+                              </IconButton>
+                            </TableCell>
                           </TableRow>
                         )}
                       </Draggable>
@@ -131,22 +131,27 @@ const StyleProcess = ({ processes, onProcessesChange }) => {
               </Droppable>
               <TableFooter>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>합계</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.pt)}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.at)}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}>{formatTime(totals.st)}</TableCell>
+                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 'bold' }}>총 표준 시간 합계</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatTime(totalST)}</TableCell>
+                  <TableCell />
                 </TableRow>
               </TableFooter>
             </Table>
           </DragDropContext>
         </TableContainer>
       </Paper>
-      <ProcessEditModal
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        process={selectedProcess}
-        onSave={handleSaveProcess}
-      />
+
+      <Drawer
+        anchor="right"
+        open={isDrawerOpen}
+        onClose={handleDrawerClose}
+      >
+        <ProcessForm
+          onClose={handleDrawerClose} 
+          onSave={handleSave}
+          initialData={editingProcess}
+        />
+      </Drawer>
     </Box>
   );
 };

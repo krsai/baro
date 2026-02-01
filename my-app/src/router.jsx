@@ -16,8 +16,7 @@ import StyleBoard from './pages/App/style/StyleBoard';
 import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
-import Attribute from './pages/App/attribute/Attribute';
-import Process from './pages/App/Process';
+import Attribute from './pages/App/Attribute';
 
 // 보호된 라우트들을 위한 "에이전트" 또는 "게이트키퍼" 역할을 하는 컴포넌트입니다.
 // 사용자가 인증되었는지 확인하고, 인증되지 않은 경우 로그인 페이지로 리디렉션합니다.
@@ -102,10 +101,6 @@ const router = createBrowserRouter([
           {
             path: 'attribute',
             element: <Attribute />,
-          },
-          {
-            path: 'process',
-            element: <Process />,
           },
         ],
       },
