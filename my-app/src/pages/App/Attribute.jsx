@@ -5,6 +5,7 @@ import AttrColor from './attribute/AttrColor';
 import AttrSize from './attribute/AttrSize';
 import AttrGender from './attribute/AttrGender';
 import AttrProcess from './attribute/AttrProcess';
+import AttrCategory from './attribute/AttrCategory';
 
 const Attribute = () => {
   const [currentView, setCurrentView] = useState('color');
@@ -34,6 +35,9 @@ const Attribute = () => {
             <ToggleButton value="gender">
               성별
             </ToggleButton>
+            <ToggleButton value="category">
+              카테고리
+            </ToggleButton>
             <ToggleButton value="process">
               공정
             </ToggleButton>
@@ -43,6 +47,7 @@ const Attribute = () => {
         {currentView === 'color' && <AttrColor />}
         {currentView === 'size' && <AttrSize />}
         {currentView === 'gender' && <AttrGender />}
+        {currentView === 'category' && <AttrCategory />}
         {currentView === 'process' && <AttrProcess />}
       </Box>
     </AppPageContainer>

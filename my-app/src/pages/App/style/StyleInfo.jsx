@@ -8,6 +8,13 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 
+// Mock Data for Customers (Simulating API response from Customer Management)
+const mockCustomers = [
+  { id: 'C-001', name: 'A고객사' },
+  { id: 'C-002', name: 'B고객사' },
+  { id: 'C-003', name: 'C고객사' },
+];
+
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -77,15 +84,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const overhead = subtotal * 0.1;
   const totalCost = subtotal + overhead;
   // --- End of Dummy Data ---
-
-  const formFields = [
-    { name: 'name', label: '스타일명' },
-    { name: 'customer', label: '고객사' },
-    { name: 'designer', label: '디자이너' },
-    { name: 'collection', label: '컬렉션' },
-    { name: 'season', label: '시즌' },
-    { name: 'registrationDate', label: '등록일자' },
-  ];
 
   return (
     <Box>
@@ -212,49 +210,34 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>스타일 정보</Typography>
           <Stack spacing={2} mt={2.5}>
-            {formFields.map((field) => (
-              <Box key={field.name} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">{field.label}</Typography>
-                {field.name === 'registrationDate' ? (
-                  <LocalizationProvider dateAdapter={AdapterDayjs}>
-                    <DatePicker
-                      value={formData[field.name] ? dayjs(formData[field.name]) : dayjs()}
-                      onChange={(newValue) => {
-                        handleInputChange({
-                          target: {
-                            name: field.name,
-                            value: newValue ? newValue.format('YYYY-MM-DD') : '',
-                          },
-                        });
-                      }}
-                      slotProps={{
-                        textField: { variant: 'standard', className: 'custom-form-input' },
-                      }}
-                      format="YYYY-MM-DD"
-                    />
-                  </LocalizationProvider>
-                ) : (
-                  <TextField
-                    name={field.name}
-                    value={formData[field.name] || ''}
-                    onChange={handleInputChange}
-                    variant="standard"
-                    className="custom-form-input"
-                    InputProps={{
-                      readOnly: field.readOnly,
-                    }}
-                  />
-                )}
-              </Box>
-            ))}
-          </Stack>
-
-          <Divider sx={{ my: 4 }} />
-          
-          <Typography variant="h6" gutterBottom>세부 정보</Typography>
-          <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Category</Typography>
+              <Typography variant="body2" color="text.secondary">고객사</Typography>
+              <Select
+                name="customer"
+                value={formData.customer || ''}
+                onChange={handleInputChange}
+                variant="standard"
+                className="custom-form-input"
+                displayEmpty
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                {mockCustomers.map((customer) => (
+                  <MenuItem key={customer.id} value={customer.name}>{customer.name}</MenuItem>
+                ))}
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">스타일명</Typography>
+              <TextField
+                name="name"
+                value={formData.name || ''}
+                onChange={handleInputChange}
+                variant="standard"
+                className="custom-form-input"
+              />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">카테고리</Typography>
               <Select
                 name="Category"
                 value={styleDetailsData['Category']}
@@ -268,6 +251,32 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 <MenuItem value="Dress">Dress</MenuItem>
               </Select>
             </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">등록일자</Typography>
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <DatePicker
+                  value={formData.registrationDate ? dayjs(formData.registrationDate) : dayjs()}
+                  onChange={(newValue) => {
+                    handleInputChange({
+                      target: {
+                        name: 'registrationDate',
+                        value: newValue ? newValue.format('YYYY-MM-DD') : '',
+                      },
+                    });
+                  }}
+                  slotProps={{
+                    textField: { variant: 'standard', className: 'custom-form-input' },
+                  }}
+                  format="YYYY-MM-DD"
+                />
+              </LocalizationProvider>
+            </Box>
+          </Stack>
+
+          <Divider sx={{ my: 4 }} />
+          
+          <Typography variant="h6" gutterBottom>세부 정보</Typography>
+          <Stack spacing={2} mt={2.5}>
             {Object.entries(styleDetailsData).filter(([key]) => key !== 'Category').map(([key, value]) => (
               <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary">{key}</Typography>

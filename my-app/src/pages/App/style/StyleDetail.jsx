@@ -169,24 +169,9 @@ const StyleDetail = () => {
           onChange={handleChange}
           aria-label="style management toggle"
         >
-          <ToggleButton
-            value="basicInfo"
-            aria-label="basic info"
-          >
-            기본 정보
-          </ToggleButton>
-          <ToggleButton
-            value="processInfo"
-            aria-label="process info"
-          >
-            공정 정보
-          </ToggleButton>
-          <ToggleButton
-            value="bom"
-            aria-label="bom"
-          >
-            BOM
-          </ToggleButton>
+          <ToggleButton value="basicInfo">기본 정보</ToggleButton>
+          <ToggleButton value="processInfo">공정 정보</ToggleButton>
+          <ToggleButton value="bom">BOM</ToggleButton>
         </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="outlined" onClick={handleRevert} disabled={isNew || !isDirty}>

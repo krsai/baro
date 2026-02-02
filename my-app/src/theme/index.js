@@ -200,17 +200,49 @@ const theme = createTheme({
         },
       },
     },
+    MuiToggleButtonGroup: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#f4f4f5',
+          padding: '4px',
+          borderRadius: '8px',
+        },
+        grouped: {
+          border: 0,
+          '&.Mui-disabled': {
+            border: 0,
+          },
+          '&:not(:first-of-type)': {
+            borderRadius: '6px',
+            borderLeft: 'none',
+            marginLeft: '4px',
+          },
+          '&:first-of-type': {
+            borderRadius: '6px',
+          },
+        },
+      },
+    },
     MuiToggleButton: {
       styleOverrides: {
         root: ({ theme }) => ({
-          width: 120,
-          fontWeight: 'bold',
+          textTransform: 'none',
+          color: theme.palette.text.secondary,
+          fontWeight: 600,
+          padding: '6px 24px',
+          minWidth: 100,
+          border: 'none',
+          borderRadius: '6px',
           '&.Mui-selected': {
-            backgroundColor: theme.palette.primary.light,
-            color: theme.palette.primary.contrastText,
+            backgroundColor: '#FFFFFF',
+            color: theme.palette.primary.main,
+            boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.12)',
             '&:hover': {
-              backgroundColor: theme.palette.primary.main,
+              backgroundColor: '#FFFFFF',
             },
+          },
+          '&:hover': {
+            backgroundColor: 'rgba(0, 0, 0, 0.04)',
           },
         }),
       },
