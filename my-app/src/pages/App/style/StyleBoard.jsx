@@ -1,235 +1,107 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Typography,
-  ToggleButton,
-  ToggleButtonGroup,
+  Paper,
   Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Grid,
   Box,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
 } from '@mui/material';
-import { useParams } from 'react-router-dom';
+import { useApp } from '../../../context/AppContext';
 import AppPageContainer from '../../../components/AppPageContainer';
-import StyleInfo from './StyleInfo';
-import StyleBom from './StyleBom';
-import StyleProcess from './StyleProcess';
+import SearchInput from '../../../components/SearchInput';
+import StyleDetail from './StyleDetail';
 
 // Mock data for the list of styles
 const mockStyles = [
-  { id: 'S-001', name: '클래식 데님 자켓', customer: 'A고객사', registrationDate: '2026-01-15', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customer: 'B고객사', registrationDate: '2026-01-16', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-003', name: '오버핏 린넨 셔츠', customer: 'A고객사', registrationDate: '2026-01-17', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-004', name: '플리츠 미디 스커트', customer: 'C고객사', registrationDate: '2026-01-18', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
+  { id: 'S-001', name: '클래식 데님 자켓', customer: 'A고객사', registrationDate: '2026-01-15', totalSt: 120.5 },
+  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customer: 'B고객사', registrationDate: '2026-01-16', totalSt: 95.0 },
+  { id: 'S-003', name: '오버핏 린넨 셔츠', customer: 'A고객사', registrationDate: '2026-01-17', totalSt: 110.2 },
+  { id: 'S-004', name: '플리츠 미디 스커트', customer: 'C고객사', registrationDate: '2026-01-18', totalSt: 88.5 },
 ];
-
-// Mock data fetching function based on styleId
-const fetchStyleData = (styleId) => {
-  const emptyStyle = {
-    styleCode: '',
-    name: '',
-    customer: '',
-    registrationDate: '',
-    designer: '',
-    collection: '',
-    season: '',
-    imageUrls: [],
-    processes: [],
-    bom: [],
-    bomNotes: '',
-  };
-
-  if (styleId === 'new') {
-    return emptyStyle;
-  }
-
-  const style = mockStyles.find(s => s.id === styleId);
-
-  if (!style) {
-    return {
-      ...emptyStyle,
-      styleCode: styleId,
-      name: '',
-    };
-  }
-
-  return {
-    ...emptyStyle, // Ensures all fields are present, preventing errors
-    ...style, // Overwrites with actual data from mockStyles
-    styleCode: style.id, // Explicitly set styleCode from the found style data
-  };
-};
 
 const StyleBoard = () => {
   const { styleId } = useParams();
-  const [currentTab, setCurrentTab] = useState('basicInfo');
+  if (styleId) {
+    return <StyleDetail />;
+  }
 
-  // State for the original data to compare against
-  const [originalData, setOriginalData] = useState(() => fetchStyleData(styleId));
-  // State for the form data that the user edits
-  const [styleFormData, setStyleFormData] = useState(originalData);
+  const { navigateToPath } = useApp();
+  const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    const newData = fetchStyleData(styleId);
-    setOriginalData(newData);
-    setStyleFormData(newData);
-  }, [styleId]);
+  const handleRowDoubleClick = (style) => {
+    navigateToPath(`/style/${style.id}`, { label: `스타일: ${style.name}` });
+  };
 
-  // State to track if the form has been changed
-  // const [isDirty, setIsDirty] = useState(false);
-  // State for the confirmation dialog
-  const [isConfirmOpen, setConfirmOpen] = useState(false);
-  // State to hold the detected changes
-  const [changes, setChanges] = useState({});
+  const handleAddNewClick = () => {
+    navigateToPath('/style/new', { label: '새 스타일' });
+  };
 
-  const isNew = styleId === 'new';
-  
-  const isDirty = !isNew && JSON.stringify(originalData) !== JSON.stringify(styleFormData);
-
-  const handleChange = (event, newValue) => {
-    if (newValue !== null) {
-      setCurrentTab(newValue);
+  const filteredStyles = useMemo(() => {
+    if (!searchTerm) {
+      return mockStyles;
     }
-  };
-
-  const handleStyleInputChange = (e) => {
-    const { name, value } = e.target;
-    setStyleFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleProcessesChange = (newProcesses) => {
-    setStyleFormData((prev) => ({ ...prev, processes: newProcesses }));
-  };
-
-  // An object to map field names to Korean labels for display
-  const fieldLabels = {
-    name: '스타일명',
-    customer: '고객사',
-    designer: '디자이너',
-    collection: '컬렉션',
-    season: '시즌',
-    imageUrls: '스타일 사진',
-    processes: '공정 목록',
-    bom: 'BOM',
-  };
-
-  const handleSave = () => {
-    if (isNew) {
-      // For new styles, save directly without confirmation
-      console.log('Creating new style:', styleFormData);
-      alert('새 스타일이 생성되었습니다 (콘솔 확인)');
-      // In a real app, you might navigate or update the state
-    } else {
-      // For existing styles, find changes and open confirmation dialog
-      const detectedChanges = {};
-      // This is a simple comparison. For arrays, it will show that the array
-      // itself has changed, but not the specifics of what changed inside.
-      // A more complex diffing function would be needed for a detailed view.
-      Object.keys(styleFormData).forEach(key => {
-        if (JSON.stringify(originalData[key]) !== JSON.stringify(styleFormData[key])) {
-          detectedChanges[key] = {
-            from: Array.isArray(originalData[key]) ? `${originalData[key].length}개 항목` : originalData[key],
-            to: Array.isArray(styleFormData[key]) ? `${styleFormData[key].length}개 항목` : styleFormData[key],
-          };
-        }
-      });
-      setChanges(detectedChanges);
-      setConfirmOpen(true);
-    }
-  };
-
-  const handleCloseConfirm = () => {
-    setConfirmOpen(false);
-  };
-
-  const handleConfirmSave = () => {
-    console.log('Updating style with the following changes:', changes);
-    alert('스타일이 업데이트되었습니다 (콘솔 확인)');
-    
-    // After a successful save, update the original data to the new state
-    setOriginalData(styleFormData);
-    // and reset the dirty flag
-    // setIsDirty(false);
-    // Close the dialog
-    handleCloseConfirm();
-  };
-
-  const handleRevert = () => {
-    setStyleFormData(originalData);
-  };
+    return mockStyles.filter(
+      (style) =>
+        style.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        style.customer.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm]);
 
   return (
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <ToggleButtonGroup
-          value={currentTab}
-          exclusive
-          onChange={handleChange}
-          aria-label="style management toggle"
+        <SearchInput
+          placeholder="스타일명 또는 고객사 검색..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        <Button
+          onClick={handleAddNewClick}
+          variant="contained"
+          color="primary"
         >
-          <ToggleButton
-            value="basicInfo"
-            aria-label="basic info"
-          >
-            기본 정보
-          </ToggleButton>
-          <ToggleButton
-            value="processInfo"
-            aria-label="process info"
-          >
-            공정 정보
-          </ToggleButton>
-          <ToggleButton
-            value="bom"
-            aria-label="bom"
-          >
-            BOM
-          </ToggleButton>
-        </ToggleButtonGroup>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" onClick={handleRevert} disabled={isNew || !isDirty}>
-            되돌리기
-          </Button>
-          <Button variant="contained" color="primary" onClick={handleSave} disabled={!isNew && !isDirty}>
-            저장
-          </Button>
-        </Box>
+          스타일 추가
+        </Button>
       </Box>
 
-      {currentTab === 'basicInfo' && <StyleInfo isNew={isNew} formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-      {currentTab === 'processInfo' && <StyleProcess processes={styleFormData.processes} onProcessesChange={handleProcessesChange} />}
-      {currentTab === 'bom' && <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-
-      <Dialog open={isConfirmOpen} onClose={handleCloseConfirm}>
-        <DialogTitle>변경 내용 확인</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            아래 내용으로 스타일 정보를 저장하시겠습니까?
-          </DialogContentText>
-          <Box sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: '4px' }}>
-            {Object.keys(changes).length > 0 ? (
-              Object.entries(changes).map(([key, value]) => (
-                <Typography key={key} sx={{ mb: 1 }}>
-                  <strong>{fieldLabels[key] || key}:</strong>{' '}
-                  <span style={{ textDecoration: 'line-through', color: 'red' }}>'{value.from}'</span>
-                  {' -> '}
-                  <span style={{ color: 'green' }}>'{value.to}'</span>
-                </Typography>
-              ))
-            ) : (
-              <Typography>변경 사항이 없습니다.</Typography>
-            )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseConfirm}>취소</Button>
-          <Button onClick={handleConfirmSave} autoFocus>
-            저장
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
+        <TableContainer>
+          <Table stickyHeader aria-label="style list table">
+            <TableHead>
+              <TableRow>
+                <TableCell>고객사</TableCell>
+                <TableCell>스타일명</TableCell>
+                <TableCell>스타일코드</TableCell>
+                <TableCell>총 ST</TableCell>
+                <TableCell>등록일</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredStyles.map((style) => (
+                <TableRow
+                  hover
+                  key={style.id}
+                  onDoubleClick={() => handleRowDoubleClick(style)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{style.customer}</TableCell>
+                  <TableCell>{style.name}</TableCell>
+                  <TableCell>{style.id}</TableCell>
+                  <TableCell>{style.totalSt}분</TableCell>
+                  <TableCell>{style.registrationDate}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
     </AppPageContainer>
   );
 };

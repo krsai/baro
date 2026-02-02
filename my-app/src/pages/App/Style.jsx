@@ -1,8 +1,8 @@
 import React from 'react';
-import StyleList from './style/StyleList';
+import StyleBoard from './style/StyleBoard';
 
 const Style = () => {
-  return <StyleList />;
+  return <StyleBoard />;
 };
 
 export default Style;
