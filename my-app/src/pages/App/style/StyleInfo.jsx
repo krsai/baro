@@ -64,7 +64,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
       Fabric: '',
       'Size Spec': '',
       Colorway: '',
-      Factory: '',
     }
   );
 
@@ -219,11 +218,30 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 variant="standard"
                 className="custom-form-input"
                 displayEmpty
+                sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
                 {mockCustomers.map((customer) => (
                   <MenuItem key={customer.id} value={customer.name}>{customer.name}</MenuItem>
                 ))}
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">카테고리</Typography>
+              <Select
+                name="Category"
+                value={styleDetailsData['Category']}
+                onChange={handleDetailsChange}
+                variant="standard"
+                className="custom-form-input"
+                displayEmpty
+                sx={{ width: '70%' }}
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="Outer">Outer</MenuItem>
+                <MenuItem value="Top">Top</MenuItem>
+                <MenuItem value="Bottom">Bottom</MenuItem>
+                <MenuItem value="Dress">Dress</MenuItem>
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -234,22 +252,19 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 onChange={handleInputChange}
                 variant="standard"
                 className="custom-form-input"
+                sx={{ width: '70%' }}
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">카테고리</Typography>
-              <Select
-                name="Category"
-                value={styleDetailsData['Category']}
-                onChange={handleDetailsChange}
+              <Typography variant="body2" color="text.secondary">스타일 코드</Typography>
+              <TextField
+                name="styleCode"
+                value={formData.styleCode || ''}
+                onChange={handleInputChange}
                 variant="standard"
                 className="custom-form-input"
-              >
-                <MenuItem value="Outer">Outer</MenuItem>
-                <MenuItem value="Top">Top</MenuItem>
-                <MenuItem value="Bottom">Bottom</MenuItem>
-                <MenuItem value="Dress">Dress</MenuItem>
-              </Select>
+                sx={{ width: '70%' }}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">등록일자</Typography>
@@ -265,7 +280,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                     });
                   }}
                   slotProps={{
-                    textField: { variant: 'standard', className: 'custom-form-input' },
+                    textField: { variant: 'standard', className: 'custom-form-input', sx: { width: '70%' } },
                   }}
                   format="YYYY-MM-DD"
                 />
@@ -277,21 +292,59 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
           
           <Typography variant="h6" gutterBottom>세부 정보</Typography>
           <Stack spacing={2} mt={2.5}>
-            {Object.entries(styleDetailsData).filter(([key]) => key !== 'Category').map(([key, value]) => (
-              <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">{key}</Typography>
-                <TextField
-                  name={key}
-                  value={value}
-                  onChange={handleDetailsChange}
-                  variant="standard"
-                  className="custom-form-input"
-                  InputProps={{
-                  }}
-                  
-                />
-              </Box>
-            ))}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Fabric</Typography>
+              <Select
+                name="Fabric"
+                value={styleDetailsData['Fabric']}
+                onChange={handleDetailsChange}
+                variant="standard"
+                className="custom-form-input"
+                displayEmpty
+                sx={{ width: '70%' }}
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="Cotton">Cotton</MenuItem>
+                <MenuItem value="Polyester">Polyester</MenuItem>
+                <MenuItem value="Linen">Linen</MenuItem>
+                <MenuItem value="Denim">Denim</MenuItem>
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Size Spec</Typography>
+              <Select
+                name="Size Spec"
+                value={styleDetailsData['Size Spec']}
+                onChange={handleDetailsChange}
+                variant="standard"
+                className="custom-form-input"
+                displayEmpty
+                sx={{ width: '70%' }}
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="S-XL">S-XL</MenuItem>
+                <MenuItem value="XS-XXL">XS-XXL</MenuItem>
+                <MenuItem value="Free">Free</MenuItem>
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Colorway</Typography>
+              <Select
+                name="Colorway"
+                value={styleDetailsData['Colorway']}
+                onChange={handleDetailsChange}
+                variant="standard"
+                className="custom-form-input"
+                displayEmpty
+                sx={{ width: '70%' }}
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="Basic">Basic</MenuItem>
+                <MenuItem value="Pastel">Pastel</MenuItem>
+                <MenuItem value="Vivid">Vivid</MenuItem>
+                <MenuItem value="Dark">Dark</MenuItem>
+              </Select>
+            </Box>
           </Stack>
         </Paper>
 

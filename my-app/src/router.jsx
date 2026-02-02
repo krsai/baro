@@ -13,6 +13,7 @@ import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
 import StyleBoard from './pages/App/style/StyleBoard';
+import StyleDetail from './pages/App/style/StyleDetail';
 import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
@@ -88,7 +89,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'style/new',
-            element: <StyleBoard />,
+            element: <StyleDetail />,
           },
           {
             path: 'style/:styleId',
