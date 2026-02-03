@@ -72,11 +72,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     setStyleDetailsData(prev => ({ ...prev, [name]: value }));
   };
   
-    // Calculate totals for PT, AT, ST
-  const totalPt = processes.reduce((acc, p) => acc + (p.pt || 0), 0);
-  const totalAt = processes.reduce((acc, p) => acc + (p.at || 0), 0);
-  const totalSt = processes.reduce((acc, p) => acc + (p.st || 0), 0);
-
   const costData = [];
 
   const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
@@ -355,18 +350,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>{processes.length} 개</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 PT</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalPt.toFixed(1)} 분</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 AT</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalAt.toFixed(1)} 분</Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 ST</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>{totalSt.toFixed(1)} 분</Typography>
               </Box>
           </Stack>
 
