@@ -13,9 +13,9 @@ import {
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
-import StyleInfo from './StyleInfo';
-import StyleBom from './StyleBom';
-import StyleProcess from './StyleProcess';
+import StyleInfo from './styleDetail/StyleInfo';
+import StyleBom from './styleDetail/StyleBom';
+import StyleProcess from './styleDetail/StyleProcess';
 
 // Mock data for the list of styles
 const mockStyles = [

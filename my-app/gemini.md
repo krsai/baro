@@ -106,12 +106,34 @@
 
 일관성 있는 개발을 위해 다음 구조 규칙을 모든 도메인에 적용합니다.
 
-1.  **라우트와 화면의 분리**: `src/pages`는 라우팅 진입점 전용입니다. 실제 UI와 로직을 담은 화면(예: `StyleList.jsx`, `StyleDetail.jsx`)은 `src/pages/App/{도메인명}/` 폴더에서 관리합니다.
+### 7.1. Board / Detail 화면 구조 규칙
 
-2.  **List/Detail 패턴**: 모든 도메인은 목록(`List`)과 상세(`Detail`) 화면으로 구성됩니다.
-    -   **`List`**: 목록 표시, 검색, `Detail` 화면으로 네비게이션 역할만 수행합니다.
+- 각 도메인의 라우팅 진입점은 `{domain}.jsx` 파일이다.
+- 진입점 이후 최초로 렌더링되는 화면은 항상 Board이다.
+- Board는 해당 도메인의 업무 허브 역할을 하며, 리스트(List), 검색, 필터, 요약 정보 등을 포함할 수 있다.
+- Board는 단일 객체를 생성하거나 저장하지 않으며, Detail 화면으로의 진입만 담당한다.
+
+- Detail은 Board의 하위 개념이다.
+- Detail은 단일 객체의 생성/수정/상세 설정을 담당하는 작업 세션 단위 화면이다.
+- Detail은 항상 Board를 통해 진입한다.
+
+- Detail의 실제 UI는 `detail/` 하위 컴포넌트로 분리한다.
+- Detail 진입점은 상태 관리 및 저장 로직을 총괄하며, 하위 컨텐츠는 UI와 입력만 담당한다.
+
+**폴더 및 파일 구조 예시**
+
+- `style.jsx` : Style 도메인 라우팅 진입점
+- `style/styleboard.jsx` : Style 도메인의 Board 화면
+- `style/styledetail.jsx` : Style 도메인의 Detail 진입점
+- `style/detail/styleinfo.jsx` : Detail 하위 컨텐츠(탭 단위)
+
+### 7.2. 기타 구조 규칙
+1.  **라우트와 화면의 분리**: `src/pages`는 라우팅 진입점 전용입니다. 실제 UI와 로직을 담은 화면(예: `StyleBoard.jsx`, `StyleDetail.jsx`)은 `src/pages/App/{도메인명}/` 폴더에서 관리합니다.
+
+2.  **Board / Detail 패턴**: 모든 도메인은 Board와 Detail 화면으로 구성됩니다.
+    -   **`Board`**: 목록 표시, 검색, `Detail` 화면으로 네비게이션 역할만 수행합니다.
     -   **`Detail`**: 단일 데이터의 생성/수정 세션을 관리하며, 하위 탭들의 저장 로직을 총괄합니다.
-    -   `List`와 `Detail`은 ID로만 데이터를 주고받으며, 상태를 직접 공유하지 않습니다.
+    -   `Board`와 `Detail`은 ID로만 데이터를 주고받으며, 상태를 직접 공유하지 않습니다.
 
 4.  **스타일링 상속 구조 (Styling Cascade)**:
     -   **전역 스타일**: `src/index.jsx`에서 로드되는 CSS 파일들이 기본 스타일을 정의합니다.

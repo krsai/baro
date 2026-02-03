@@ -18,7 +18,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CloseIcon from '@mui/icons-material/Close';
-import SearchableSelect from '../../../components/SearchableSelect';
+import SearchableSelect from '../../../../components/SearchableSelect';
 
 // Mock data for master processes - in a real app, this would be fetched.
 const masterProcesses = [
