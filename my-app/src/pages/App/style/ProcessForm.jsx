@@ -98,7 +98,7 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
 
   const renderAddMode = () => (
     <>
-        <Box sx={{ p: 2, mb: 2, border: '1px solid #ddd', borderRadius: 2 }}>
+        <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
             <Grid container spacing={2} alignItems="center">
                 <Grid item xs={12} sm={4}>
                     <SearchableSelect
@@ -141,35 +141,43 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
                     </Button>
                 </Grid>
             </Grid>
-        </Box>
+        </Paper>
 
-        <Typography variant="subtitle1" sx={{ mb: 1 }}>추가할 공정 목록 ({addedProcesses.length}개)</Typography>
+        <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'bold' }}>추가할 공정 목록 ({addedProcesses.length}개)</Typography>
         <Paper variant='outlined'>
             <TableContainer sx={{ maxHeight: 'calc(100vh - 500px)' }}>
                 <Table stickyHeader size="small">
-                    <TableHead>
+                    <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                         <TableRow>
-                            <TableCell>공정명</TableCell>
-                            <TableCell align="right">수량</TableCell>
-                            <TableCell align="right">표준 시간 (ST)</TableCell>
-                            <TableCell align="right">총 시간</TableCell>
-                            <TableCell align="center">삭제</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>공정명</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }} align="right">수량</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }} align="right">표준 시간 (ST)</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }} align="right">총 시간</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }} align="center">삭제</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {addedProcesses.map((process) => (
-                        <TableRow key={process.instanceId} hover>
-                            <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
-                            <TableCell align="right">{process.quantity}</TableCell>
-                            <TableCell align="right">{formatTime(process.st)}</TableCell>
-                            <TableCell align="right">{formatTime(process.quantity * process.st)}</TableCell>
-                            <TableCell align="center">
-                            <IconButton size="small" onClick={() => handleRemoveFromList(process.instanceId)}>
-                                <DeleteIcon />
-                            </IconButton>
-                            </TableCell>
-                        </TableRow>
-                        ))}
+                        {addedProcesses.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={5} align="center" sx={{py: 4}}>
+                                    <Typography color="text.secondary">추가할 공정이 없습니다.</Typography>
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            addedProcesses.map((process) => (
+                                <TableRow key={process.instanceId} hover>
+                                    <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
+                                    <TableCell align="right">{process.quantity}</TableCell>
+                                    <TableCell align="right">{formatTime(process.st)}</TableCell>
+                                    <TableCell align="right">{formatTime(process.quantity * process.st)}</TableCell>
+                                    <TableCell align="center">
+                                    <IconButton size="small" onClick={() => handleRemoveFromList(process.instanceId)}>
+                                        <DeleteIcon fontSize="small"/>
+                                    </IconButton>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        )}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -178,7 +186,7 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
   );
 
   const renderEditMode = () => (
-    <Box sx={{p:2}}>
+    <Paper variant="outlined" sx={{p:2}}>
         <Grid container spacing={2}>
             <Grid item xs={12}>
                 <SearchableSelect
@@ -209,11 +217,11 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
                 />
             </Grid>
         </Grid>
-    </Box>
+    </Paper>
   );
 
   return (
-    <Box sx={{ width: isEditMode ? '40vw' : '50vw', p: 3, display: 'flex', flexDirection: 'column', height: '100vh', transition: 'width 0.3s' }}>
+    <Box sx={{ width: isEditMode ? '40vw' : '60vw', p: 3, display: 'flex', flexDirection: 'column', height: '100vh', transition: 'width 0.3s ease-in-out' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
             <Typography variant="h5" component="h2" fontWeight="bold">
                 {isEditMode ? '공정 수정' : '신규 공정 추가'}
@@ -223,14 +231,19 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
         
         <Divider sx={{mb: 2}}/>
 
-        <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1 }}>
+        <Box sx={{ flexGrow: 1, overflowY: 'auto', pr: 1, mr: -1, // Custom scrollbar style
+             '&::-webkit-scrollbar': { width: '8px' },
+             '&::-webkit-scrollbar-track': { bgcolor: 'transparent' },
+             '&::-webkit-scrollbar-thumb': { bgcolor: '#ccc', borderRadius: '4px' },
+             '&::-webkit-scrollbar-thumb:hover': { bgcolor: '#aaa' }
+        }}>
             {isEditMode ? renderEditMode() : renderAddMode()}
         </Box>
         
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1, flexShrink: 0 }}>
-            <Button variant="outlined" onClick={onClose}>취소</Button>
+        <Box sx={{ mt: 'auto', pt: 2, borderTop: 1, borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1, flexShrink: 0 }}>
+            <Button variant="text" color="secondary" onClick={onClose}>취소</Button>
             <Button onClick={handleSave} variant="contained" disabled={!isEditMode && addedProcesses.length === 0}>
-                {isEditMode ? '수정 내용 저장' : `${addedProcesses.length}개 공정 저장`}
+                {isEditMode ? '수정하기' : `${addedProcesses.length}개 공정 추가하기`}
             </Button>
         </Box>
     </Box>

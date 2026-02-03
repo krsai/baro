@@ -17,7 +17,7 @@ import {
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ProcessForm from '../attribute/ProcessForm';
+import ProcessForm from './ProcessForm';
 
 const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
