@@ -13,9 +13,9 @@ const WORKING_HOURS_PER_DAY = 8; // 하루 근무 시간
 // API로부터 받아올 데이터를 시뮬레이션하는 Mock 데이터
 const mockData = {
   tasks: {
-    'task-1': { id: 'task-1', content: '샘플 주문 1 (스타일 A)', quantity: 100, pt: 120 }, // pt in seconds
-    'task-2': { id: 'task-2', content: '샘플 주문 2 (스타일 B)', quantity: 250, pt: 180 },
-    'task-3': { id: 'task-3', content: '샘플 주문 3 (스타일 C)', quantity: 50, pt: 300 },
+    'task-1': { id: 'task-1', content: '샘플 주문 1 (스타일 A)', quantity: 100, pt: 3600 }, // 작업 시간 증가
+    'task-2': { id: 'task-2', content: '샘플 주문 2 (스타일 B)', quantity: 250, pt: 2400 }, // 작업 시간 증가
+    'task-3': { id: 'task-3', content: '샘플 주문 3 (스타일 C)', quantity: 50, pt: 5200 },  // 작업 시간 증가
   },
   columns: {
     'pending': {
