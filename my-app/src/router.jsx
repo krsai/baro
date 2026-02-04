@@ -8,12 +8,16 @@ import Business from './pages/app/Business';
 import Employee from './pages/app/Employee';
 import Role from './pages/app/Role';
 import Permission from './pages/app/Permission';
+import Line from './pages/app/Line';
 
 import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
 import StyleBoard from './pages/App/style/StyleBoard';
 import StyleDetail from './pages/App/style/StyleDetail';
+import Assignment from './pages/App/Assignment';
+import AssignmentBoard from './pages/App/assignment/AssignmentBoard';
+import AssignmentDetail from './pages/App/assignment/AssignmentDetail';
 import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
@@ -96,12 +100,34 @@ const router = createBrowserRouter([
             element: <StyleBoard />,
           },
           {
+            path: 'assignment',
+            element: <Assignment />,
+            children: [
+              {
+                index: true,
+                element: <AssignmentBoard />,
+              },
+              {
+                path: 'new',
+                element: <AssignmentDetail />,
+              },
+              {
+                path: ':assignmentId',
+                element: <AssignmentDetail />,
+              },
+            ],
+          },
+          {
             path: 'work-history',
             element: <Work />,
           },
           {
             path: 'attribute',
             element: <Attribute />,
+          },
+          {
+            path: 'line',
+            element: <Line />,
           },
         ],
       },

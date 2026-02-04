@@ -12,6 +12,7 @@ import {
   Chip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import FactoryDetail from './factoryDetail/FactoryDetail';
 
 // Mock Data: 초기 공장 데이터
 const initialFactories = [
@@ -48,12 +49,42 @@ const initialFactories = [
 ];
 
 const FactoryList = () => {
-  const [factories] = useState(initialFactories);
+  const [factories, setFactories] = useState(initialFactories);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [selectedFactory, setSelectedFactory] = useState(null);
+
+  const handleAddClick = () => {
+    setSelectedFactory(null);
+    setIsDetailOpen(true);
+  };
+
+  const handleRowDoubleClick = (factory) => {
+    setSelectedFactory(factory);
+    setIsDetailOpen(true);
+  };
+
+  const handleDetailClose = () => {
+    setIsDetailOpen(false);
+    setSelectedFactory(null);
+  };
+
+  const handleSave = (savedData) => {
+    if (savedData.id) {
+      // Update existing factory
+      setFactories(factories.map((f) => (f.id === savedData.id ? savedData : f)));
+    } else {
+      // Add new factory
+      const newFactory = { ...savedData, id: Date.now() }; // Use timestamp for temp ID
+      setFactories([...factories, newFactory]);
+    }
+    handleDetailClose();
+  };
+
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Button variant="contained" startIcon={<AddIcon />}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClick}>
           공장 추가
         </Button>
       </Box>
@@ -72,7 +103,12 @@ const FactoryList = () => {
             </TableHead>
             <TableBody>
               {factories.map((factory) => (
-                <TableRow key={factory.id} hover>
+                <TableRow
+                  key={factory.id}
+                  hover
+                  onDoubleClick={() => handleRowDoubleClick(factory)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>{factory.name}</TableCell>
                   <TableCell>{factory.address}</TableCell>
                   <TableCell>{factory.countryCode} {factory.phoneNumber}</TableCell>
@@ -92,6 +128,12 @@ const FactoryList = () => {
           </Table>
         </TableContainer>
       </Paper>
+      <FactoryDetail
+        open={isDetailOpen}
+        onClose={handleDetailClose}
+        onSave={handleSave}
+        factory={selectedFactory}
+      />
     </Box>
   );
 };

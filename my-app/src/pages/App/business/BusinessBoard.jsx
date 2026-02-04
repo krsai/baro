@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import BusinessDetail from './BusinessDetail';
-import FactoryList from './FactoryList';
+import FactoryBoard from './FactoryBoard';
 
 const BusinessBoard = () => {
   const [currentTab, setCurrentTab] = useState('business');
@@ -35,7 +35,7 @@ const BusinessBoard = () => {
         </ToggleButtonGroup>
       </Box>
       {currentTab === 'business' && <BusinessDetail />}
-      {currentTab === 'factory' && <FactoryList />}
+      {currentTab === 'factory' && <FactoryBoard />}
     </AppPageContainer>
   );
 };
