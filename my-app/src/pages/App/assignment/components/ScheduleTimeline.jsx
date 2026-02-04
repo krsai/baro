@@ -162,7 +162,6 @@ const ScheduleTimeline = ({ factories, columns, tasks }) => {
                                   />
                                 );
                               })}
-                              {provided.placeholder}
                             </TableCell>
                           )}
                         </Droppable>
