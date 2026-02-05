@@ -1,68 +1,23 @@
 /* src/styles/base.css */
 
-/* 1. Reset and Box-sizing */
-*, *::before, *::after {
-  box-sizing: border-box;
+/* 네이티브 앱과 유사한 사용성을 위해 전체 텍스트 선택을 방지합니다. */
+html,
+body,
+#root {
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* IE10+/Edge */
+  user-select: none;         /* Standard */
+  cursor: default;           /* 텍스트 위에서도 기본 화살표 커서 유지 */
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  line-height: 1.5;
-  color: #333; /* Default text color */
-  background-color: #f4f7f6; /* Default background */
-}
-
-/* Remove default margin from headings and paragraphs */
-h1, h2, h3, h4, h5, h6, p, ul, ol, figure, blockquote, dl, dd {
-  margin: 0;
-}
-
-/* Reset list styles */
-ul, ol {
-  list-style: none;
-  padding: 0;
-}
-
-/* Set core root defaults */
-html:focus-within {
-  scroll-behavior: smooth;
-}
-
-/* A elements that don't have a class get default styles */
-a:not([class]) {
-  text-decoration-skip-ink: auto;
-  color: var(--color-primary); /* Use theme color */
-}
-
-/* Make images easier to work with */
-img, picture, svg, video {
-  max-width: 100%;
-  display: block;
-}
-
-/* Inherit fonts for form controls */
-input, button, textarea, select {
-  font: inherit;
-}
-
-/* Remove all animations, transitions and scroll-behavior for people that prefer not to see them */
-@media (prefers-reduced-motion: reduce) {
-  html:focus-within {
-    scroll-behavior: auto;
-  }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* 입력 필드, 텍스트 영역 등은 선택 및 커서 조작이 가능해야 합니다. */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+  cursor: text;
 }
