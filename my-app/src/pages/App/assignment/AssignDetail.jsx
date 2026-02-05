@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 
-function AssignmentDetail() {
+function AssignDetail() {
   return (
     <AppPageContainer title="작업 배정 상세">
       <Typography variant="h6">작업 배정 상세</Typography>
@@ -13,4 +13,4 @@ function AssignmentDetail() {
   );
 }
 
-export default AssignmentDetail;
+export default AssignDetail;

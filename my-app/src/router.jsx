@@ -15,9 +15,9 @@ import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
 import StyleBoard from './pages/App/style/StyleBoard';
 import StyleDetail from './pages/App/style/StyleDetail';
-import Assignment from './pages/App/Assignment';
-import AssignmentBoard from './pages/App/assignment/AssignmentBoard';
-import AssignmentDetail from './pages/App/assignment/AssignmentDetail';
+import Assign from './pages/App/Assign';
+import AssignBoard from './pages/App/assignment/AssignBoard';
+import AssignDetail from './pages/App/assignment/AssignDetail';
 import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
@@ -106,15 +106,15 @@ const router = createBrowserRouter([
           },
           {
             path: 'assignment',
-            element: <Assignment />,
+            element: <Assign />,
           },
           {
             path: 'assignment/new',
-            element: <AssignmentDetail />,
+            element: <AssignDetail />,
           },
           {
             path: 'assignment/:assignmentId',
-            element: <AssignmentDetail />,
+            element: <AssignDetail />,
           },
           {
             path: 'work-history',

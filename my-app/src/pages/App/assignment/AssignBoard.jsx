@@ -1,12 +1,12 @@
 import React from 'react';
 
-const AssignmentBoard = () => {
+const AssignBoard = () => {
   return (
     <div>
-      <h1>Assignment Board</h1>
+      <h1>Assign Board</h1>
       {/* 리팩토링 시작점 */}
     </div>
   );
 };
 
-export default AssignmentBoard;
+export default AssignBoard;
