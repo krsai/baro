@@ -102,20 +102,14 @@ const router = createBrowserRouter([
           {
             path: 'assignment',
             element: <Assignment />,
-            children: [
-              {
-                index: true,
-                element: <AssignmentBoard />,
-              },
-              {
-                path: 'new',
-                element: <AssignmentDetail />,
-              },
-              {
-                path: ':assignmentId',
-                element: <AssignmentDetail />,
-              },
-            ],
+          },
+          {
+            path: 'assignment/new',
+            element: <AssignmentDetail />,
+          },
+          {
+            path: 'assignment/:assignmentId',
+            element: <AssignmentDetail />,
           },
           {
             path: 'work-history',

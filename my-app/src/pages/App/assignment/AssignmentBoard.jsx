@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Grid, Dialog, DialogTitle, DialogContent,
-  TextField, DialogActions, Button, CircularProgress, Box
+  Stack, Dialog, DialogTitle, DialogContent,
+  TextField, DialogActions, Button, CircularProgress, Box, Typography
 } from '@mui/material';
 import { DragDropContext } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -186,22 +186,20 @@ const AssignmentBoard = () => {
   return (
     <AppPageContainer>
       <DragDropContext onDragEnd={onDragEnd}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <PendingTasksPanel
-              column={data.columns['pending']}
-              tasks={data.columns['pending'].taskIds.map(taskId => data.tasks[taskId])}
-              onSplit={handleOpenSplitDialog}
-            />
-          </Grid>
-          <Grid item xs={12} md={9}>
+        <Stack spacing={3}>
+          <PendingTasksPanel
+            column={data.columns['pending']}
+            tasks={data.columns['pending'].taskIds.map(taskId => data.tasks[taskId])}
+            onSplit={handleOpenSplitDialog}
+          />
+          <Box sx={{ overflowX: 'auto' }}>
             <ScheduleTimeline
               factories={data.factories}
               columns={data.columns}
               tasks={data.tasks}
             />
-          </Grid>
-        </Grid>
+          </Box>
+        </Stack>
       </DragDropContext>
 
       {taskToSplit && (

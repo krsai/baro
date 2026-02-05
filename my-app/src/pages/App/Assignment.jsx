@@ -1,8 +1,8 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
+import AssignmentBoard from './assignment/AssignmentBoard';
 
 function Assignment() {
-  return <Outlet />;
+  return <AssignmentBoard />;
 }
 
 export default Assignment;
