@@ -79,9 +79,11 @@
 *이 섹션은 `src/layouts/MainLayout.jsx`의 `menuItems`를 기준으로 한 좌측 네비게이션 메뉴의 실제 구조를 정의합니다.*
 
 - **대시보드 (Dashboard)**
-- **주문 관리 (Order Management)**
+- **영업 관리 (Sales Management)**
+  - 주문 (Order)
   - 스타일 관리 (Style Management)
 - **생산 관리 (Production Management)**
+  - 작업 배정 (Task Assignment)
   - 작업 기록 (Work History)
 - **조직 관리 (Organization Management)**
   - 사업체 관리 (Business Management)

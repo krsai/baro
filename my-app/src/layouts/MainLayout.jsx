@@ -39,6 +39,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DnsIcon from '@mui/icons-material/Dns';
 import ContentCut from '@mui/icons-material/ContentCut';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import ListAltIcon from '@mui/icons-material/ListAlt';
 
 const DRAWER_WIDTH = 260;
 
@@ -72,14 +73,14 @@ const MainLayout = () => {
       isParent: false,
     },
     {
-      label: '주문 관리',
+      label: '영업 관리',
       icon: <ShoppingCartIcon />,
       isParent: true,
       isOpen: orderOpen,
       setOpen: setOrderOpen,
       children: [
-        { label: '스타일 관리', icon: <StyleIcon />, path: '/style' },
-        { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
+        { label: '주문', icon: <ListAltIcon />, path: '/order' },
+        { label: '스타일', icon: <StyleIcon />, path: '/style' },
       ],
     },
     {
@@ -89,6 +90,7 @@ const MainLayout = () => {
       isOpen: productionOpen,
       setOpen: setProductionOpen,
       children: [
+        { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
         { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
       ],
     },

@@ -22,6 +22,7 @@ import Work from './pages/App/Work';
 import AuthCallback from './pages/auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
 import Attribute from './pages/App/Attribute';
+import Order from './pages/App/Order.jsx';
 
 // 보호된 라우트들을 위한 "에이전트" 또는 "게이트키퍼" 역할을 하는 컴포넌트입니다.
 // 사용자가 인증되었는지 확인하고, 인증되지 않은 경우 로그인 페이지로 리디렉션합니다.
@@ -86,6 +87,10 @@ const router = createBrowserRouter([
           {
             path: 'customer',
             element: <Customer />,
+          },
+          {
+            path: 'order',
+            element: <Order />,
           },
           {
             path: 'style',
