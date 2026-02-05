@@ -6,15 +6,19 @@ import { AuthProvider } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
 import router from './router';
 import theme from './theme';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AppProvider>
-        <AuthProvider>
-          <RouterProvider router={router} />
-        </AuthProvider>
+        <DndProvider backend={HTML5Backend}>
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
+        </DndProvider>
       </AppProvider>
     </ThemeProvider>
   );
