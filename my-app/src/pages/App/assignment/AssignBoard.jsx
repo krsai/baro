@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useRef, useState } from 'react';
 import { Box, Button, Grid, Stack, Typography } from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -78,6 +78,18 @@ const buildDateKey = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const buildDays = (baseDate, count) => {
+  return Array.from({ length: count }).map((_, index) => {
+    const date = new Date(baseDate);
+    date.setDate(baseDate.getDate() + index);
+    const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+    return {
+      key: buildDateKey(date),
+      label: `${date.getMonth() + 1}/${date.getDate()} (${weekday})`,
+    };
+  });
 };
 
 const getUsageSeconds = (assignment) => {
@@ -393,19 +405,46 @@ const AssignBoard = () => {
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [activeDrag, setActiveDrag] = useState(null);
+  const startDateRef = useRef(new Date());
+  const [days, setDays] = useState(() => buildDays(startDateRef.current, 10));
 
-  const days = useMemo(() => {
-    const base = new Date();
-    return Array.from({ length: 10 }).map((_, index) => {
-      const date = new Date(base);
-      date.setDate(base.getDate() + index);
-      const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
-      return {
-        key: buildDateKey(date),
-        label: `${date.getMonth() + 1}/${date.getDate()} (${weekday})`,
-      };
-    });
-  }, []);
+  const ensureDaysLength = (minLength) => {
+    if (days.length >= minLength) return days;
+    const next = buildDays(startDateRef.current, minLength);
+    setDays(next);
+    return next;
+  };
+
+  const extendDays = (extra = 10) => {
+    return ensureDaysLength(days.length + extra);
+  };
+
+  const tryPlanAssignment = (params) => {
+    let planned = planAssignment({ ...params, totalDays: days.length });
+    if (!planned) {
+      const extended = extendDays(10);
+      planned = planAssignment({ ...params, totalDays: extended.length });
+    }
+    return planned;
+  };
+
+  const tryRebuildLineWithInsert = (params) => {
+    let result = rebuildLineWithInsert({ ...params, totalDays: days.length });
+    if (!result) {
+      const extended = extendDays(10);
+      result = rebuildLineWithInsert({ ...params, totalDays: extended.length });
+    }
+    return result;
+  };
+
+  const tryRebuildLineWithChain = (params) => {
+    let result = rebuildLineWithChain({ ...params, totalDays: days.length });
+    if (!result) {
+      const extended = extendDays(10);
+      result = rebuildLineWithChain({ ...params, totalDays: extended.length });
+    }
+    return result;
+  };
 
   const assignedCardIds = useMemo(() => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));
@@ -522,12 +561,11 @@ const AssignBoard = () => {
       };
 
       if (!targetOnDay) {
-        const planned = planAssignment({
+        const planned = tryPlanAssignment({
           startIndex: dayIndex,
           totalSeconds: card.totalSeconds,
           lineId,
           assignments,
-          totalDays: days.length,
         });
 
         if (planned) {
@@ -544,13 +582,12 @@ const AssignBoard = () => {
 
         const nextAssignment = getNextAssignmentAfterDay(assignments, lineId, dayIndex);
         if (nextAssignment) {
-          const pushed = rebuildLineWithInsert({
+          const pushed = tryRebuildLineWithInsert({
             lineId,
             insertIndex: dayIndex,
             insertBeforeId: nextAssignment.id,
             insertItem: newItem,
             assignments,
-            totalDays: days.length,
           });
 
           if (pushed) {
@@ -561,13 +598,12 @@ const AssignBoard = () => {
         return;
       }
 
-      const pushed = rebuildLineWithInsert({
+      const pushed = tryRebuildLineWithInsert({
         lineId,
         insertIndex: dayIndex,
         insertAfterId: targetOnDay.id,
         insertItem: newItem,
         assignments,
-        totalDays: days.length,
       });
 
       if (pushed) {
@@ -588,12 +624,11 @@ const AssignBoard = () => {
         const totalSeconds = getAssignmentTotalSeconds(target);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
-          const planned = planAssignment({
+          const planned = tryPlanAssignment({
             startIndex: dayIndex,
             totalSeconds,
             lineId,
             assignments: filtered,
-            totalDays: days.length,
           });
 
           if (planned) {
@@ -615,14 +650,13 @@ const AssignBoard = () => {
         }
 
         if (insertAfterId || insertBeforeId) {
-          const pushed = rebuildLineWithInsert({
+          const pushed = tryRebuildLineWithInsert({
             lineId,
             insertIndex: dayIndex,
             insertAfterId,
             insertBeforeId,
             insertItem: { ...target, totalSeconds },
             assignments: filtered,
-            totalDays: days.length,
           });
 
           if (pushed) return pushed;
@@ -649,13 +683,12 @@ const AssignBoard = () => {
       const chain = buildConnectedChain(lineItems, targetIndex);
       if (chain.length === 0) return prev;
 
-      const moved = rebuildLineWithChain({
+      const moved = tryRebuildLineWithChain({
         lineId: target.lineId,
         insertIndex,
         insertAfterId: prevItem.id,
         chainItems: chain,
         assignments: prev,
-        totalDays: days.length,
       });
 
       return moved || prev;

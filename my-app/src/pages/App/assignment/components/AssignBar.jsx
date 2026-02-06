@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { useDraggable } from '@dnd-kit/core';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
@@ -8,8 +8,14 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
     data: { assignmentId: assignment.id, type: 'assignment' },
   });
 
+  const { setNodeRef: setDropRef } = useDroppable({
+    id: `assign-drop-${assignment.id}`,
+    data: { assignmentId: assignment.id, type: 'assignment-drop' },
+  });
+
   const setNodeRef = (node) => {
     setDragRef(node);
+    setDropRef(node);
   };
 
   const style = {
