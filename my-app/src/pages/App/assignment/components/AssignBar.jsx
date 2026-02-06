@@ -2,7 +2,23 @@
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
-const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
+const getDurationDays = (assignment) => {
+  const startPercent = (assignment.startDayPercent ?? 100) / 100;
+  const endPercent = (assignment.endDayPercent ?? 100) / 100;
+  if (assignment.startIndex === assignment.endIndex) {
+    return startPercent;
+  }
+  const fullDays = Math.max(assignment.endIndex - assignment.startIndex - 1, 0);
+  return startPercent + fullDays + endPercent;
+};
+
+const formatDuration = (daysValue) => {
+  const rounded = Math.round(daysValue * 10) / 10;
+  if (Number.isInteger(rounded)) return `${rounded}일`;
+  return `${rounded}일`;
+};
+
+const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
@@ -26,6 +42,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
   const mainColor = assignment.color || '#CDEBD7';
   const stripe = assignment.stripeColor || '#9ED5B3';
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
+  const durationValue = assignment.workDays ?? getDurationDays(assignment);
+  const durationLabel = formatDuration(durationValue);
 
   return (
     <Box
@@ -37,20 +55,32 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
         height: assignment.heightPx,
         borderRadius: 2,
         px: 1.5,
+        pr: 6,
         display: 'flex',
         alignItems: 'center',
         backgroundColor: mainColor,
         color: '#1f2a3a',
         width: assignment.widthPx,
-        minWidth: 160,
+        minWidth: 0,
         overflow: 'visible',
-        cursor: 'grab',
+        cursor: isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.06)',
         zIndex: 20,
       }}
       style={style}
-      title={`${assignment.orderNo} · ${assignment.customer} · ${assignment.label}`}
+      title={`${assignment.customer} · ${assignment.label}`}
+      onPointerDown={(event) => {
+        if (event.button !== 2) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSplit?.(assignment.id);
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSplit?.(assignment.id);
+      }}
       {...attributes}
       {...listeners}
     >
@@ -95,44 +125,65 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           width: '100%',
+          justifyContent: 'flex-start',
         }}
       >
-      {previewUrl ? (
-        <Box
-          component="img"
-          src={previewUrl}
-          alt={assignment.label}
+        {previewUrl ? (
+          <Box
+            component="img"
+            src={previewUrl}
+            alt={assignment.label}
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: 1,
+              objectFit: 'cover',
+              border: '1px solid rgba(0,0,0,0.08)',
+              mr: 1.2,
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: 1,
+              backgroundColor: stripe,
+              mr: 1.2,
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <Typography
+          variant="body2"
           sx={{
-            width: 32,
-            height: 32,
-            borderRadius: 1,
-            objectFit: 'cover',
-            border: '1px solid rgba(0,0,0,0.08)',
-            mr: 1.2,
-            flexShrink: 0,
+            fontWeight: 600,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            textAlign: 'left',
           }}
-        />
-      ) : (
-        <Box
-          sx={{
-            width: 32,
-            height: 32,
-            borderRadius: 1,
-            backgroundColor: stripe,
-            mr: 1.2,
-            flexShrink: 0,
-          }}
-        />
-      )}
-      <Typography variant="body2" sx={{ fontWeight: 700, mr: 1 }}>
-        {assignment.orderNo}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 600, mr: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {assignment.label}
-      </Typography>
-      <Typography variant="caption" sx={{ opacity: 0.8 }}>
-        {assignment.customer}
-      </Typography>
+        >
+          {`${assignment.customer} · ${assignment.label} · 수량 ${assignment.quantity ?? '-'}`}
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          position: 'absolute',
+          right: 8,
+          top: 8,
+          px: 0.8,
+          py: 0.2,
+          borderRadius: 1,
+          backgroundColor: 'rgba(255,255,255,0.7)',
+          fontSize: 11,
+          fontWeight: 700,
+          color: '#364152',
+        }}
+      >
+        {durationLabel}
       </Box>
     </Box>
   );

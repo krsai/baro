@@ -8,8 +8,9 @@ const ROW_HEIGHT = 74;
 const BAR_HEIGHT = 50;
 const BAR_GAP = 4;
 
-const DropCell = ({ id }) => {
+const DropCell = ({ id, isHoliday }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
+  const baseColor = isHoliday ? '#FCECEF' : 'transparent';
 
   return (
     <Box
@@ -19,7 +20,7 @@ const DropCell = ({ id }) => {
         height: ROW_HEIGHT,
         border: '1px dashed #e2e6ef',
         zIndex: 0,
-        backgroundColor: isOver ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+        backgroundColor: isOver ? 'rgba(25, 118, 210, 0.12)' : baseColor,
         boxSizing: 'border-box',
       }}
     />
@@ -73,12 +74,44 @@ const getOrderKey = (assignment) => {
   return assignment.startIndex + offset;
 };
 
-const getNextStartIndex = (assignment) => {
+const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
+
+const getNextStartIndex = (assignment, days) => {
   const endPercent = assignment.endDayPercent ?? 100;
-  return endPercent >= 100 ? assignment.endIndex + 1 : assignment.endIndex;
+  if (endPercent < 100) return assignment.endIndex;
+  let nextIndex = assignment.endIndex + 1;
+  if (!Array.isArray(days)) return nextIndex;
+  while (nextIndex < days.length && isNonWorkingDay(days[nextIndex])) {
+    nextIndex += 1;
+  }
+  return nextIndex;
 };
 
-const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
+const getWorkingDuration = (assignment, days) => {
+  const startPercent = (assignment.startDayPercent ?? 100) / 100;
+  const endPercent = (assignment.endDayPercent ?? 100) / 100;
+  let total = 0;
+
+  for (let i = assignment.startIndex; i <= assignment.endIndex; i += 1) {
+    const day = days?.[i];
+    if (isNonWorkingDay(day)) continue;
+    if (assignment.startIndex === assignment.endIndex) {
+      total += startPercent;
+      continue;
+    }
+    if (i === assignment.startIndex) {
+      total += startPercent;
+    } else if (i === assignment.endIndex) {
+      total += endPercent;
+    } else {
+      total += 1;
+    }
+  }
+
+  return total;
+};
+
+const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => {
   const assignmentsByLine = useMemo(() => {
     const map = new Map();
     lines.forEach((line) => map.set(line.id, []));
@@ -91,16 +124,31 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
-      <TableContainer>
-        <Table stickyHeader size="small">
+      <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+        <Table stickyHeader size="small" sx={{ minWidth: '100%', width: 'max-content' }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: 190 }}>라인</TableCell>
-              {days.map((day) => (
-                <TableCell key={day.key} align="center" sx={{ minWidth: CELL_WIDTH }}>
-                  <Typography variant="caption">{day.label}</Typography>
-                </TableCell>
-              ))}
+              {days.map((day) => {
+                const isHoliday = day.isSunday || day.isHoliday;
+                return (
+                  <TableCell
+                    key={day.key}
+                    align="center"
+                    sx={{
+                      minWidth: CELL_WIDTH,
+                      backgroundColor: isHoliday ? '#FCECEF' : 'inherit',
+                    }}
+                  >
+                    <Typography
+                      variant="caption"
+                      sx={{ color: isHoliday ? '#B42334' : 'text.secondary', fontWeight: isHoliday ? 700 : 500 }}
+                    >
+                      {day.label}
+                    </Typography>
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -113,7 +161,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
               sortedByStart.forEach((item, index) => {
                 if (index === 0) return;
                 const prev = sortedByStart[index - 1];
-                const expected = getNextStartIndex(prev);
+                const expected = getNextStartIndex(prev, days);
                 if (item.startIndex > expected) {
                   linkableIds.add(item.id);
                 }
@@ -124,11 +172,11 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
               return (
                 <TableRow key={line.id} hover>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                      {line.name}
-                    </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      인원 {line.headcount} · {line.shift}
+                      {line.factoryName}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {line.name}({line.headcount}명)
                     </Typography>
                   </TableCell>
                   <TableCell colSpan={days.length} sx={{ p: 0 }}>
@@ -143,9 +191,16 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
                         backgroundColor: '#fbfcfe',
                       }}
                     >
-                      {days.map((day, dayIndex) => (
-                        <DropCell key={`${line.id}-${day.key}`} id={`${line.id}::${dayIndex}`} />
-                      ))}
+                      {days.map((day, dayIndex) => {
+                        const isHoliday = day.isSunday || day.isHoliday;
+                        return (
+                          <DropCell
+                            key={`${line.id}-${day.key}`}
+                            id={`${line.id}::${dayIndex}`}
+                            isHoliday={isHoliday}
+                          />
+                        );
+                      })}
 
                       {placed.map((assignment) => {
                         const startOffset = (assignment.startDayOffsetPercent ?? 0) / 100;
@@ -156,6 +211,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
                           assignment.startIndex === assignment.endIndex
                             ? startPercent
                             : startPercent + fullDays + endPercent;
+                        const workDays = getWorkingDuration(assignment, days);
 
                         return (
                           <AssignBar
@@ -166,9 +222,11 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
                               widthPx: Math.max(widthCells * CELL_WIDTH, 120),
                               topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
                               heightPx: BAR_HEIGHT,
+                              workDays,
                             }}
                             showLinkPrev={linkableIds.has(assignment.id)}
                             onLinkPrev={onLinkPrev}
+                            onSplit={onSplit}
                           />
                         );
                       })}

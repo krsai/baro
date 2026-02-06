@@ -1,26 +1,46 @@
 ﻿import React from 'react';
-import { Box, Chip, Paper, Stack, Typography } from '@mui/material';
-import { useDraggable } from '@dnd-kit/core';
-
-const statusColor = {
-  PT: 'warning',
-  ST: 'success',
-  NONE: 'default',
-};
+import { Box, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const statusLabel = {
-  PT: 'PT 기반',
-  ST: 'ST 기반',
+  PT: 'PT 기준',
+  ST: 'ST 기준',
   NONE: '기준 없음',
 };
 
-const StyleCard = ({ card, onSelect }) => {
-  const isDisabled = card.status === 'NONE';
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+const statusPalette = {
+  PT: { border: '#9FB9F2', text: '#3E5E9A' },
+  ST: { border: '#9ED5B3', text: '#2F7A4B' },
+  NONE: { border: '#E6A8B6', text: '#A34355' },
+};
+
+const hasPt = (card) => Number(card.totalPt) > 0;
+const hasSt = (card) =>
+  Array.isArray(card.totalStByFactory) && card.totalStByFactory.some((item) => item.seconds > 0);
+
+const getCardBasis = (card) => {
+  if (!hasPt(card) && !hasSt(card)) return 'NONE';
+  if (card.status === 'ST') return 'ST';
+  return 'PT';
+};
+
+const StyleCard = ({ card, onSelect, onSplit }) => {
+  const basis = getCardBasis(card);
+  const isDisabled = basis === 'NONE';
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `card-${card.id}`,
     data: { cardId: card.id, type: 'card' },
     disabled: isDisabled,
   });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `card-drop-${card.id}`,
+    data: { cardId: card.id, type: 'card-drop' },
+  });
+
+  const setNodeRef = (node) => {
+    setDragRef(node);
+    setDropRef(node);
+  };
 
   const style = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
@@ -28,12 +48,27 @@ const StyleCard = ({ card, onSelect }) => {
   };
 
   const previewUrl = card.previewUrl || card.imageUrl || card.thumbnailUrl || '';
+  const palette = statusPalette[basis] || statusPalette.NONE;
+  const customerLabel = card.orderNo ? `${card.customer} · ${card.orderNo}` : card.customer;
+  const showCustomerTooltip = customerLabel.length > 14;
+  const showStyleTooltip = card.styleName.length > 16;
 
   return (
     <Paper
       ref={setNodeRef}
       variant="outlined"
       onClick={() => onSelect?.(card)}
+      onPointerDown={(event) => {
+        if (event.button !== 2) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSplit?.();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSplit?.();
+      }}
       sx={{
         p: 1.5,
         cursor: isDisabled ? 'not-allowed' : 'grab',
@@ -43,6 +78,7 @@ const StyleCard = ({ card, onSelect }) => {
         '&:hover': isDisabled
           ? {}
           : { borderColor: 'primary.main', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' },
+        borderColor: isOver ? 'primary.light' : undefined,
       }}
       style={style}
       {...attributes}
@@ -85,29 +121,31 @@ const StyleCard = ({ card, onSelect }) => {
 
         <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="subtitle2">{card.customer}</Typography>
+            <Tooltip title={customerLabel} disableHoverListener={!showCustomerTooltip}>
+              <Typography variant="subtitle2" noWrap>
+                {customerLabel}
+              </Typography>
+            </Tooltip>
             <Chip
               size="small"
-              color={statusColor[card.status]}
-              label={statusLabel[card.status]}
-              variant={card.status === 'NONE' ? 'outlined' : 'filled'}
+              label={statusLabel[basis]}
+              variant="outlined"
+              sx={{
+                borderColor: palette.border,
+                color: palette.text,
+                backgroundColor: 'transparent',
+                fontWeight: 600,
+              }}
             />
           </Box>
-          <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-            {card.styleName}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-            수량: {card.quantity} | 공정: {card.processCount}개
-          </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-            PT 합계: {card.totalPt}초
-            {card.totalStByFactory ? ` | ST(공장별): ${card.totalStByFactory.join(', ')}` : ''}
-          </Typography>
-          {isDisabled && (
-            <Typography variant="caption" color="error">
-              기준 정보 없음
+          <Tooltip title={card.styleName} disableHoverListener={!showStyleTooltip}>
+            <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
+              {card.styleName}
             </Typography>
-          )}
+          </Tooltip>
+          <Typography variant="caption" color="text.secondary" noWrap>
+            수량: {card.quantity}
+          </Typography>
         </Stack>
       </Box>
     </Paper>
