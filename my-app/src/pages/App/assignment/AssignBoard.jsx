@@ -36,6 +36,33 @@ const mockCards = [
     status: 'NONE',
     totalSeconds: 0,
   },
+  {
+    id: 'C-004',
+    customer: '루나',
+    styleName: '코튼 트렌치 코트',
+    quantity: 350,
+    processCount: 10,
+    status: 'PT',
+    totalSeconds: 82000,
+  },
+  {
+    id: 'C-005',
+    customer: '미라',
+    styleName: '릴랙스 니트 팬츠',
+    quantity: 900,
+    processCount: 8,
+    status: 'ST',
+    totalSeconds: 54000,
+  },
+  {
+    id: 'C-006',
+    customer: '노바',
+    styleName: '라운드 스웻 셋업',
+    quantity: 420,
+    processCount: 6,
+    status: 'NONE',
+    totalSeconds: 0,
+  },
 ];
 
 const mockLines = [
@@ -133,13 +160,33 @@ const getAssignmentStartKey = (assignment) => {
   return assignment.startIndex + offset;
 };
 
+const getTargetOnDay = (assignments, lineId, dayIndex) => {
+  const candidates = assignments.filter(
+    (item) => item.lineId === lineId && dayIndex >= item.startIndex && dayIndex <= item.endIndex
+  );
+  if (candidates.length === 0) return null;
+  return candidates.reduce((earliest, item) =>
+    getAssignmentStartKey(item) < getAssignmentStartKey(earliest) ? item : earliest
+  );
+};
+
 const getAssignmentTotalSeconds = (assignment) => {
   return getUsageSeconds(assignment).reduce((sum, item) => sum + item.seconds, 0);
 };
 
-const rebuildLineWithPush = ({
+const getNextStartIndex = (assignment) => {
+  if (!assignment) return null;
+  const usage = getUsageSeconds(assignment);
+  const lastUsage = usage.find((item) => item.dayIndex === assignment.endIndex);
+  if (!lastUsage) return assignment.endIndex;
+  return lastUsage.seconds >= DAILY_CAPACITY_SECONDS ? assignment.endIndex + 1 : assignment.endIndex;
+};
+
+const rebuildLineWithInsert = ({
   lineId,
-  targetId,
+  insertIndex,
+  insertAfterId,
+  insertBeforeId,
   insertItem,
   assignments,
   totalDays,
@@ -149,18 +196,150 @@ const rebuildLineWithPush = ({
     .slice()
     .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
 
-  const targetIndex = lineItems.findIndex((item) => item.id === targetId);
-  if (targetIndex === -1) return null;
+  if (insertIndex == null || insertIndex >= totalDays) return null;
 
-  const before = lineItems.slice(0, targetIndex + 1);
-  const after = lineItems.slice(targetIndex + 1);
+  let before = [];
+  let after = [];
+
+  if (insertAfterId) {
+    const targetIndex = lineItems.findIndex((item) => item.id === insertAfterId);
+    if (targetIndex === -1) return null;
+    before = lineItems.slice(0, targetIndex + 1);
+    after = lineItems.slice(targetIndex + 1);
+    insertIndex = getNextStartIndex(before[before.length - 1]);
+    if (insertIndex == null || insertIndex >= totalDays) return null;
+  } else if (insertBeforeId) {
+    const targetIndex = lineItems.findIndex((item) => item.id === insertBeforeId);
+    if (targetIndex === -1) return null;
+    before = lineItems.slice(0, targetIndex);
+    after = lineItems.slice(targetIndex);
+  } else {
+    lineItems.forEach((item) => {
+      if (item.endIndex < insertIndex) {
+        before.push(item);
+      } else {
+        after.push(item);
+      }
+    });
+  }
 
   const placed = before.map((item) => ({ ...item }));
-  let cursorStart = placed[placed.length - 1].endIndex;
+  let planned = planAssignment({
+    startIndex: insertIndex,
+    totalSeconds: insertItem.totalSeconds ?? getAssignmentTotalSeconds(insertItem),
+    lineId,
+    assignments: placed,
+    totalDays,
+  });
 
-  const queue = [insertItem, ...after];
+  if (!planned) return null;
+
+  placed.push({
+    ...insertItem,
+    lineId,
+    ...planned,
+  });
+
+  let cursorStart = getNextStartIndex(placed[placed.length - 1]);
+
+  const queue = after;
 
   for (const item of queue) {
+    if (cursorStart == null || cursorStart >= totalDays) return null;
+    const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item);
+    planned = planAssignment({
+      startIndex: cursorStart,
+      totalSeconds,
+      lineId,
+      assignments: placed,
+      totalDays,
+    });
+
+    if (!planned) return null;
+
+    placed.push({
+      ...item,
+      lineId,
+      ...planned,
+    });
+
+    cursorStart = getNextStartIndex(placed[placed.length - 1]);
+  }
+
+  return [
+    ...assignments.filter((item) => item.lineId !== lineId),
+    ...placed,
+  ];
+};
+
+const getNextAssignmentAfterDay = (items, lineId, dayIndex, excludeId) => {
+  const sorted = items
+    .filter((item) => item.lineId === lineId && item.id !== excludeId)
+    .slice()
+    .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+
+  return sorted.find((item) => item.startIndex > dayIndex) || null;
+};
+
+const buildConnectedChain = (items, startIndex) => {
+  if (startIndex == null || startIndex < 0) return [];
+  const chain = [];
+  for (let i = startIndex; i < items.length; i += 1) {
+    if (i === startIndex) {
+      chain.push(items[i]);
+      continue;
+    }
+    const expectedStart = getNextStartIndex(chain[chain.length - 1]);
+    if (items[i].startIndex === expectedStart) {
+      chain.push(items[i]);
+    } else {
+      break;
+    }
+  }
+  return chain;
+};
+
+const rebuildLineWithChain = ({
+  lineId,
+  insertIndex,
+  insertAfterId,
+  chainItems,
+  assignments,
+  totalDays,
+}) => {
+  if (!Array.isArray(chainItems) || chainItems.length === 0) return null;
+  const chainIds = new Set(chainItems.map((item) => item.id));
+  const lineItems = assignments
+    .filter((item) => item.lineId === lineId && !chainIds.has(item.id))
+    .slice()
+    .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+
+  if (insertIndex == null || insertIndex >= totalDays) return null;
+
+  let before = [];
+  let after = [];
+
+  if (insertAfterId) {
+    const targetIndex = lineItems.findIndex((item) => item.id === insertAfterId);
+    if (targetIndex === -1) return null;
+    before = lineItems.slice(0, targetIndex + 1);
+    after = lineItems.slice(targetIndex + 1);
+    insertIndex = getNextStartIndex(before[before.length - 1]);
+    if (insertIndex == null || insertIndex >= totalDays) return null;
+  } else {
+    lineItems.forEach((item) => {
+      if (item.endIndex < insertIndex) {
+        before.push(item);
+      } else {
+        after.push(item);
+      }
+    });
+  }
+
+  const placed = before.map((item) => ({ ...item }));
+  let cursorStart = insertIndex;
+
+  for (const item of chainItems) {
     const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item);
     const planned = planAssignment({
       startIndex: cursorStart,
@@ -178,7 +357,29 @@ const rebuildLineWithPush = ({
       ...planned,
     });
 
-    cursorStart = planned.endIndex;
+    cursorStart = getNextStartIndex(placed[placed.length - 1]);
+  }
+
+  for (const item of after) {
+    if (cursorStart == null || cursorStart >= totalDays) return null;
+    const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item);
+    const planned = planAssignment({
+      startIndex: cursorStart,
+      totalSeconds,
+      lineId,
+      assignments: placed,
+      totalDays,
+    });
+
+    if (!planned) return null;
+
+    placed.push({
+      ...item,
+      lineId,
+      ...planned,
+    });
+
+    cursorStart = getNextStartIndex(placed[placed.length - 1]);
   }
 
   return [
@@ -274,16 +475,14 @@ const AssignBoard = () => {
       targetOnDay = assignments.find((item) => item.id === targetId);
       if (targetOnDay) {
         lineId = targetOnDay.lineId;
-        dayIndex = targetOnDay.endIndex;
+        dayIndex = targetOnDay.startIndex;
       }
     } else {
       const dropId = over.id;
       const [lineIdRaw, dayIndexRaw] = String(dropId).split('::');
       lineId = lineIdRaw;
       dayIndex = Number(dayIndexRaw);
-      targetOnDay = assignments.find(
-        (item) => item.lineId === lineId && dayIndex >= item.startIndex && dayIndex <= item.endIndex
-      );
+      targetOnDay = getTargetOnDay(assignments, lineId, dayIndex);
     }
 
     if (!lineId || dayIndex === null) {
@@ -322,42 +521,58 @@ const AssignBoard = () => {
         totalSeconds: card.totalSeconds,
       };
 
-      if (targetOnDay) {
-        const pushed = rebuildLineWithPush({
+      if (!targetOnDay) {
+        const planned = planAssignment({
+          startIndex: dayIndex,
+          totalSeconds: card.totalSeconds,
           lineId,
-          targetId: targetOnDay.id,
-          insertItem: newItem,
           assignments,
           totalDays: days.length,
         });
 
-        if (pushed) {
-          setAssignments(pushed);
+        if (planned) {
+          setAssignments((prev) => [
+            ...prev,
+            {
+              ...newItem,
+              ...planned,
+            },
+          ]);
+          setActiveDrag(null);
+          return;
+        }
+
+        const nextAssignment = getNextAssignmentAfterDay(assignments, lineId, dayIndex);
+        if (nextAssignment) {
+          const pushed = rebuildLineWithInsert({
+            lineId,
+            insertIndex: dayIndex,
+            insertBeforeId: nextAssignment.id,
+            insertItem: newItem,
+            assignments,
+            totalDays: days.length,
+          });
+
+          if (pushed) {
+            setAssignments(pushed);
+          }
         }
         setActiveDrag(null);
         return;
       }
 
-      const planned = planAssignment({
-        startIndex: dayIndex,
-        totalSeconds: card.totalSeconds,
+      const pushed = rebuildLineWithInsert({
         lineId,
+        insertIndex: dayIndex,
+        insertAfterId: targetOnDay.id,
+        insertItem: newItem,
         assignments,
         totalDays: days.length,
       });
 
-      if (!planned) {
-        setActiveDrag(null);
-        return;
+      if (pushed) {
+        setAssignments(pushed);
       }
-
-      setAssignments((prev) => [
-        ...prev,
-        {
-          ...newItem,
-          ...planned,
-        },
-      ]);
       setActiveDrag(null);
       return;
     }
@@ -370,39 +585,81 @@ const AssignBoard = () => {
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
-        if (targetOnDay && targetOnDay.id !== assignmentId) {
-          const pushed = rebuildLineWithPush({
+        const totalSeconds = getAssignmentTotalSeconds(target);
+
+        if (!targetOnDay || targetOnDay.id === assignmentId) {
+          const planned = planAssignment({
+            startIndex: dayIndex,
+            totalSeconds,
             lineId,
-            targetId: targetOnDay.id,
-            insertItem: { ...target, totalSeconds: getAssignmentTotalSeconds(target) },
+            assignments: filtered,
+            totalDays: days.length,
+          });
+
+          if (planned) {
+            return filtered.concat({
+              ...target,
+              lineId,
+              ...planned,
+            });
+          }
+        }
+
+        let insertAfterId = null;
+        let insertBeforeId = null;
+        if (targetOnDay && targetOnDay.id !== assignmentId) {
+          insertAfterId = targetOnDay.id;
+        } else {
+          const nextAssignment = getNextAssignmentAfterDay(filtered, lineId, dayIndex, assignmentId);
+          if (nextAssignment) insertBeforeId = nextAssignment.id;
+        }
+
+        if (insertAfterId || insertBeforeId) {
+          const pushed = rebuildLineWithInsert({
+            lineId,
+            insertIndex: dayIndex,
+            insertAfterId,
+            insertBeforeId,
+            insertItem: { ...target, totalSeconds },
             assignments: filtered,
             totalDays: days.length,
           });
 
           if (pushed) return pushed;
-          return prev;
         }
-
-        const totalSeconds = getUsageSeconds(target).reduce((sum, item) => sum + item.seconds, 0);
-
-        const planned = planAssignment({
-          startIndex: dayIndex,
-          totalSeconds,
-          lineId,
-          assignments: filtered,
-          totalDays: days.length,
-        });
-
-        if (!planned) return prev;
-
-        return filtered.concat({
-          ...target,
-          lineId,
-          ...planned,
-        });
+        return prev;
       });
       setActiveDrag(null);
     }
+  };
+
+  const handleLinkPrev = (assignmentId) => {
+    setAssignments((prev) => {
+      const target = prev.find((item) => item.id === assignmentId);
+      if (!target) return prev;
+      const lineItems = prev
+        .filter((item) => item.lineId === target.lineId)
+        .slice()
+        .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+      const targetIndex = lineItems.findIndex((item) => item.id === assignmentId);
+      if (targetIndex <= 0) return prev;
+      const prevItem = lineItems[targetIndex - 1];
+      const insertIndex = getNextStartIndex(prevItem);
+      if (insertIndex == null) return prev;
+      const chain = buildConnectedChain(lineItems, targetIndex);
+      if (chain.length === 0) return prev;
+
+      const moved = rebuildLineWithChain({
+        lineId: target.lineId,
+        insertIndex,
+        insertAfterId: prevItem.id,
+        chainItems: chain,
+        assignments: prev,
+        totalDays: days.length,
+      });
+
+      return moved || prev;
+    });
   };
 
   return (
@@ -464,7 +721,12 @@ const AssignBoard = () => {
                   드래그 앤 드롭으로 배정하세요
                 </Typography>
               </Box>
-              <ScheduleTimeline lines={mockLines} days={days} assignments={assignments} />
+              <ScheduleTimeline
+                lines={mockLines}
+                days={days}
+                assignments={assignments}
+                onLinkPrev={handleLinkPrev}
+              />
             </Stack>
           </Grid>
         </Grid>

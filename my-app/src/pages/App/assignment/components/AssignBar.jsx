@@ -1,21 +1,15 @@
 ﻿import React from 'react';
 import { Box, Typography } from '@mui/material';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { useDraggable } from '@dnd-kit/core';
 
-const AssignBar = ({ assignment }) => {
+const AssignBar = ({ assignment, showLinkPrev, onLinkPrev }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
   });
 
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `assign-drop-${assignment.id}`,
-    data: { assignmentId: assignment.id, type: 'assignment-drop' },
-  });
-
   const setNodeRef = (node) => {
     setDragRef(node);
-    setDropRef(node);
   };
 
   const style = {
@@ -43,11 +37,9 @@ const AssignBar = ({ assignment }) => {
         color: '#1f2a3a',
         width: assignment.widthPx,
         minWidth: 160,
-        overflow: 'hidden',
-        whiteSpace: 'nowrap',
-        textOverflow: 'ellipsis',
+        overflow: 'visible',
         cursor: 'grab',
-        boxShadow: isOver ? '0 0 0 2px rgba(30, 136, 229, 0.35)' : '0 2px 6px rgba(0,0,0,0.12)',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.06)',
         zIndex: 20,
       }}
@@ -56,6 +48,49 @@ const AssignBar = ({ assignment }) => {
       {...attributes}
       {...listeners}
     >
+      {showLinkPrev && (
+        <Box
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onLinkPrev?.(assignment.id);
+          }}
+          sx={{
+            position: 'absolute',
+            left: -10,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            backgroundColor: '#ffffff',
+            border: '1px solid rgba(0,0,0,0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#374151',
+            cursor: 'pointer',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+            zIndex: 30,
+          }}
+          title="앞 주문과 연결"
+        >
+          {'<'}
+        </Box>
+      )}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          minWidth: 0,
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
+          textOverflow: 'ellipsis',
+          width: '100%',
+        }}
+      >
       {previewUrl ? (
         <Box
           component="img"
@@ -92,6 +127,7 @@ const AssignBar = ({ assignment }) => {
       <Typography variant="caption" sx={{ opacity: 0.8 }}>
         {assignment.customer}
       </Typography>
+      </Box>
     </Box>
   );
 };

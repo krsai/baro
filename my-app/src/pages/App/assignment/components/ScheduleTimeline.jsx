@@ -68,7 +68,17 @@ const assignLanes = (items) => {
   return { placed, laneCount: lanes.length || 1 };
 };
 
-const ScheduleTimeline = ({ lines, days, assignments }) => {
+const getOrderKey = (assignment) => {
+  const offset = (assignment.startDayOffsetPercent ?? 0) / 100;
+  return assignment.startIndex + offset;
+};
+
+const getNextStartIndex = (assignment) => {
+  const endPercent = assignment.endDayPercent ?? 100;
+  return endPercent >= 100 ? assignment.endIndex + 1 : assignment.endIndex;
+};
+
+const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev }) => {
   const assignmentsByLine = useMemo(() => {
     const map = new Map();
     lines.forEach((line) => map.set(line.id, []));
@@ -96,6 +106,18 @@ const ScheduleTimeline = ({ lines, days, assignments }) => {
           <TableBody>
             {lines.map((line) => {
               const lineAssignments = assignmentsByLine.get(line.id) || [];
+              const sortedByStart = lineAssignments
+                .slice()
+                .sort((a, b) => getOrderKey(a) - getOrderKey(b));
+              const linkableIds = new Set();
+              sortedByStart.forEach((item, index) => {
+                if (index === 0) return;
+                const prev = sortedByStart[index - 1];
+                const expected = getNextStartIndex(prev);
+                if (item.startIndex > expected) {
+                  linkableIds.add(item.id);
+                }
+              });
               const { placed, laneCount } = assignLanes(lineAssignments);
               const rowHeight = Math.max(ROW_HEIGHT, laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP);
 
@@ -145,6 +167,8 @@ const ScheduleTimeline = ({ lines, days, assignments }) => {
                               topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
                               heightPx: BAR_HEIGHT,
                             }}
+                            showLinkPrev={linkableIds.has(assignment.id)}
+                            onLinkPrev={onLinkPrev}
                           />
                         );
                       })}
