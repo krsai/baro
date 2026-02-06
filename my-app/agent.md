@@ -1,4 +1,4 @@
-﻿# 프로젝트 개발 가이드
+﻿﻿# 프로젝트 개발 가이드
 
 이 문서는 재봉 공장 ERP 프로그램 개발을 위한 기준과 합의된 사항을 정리합니다. 프로젝트 참여자는 이 문서를 기준으로 개발을 진행합니다.
 
@@ -512,29 +512,9 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 #### 7.8.11. 절대 규칙 (Non-Negotiable Rules)
 - 날짜 단위 계산만 하는 스케줄링은 금지합니다.
 - 마지막 날 잔여 시간을 무시해서는 안 됩니다.
-- AssignmentBoard에 계산 로직을 직접 작성하지 않습니다.
+- AssignBoard에 계산 로직을 직접 작성하지 않습니다.
 - 계산 로직은 순수 함수 또는 명확히 분리된 모듈로 관리합니다.
 - **시간 계산 단위 통일**: 모든 핵심 로직(계산, 저장, 시뮬레이션)은 무조건 **초(Second)** 단위로 처리합니다. 분/시간/일 단위는 오직 UI에서 사용자가 보기 편하도록 변환하여 표시하는 용도로만 사용합니다.
-
-## 8. UI 패턴 (UI Patterns)
-
-*이 섹션은 반복적으로 사용되는 UI 컴포넌트의 표준 구현 방식을 정의합니다.*
-
-### 8.1. 데이터 테이블 (Data Table)
-- **개요**: 목록 화면에서 데이터를 표시하는 표준 테이블 구조입니다. '스타일 관리' 페이지의 구현을 기준으로 통일합니다.
-- **구조 정의**:
-  - **컨테이너**: `<Paper variant="outlined">`를 사용하여 그림자 없는 테두리 스타일을 적용합니다.
-  - **헤더**: `<TableHead>`에 `sx={{ backgroundColor: '#f5f5f5' }}`를 적용하여 본문과 구분합니다.
-  - **헤더 폰트**: 헤더 셀(`<TableCell>`)에는 `sx={{ fontWeight: 'bold' }}`를 적용합니다.
-  
-  ```jsx
-  <Paper variant="outlined" sx={{ width: '100%' }}>
-    <TableContainer>
-      <Table stickyHeader size="small">
-        <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-          <TableRow>
-            <TableCell sx={{ fontWeight: 'bold' }}>컬럼명</TableCell>
-            ...
 
 #### 7.8.12. 구현 시 핵심 고려사항 (Key Implementation Considerations)
 새로운 배정 규칙을 실제 시스템으로 구현할 때는 다음의 기술적 요구사항을 반드시 고려하여 설계해야 합니다.
@@ -638,7 +618,7 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 
 
 ##### Phase 2: UI 스켈레톤 및 D&D 기초 (UI Skeleton & D&D)
-- [ ] **AssignmentBoard 레이아웃 구성**
+- [ ] **AssignBoard 레이아웃 구성**
   - 좌측: 미배정 스타일 카드 목록 (Source).
   - 우측: 생산 라인별 스케줄 타임라인 (Target).
 - [ ] **StyleCard 컴포넌트 구현**
@@ -658,7 +638,7 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
   - 툴팁: 시작일, 종료일, 잔여 시간 표시.
 
 ##### Phase 4: 상태 관리 및 데이터 연동 (State & Persistence)
-- [ ] **AssignmentContext 구성**
+- [ ] **AssignContext 구성**
   - 전체 배정 현황 관리 (배정된 작업 목록).
   - `addAssignment`, `removeAssignment`, `updateAssignment` 액션 구현.
 - [ ] **데이터 저장 (Persistence)**
@@ -670,5 +650,3 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - [ ] **배정 수정 기능**
   - 이미 배정된 작업의 재배치(Re-scheduling) 및 배정 취소(Unassign) 기능.
   ```
-
-  이 텍스트는 나중에 집에서 pull 확인하기 위함
