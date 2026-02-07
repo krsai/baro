@@ -145,6 +145,22 @@ const theme = createTheme({
         size: 'small',
       },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#F5F6F8',
+          '& .MuiOutlinedInput-notchedOutline': {
+            border: 'none',
+          },
+          '&:hover': {
+            backgroundColor: '#EBEDF0',
+          },
+          '&.Mui-focused': {
+            backgroundColor: '#E0E2E5',
+          },
+        },
+      },
+    },
     MuiInput: {
       styleOverrides: {
         root: {
