@@ -1,56 +1,18 @@
-import React, { useState } from 'react';
-import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import AppPageContainer from '../../components/AppPageContainer';
-import AttrColor from './attribute/AttrColor';
-import AttrSize from './attribute/AttrSize';
-import AttrGender from './attribute/AttrGender';
-import AttrProcess from './attribute/AttrProcess';
-import AttrCategory from './attribute/AttrCategory';
+import React from 'react';
+import { Routes, Route } from 'react-router-dom';
+import AttrBoard from './attribute/AttrBoard';
 
+/**
+ * 속성 관리 (Attribute Management) 도메인 진입점
+ * - 역할: 라우팅 설정 (Board vs Detail)
+ * - 규칙: agent.md 6.1 Board / Detail 화면 구조 규칙
+ */
 const Attribute = () => {
-  const [currentView, setCurrentView] = useState('color');
-
-  const handleChange = (event, newView) => {
-    if (newView !== null) {
-      setCurrentView(newView);
-    }
-  };
-
   return (
-    <AppPageContainer>
-      <Box>
-        <Box sx={{ mb: 3 }}>
-          <ToggleButtonGroup
-            value={currentView}
-            exclusive
-            onChange={handleChange}
-            aria-label="Attribute type"
-          >
-            <ToggleButton value="color">
-              색상
-            </ToggleButton>
-            <ToggleButton value="size">
-              사이즈
-            </ToggleButton>
-            <ToggleButton value="gender">
-              성별
-            </ToggleButton>
-            <ToggleButton value="category">
-              카테고리
-            </ToggleButton>
-            <ToggleButton value="process">
-              공정
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-        
-        {currentView === 'color' && <AttrColor />}
-        {currentView === 'size' && <AttrSize />}
-        {currentView === 'gender' && <AttrGender />}
-        {currentView === 'category' && <AttrCategory />}
-        {currentView === 'process' && <AttrProcess />}
-      </Box>
-    </AppPageContainer>
+    <Routes>
+      {/* 기본 경로: 속성 목록 및 탭 화면 (Board) */}
+      <Route path="/" element={<AttrBoard />} />
+    </Routes>
   );
 };
 
