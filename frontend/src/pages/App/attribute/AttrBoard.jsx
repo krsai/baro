@@ -22,6 +22,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 // 초기 Mock Data 정의
 const initialData = {
@@ -117,20 +118,8 @@ const AttrBoard = () => {
     setIsDirty(isChanged);
   }, [formData, originalData]);
 
-  // 브라우저 탭 닫기 또는 새로고침 시 경고 (저장되지 않은 변경사항 보호)
-  useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = ''; // Chrome 등 최신 브라우저에서 경고창 표시를 위해 필요
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [isDirty]);
+  // 커스텀 훅을 사용하여 저장되지 않은 변경사항 보호 (전역 재사용 가능)
+  useUnsavedChanges(isDirty);
 
   // 데이터 변경 핸들러
   const handleRowChange = (sectionKey, id, field, value) => {

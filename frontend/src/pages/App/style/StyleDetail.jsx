@@ -16,6 +16,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import StyleInfo from './styleDetail/StyleInfo';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 // Mock data for the list of styles
 const mockStyles = [
@@ -86,7 +87,10 @@ const StyleDetail = () => {
 
   const isNew = styleId === 'new';
   
-  const isDirty = !isNew && JSON.stringify(originalData) !== JSON.stringify(styleFormData);
+  const isDirty = JSON.stringify(originalData) !== JSON.stringify(styleFormData);
+
+  // 저장되지 않은 변경사항이 있을 경우 브라우저 닫기/새로고침 방지
+  useUnsavedChanges(isDirty);
 
   const handleChange = (event, newValue) => {
     if (newValue !== null) {
