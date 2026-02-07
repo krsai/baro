@@ -6,14 +6,13 @@ import SignUp from './pages/auth/SignUp';
 import Home from './pages/app/Home';
 import Business from './pages/app/Business';
 import Employee from './pages/app/Employee';
-import Role from './pages/app/Role';
 import Permission from './pages/app/Permission';
 import Line from './pages/app/Line';
 
 import SystemSetting from './pages/app/SystemSetting';
 import Customer from './pages/app/Customer';
 import Style from './pages/app/Style';
-import StyleBoard from './pages/App/style/StyleBoard';
+import StyleBoard from './pages/app/style/StyleBoard';
 import StyleDetail from './pages/App/style/StyleDetail';
 import Assign from './pages/App/Assign';
 import AssignBoard from './pages/App/assign/AssignBoard';
@@ -71,10 +70,6 @@ const router = createBrowserRouter([
           {
             path: 'employee',
             element: <Employee />,
-          },
-          {
-            path: 'role',
-            element: <Role />,
           },
           {
             path: 'permission',

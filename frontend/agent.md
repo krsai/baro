@@ -97,7 +97,6 @@
   - 고객 관리 (Customer Management)
 - **기본 정보 (Basic Information)**
   - 속성 관리 (Attribute Management)
-  - 역할 관리 (Role Management)
   - 권한 관리 (Permission Management)
 - **시스템 설정 (System Settings)**
 

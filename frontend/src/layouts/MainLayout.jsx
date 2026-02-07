@@ -115,7 +115,6 @@ const MainLayout = () => {
       setOpen: setBasicInfoOpen,
       children: [
         { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
-        { label: '역할 관리', icon: <BadgeIcon />, path: '/role' },
         { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
       ],
     },
@@ -393,7 +392,8 @@ const MainLayout = () => {
                         size="small"
                         onClick={(e) => handleCloseTab(e, tab.id)}
                         sx={{
-                          ml: 0.5,
+                          ml: 1,
+                          mr: -1.5,
                           p: '2px',
                           '&:hover': {
                             bgcolor: 'rgba(0, 0, 0, 0.08)',

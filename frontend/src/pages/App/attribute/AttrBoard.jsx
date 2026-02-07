@@ -50,6 +50,11 @@ const initialData = {
     { id: 4, code: 'DRS', name: 'Dress' },
     { id: 5, code: 'ACC', name: 'Accessory' },
   ],
+  roles: [
+    { id: 1, code: 'ADMIN', name: '관리자' },
+    { id: 2, code: 'MGR', name: '공장장' },
+    { id: 3, code: 'WORKER', name: '작업자' },
+  ],
   processes: [
     { id: 1, code: 'P01', name: '주머니 달기' },
     { id: 2, code: 'P02', name: '소매 달기' },
@@ -91,6 +96,14 @@ const sectionConfigs = [
     columns: [
       { field: 'code', label: '코드', width: '30%' },
       { field: 'name', label: '카테고리명', width: '60%' },
+    ],
+  },
+  {
+    key: 'roles',
+    title: '역할 (Role)',
+    columns: [
+      { field: 'code', label: '코드', width: '30%' },
+      { field: 'name', label: '역할명', width: '60%' },
     ],
   },
   {
@@ -241,7 +254,6 @@ const AttrBoard = () => {
                         onChange={(e) => handleRowChange(config.key, row.id, col.field, e.target.value)}
                         fullWidth
                         size="small"
-                        variant="standard"
                         type={col.type || 'text'}
                         placeholder={col.label}
                       />
