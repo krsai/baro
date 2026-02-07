@@ -1,5 +1,5 @@
 import React from 'react';
-import AssignBoard from './assignment/AssignBoard';
+import AssignBoard from './assign/AssignBoard';
 
 function Assign() {
   return <AssignBoard />;
