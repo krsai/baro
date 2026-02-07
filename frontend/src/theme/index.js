@@ -135,13 +135,14 @@ const theme = createTheme({
     },
     MuiTextField: {
       defaultProps: {
-        variant: 'standard',
+        variant: 'outlined',
         size: 'small',
       },
     },
     MuiSelect: {
       defaultProps: {
-        variant: 'standard',
+        variant: 'outlined',
+        size: 'small',
       },
     },
     MuiInput: {

@@ -210,8 +210,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="customer"
                 value={formData.customer || ''}
                 onChange={handleInputChange}
-                variant="standard"
-                className="custom-form-input"
                 displayEmpty
                 sx={{ width: '70%' }}
               >
@@ -227,8 +225,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="Category"
                 value={styleDetailsData['Category']}
                 onChange={handleDetailsChange}
-                variant="standard"
-                className="custom-form-input"
                 displayEmpty
                 sx={{ width: '70%' }}
               >
@@ -245,8 +241,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="name"
                 value={formData.name || ''}
                 onChange={handleInputChange}
-                variant="standard"
-                className="custom-form-input"
                 sx={{ width: '70%' }}
               />
             </Box>
@@ -256,8 +250,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="styleCode"
                 value={formData.styleCode || ''}
                 onChange={handleInputChange}
-                variant="standard"
-                className="custom-form-input"
                 sx={{ width: '70%' }}
               />
             </Box>
@@ -275,7 +267,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                     });
                   }}
                   slotProps={{
-                    textField: { variant: 'standard', className: 'custom-form-input', sx: { width: '70%' } },
+                    textField: { sx: { width: '70%' } },
                   }}
                   format="YYYY-MM-DD"
                 />
@@ -293,8 +285,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="Fabric"
                 value={styleDetailsData['Fabric']}
                 onChange={handleDetailsChange}
-                variant="standard"
-                className="custom-form-input"
                 displayEmpty
                 sx={{ width: '70%' }}
               >
@@ -311,8 +301,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="Size Spec"
                 value={styleDetailsData['Size Spec']}
                 onChange={handleDetailsChange}
-                variant="standard"
-                className="custom-form-input"
                 displayEmpty
                 sx={{ width: '70%' }}
               >
@@ -328,8 +316,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 name="Colorway"
                 value={styleDetailsData['Colorway']}
                 onChange={handleDetailsChange}
-                variant="standard"
-                className="custom-form-input"
                 displayEmpty
                 sx={{ width: '70%' }}
               >
