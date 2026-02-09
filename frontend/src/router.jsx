@@ -4,7 +4,7 @@ import MainLayout from './layouts/MainLayout';
 import Login from './pages/auth/Login';
 import SignUp from './pages/auth/SignUp';
 import Home from './pages/app/Home';
-import Company from './pages/app/Company';
+import Organization from './pages/app/Organization';
 import Employee from './pages/app/Employee';
 import Permission from './pages/app/Permission';
 import Line from './pages/app/Line';
@@ -65,7 +65,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'business',
-            element: <Company />,
+            element: <Organization />,
           },
           {
             path: 'employee',

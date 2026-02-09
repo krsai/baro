@@ -71,6 +71,8 @@
 - 주문 구조: 주문은 반드시 `buyerOrgId`(고객사)와 `sellerOrgId`(제조사)를 가진다.
 - 다중 공장 의뢰: 주문을 공장별로 분할하는 방식을 기본으로 한다. (예: 주문을 공장별로 나누어 생성하거나 `OrderSplit` 개념으로 분배)
 - 접근 제어: 모든 조회/저장은 `buyerOrgId` 또는 `sellerOrgId` 기준으로 제한한다.
+ - 용어 통일: 기존 `Company` 개념은 플랫폼 구조에서는 `Organization`으로 통일한다. (`Company`는 단일 테넌트 기준의 옛 명칭)
+ - 예시 매핑: "바로"는 `Organization`이며, 역할에 따라 `MANUFACTURER` 또는 `BOTH`로 정의한다. 사용자는 `OrgMembership`로 연결한다.
 
 ## 3. 프로젝트 구조
 

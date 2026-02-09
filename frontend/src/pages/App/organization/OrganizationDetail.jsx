@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Typography,
   Box,
@@ -15,9 +15,12 @@ import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 
-const CompanyDetail = () => {
+const OrganizationDetail = () => {
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
+  const [organizationId, setOrganizationId] = useState(null);
   const [companyInfo, setCompanyInfo] = useState({
-    companyName: '바로가먼트',
+    name: '바로가먼트',
     businessNumber: '123-45-67890',
     representative: '김철수',
     industry: '의류 제조 및 판매',
@@ -28,6 +31,31 @@ const CompanyDetail = () => {
 
   const [editMode, setEditMode] = useState(false);
   const [editData, setEditData] = useState({ ...companyInfo });
+
+  useEffect(() => {
+    const fetchOrganization = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/organizations/primary`);
+        const data = await response.json();
+        if (data) {
+          setOrganizationId(data.id);
+          setCompanyInfo({
+            name: data.name ?? '',
+            businessNumber: data.businessNumber ?? '',
+            representative: data.representative ?? '',
+            industry: data.industry ?? '',
+            address: data.address ?? '',
+            phone: data.phone ?? '',
+            email: data.email ?? '',
+          });
+        }
+      } catch (_error) {
+        // ignore fetch errors in UI for now
+      }
+    };
+
+    fetchOrganization();
+  }, [API_BASE]);
 
   const handleEditOpen = () => {
     setEditData({ ...companyInfo });
@@ -47,8 +75,49 @@ const CompanyDetail = () => {
   };
 
   const handleSave = () => {
-    setCompanyInfo({ ...editData });
-    setEditMode(false);
+    const saveOrganization = async () => {
+      try {
+        const payload = {
+          name: editData.name?.trim(),
+          businessNumber: editData.businessNumber?.trim(),
+          representative: editData.representative?.trim(),
+          industry: editData.industry?.trim(),
+          address: editData.address?.trim(),
+          phone: editData.phone?.trim(),
+          email: editData.email?.trim(),
+        };
+
+        const response = await fetch(
+          organizationId ? `${API_BASE}/organizations/${organizationId}` : `${API_BASE}/organizations`,
+          {
+            method: organizationId ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const saved = await response.json();
+        if (!response.ok) {
+          return;
+        }
+
+        setOrganizationId(saved.id);
+        setCompanyInfo({
+          name: saved.name ?? '',
+          businessNumber: saved.businessNumber ?? '',
+          representative: saved.representative ?? '',
+          industry: saved.industry ?? '',
+          address: saved.address ?? '',
+          phone: saved.phone ?? '',
+          email: saved.email ?? '',
+        });
+        setEditMode(false);
+      } catch (_error) {
+        // ignore save errors in UI for now
+      }
+    };
+
+    saveOrganization();
   };
 
   const InfoRow = ({ label, value }) => (
@@ -70,7 +139,7 @@ const CompanyDetail = () => {
         </Button>
       </Box>
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        <InfoRow label="회사명" value={companyInfo.companyName} />
+        <InfoRow label="회사명" value={companyInfo.name} />
         <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
         <InfoRow label="대표자명" value={companyInfo.representative} />
         <InfoRow label="업종" value={companyInfo.industry} />
@@ -88,8 +157,8 @@ const CompanyDetail = () => {
               <TextField
                 fullWidth
                 label="회사명"
-                name="companyName"
-                value={editData.companyName}
+                name="name"
+                value={editData.name}
                 onChange={handleInputChange}
               />
             </Grid>
@@ -134,4 +203,4 @@ const CompanyDetail = () => {
   );
 };
 
-export default CompanyDetail;
+export default OrganizationDetail;

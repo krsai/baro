@@ -14,3 +14,23 @@ model Ping {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
 }
+
+enum OrganizationType {
+  MANUFACTURER
+  BRAND
+  BOTH
+}
+
+model Organization {
+  id             Int              @id @default(autoincrement())
+  name           String
+  businessNumber String?
+  representative String?
+  industry       String?
+  address        String?
+  phone          String?
+  email          String?
+  type           OrganizationType @default(MANUFACTURER)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
