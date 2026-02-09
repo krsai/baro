@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -26,42 +27,12 @@ import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 
 // 초기 Mock Data 정의
 const initialData = {
-  colors: [
-    { id: 1, code: 'BLK', name: 'Black' },
-    { id: 2, code: 'WHT', name: 'White' },
-    { id: 3, code: 'RED', name: 'Red' },
-    { id: 4, code: 'BLU', name: 'Blue' },
-  ],
-  sizes: [
-    { id: 1, code: 'S', name: 'Small' },
-    { id: 2, code: 'M', name: 'Medium' },
-    { id: 3, code: 'L', name: 'Large' },
-    { id: 4, code: 'XL', name: 'X-Large' },
-  ],
-  genders: [
-    { id: 1, code: 'M', name: 'Men' },
-    { id: 2, code: 'W', name: 'Women' },
-    { id: 3, code: 'U', name: 'Unisex' },
-  ],
-  categories: [
-    { id: 1, code: 'OUT', name: 'Outer' },
-    { id: 2, code: 'TOP', name: 'Top' },
-    { id: 3, code: 'BTM', name: 'Bottom' },
-    { id: 4, code: 'DRS', name: 'Dress' },
-    { id: 5, code: 'ACC', name: 'Accessory' },
-  ],
-  roles: [
-    { id: 1, code: 'ADMIN', name: '관리자' },
-    { id: 2, code: 'MGR', name: '공장장' },
-    { id: 3, code: 'WORKER', name: '작업자' },
-  ],
-  processes: [
-    { id: 1, code: 'P01', name: '주머니 달기' },
-    { id: 2, code: 'P02', name: '소매 달기' },
-    { id: 3, code: 'P03', name: '단추 달기' },
-    { id: 4, code: 'P04', name: '지퍼 달기' },
-    { id: 5, code: 'P05', name: '라벨 부착' },
-  ],
+  colors: [],
+  sizes: [],
+  genders: [],
+  categories: [],
+  roles: [],
+  processes: [],
 };
 
 // 섹션 설정 (테이블 컬럼 및 타이틀)
@@ -117,6 +88,8 @@ const sectionConfigs = [
 ];
 
 const AttrBoard = () => {
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
   // 전체 데이터 상태 관리
   const [formData, setFormData] = useState(() => JSON.parse(JSON.stringify(initialData)));
   const [originalData, setOriginalData] = useState(() => JSON.parse(JSON.stringify(initialData)));
@@ -124,6 +97,37 @@ const AttrBoard = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const normalizeData = (data) => {
+    const safe = data || {};
+    return {
+      colors: Array.isArray(safe.colors) ? safe.colors : initialData.colors,
+      sizes: Array.isArray(safe.sizes) ? safe.sizes : initialData.sizes,
+      genders: Array.isArray(safe.genders) ? safe.genders : initialData.genders,
+      categories: Array.isArray(safe.categories) ? safe.categories : initialData.categories,
+      roles: Array.isArray(safe.roles) ? safe.roles : initialData.roles,
+      processes: Array.isArray(safe.processes) ? safe.processes : initialData.processes,
+    };
+  };
+
+  useEffect(() => {
+    const fetchAttributes = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/attributes`);
+        const data = await response.json();
+        if (response.ok) {
+          const normalized = normalizeData(data);
+          setFormData(normalized);
+          setOriginalData(JSON.parse(JSON.stringify(normalized)));
+        }
+      } catch (_error) {
+        // fallback to initialData
+      }
+    };
+
+    fetchAttributes();
+  }, [API_BASE]);
 
   // 변경 사항 감지
   useEffect(() => {
@@ -167,6 +171,7 @@ const AttrBoard = () => {
 
   // 저장 로직
   const handleSaveClick = () => {
+    if (isSaving) return;
     // 변경 내역 분석
     const detectedChanges = [];
     sectionConfigs.forEach((section) => {
@@ -202,11 +207,46 @@ const AttrBoard = () => {
   };
 
   const handleConfirmSave = () => {
-    // [API 연동 포인트] 전체 데이터 저장 API 호출
-    console.log('Saving all attributes:', formData);
-    setOriginalData(JSON.parse(JSON.stringify(formData)));
-    setConfirmOpen(false);
-    alert('모든 속성 정보가 저장되었습니다.');
+    if (isSaving) return;
+    setIsSaving(true);
+    const saveAttributes = async () => {
+      try {
+        const changedPayload = {};
+        sectionConfigs.forEach((section) => {
+          const originalSection = originalData[section.key] || [];
+          const currentSection = formData[section.key] || [];
+          if (JSON.stringify(originalSection) !== JSON.stringify(currentSection)) {
+            changedPayload[section.key] = currentSection;
+          }
+        });
+
+        if (Object.keys(changedPayload).length === 0) {
+          setConfirmOpen(false);
+          setIsSaving(false);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE}/attributes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(changedPayload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          setIsSaving(false);
+          return;
+        }
+        const normalized = normalizeData({ ...formData, ...data });
+        setFormData(normalized);
+        setOriginalData(JSON.parse(JSON.stringify(normalized)));
+        setConfirmOpen(false);
+        setIsSaving(false);
+      } catch (_error) {
+        setIsSaving(false);
+      }
+    };
+
+    saveAttributes();
   };
 
   const handleRevert = () => {
@@ -293,16 +333,17 @@ const AttrBoard = () => {
             <Button 
               variant="outlined" 
               onClick={handleRevert} 
-              disabled={!isDirty}
+              disabled={!isDirty || isSaving}
             >
               되돌리기
             </Button>
             <Button 
               variant="contained" 
               onClick={handleSaveClick} 
-              disabled={!isDirty}
+              disabled={!isDirty || isSaving}
+              startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              저장
+              {isSaving ? '저장 중' : '저장'}
             </Button>
           </Box>
         </Box>
@@ -331,8 +372,16 @@ const AttrBoard = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)}>취소</Button>
-          <Button onClick={handleConfirmSave} variant="contained" autoFocus>확인</Button>
+          <Button onClick={() => setConfirmOpen(false)} disabled={isSaving}>취소</Button>
+          <Button
+            onClick={handleConfirmSave}
+            variant="contained"
+            autoFocus
+            disabled={isSaving}
+            startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {isSaving ? '저장 중' : '확인'}
+          </Button>
         </DialogActions>
       </Dialog>
     </AppPageContainer>

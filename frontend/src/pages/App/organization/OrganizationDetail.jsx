@@ -20,13 +20,13 @@ const OrganizationDetail = () => {
 
   const [organizationId, setOrganizationId] = useState(null);
   const [companyInfo, setCompanyInfo] = useState({
-    name: '바로가먼트',
-    businessNumber: '123-45-67890',
-    representative: '김철수',
-    industry: '의류 제조 및 판매',
-    address: '서울시 강남구 테헤란로 123',
-    phone: '02-1234-5678',
-    email: 'info@barogarmement.com',
+    name: '',
+    businessNumber: '',
+    representative: '',
+    industry: '',
+    address: '',
+    phone: '',
+    email: '',
   });
 
   const [editMode, setEditMode] = useState(false);

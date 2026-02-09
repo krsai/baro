@@ -33,4 +33,83 @@ model Organization {
   type           OrganizationType @default(MANUFACTURER)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
+
+  colors     AttrColor[]
+  sizes      AttrSize[]
+  genders    AttrGender[]
+  categories AttrCategory[]
+  roles      AttrRole[]
+  processes  AttrProcess[]
+}
+
+model AttrColor {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model AttrSize {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model AttrGender {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model AttrCategory {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model AttrRole {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model AttrProcess {
+  id    Int    @id @default(autoincrement())
+  orgId Int
+  code  String
+  name  String
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, code])
+  @@index([orgId])
 }
