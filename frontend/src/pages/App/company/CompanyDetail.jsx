@@ -15,7 +15,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
 
-const BusinessDetail = () => {
+const CompanyDetail = () => {
   const [companyInfo, setCompanyInfo] = useState({
     companyName: '바로가먼트',
     businessNumber: '123-45-67890',
@@ -134,4 +134,4 @@ const BusinessDetail = () => {
   );
 };
 
-export default BusinessDetail;
+export default CompanyDetail;

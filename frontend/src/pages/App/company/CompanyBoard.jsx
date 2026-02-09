@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import BusinessDetail from './BusinessDetail';
+import CompanyDetail from './CompanyDetail';
 import FactoryBoard from './FactoryBoard';
 
-const BusinessBoard = () => {
+const CompanyBoard = () => {
   const [currentTab, setCurrentTab] = useState('business');
 
   const handleChange = (event, newValue) => {
@@ -34,10 +34,10 @@ const BusinessBoard = () => {
           </ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      {currentTab === 'business' && <BusinessDetail />}
+      {currentTab === 'business' && <CompanyDetail />}
       {currentTab === 'factory' && <FactoryBoard />}
     </AppPageContainer>
   );
 };
 
-export default BusinessBoard;
+export default CompanyBoard;
