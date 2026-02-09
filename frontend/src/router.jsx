@@ -1,24 +1,24 @@
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
-import Login from './pages/auth/Login';
-import SignUp from './pages/auth/SignUp';
-import Home from './pages/app/Home';
-import Organization from './pages/app/Organization';
-import Employee from './pages/app/Employee';
-import Permission from './pages/app/Permission';
-import Line from './pages/app/Line';
+import Login from './pages/Auth/Login';
+import SignUp from './pages/Auth/SignUp';
+import Home from './pages/App/Home';
+import Organization from './pages/App/Organization';
+import Employee from './pages/App/Employee';
+import Permission from './pages/App/Permission';
+import Line from './pages/App/Line';
 
-import SystemSetting from './pages/app/SystemSetting';
-import Customer from './pages/app/Customer';
-import Style from './pages/app/Style';
-import StyleBoard from './pages/app/style/StyleBoard';
+import SystemSetting from './pages/App/SystemSetting';
+import Customer from './pages/App/Customer';
+import Style from './pages/App/Style';
+import StyleBoard from './pages/App/style/StyleBoard';
 import StyleDetail from './pages/App/style/StyleDetail';
 import Assign from './pages/App/Assign';
 import AssignBoard from './pages/App/assign/AssignBoard';
 import AssignDetail from './pages/App/assign/AssignDetail';
 import Work from './pages/App/Work';
-import AuthCallback from './pages/auth/AuthCallback';
+import AuthCallback from './pages/Auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
 import Attribute from './pages/App/Attribute';
 import Order from './pages/App/Order.jsx';
@@ -27,7 +27,11 @@ import Order from './pages/App/Order.jsx';
 // 사용자가 인증되었는지 확인하고, 인증되지 않은 경우 로그인 페이지로 리디렉션합니다.
 // 인증된 경우, 중첩된 자식 라우트를 렌더링하기 위해 Outlet을 사용합니다.
 const ProtectedRoute = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

@@ -46,7 +46,7 @@ const DRAWER_WIDTH = 260;
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { signOut } = useAuth();
   const {
     sidebarOpen,
     toggleSidebar,
@@ -166,8 +166,8 @@ const MainLayout = () => {
     setNavigateToPath(() => handleNavigation);
   }, [handleNavigation, setNavigateToPath]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await signOut();
     navigate('/login');
   };
 

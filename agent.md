@@ -28,7 +28,8 @@
 #### 2.2.2. 데이터베이스 구성
 - 메인 DB는 PostgreSQL.
 - Supabase는 PostgreSQL 호스팅 용도로만 사용 가능.
-- Supabase의 Auth / Realtime / Edge Function / 자동 API 기능은 사용하지 않는다.
+- Supabase Auth는 **소셜 로그인** 용도로만 사용한다.
+- Realtime / Edge Function / 자동 API 기능은 사용하지 않는다.
 - 결론: Supabase = DB 서버 역할만 수행.
 
 #### 2.2.3. 백엔드 기술 스택
@@ -40,7 +41,7 @@
 - 공정, 급여, 데드타임, 인센티브, 정산 등 모든 계산 로직은 백엔드에만 존재
 
 #### 2.2.4. 의도적으로 사용하지 않는 것
-- 프론트엔드에서 Supabase SDK 직접 사용 ❌
+- 프론트엔드에서 Supabase SDK 직접 사용 ❌ (소셜 로그인 예외)
 - RLS 기반 비즈니스 로직 처리 ❌
 - SQL 또는 클라이언트 단 계산 로직 ❌
 

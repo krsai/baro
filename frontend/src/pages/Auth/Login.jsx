@@ -1,25 +1,30 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Container, TextField, Button, Typography, Box, Link } from '@mui/material';
+import { Container, Button, Typography, Box, Link, CircularProgress } from '@mui/material';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { signInWithGoogle, isAuthenticated, loading, isSupabaseConfigured, enableDevBypass } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLoginClick = (event) => {
-    event.preventDefault();
-    // In a real app, you would validate credentials against a backend
-    console.log('Simulating successful login...');
-    login({
-      id: 'admin01',
-      name: '김관리',
-      email: 'admin@baro.com',
-      role: 'Manager',
-      factoryId: 1,
-    }); // Set the authenticated state
-    navigate('/'); // Redirect to the protected home page
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+
+  const handleGoogleLogin = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    await signInWithGoogle();
+    setIsSubmitting(false);
+  };
+
+  const handleDevBypass = () => {
+    enableDevBypass();
+    navigate('/');
   };
 
   return (
@@ -35,53 +40,31 @@ const Login = () => {
         <Typography component="h1" variant="h5">
           로그인
         </Typography>
-        <Box component="form" onSubmit={handleLoginClick} sx={{ mt: 1 }}>
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="id"
-            label="아이디 입력"
-            name="id"
-            autoFocus
-          />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            name="password"
-            label="비밀번호 입력"
-            type="password"
-            id="password"
-            autoComplete="current-password"
-          />
-          <Button
-            type="submit"
-            fullWidth
-            variant="contained"
-            sx={{ mt: 3, mb: 2 }}
-          >
-            로그인
-          </Button>
+        <Box sx={{ mt: 3, width: '100%' }}>
           <Button
             fullWidth
             variant="contained"
             sx={{ mt: 1, mb: 2, backgroundColor: '#4285F4', '&:hover': { backgroundColor: '#357ae8' } }}
-            startIcon={<span style={{ marginRight: '8px' }}>G</span>}
-            onClick={() => {
-              console.log('Dummy Google social login button clicked.');
-              login({
-                id: 'admin01',
-                name: '김관리',
-                email: 'admin@baro.com',
-                role: 'Manager',
-                factoryId: 1,
-              }); // Dummy login, sets isAuthenticated to true
-              navigate('/');
-            }}
+            startIcon={isSubmitting || loading ? <CircularProgress size={16} color="inherit" /> : null}
+            onClick={handleGoogleLogin}
+            disabled={isSubmitting || loading || !isSupabaseConfigured}
           >
-            Google 계정으로 로그인
+            {isSubmitting || loading ? '로그인 중' : 'Google 계정으로 로그인'}
           </Button>
+          <Button
+            fullWidth
+            variant="outlined"
+            sx={{ mb: 2 }}
+            onClick={handleDevBypass}
+          >
+            개발용 로그인 우회
+          </Button>
+          {!isSupabaseConfigured && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
+              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행하세요.
+            </Typography>
+          )}
           <Link component={RouterLink} to="/signup" variant="body2">
             계정이 없으신가요? 소셜 계정으로 시작하기
           </Link>

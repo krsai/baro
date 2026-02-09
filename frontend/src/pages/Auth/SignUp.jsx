@@ -1,22 +1,20 @@
-import React from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
-import { Container, Button, Typography, Box, Link } from '@mui/material';
+import React, { useState } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import { Container, Button, Typography, Box, Link, CircularProgress } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 
 
 const SignUp = () => {
-  const navigate = useNavigate();
-  const { login } = useAuth();
+  const { signInWithGoogle, loading, isSupabaseConfigured } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSocialLogin = (provider) => {
-    // In a real app, you would redirect to the provider's OAuth URL.
-    // e.g., window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=...`;
-    console.log(`Simulating ${provider} signup...`);
-    // Simulate successful social login
-    login();
-    navigate('/');
+  const handleSocialLogin = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    await signInWithGoogle();
+    setIsSubmitting(false);
   };
 
   return (
@@ -38,10 +36,17 @@ const SignUp = () => {
             variant="contained"
             startIcon={<GoogleIcon />}
             sx={{ mb: 2, backgroundColor: '#DB4437', color: 'white', '&:hover': { backgroundColor: '#C33D2E' } }}
-            onClick={() => handleSocialLogin('Google')}
+            onClick={handleSocialLogin}
+            disabled={isSubmitting || loading || !isSupabaseConfigured}
           >
-            Google 계정으로 시작하기
+            {isSubmitting || loading ? '시작 중' : 'Google 계정으로 시작하기'}
           </Button>
+          {!isSupabaseConfigured && (
+            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
+              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행하세요.
+            </Typography>
+          )}
           {/* Add other social logins here */}
         </Box>
         <Link component={RouterLink} to="/login" variant="body2" sx={{ mt: 2 }}>

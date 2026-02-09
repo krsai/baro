@@ -1,43 +1,38 @@
 import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Container, Typography, Box, CircularProgress } from '@mui/material';
-import { useAuth } from '../../context/AuthContext';
+import { supabase, isSupabaseConfigured } from '../../lib/supabaseClient';
 
 const AuthCallback = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { login } = useAuth();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const code = params.get('code');
 
-    if (code) {
-      // In a real app, you'd send this code to your backend to exchange for a JWT token.
-      console.log('Authorization code from social provider:', code);
-      
-      // Simulate successful login after getting the code
-      console.log('Simulating successful social login...');
-      login({
-        id: 'admin01',
-        name: '김관리',
-        email: 'admin@baro.com',
-        role: 'Manager',
-        factoryId: 1,
-      });
-      
-      // Redirect to home page after a short delay
-      setTimeout(() => {
-        navigate('/');
-      }, 1500);
-    } else {
-      // Handle error case
-      console.error('No authorization code found.');
-      setTimeout(() => {
-        navigate('/login');
-      }, 1500);
-    }
-  }, [location, navigate, login]);
+    const run = async () => {
+      if (!isSupabaseConfigured || !supabase) {
+        navigate('/login', { replace: true });
+        return;
+      }
+      if (!code) {
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) {
+        navigate('/login', { replace: true });
+        return;
+      }
+
+      navigate('/', { replace: true });
+    };
+
+    run();
+  }, [location, navigate]);
 
   return (
     <Container component="main" maxWidth="xs">
