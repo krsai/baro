@@ -1,0 +1,10 @@
+{
+  "name": "baro",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

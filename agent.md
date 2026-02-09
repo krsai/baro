@@ -11,11 +11,45 @@
 
 ## 2. 기술 스택 (Tech Stack)
 
+### 2.1. 프론트엔드
 - **주요 언어**: TypeScript
 - **프레임워크**: React (Vite 기반)
 - **UI 라이브러리**: MUI (Material-UI)
 - **라우팅**: React Router
 - **스타일링**: Emotion (`sx` prop) / MUI
+
+### 2.2. 백엔드 기술 스택 구성 (Codex 전달용)
+
+#### 2.2.1. 전체 아키텍처
+- 프론트엔드는 Supabase에 직접 연결하지 않는다.
+- 모든 데이터 접근과 비즈니스 로직은 자체 백엔드 API를 통해서만 처리한다.
+- 흐름: `Frontend(React) -> Backend(Node.js + TypeScript + Express) -> PostgreSQL`
+
+#### 2.2.2. 데이터베이스 구성
+- 메인 DB는 PostgreSQL.
+- Supabase는 PostgreSQL 호스팅 용도로만 사용 가능.
+- Supabase의 Auth / Realtime / Edge Function / 자동 API 기능은 사용하지 않는다.
+- 결론: Supabase = DB 서버 역할만 수행.
+
+#### 2.2.3. 백엔드 기술 스택
+- Runtime: Node.js
+- Language: TypeScript
+- Framework: Express
+- ORM: Prisma
+- 인증/권한: 백엔드에서 직접 처리 (JWT 또는 Session)
+- 공정, 급여, 데드타임, 인센티브, 정산 등 모든 계산 로직은 백엔드에만 존재
+
+#### 2.2.4. 의도적으로 사용하지 않는 것
+- 프론트엔드에서 Supabase SDK 직접 사용 ❌
+- RLS 기반 비즈니스 로직 처리 ❌
+- SQL 또는 클라이언트 단 계산 로직 ❌
+
+#### 2.2.5. 이유
+- 계산 로직이 많은 ERP 형태 시스템이기 때문에, 백엔드 중심 구조가 필요함
+
+#### 2.2.6. 최종 요약
+- Node.js + TypeScript + Express + Prisma + PostgreSQL
+- (Supabase는 선택적으로 PostgreSQL 호스팅만 사용)
 
 ## 3. 프로젝트 구조
 
@@ -684,3 +718,4 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - [ ] **배정 수정 기능**
   - 이미 배정된 작업의 재배치(Re-scheduling) 및 배정 취소(Unassign) 기능.
   ```
+

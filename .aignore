@@ -1,0 +1,7 @@
+﻿# .aignore 예시
+node_modules/
+dist/
+build/
+*.log
+*.sql
+package-lock.json
