@@ -21,6 +21,12 @@ enum OrganizationType {
   BOTH
 }
 
+enum OrgUserRole {
+  OWNER
+  OPERATOR
+  MEMBER
+}
+
 model Organization {
   id             Int              @id @default(autoincrement())
   name           String
@@ -40,6 +46,22 @@ model Organization {
   categories AttrCategory[]
   roles      AttrRole[]
   processes  AttrProcess[]
+  members    OrganizationUser[]
+}
+
+model OrganizationUser {
+  id        Int         @id @default(autoincrement())
+  orgId     Int
+  email     String
+  role      OrgUserRole @default(OPERATOR)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@index([email])
 }
 
 model AttrColor {

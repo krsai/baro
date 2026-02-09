@@ -68,6 +68,10 @@ const isNumericId = (value) => {
 };
 
 const toId = (value) => Number(value);
+const normalizeEmail = (value) => {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase();
+};
 
 const getPrimaryOrganization = async () => {
   let organization = await prisma.organization.findFirst({
@@ -217,6 +221,16 @@ app.get("/organizations", async (_req, res) => {
 app.get("/organizations/primary", async (_req, res) => {
   const organization = await getPrimaryOrganization();
   res.json(organization);
+});
+
+app.get("/organization-users", async (req, res) => {
+  const orgId = Number(req.query.orgId);
+  const where = Number.isFinite(orgId) ? { orgId } : {};
+  const users = await prisma.organizationUser.findMany({
+    where,
+    orderBy: { id: "asc" },
+  });
+  res.json(users);
 });
 
 app.get("/attributes", async (_req, res) => {
@@ -392,6 +406,39 @@ app.put("/organizations/:id", async (req, res) => {
   });
 
   res.json(organization);
+});
+
+app.post("/organization-users", async (req, res) => {
+  const { orgId, email, role } = req.body ?? {};
+  const orgIdNum = Number(orgId);
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!Number.isFinite(orgIdNum)) {
+    return res.status(400).json({ ok: false, error: "orgId is required" });
+  }
+
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return res.status(400).json({ ok: false, error: "email is required" });
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: orgIdNum },
+  });
+
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const allowedRoles = new Set(["OWNER", "OPERATOR", "MEMBER"]);
+  const safeRole = allowedRoles.has(role) ? role : "OPERATOR";
+
+  const record = await prisma.organizationUser.upsert({
+    where: { orgId_email: { orgId: orgIdNum, email: normalizedEmail } },
+    update: { role: safeRole },
+    create: { orgId: orgIdNum, email: normalizedEmail, role: safeRole },
+  });
+
+  res.status(201).json(record);
 });
 
 const port = process.env.PORT || 4000;

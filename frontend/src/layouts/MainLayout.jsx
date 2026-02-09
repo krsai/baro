@@ -61,6 +61,7 @@ const MainLayout = () => {
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
+  const [systemOpen, setSystemOpen] = useState(false);
 
   // `activeTabId` is the single source of truth for the active tab.
   const [activeTabId, setActiveTabId] = useState(location.pathname);
@@ -121,10 +122,15 @@ const MainLayout = () => {
     {
       label: '시스템 설정',
       icon: <TuneIcon />,
-      path: '/system-setting',
-      isParent: false,
+      isParent: true,
+      isOpen: systemOpen,
+      setOpen: setSystemOpen,
+      children: [
+        { label: '시스템 설정', icon: <TuneIcon />, path: '/system-setting' },
+        { label: '조직 등록/운영자 배정', icon: <BadgeIcon />, path: '/system-setting/organization-onboarding' },
+      ],
     },
-  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen]);
+  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen]);
 
   // This is the ONLY effect responsible for navigation.
   // It runs when the source of truth (`activeTabId`) changes.
