@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -10,48 +10,41 @@ import {
   TableHead,
   TableRow,
   Chip,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import FactoryDetail from './factoryDetail/FactoryDetail';
 
-// Mock Data: 초기 공장 데이터
-const initialFactories = [
-  {
-    id: 1,
-    name: '하노이 제1공장',
-    address: 'Lot J5-2, Que Vo Industrial Park, Nam Son Ward, Bac Ninh City, Bac Ninh Province, Vietnam',
-    countryCode: '+84',
-    phoneNumber: '222-3456-7890',
-    manager: '김철수',
-    wageStandard: 'PT',
-    wagePerSecond: 12,
-  },
-  {
-    id: 2,
-    name: '다낭 제2공장',
-    address: 'Road No. 2, Hoa Khanh Industrial Zone, Lien Chieu District, Da Nang City, Vietnam',
-    countryCode: '+84',
-    phoneNumber: '236-9876-5432',
-    manager: '이영희',
-    wageStandard: 'ST',
-    wagePerSecond: 15,
-  },
-  {
-    id: 3,
-    name: '호치민 제3공장',
-    address: 'Tan Thuan Export Processing Zone, District 7, Ho Chi Minh City, Vietnam',
-    countryCode: '+84',
-    phoneNumber: '283-1122-3344',
-    manager: '박민수',
-    wageStandard: 'PT',
-    wagePerSecond: 11,
-  },
-];
-
 const FactoryList = () => {
-  const [factories, setFactories] = useState(initialFactories);
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const [factories, setFactories] = useState([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedFactory, setSelectedFactory] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null);
+
+  const fetchFactories = async () => {
+    setLoading(true);
+    setStatusMessage(null);
+    try {
+      const response = await fetch(`${API_BASE}/factories`);
+      const data = await response.json();
+      if (response.ok) {
+        setFactories(Array.isArray(data) ? data : []);
+      } else {
+        setStatusMessage({ type: 'error', text: data?.error || '공장 목록을 불러오지 못했습니다.' });
+      }
+    } catch (_error) {
+      setStatusMessage({ type: 'error', text: '공장 목록을 불러오지 못했습니다.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFactories();
+  }, [API_BASE]);
 
   const handleAddClick = () => {
     setSelectedFactory(null);
@@ -68,16 +61,50 @@ const FactoryList = () => {
     setSelectedFactory(null);
   };
 
-  const handleSave = (savedData) => {
-    if (savedData.id) {
-      // Update existing factory
-      setFactories(factories.map((f) => (f.id === savedData.id ? savedData : f)));
-    } else {
-      // Add new factory
-      const newFactory = { ...savedData, id: Date.now() }; // Use timestamp for temp ID
-      setFactories([...factories, newFactory]);
+  const handleSave = async (savedData) => {
+    if (saving) return;
+    setSaving(true);
+    setStatusMessage(null);
+
+    const payload = {
+      name: savedData.name,
+      address: savedData.address,
+      countryCode: savedData.countryCode,
+      phoneNumber: savedData.phoneNumber,
+      manager: savedData.manager,
+      wageStandard: savedData.wageStandard,
+      targetMonthlyWage: savedData.targetMonthlyWage,
+      wagePerSecond: savedData.wagePerSecond,
+    };
+
+    try {
+      const isEdit = Boolean(savedData.id);
+      const response = await fetch(
+        isEdit ? `${API_BASE}/factories/${savedData.id}` : `${API_BASE}/factories`,
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        setStatusMessage({ type: 'error', text: data?.error || '공장 저장에 실패했습니다.' });
+        return;
+      }
+
+      if (isEdit) {
+        setFactories((prev) => prev.map((f) => (f.id === data.id ? data : f)));
+      } else {
+        setFactories((prev) => [...prev, data]);
+      }
+      handleDetailClose();
+      setStatusMessage({ type: 'success', text: '공장 정보가 저장되었습니다.' });
+    } catch (_error) {
+      setStatusMessage({ type: 'error', text: '공장 저장 중 오류가 발생했습니다.' });
+    } finally {
+      setSaving(false);
     }
-    handleDetailClose();
   };
 
 
@@ -102,6 +129,20 @@ const FactoryList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                    불러오는 중...
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && factories.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                    등록된 공장이 없습니다.
+                  </TableCell>
+                </TableRow>
+              )}
               {factories.map((factory) => (
                 <TableRow
                   key={factory.id}
@@ -121,13 +162,28 @@ const FactoryList = () => {
                       sx={{ fontWeight: 'bold', minWidth: 50 }}
                     />
                   </TableCell>
-                  <TableCell>{factory.wagePerSecond ? `${factory.wagePerSecond}원` : '-'}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const raw = factory.wagePerSecond;
+                      const value =
+                        raw === '' || raw === null || raw === undefined ? Number.NaN : Number(raw);
+                      return Number.isFinite(value) ? `${value.toFixed(2)}동` : '-';
+                    })()}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
+      {statusMessage && (
+        <Typography
+          sx={{ mt: 2 }}
+          color={statusMessage.type === 'error' ? 'error' : 'primary'}
+        >
+          {statusMessage.text}
+        </Typography>
+      )}
       <FactoryDetail
         open={isDetailOpen}
         onClose={handleDetailClose}

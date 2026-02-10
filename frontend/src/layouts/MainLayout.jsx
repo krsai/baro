@@ -127,7 +127,7 @@ const MainLayout = () => {
       setOpen: setSystemOpen,
       children: [
         { label: '시스템 설정', icon: <TuneIcon />, path: '/system-setting' },
-        { label: '조직 등록/운영자 배정', icon: <BadgeIcon />, path: '/system-setting/organization-onboarding' },
+        { label: '조직 관리', icon: <BadgeIcon />, path: '/system-setting/organization-onboarding' },
       ],
     },
   ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen]);
@@ -243,7 +243,7 @@ const MainLayout = () => {
               {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
             </ListItem>
             {menu.isParent && (
-              <Collapse in={menu.isOpen} timeout="auto" unmountOnExit>
+              <Collapse in={menu.isOpen} timeout={120}>
                 <List component="div" disablePadding>
                   {menu.children.map((child) => (
                     <ListItem

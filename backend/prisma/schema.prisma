@@ -10,11 +10,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Ping {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-}
-
 enum OrganizationType {
   MANUFACTURER
   BRAND
@@ -22,9 +17,31 @@ enum OrganizationType {
 }
 
 enum OrgUserRole {
-  OWNER
+  ADMIN
   OPERATOR
-  MEMBER
+  ACCOUNTANT
+  WORKER
+}
+
+enum OrgMembershipStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  SUSPENDED
+  TERMINATED
+}
+
+enum SystemRole {
+  SYSTEM_ADMIN
+  USER
+}
+
+model SystemUser {
+  id         Int        @id @default(autoincrement())
+  email      String     @unique
+  systemRole SystemRole @default(USER)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 model Organization {
@@ -47,6 +64,8 @@ model Organization {
   roles      AttrRole[]
   processes  AttrProcess[]
   members    OrganizationUser[]
+  factories  Factory[]
+  employees  Employee[]
 }
 
 model OrganizationUser {
@@ -54,14 +73,64 @@ model OrganizationUser {
   orgId     Int
   email     String
   role      OrgUserRole @default(OPERATOR)
+  status    OrgMembershipStatus @default(ACTIVE)
+  requestedAt DateTime?
+  approvedAt DateTime?
+  approvedBy String?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
+  employee     Employee?
 
   @@unique([orgId, email])
   @@index([orgId])
   @@index([email])
+}
+
+model Factory {
+  id               Int      @id @default(autoincrement())
+  orgId            Int
+  name             String
+  address          String?
+  countryCode      String?
+  phoneNumber      String?
+  manager          String?
+  wageStandard      String  @default("PT")
+  targetMonthlyWage Float?
+  wagePerSecond    Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  employees    Employee[]
+
+  @@index([orgId])
+}
+
+model Employee {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  orgUserId Int      @unique
+  factoryId Int?
+  roleId    Int?
+  lineName  String?
+  position  String?
+  joinedAt  DateTime?
+  leftAt    DateTime?
+  leaveStartAt DateTime?
+  leaveEndAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization   @relation(fields: [orgId], references: [id])
+  membership   OrganizationUser @relation(fields: [orgUserId], references: [id])
+  factory      Factory?        @relation(fields: [factoryId], references: [id])
+  role         AttrRole?       @relation(fields: [roleId], references: [id])
+
+  @@index([orgId])
+  @@index([factoryId])
+  @@index([roleId])
 }
 
 model AttrColor {
@@ -119,6 +188,7 @@ model AttrRole {
   name  String
 
   organization Organization @relation(fields: [orgId], references: [id])
+  employees    Employee[]
 
   @@unique([orgId, code])
   @@index([orgId])

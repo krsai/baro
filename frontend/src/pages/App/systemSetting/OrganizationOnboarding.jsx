@@ -23,9 +23,10 @@ const ORG_TYPES = [
 ];
 
 const ROLE_OPTIONS = [
-  { value: 'OWNER', label: '오너' },
+  { value: 'ADMIN', label: '관리자' },
   { value: 'OPERATOR', label: '운영자' },
-  { value: 'MEMBER', label: '일반' },
+  { value: 'ACCOUNTANT', label: '회계' },
+  { value: 'WORKER', label: '작업자' },
 ];
 
 const OrganizationOnboarding = () => {

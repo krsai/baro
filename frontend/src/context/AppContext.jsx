@@ -63,32 +63,7 @@ export const AppProvider = ({ children }) => {
     setSidebarOpen((prev) => !prev);
   }, []);
 
-  const [factories, setFactories] = useState([
-    {
-      id: 1,
-      name: '하노이 공장',
-      address: '하노이 홍방구 123번지',
-      countryCode: '+84',
-      phoneNumber: '24-1234-5678',
-      manager: '응우옌 반 A',
-    },
-    {
-      id: 2,
-      name: '호치민 공장',
-      address: '호치민시 1구 456번지',
-      countryCode: '+84',
-      phoneNumber: '28-2345-6789',
-      manager: '팜 진 B',
-    },
-    {
-      id: 3,
-      name: '서울 공장',
-      address: '서울시 강남구 테헤란로 789',
-      countryCode: '+82',
-      phoneNumber: '2-5678-9012',
-      manager: '이순신',
-    },
-  ]);
+  const [factories, setFactories] = useState([]);
 
   const [roles, setRoles] = useState([
     { id: 1, name: '관리자', description: '전사 관리 권한' },

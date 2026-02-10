@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Drawer,
@@ -14,6 +14,25 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 
+const WORK_DAYS_PER_MONTH = 26;
+const HOURS_PER_DAY = 8;
+const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
+
+const parseNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return Number.NaN;
+  const normalized =
+    typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
+const formatWithCommas = (value) => {
+  if (value === '' || value === null || value === undefined) return '';
+  const digits = String(value).replace(/[^\d]/g, '');
+  if (!digits) return '';
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+};
+
 const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -22,6 +41,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     phoneNumber: '',
     manager: '',
     wageStandard: 'PT',
+    targetMonthlyWage: '',
     wagePerSecond: '',
   });
 
@@ -34,7 +54,8 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         phoneNumber: factory.phoneNumber || '',
         manager: factory.manager || '',
         wageStandard: factory.wageStandard || 'PT',
-        wagePerSecond: factory.wagePerSecond || '',
+        targetMonthlyWage: factory.targetMonthlyWage ?? '',
+        wagePerSecond: factory.wagePerSecond ?? '',
       });
     } else {
       // Reset for new factory
@@ -45,6 +66,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         phoneNumber: '',
         manager: '',
         wageStandard: 'PT',
+        targetMonthlyWage: '',
         wagePerSecond: '',
       });
     }
@@ -52,6 +74,14 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'targetMonthlyWage') {
+      const digitsOnly = value.replace(/[^\d]/g, '');
+      setFormData((prev) => ({
+        ...prev,
+        [name]: digitsOnly,
+      }));
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -67,8 +97,31 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     }
   };
 
+  const computedWagePerSecond = useMemo(() => {
+    const target = parseNumber(formData.targetMonthlyWage);
+    if (Number.isFinite(target)) {
+      const value = target / SECONDS_PER_MONTH;
+      return Math.round(value * 100) / 100;
+    }
+    const fallback = parseNumber(formData.wagePerSecond);
+    return Number.isFinite(fallback) ? fallback : Number.NaN;
+  }, [formData.targetMonthlyWage, formData.wagePerSecond]);
+
+  const computedWageDisplay = Number.isFinite(computedWagePerSecond)
+    ? computedWagePerSecond.toFixed(2)
+    : '';
+
   const handleSave = () => {
-    onSave({ ...factory, ...formData });
+    const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
+    const resolvedWagePerSecond = Number.isFinite(computedWagePerSecond)
+      ? computedWagePerSecond
+      : formData.wagePerSecond ?? '';
+    onSave({
+      ...factory,
+      ...formData,
+      targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
+      wagePerSecond: resolvedWagePerSecond,
+    });
   };
 
   return (
@@ -141,14 +194,24 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
                 <ToggleButton value="ST">ST (Standard Time)</ToggleButton>
             </ToggleButtonGroup>
           </Grid>
-          <Grid item xs={12}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="초당 급여 (원)"
-              name="wagePerSecond"
-              type="number"
-              value={formData.wagePerSecond}
+              label="목표 급여 (월, 동)"
+              name="targetMonthlyWage"
+              value={formatWithCommas(formData.targetMonthlyWage)}
               onChange={handleInputChange}
+              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="초당 급여 (동)"
+              name="wagePerSecond"
+              value={computedWageDisplay}
+              InputProps={{ readOnly: true }}
+              helperText="26일 × 8시간 기준 자동 계산"
             />
           </Grid>
         </Grid>
