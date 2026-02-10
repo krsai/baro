@@ -86,6 +86,8 @@ model OrganizationUser {
   @@unique([orgId, email])
   @@index([orgId])
   @@index([email])
+  @@index([status])
+  @@index([orgId, status])
 }
 
 model Factory {
