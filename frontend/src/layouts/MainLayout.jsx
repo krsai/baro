@@ -17,6 +17,9 @@ import {
   Collapse,
   Tabs,
   Tab,
+  Badge,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
@@ -55,6 +58,8 @@ const MainLayout = () => {
     openTab,
     closeTab,
     setNavigateToPath,
+    notification,
+    dismissNotification,
   } = useApp();
 
   const [adminOpen, setAdminOpen] = useState(false);
@@ -62,6 +67,21 @@ const MainLayout = () => {
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
+  const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
+
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+
+  const fetchPendingEmployeeCount = React.useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/org-memberships?status=PENDING`);
+      const data = await response.json();
+      if (response.ok) {
+        setPendingEmployeeCount(Array.isArray(data) ? data.length : 0);
+      }
+    } catch (_error) {
+      // ignore fetch errors for badge
+    }
+  }, [API_BASE]);
 
   // `activeTabId` is the single source of truth for the active tab.
   const [activeTabId, setActiveTabId] = useState(location.pathname);
@@ -104,7 +124,12 @@ const MainLayout = () => {
       children: [
         { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
         { label: '라인 관리', icon: <ContentCut />, path: '/line' },
-        { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
+        {
+          label: '직원 관리',
+          icon: <GroupIcon />,
+          path: '/employee',
+          badgeCount: pendingEmployeeCount,
+        },
         { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
       ],
     },
@@ -130,7 +155,13 @@ const MainLayout = () => {
         { label: '조직 관리', icon: <BadgeIcon />, path: '/system-setting/organization-onboarding' },
       ],
     },
-  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen]);
+  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen, pendingEmployeeCount]);
+
+  useEffect(() => {
+    fetchPendingEmployeeCount();
+    const intervalId = setInterval(fetchPendingEmployeeCount, 30000);
+    return () => clearInterval(intervalId);
+  }, [fetchPendingEmployeeCount]);
 
   // This is the ONLY effect responsible for navigation.
   // It runs when the source of truth (`activeTabId`) changes.
@@ -274,7 +305,25 @@ const MainLayout = () => {
                       }
                     >
                       <ListItemIcon sx={{ minWidth: '40px' }} />
-                      <ListItemText primary={child.label} />
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <span>{child.label}</span>
+                            {child.badgeCount > 0 && (
+                              <Badge
+                                color="error"
+                                badgeContent={child.badgeCount}
+                                sx={{
+                                  '& .MuiBadge-badge': {
+                                    position: 'static',
+                                    transform: 'none',
+                                  },
+                                }}
+                              />
+                            )}
+                          </Box>
+                        }
+                      />
                     </ListItem>
                   ))}
                 </List>
@@ -297,7 +346,7 @@ const MainLayout = () => {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.100' }}>
+    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
       {/* Header */}
       <AppBar position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
         <Toolbar>
@@ -317,6 +366,22 @@ const MainLayout = () => {
           </Box>
         </Toolbar>
       </AppBar>
+
+      <Snackbar
+        open={!!notification}
+        onClose={dismissNotification}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        sx={{ mt: '64px' }}
+      >
+        <Alert
+          onClose={dismissNotification}
+          severity={notification?.type || 'info'}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {notification?.message || ''}
+        </Alert>
+      </Snackbar>
 
       {/* Sidebar */}
       <Drawer
@@ -349,6 +414,9 @@ const MainLayout = () => {
           pt: '64px',
           display: 'flex',
           flexDirection: 'column',
+          minHeight: 0,
+          height: '100%',
+          boxSizing: 'border-box',
         }}
       >
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
@@ -416,7 +484,7 @@ const MainLayout = () => {
           </Tabs>
         </Box>
 
-        <Box sx={{ flexGrow: 1, overflow: 'auto', bgcolor: 'white' }}>
+        <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto', bgcolor: 'white' }}>
           <Outlet />
         </Box>
       </Box>

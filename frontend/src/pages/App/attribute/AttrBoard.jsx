@@ -24,6 +24,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import { useApp } from '../../../context/AppContext';
 
 // 초기 Mock Data 정의
 const initialData = {
@@ -89,6 +90,7 @@ const sectionConfigs = [
 
 const AttrBoard = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const { showNotification } = useApp();
 
   // 전체 데이터 상태 관리
   const [formData, setFormData] = useState(() => JSON.parse(JSON.stringify(initialData)));
@@ -223,6 +225,7 @@ const AttrBoard = () => {
         if (Object.keys(changedPayload).length === 0) {
           setConfirmOpen(false);
           setIsSaving(false);
+          showNotification('변경 사항이 없습니다.', 'info');
           return;
         }
 
@@ -234,6 +237,7 @@ const AttrBoard = () => {
         const data = await response.json();
         if (!response.ok) {
           setIsSaving(false);
+          showNotification(data?.error || '속성 저장에 실패했습니다.', 'error');
           return;
         }
         const normalized = normalizeData({ ...formData, ...data });
@@ -241,8 +245,10 @@ const AttrBoard = () => {
         setOriginalData(JSON.parse(JSON.stringify(normalized)));
         setConfirmOpen(false);
         setIsSaving(false);
+        showNotification('속성 정보가 저장되었습니다.', 'success');
       } catch (_error) {
         setIsSaving(false);
+        showNotification('속성 저장 중 오류가 발생했습니다.', 'error');
       }
     };
 

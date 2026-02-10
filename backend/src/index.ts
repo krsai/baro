@@ -77,6 +77,15 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const resolveOptionalString = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  if (value === null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+  return fallback;
+};
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
@@ -441,16 +450,15 @@ app.patch("/org-memberships/:id/reject", async (req, res) => {
     return res.status(404).json({ ok: false, error: "membership not found" });
   }
 
-  const updated = await prisma.organizationUser.update({
-    where: { id },
-    data: {
-      status: "REJECTED",
-      approvedAt: new Date(),
-      approvedBy: normalizedApprovedBy || membership.approvedBy || null,
-    },
+  await prisma.employee.deleteMany({
+    where: { orgUserId: membership.id },
   });
 
-  res.json(updated);
+  await prisma.organizationUser.delete({
+    where: { id },
+  });
+
+  res.json({ ok: true });
 });
 
 app.patch("/org-memberships/:id", async (req, res) => {
@@ -554,7 +562,16 @@ app.get("/employees", async (req, res) => {
 });
 
 app.post("/employees", async (req, res) => {
-  const { orgUserId, factoryId, lineName, position, roleId } = req.body ?? {};
+  const {
+    orgUserId,
+    factoryId,
+    lineName,
+    position,
+    roleId,
+    name,
+    bankName,
+    bankAccountNumber,
+  } = req.body ?? {};
   const orgUserIdNum = Number(orgUserId);
 
   if (!Number.isFinite(orgUserIdNum)) {
@@ -618,6 +635,11 @@ app.post("/employees", async (req, res) => {
   const existingEmployee = await prisma.employee.findUnique({
     where: { orgUserId: membership.id },
   });
+  const resolvedFactoryId = isManufacturerOrg(membership.organization)
+    ? factoryIdNum !== null && factoryIdNum !== undefined
+      ? factoryIdNum
+      : existingEmployee?.factoryId ?? null
+    : null;
   const resolvedRoleId =
     roleIdNum !== null && roleIdNum !== undefined
       ? roleIdNum
@@ -626,10 +648,16 @@ app.post("/employees", async (req, res) => {
   const data = {
     orgId: membership.orgId,
     orgUserId: membership.id,
-    factoryId: factoryIdNum,
+    factoryId: resolvedFactoryId,
     roleId: resolvedRoleId,
-    lineName: lineName?.trim?.() ?? lineName ?? null,
-    position: position?.trim?.() ?? position ?? null,
+    name: resolveOptionalString(name, existingEmployee?.name ?? null),
+    bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
+    bankAccountNumber: resolveOptionalString(
+      bankAccountNumber,
+      existingEmployee?.bankAccountNumber ?? null
+    ),
+    lineName: resolveOptionalString(lineName, existingEmployee?.lineName ?? null),
+    position: resolveOptionalString(position, existingEmployee?.position ?? null),
   };
 
   const employee = await prisma.employee.upsert({

@@ -114,6 +114,9 @@ model Employee {
   orgUserId Int      @unique
   factoryId Int?
   roleId    Int?
+  name      String?
+  bankName  String?
+  bankAccountNumber String?
   lineName  String?
   position  String?
   joinedAt  DateTime?

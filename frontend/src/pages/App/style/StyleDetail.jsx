@@ -17,6 +17,7 @@ import StyleInfo from './styleDetail/StyleInfo';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import { useApp } from '../../../context/AppContext';
 
 // Mock data for the list of styles
 const mockStyles = [
@@ -66,6 +67,7 @@ const fetchStyleData = (styleId) => {
 const StyleDetail = () => {
   const { styleId } = useParams();
   const [currentTab, setCurrentTab] = useState('basicInfo');
+  const { showNotification } = useApp();
 
   // State for the original data to compare against
   const [originalData, setOriginalData] = useState(() => fetchStyleData(styleId));
@@ -123,7 +125,7 @@ const StyleDetail = () => {
     if (isNew) {
       // For new styles, save directly without confirmation
       console.log('Creating new style:', styleFormData);
-      alert('새 스타일이 생성되었습니다 (콘솔 확인)');
+      showNotification('새 스타일이 생성되었습니다.', 'success');
       // In a real app, you might navigate or update the state
     } else {
       // For existing styles, find changes and open confirmation dialog
@@ -150,7 +152,7 @@ const StyleDetail = () => {
 
   const handleConfirmSave = () => {
     console.log('Updating style with the following changes:', changes);
-    alert('스타일이 업데이트되었습니다 (콘솔 확인)');
+    showNotification('스타일이 업데이트되었습니다.', 'success');
     
     // After a successful save, update the original data to the new state
     setOriginalData(styleFormData);

@@ -15,6 +15,7 @@ import {
   TableBody,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import { useApp } from '../../../context/AppContext';
 
 const ORG_TYPES = [
   { value: 'MANUFACTURER', label: '봉제 공장' },
@@ -31,6 +32,7 @@ const ROLE_OPTIONS = [
 
 const OrganizationOnboarding = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const { showNotification } = useApp();
 
   const [organizations, setOrganizations] = useState([]);
   const [members, setMembers] = useState([]);
@@ -51,7 +53,6 @@ const OrganizationOnboarding = () => {
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [savingOrg, setSavingOrg] = useState(false);
   const [assigning, setAssigning] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(null);
 
   const fetchOrganizations = async () => {
     setLoadingOrgs(true);
@@ -108,12 +109,11 @@ const OrganizationOnboarding = () => {
     if (savingOrg) return;
     const name = orgForm.name.trim();
     if (!name) {
-      setStatusMessage({ type: 'error', text: '조직명을 입력해주세요.' });
+      showNotification('조직명을 입력해주세요.', 'error');
       return;
     }
 
     setSavingOrg(true);
-    setStatusMessage(null);
     try {
       const payload = {
         name,
@@ -130,7 +130,7 @@ const OrganizationOnboarding = () => {
       });
       const data = await response.json();
       if (!response.ok) {
-        setStatusMessage({ type: 'error', text: data?.error || '조직 등록 실패' });
+        showNotification(data?.error || '조직 등록 실패', 'error');
         return;
       }
 
@@ -144,9 +144,9 @@ const OrganizationOnboarding = () => {
         address: '',
         phone: '',
       }));
-      setStatusMessage({ type: 'success', text: '조직이 등록되었습니다.' });
+      showNotification('조직이 등록되었습니다.', 'success');
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '조직 등록 중 오류가 발생했습니다.' });
+      showNotification('조직 등록 중 오류가 발생했습니다.', 'error');
     } finally {
       setSavingOrg(false);
     }
@@ -155,17 +155,16 @@ const OrganizationOnboarding = () => {
   const handleAssignOperator = async () => {
     if (assigning) return;
     if (!assignForm.orgId) {
-      setStatusMessage({ type: 'error', text: '조직을 선택해주세요.' });
+      showNotification('조직을 선택해주세요.', 'error');
       return;
     }
     const email = assignForm.email.trim();
     if (!email) {
-      setStatusMessage({ type: 'error', text: '운영자 이메일을 입력해주세요.' });
+      showNotification('운영자 이메일을 입력해주세요.', 'error');
       return;
     }
 
     setAssigning(true);
-    setStatusMessage(null);
     try {
       const response = await fetch(`${API_BASE}/organization-users`, {
         method: 'POST',
@@ -178,15 +177,15 @@ const OrganizationOnboarding = () => {
       });
       const data = await response.json();
       if (!response.ok) {
-        setStatusMessage({ type: 'error', text: data?.error || '운영자 배정 실패' });
+        showNotification(data?.error || '운영자 배정 실패', 'error');
         return;
       }
 
       setAssignForm((prev) => ({ ...prev, email: '' }));
       await fetchMembers(assignForm.orgId);
-      setStatusMessage({ type: 'success', text: '운영자 배정이 완료되었습니다.' });
+      showNotification('운영자 배정이 완료되었습니다.', 'success');
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '운영자 배정 중 오류가 발생했습니다.' });
+      showNotification('운영자 배정 중 오류가 발생했습니다.', 'error');
     } finally {
       setAssigning(false);
     }
@@ -381,13 +380,6 @@ const OrganizationOnboarding = () => {
         </Grid>
       </Grid>
 
-      {statusMessage && (
-        <Box sx={{ mt: 3 }}>
-          <Typography color={statusMessage.type === 'error' ? 'error' : 'primary'}>
-            {statusMessage.text}
-          </Typography>
-        </Box>
-      )}
     </AppPageContainer>
   );
 };

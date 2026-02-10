@@ -19,8 +19,10 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import { useApp } from '../../../context/AppContext';
 
 const CustomerList = () => {
+  const { showNotification } = useApp();
   const [customers, setCustomers] = useState([
     { id: 1, code: 'C001', name: '더산', manager: '김철수', phone: '010-1111-2222', email: 'kim@thesan.com', registeredAt: '2023-01-15' },
     { id: 2, code: 'C002', name: '나이키', manager: '이영희', phone: '010-3333-4444', email: 'lee@nike.com', registeredAt: '2023-02-20' },
@@ -68,6 +70,7 @@ const CustomerList = () => {
       setCustomers([...customers, newCustomer]);
     }
     handleCloseDialog();
+    showNotification('고객사 정보가 저장되었습니다.', 'success');
   };
 
   const handleInputChange = (e) => {

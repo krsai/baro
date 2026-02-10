@@ -23,6 +23,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import { useApp } from '../../../context/AppContext';
 
 // Mock data for customers
 const mockCustomers = ['더산', '나이키', '아디다스', '빈폴', '탑텐'];
@@ -37,6 +38,7 @@ const mockStyles = [
 ];
 
 const OrderList = () => {
+  const { showNotification } = useApp();
   const [orders, setOrders] = useState([
     { id: 1, orderNumber: 'ORD-001', customer: '더산', styleName: '기본 라운드 티셔츠', styleCode: 'TSH-01', quantity: 100, dueDate: '2024-03-15', status: '작업중' },
     { id: 2, orderNumber: 'ORD-002', customer: '나이키', styleName: '기능성 스포츠 자켓', styleCode: 'NK-SW-02', quantity: 250, dueDate: '2024-03-20', status: '생산완료' },
@@ -91,6 +93,7 @@ const OrderList = () => {
       setOrders([...orders, newOrder]);
     }
     handleCloseDialog();
+    showNotification('주문 정보가 저장되었습니다.', 'success');
   };
 
   const handleInputChange = (e) => {

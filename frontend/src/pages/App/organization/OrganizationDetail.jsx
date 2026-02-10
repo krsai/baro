@@ -14,9 +14,11 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
+import { useApp } from '../../../context/AppContext';
 
 const OrganizationDetail = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const { showNotification } = useApp();
 
   const [organizationId, setOrganizationId] = useState(null);
   const [companyInfo, setCompanyInfo] = useState({
@@ -98,6 +100,7 @@ const OrganizationDetail = () => {
 
         const saved = await response.json();
         if (!response.ok) {
+          showNotification(saved?.error || '회사 정보 저장에 실패했습니다.', 'error');
           return;
         }
 
@@ -112,8 +115,9 @@ const OrganizationDetail = () => {
           email: saved.email ?? '',
         });
         setEditMode(false);
+        showNotification('회사 정보가 저장되었습니다.', 'success');
       } catch (_error) {
-        // ignore save errors in UI for now
+        showNotification('회사 정보 저장 중 오류가 발생했습니다.', 'error');
       }
     };
 

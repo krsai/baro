@@ -10,10 +10,10 @@ import {
   TableHead,
   TableRow,
   Chip,
-  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import FactoryDetail from './factoryDetail/FactoryDetail';
+import { useApp } from '../../../context/AppContext';
 
 const FactoryList = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -22,21 +22,20 @@ const FactoryList = () => {
   const [selectedFactory, setSelectedFactory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(null);
+  const { showNotification } = useApp();
 
   const fetchFactories = async () => {
     setLoading(true);
-    setStatusMessage(null);
     try {
       const response = await fetch(`${API_BASE}/factories`);
       const data = await response.json();
       if (response.ok) {
         setFactories(Array.isArray(data) ? data : []);
       } else {
-        setStatusMessage({ type: 'error', text: data?.error || '공장 목록을 불러오지 못했습니다.' });
+        showNotification(data?.error || '공장 목록을 불러오지 못했습니다.', 'error');
       }
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '공장 목록을 불러오지 못했습니다.' });
+      showNotification('공장 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
     }
@@ -64,7 +63,6 @@ const FactoryList = () => {
   const handleSave = async (savedData) => {
     if (saving) return;
     setSaving(true);
-    setStatusMessage(null);
 
     const payload = {
       name: savedData.name,
@@ -89,7 +87,7 @@ const FactoryList = () => {
       );
       const data = await response.json();
       if (!response.ok) {
-        setStatusMessage({ type: 'error', text: data?.error || '공장 저장에 실패했습니다.' });
+        showNotification(data?.error || '공장 저장에 실패했습니다.', 'error');
         return;
       }
 
@@ -99,9 +97,9 @@ const FactoryList = () => {
         setFactories((prev) => [...prev, data]);
       }
       handleDetailClose();
-      setStatusMessage({ type: 'success', text: '공장 정보가 저장되었습니다.' });
+      showNotification('공장 정보가 저장되었습니다.', 'success');
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '공장 저장 중 오류가 발생했습니다.' });
+      showNotification('공장 저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -176,14 +174,6 @@ const FactoryList = () => {
           </Table>
         </TableContainer>
       </Paper>
-      {statusMessage && (
-        <Typography
-          sx={{ mt: 2 }}
-          color={statusMessage.type === 'error' ? 'error' : 'primary'}
-        >
-          {statusMessage.text}
-        </Typography>
-      )}
       <FactoryDetail
         open={isDetailOpen}
         onClose={handleDetailClose}
