@@ -143,6 +143,30 @@ const toCustomerResponse = (relationship) => {
   };
 };
 
+const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
+  const activeAssignments = await prisma.lineAssignment.findMany({
+    where: { employeeId, endAt: null },
+    select: { lineId: true },
+  });
+
+  if (activeAssignments.length === 0) {
+    return [];
+  }
+
+  const lineIds = activeAssignments.map((item) => item.lineId);
+  await prisma.lineAssignment.updateMany({
+    where: { employeeId, endAt: null },
+    data: { endAt: endedAt },
+  });
+
+  await prisma.line.updateMany({
+    where: { id: { in: lineIds }, managerEmployeeId: employeeId },
+    data: { managerEmployeeId: null },
+  });
+
+  return lineIds;
+};
+
 const seedAttributesIfEmpty = async (orgId) => {
   const [
     colorCount,
@@ -488,6 +512,7 @@ app.patch("/org-memberships/:id", async (req, res) => {
 
   const membership = await prisma.orgMembership.findUnique({
     where: { id },
+    include: { organization: true },
   });
 
   if (!membership) {
@@ -523,26 +548,26 @@ app.patch("/org-memberships/:id", async (req, res) => {
       where: { orgMembershipId: membership.id },
     });
 
-    const nextStatus = data.status ?? membership.status;
+    const currentStatus = data.status ?? membership.status;
     const employeeData = {
       orgId: membership.orgId,
     };
 
-    if (nextStatus === "ACTIVE") {
+    if (currentStatus === "ACTIVE") {
       employeeData.joinedAt = existingEmployee?.joinedAt ?? now;
       if (membership.status === "SUSPENDED") {
         employeeData.leaveEndAt = now;
       }
       employeeData.leftAt = null;
-    } else if (nextStatus === "SUSPENDED") {
+    } else if (currentStatus === "SUSPENDED") {
       employeeData.leaveStartAt = existingEmployee?.leaveStartAt ?? now;
       employeeData.leaveEndAt = null;
       employeeData.leftAt = null;
-    } else if (nextStatus === "TERMINATED") {
+    } else if (currentStatus === "TERMINATED") {
       employeeData.leftAt = now;
     }
 
-    await prisma.employee.upsert({
+    const upsertedEmployee = await prisma.employee.upsert({
       where: { orgMembershipId: membership.id },
       update: employeeData,
       create: {
@@ -552,6 +577,10 @@ app.patch("/org-memberships/:id", async (req, res) => {
         ...employeeData,
       },
     });
+
+    if (currentStatus !== "ACTIVE") {
+      await closeActiveLineAssignments(upsertedEmployee.id, now);
+    }
   }
 
   res.json(updated);
@@ -783,6 +812,316 @@ app.put("/factories/:id", async (req, res) => {
   });
 
   res.json(factory);
+});
+
+app.get("/lines", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const factoryId = Number(req.query.factoryId);
+  if (!Number.isFinite(factoryId)) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
+  }
+
+  const factory = await prisma.factory.findFirst({
+    where: { id: factoryId, orgId: organization.id },
+  });
+  if (!factory) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const lines = await prisma.line.findMany({
+    where: { orgId: organization.id, factoryId },
+    orderBy: { id: "asc" },
+  });
+
+  res.json(lines);
+});
+
+app.post("/lines", async (req, res) => {
+  const organization = await getPrimaryOrganization();
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const { factoryId, name } = req.body ?? {};
+  const factoryIdNum = Number(factoryId);
+  if (!Number.isFinite(factoryIdNum)) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
+  }
+
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+  if (!trimmedName) {
+    return res.status(400).json({ ok: false, error: "name is required" });
+  }
+
+  const factory = await prisma.factory.findFirst({
+    where: { id: factoryIdNum, orgId: organization.id },
+  });
+  if (!factory) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const existingLine = await prisma.line.findFirst({
+    where: { factoryId: factoryIdNum, orgId: organization.id, name: trimmedName },
+  });
+  if (existingLine) {
+    return res.status(409).json({ ok: false, error: "line already exists" });
+  }
+
+  const line = await prisma.line.create({
+    data: {
+      orgId: organization.id,
+      factoryId: factoryIdNum,
+      name: trimmedName,
+    },
+  });
+
+  res.status(201).json(line);
+});
+
+app.patch("/lines/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await getPrimaryOrganization();
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const existing = await prisma.line.findFirst({
+    where: { id, orgId: organization.id },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "line not found" });
+  }
+
+  const { name, isActive, managerEmployeeId } = req.body ?? {};
+  const data = {};
+
+  if (typeof name === "string") {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return res.status(400).json({ ok: false, error: "name is required" });
+    }
+    const nameConflict = await prisma.line.findFirst({
+      where: {
+        factoryId: existing.factoryId,
+        orgId: organization.id,
+        name: trimmedName,
+        NOT: { id: existing.id },
+      },
+    });
+    if (nameConflict) {
+      return res.status(409).json({ ok: false, error: "line already exists" });
+    }
+    data.name = trimmedName;
+  }
+
+  if (isActive !== undefined) {
+    data.isActive = Boolean(isActive);
+  }
+
+  if (managerEmployeeId !== undefined) {
+    if (managerEmployeeId === null || managerEmployeeId === "") {
+      data.managerEmployeeId = null;
+    } else {
+      const managerIdNum = Number(managerEmployeeId);
+      if (!Number.isFinite(managerIdNum)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "invalid managerEmployeeId" });
+      }
+
+      const manager = await prisma.employee.findFirst({
+        where: {
+          id: managerIdNum,
+          orgId: organization.id,
+          factoryId: existing.factoryId,
+          membership: { role: "WORKER", status: "ACTIVE" },
+        },
+        include: { membership: true },
+      });
+      if (!manager) {
+        return res
+          .status(404)
+          .json({ ok: false, error: "manager not found" });
+      }
+
+      const activeAssignment = await prisma.lineAssignment.findFirst({
+        where: { lineId: existing.id, employeeId: manager.id, endAt: null },
+      });
+      if (!activeAssignment) {
+        return res.status(400).json({
+          ok: false,
+          error: "manager must be assigned to the line first",
+        });
+      }
+
+      data.managerEmployeeId = manager.id;
+    }
+  }
+
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ ok: false, error: "no changes provided" });
+  }
+
+  const updated = await prisma.line.update({
+    where: { id: existing.id },
+    data,
+  });
+
+  res.json(updated);
+});
+
+app.get("/line-workers", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const factoryId = Number(req.query.factoryId);
+  if (!Number.isFinite(factoryId)) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
+  }
+
+  const factory = await prisma.factory.findFirst({
+    where: { id: factoryId, orgId: organization.id },
+  });
+  if (!factory) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const workers = await prisma.employee.findMany({
+    where: {
+      orgId: organization.id,
+      factoryId,
+      membership: { role: "WORKER", status: "ACTIVE" },
+    },
+    include: { membership: true },
+    orderBy: { id: "asc" },
+  });
+
+  const assignments = await prisma.lineAssignment.findMany({
+    where: { line: { factoryId, orgId: organization.id }, endAt: null },
+    select: { employeeId: true, lineId: true },
+  });
+
+  const assignmentByEmployee = new Map();
+  assignments.forEach((assignment) => {
+    assignmentByEmployee.set(assignment.employeeId, assignment.lineId);
+  });
+
+  res.json(
+    workers.map((worker) => ({
+      id: worker.id,
+      orgMembershipId: worker.orgMembershipId,
+      name: worker.name,
+      email: worker.membership?.email ?? "",
+      factoryId: worker.factoryId,
+      currentLineId: assignmentByEmployee.get(worker.id) ?? null,
+    }))
+  );
+});
+
+app.post("/line-assignments/assign", async (req, res) => {
+  const organization = await getPrimaryOrganization();
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const { lineId, employeeId } = req.body ?? {};
+  const lineIdNum = Number(lineId);
+  const employeeIdNum = Number(employeeId);
+  if (!Number.isFinite(lineIdNum) || !Number.isFinite(employeeIdNum)) {
+    return res.status(400).json({
+      ok: false,
+      error: "lineId and employeeId are required",
+    });
+  }
+
+  const line = await prisma.line.findFirst({
+    where: { id: lineIdNum, orgId: organization.id },
+  });
+  if (!line) {
+    return res.status(404).json({ ok: false, error: "line not found" });
+  }
+
+  const employee = await prisma.employee.findFirst({
+    where: {
+      id: employeeIdNum,
+      orgId: organization.id,
+      factoryId: line.factoryId,
+      membership: { role: "WORKER", status: "ACTIVE" },
+    },
+    include: { membership: true },
+  });
+  if (!employee) {
+    return res.status(404).json({ ok: false, error: "worker not found" });
+  }
+
+  const now = new Date();
+  await closeActiveLineAssignments(employee.id, now);
+
+  const assignment = await prisma.lineAssignment.create({
+    data: {
+      lineId: line.id,
+      employeeId: employee.id,
+      startAt: now,
+    },
+  });
+
+  res.status(201).json(assignment);
+});
+
+app.post("/line-assignments/unassign", async (req, res) => {
+  const organization = await getPrimaryOrganization();
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const { employeeId } = req.body ?? {};
+  const employeeIdNum = Number(employeeId);
+  if (!Number.isFinite(employeeIdNum)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "employeeId is required" });
+  }
+
+  const employee = await prisma.employee.findFirst({
+    where: { id: employeeIdNum, orgId: organization.id },
+  });
+  if (!employee) {
+    return res.status(404).json({ ok: false, error: "worker not found" });
+  }
+
+  await closeActiveLineAssignments(employee.id, new Date());
+
+  res.json({ ok: true });
 });
 
 app.get("/customers", async (req, res) => {

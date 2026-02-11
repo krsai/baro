@@ -66,6 +66,7 @@ model Organization {
   memberships OrgMembership[]
   factories  Factory[]
   employees  Employee[]
+  lines      Line[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
@@ -108,8 +109,29 @@ model Factory {
 
   organization Organization @relation(fields: [orgId], references: [id])
   employees    Employee[]
+  lines        Line[]
 
   @@index([orgId])
+}
+
+model Line {
+  id                Int      @id @default(autoincrement())
+  orgId             Int
+  factoryId         Int
+  name              String
+  managerEmployeeId Int?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  factory      Factory      @relation(fields: [factoryId], references: [id])
+  manager      Employee?    @relation("LineManager", fields: [managerEmployeeId], references: [id])
+  assignments  LineAssignment[]
+
+  @@index([orgId])
+  @@index([factoryId])
+  @@unique([factoryId, name])
 }
 
 model Employee {
@@ -134,10 +156,27 @@ model Employee {
   membership   OrgMembership @relation(fields: [orgMembershipId], references: [id])
   factory      Factory?        @relation(fields: [factoryId], references: [id])
   role         AttrRole?       @relation(fields: [roleId], references: [id])
+  lineAssignments LineAssignment[]
+  managedLines   Line[] @relation("LineManager")
 
   @@index([orgId])
   @@index([factoryId])
   @@index([roleId])
+}
+
+model LineAssignment {
+  id         Int      @id @default(autoincrement())
+  lineId     Int
+  employeeId Int
+  startAt    DateTime @default(now())
+  endAt      DateTime?
+
+  line     Line     @relation(fields: [lineId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([lineId])
+  @@index([employeeId])
+  @@index([endAt])
 }
 
 model OrgRelationship {
