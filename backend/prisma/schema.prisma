@@ -13,7 +13,6 @@ datasource db {
 enum OrganizationType {
   MANUFACTURER
   BRAND
-  BOTH
 }
 
 enum OrgUserRole {
@@ -47,6 +46,7 @@ model SystemUser {
 model Organization {
   id             Int              @id @default(autoincrement())
   name           String
+  code           String?          @unique
   businessNumber String?
   representative String?
   industry       String?
@@ -63,12 +63,14 @@ model Organization {
   categories AttrCategory[]
   roles      AttrRole[]
   processes  AttrProcess[]
-  members    OrganizationUser[]
+  memberships OrgMembership[]
   factories  Factory[]
   employees  Employee[]
+  manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
+  brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
 
-model OrganizationUser {
+model OrgMembership {
   id        Int         @id @default(autoincrement())
   orgId     Int
   email     String
@@ -113,7 +115,7 @@ model Factory {
 model Employee {
   id        Int      @id @default(autoincrement())
   orgId     Int
-  orgUserId Int      @unique
+  orgMembershipId Int      @unique
   factoryId Int?
   roleId    Int?
   name      String?
@@ -129,13 +131,33 @@ model Employee {
   updatedAt DateTime @updatedAt
 
   organization Organization   @relation(fields: [orgId], references: [id])
-  membership   OrganizationUser @relation(fields: [orgUserId], references: [id])
+  membership   OrgMembership @relation(fields: [orgMembershipId], references: [id])
   factory      Factory?        @relation(fields: [factoryId], references: [id])
   role         AttrRole?       @relation(fields: [roleId], references: [id])
 
   @@index([orgId])
   @@index([factoryId])
   @@index([roleId])
+}
+
+model OrgRelationship {
+  id                Int      @id @default(autoincrement())
+  manufacturerOrgId Int
+  brandOrgId        Int
+  customerCode      String?
+  managerName       String?
+  managerPhone      String?
+  managerEmail      String?
+  memo              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
+  brand         Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+
+  @@unique([manufacturerOrgId, brandOrgId])
+  @@index([manufacturerOrgId])
+  @@index([brandOrgId])
 }
 
 model AttrColor {

@@ -196,7 +196,7 @@ const EmployeeBoard = () => {
   const employeeByMembership = useMemo(() => {
     const map = new Map();
     employees.forEach((item) => {
-      map.set(item.orgUserId, item);
+      map.set(item.orgMembershipId, item);
     });
     return map;
   }, [employees]);
@@ -370,7 +370,7 @@ const EmployeeBoard = () => {
     setStatusMessage(null);
     try {
       const employeePayload = {
-        orgUserId: member.id,
+        orgMembershipId: member.id,
         name: draft.name,
         bankName: draft.bankName,
         bankAccountNumber: draft.bankAccountNumber,

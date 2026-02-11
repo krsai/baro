@@ -23,6 +23,7 @@ const OrganizationDetail = () => {
   const [organizationId, setOrganizationId] = useState(null);
   const [companyInfo, setCompanyInfo] = useState({
     name: '',
+    code: '',
     businessNumber: '',
     representative: '',
     industry: '',
@@ -43,6 +44,7 @@ const OrganizationDetail = () => {
           setOrganizationId(data.id);
           setCompanyInfo({
             name: data.name ?? '',
+            code: data.code ?? '',
             businessNumber: data.businessNumber ?? '',
             representative: data.representative ?? '',
             industry: data.industry ?? '',
@@ -81,6 +83,7 @@ const OrganizationDetail = () => {
       try {
         const payload = {
           name: editData.name?.trim(),
+          code: editData.code?.trim(),
           businessNumber: editData.businessNumber?.trim(),
           representative: editData.representative?.trim(),
           industry: editData.industry?.trim(),
@@ -107,6 +110,7 @@ const OrganizationDetail = () => {
         setOrganizationId(saved.id);
         setCompanyInfo({
           name: saved.name ?? '',
+          code: saved.code ?? '',
           businessNumber: saved.businessNumber ?? '',
           representative: saved.representative ?? '',
           industry: saved.industry ?? '',
@@ -144,6 +148,7 @@ const OrganizationDetail = () => {
       </Box>
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
         <InfoRow label="회사명" value={companyInfo.name} />
+        <InfoRow label="회사 코드" value={companyInfo.code} />
         <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
         <InfoRow label="대표자명" value={companyInfo.representative} />
         <InfoRow label="업종" value={companyInfo.industry} />
@@ -163,6 +168,15 @@ const OrganizationDetail = () => {
                 label="회사명"
                 name="name"
                 value={editData.name}
+                onChange={handleInputChange}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="회사 코드"
+                name="code"
+                value={editData.code}
                 onChange={handleInputChange}
               />
             </Grid>

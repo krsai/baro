@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -18,16 +18,15 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 
 const ORG_TYPES = [
-  { value: 'MANUFACTURER', label: '봉제 공장' },
-  { value: 'BRAND', label: '고객사(브랜드)' },
-  { value: 'BOTH', label: '복합(공장 + 고객사)' },
+  { value: 'MANUFACTURER', label: 'Manufacturer' },
+  { value: 'BRAND', label: 'Brand' },
 ];
 
 const ROLE_OPTIONS = [
-  { value: 'ADMIN', label: '관리자' },
-  { value: 'OPERATOR', label: '운영자' },
-  { value: 'ACCOUNTANT', label: '회계' },
-  { value: 'WORKER', label: '작업자' },
+  { value: 'ADMIN', label: 'Admin' },
+  { value: 'OPERATOR', label: 'Operator' },
+  { value: 'ACCOUNTANT', label: 'Accountant' },
+  { value: 'WORKER', label: 'Worker' },
 ];
 
 const OrganizationOnboarding = () => {
@@ -38,6 +37,7 @@ const OrganizationOnboarding = () => {
   const [members, setMembers] = useState([]);
   const [orgForm, setOrgForm] = useState({
     name: '',
+    code: '',
     type: 'MANUFACTURER',
     email: '',
     representative: '',
@@ -75,7 +75,7 @@ const OrganizationOnboarding = () => {
   const fetchMembers = async (orgId) => {
     if (!orgId) return;
     try {
-      const response = await fetch(`${API_BASE}/organization-users?orgId=${orgId}`);
+      const response = await fetch(`${API_BASE}/org-memberships?orgId=${orgId}`);
       const data = await response.json();
       if (response.ok) {
         setMembers(data);
@@ -109,7 +109,7 @@ const OrganizationOnboarding = () => {
     if (savingOrg) return;
     const name = orgForm.name.trim();
     if (!name) {
-      showNotification('조직명을 입력해주세요.', 'error');
+      showNotification('Please enter an organization name.', 'error');
       return;
     }
 
@@ -117,6 +117,7 @@ const OrganizationOnboarding = () => {
     try {
       const payload = {
         name,
+        code: orgForm.code.trim(),
         type: orgForm.type,
         email: orgForm.email.trim(),
         representative: orgForm.representative.trim(),
@@ -130,7 +131,7 @@ const OrganizationOnboarding = () => {
       });
       const data = await response.json();
       if (!response.ok) {
-        showNotification(data?.error || '조직 등록 실패', 'error');
+        showNotification(data?.error || 'Failed to create organization.', 'error');
         return;
       }
 
@@ -139,14 +140,15 @@ const OrganizationOnboarding = () => {
       setOrgForm((prev) => ({
         ...prev,
         name: '',
+        code: '',
         email: '',
         representative: '',
         address: '',
         phone: '',
       }));
-      showNotification('조직이 등록되었습니다.', 'success');
+      showNotification('Organization created.', 'success');
     } catch (_error) {
-      showNotification('조직 등록 중 오류가 발생했습니다.', 'error');
+      showNotification('An error occurred while creating the organization.', 'error');
     } finally {
       setSavingOrg(false);
     }
@@ -155,18 +157,18 @@ const OrganizationOnboarding = () => {
   const handleAssignOperator = async () => {
     if (assigning) return;
     if (!assignForm.orgId) {
-      showNotification('조직을 선택해주세요.', 'error');
+      showNotification('Please select an organization.', 'error');
       return;
     }
     const email = assignForm.email.trim();
     if (!email) {
-      showNotification('운영자 이메일을 입력해주세요.', 'error');
+      showNotification('Please enter an operator email.', 'error');
       return;
     }
 
     setAssigning(true);
     try {
-      const response = await fetch(`${API_BASE}/organization-users`, {
+      const response = await fetch(`${API_BASE}/org-memberships/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -177,15 +179,15 @@ const OrganizationOnboarding = () => {
       });
       const data = await response.json();
       if (!response.ok) {
-        showNotification(data?.error || '운영자 배정 실패', 'error');
+        showNotification(data?.error || 'Failed to assign operator.', 'error');
         return;
       }
 
       setAssignForm((prev) => ({ ...prev, email: '' }));
       await fetchMembers(assignForm.orgId);
-      showNotification('운영자 배정이 완료되었습니다.', 'success');
+      showNotification('Operator assigned.', 'success');
     } catch (_error) {
-      showNotification('운영자 배정 중 오류가 발생했습니다.', 'error');
+      showNotification('An error occurred while assigning the operator.', 'error');
     } finally {
       setAssigning(false);
     }
@@ -196,10 +198,10 @@ const OrganizationOnboarding = () => {
       header={
         <>
           <Typography component="h1" variant="h4">
-            조직 등록 / 운영자 배정
+            Organization Setup / Operator Assignment
           </Typography>
           <Typography sx={{ mt: 2, color: 'text.secondary' }}>
-            시스템 운영자가 조직을 먼저 등록한 뒤, 가입한 사용자의 이메일을 운영자로 배정합니다.
+            Register organizations first, then assign an operator email to activate access.
           </Typography>
         </>
       }
@@ -208,13 +210,13 @@ const OrganizationOnboarding = () => {
         <Grid item xs={12} md={6}>
           <Paper variant="outlined" sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              1) 조직 등록
+              1) Organization Registration
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="조직명"
+                  label="Organization Name"
                   name="name"
                   value={orgForm.name}
                   onChange={handleOrgChange}
@@ -224,8 +226,17 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
+                  label="Organization Code"
+                  name="code"
+                  value={orgForm.code}
+                  onChange={handleOrgChange}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
                   select
-                  label="조직 유형"
+                  label="Organization Type"
                   name="type"
                   value={orgForm.type}
                   onChange={handleOrgChange}
@@ -240,7 +251,7 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="대표 이메일(선택)"
+                  label="Organization Email (Optional)"
                   name="email"
                   value={orgForm.email}
                   onChange={handleOrgChange}
@@ -249,7 +260,7 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="대표자명(선택)"
+                  label="Representative (Optional)"
                   name="representative"
                   value={orgForm.representative}
                   onChange={handleOrgChange}
@@ -258,7 +269,7 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="주소(선택)"
+                  label="Address (Optional)"
                   name="address"
                   value={orgForm.address}
                   onChange={handleOrgChange}
@@ -267,7 +278,7 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="연락처(선택)"
+                  label="Phone (Optional)"
                   name="phone"
                   value={orgForm.phone}
                   onChange={handleOrgChange}
@@ -280,7 +291,7 @@ const OrganizationOnboarding = () => {
                   disabled={savingOrg}
                   startIcon={savingOrg ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                  {savingOrg ? '등록 중' : '조직 등록'}
+                  {savingOrg ? 'Saving...' : 'Create Organization'}
                 </Button>
               </Grid>
             </Grid>
@@ -290,14 +301,14 @@ const OrganizationOnboarding = () => {
         <Grid item xs={12} md={6}>
           <Paper variant="outlined" sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              2) 운영자 배정
+              2) Operator Assignment
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
                   fullWidth
                   select
-                  label="조직 선택"
+                  label="Select Organization"
                   name="orgId"
                   value={assignForm.orgId}
                   onChange={handleAssignChange}
@@ -313,7 +324,7 @@ const OrganizationOnboarding = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="운영자 이메일"
+                  label="Operator Email"
                   name="email"
                   value={assignForm.email}
                   onChange={handleAssignChange}
@@ -324,7 +335,7 @@ const OrganizationOnboarding = () => {
                 <TextField
                   fullWidth
                   select
-                  label="역할"
+                  label="Role"
                   name="role"
                   value={assignForm.role}
                   onChange={handleAssignChange}
@@ -343,20 +354,20 @@ const OrganizationOnboarding = () => {
                   disabled={assigning || organizations.length === 0}
                   startIcon={assigning ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                  {assigning ? '배정 중' : '운영자 배정'}
+                  {assigning ? 'Assigning...' : 'Assign Operator'}
                 </Button>
               </Grid>
             </Grid>
 
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                현재 배정된 운영자
+                Assigned Operators
               </Typography>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>이메일</TableCell>
-                    <TableCell>역할</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Role</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -369,7 +380,7 @@ const OrganizationOnboarding = () => {
                   {members.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={2} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        배정된 운영자가 없습니다.
+                        No operators assigned.
                       </TableCell>
                     </TableRow>
                   )}
@@ -379,7 +390,6 @@ const OrganizationOnboarding = () => {
           </Paper>
         </Grid>
       </Grid>
-
     </AppPageContainer>
   );
 };

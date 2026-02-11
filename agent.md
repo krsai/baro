@@ -54,27 +54,35 @@
 
 ### 2.3. 멀티테넌트(다중 회사) 기본 설계
 - 목표: 향후 여러 회사에 판매 가능하도록 최소한의 테넌트 분리 기준을 미리 정의한다.
-- 방식: 단일 DB/스키마 + 테넌트 컬럼(`companyId`) 방식으로 분리한다.
-- 기준 엔티티: `Company`(또는 `Corporation`)를 테넌트의 기준으로 둔다.
-- 적용 범위: 주요 도메인 테이블은 모두 `companyId`를 필수로 가진다.
-- 접근 제어: 모든 API는 현재 로그인 사용자의 `companyId`로만 조회/저장한다.
+- 방식: 단일 DB/스키마 + 테넌트 컬럼(`orgId`) 방식으로 분리한다.
+- 기준 엔티티: `Organization`(회사)을 테넌트의 기준으로 둔다.
+- 적용 범위: 주요 도메인 테이블은 모두 `orgId`를 필수로 가진다.
+- 접근 제어(기본): 모든 API는 현재 로그인 사용자의 `orgId`로만 조회/저장한다.
+- 접근 제어(거래): 주문/관계 등 거래성 데이터는 관계로 연결된 상대 조직만 접근 가능하다.
 - 초기 가입 흐름: 가입 직후에는 소속 없음 상태이며, 관리자가 배정해야 역할과 접근이 활성화된다.
-- 유니크/인덱스: 회사 범위 유니크 제약으로 설계한다. (예: `businessNumber + companyId`)
+- 유니크/인덱스: 조직 범위 유니크 제약으로 설계한다. (예: `businessNumber + orgId`)
 - 데이터 분리 책임: RLS가 아니라 백엔드에서 테넌트 분리를 강제한다.
 
 ### 2.4. 멀티 플랫폼(고객사도 사용하는 구조) 설계
 - 목표: 고객사와 봉제공장이 모두 앱을 사용하고, 고객사가 여러 공장에 의뢰할 수 있는 플랫폼 구조를 지원한다.
 - 핵심 전제: "고객사"와 "봉제공장"은 모두 동일한 `Organization`(회사) 엔티티로 관리한다.
-- 조직 구분: `Organization.type`으로 제조사/브랜드/혼합 여부를 구분한다. (예: `MANUFACTURER`, `BRAND`, `BOTH`)
+- 조직 구분: `Organization.type`으로 제조사/브랜드를 구분한다. (예: `MANUFACTURER`, `BRAND`)
+- 회사 코드: `Organization.code`는 제조사/브랜드 공통 필드이며, **4자리 영문 대문자 약어**로 관리한다. 전체 조직에서 **유니크**해야 한다. (예: `BRVN`, `TSKR`)
 - 사용자 소속: `OrgMembership`로 사용자의 조직 소속과 역할/상태를 관리한다.
 - 공장 소유: `Factory`는 제조사 `Organization`에 소속된다. (`factory.orgId`)
-- 제한: `Organization.type = BRAND`는 공장을 갖지 않는다. 공장 정보는 `MANUFACTURER` 또는 `BOTH`에서만 등록/조회한다.
-- 관계/거래: 고객사-제조사 관계는 `Relationship`(또는 `Account`)로 관리한다.
+- 제한: `Organization.type = BRAND`는 공장을 갖지 않는다. 공장 정보는 `MANUFACTURER`에서만 등록/조회한다.
+- 관계/거래: 고객사-제조사 관계는 `OrgRelationship`으로 관리한다. (`Relationship`/`Account` 용어는 사용하지 않는다.)
+- 고객(브랜드)은 `Organization.type = BRAND`를 기준으로 한다.
+- 제조사-브랜드 연결은 `OrgRelationship`(예: `manufacturerOrgId`, `brandOrgId`) 테이블에 저장한다.
+- 고객 관리(제조사 관점): 로그인한 제조사의 `orgId` 기준으로 연결된 브랜드만 조회/표시한다. (멀티테넌트 분리 1차 기준)
+- 고객 관리 화면 표시 정보: 브랜드 기본 정보 + 관계 전용 필드(담당자/연락처/이메일 등).
+- 고객 코드: 고객 관리 화면의 **고객 코드**는 브랜드 `Organization.code`와 동일하며, 제조사도 같은 규칙의 회사 코드를 가진다.
+- 고객 등록: 제조사에서 고객을 등록할 때 `brandOrgId`가 없으면 **브랜드 `Organization`을 자동 생성**하고 `OrgRelationship`으로 연결한다.
 - 주문 구조: 주문은 반드시 `buyerOrgId`(고객사)와 `sellerOrgId`(제조사)를 가진다.
 - 다중 공장 의뢰: 주문을 공장별로 분할하는 방식을 기본으로 한다. (예: 주문을 공장별로 나누어 생성하거나 `OrderSplit` 개념으로 분배)
-- 접근 제어: 모든 조회/저장은 `buyerOrgId` 또는 `sellerOrgId` 기준으로 제한한다.
- - 용어 통일: 기존 `Company` 개념은 플랫폼 구조에서는 `Organization`으로 통일한다. (`Company`는 단일 테넌트 기준의 옛 명칭)
- - 예시 매핑: "바로"는 `Organization`이며, 역할에 따라 `MANUFACTURER` 또는 `BOTH`로 정의한다. 사용자는 `OrgMembership`로 연결한다.
+- 접근 제어: 모든 조회/저장은 로그인 사용자의 `orgId`가 `buyerOrgId` 또는 `sellerOrgId`에 포함되거나, 관계로 연결된 경우만 허용한다.
+- 용어 통일: `Company`/`Corporation` 용어는 사용하지 않고 `Organization`으로 통일한다.
+- 예시 매핑: "바로"는 `Organization`이며, 역할에 따라 `MANUFACTURER` 또는 `BRAND`로 정의한다. 사용자는 `OrgMembership`로 연결한다.
 
 ## 3. 프로젝트 구조
 
@@ -203,11 +211,50 @@
 
 이 섹션은 애플리케이션의 핵심 비즈니스 로직과 데이터 흐름을 정의합니다.
 
+### 7.0. 데이터베이스 테이블 요약 (DB Table Summary)
+
+*현재 Prisma 스키마 기준으로 주요 테이블의 용도와 관계를 요약합니다.*
+
+1. **Organization**
+   - 용도: 제조사/브랜드 공통 회사 엔티티
+   - 핵심 필드: `name`, `code`(4자리 영문 대문자, 유니크), `type`(MANUFACTURER/BRAND), 기본 회사 정보
+   - 관계: `OrgMembership`, `Factory`, `Employee`, `OrgRelationship`, `Attr*`
+
+2. **OrgMembership**
+   - 용도: 조직별 사용자 승인/상태/역할 관리 (가입 신청 → 승인)
+   - 핵심 필드: `orgId`, `email`, `role`, `status`, `requestedAt`, `approvedAt`
+   - 관계: `Organization`(N:1), `Employee`(1:1, 선택)
+
+3. **Factory**
+   - 용도: 제조사 조직의 공장
+   - 핵심 필드: `orgId`, `name`, 임금 관련 필드
+   - 관계: `Organization`(N:1), `Employee`(1:N)
+
+4. **Employee**
+   - 용도: 제조사 조직의 직원 정보 (승인된 멤버십과 연결)
+   - 핵심 필드: `orgId`, `orgMembershipId`, `factoryId`, `roleId`, 인사/급여 관련 필드
+   - 관계: `Organization`, `OrgMembership`, `Factory`, `AttrRole`
+
+5. **OrgRelationship**
+   - 용도: 제조사 ↔ 브랜드 고객 관계
+   - 핵심 필드: `manufacturerOrgId`, `brandOrgId`, 관계 전용 필드(담당자/연락처/메모 등)
+   - 관계: `Organization`(제조사/브랜드)
+   - 참고: 고객 코드 표시는 브랜드 `Organization.code`를 사용
+
+6. **AttrColor / AttrSize / AttrGender / AttrCategory / AttrRole / AttrProcess**
+   - 용도: 조직별 기준 속성 데이터(공정/역할/분류 등)
+   - 핵심 필드: `orgId`, `code`, `name`
+   - 관계: `Organization`(N:1)
+
+7. **SystemUser**
+   - 용도: 시스템 전역 사용자 (플랫폼 운영자용)
+
 ### 7.1. 조직 및 사용자 구조 (Organization & User Structure)
 
-1.  **법인 (Corporation)**: 시스템의 최상위 단위입니다. (예: `바루 가먼트`)
-2.  **공장 (Factory)**: 특정 법인에 소속된 생산 단위입니다. (예: `하노이 공장`) 모든 직원은 공장에 소속됩니다.
-    - 공장 정보는 `MANUFACTURER/BOTH` 조직에만 존재합니다. `BRAND` 조직은 공장이 없습니다.
+1.  **조직 (Organization)**: 시스템의 최상위 회사 단위입니다. 제조사/브랜드 구분은 `Organization.type`으로 합니다. (예: `MANUFACTURER`, `BRAND`)
+    - 조직 코드는 `Organization.code`로 관리하며 4자리 영문 대문자 약어를 사용합니다. (예: `BRVN`, `TSKR`)
+2.  **공장 (Factory)**: 제조사 조직에 소속된 생산 단위입니다. (예: `하노이 공장`) 모든 직원은 공장에 소속됩니다.
+    - 공장 정보는 `MANUFACTURER` 조직에만 존재합니다. `BRAND` 조직은 공장이 없습니다.
     - 공장 급여 계산: 목표 월 급여 입력 시 `초당 급여 = 월급 / 26일 / 8시간 / 60 / 60` (소수점 2자리 표시).
 3.  **라인 (Line)**: 공장 내에 존재하는 물리적/논리적 생산 라인입니다. (예: `A라인`, `B라인`)
 4.  **직원 (Employee)**: 특정 공장에 소속된 사용자입니다. 직원은 특정 라인에 배치될 수 있습니다.
@@ -216,7 +263,7 @@
     -   **운영자 (Operator)**: 생산 계획 수립, 작업 배정, 공정 관리 등 공장 운영 전반을 담당합니다.
     -   **회계사 (Accountant)**: 작업 실적에 따른 급여 정산, 비용 관리 등 재무 데이터를 처리합니다.
     -   **작업자 (Worker)**: 생산 라인에서 실제 작업을 수행하고 실적을 기록합니다. (라인장은 작업자 중 지정됩니다.)
-6.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. (예: `더산`)
+6.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. `Organization.type = BRAND`에 해당합니다. (예: `더산`)
 
 ### 7.1.1. 가입/승인 흐름 (Organization Membership)
 - 사용자는 소셜 로그인 이후 **조직 미소속 상태**로 시작한다.
@@ -719,44 +766,4 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - **입력 성능 기준**: 직원 관리처럼 행이 많은 테이블은 입력 상태를 **부모에서 통합 관리하지 않는다.** 타이핑 시 전체 테이블이 리렌더되므로 지연이 발생한다. 기본 규칙은 다음과 같다.
   - 입력은 **행 단위 로컬 상태**로 관리하거나, 필요한 경우 **가상 스크롤(react-window)** 를 적용한다.
   - 저장 시에만 필요한 payload를 합쳐서 전송한다. (입력 단계에서는 전체 상태를 합치지 않음)
-
-
-## 8. UI 패턴 (UI Patterns)
-
-*이 섹션은 반복적으로 사용되는 UI 컴포넌트의 표준 구현 방식을 정의합니다.*
-
-
-##### Phase 2: UI 스켈레톤 및 D&D 기초 (UI Skeleton & D&D)
-- [ ] **AssignBoard 레이아웃 구성**
-  - 좌측: 미배정 스타일 카드 목록 (Source).
-  - 우측: 생산 라인별 스케줄 타임라인 (Target).
-- [ ] **StyleCard 컴포넌트 구현**
-  - 정보 표시: 스타일명, 공정, 총 소요 시간.
-  - Draggable 구현 (dnd-kit 등 라이브러리 활용).
-- [ ] **ScheduleTimeline 컴포넌트 구현**
-  - 라인(Row) × 날짜(Column) 그리드 렌더링.
-  - Droppable 영역 설정.
-
-##### Phase 3: 배정 인터랙션 및 시각화 (Interaction & Visualization)
-- [ ] **Drop 핸들러 구현**
-  - 드롭 이벤트 발생 시 `simulateAssignment`를 호출하여 배정 결과를 계산.
-  - 계산된 배정 정보를 상태(State)에 반영.
-- [ ] **시각적 피드백 (Visual Feedback)**
-  - 타임라인에 배정된 작업 바(Bar) 렌더링.
-  - 작업 바의 길이는 소요 기간을 반영.
-  - 툴팁: 시작일, 종료일, 잔여 시간 표시.
-
-##### Phase 4: 상태 관리 및 데이터 연동 (State & Persistence)
-- [ ] **AssignContext 구성**
-  - 전체 배정 현황 관리 (배정된 작업 목록).
-  - `addAssignment`, `removeAssignment`, `updateAssignment` 액션 구현.
-- [ ] **데이터 저장 (Persistence)**
-  - 임시 배정 상태를 백엔드(또는 로컬 스토리지)에 저장하는 로직 구현.
-
-##### Phase 5: 예외 처리 및 최적화 (Refinement)
-- [ ] **휴일 및 비가동일 처리**
-  - 주말 및 공휴일에는 작업 시간이 차감되지 않도록 로직 개선.
-- [ ] **배정 수정 기능**
-  - 이미 배정된 작업의 재배치(Re-scheduling) 및 배정 취소(Unassign) 기능.
-  ```
 

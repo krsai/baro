@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Table,
@@ -21,56 +21,133 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
 
-const CustomerList = () => {
-  const { showNotification } = useApp();
-  const [customers, setCustomers] = useState([
-    { id: 1, code: 'C001', name: '더산', manager: '김철수', phone: '010-1111-2222', email: 'kim@thesan.com', registeredAt: '2023-01-15' },
-    { id: 2, code: 'C002', name: '나이키', manager: '이영희', phone: '010-3333-4444', email: 'lee@nike.com', registeredAt: '2023-02-20' },
-    { id: 3, code: 'C003', name: '아디다스', manager: '박지성', phone: '010-5555-6666', email: 'park@adidas.com', registeredAt: '2023-03-10' },
-  ]);
+const formatDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
+};
 
+const buildFormData = (customer) => ({
+  code: customer?.code ?? '',
+  name: customer?.name ?? '',
+  manager: customer?.manager ?? '',
+  phone: customer?.phone ?? '',
+  email: customer?.email ?? '',
+});
+
+const CustomerList = () => {
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+  const { showNotification } = useApp();
+
+  const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
-  
-  const initialFormData = { code: '', name: '', manager: '', phone: '', email: '', registeredAt: '' };
-  const [formData, setFormData] = useState(initialFormData);
+  const [formData, setFormData] = useState(buildFormData());
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const fetchCustomers = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/customers`);
+      const data = await response.json();
+      if (response.ok) {
+        setCustomers(Array.isArray(data) ? data : []);
+      } else {
+        showNotification(data?.error || '고객사 목록을 불러오지 못했습니다.', 'error');
+      }
+    } catch (_error) {
+      showNotification('고객사 목록을 불러오지 못했습니다.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomers();
+  }, [API_BASE]);
 
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
     const lowerTerm = searchTerm.toLowerCase();
-    return customers.filter(
-      (customer) =>
-        customer.name.toLowerCase().includes(lowerTerm) ||
-        customer.code.toLowerCase().includes(lowerTerm) ||
-        customer.manager.toLowerCase().includes(lowerTerm)
-    );
+    return customers.filter((customer) => {
+      const name = customer?.name ?? '';
+      const code = customer?.code ?? '';
+      const manager = customer?.manager ?? '';
+      return (
+        name.toLowerCase().includes(lowerTerm) ||
+        code.toLowerCase().includes(lowerTerm) ||
+        manager.toLowerCase().includes(lowerTerm)
+      );
+    });
   }, [customers, searchTerm]);
 
   const handleAdd = () => {
     setEditingCustomer(null);
-    setFormData(initialFormData);
+    setFormData(buildFormData());
+    setOpenDialog(true);
+  };
+
+  const handleRowDoubleClick = (customer) => {
+    setEditingCustomer(customer);
+    setFormData(buildFormData(customer));
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
+    if (saving) return;
     setOpenDialog(false);
+    setEditingCustomer(null);
   };
 
-  const handleSave = () => {
-    if (editingCustomer) {
-      setCustomers(
-        customers.map((c) => (c.id === editingCustomer.id ? { ...formData, id: c.id } : c))
-      );
-    } else {
-      const newCustomer = {
-        ...formData,
-        id: Math.max(...customers.map((c) => c.id), 0) + 1,
-      };
-      setCustomers([...customers, newCustomer]);
+  const handleSave = async () => {
+    if (saving) return;
+    const trimmedName = formData.name.trim();
+    if (!trimmedName) {
+      showNotification('고객사명을 입력해 주세요.', 'error');
+      return;
     }
-    handleCloseDialog();
-    showNotification('고객사 정보가 저장되었습니다.', 'success');
+
+    setSaving(true);
+    const payload = {
+      code: formData.code.trim(),
+      name: trimmedName,
+      manager: formData.manager.trim(),
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+    };
+
+    try {
+      const isEdit = Boolean(editingCustomer?.id);
+      const response = await fetch(
+        isEdit ? `${API_BASE}/customers/${editingCustomer.id}` : `${API_BASE}/customers`,
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        showNotification(data?.error || '고객사 저장에 실패했습니다.', 'error');
+        return;
+      }
+
+      if (isEdit) {
+        setCustomers((prev) => prev.map((c) => (c.id === data.id ? data : c)));
+      } else {
+        setCustomers((prev) => [...prev, data]);
+      }
+
+      showNotification('고객사 정보가 저장되었습니다.', 'success');
+      setOpenDialog(false);
+      setEditingCustomer(null);
+    } catch (_error) {
+      showNotification('고객사 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleInputChange = (e) => {
@@ -85,6 +162,7 @@ const CustomerList = () => {
           placeholder="고객사명, 코드 또는 담당자 검색..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ width: 420 }}
         />
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
           고객 추가
@@ -104,14 +182,33 @@ const CustomerList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                    불러오는 중...
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && filteredCustomers.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                    등록된 고객사가 없습니다.
+                  </TableCell>
+                </TableRow>
+              )}
               {filteredCustomers.map((customer) => (
-                <TableRow key={customer.id} hover>
-                  <TableCell>{customer.code}</TableCell>
-                  <TableCell>{customer.name}</TableCell>
-                  <TableCell>{customer.manager}</TableCell>
-                  <TableCell>{customer.phone}</TableCell>
-                  <TableCell>{customer.email}</TableCell>
-                  <TableCell>{customer.registeredAt}</TableCell>
+                <TableRow
+                  key={customer.id}
+                  hover
+                  onDoubleClick={() => handleRowDoubleClick(customer)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{customer.code || '-'}</TableCell>
+                  <TableCell>{customer.name || '-'}</TableCell>
+                  <TableCell>{customer.manager || '-'}</TableCell>
+                  <TableCell>{customer.phone || '-'}</TableCell>
+                  <TableCell>{customer.email || '-'}</TableCell>
+                  <TableCell>{formatDate(customer.registeredAt)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -119,33 +216,64 @@ const CustomerList = () => {
         </TableContainer>
       </Paper>
 
-      <Dialog open={openDialog} onClose={handleCloseDialog}>
+      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCustomer ? '고객사 정보 수정' : '신규 고객사 등록'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
-              <TextField name="code" label="고객 코드" value={formData.code} onChange={handleInputChange} fullWidth />
+              <TextField
+                name="code"
+                label="고객 코드"
+                value={formData.code}
+                onChange={handleInputChange}
+                fullWidth
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField name="name" label="고객사명" value={formData.name} onChange={handleInputChange} fullWidth />
+              <TextField
+                name="name"
+                label="고객사명"
+                value={formData.name}
+                onChange={handleInputChange}
+                fullWidth
+                required
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField name="manager" label="담당자" value={formData.manager} onChange={handleInputChange} fullWidth />
+              <TextField
+                name="manager"
+                label="담당자"
+                value={formData.manager}
+                onChange={handleInputChange}
+                fullWidth
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField name="phone" label="연락처" value={formData.phone} onChange={handleInputChange} fullWidth />
+              <TextField
+                name="phone"
+                label="연락처"
+                value={formData.phone}
+                onChange={handleInputChange}
+                fullWidth
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField name="email" label="이메일" type="email" value={formData.email} onChange={handleInputChange} fullWidth />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField name="registeredAt" label="등록일" type="date" value={formData.registeredAt} onChange={handleInputChange} fullWidth InputLabelProps={{ shrink: true }} />
+              <TextField
+                name="email"
+                label="이메일"
+                type="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                fullWidth
+              />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>취소</Button>
-          <Button onClick={handleSave} variant="contained">
+          <Button onClick={handleCloseDialog} disabled={saving}>
+            취소
+          </Button>
+          <Button onClick={handleSave} variant="contained" disabled={saving}>
             저장
           </Button>
         </DialogActions>
