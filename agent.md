@@ -274,6 +274,18 @@
 - **권한 제어는 마지막 단계에서 일괄 적용한다.** (현재는 승인/배정 기능 우선 구현)
 - 메뉴 권한은 역할(Role) 기반으로 설계하며, **당분간은 모든 역할이 모든 메뉴를 볼 수 있도록 설정**한다. (권한 때문에 개발 지연 방지 목적)
 
+#### 7.1.2. 조직 이동/퇴사 관리 (Future Work)
+*향후 구현 예정. 현재는 정책만 기록.*
+- `OrgMembership`는 **조직별 이력 레코드**로 유지한다. 퇴사는 삭제하지 않고 `TERMINATED`로 표시한다.
+- 조직 이동 시 흐름:
+  - 이전 조직 `OrgMembership` → `TERMINATED` (또는 `SUSPENDED`)
+  - 새 조직 `OrgMembership` → 승인 후 `ACTIVE`
+  - 제조사 조직일 경우 `Employee`는 새 `orgMembershipId`로 생성/갱신
+- 다중 소속 정책은 추후 결정한다.
+  - 기본안: **단일 ACTIVE 소속만 허용** (승인 시 기존 ACTIVE 종료)
+  - 대안: **복수 ACTIVE 소속 허용** (로그인 후 조직 선택/전환 UI 필요)
+- 장기적으로는 이메일 대신 **Auth user id 기반 User 테이블**을 도입해 OrgMembership이 `userId`를 참조하도록 개선한다.
+
 ### 7.2. 스타일 및 공정 관리 (Style & Process Management)
 
 1.  **스타일 (Style)**: 특정 고객사에 속한 의류 모델입니다. 하나의 스타일에는 여러 생산 공정이 포함됩니다.
