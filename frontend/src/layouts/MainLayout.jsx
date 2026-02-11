@@ -151,8 +151,7 @@ const MainLayout = () => {
       isOpen: systemOpen,
       setOpen: setSystemOpen,
       children: [
-        { label: '시스템 설정', icon: <TuneIcon />, path: '/system-setting' },
-        { label: '조직 관리', icon: <BadgeIcon />, path: '/system-setting/organization-onboarding' },
+        { label: '멤버쉽 관리', icon: <TuneIcon />, path: '/system-setting' },
       ],
     },
   ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen, pendingEmployeeCount]);

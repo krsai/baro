@@ -9,8 +9,8 @@ import Employee from './pages/App/Employee';
 import Permission from './pages/App/Permission';
 import Line from './pages/App/Line';
 
-import SystemSetting from './pages/App/SystemSetting';
-import OrganizationOnboarding from './pages/App/systemSetting/OrganizationOnboarding';
+import SystemBoard from './pages/App/system/systemBoard';
+
 import Customer from './pages/App/Customer';
 import Style from './pages/App/Style';
 import StyleBoard from './pages/App/style/StyleBoard';
@@ -82,13 +82,8 @@ const router = createBrowserRouter([
           },
           {
             path: 'system-setting',
-            element: <SystemSetting />,
-          },
-          {
-            path: 'system-setting/organization-onboarding',
-            element: <OrganizationOnboarding />,
-          },
-          {
+            element: <SystemBoard />,
+          },          {
             path: 'customer',
             element: <Customer />,
           },

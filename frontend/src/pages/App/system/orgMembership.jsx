@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Typography,
@@ -29,7 +29,7 @@ const ROLE_OPTIONS = [
   { value: 'WORKER', label: 'Worker' },
 ];
 
-const OrganizationOnboarding = () => {
+const OrgMembership = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
 
@@ -198,10 +198,10 @@ const OrganizationOnboarding = () => {
       header={
         <>
           <Typography component="h1" variant="h4">
-            Organization Setup / Operator Assignment
+            Organization Membership / Operator Assignment
           </Typography>
           <Typography sx={{ mt: 2, color: 'text.secondary' }}>
-            Register organizations first, then assign an operator email to activate access.
+            Create organizations and assign operator access.
           </Typography>
         </>
       }
@@ -394,4 +394,5 @@ const OrganizationOnboarding = () => {
   );
 };
 
-export default OrganizationOnboarding;
+export default OrgMembership;
+
