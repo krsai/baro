@@ -31,3 +31,6 @@ pnpm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+# project-specific generated files
+backend/src/generated/prisma/
