@@ -1,4 +1,5 @@
 import { loadStyles } from './localData';
+import { normalizeProcesses } from './processTime';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const STYLE_MIGRATION_KEY = 'baro_style_migrated_to_api_v1';
@@ -23,7 +24,7 @@ const normalizeStyle = (value = {}) => ({
   collection: value.collection || '',
   season: value.season || '',
   imageUrls: normalizeArray(value.imageUrls),
-  processes: normalizeArray(value.processes),
+  processes: normalizeProcesses(value.processes),
   bom: normalizeArray(value.bom),
   bomNotes: value.bomNotes || '',
   createdAt: value.createdAt || null,

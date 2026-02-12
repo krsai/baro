@@ -277,7 +277,7 @@ model Style {
   uid              Int      @id @default(autoincrement())
   orgId            Int
   styleId          String
-  styleCode        String?
+  styleCode        String
   name             String
   customer         String
   registrationDate String?
@@ -294,5 +294,7 @@ model Style {
   organization Organization @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, styleId])
+  @@unique([orgId, customer, name])
+  @@unique([orgId, customer, styleCode])
   @@index([orgId])
 }

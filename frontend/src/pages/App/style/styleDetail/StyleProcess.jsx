@@ -18,10 +18,18 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ProcessForm from './ProcessForm';
+import {
+  calculateProcessLineTotal,
+  calculateProcessTotal,
+  formatSeconds,
+  hasAnyProcessTime,
+  normalizeProcesses,
+} from '../../../../utils/processTime';
 
 const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState(null);
+  const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
 
   const handleOpenAddDrawer = () => {
     setEditingProcess(null);
@@ -42,34 +50,32 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const handleSave = (data) => {
     if (editingProcess) {
       // Edit mode
-      const updatedProcesses = processes.map((p) =>
+      const updatedProcesses = safeProcesses.map((p) =>
         p.instanceId === editingProcess.instanceId ? { ...p, ...data } : p
       );
       onProcessesChange(updatedProcesses);
     } else {
       // Add mode
-      onProcessesChange([...processes, ...data]);
+      onProcessesChange([...safeProcesses, ...normalizeProcesses(data)]);
     }
   };
 
   const handleRemoveProcess = (instanceId) => {
-    onProcessesChange(processes.filter((p) => p.instanceId !== instanceId));
+    onProcessesChange(safeProcesses.filter((p) => p.instanceId !== instanceId));
   };
   
   const onDragEnd = (result) => {
     if (!result.destination) return;
-    const newProcesses = Array.from(processes);
+    const newProcesses = Array.from(safeProcesses);
     const [reorderedItem] = newProcesses.splice(result.source.index, 1);
     newProcesses.splice(result.destination.index, 0, reorderedItem);
     onProcessesChange(newProcesses);
   };
 
-  const totalST = useMemo(() => 
-    processes.reduce((acc, p) => acc + (p.quantity * p.st), 0),
-    [processes]
-  );
-  
-  const formatTime = (value) => `${value}초`;
+  const totalPT = useMemo(() => calculateProcessTotal(safeProcesses, 'pt'), [safeProcesses]);
+  const totalST = useMemo(() => calculateProcessTotal(safeProcesses, 'st'), [safeProcesses]);
+  const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
+  const hasST = useMemo(() => hasAnyProcessTime(safeProcesses, 'st'), [safeProcesses]);
 
   return (
     <Box>
@@ -89,15 +95,17 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   <TableCell sx={{width: '5%'}}></TableCell>
                   <TableCell>공정명</TableCell>
                   <TableCell align="right">수량</TableCell>
-                  <TableCell align="right">표준 시간 (ST)</TableCell>
-                  <TableCell align="right">총 시간</TableCell>
+                  <TableCell align="right">PT</TableCell>
+                  <TableCell align="right">ST(자동)</TableCell>
+                  <TableCell align="right">총 PT</TableCell>
+                  <TableCell align="right">총 ST</TableCell>
                   <TableCell align="center">삭제</TableCell>
                 </TableRow>
               </TableHead>
               <Droppable droppableId="processes">
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                    {processes.map((process, index) => (
+                    {safeProcesses.map((process, index) => (
                       <Draggable key={process.instanceId} draggableId={process.instanceId} index={index}>
                         {(provided) => (
                           <TableRow 
@@ -111,8 +119,14 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             <TableCell sx={{ cursor: 'grab' }}>{index + 1}</TableCell>
                             <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
                             <TableCell align="right">{process.quantity}</TableCell>
-                            <TableCell align="right">{formatTime(process.st)}</TableCell>
-                            <TableCell align="right">{formatTime(process.quantity * process.st)}</TableCell>
+                            <TableCell align="right">{formatSeconds(process.pt)}</TableCell>
+                            <TableCell align="right">{formatSeconds(process.st)}</TableCell>
+                            <TableCell align="right">
+                              {formatSeconds(calculateProcessLineTotal(process, 'pt'))}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatSeconds(calculateProcessLineTotal(process, 'st'))}
+                            </TableCell>
                             <TableCell align="center">
                               <IconButton size="small" onClick={(e) => {
                                 e.stopPropagation(); // prevent double click event from firing
@@ -131,8 +145,13 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
               </Droppable>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 'bold' }}>총 표준 시간 합계</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatTime(totalST)}</TableCell>
+                  <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>총 시간 합계</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                    {hasPT ? formatSeconds(totalPT) : '-'}
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                    {hasST ? formatSeconds(totalST) : '-'}
+                  </TableCell>
                   <TableCell />
                 </TableRow>
               </TableFooter>

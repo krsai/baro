@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper, FormControl, InputLabel, Select, MenuItem, IconButton } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
@@ -7,6 +7,12 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import {
+  calculateProcessTotal,
+  formatSeconds,
+  hasAnyProcessTime,
+  normalizeProcesses,
+} from '../../../../utils/processTime';
 
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -90,6 +96,23 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   };
   
   const costData = [];
+  const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
+  const totalPT = useMemo(
+    () => calculateProcessTotal(normalizedProcesses, 'pt'),
+    [normalizedProcesses]
+  );
+  const totalST = useMemo(
+    () => calculateProcessTotal(normalizedProcesses, 'st'),
+    [normalizedProcesses]
+  );
+  const hasTotalPT = useMemo(
+    () => hasAnyProcessTime(normalizedProcesses, 'pt'),
+    [normalizedProcesses]
+  );
+  const hasTotalST = useMemo(
+    () => hasAnyProcessTime(normalizedProcesses, 'st'),
+    [normalizedProcesses]
+  );
 
   const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
   const overhead = subtotal * 0.1;
@@ -367,6 +390,18 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>{processes.length} 개</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">총 PT</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>
+                    {hasTotalPT ? formatSeconds(totalPT) : '-'}
+                  </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">총 ST</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>
+                    {hasTotalST ? formatSeconds(totalST) : '-'}
+                  </Typography>
               </Box>
           </Stack>
 

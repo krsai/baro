@@ -16,6 +16,12 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import StyleDetail from './StyleDetail';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import {
+  calculateProcessTotal,
+  formatSeconds,
+  hasAnyProcessTime,
+  normalizeProcesses,
+} from '../../../utils/processTime';
 
 const StyleBoard = () => {
   const { styleId } = useParams();
@@ -67,6 +73,23 @@ const StyleBoard = () => {
     );
   }, [styles, searchTerm]);
 
+  const rows = useMemo(
+    () =>
+      filteredStyles.map((style) => {
+        const processes = normalizeProcesses(style.processes);
+        const totalPT = calculateProcessTotal(processes, 'pt');
+        const totalST = calculateProcessTotal(processes, 'st');
+        return {
+          ...style,
+          totalPT,
+          totalST,
+          hasTotalPT: hasAnyProcessTime(processes, 'pt'),
+          hasTotalST: hasAnyProcessTime(processes, 'st'),
+        };
+      }),
+    [filteredStyles]
+  );
+
   return (
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -92,19 +115,20 @@ const StyleBoard = () => {
                 <TableCell>고객사</TableCell>
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일 코드</TableCell>
+                <TableCell>총 PT</TableCell>
                 <TableCell>총 ST</TableCell>
                 <TableCell>등록일</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredStyles.length === 0 && (
+              {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                     {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
                   </TableCell>
                 </TableRow>
               )}
-              {filteredStyles.map((style) => (
+              {rows.map((style) => (
                 <TableRow
                   hover
                   key={style.id}
@@ -114,7 +138,8 @@ const StyleBoard = () => {
                   <TableCell>{style.customer || '-'}</TableCell>
                   <TableCell>{style.name || '-'}</TableCell>
                   <TableCell>{style.styleCode || style.id || '-'}</TableCell>
-                  <TableCell>{style.totalSt ? `${style.totalSt}분` : '-'}</TableCell>
+                  <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
+                  <TableCell>{style.hasTotalST ? formatSeconds(style.totalST) : '-'}</TableCell>
                   <TableCell>{style.registrationDate || '-'}</TableCell>
                 </TableRow>
               ))}

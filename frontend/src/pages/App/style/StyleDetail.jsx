@@ -43,13 +43,15 @@ const createStyleId = () => `S-${Date.now().toString(36).slice(-6).toUpperCase()
 
 const buildPayload = (data) => {
   const today = new Date().toISOString().slice(0, 10);
+  const trimmedName = (data.name || '').trim();
+  const trimmedCode = (data.styleCode || '').trim();
   return {
     ...createEmptyStyle(),
     ...data,
     id: data.id,
-    name: (data.name || '').trim(),
+    name: trimmedName,
     customer: (data.customer || '').trim(),
-    styleCode: (data.styleCode || '').trim(),
+    styleCode: trimmedCode || trimmedName,
     registrationDate: data.registrationDate || today,
   };
 };

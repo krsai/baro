@@ -150,6 +150,8 @@ const createStyleId = () =>
     .toUpperCase()}`;
 
 const ensureArray = (value) => (Array.isArray(value) ? value : []);
+const toStyleIdentityKey = (customer, value) =>
+  `${(customer ?? "").trim()}::${(value ?? "").trim()}`;
 
 const normalizeStylePayload = (payload, fallbackStyleId = null) => {
   const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
@@ -157,10 +159,12 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
   const customer =
     typeof payload?.customer === "string" ? payload.customer.trim() : "";
+  const styleCodeInput = resolveOptionalString(payload?.styleCode, null);
+  const styleCode = styleCodeInput ?? name;
 
   return {
     styleId,
-    styleCode: resolveOptionalString(payload?.styleCode, null),
+    styleCode,
     name,
     customer,
     registrationDate: resolveOptionalString(payload?.registrationDate, null),
@@ -172,6 +176,32 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
     bom: ensureArray(payload?.bom),
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
   };
+};
+
+const findStyleConflict = async ({
+  orgId,
+  customer,
+  name,
+  styleCode,
+  excludeUid = null,
+}) => {
+  const conflict = await prisma.style.findFirst({
+    where: {
+      orgId,
+      customer,
+      ...(Number.isFinite(excludeUid) ? { NOT: { uid: excludeUid } } : {}),
+      OR: [{ name }, { styleCode }],
+    },
+    select: { uid: true, name: true, styleCode: true },
+  });
+  if (!conflict) return null;
+  if (conflict.name === name) {
+    return "style name already exists for this customer";
+  }
+  if (conflict.styleCode === styleCode) {
+    return "style code already exists for this customer";
+  }
+  return "style already exists for this customer";
 };
 
 const toStyleResponse = (style) => ({
@@ -1443,6 +1473,16 @@ app.post("/styles", async (req, res) => {
     return res.status(400).json({ ok: false, error: "customer is required" });
   }
 
+  const conflictMessage = await findStyleConflict({
+    orgId: organization.id,
+    customer: payload.customer,
+    name: payload.name,
+    styleCode: payload.styleCode,
+  });
+  if (conflictMessage) {
+    return res.status(409).json({ ok: false, error: conflictMessage });
+  }
+
   const existing = await prisma.style.findFirst({
     where: { orgId: organization.id, styleId: payload.styleId },
   });
@@ -1505,6 +1545,17 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(400).json({ ok: false, error: "customer is required" });
   }
 
+  const conflictMessage = await findStyleConflict({
+    orgId: organization.id,
+    customer: normalized.customer,
+    name: normalized.name,
+    styleCode: normalized.styleCode,
+    excludeUid: existing.uid,
+  });
+  if (conflictMessage) {
+    return res.status(409).json({ ok: false, error: conflictMessage });
+  }
+
   const updated = await prisma.style.update({
     where: { uid: existing.uid },
     data: {
@@ -1551,6 +1602,28 @@ app.post("/styles/import", async (req, res) => {
     return res
       .status(400)
       .json({ ok: false, error: "no valid styles to import" });
+  }
+
+  const seenNameKeys = new Set();
+  const seenCodeKeys = new Set();
+  for (const item of normalizedRows) {
+    const nameKey = toStyleIdentityKey(item.customer, item.name);
+    if (seenNameKeys.has(nameKey)) {
+      return res.status(409).json({
+        ok: false,
+        error: "style name already exists for this customer",
+      });
+    }
+    seenNameKeys.add(nameKey);
+
+    const codeKey = toStyleIdentityKey(item.customer, item.styleCode);
+    if (seenCodeKeys.has(codeKey)) {
+      return res.status(409).json({
+        ok: false,
+        error: "style code already exists for this customer",
+      });
+    }
+    seenCodeKeys.add(codeKey);
   }
 
   await prisma.$transaction(
