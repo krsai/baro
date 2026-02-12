@@ -67,6 +67,7 @@ model Organization {
   factories  Factory[]
   employees  Employee[]
   lines      Line[]
+  styles     Style[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
@@ -269,5 +270,29 @@ model AttrProcess {
   organization Organization @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, code])
+  @@index([orgId])
+}
+
+model Style {
+  uid              Int      @id @default(autoincrement())
+  orgId            Int
+  styleId          String
+  styleCode        String?
+  name             String
+  customer         String
+  registrationDate String?
+  designer         String?
+  collection       String?
+  season           String?
+  imageUrls        Json?
+  processes        Json?
+  bom              Json?
+  bomNotes         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, styleId])
   @@index([orgId])
 }

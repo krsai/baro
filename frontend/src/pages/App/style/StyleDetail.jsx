@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Typography,
   ToggleButton,
@@ -18,83 +18,109 @@ import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
+import {
+  createStyle as createStyleOnApi,
+  fetchStyleById,
+  updateStyle as updateStyleOnApi,
+} from '../../../utils/styleApi';
 
-// Mock data for the list of styles
-const mockStyles = [
-  { id: 'S-001', name: '클래식 데님 자켓', customer: 'A고객사', registrationDate: '2026-01-15', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customer: 'B고객사', registrationDate: '2026-01-16', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-003', name: '오버핏 린넨 셔츠', customer: 'A고객사', registrationDate: '2026-01-17', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-  { id: 'S-004', name: '플리츠 미디 스커트', customer: 'C고객사', registrationDate: '2026-01-18', designer: '김디자이너', collection: '2026 F/W', season: '가을' },
-];
+const createEmptyStyle = () => ({
+  id: '',
+  styleCode: '',
+  name: '',
+  customer: '',
+  registrationDate: '',
+  designer: '',
+  collection: '',
+  season: '',
+  imageUrls: [],
+  processes: [],
+  bom: [],
+  bomNotes: '',
+});
 
-// Mock data fetching function based on styleId
-const fetchStyleData = (styleId) => {
-  const emptyStyle = {
-    styleCode: '',
-    name: '',
-    customer: '',
-    registrationDate: '',
-    designer: '',
-    collection: '',
-    season: '',
-    imageUrls: [],
-    processes: [],
-    bom: [],
-    bomNotes: '',
-  };
+const createStyleId = () => `S-${Date.now().toString(36).slice(-6).toUpperCase()}`;
 
-  if (styleId === 'new') {
-    return emptyStyle;
-  }
-
-  const style = mockStyles.find(s => s.id === styleId);
-
-  if (!style) {
-    return {
-      ...emptyStyle,
-      styleCode: styleId,
-      name: '',
-    };
-  }
-
+const buildPayload = (data) => {
+  const today = new Date().toISOString().slice(0, 10);
   return {
-    ...emptyStyle, // Ensures all fields are present, preventing errors
-    ...style, // Overwrites with actual data from mockStyles
-    styleCode: style.id, // Explicitly set styleCode from the found style data
+    ...createEmptyStyle(),
+    ...data,
+    id: data.id,
+    name: (data.name || '').trim(),
+    customer: (data.customer || '').trim(),
+    styleCode: (data.styleCode || '').trim(),
+    registrationDate: data.registrationDate || today,
   };
 };
 
 const StyleDetail = () => {
-  const { styleId } = useParams();
+  const { styleId: styleIdParam } = useParams();
+  const styleId = styleIdParam ?? 'new';
+  const isNew = styleId === 'new';
   const [currentTab, setCurrentTab] = useState('basicInfo');
-  const { showNotification } = useApp();
+  const { showNotification, navigateToPath, closeTab } = useApp();
 
-  // State for the original data to compare against
-  const [originalData, setOriginalData] = useState(() => fetchStyleData(styleId));
-  // State for the form data that the user edits
-  const [styleFormData, setStyleFormData] = useState(originalData);
+  const [originalData, setOriginalData] = useState(createEmptyStyle);
+  const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
+  const [loadingStyle, setLoadingStyle] = useState(true);
 
   useEffect(() => {
-    const newData = fetchStyleData(styleId);
-    setOriginalData(newData);
-    setStyleFormData(newData);
-  }, [styleId]);
+    let active = true;
 
-  // State to track if the form has been changed
-  // const [isDirty, setIsDirty] = useState(false);
-  // State for the confirmation dialog
+    const loadStyle = async () => {
+      if (isNew) {
+        if (active) {
+          const empty = createEmptyStyle();
+          setOriginalData(empty);
+          setStyleFormData(empty);
+          setLoadingStyle(false);
+        }
+        return;
+      }
+
+      setLoadingStyle(true);
+      try {
+        const style = await fetchStyleById(styleId);
+        const normalized = {
+          ...createEmptyStyle(),
+          ...style,
+          id: style.id || styleId,
+        };
+        if (!active) return;
+        setOriginalData(normalized);
+        setStyleFormData(normalized);
+      } catch (error) {
+        if (!active) return;
+        const fallback = {
+          ...createEmptyStyle(),
+          id: styleId,
+          styleCode: styleId,
+        };
+        setOriginalData(fallback);
+        setStyleFormData(fallback);
+        showNotification(error?.message || '스타일 정보를 불러오지 못했습니다.', 'error');
+      } finally {
+        if (active) {
+          setLoadingStyle(false);
+        }
+      }
+    };
+
+    loadStyle();
+
+    return () => {
+      active = false;
+    };
+  }, [isNew, showNotification, styleId]);
+
   const [isConfirmOpen, setConfirmOpen] = useState(false);
-  // State to hold the detected changes
   const [changes, setChanges] = useState({});
 
-  const isNew = styleId === 'new';
-  
-  const isDirty = JSON.stringify(originalData) !== JSON.stringify(styleFormData);
-
-  // 저장되지 않은 변경사항이 있을 경우 브라우저 닫기/새로고침 방지
+  const isDirty = !loadingStyle && JSON.stringify(originalData) !== JSON.stringify(styleFormData);
   useUnsavedChanges(isDirty);
 
-  const handleChange = (event, newValue) => {
+  const handleChange = (_event, newValue) => {
     if (newValue !== null) {
       setCurrentTab(newValue);
     }
@@ -109,7 +135,6 @@ const StyleDetail = () => {
     setStyleFormData((prev) => ({ ...prev, processes: newProcesses }));
   };
 
-  // An object to map field names to Korean labels for display
   const fieldLabels = {
     name: '스타일명',
     customer: '고객사',
@@ -121,45 +146,64 @@ const StyleDetail = () => {
     bom: 'BOM',
   };
 
-  const handleSave = () => {
-    if (isNew) {
-      // For new styles, save directly without confirmation
-      console.log('Creating new style:', styleFormData);
-      showNotification('새 스타일이 생성되었습니다.', 'success');
-      // In a real app, you might navigate or update the state
-    } else {
-      // For existing styles, find changes and open confirmation dialog
-      const detectedChanges = {};
-      // This is a simple comparison. For arrays, it will show that the array
-      // itself has changed, but not the specifics of what changed inside.
-      // A more complex diffing function would be needed for a detailed view.
-      Object.keys(styleFormData).forEach(key => {
-        if (JSON.stringify(originalData[key]) !== JSON.stringify(styleFormData[key])) {
-          detectedChanges[key] = {
-            from: Array.isArray(originalData[key]) ? `${originalData[key].length}개 항목` : originalData[key],
-            to: Array.isArray(styleFormData[key]) ? `${styleFormData[key].length}개 항목` : styleFormData[key],
-          };
-        }
-      });
-      setChanges(detectedChanges);
-      setConfirmOpen(true);
+  const handleSave = async () => {
+    if (!styleFormData.name?.trim()) {
+      showNotification('스타일명을 입력하세요.', 'error');
+      return;
     }
+    if (!styleFormData.customer?.trim()) {
+      showNotification('고객사를 선택하세요.', 'error');
+      return;
+    }
+
+    if (isNew) {
+      const newId = styleFormData.id || createStyleId();
+      const payload = buildPayload({ ...styleFormData, id: newId });
+      try {
+        const saved = await createStyleOnApi(payload);
+        showNotification('신규 스타일이 생성되었습니다.', 'success');
+        setOriginalData(saved);
+        setStyleFormData(saved);
+        navigateToPath('/style', { label: '스타일' });
+        closeTab('/style/new');
+      } catch (error) {
+        showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
+      }
+      return;
+    }
+
+    const detectedChanges = {};
+    Object.keys(styleFormData).forEach((key) => {
+      if (JSON.stringify(originalData[key]) !== JSON.stringify(styleFormData[key])) {
+        detectedChanges[key] = {
+          from: Array.isArray(originalData[key]) ? `${originalData[key].length}개 항목` : originalData[key],
+          to: Array.isArray(styleFormData[key]) ? `${styleFormData[key].length}개 항목` : styleFormData[key],
+        };
+      }
+    });
+    setChanges(detectedChanges);
+    setConfirmOpen(true);
   };
 
   const handleCloseConfirm = () => {
     setConfirmOpen(false);
   };
 
-  const handleConfirmSave = () => {
-    console.log('Updating style with the following changes:', changes);
-    showNotification('스타일이 업데이트되었습니다.', 'success');
-    
-    // After a successful save, update the original data to the new state
-    setOriginalData(styleFormData);
-    // and reset the dirty flag
-    // setIsDirty(false);
-    // Close the dialog
-    handleCloseConfirm();
+  const handleConfirmSave = async () => {
+    const payload = buildPayload({
+      ...styleFormData,
+      id: originalData.id || styleId,
+    });
+
+    try {
+      const saved = await updateStyleOnApi(styleId, payload);
+      showNotification('스타일이 업데이트되었습니다.', 'success');
+      setOriginalData(saved);
+      setStyleFormData(saved);
+      setConfirmOpen(false);
+    } catch (error) {
+      showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
+    }
   };
 
   const handleRevert = () => {
@@ -180,18 +224,39 @@ const StyleDetail = () => {
           <ToggleButton value="bom">BOM</ToggleButton>
         </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" onClick={handleRevert} disabled={isNew || !isDirty}>
+          <Button
+            variant="outlined"
+            onClick={handleRevert}
+            disabled={loadingStyle || isNew || !isDirty}
+          >
             되돌리기
           </Button>
-          <Button variant="contained" color="primary" onClick={handleSave} disabled={!isNew && !isDirty}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSave}
+            disabled={loadingStyle || (!isNew && !isDirty)}
+          >
             저장
           </Button>
         </Box>
       </Box>
 
-      {currentTab === 'basicInfo' && <StyleInfo isNew={isNew} formData={styleFormData} handleInputChange={handleStyleInputChange} />}
-      {currentTab === 'processInfo' && <StyleProcess processes={styleFormData.processes} onProcessesChange={handleProcessesChange} />}
-      {currentTab === 'bom' && <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />}
+      {loadingStyle && !isNew ? (
+        <Typography color="text.secondary">스타일 정보를 불러오는 중입니다.</Typography>
+      ) : (
+        <>
+          {currentTab === 'basicInfo' && (
+            <StyleInfo isNew={isNew} formData={styleFormData} handleInputChange={handleStyleInputChange} />
+          )}
+          {currentTab === 'processInfo' && (
+            <StyleProcess processes={styleFormData.processes} onProcessesChange={handleProcessesChange} />
+          )}
+          {currentTab === 'bom' && (
+            <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
+          )}
+        </>
+      )}
 
       <Dialog open={isConfirmOpen} onClose={handleCloseConfirm}>
         <DialogTitle>변경 내용 확인</DialogTitle>

@@ -143,6 +143,54 @@ const toCustomerResponse = (relationship) => {
   };
 };
 
+const createStyleId = () =>
+  `S-${Date.now().toString(36).toUpperCase()}-${Math.random()
+    .toString(36)
+    .slice(2, 6)
+    .toUpperCase()}`;
+
+const ensureArray = (value) => (Array.isArray(value) ? value : []);
+
+const normalizeStylePayload = (payload, fallbackStyleId = null) => {
+  const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
+  const styleId = rawId || fallbackStyleId || createStyleId();
+  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+  const customer =
+    typeof payload?.customer === "string" ? payload.customer.trim() : "";
+
+  return {
+    styleId,
+    styleCode: resolveOptionalString(payload?.styleCode, null),
+    name,
+    customer,
+    registrationDate: resolveOptionalString(payload?.registrationDate, null),
+    designer: resolveOptionalString(payload?.designer, null),
+    collection: resolveOptionalString(payload?.collection, null),
+    season: resolveOptionalString(payload?.season, null),
+    imageUrls: ensureArray(payload?.imageUrls),
+    processes: ensureArray(payload?.processes),
+    bom: ensureArray(payload?.bom),
+    bomNotes: resolveOptionalString(payload?.bomNotes, null),
+  };
+};
+
+const toStyleResponse = (style) => ({
+  id: style.styleId,
+  styleCode: style.styleCode ?? "",
+  name: style.name ?? "",
+  customer: style.customer ?? "",
+  registrationDate: style.registrationDate ?? "",
+  designer: style.designer ?? "",
+  collection: style.collection ?? "",
+  season: style.season ?? "",
+  imageUrls: ensureArray(style.imageUrls),
+  processes: ensureArray(style.processes),
+  bom: ensureArray(style.bom),
+  bomNotes: style.bomNotes ?? "",
+  createdAt: style.createdAt,
+  updatedAt: style.updatedAt,
+});
+
 const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
   const activeAssignments = await prisma.lineAssignment.findMany({
     where: { employeeId, endAt: null },
@@ -1344,6 +1392,203 @@ app.put("/customers/:id", async (req, res) => {
   });
 
   res.json(toCustomerResponse(refreshed));
+});
+
+app.get("/styles", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const styles = await prisma.style.findMany({
+    where: { orgId: organization.id },
+    orderBy: { uid: "asc" },
+  });
+
+  res.json(styles.map(toStyleResponse));
+});
+
+app.get("/styles/:styleId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const styleId = (req.params.styleId ?? "").trim();
+  if (!styleId) {
+    return res.status(400).json({ ok: false, error: "styleId is required" });
+  }
+
+  const style = await prisma.style.findFirst({
+    where: { orgId: organization.id, styleId },
+  });
+  if (!style) {
+    return res.status(404).json({ ok: false, error: "style not found" });
+  }
+
+  res.json(toStyleResponse(style));
+});
+
+app.post("/styles", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const payload = normalizeStylePayload(req.body ?? {});
+  if (!payload.name) {
+    return res.status(400).json({ ok: false, error: "name is required" });
+  }
+  if (!payload.customer) {
+    return res.status(400).json({ ok: false, error: "customer is required" });
+  }
+
+  const existing = await prisma.style.findFirst({
+    where: { orgId: organization.id, styleId: payload.styleId },
+  });
+  if (existing) {
+    return res
+      .status(409)
+      .json({ ok: false, error: "styleId already exists" });
+  }
+
+  const created = await prisma.style.create({
+    data: {
+      orgId: organization.id,
+      ...payload,
+    },
+  });
+
+  res.status(201).json(toStyleResponse(created));
+});
+
+app.put("/styles/:styleId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const styleId = (req.params.styleId ?? "").trim();
+  if (!styleId) {
+    return res.status(400).json({ ok: false, error: "styleId is required" });
+  }
+
+  const existing = await prisma.style.findFirst({
+    where: { orgId: organization.id, styleId },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "style not found" });
+  }
+
+  const normalized = normalizeStylePayload(
+    {
+      id: existing.styleId,
+      styleCode: req.body?.styleCode ?? existing.styleCode,
+      name: req.body?.name ?? existing.name,
+      customer: req.body?.customer ?? existing.customer,
+      registrationDate: req.body?.registrationDate ?? existing.registrationDate,
+      designer: req.body?.designer ?? existing.designer,
+      collection: req.body?.collection ?? existing.collection,
+      season: req.body?.season ?? existing.season,
+      imageUrls: req.body?.imageUrls ?? existing.imageUrls,
+      processes: req.body?.processes ?? existing.processes,
+      bom: req.body?.bom ?? existing.bom,
+      bomNotes: req.body?.bomNotes ?? existing.bomNotes,
+    },
+    existing.styleId
+  );
+
+  if (!normalized.name) {
+    return res.status(400).json({ ok: false, error: "name is required" });
+  }
+  if (!normalized.customer) {
+    return res.status(400).json({ ok: false, error: "customer is required" });
+  }
+
+  const updated = await prisma.style.update({
+    where: { uid: existing.uid },
+    data: {
+      styleCode: normalized.styleCode,
+      name: normalized.name,
+      customer: normalized.customer,
+      registrationDate: normalized.registrationDate,
+      designer: normalized.designer,
+      collection: normalized.collection,
+      season: normalized.season,
+      imageUrls: normalized.imageUrls,
+      processes: normalized.processes,
+      bom: normalized.bom,
+      bomNotes: normalized.bomNotes,
+    },
+  });
+
+  res.json(toStyleResponse(updated));
+});
+
+app.post("/styles/import", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const rows = Array.isArray(req.body?.styles) ? req.body.styles : [];
+  if (rows.length === 0) {
+    return res.status(400).json({ ok: false, error: "styles is required" });
+  }
+
+  const existingCount = await prisma.style.count({
+    where: { orgId: organization.id },
+  });
+  if (existingCount > 0) {
+    return res.status(409).json({ ok: false, error: "styles already exist" });
+  }
+
+  const normalizedRows = rows
+    .map((item) => normalizeStylePayload(item))
+    .filter((item) => item.name && item.customer);
+
+  if (normalizedRows.length === 0) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "no valid styles to import" });
+  }
+
+  await prisma.$transaction(
+    normalizedRows.map((item) =>
+      prisma.style.upsert({
+        where: {
+          orgId_styleId: {
+            orgId: organization.id,
+            styleId: item.styleId,
+          },
+        },
+        update: {
+          styleCode: item.styleCode,
+          name: item.name,
+          customer: item.customer,
+          registrationDate: item.registrationDate,
+          designer: item.designer,
+          collection: item.collection,
+          season: item.season,
+          imageUrls: item.imageUrls,
+          processes: item.processes,
+          bom: item.bom,
+          bomNotes: item.bomNotes,
+        },
+        create: {
+          orgId: organization.id,
+          ...item,
+        },
+      })
+    )
+  );
+
+  const imported = await prisma.style.findMany({
+    where: { orgId: organization.id },
+    orderBy: { uid: "asc" },
+  });
+
+  res.status(201).json(imported.map(toStyleResponse));
 });
 
 app.get("/attributes", async (req, res) => {

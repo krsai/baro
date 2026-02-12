@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper, FormControl, InputLabel, Select, MenuItem, IconButton } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
@@ -8,16 +8,33 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 
-// Mock Data for Customers (Simulating API response from Customer Management)
-const mockCustomers = [
-  { id: 'C-001', name: 'A고객사' },
-  { id: 'C-002', name: 'B고객사' },
-  { id: 'C-003', name: 'C고객사' },
-];
-
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
+  const [customers, setCustomers] = useState([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setLoadingCustomers(true);
+      try {
+        const response = await fetch(`${API_BASE}/customers`);
+        const data = await response.json();
+        if (response.ok) {
+          setCustomers(Array.isArray(data) ? data : []);
+        } else {
+          setCustomers([]);
+        }
+      } catch (_error) {
+        setCustomers([]);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+
+    fetchCustomers();
+  }, [API_BASE]);
 
   // TODO: Implement adding new images, which involves creating blob URLs,
   // uploading them, and then updating the parent state.
@@ -213,9 +230,23 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
-                {mockCustomers.map((customer) => (
-                  <MenuItem key={customer.id} value={customer.name}>{customer.name}</MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
+                {loadingCustomers && (
+                  <MenuItem value="" disabled>
+                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
+                  </MenuItem>
+                )}
+                {!loadingCustomers && customers.length === 0 && (
+                  <MenuItem value="" disabled>
+                    <Typography variant="body2" color="text.secondary">등록된 고객사가 없습니다</Typography>
+                  </MenuItem>
+                )}
+                {customers.map((customer) => (
+                  <MenuItem key={customer.id || customer.name} value={customer.name}>
+                    {customer.name}
+                  </MenuItem>
                 ))}
               </Select>
             </Box>
