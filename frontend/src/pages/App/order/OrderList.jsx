@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
   Box,
   Table,
@@ -9,10 +10,6 @@ import {
   TableRow,
   Paper,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
   Grid,
   Select,
@@ -40,15 +37,83 @@ import {
   clearOrderDraft,
 } from '../../../utils/localData';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import {
+  SIZE_CODES,
+  GENDER_CODES,
+  normalizeGenderCode,
+} from '../../../constants/productAttributes';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완료'];
+const ORDER_FILTER_ALL = 'ALL';
+const GENDER_OPTIONS = GENDER_CODES;
+const SIZE_COLUMNS = SIZE_CODES;
+const STYLE_TABLE_COLUMN_COUNT = SIZE_COLUMNS.length + 6;
+const GENDER_SORT_ORDER = {
+  M: 0,
+  W: 1,
+  U: 2,
+};
+const GENDER_PASTEL_STYLES = {
+  M: { background: '#eaf4ff', border: '#cfe2ff', accent: '#7ab6ff' },
+  W: { background: '#ffeef3', border: '#ffd6e0', accent: '#ff9eb9' },
+  U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
+  default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
+};
+const normalizeOrderStatus = (status) => (status || '').replace(/\s+/g, '').trim();
 
-const createQuantityRow = () => ({
-  id: createId('qty'),
-  colorId: '',
-  sizeId: '',
-  quantity: '',
-});
+const isOrderDeletable = (status) => normalizeOrderStatus(status) === '주문접수';
+const getStyleGroupKey = (item) => {
+  if (item?.styleId) return `style:${item.styleId}`;
+  if (item?.styleName) return `style-name:${item.styleName}`;
+  if (item?.styleCode) return `style-code:${item.styleCode}`;
+  return `item:${item?.id || ''}`;
+};
+const getGenderOrder = (gender) =>
+  Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
+const getGenderPastelStyle = (gender) => GENDER_PASTEL_STYLES[gender] || GENDER_PASTEL_STYLES.default;
+const getLegacyGenderCodeFromRows = (rows = []) => {
+  for (const row of rows) {
+    const code = normalizeGenderCode(row?.colorId || row?.gender, '');
+    if (code) return code;
+  }
+  return '';
+};
+const normalizeSizeKey = (value) => {
+  const raw = String(value || '')
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!raw) return '';
+  if (SIZE_COLUMNS.includes(raw)) return raw;
+  if (raw === 'XXL' || raw === '2X') return '2XL';
+  if (raw === 'XXXL' || raw === '3X') return '3XL';
+  if (raw === 'XXXXL' || raw === '4X') return '4XL';
+  return '';
+};
+const toNumericInputString = (value) => String(value ?? '').replace(/[^\d]/g, '');
+const createSizeQuantities = () =>
+  SIZE_COLUMNS.reduce((acc, size) => {
+    acc[size] = '';
+    return acc;
+  }, {});
+const normalizeSizeQuantities = (value = {}) => {
+  const base = createSizeQuantities();
+  SIZE_COLUMNS.forEach((size) => {
+    base[size] = toNumericInputString(value?.[size] ?? '');
+  });
+  return base;
+};
+const hasAnySizeQuantity = (sizeQuantities = {}) =>
+  SIZE_COLUMNS.some((size) => Number(sizeQuantities?.[size]) > 0);
+const sumSizeQuantities = (sizeQuantities = {}) =>
+  SIZE_COLUMNS.reduce((sum, size) => sum + (Number(sizeQuantities?.[size]) || 0), 0);
+const buildSizeQuantitiesFromLegacyRows = (rows = []) =>
+  rows.reduce((acc, row) => {
+    const sizeKey = normalizeSizeKey(row?.sizeId || row?.sizeName || row?.size);
+    if (!sizeKey) return acc;
+    acc[sizeKey] = String((Number(acc[sizeKey]) || 0) + (Number(row?.quantity) || 0));
+    return acc;
+  }, createSizeQuantities());
 
 const normalizeQuantityRow = (row) => ({
   id: row?.id || createId('qty'),
@@ -62,18 +127,30 @@ const createOrderItem = () => ({
   styleId: '',
   styleName: '',
   styleCode: '',
-  quantities: [createQuantityRow()],
+  gender: 'M',
+  sizeQuantities: createSizeQuantities(),
 });
 
-const normalizeOrderItem = (item) => ({
-  id: item?.id || createId('item'),
-  styleId: item?.styleId || '',
-  styleName: item?.styleName || '',
-  styleCode: item?.styleCode || '',
-  quantities: Array.isArray(item?.quantities) && item.quantities.length > 0
-    ? item.quantities.map(normalizeQuantityRow)
-    : [createQuantityRow()],
-});
+const normalizeOrderItem = (item) => {
+  const legacyRows =
+    Array.isArray(item?.quantities) && item.quantities.length > 0
+      ? item.quantities.map(normalizeQuantityRow)
+      : [];
+  const normalizedGender = normalizeGenderCode(item?.gender, '');
+  const legacyGender = getLegacyGenderCodeFromRows(legacyRows);
+
+  return {
+    id: item?.id || createId('item'),
+    styleId: item?.styleId || '',
+    styleName: item?.styleName || '',
+    styleCode: item?.styleCode || '',
+    gender: normalizedGender || legacyGender || 'M',
+    sizeQuantities:
+      item?.sizeQuantities && typeof item.sizeQuantities === 'object'
+        ? normalizeSizeQuantities(item.sizeQuantities)
+        : buildSizeQuantitiesFromLegacyRows(legacyRows),
+  };
+};
 
 const buildInitialFormData = () => ({
   orderNumber: '',
@@ -97,29 +174,32 @@ const normalizeOrderForm = (order) => {
   };
 };
 
+const getStyleDisplayNames = (items = []) =>
+  items.map((item) => item.styleName || item.styleCode || '').filter(Boolean);
+
 const formatStyleSummary = (items = []) => {
-  const names = items.map((item) => item.styleName).filter(Boolean);
+  const names = getStyleDisplayNames(items);
   if (names.length === 0) return '-';
-  if (names.length <= 2) return names.join(', ');
-  return `${names.slice(0, 2).join(', ')} 외 ${names.length - 2}건`;
+  if (names.length === 1) return names[0];
+  return `${names[0]} 외 ${names.length - 1}개`;
 };
 
 const OrderList = () => {
+  const { orderId } = useParams();
+  const isDetailMode = Boolean(orderId);
+  const isNewOrder = orderId === 'new';
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-  const { showNotification, navigateToPath } = useApp();
+  const { showNotification, navigateToPath, closeTab } = useApp();
 
   const [orders, setOrders] = useState(() => loadOrders());
   const [styles, setStyles] = useState([]);
   const [customers, setCustomers] = useState([]);
-  const [colors, setColors] = useState([]);
-  const [sizes, setSizes] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
-  const [loadingAttributes, setLoadingAttributes] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [openDialog, setOpenDialog] = useState(false);
-  const [editingOrder, setEditingOrder] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
+  const detailInitKeyRef = useRef(null);
 
   const refreshStyles = async () => {
     try {
@@ -159,37 +239,6 @@ const OrderList = () => {
   }, [API_BASE, showNotification]);
 
   useEffect(() => {
-    const fetchAttributes = async () => {
-      setLoadingAttributes(true);
-      try {
-        const response = await fetch(`${API_BASE}/attributes`);
-        const data = await response.json();
-        if (response.ok) {
-          const normalizeList = (list) =>
-            Array.isArray(list)
-              ? list.map((item) => ({
-                  id: item.id || item.code || item.name,
-                  name: item.name || item.code || item.id,
-                }))
-              : [];
-          setColors(normalizeList(data?.colors));
-          setSizes(normalizeList(data?.sizes));
-        } else {
-          setColors([]);
-          setSizes([]);
-        }
-      } catch (_error) {
-        setColors([]);
-        setSizes([]);
-      } finally {
-        setLoadingAttributes(false);
-      }
-    };
-
-    fetchAttributes();
-  }, [API_BASE]);
-
-  useEffect(() => {
     if (formData.customerId || !formData.customerName) return;
     const match = customers.find((customer) => customer.name === formData.customerName);
     if (match) {
@@ -198,24 +247,64 @@ const OrderList = () => {
   }, [customers, formData.customerId, formData.customerName]);
 
   useEffect(() => {
-    if (!openDialog || editingOrder) return;
+    if (!isDetailMode) {
+      detailInitKeyRef.current = null;
+      return;
+    }
+
+    const initKey = isNewOrder ? 'new' : orderId || '';
+    if (detailInitKeyRef.current === initKey) {
+      return;
+    }
+    detailInitKeyRef.current = initKey;
+
+    if (isNewOrder) {
+      const draft = loadOrderDraft();
+      if (draft) {
+        setFormData(normalizeOrderForm(draft));
+        showNotification('임시 저장된 주문을 불러왔습니다.', 'info');
+      } else {
+        setFormData(buildInitialFormData());
+      }
+      return;
+    }
+
+    const targetOrder = orders.find((order) => order.id === orderId);
+    if (!targetOrder) {
+      showNotification('주문 정보를 찾을 수 없습니다.', 'error');
+      navigateToPath('/order', { label: '주문' });
+      return;
+    }
+    setFormData(normalizeOrderForm(targetOrder));
+  }, [isDetailMode, isNewOrder, orderId, orders, navigateToPath, showNotification]);
+
+  useEffect(() => {
+    if (!isDetailMode || !isNewOrder) return;
     saveOrderDraft(formData);
-  }, [formData, openDialog, editingOrder]);
+  }, [formData, isDetailMode, isNewOrder]);
 
   const filteredOrders = useMemo(() => {
-    if (!searchTerm) return orders;
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
+      const matchesStatus =
+        statusFilter === ORDER_FILTER_ALL ||
+        normalizeOrderStatus(order.status) === normalizeOrderStatus(statusFilter);
+      if (!matchesStatus) return false;
+
+      if (!searchTerm) return true;
+
       const orderNumber = order.orderNumber || '';
       const customer = order.customerName || order.customer || '';
       const styleSummary = formatStyleSummary(order.items || []);
+      const styleNames = getStyleDisplayNames(order.items || []).join(' ');
       return (
         orderNumber.toLowerCase().includes(lowerTerm) ||
         customer.toLowerCase().includes(lowerTerm) ||
-        styleSummary.toLowerCase().includes(lowerTerm)
+        styleSummary.toLowerCase().includes(lowerTerm) ||
+        styleNames.toLowerCase().includes(lowerTerm)
       );
     });
-  }, [orders, searchTerm]);
+  }, [orders, searchTerm, statusFilter]);
 
   const styleOptions = useMemo(
     () =>
@@ -229,7 +318,7 @@ const OrderList = () => {
   );
 
   const availableStyleOptions = useMemo(() => {
-    if (!formData.customerName) return styleOptions;
+    if (!formData.customerName) return [];
     return styleOptions.filter((style) => style.customer === formData.customerName);
   }, [styleOptions, formData.customerName]);
 
@@ -243,29 +332,88 @@ const OrderList = () => {
     return null;
   }, [customers, formData.customerId, formData.customerName]);
 
-  const handleAdd = async () => {
-    await refreshStyles();
-    setEditingOrder(null);
-    const draft = loadOrderDraft();
-    if (draft) {
-      setFormData(normalizeOrderForm(draft));
-      showNotification('임시 저장된 주문을 불러왔습니다.', 'info');
-    } else {
-      setFormData(buildInitialFormData());
+  const groupedStyleItems = useMemo(() => {
+    const groupMap = new Map();
+
+    formData.items.forEach((item, sourceIndex) => {
+      const groupKey = getStyleGroupKey(item);
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          key: groupKey,
+          styleName: item.styleName || '',
+          styleCode: item.styleCode || '',
+          rows: [],
+        });
+      }
+      const targetGroup = groupMap.get(groupKey);
+      if (!targetGroup.styleName && item.styleName) targetGroup.styleName = item.styleName;
+      if (!targetGroup.styleCode && item.styleCode) targetGroup.styleCode = item.styleCode;
+      targetGroup.rows.push({ item, sourceIndex });
+    });
+
+    let nextDisplayNo = 1;
+    return Array.from(groupMap.values()).map((group) => {
+      const rows = [...group.rows]
+        .sort((a, b) => {
+          const genderDiff = getGenderOrder(a.item.gender) - getGenderOrder(b.item.gender);
+          if (genderDiff !== 0) return genderDiff;
+          return a.sourceIndex - b.sourceIndex;
+        })
+        .map((row) => ({
+          ...row,
+          displayNo: nextDisplayNo++,
+        }));
+
+      return {
+        ...group,
+        rows,
+      };
+    });
+  }, [formData.items]);
+
+  const handleAdd = () => {
+    navigateToPath('/order/new', { label: '신규 주문' });
+  };
+
+  const handleEdit = (order) => {
+    if (!order?.id) return;
+    navigateToPath(`/order/${order.id}`, {
+      label: `주문 ${order.orderNumber || order.id}`,
+    });
+  };
+
+  const handleDeleteOrder = (order) => {
+    if (!order?.id) return;
+    if (!isOrderDeletable(order.status)) {
+      showNotification('주문 상태가 주문접수인 건만 삭제할 수 있습니다.', 'warning');
+      return;
     }
-    setOpenDialog(true);
+
+    const orderLabel = order.orderNumber ? `주문 ${order.orderNumber}` : '해당 주문';
+    if (!window.confirm(`${orderLabel}을(를) 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    const nextOrders = orders.filter((target) => target.id !== order.id);
+    setOrders(nextOrders);
+    saveOrders(nextOrders);
+
+    showNotification('주문이 삭제되었습니다.', 'success');
   };
 
-  const handleEdit = async (order) => {
-    await refreshStyles();
-    setEditingOrder(order);
-    setFormData(normalizeOrderForm(order));
-    setOpenDialog(true);
+  const closeDetailAndGoList = () => {
+    navigateToPath('/order', { label: '주문' });
+    if (isNewOrder) {
+      closeTab('/order/new');
+      return;
+    }
+    if (orderId) {
+      closeTab(`/order/${orderId}`);
+    }
   };
 
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-    setEditingOrder(null);
+  const handleCloseDetail = () => {
+    closeDetailAndGoList();
   };
 
   const handleCustomerChange = (_event, customer) => {
@@ -284,7 +432,7 @@ const OrderList = () => {
           styleId: '',
           styleName: '',
           styleCode: '',
-          quantities: [createQuantityRow()],
+          sizeQuantities: createSizeQuantities(),
         })),
       };
     });
@@ -307,16 +455,12 @@ const OrderList = () => {
   };
 
   const handleStyleChange = (itemId, style) => {
+    if (!formData.customerName) {
+      showNotification('고객사를 먼저 선택하세요.', 'warning');
+      return;
+    }
+
     setFormData((prev) => {
-      let nextCustomerId = prev.customerId;
-      let nextCustomerName = prev.customerName;
-
-      if (!prev.customerName && style?.customer) {
-        const match = customers.find((customer) => customer.name === style.customer);
-        nextCustomerId = match?.id || '';
-        nextCustomerName = style.customer;
-      }
-
       const nextItems = prev.items.map((item) => {
         if (item.id !== itemId) return item;
         if (item.styleId === (style?.id || '') && item.styleName === (style?.name || '')) {
@@ -327,63 +471,53 @@ const OrderList = () => {
           styleId: style?.id || '',
           styleName: style?.name || '',
           styleCode: style?.styleCode || '',
-          quantities: [createQuantityRow()],
+          sizeQuantities: createSizeQuantities(),
         };
       });
 
       return {
         ...prev,
-        customerId: nextCustomerId,
-        customerName: nextCustomerName,
         items: nextItems,
       };
     });
   };
 
-  const handleAddQuantityRow = (itemId) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.map((item) =>
-        item.id === itemId
-          ? { ...item, quantities: [...item.quantities, createQuantityRow()] }
-          : item
-      ),
-    }));
-  };
-
-  const handleRemoveQuantityRow = (itemId, rowId) => {
-    setFormData((prev) => ({
-      ...prev,
-      items: prev.items.map((item) => {
-        if (item.id !== itemId) return item;
-        const nextRows = item.quantities.filter((row) => row.id !== rowId);
-        return {
-          ...item,
-          quantities: nextRows.length ? nextRows : [createQuantityRow()],
-        };
-      }),
-    }));
-  };
-
-  const handleQuantityChange = (itemId, rowId, field, value) => {
-    const normalizedValue = field === 'quantity' ? value.replace(/[^\d]/g, '') : value;
+  const handleGenderChange = (itemId, value) => {
+    if (!GENDER_OPTIONS.includes(value)) return;
     setFormData((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
         item.id === itemId
           ? {
               ...item,
-              quantities: item.quantities.map((row) =>
-                row.id === rowId ? { ...row, [field]: normalizedValue } : row
-              ),
+              gender: value,
             }
           : item
       ),
     }));
   };
 
-  const getItemTotal = (item) =>
-    item.quantities.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
+  const handleSizeQuantityChange = (itemId, sizeKey, value) => {
+    const normalizedSize = normalizeSizeKey(sizeKey);
+    if (!normalizedSize) return;
+    const normalizedValue = toNumericInputString(value);
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              sizeQuantities: {
+                ...normalizeSizeQuantities(item.sizeQuantities),
+                [normalizedSize]: normalizedValue,
+              },
+            }
+          : item
+      ),
+    }));
+  };
+
+  const getItemTotal = (item) => sumSizeQuantities(item?.sizeQuantities);
 
   const getOrderTotal = () =>
     formData.items.reduce((sum, item) => sum + getItemTotal(item), 0);
@@ -397,6 +531,9 @@ const OrderList = () => {
     clearOrderDraft();
     setFormData(buildInitialFormData());
     showNotification('임시 저장을 삭제했습니다.', 'info');
+    if (isDetailMode) {
+      closeDetailAndGoList();
+    }
   };
 
   const validateOrder = () => {
@@ -416,11 +553,12 @@ const OrderList = () => {
       if (!item.styleId) {
         return '모든 스타일을 선택하세요.';
       }
-      const validRows = item.quantities.filter(
-        (row) => row.colorId && row.sizeId && Number(row.quantity) > 0
-      );
-      if (validRows.length === 0) {
-        return '색상/사이즈별 수량을 입력하세요.';
+      if (!GENDER_OPTIONS.includes(item.gender)) {
+        return '모든 스타일의 성별 코드(M/W/U)를 선택하세요.';
+      }
+      const totalQuantity = sumSizeQuantities(item.sizeQuantities);
+      if (totalQuantity <= 0) {
+        return '스타일별 사이즈 수량을 입력하세요.';
       }
     }
     return null;
@@ -434,16 +572,23 @@ const OrderList = () => {
     }
 
     const sanitizedItems = formData.items.map((item) => {
-      const cleanRows = item.quantities
-        .filter((row) => row.colorId && row.sizeId && Number(row.quantity) > 0)
-        .map((row) => ({
-          ...row,
-          quantity: Number(row.quantity),
-        }));
-      const totalQuantity = cleanRows.reduce((sum, row) => sum + row.quantity, 0);
+      const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
+      const numericSizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
+        acc[size] = Number(normalizedSizeQuantities[size]) || 0;
+        return acc;
+      }, {});
+      const totalQuantity = sumSizeQuantities(numericSizeQuantities);
+      const legacyQuantities = SIZE_COLUMNS.filter((size) => numericSizeQuantities[size] > 0).map((size) => ({
+        id: createId('qty'),
+        colorId: item.gender,
+        sizeId: size,
+        quantity: numericSizeQuantities[size],
+      }));
       return {
         ...item,
-        quantities: cleanRows,
+        gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : 'M',
+        sizeQuantities: numericSizeQuantities,
+        quantities: legacyQuantities,
         totalQuantity,
       };
     });
@@ -459,10 +604,15 @@ const OrderList = () => {
     };
 
     let nextOrders = [];
-    if (editingOrder?.id) {
-      payload.id = editingOrder.id;
-      payload.createdAt = editingOrder.createdAt || payload.updatedAt;
-      nextOrders = orders.map((order) => (order.id === editingOrder.id ? payload : order));
+    if (!isNewOrder) {
+      const existingOrder = orders.find((order) => order.id === orderId);
+      if (!existingOrder) {
+        showNotification('수정할 주문을 찾을 수 없습니다.', 'error');
+        return;
+      }
+      payload.id = existingOrder.id;
+      payload.createdAt = existingOrder.createdAt || payload.updatedAt;
+      nextOrders = orders.map((order) => (order.id === existingOrder.id ? payload : order));
     } else {
       payload.id = createId('order');
       payload.createdAt = payload.updatedAt;
@@ -472,319 +622,364 @@ const OrderList = () => {
     setOrders(nextOrders);
     saveOrders(nextOrders);
     clearOrderDraft();
-    setOpenDialog(false);
-    setEditingOrder(null);
     showNotification('주문 정보가 저장되었습니다.', 'success');
+    closeDetailAndGoList();
   };
 
-  const hasAttributes = colors.length > 0 && sizes.length > 0;
+  if (!isDetailMode) {
+    return (
+      <AppPageContainer>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <SearchInput
+              placeholder="주문번호, 고객사, 스타일 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              sx={{ width: 360 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel id="order-status-filter-label">상태</InputLabel>
+              <Select
+                labelId="order-status-filter-label"
+                value={statusFilter}
+                label="상태"
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <MenuItem value={ORDER_FILTER_ALL}>전체 상태</MenuItem>
+                {ORDER_STATUSES.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {status}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+            주문 추가
+          </Button>
+        </Box>
+        <Paper variant="outlined" sx={{ width: '100%' }}>
+          <TableContainer>
+            <Table stickyHeader size="small">
+              <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold' }}>주문번호</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>고객사(브랜드)</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>스타일</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', textAlign: 'right' }}>합계 수량</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>납기일</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold' }}>상태</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>관리</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredOrders.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                      등록된 주문이 없습니다.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {filteredOrders.map((order) => {
+                  const deletable = isOrderDeletable(order.status);
+                  return (
+                    <TableRow
+                      key={order.id}
+                      hover
+                      onDoubleClick={() => handleEdit(order)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell>{order.orderNumber}</TableCell>
+                      <TableCell>{order.customerName || order.customer || '-'}</TableCell>
+                      <TableCell>{formatStyleSummary(order.items)}</TableCell>
+                      <TableCell sx={{ textAlign: 'right' }}>{order.totalQuantity ?? '-'}</TableCell>
+                      <TableCell>{order.dueDate || '-'}</TableCell>
+                      <TableCell>{order.status || '-'}</TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          disabled={!deletable}
+                          title={deletable ? '주문 삭제' : '주문접수 상태에서만 삭제 가능'}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteOrder(order);
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      </AppPageContainer>
+    );
+  }
 
   return (
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <SearchInput
-          placeholder="주문번호, 고객사, 스타일 검색..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-          주문 추가
-        </Button>
-      </Box>
-      <Paper variant="outlined" sx={{ width: '100%' }}>
-        <TableContainer>
-          <Table stickyHeader size="small">
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>주문번호</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>고객사(브랜드)</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>스타일</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'right' }}>합계 수량</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>납기일</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>상태</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredOrders.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    등록된 주문이 없습니다.
-                  </TableCell>
-                </TableRow>
-              )}
-              {filteredOrders.map((order) => (
-                <TableRow
-                  key={order.id}
-                  hover
-                  onDoubleClick={() => handleEdit(order)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell>{order.orderNumber}</TableCell>
-                  <TableCell>{order.customerName || order.customer || '-'}</TableCell>
-                  <TableCell>{formatStyleSummary(order.items)}</TableCell>
-                  <TableCell sx={{ textAlign: 'right' }}>{order.totalQuantity ?? '-'}</TableCell>
-                  <TableCell>{order.dueDate || '-'}</TableCell>
-                  <TableCell>{order.status || '-'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-
-      <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="lg" fullWidth>
-        <DialogTitle>{editingOrder ? '주문 정보 수정' : '신규 주문 등록'}</DialogTitle>
-        <DialogContent>
-          {!loadingCustomers && customers.length === 0 && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              연결된 고객사가 없습니다. 고객 관리에서 브랜드를 먼저 등록하세요.
-            </Alert>
-          )}
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                name="orderNumber"
-                label="주문번호"
-                value={formData.orderNumber}
-                onChange={handleInputChange}
-                fullWidth
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Autocomplete
-                options={customers}
-                value={customerValue}
-                onChange={handleCustomerChange}
-                getOptionLabel={(option) => option?.name || ''}
-                isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                loading={loadingCustomers}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="고객사(브랜드)"
-                    placeholder={loadingCustomers ? '불러오는 중...' : '고객사를 선택하세요'}
-                  />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                name="dueDate"
-                label="납기일"
-                type="date"
-                value={formData.dueDate}
-                onChange={handleInputChange}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>상태</InputLabel>
-                <Select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  label="상태"
-                >
-                  <MenuItem value="주문접수">주문접수</MenuItem>
-                  <MenuItem value="작업중">작업중</MenuItem>
-                  <MenuItem value="생산완료">생산완료</MenuItem>
-                  <MenuItem value="출고완료">출고완료</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
-
-          <Divider sx={{ my: 3 }} />
-
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-              스타일 구성
-            </Typography>
-            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddItem}>
-              스타일 추가
-            </Button>
-          </Box>
-
-          {formData.items.map((item, index) => {
-            const itemTotal = getItemTotal(item);
-            const selectedStyle = availableStyleOptions.find((option) => option.id === item.styleId) || null;
-
-            return (
-              <Paper key={item.id} variant="outlined" sx={{ p: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="subtitle2">스타일 {index + 1}</Typography>
-                  <Button color="error" size="small" onClick={() => handleRemoveItem(item.id)}>
-                    삭제
-                  </Button>
-                </Box>
-
-                <Grid container spacing={2} alignItems="center">
-                  <Grid item xs={12} md={6}>
-                    <Autocomplete
-                      options={availableStyleOptions}
-                      value={selectedStyle}
-                      onChange={(_event, newValue) => handleStyleChange(item.id, newValue)}
-                      getOptionLabel={(option) =>
-                        option?.name
-                          ? `${option.name}${option.styleCode ? ` (${option.styleCode})` : ''}`
-                          : ''
-                      }
-                      isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="스타일 선택"
-                          placeholder="스타일명 검색"
-                        />
-                      )}
-                      noOptionsText={
-                        formData.customerName ? '등록된 스타일이 없습니다.' : '고객사를 먼저 선택하세요.'
-                      }
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      label="스타일 코드"
-                      value={item.styleCode}
-                      fullWidth
-                      InputProps={{ readOnly: true }}
-                      disabled
-                      placeholder="자동 입력"
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Button
-                      variant="outlined"
-                      startIcon={<OpenInNewIcon />}
-                      onClick={handleOpenStyleRegistration}
-                      fullWidth
-                    >
-                      스타일 등록
-                    </Button>
-                  </Grid>
-                </Grid>
-
-                <Box sx={{ mt: 2 }}>
-                  {!hasAttributes && !loadingAttributes && (
-                    <Alert severity="warning" sx={{ mb: 1 }}>
-                      색상/사이즈가 등록되어 있지 않습니다. 속성 관리에서 먼저 등록하세요.
-                    </Alert>
-                  )}
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 'bold' }}>색상</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>사이즈</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold', textAlign: 'right' }}>수량</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold', width: 80 }} />
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {item.quantities.map((row) => (
-                        <TableRow key={row.id}>
-                          <TableCell>
-                            <FormControl fullWidth size="small" disabled={!hasAttributes}>
-                              <Select
-                                value={row.colorId}
-                                onChange={(event) =>
-                                  handleQuantityChange(item.id, row.id, 'colorId', event.target.value)
-                                }
-                                displayEmpty
-                              >
-                                <MenuItem value="" disabled>
-                                  색상 선택
-                                </MenuItem>
-                                {colors.map((color) => (
-                                  <MenuItem key={color.id} value={color.id}>
-                                    {color.name}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </TableCell>
-                          <TableCell>
-                            <FormControl fullWidth size="small" disabled={!hasAttributes}>
-                              <Select
-                                value={row.sizeId}
-                                onChange={(event) =>
-                                  handleQuantityChange(item.id, row.id, 'sizeId', event.target.value)
-                                }
-                                displayEmpty
-                              >
-                                <MenuItem value="" disabled>
-                                  사이즈 선택
-                                </MenuItem>
-                                {sizes.map((size) => (
-                                  <MenuItem key={size.id} value={size.id}>
-                                    {size.name}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>
-                            <TextField
-                              value={row.quantity}
-                              onChange={(event) =>
-                                handleQuantityChange(item.id, row.id, 'quantity', event.target.value)
-                              }
-                              size="small"
-                              type="text"
-                              placeholder="0"
-                              inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                              disabled={!hasAttributes}
-                              sx={{ maxWidth: 120 }}
-                            />
-                          </TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>
-                            <IconButton
-                              size="small"
-                              onClick={() => handleRemoveQuantityRow(item.id, row.id)}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleAddQuantityRow(item.id)}
-                    >
-                      수량 추가
-                    </Button>
-                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                      합계 수량: {itemTotal}
-                    </Typography>
-                  </Stack>
-                </Box>
-              </Paper>
-            );
-          })}
-
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-              주문 합계 수량: {getOrderTotal()}
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          {!editingOrder && (
+        <Typography variant="h6">{isNewOrder ? '신규 주문 등록' : '주문 정보 수정'}</Typography>
+        <Stack direction="row" spacing={1}>
+          {isNewOrder && (
             <Button onClick={handleClearDraft} color="inherit">
               임시 저장 삭제
             </Button>
           )}
-          <Button onClick={handleCloseDialog}>취소</Button>
+          <Button onClick={handleCloseDetail}>취소</Button>
           <Button onClick={handleSave} variant="contained">
             저장
           </Button>
-        </DialogActions>
-      </Dialog>
+        </Stack>
+      </Box>
+
+      {!loadingCustomers && customers.length === 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          연결된 고객사가 없습니다. 고객 관리에서 브랜드를 먼저 등록하세요.
+        </Alert>
+      )}
+
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              name="orderNumber"
+              label="주문번호"
+              value={formData.orderNumber}
+              onChange={handleInputChange}
+              fullWidth
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Autocomplete
+              options={customers}
+              value={customerValue}
+              onChange={handleCustomerChange}
+              getOptionLabel={(option) => option?.name || ''}
+              isOptionEqualToValue={(option, value) => option?.id === value?.id}
+              loading={loadingCustomers}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="고객사(브랜드)"
+                  placeholder={loadingCustomers ? '불러오는 중...' : '고객사를 선택하세요'}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              name="dueDate"
+              label="납기일"
+              type="date"
+              value={formData.dueDate}
+              onChange={handleInputChange}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth>
+              <InputLabel>상태</InputLabel>
+              <Select
+                name="status"
+                value={formData.status}
+                onChange={handleInputChange}
+                label="상태"
+              >
+                {ORDER_STATUSES.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {status}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+
+        <Divider sx={{ my: 3 }} />
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+            스타일 구성
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<OpenInNewIcon />}
+              onClick={handleOpenStyleRegistration}
+            >
+              스타일 등록
+            </Button>
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddItem}>
+              스타일 추가
+            </Button>
+          </Stack>
+        </Box>
+
+        <Paper variant="outlined" sx={{ mb: 2 }}>
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 1500 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 'bold', width: 52, textAlign: 'center' }}>No</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: 250 }}>스타일명/코드 선택</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: 124 }}>스타일 코드</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: 108 }}>성별</TableCell>
+                  {SIZE_COLUMNS.map((size) => (
+                    <TableCell
+                      key={size}
+                      sx={{ fontWeight: 'bold', width: 88, textAlign: 'center', whiteSpace: 'nowrap' }}
+                    >
+                      {size}
+                    </TableCell>
+                  ))}
+                  <TableCell sx={{ fontWeight: 'bold', width: 90, textAlign: 'right' }}>합계</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: 72, textAlign: 'center' }}>삭제</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {groupedStyleItems.map((group, groupIndex) => {
+                  const groupTitle = group.styleName || '스타일 미선택';
+                  const groupMeta = [
+                    group.styleCode ? `코드 ${group.styleCode}` : null,
+                    `${group.rows.length}줄`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
+
+                  return (
+                    <React.Fragment key={group.key}>
+                      <TableRow>
+                        <TableCell
+                          colSpan={STYLE_TABLE_COLUMN_COUNT}
+                          sx={{
+                            py: 0.75,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: 'text.secondary',
+                            backgroundColor: '#f5f7fb',
+                            borderTop:
+                              groupIndex === 0 ? '1px solid rgba(224, 224, 224, 1)' : '2px solid #d9dfeb',
+                          }}
+                        >
+                          {groupTitle}
+                          {groupMeta ? `  ·  ${groupMeta}` : ''}
+                        </TableCell>
+                      </TableRow>
+                      {group.rows.map(({ item, displayNo }) => {
+                        const itemTotal = getItemTotal(item);
+                        const selectedStyle =
+                          availableStyleOptions.find((option) => option.id === item.styleId) || null;
+                        const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
+                        const genderStyle = getGenderPastelStyle(item.gender);
+
+                        return (
+                          <TableRow
+                            key={item.id}
+                            sx={{
+                              '& > td': {
+                                backgroundColor: genderStyle.background,
+                                borderBottomColor: genderStyle.border,
+                              },
+                              '& > td:first-of-type': {
+                                borderLeft: `4px solid ${genderStyle.accent}`,
+                              },
+                            }}
+                          >
+                            <TableCell sx={{ textAlign: 'center' }}>{displayNo}</TableCell>
+                            <TableCell>
+                              <Autocomplete
+                                options={availableStyleOptions}
+                                value={selectedStyle}
+                                disabled={!formData.customerName}
+                                onChange={(_event, newValue) => handleStyleChange(item.id, newValue)}
+                                getOptionLabel={(option) => option?.name || ''}
+                                isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    size="small"
+                                    placeholder="스타일명 검색"
+                                  />
+                                )}
+                                noOptionsText={
+                                  formData.customerName
+                                    ? '등록된 스타일이 없습니다.'
+                                    : '고객사를 먼저 선택하세요.'
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                size="small"
+                                value={item.styleCode}
+                                fullWidth
+                                InputProps={{ readOnly: true }}
+                                disabled
+                                placeholder="자동 입력"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <FormControl fullWidth size="small">
+                                <Select
+                                  value={normalizeGenderCode(item.gender, 'M')}
+                                  onChange={(event) => handleGenderChange(item.id, event.target.value)}
+                                >
+                                  {GENDER_OPTIONS.map((gender) => (
+                                    <MenuItem key={gender} value={gender}>
+                                      {gender}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                            {SIZE_COLUMNS.map((size) => (
+                              <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.5 }}>
+                                <TextField
+                                  value={normalizedSizeQuantities[size]}
+                                  onChange={(event) =>
+                                    handleSizeQuantityChange(item.id, size, event.target.value)
+                                  }
+                                  size="small"
+                                  type="text"
+                                  placeholder="0"
+                                  inputProps={{
+                                    inputMode: 'numeric',
+                                    pattern: '[0-9]*',
+                                    style: { textAlign: 'right', paddingRight: 8 },
+                                  }}
+                                  fullWidth
+                                />
+                              </TableCell>
+                            ))}
+                            <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>{itemTotal}</TableCell>
+                            <TableCell sx={{ textAlign: 'center' }}>
+                              <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+            주문 합계 수량: {getOrderTotal()}
+          </Typography>
+        </Box>
+      </Paper>
     </AppPageContainer>
   );
 };

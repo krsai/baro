@@ -58,8 +58,6 @@ model Organization {
   updatedAt      DateTime         @updatedAt
 
   colors     AttrColor[]
-  sizes      AttrSize[]
-  genders    AttrGender[]
   categories AttrCategory[]
   roles      AttrRole[]
   processes  AttrProcess[]
@@ -201,30 +199,6 @@ model OrgRelationship {
 }
 
 model AttrColor {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
-
-  organization Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([orgId, code])
-  @@index([orgId])
-}
-
-model AttrSize {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
-
-  organization Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([orgId, code])
-  @@index([orgId])
-}
-
-model AttrGender {
   id    Int    @id @default(autoincrement())
   orgId Int
   code  String

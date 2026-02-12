@@ -7,6 +7,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
+import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -85,9 +86,19 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     {
       Category: '',
       Fabric: '',
+      Gender: '',
       'Size Spec': '',
       Colorway: '',
     }
+  );
+  const sizeSpecOptions = useMemo(
+    () => [
+      SIZE_CODES.slice(1, 5).join(', '),
+      SIZE_CODES.slice(0, 6).join(', '),
+      SIZE_CODES.join(', '),
+      'FREE',
+    ],
+    []
   );
 
   const handleDetailsChange = (event) => {
@@ -359,9 +370,28 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                 sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
-                <MenuItem value="S-XL">S-XL</MenuItem>
-                <MenuItem value="XS-XXL">XS-XXL</MenuItem>
-                <MenuItem value="Free">Free</MenuItem>
+                {sizeSpecOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Gender</Typography>
+              <Select
+                name="Gender"
+                value={styleDetailsData.Gender}
+                onChange={handleDetailsChange}
+                displayEmpty
+                sx={{ width: '70%' }}
+              >
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                {GENDER_CODES.map((code) => (
+                  <MenuItem key={code} value={code}>
+                    {code}
+                  </MenuItem>
+                ))}
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

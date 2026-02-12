@@ -178,6 +178,10 @@ const MainLayout = () => {
       if (path.startsWith('/style/') && path !== '/style') {
         openOptions.replacePrefix = '/style/';
       }
+      // For order detail pages, ensure only one is open at a time.
+      if (path.startsWith('/order/') && path !== '/order') {
+        openOptions.replacePrefix = '/order/';
+      }
       
       // The `openTab` function from context already checks for duplicates,
       // so we can call it directly. This removes the dependency on `openTabs`.

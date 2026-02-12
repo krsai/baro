@@ -29,17 +29,6 @@ const DEFAULT_ATTRIBUTES = {
     { code: "RED", name: "Red" },
     { code: "BLU", name: "Blue" },
   ],
-  sizes: [
-    { code: "S", name: "Small" },
-    { code: "M", name: "Medium" },
-    { code: "L", name: "Large" },
-    { code: "XL", name: "X-Large" },
-  ],
-  genders: [
-    { code: "M", name: "Men" },
-    { code: "W", name: "Women" },
-    { code: "U", name: "Unisex" },
-  ],
   categories: [
     { code: "OUT", name: "Outer" },
     { code: "TOP", name: "Top" },
@@ -246,17 +235,9 @@ const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
 };
 
 const seedAttributesIfEmpty = async (orgId) => {
-  const [
-    colorCount,
-    sizeCount,
-    genderCount,
-    categoryCount,
-    roleCount,
-    processCount,
-  ] = await Promise.all([
+  const [colorCount, categoryCount, roleCount, processCount] =
+    await Promise.all([
     prisma.attrColor.count({ where: { orgId } }),
-    prisma.attrSize.count({ where: { orgId } }),
-    prisma.attrGender.count({ where: { orgId } }),
     prisma.attrCategory.count({ where: { orgId } }),
     prisma.attrRole.count({ where: { orgId } }),
     prisma.attrProcess.count({ where: { orgId } }),
@@ -267,20 +248,6 @@ const seedAttributesIfEmpty = async (orgId) => {
     actions.push(
       prisma.attrColor.createMany({
         data: DEFAULT_ATTRIBUTES.colors.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-  if (sizeCount === 0) {
-    actions.push(
-      prisma.attrSize.createMany({
-        data: DEFAULT_ATTRIBUTES.sizes.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-  if (genderCount === 0) {
-    actions.push(
-      prisma.attrGender.createMany({
-        data: DEFAULT_ATTRIBUTES.genders.map((item) => ({ ...item, orgId })),
       })
     );
   }
@@ -1671,17 +1638,8 @@ app.get("/attributes", async (req, res) => {
   }
   await seedAttributesIfEmpty(organization.id);
 
-  const [colors, sizes, genders, categories, roles, processes] =
-    await Promise.all([
+  const [colors, categories, roles, processes] = await Promise.all([
       prisma.attrColor.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-      prisma.attrSize.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-      prisma.attrGender.findMany({
         where: { orgId: organization.id },
         orderBy: { id: "asc" },
       }),
@@ -1701,8 +1659,6 @@ app.get("/attributes", async (req, res) => {
 
   res.json({
     colors,
-    sizes,
-    genders,
     categories,
     roles,
     processes,
@@ -1724,24 +1680,6 @@ app.put("/attributes", async (req, res) => {
       syncSection(prisma.attrColor, organization.id, payload.colors).then(
         (data) => {
           response.colors = data;
-        }
-      )
-    );
-  }
-  if (payload.sizes) {
-    tasks.push(
-      syncSection(prisma.attrSize, organization.id, payload.sizes).then(
-        (data) => {
-          response.sizes = data;
-        }
-      )
-    );
-  }
-  if (payload.genders) {
-    tasks.push(
-      syncSection(prisma.attrGender, organization.id, payload.genders).then(
-        (data) => {
-          response.genders = data;
         }
       )
     );

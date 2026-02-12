@@ -29,8 +29,6 @@ import { useApp } from '../../../context/AppContext';
 // 초기 Mock Data 정의
 const initialData = {
   colors: [],
-  sizes: [],
-  genders: [],
   categories: [],
   roles: [],
   processes: [],
@@ -44,22 +42,6 @@ const sectionConfigs = [
     columns: [
       { field: 'code', label: '코드', width: '30%' },
       { field: 'name', label: '색상명', width: '60%' },
-    ],
-  },
-  {
-    key: 'sizes',
-    title: '사이즈 (Size)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '사이즈명', width: '60%' },
-    ],
-  },
-  {
-    key: 'genders',
-    title: '성별 (Gender)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '성별', width: '60%' },
     ],
   },
   {
@@ -105,8 +87,6 @@ const AttrBoard = () => {
     const safe = data || {};
     return {
       colors: Array.isArray(safe.colors) ? safe.colors : initialData.colors,
-      sizes: Array.isArray(safe.sizes) ? safe.sizes : initialData.sizes,
-      genders: Array.isArray(safe.genders) ? safe.genders : initialData.genders,
       categories: Array.isArray(safe.categories) ? safe.categories : initialData.categories,
       roles: Array.isArray(safe.roles) ? safe.roles : initialData.roles,
       processes: Array.isArray(safe.processes) ? safe.processes : initialData.processes,
@@ -330,9 +310,14 @@ const AttrBoard = () => {
     <AppPageContainer>
       <Box>
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-            속성 관리 통합
-          </Typography>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              속성 관리 통합
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              사이즈/성별은 공통 코드(XS~4XL, M/W/U)로 고정되어 이 화면에서 관리하지 않습니다.
+            </Typography>
+          </Box>
 
           {/* 저장/되돌리기 버튼 그룹 */}
           <Box sx={{ display: 'flex', gap: 1 }}>
