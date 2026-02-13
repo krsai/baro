@@ -2,7 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\""
+    "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
+    "setup:env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-env.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
