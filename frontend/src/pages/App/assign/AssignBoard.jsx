@@ -6,7 +6,12 @@ import SearchInput from '../../../components/SearchInput';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
-import { loadOrders } from '../../../utils/localData';
+import {
+  HOLIDAY_UPDATED_EVENT,
+  STORAGE_KEYS,
+  loadHolidays,
+  loadOrders,
+} from '../../../utils/localData';
 import { normalizeProcesses } from '../../../utils/processTime';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -21,7 +26,6 @@ const BASIS_COLORS = {
 const initialCards = [];
 const initialLines = [];
 const initialAssignments = [];
-const HOLIDAY_SET = new Set();
 let runtimeLines = [];
 
 const toSeconds = (value) => {
@@ -847,11 +851,36 @@ const AssignBoard = () => {
   const [loading, setLoading] = useState(false);
   const startDateRef = useRef(new Date());
   const splitCounterRef = useRef(1);
-  const [days, setDays] = useState(() => buildDays(startDateRef.current, 10, HOLIDAY_SET));
+  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
+  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+  const [days, setDays] = useState(() => buildDays(startDateRef.current, 10, holidaySet));
 
   useEffect(() => {
     runtimeLines = lines;
   }, [lines]);
+
+  useEffect(() => {
+    const syncHolidays = () => {
+      setHolidayKeys(loadHolidays());
+    };
+
+    const handleStorage = (event) => {
+      if (event?.key && event.key !== STORAGE_KEYS.holidays) return;
+      syncHolidays();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
+    };
+  }, []);
+
+  useEffect(() => {
+    setDays((prev) => buildDays(startDateRef.current, Math.max(prev.length, 10), holidaySet));
+  }, [holidaySet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -946,7 +975,7 @@ const AssignBoard = () => {
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
-    const next = buildDays(startDateRef.current, minLength, HOLIDAY_SET);
+    const next = buildDays(startDateRef.current, minLength, holidaySet);
     setDays(next);
     return next;
   };

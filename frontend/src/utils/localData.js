@@ -2,7 +2,10 @@ const STORAGE_KEYS = {
   styles: 'baro_styles_v1',
   orders: 'baro_orders_v1',
   orderDraft: 'baro_order_draft_v1',
+  holidays: 'baro_holidays_v1',
 };
+
+export const HOLIDAY_UPDATED_EVENT = 'baro:holidays-updated';
 
 const getStorage = () => {
   if (typeof window === 'undefined') return null;
@@ -26,6 +29,28 @@ const writeJSON = (key, value) => {
   const storage = getStorage();
   if (!storage) return;
   storage.setItem(key, JSON.stringify(value));
+};
+
+const normalizeHolidayKey = (value) => {
+  const key = String(value ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+};
+
+const normalizeHolidayList = (list) => {
+  if (!Array.isArray(list)) return [];
+  const keys = list
+    .map((item) => normalizeHolidayKey(item))
+    .filter(Boolean);
+  return Array.from(new Set(keys)).sort();
+};
+
+const emitHolidayUpdated = (holidays) => {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(
+    new CustomEvent(HOLIDAY_UPDATED_EVENT, {
+      detail: { holidays },
+    })
+  );
 };
 
 export const loadStyles = () => {
@@ -65,6 +90,18 @@ export const clearOrderDraft = () => {
   const storage = getStorage();
   if (!storage) return;
   storage.removeItem(STORAGE_KEYS.orderDraft);
+};
+
+export const loadHolidays = () => {
+  const data = readJSON(STORAGE_KEYS.holidays, []);
+  return normalizeHolidayList(data);
+};
+
+export const saveHolidays = (holidays) => {
+  const safe = normalizeHolidayList(holidays);
+  writeJSON(STORAGE_KEYS.holidays, safe);
+  emitHolidayUpdated(safe);
+  return safe;
 };
 
 export { STORAGE_KEYS };

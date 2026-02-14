@@ -43,6 +43,7 @@ import DnsIcon from '@mui/icons-material/Dns';
 import ContentCut from '@mui/icons-material/ContentCut';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ListAltIcon from '@mui/icons-material/ListAlt';
+import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 
 const DRAWER_WIDTH = 260;
 
@@ -142,6 +143,7 @@ const MainLayout = () => {
       children: [
         { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
         { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
+        { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
       ],
     },
     {

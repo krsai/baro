@@ -8,6 +8,7 @@ import Organization from './pages/App/Organization';
 import Employee from './pages/App/Employee';
 import Permission from './pages/App/Permission';
 import Line from './pages/App/Line';
+import Holiday from './pages/App/Holiday';
 
 import SystemBoard from './pages/App/system/systemBoard';
 
@@ -130,6 +131,10 @@ const router = createBrowserRouter([
           {
             path: 'line',
             element: <Line />,
+          },
+          {
+            path: 'holiday',
+            element: <Holiday />,
           },
         ],
       },

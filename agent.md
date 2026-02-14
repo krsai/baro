@@ -12,11 +12,22 @@
 ## 2. 기술 스택 (Tech Stack)
 
 ### 2.1. 프론트엔드
-- **주요 언어**: TypeScript
+- **현재 주요 언어**: JavaScript / JSX (일부 `.ts` 사용)
+- **목표 언어**: TypeScript (`.ts`/`.tsx` 중심으로 전환)
 - **프레임워크**: React (Vite 기반)
 - **UI 라이브러리**: MUI (Material-UI)
 - **라우팅**: React Router
 - **스타일링**: Emotion (`sx` prop) / MUI
+
+#### 2.1.1. TypeScript 전환 목표와 이유
+- **목표**: 프론트엔드를 단계적으로 TypeScript로 전환하여 런타임 오류를 사전에 줄입니다.
+- **이유 1 (안정성)**: API 응답/도메인 모델(Style, Order, Assignment) 타입을 고정해 회귀를 줄일 수 있습니다.
+- **이유 2 (리팩토링 안전성)**: 대규모 화면(주문/배정) 수정 시 타입 오류로 영향 범위를 빠르게 확인할 수 있습니다.
+- **이유 3 (협업 효율)**: 계약(Contract) 기반 개발이 가능해져 프론트-백엔드 연동 실수를 줄일 수 있습니다.
+- **전환 원칙**:
+  - 신규 파일은 가능하면 `.ts`/`.tsx`로 작성합니다.
+  - 공용 훅/유틸/도메인 타입부터 우선 전환합니다.
+  - 기존 `.jsx`는 기능 변경 시점에 점진 전환합니다.
 
 ### 2.2. 백엔드 기술 스택 구성 (Codex 전달용)
 
@@ -38,7 +49,8 @@
 - Framework: Express
 - ORM: Prisma
 - 인증/권한: 백엔드에서 직접 처리 (JWT 또는 Session)
-- 공정, 급여, 데드타임, 인센티브, 정산 등 모든 계산 로직은 백엔드에만 존재
+- 공정, 급여, 데드타임, 인센티브, 정산 등 **확정/정산 기준 계산 로직의 최종 권한은 백엔드**가 가진다.
+- 프론트엔드 계산은 UX용 시뮬레이션으로 허용하되, 확정 시에는 백엔드가 재검증/고정 저장한다.
 
 #### 2.2.4. 의도적으로 사용하지 않는 것
 - 프론트엔드에서 Supabase SDK 직접 사용 ❌ (소셜 로그인 예외)
@@ -86,13 +98,16 @@
 
 ## 3. 프로젝트 구조
 
-- `src/`: 소스 코드 루트 디렉토리입니다.
-- `src/pages/`: 각 페이지(화면)에 해당하는 컴포넌트를 위치시킵니다. (예: `Login.jsx`, `Factory.jsx`)
-- `src/components/`: 여러 페이지에서 재사용되는 공통 컴포넌트를 위치시킵니다.
-- `src/layouts/`: 페이지의 전체적인 Layout을 정의하는 컴포넌트를 위치시킵니다.
-- `src/context/`: 전역 상태 관리를 위한 React Context를 위치시킵니다.
-- `src/theme/`: MUI 테마 커스터마이징 관련 코드를 위치시킵니다.
-- `src/router.jsx`: 애플리케이션의 라우팅 설정을 정의합니다.
+- `frontend/`: 프론트엔드 프로젝트 루트입니다.
+- `frontend/src/pages/`: 각 페이지(화면) 컴포넌트를 위치시킵니다. (예: `Auth/Login.jsx`, `App/Style.jsx`)
+- `frontend/src/components/`: 재사용 공통 컴포넌트를 위치시킵니다.
+- `frontend/src/layouts/`: 페이지 공통 Layout 컴포넌트를 위치시킵니다.
+- `frontend/src/context/`: 전역 상태(Context) 코드를 위치시킵니다.
+- `frontend/src/theme/`: MUI 테마 커스터마이징 코드를 위치시킵니다.
+- `frontend/src/router.jsx`: 프론트 라우팅 설정을 정의합니다.
+- `backend/`: 백엔드 프로젝트 루트입니다.
+- `backend/src/`: Express API 서버 코드를 위치시킵니다.
+- `backend/prisma/schema.prisma`: DB 스키마 기준 파일입니다.
 
 ## 4. 개발 컨벤션 및 규칙
 
@@ -101,7 +116,7 @@
 ### 4.1. UI 개발 및 스타일링
 - **UI 라이브러리**: 모든 UI 컴포넌트는 MUI를 우선적으로 사용하여 구현합니다.
 - **스타일링 및 우선순위**:
-  1. **전역 스타일**: `src/styles/` 내의 CSS 파일들은 `src/index.jsx`에서 최상단에 임포트하여 애플리케이션 전체의 기본 스타일을 설정합니다.
+  1. **전역 스타일**: `frontend/src/styles/` 내의 CSS 파일들은 `frontend/src/index.jsx`에서 최상단에 임포트하여 애플리케이션 전체의 기본 스타일을 설정합니다.
   2. **개별 스타일**: 각 페이지나 컴포넌트에만 적용되는 스타일은 해당 파일 내에서 임포트하거나 정의합니다.
   3. **우선순위**: `전역 CSS` < `개별 페이지/컴포넌트 CSS` < `MUI sx prop` 순서로 적용되어, 개별 설정이 전역 설정을 덮어쓰도록 합니다.
   4. **권장 사항**: 컴포넌트 단위의 스타일링은 `sx` prop 사용을 권장합니다. 복잡한 스타일은 별도 CSS로 분리할 수 있습니다.
@@ -146,7 +161,7 @@
 - 프로젝트에 설정된 Prettier와 ESLint 규칙을 따릅니다. (설정 필요)
 
 ### 4.6. 전역 스타일 관리
-애플리케이션의 전역 CSS 스타일은 `src/styles/` 디렉토리 내에서 기능별로 분리된 파일들로 관리됩니다. 이 파일들은 `src/index.jsx`에서 임포트되어 전역적으로 적용됩니다.
+애플리케이션의 전역 CSS 스타일은 `frontend/src/styles/` 디렉토리 내에서 기능별로 분리된 파일들로 관리됩니다. 이 파일들은 `frontend/src/index.jsx`에서 임포트되어 전역적으로 적용됩니다.
 
 - **`base.css`**: 애플리케이션 전반의 기본 스타일을 정의합니다. (예: `body`, `html` 태그 스타일, 기본 폰트 설정, **전체 텍스트 선택 방지** 등)
 - **`theme.css`**: 색상, 폰트 크기, 그림자 등 디자인 시스템의 테마와 관련된 변수나 클래스를 정의합니다.
@@ -158,6 +173,7 @@
 - 프론트엔드에서 사용하는 샘플 데이터는 반드시 **“백엔드 API 응답 형태”**로 만듭니다.
 - 즉, 더미 데이터 구조는 실제 DB/API 스키마를 반영해야 하며, 추후 백엔드 개발 시 그대로 참고할 수 있어야 합니다.
 - 임시 하드코딩 데이터라도 API 응답을 흉내 내는 구조로 작성하고, 실제 API 호출로 교체 가능하도록 구성합니다.
+- `Size/Gender`는 속성 관리 API 대상이 아니라, 현재 `frontend/src/constants/productAttributes.js` 하드코딩 상수를 기준으로 사용합니다.
 
 ### 4.8. 프론트엔드 검증(빌드) 운영 규칙
 - 목적: 개발 속도를 유지하면서 필수 안정성만 보장하기 위해, 프론트엔드 변경 시 검증 단계를 경량화합니다.
@@ -174,7 +190,7 @@
 
 ## 5. 메뉴 구조 (Menu Structure)
 
-*이 섹션은 `src/layouts/MainLayout.jsx`의 `menuItems`를 기준으로 한 좌측 네비게이션 메뉴의 실제 구조를 정의합니다.*
+*이 섹션은 `frontend/src/layouts/MainLayout.jsx`의 `menuItems`를 기준으로 한 좌측 네비게이션 메뉴의 실제 구조를 정의합니다.*
 
 - **대시보드 (Dashboard)**
 - **영업 관리 (Sales Management)**
@@ -198,7 +214,7 @@
 
 ### 6.1. Board / Detail 화면 구조 규칙
 
-- 각 도메인의 라우팅 진입점은 `{domain}.jsx` 파일이다.
+- 각 도메인의 라우팅 진입점은 `frontend/src/pages/App/{Domain}.jsx` 파일이다. (예: `Style.jsx`, `Assign.jsx`)
 - 진입점 이후 최초로 렌더링되는 화면은 항상 Board이다.
 - Board는 해당 도메인의 업무 허브 역할을 하며, 리스트(List), 검색, 필터, 요약 정보 등을 포함할 수 있다.
 - Board는 단일 객체를 생성하거나 저장하지 않으며, Detail 화면으로의 진입만 담당한다.
@@ -212,13 +228,13 @@
 
 **폴더 및 파일 구조 예시**
 
-- `style.jsx` : Style 도메인 라우팅 진입점
-- `style/styleboard.jsx` : Style 도메인의 Board 화면
-- `style/styledetail.jsx` : Style 도메인의 Detail 진입점
-- `style/detail/styleinfo.jsx` : Detail 하위 컨텐츠(탭 단위)
+- `frontend/src/pages/App/Style.jsx` : Style 도메인 라우팅 진입점
+- `frontend/src/pages/App/style/StyleBoard.jsx` : Style 도메인의 Board 화면
+- `frontend/src/pages/App/style/StyleDetail.jsx` : Style 도메인의 Detail 진입점
+- `frontend/src/pages/App/style/styleDetail/StyleInfo.jsx` : Detail 하위 컨텐츠(탭 단위)
 
 ### 6.2. 기타 구조 규칙
-1.  **라우트와 화면의 분리**: `src/pages`는 라우팅 진입점 전용입니다. 실제 UI와 로직을 담은 화면(예: `StyleBoard.jsx`, `StyleDetail.jsx`)은 `src/pages/App/{도메인명}/` 폴더에서 관리합니다.
+1.  **라우트와 화면의 분리**: `frontend/src/pages`는 라우팅 진입점 전용입니다. 실제 UI와 로직을 담은 화면(예: `StyleBoard.jsx`, `StyleDetail.jsx`)은 `frontend/src/pages/App/{도메인명}/` 폴더에서 관리합니다.
 
 2.  **Board / Detail 패턴**: 모든 도메인은 Board와 Detail 화면으로 구성됩니다.
     -   **`Board`**: 목록 표시, 검색, `Detail` 화면으로 네비게이션 역할만 수행합니다.
@@ -275,10 +291,11 @@
    - 관계: `Organization`(제조사/브랜드)
    - 참고: 고객 코드 표시는 브랜드 `Organization.code`를 사용
 
-8. **AttrColor / AttrSize / AttrGender / AttrCategory / AttrRole / AttrProcess**
+8. **AttrColor / AttrCategory / AttrRole / AttrProcess**
    - 용도: 조직별 기준 속성 데이터(공정/역할/분류 등)
    - 핵심 필드: `orgId`, `code`, `name`
    - 관계: `Organization`(N:1)
+   - 참고: `Size/Gender`는 현재 DB 속성 테이블이 아니라 프론트 상수(`productAttributes`)로 관리
 
 9. **Style**
    - 용도: 스타일 마스터(기본정보/공정/BOM 스냅샷성 데이터)
@@ -578,6 +595,8 @@
 
 #### 7.8.3. 스타일 카드 상태 (Style Card States)
 스타일 카드/배정의 상태는 **제안 기준 상태(PT/ST/NONE)**와 **CT 확정 상태(PENDING/AGREED/REJECTED)**를 함께 관리합니다.
+- **제안 기준 선택 우선순위**: `ST 존재 시 ST`, `ST 없음 + PT 존재 시 PT`, `둘 다 없음이면 NONE`.
+- **기간 계산 기준(요약)**: `총 필요초(선택된 PT/ST)`를 라인의 `일일 총공수 = 인원 × 1일 근무시간(초)`에 배분하여 일정을 계산합니다. (휴일/비가동일 제외 규칙 적용)
 
 - **기준 미지정 카드 (Unspecified Standard Card, `proposalBasis=NONE`)**
   - **조건**: 공정 정보가 없거나, **PT 및 ST가 모두 0/없음**인 상태.
@@ -787,7 +806,11 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - 잔여 시간 계산
 - 배치 가능 여부 판단
 - 즉각적인 사용자 피드백 제공
-백엔드는 배정 확정 시 검증자 역할만 수행합니다.
+- 프론트 계산 결과는 UX 가이드이며, 확정 진실 소스는 아닙니다.
+백엔드는 배정 확정 시 다음을 책임집니다:
+- 권한/정합성 검증
+- 확정 스냅샷(CT/공정 버전) 저장
+- 최종 확정 기준으로 재검증
 
 ---
 
@@ -839,32 +862,32 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
   - `StyleCard`, `ProductionLine`, `Assignment` 인터페이스 정의.
   - `Assignment`에는 `proposalBasis`, `proposalSeconds`, `contractedSeconds`, `ctStatus`, `ctSource`, `ctAgreedBy`, `ctAgreedAt`, `ctNote`를 포함한다.
   - `TimeSlot` (날짜별 가용/사용 시간) 구조 설계.
-- [ ] **시간 계산 유틸리티 (Time Utils)**
+- [x] **시간 계산 유틸리티 (Time Utils)**
   - `calculateCardLoad(style)`: 스타일 카드의 총 필요 공수(Man-Seconds) 계산.
   - `getLineDailyCapacity(line)`: 라인의 일일 총 가용 공수(Man-Seconds) 계산.
   - `calculateRemainingCapacity(line, date, assignments)`: 특정 날짜의 잔여 공수 계산.
-- [ ] **배정 시뮬레이션 로직 (Simulation Logic)**
+- [x] **배정 시뮬레이션 로직 (Simulation Logic)**
   - `simulateAssignment(line, dropTarget, newCard, existingAssignments)`:
     - **상호작용 모델 분기**: `dropTarget`이 기존 배정 카드인지, 아니면 빈 타임라인 공간인지에 따라 '삽입 및 연쇄 조정' 또는 '빈 공간 채우기' 규칙을 적용합니다.
     - **공수 차감 및 날짜 계산**: 시작점부터 날짜별 `잔여 공수`를 순차적으로 차감하여 종료일을 계산합니다.
     - **결과 반환**: 새 배정 정보(시작/종료일) 및 변경된 후속 배정 정보들의 배열.
 
 ##### Phase 2: UI 스켈레톤 및 D&D 기초 (UI Skeleton & D&D)
-- [ ] **AssignBoard 레이아웃 구성**
+- [x] **AssignBoard 레이아웃 구성**
   - 좌측: 미배정 스타일 카드 목록 (Source).
   - 우측: 생산 라인별 스케줄 타임라인 (Target).
-- [ ] **StyleCard 컴포넌트 구현**
+- [x] **StyleCard 컴포넌트 구현**
   - 정보 표시: 스타일명, 공정, 총 소요 시간.
   - Draggable 구현 (dnd-kit 등 라이브러리 활용).
-- [ ] **ScheduleTimeline 컴포넌트 구현**
+- [x] **ScheduleTimeline 컴포넌트 구현**
   - 라인(Row) × 날짜(Column) 그리드 렌더링.
   - Droppable 영역 설정.
 
 ##### Phase 3: 배정 인터랙션 및 시각화 (Interaction & Visualization)
-- [ ] **Drop 핸들러 구현**
+- [x] **Drop 핸들러 구현**
   - 드롭 이벤트 발생 시 `simulateAssignment`를 호출하여 배정 결과를 계산.
   - 계산된 배정 정보를 상태(State)에 반영.
-- [ ] **시각적 피드백 (Visual Feedback)**
+- [x] **시각적 피드백 (Visual Feedback)**
   - 타임라인에 배정된 작업 바(Bar) 렌더링.
   - 작업 바의 길이는 소요 기간을 반영.
   - 툴팁: 시작일, 종료일, 잔여 시간 표시.
@@ -879,7 +902,7 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 ##### Phase 5: 예외 처리 및 최적화 (Refinement)
 - [ ] **휴일 및 비가동일 처리**
   - 주말 및 공휴일에는 작업 시간이 차감되지 않도록 로직 개선.
-- [ ] **배정 수정 기능**
+- [x] **배정 수정 기능**
   - 이미 배정된 작업의 재배치(Re-scheduling) 및 배정 취소(Unassign) 기능.
 
 #### 7.8.14. 배정 시 공정 스냅샷 고정 (Assignment Snapshot Rule)
