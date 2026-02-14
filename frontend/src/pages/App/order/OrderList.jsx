@@ -48,7 +48,7 @@ const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완�
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
-const STYLE_TABLE_COLUMN_COUNT = SIZE_COLUMNS.length + 6;
+const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(45 / SIZE_COLUMNS.length).toFixed(3)}%`;
 const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
@@ -68,6 +68,22 @@ const getStyleGroupKey = (item) => {
   if (item?.styleName) return `style-name:${item.styleName}`;
   if (item?.styleCode) return `style-code:${item.styleCode}`;
   return `item:${item?.id || ''}`;
+};
+const getStyleIdentity = (item) => item?.styleId || item?.styleName || item?.styleCode || '';
+const getStyleGenderKey = (styleIdentity, gender) => {
+  const normalizedGender = normalizeGenderCode(gender, '');
+  if (!styleIdentity || !normalizedGender) return '';
+  return `${styleIdentity}::${normalizedGender}`;
+};
+const hasDuplicateStyleGender = (items = []) => {
+  const seen = new Set();
+  for (const item of items) {
+    const key = getStyleGenderKey(getStyleIdentity(item), item?.gender);
+    if (!key) continue;
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
@@ -340,12 +356,14 @@ const OrderList = () => {
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: groupKey,
+          styleId: item.styleId || '',
           styleName: item.styleName || '',
           styleCode: item.styleCode || '',
           rows: [],
         });
       }
       const targetGroup = groupMap.get(groupKey);
+      if (!targetGroup.styleId && item.styleId) targetGroup.styleId = item.styleId;
       if (!targetGroup.styleName && item.styleName) targetGroup.styleName = item.styleName;
       if (!targetGroup.styleCode && item.styleCode) targetGroup.styleCode = item.styleCode;
       targetGroup.rows.push({ item, sourceIndex });
@@ -367,6 +385,7 @@ const OrderList = () => {
       return {
         ...group,
         rows,
+        rowItemIds: rows.map((row) => row.item.id),
       };
     });
   }, [formData.items]);
@@ -454,36 +473,97 @@ const OrderList = () => {
     });
   };
 
-  const handleStyleChange = (itemId, style) => {
+  const handleStyleChange = (itemIdOrIds, style) => {
     if (!formData.customerName) {
       showNotification('고객사를 먼저 선택하세요.', 'warning');
       return;
     }
 
-    setFormData((prev) => {
-      const nextItems = prev.items.map((item) => {
-        if (item.id !== itemId) return item;
-        if (item.styleId === (style?.id || '') && item.styleName === (style?.name || '')) {
-          return item;
+    const targetIds = Array.isArray(itemIdOrIds) ? itemIdOrIds : [itemIdOrIds];
+    const targetIdSet = new Set(targetIds.filter(Boolean));
+    if (!targetIdSet.size) return;
+
+    const nextStyleId = style?.id || '';
+    const nextStyleName = style?.name || '';
+    const nextStyleCode = style?.styleCode || '';
+    const nextStyleIdentity = nextStyleId || nextStyleName || nextStyleCode;
+    const assignedGenderMap = new Map();
+
+    if (nextStyleIdentity) {
+      const usedGenderSet = new Set(
+        formData.items
+          .filter((item) => !targetIdSet.has(item.id) && getStyleIdentity(item) === nextStyleIdentity)
+          .map((item) => normalizeGenderCode(item.gender, ''))
+          .filter(Boolean)
+      );
+      const targetItems = formData.items.filter((item) => targetIdSet.has(item.id));
+
+      for (const item of targetItems) {
+        const preferredGender = normalizeGenderCode(item.gender, 'M');
+        let nextGender = preferredGender;
+
+        if (usedGenderSet.has(nextGender)) {
+          const fallbackGender = GENDER_OPTIONS.find((gender) => !usedGenderSet.has(gender));
+          if (!fallbackGender) {
+            showNotification('해당 스타일은 성별(M/W/U)이 이미 모두 사용 중입니다.', 'warning');
+            return;
+          }
+          nextGender = fallbackGender;
         }
+
+        usedGenderSet.add(nextGender);
+        assignedGenderMap.set(item.id, nextGender);
+      }
+    }
+
+    const previewItems = formData.items.map((item) =>
+      targetIdSet.has(item.id)
+        ? {
+            ...item,
+            styleId: nextStyleId,
+            styleName: nextStyleName,
+            styleCode: nextStyleCode,
+            gender: assignedGenderMap.get(item.id) || item.gender,
+          }
+        : item
+    );
+
+    if (hasDuplicateStyleGender(previewItems)) {
+      showNotification('같은 스타일에 같은 성별은 중복 선택할 수 없습니다.', 'warning');
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => {
+        if (!targetIdSet.has(item.id)) return item;
+        const nextGender = assignedGenderMap.get(item.id) || item.gender;
         return {
           ...item,
-          styleId: style?.id || '',
-          styleName: style?.name || '',
-          styleCode: style?.styleCode || '',
+          styleId: nextStyleId,
+          styleName: nextStyleName,
+          styleCode: nextStyleCode,
+          gender: nextGender,
           sizeQuantities: createSizeQuantities(),
         };
-      });
-
-      return {
-        ...prev,
-        items: nextItems,
-      };
-    });
+      }),
+    }));
   };
-
   const handleGenderChange = (itemId, value) => {
     if (!GENDER_OPTIONS.includes(value)) return;
+    const previewItems = formData.items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            gender: value,
+          }
+        : item
+    );
+    if (hasDuplicateStyleGender(previewItems)) {
+      showNotification('같은 스타일에 같은 성별은 중복 선택할 수 없습니다.', 'warning');
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       items: prev.items.map((item) =>
@@ -560,6 +640,9 @@ const OrderList = () => {
       if (totalQuantity <= 0) {
         return '스타일별 사이즈 수량을 입력하세요.';
       }
+    }
+    if (hasDuplicateStyleGender(formData.items)) {
+      return '같은 스타일에 같은 성별은 한 번만 입력할 수 있습니다.';
     }
     return null;
   };
@@ -822,153 +905,184 @@ const OrderList = () => {
         </Box>
 
         <Paper variant="outlined" sx={{ mb: 2 }}>
-          <TableContainer sx={{ overflowX: 'auto' }}>
-            <Table size="small" sx={{ tableLayout: 'fixed', minWidth: 1500 }}>
+          <TableContainer sx={{ width: '100%', overflowX: 'hidden' }}>
+            <Table
+              size="small"
+              sx={{
+                width: '100%',
+                tableLayout: 'fixed',
+                '& .MuiTableCell-root': {
+                  px: 0.75,
+                  py: 0.75,
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold', width: 52, textAlign: 'center' }}>No</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: 250 }}>스타일명/코드 선택</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: 124 }}>스타일 코드</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: 108 }}>성별</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>스타일명/코드 선택</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>스타일 코드</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>성별</TableCell>
                   {SIZE_COLUMNS.map((size) => (
                     <TableCell
                       key={size}
-                      sx={{ fontWeight: 'bold', width: 88, textAlign: 'center', whiteSpace: 'nowrap' }}
+                      sx={{
+                        fontWeight: 'bold',
+                        width: ORDER_DETAIL_SIZE_COLUMN_WIDTH,
+                        textAlign: 'center',
+                        whiteSpace: 'nowrap',
+                      }}
                     >
                       {size}
                     </TableCell>
                   ))}
-                  <TableCell sx={{ fontWeight: 'bold', width: 90, textAlign: 'right' }}>합계</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: 72, textAlign: 'center' }}>삭제</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>합계</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>삭제</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {groupedStyleItems.map((group, groupIndex) => {
-                  const groupTitle = group.styleName || '스타일 미선택';
-                  const groupMeta = [
-                    group.styleCode ? `코드 ${group.styleCode}` : null,
-                    `${group.rows.length}줄`,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ');
+                {groupedStyleItems.map((group) =>
+                  group.rows.map(({ item, displayNo }, rowIndex) => {
+                    const itemTotal = getItemTotal(item);
+                    const groupStyleOption =
+                      availableStyleOptions.find((option) => option.id === group.styleId) ||
+                      (group.styleName
+                        ? {
+                            id: group.styleId || `group-${group.key}`,
+                            name: group.styleName,
+                            styleCode: group.styleCode || '',
+                            customer: formData.customerName || '',
+                          }
+                        : null);
+                    const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
+                    const genderStyle = getGenderPastelStyle(item.gender);
+                    const isFirstRow = rowIndex === 0;
+                    const rowStyleIdentity = getStyleIdentity(item);
+                    const disabledGenderSet = new Set(
+                      formData.items
+                        .filter((other) => other.id !== item.id && getStyleIdentity(other) === rowStyleIdentity)
+                        .map((other) => normalizeGenderCode(other.gender, ''))
+                        .filter(Boolean)
+                    );
 
-                  return (
-                    <React.Fragment key={group.key}>
-                      <TableRow>
-                        <TableCell
-                          colSpan={STYLE_TABLE_COLUMN_COUNT}
-                          sx={{
-                            py: 0.75,
-                            fontSize: 13,
-                            fontWeight: 700,
-                            color: 'text.secondary',
-                            backgroundColor: '#f5f7fb',
-                            borderTop:
-                              groupIndex === 0 ? '1px solid rgba(224, 224, 224, 1)' : '2px solid #d9dfeb',
-                          }}
-                        >
-                          {groupTitle}
-                          {groupMeta ? `  ·  ${groupMeta}` : ''}
-                        </TableCell>
-                      </TableRow>
-                      {group.rows.map(({ item, displayNo }) => {
-                        const itemTotal = getItemTotal(item);
-                        const selectedStyle =
-                          availableStyleOptions.find((option) => option.id === item.styleId) || null;
-                        const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
-                        const genderStyle = getGenderPastelStyle(item.gender);
-
-                        return (
-                          <TableRow
-                            key={item.id}
+                    return (
+                      <TableRow
+                        key={item.id}
+                        sx={{
+                          '& > td': {
+                            backgroundColor: genderStyle.background,
+                            borderBottomColor: genderStyle.border,
+                          },
+                          '& > td:first-of-type': {
+                            borderLeft: `4px solid ${genderStyle.accent}`,
+                          },
+                        }}
+                      >
+                        <TableCell sx={{ textAlign: 'center' }}>{displayNo}</TableCell>
+                        {isFirstRow && (
+                          <TableCell
+                            rowSpan={group.rows.length}
                             sx={{
-                              '& > td': {
-                                backgroundColor: genderStyle.background,
-                                borderBottomColor: genderStyle.border,
-                              },
-                              '& > td:first-of-type': {
-                                borderLeft: `4px solid ${genderStyle.accent}`,
-                              },
+                              verticalAlign: 'top',
+                              pt: 1,
+                              backgroundColor: '#f8fafc !important',
                             }}
                           >
-                            <TableCell sx={{ textAlign: 'center' }}>{displayNo}</TableCell>
-                            <TableCell>
-                              <Autocomplete
-                                options={availableStyleOptions}
-                                value={selectedStyle}
-                                disabled={!formData.customerName}
-                                onChange={(_event, newValue) => handleStyleChange(item.id, newValue)}
-                                getOptionLabel={(option) => option?.name || ''}
-                                isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                                renderInput={(params) => (
-                                  <TextField
-                                    {...params}
-                                    size="small"
-                                    placeholder="스타일명 검색"
-                                  />
-                                )}
-                                noOptionsText={
-                                  formData.customerName
-                                    ? '등록된 스타일이 없습니다.'
-                                    : '고객사를 먼저 선택하세요.'
-                                }
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <TextField
-                                size="small"
-                                value={item.styleCode}
-                                fullWidth
-                                InputProps={{ readOnly: true }}
-                                disabled
-                                placeholder="자동 입력"
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <FormControl fullWidth size="small">
-                                <Select
-                                  value={normalizeGenderCode(item.gender, 'M')}
-                                  onChange={(event) => handleGenderChange(item.id, event.target.value)}
-                                >
-                                  {GENDER_OPTIONS.map((gender) => (
-                                    <MenuItem key={gender} value={gender}>
-                                      {gender}
-                                    </MenuItem>
-                                  ))}
-                                </Select>
-                              </FormControl>
-                            </TableCell>
-                            {SIZE_COLUMNS.map((size) => (
-                              <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.5 }}>
+                            <Autocomplete
+                              options={availableStyleOptions}
+                              value={groupStyleOption}
+                              disabled={!formData.customerName}
+                              onChange={(_event, newValue) => handleStyleChange(group.rowItemIds, newValue)}
+                              getOptionLabel={(option) => option?.name || ''}
+                              isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                              renderInput={(params) => (
                                 <TextField
-                                  value={normalizedSizeQuantities[size]}
-                                  onChange={(event) =>
-                                    handleSizeQuantityChange(item.id, size, event.target.value)
-                                  }
+                                  {...params}
                                   size="small"
-                                  type="text"
-                                  placeholder="0"
-                                  inputProps={{
-                                    inputMode: 'numeric',
-                                    pattern: '[0-9]*',
-                                    style: { textAlign: 'right', paddingRight: 8 },
-                                  }}
-                                  fullWidth
+                                  placeholder="스타일명 검색"
                                 />
-                              </TableCell>
-                            ))}
-                            <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>{itemTotal}</TableCell>
-                            <TableCell sx={{ textAlign: 'center' }}>
-                              <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                })}
+                              )}
+                              noOptionsText={
+                                formData.customerName
+                                  ? '등록된 스타일이 없습니다.'
+                                  : '고객사를 먼저 선택하세요.'
+                              }
+                            />
+                          </TableCell>
+                        )}
+                        {isFirstRow && (
+                          <TableCell
+                            rowSpan={group.rows.length}
+                            sx={{
+                              verticalAlign: 'top',
+                              pt: 1,
+                              backgroundColor: '#f8fafc !important',
+                            }}
+                          >
+                            <TextField
+                              size="small"
+                              value={group.styleCode || ''}
+                              fullWidth
+                              InputProps={{ readOnly: true }}
+                              disabled
+                              placeholder="자동 입력"
+                            />
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <FormControl fullWidth size="small">
+                            <Select
+                              value={normalizeGenderCode(item.gender, 'M')}
+                              onChange={(event) => handleGenderChange(item.id, event.target.value)}
+                            >
+                              {GENDER_OPTIONS.map((gender) => (
+                                <MenuItem
+                                  key={gender}
+                                  value={gender}
+                                  disabled={Boolean(rowStyleIdentity) && disabledGenderSet.has(gender)}
+                                >
+                                  {gender}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        {SIZE_COLUMNS.map((size) => (
+                          <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.25 }}>
+                            <TextField
+                              value={normalizedSizeQuantities[size]}
+                              onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
+                              size="small"
+                              type="text"
+                              placeholder="0"
+                              sx={{
+                                minWidth: 0,
+                                '& .MuiInputBase-input': {
+                                  textAlign: 'right',
+                                  px: 0.75,
+                                  py: 0.625,
+                                  fontSize: 12,
+                                },
+                              }}
+                              inputProps={{
+                                inputMode: 'numeric',
+                                pattern: '[0-9]*',
+                                style: { textAlign: 'right' },
+                              }}
+                              fullWidth
+                            />
+                          </TableCell>
+                        ))}
+                        <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>{itemTotal}</TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </TableContainer>

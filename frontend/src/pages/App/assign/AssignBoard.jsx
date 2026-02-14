@@ -1,12 +1,16 @@
-﻿import React, { useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Grid, Stack, Typography } from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
+import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import { loadOrders } from '../../../utils/localData';
+import { normalizeProcesses } from '../../../utils/processTime';
 
-const DAILY_CAPACITY_SECONDS = 28800;
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 
 const BASIS_COLORS = {
   PT: { color: '#DCE9FF', stripe: '#9FB9F2' },
@@ -14,177 +18,231 @@ const BASIS_COLORS = {
   NONE: { color: '#F7D8E0', stripe: '#E6A8B6' },
 };
 
-const mockBackend = {
-  factories: [
-    {
-      id: 'F-01',
-      name: '안산 1공장',
-      lines: [
-        {
-          id: 'L-01',
-          name: 'A-라인',
-          workStart: '08:00',
-          workEnd: '17:00',
-          breakMinutes: 60,
-          headcount: 12,
-          dailyCapacitySeconds: 12 * 8 * 60 * 60,
-        },
-        {
-          id: 'L-02',
-          name: 'B-라인',
-          workStart: '08:00',
-          workEnd: '17:00',
-          breakMinutes: 60,
-          headcount: 10,
-          dailyCapacitySeconds: 10 * 8 * 60 * 60,
-        },
-      ],
-      employees: [
-        { id: 'E-001', name: '김하늘', lineId: 'L-01' },
-        { id: 'E-002', name: '이준호', lineId: 'L-01' },
-        { id: 'E-003', name: '박서윤', lineId: 'L-02' },
-        { id: 'E-004', name: '정도현', lineId: 'L-02' },
-      ],
-    },
-    {
-      id: 'F-02',
-      name: '광주 2공장',
-      lines: [
-        {
-          id: 'L-03',
-          name: 'C-라인',
-          workStart: '08:00',
-          workEnd: '17:00',
-          breakMinutes: 60,
-          headcount: 8,
-          dailyCapacitySeconds: 8 * 8 * 60 * 60,
-        },
-      ],
-      employees: [
-        { id: 'E-101', name: '최유진', lineId: 'L-03' },
-        { id: 'E-102', name: '오세훈', lineId: 'L-03' },
-      ],
-    },
-  ],
-  holidays: ['2026-02-10'],
-  orders: [
-    {
-      id: 'C-001',
-      originOrderId: 'C-001',
-      orderNo: 'ORD-2026-001',
-      customer: '더산',
-      styleName: '클래식 데님 자켓',
-      styleCode: 'DS-DJ-01',
-      quantity: 1200,
-      processCount: 12,
-      status: 'PT',
-      totalSeconds: 980000,
-      totalPt: 980000,
-      totalStByFactory: [
-        { factoryId: 'F-01', factoryName: '안산 1공장', seconds: 1100000 },
-        { factoryId: 'F-02', factoryName: '광주 2공장', seconds: 1040000 },
-      ],
-    },
-    {
-      id: 'C-002',
-      originOrderId: 'C-002',
-      orderNo: 'ORD-2026-002',
-      customer: '엘라',
-      styleName: '오버핏 셔츠',
-      styleCode: 'EL-OS-02',
-      quantity: 800,
-      processCount: 9,
-      status: 'ST',
-      totalSeconds: 650000,
-      totalPt: 650000,
-      totalStByFactory: [
-        { factoryId: 'F-01', factoryName: '안산 1공장', seconds: 720000 },
-        { factoryId: 'F-02', factoryName: '광주 2공장', seconds: 680000 },
-      ],
-    },
-    {
-      id: 'C-003',
-      originOrderId: 'C-003',
-      orderNo: 'ORD-2026-003',
-      customer: '앤블루',
-      styleName: '플리츠 스커트',
-      quantity: 500,
-      processCount: 7,
-      status: 'NONE',
-      totalSeconds: 0,
-      totalPt: 0,
-      totalStByFactory: [],
-    },
-    {
-      id: 'C-004',
-      originOrderId: 'C-004',
-      orderNo: 'ORD-2026-004',
-      customer: '루나',
-      styleName: '코튼 트렌치 코트',
-      styleCode: 'LU-TC-11',
-      quantity: 350,
-      processCount: 10,
-      status: 'PT',
-      totalSeconds: 820000,
-      totalPt: 820000,
-      totalStByFactory: [
-        { factoryId: 'F-01', factoryName: '안산 1공장', seconds: 910000 },
-        { factoryId: 'F-02', factoryName: '광주 2공장', seconds: 870000 },
-      ],
-    },
-    {
-      id: 'C-005',
-      originOrderId: 'C-005',
-      orderNo: 'ORD-2026-005',
-      customer: '미라',
-      styleName: '릴랙스 니트 팬츠',
-      styleCode: 'MI-KP-07',
-      quantity: 900,
-      processCount: 8,
-      status: 'ST',
-      totalSeconds: 540000,
-      totalPt: 540000,
-      totalStByFactory: [
-        { factoryId: 'F-01', factoryName: '안산 1공장', seconds: 600000 },
-        { factoryId: 'F-02', factoryName: '광주 2공장', seconds: 590000 },
-      ],
-    },
-    {
-      id: 'C-006',
-      originOrderId: 'C-006',
-      orderNo: 'ORD-2026-006',
-      customer: '노바',
-      styleName: '라운드 스웻 셋업',
-      quantity: 420,
-      processCount: 6,
-      status: 'NONE',
-      totalSeconds: 0,
-      totalPt: 0,
-      totalStByFactory: [],
-    },
-  ],
+const initialCards = [];
+const initialLines = [];
+const initialAssignments = [];
+const HOLIDAY_SET = new Set();
+let runtimeLines = [];
+
+const toSeconds = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed < 0) return 0;
+  return Math.round(parsed);
 };
 
-const initialCards = mockBackend.orders;
-const mockLines = mockBackend.factories.flatMap((factory) =>
-  factory.lines.map((line) => ({
-    id: line.id,
-    name: line.name,
-    headcount: line.headcount,
-    shift: `${line.workStart}~${line.workEnd}`,
-    dailyCapacitySeconds: line.dailyCapacitySeconds,
-    factoryId: factory.id,
-    factoryName: factory.name,
-  }))
-);
+const normalizeKey = (value) => String(value ?? '').trim();
+const normalizeColorKey = (value) => normalizeKey(value).toUpperCase();
 
-const initialAssignments = [];
+const sumSizeQuantities = (sizeQuantities = {}) =>
+  Object.values(sizeQuantities).reduce((sum, value) => sum + (Number(value) || 0), 0);
 
-const HOLIDAY_SET = new Set(mockBackend.holidays || []);
+const sumLegacyQuantities = (rows = []) =>
+  rows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
+
+const resolveItemQuantity = (item) => {
+  if (Number(item?.totalQuantity) > 0) return Number(item.totalQuantity);
+  if (item?.sizeQuantities && typeof item.sizeQuantities === 'object') {
+    const qty = sumSizeQuantities(item.sizeQuantities);
+    if (qty > 0) return qty;
+  }
+  if (Array.isArray(item?.quantities)) {
+    const qty = sumLegacyQuantities(item.quantities);
+    if (qty > 0) return qty;
+  }
+  return 0;
+};
+
+const resolveColorBucketsFromLegacyRows = (rows = []) => {
+  const bucket = new Map();
+  rows.forEach((row) => {
+    const quantity = Number(row?.quantity) || 0;
+    if (quantity <= 0) return;
+    const colorKey = normalizeColorKey(row?.colorId || row?.color || row?.gender || 'UNSPEC');
+    bucket.set(colorKey, (bucket.get(colorKey) || 0) + quantity);
+  });
+  return Array.from(bucket.entries()).map(([colorId, quantity]) => ({ colorId, quantity }));
+};
+
+const resolveItemColorBuckets = (item) => {
+  const fromLegacyRows = resolveColorBucketsFromLegacyRows(
+    Array.isArray(item?.quantities) ? item.quantities : []
+  );
+  if (fromLegacyRows.length > 0) return fromLegacyRows;
+
+  const fallbackQuantity = resolveItemQuantity(item);
+  if (fallbackQuantity <= 0) return [];
+
+  const fallbackColor = normalizeColorKey(item?.colorId || item?.colorCode || item?.gender || 'UNSPEC');
+  return [{ colorId: fallbackColor, quantity: fallbackQuantity }];
+};
+
+const mergeFactorySeconds = (first = [], second = []) => {
+  const map = new Map();
+  [...first, ...second].forEach((entry) => {
+    if (!entry) return;
+    const key = normalizeKey(entry.factoryId || entry.factoryName);
+    if (!map.has(key)) {
+      map.set(key, { ...entry, seconds: Number(entry.seconds) || 0 });
+      return;
+    }
+    const current = map.get(key);
+    current.seconds = (current.seconds || 0) + (Number(entry.seconds) || 0);
+  });
+  return Array.from(map.values());
+};
+
+const getFactoryMappedSeconds = (source, factoryId) => {
+  if (source == null) return null;
+  if (Array.isArray(source)) {
+    const match = source.find((item) => normalizeKey(item?.factoryId) === normalizeKey(factoryId));
+    return toSeconds(match?.seconds);
+  }
+  if (typeof source === 'object') {
+    const byRaw = toSeconds(source[factoryId]);
+    if (byRaw != null) return byRaw;
+    return toSeconds(source[String(factoryId)]);
+  }
+  return null;
+};
+
+const getProcessSeconds = (process, factoryId, field) => {
+  const perFactoryField = field === 'pt' ? process?.ptByFactory : process?.stByFactory;
+  const perFactory = getFactoryMappedSeconds(perFactoryField, factoryId);
+  if (perFactory != null) return perFactory;
+  return toSeconds(process?.[field]);
+};
+
+const getTotalByFactory = (processes, field, factoryId, quantity) =>
+  processes.reduce((sum, process) => {
+    const perPiece = getProcessSeconds(process, factoryId, field);
+    if (perPiece == null) return sum;
+    return sum + perPiece * quantity;
+  }, 0);
+
+const createCardId = (orderId, styleId, colorId) =>
+  `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}`;
+
+const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
+  const safeFactories = Array.isArray(factories) ? factories : [];
+  const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
+  const cards = [];
+  const cardMap = new Map();
+
+  const upsertCard = (nextCard) => {
+    const existing = cardMap.get(nextCard.id);
+    if (!existing) {
+      cardMap.set(nextCard.id, nextCard);
+      cards.push(nextCard);
+      return;
+    }
+
+    const mergedPtByFactory = mergeFactorySeconds(
+      existing.totalPtByFactory ?? [],
+      nextCard.totalPtByFactory ?? []
+    );
+    const mergedStByFactory = mergeFactorySeconds(
+      existing.totalStByFactory ?? [],
+      nextCard.totalStByFactory ?? []
+    );
+    const mergedTotalPt = (existing.totalPt ?? 0) + (nextCard.totalPt ?? 0);
+    const mergedHasSt =
+      mergedStByFactory.some((entry) => entry.seconds > 0) ||
+      existing.status === 'ST' ||
+      nextCard.status === 'ST';
+    const mergedHasPt =
+      mergedTotalPt > 0 || mergedPtByFactory.some((entry) => entry.seconds > 0);
+    const mergedStatus = mergedHasSt ? 'ST' : mergedHasPt ? 'PT' : 'NONE';
+
+    const merged = {
+      ...existing,
+      quantity: (existing.quantity ?? 0) + (nextCard.quantity ?? 0),
+      totalSeconds: (existing.totalSeconds ?? 0) + (nextCard.totalSeconds ?? 0),
+      totalPt: mergedTotalPt,
+      totalPtByFactory: mergedPtByFactory,
+      totalStByFactory: mergedStByFactory,
+      status: mergedStatus,
+      processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
+    };
+    cardMap.set(nextCard.id, merged);
+    const index = cards.findIndex((card) => card.id === nextCard.id);
+    if (index >= 0) cards[index] = merged;
+  };
+
+  (Array.isArray(orders) ? orders : []).forEach((order, orderIndex) => {
+    const items = Array.isArray(order?.items) ? order.items : [];
+    items.forEach((item, itemIndex) => {
+      const styleId = item?.styleId || '';
+      if (!styleId) return;
+
+      const style = styleMap.get(styleId);
+      const processes = normalizeProcesses(style?.processes);
+      const colorBuckets = resolveItemColorBuckets(item);
+      if (colorBuckets.length === 0) return;
+
+      colorBuckets.forEach(({ colorId, quantity }) => {
+        if ((Number(quantity) || 0) <= 0) return;
+
+        const normalizedColor = normalizeColorKey(colorId);
+        const colorName = colorNameMap.get(normalizedColor) || normalizedColor || 'Unknown color';
+        const totalPtByFactory = safeFactories.map((factory) => ({
+          factoryId: factory.id,
+          factoryName: factory.name,
+          seconds: getTotalByFactory(processes, 'pt', factory.id, quantity),
+        }));
+        const totalStByFactory = safeFactories.map((factory) => ({
+          factoryId: factory.id,
+          factoryName: factory.name,
+          seconds: getTotalByFactory(processes, 'st', factory.id, quantity),
+        }));
+
+        const totalPtFallback =
+          totalPtByFactory.length > 0
+            ? totalPtByFactory[0].seconds
+            : getTotalByFactory(processes, 'pt', null, quantity);
+        const totalStFallback =
+          totalStByFactory.length > 0
+            ? totalStByFactory[0].seconds
+            : getTotalByFactory(processes, 'st', null, quantity);
+        const hasSt = totalStByFactory.some((entry) => entry.seconds > 0) || totalStFallback > 0;
+        const hasPt = totalPtByFactory.some((entry) => entry.seconds > 0) || totalPtFallback > 0;
+        const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
+        const totalSeconds = hasSt ? totalStFallback : totalPtFallback;
+
+        upsertCard({
+          id: createCardId(order?.id ?? order?.orderNumber ?? `order-${orderIndex}`, styleId, normalizedColor),
+          originOrderId: createCardId(
+            order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
+            styleId,
+            normalizedColor
+          ),
+          orderNo: order?.orderNumber || order?.id || '-',
+          customer: order?.customerName || order?.customer || '-',
+          styleId,
+          styleName: item?.styleName || style?.name || `Style ${itemIndex + 1}`,
+          styleCode: item?.styleCode || style?.styleCode || '',
+          colorId: normalizedColor,
+          colorName,
+          quantity,
+          processCount: processes.length,
+          status,
+          totalSeconds,
+          totalPt: totalPtFallback,
+          totalPtByFactory,
+          totalStByFactory,
+          previewUrl:
+            Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
+        });
+      });
+    });
+  });
+
+  return cards;
+};
 
 const getLineCapacitySeconds = (lineId) => {
   if (!lineId) return DAILY_CAPACITY_SECONDS;
-  const line = mockLines.find((item) => item.id === lineId);
+  const line = runtimeLines.find((item) => item.id === lineId);
   return line?.dailyCapacitySeconds ?? DAILY_CAPACITY_SECONDS;
 };
 
@@ -200,22 +258,26 @@ const getDayCapacitySeconds = (dayIndex, lineId, days) => {
   return getLineCapacitySeconds(lineId);
 };
 
-const hasPt = (card) => Number(card.totalPt) > 0;
+const hasPt = (card) =>
+  Number(card.totalPt) > 0 ||
+  (Array.isArray(card.totalPtByFactory) && card.totalPtByFactory.some((item) => item.seconds > 0));
 const hasSt = (card) =>
   Array.isArray(card.totalStByFactory) && card.totalStByFactory.some((item) => item.seconds > 0);
 
 const getCardBasis = (card) => {
   if (!hasPt(card) && !hasSt(card)) return 'NONE';
-  if (card.status === 'ST') return 'ST';
+  if (hasSt(card)) return 'ST';
   return 'PT';
 };
 
 const resolveCardStatus = (card, nextPt, nextStList) => {
-  const ptPresent = Number(nextPt) > 0;
+  const ptPresent =
+    Number(nextPt) > 0 ||
+    (Array.isArray(card?.totalPtByFactory) && card.totalPtByFactory.some((item) => item.seconds > 0));
   const stPresent =
     Array.isArray(nextStList) && nextStList.some((item) => item.seconds > 0);
   if (!ptPresent && !stPresent) return 'NONE';
-  return card.status === 'ST' ? 'ST' : 'PT';
+  return stPresent ? 'ST' : 'PT';
 };
 
 const scaleValue = (value, ratio) => {
@@ -225,14 +287,14 @@ const scaleValue = (value, ratio) => {
   return scaled;
 };
 
-const scaleStList = (list, ratio) => {
+const scaleTimeList = (list, ratio) => {
   if (!Array.isArray(list)) return list;
   return list.map((item) => ({ ...item, seconds: scaleValue(item.seconds, ratio) }));
 };
 
 const getCardOriginId = (card) => card?.originOrderId ?? card?.id;
 
-const mergeStLists = (first = [], second = []) => {
+const mergeTimeLists = (first = [], second = []) => {
   const map = new Map();
   const applyItem = (item) => {
     if (!item) return;
@@ -253,12 +315,17 @@ const mergeCardData = (target, source) => {
   const mergedQuantity = (target.quantity ?? 0) + (source.quantity ?? 0);
   const mergedTotalSeconds = (target.totalSeconds ?? 0) + (source.totalSeconds ?? 0);
   const mergedTotalPt = (target.totalPt ?? 0) + (source.totalPt ?? 0);
-  const mergedSt = mergeStLists(target.totalStByFactory ?? [], source.totalStByFactory ?? []);
+  const mergedPtByFactory = mergeTimeLists(
+    target.totalPtByFactory ?? [],
+    source.totalPtByFactory ?? []
+  );
+  const mergedSt = mergeTimeLists(target.totalStByFactory ?? [], source.totalStByFactory ?? []);
   return {
     ...target,
     quantity: mergedQuantity,
     totalSeconds: mergedTotalSeconds,
     totalPt: mergedTotalPt,
+    totalPtByFactory: mergedPtByFactory,
     totalStByFactory: mergedSt,
     status: resolveCardStatus(target, mergedTotalPt, mergedSt),
     originOrderId: getCardOriginId(target),
@@ -329,13 +396,18 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days) => {
 const resolveCardTotalSeconds = (card, lineId) => {
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
+  const line = runtimeLines.find((item) => item.id === lineId);
+  const factoryId = line?.factoryId;
   if (basis === 'ST') {
-    const line = mockLines.find((item) => item.id === lineId);
-    const factoryId = line?.factoryId;
-    const match = card.totalStByFactory?.find((item) => item.factoryId === factoryId);
+    const match = card.totalStByFactory?.find(
+      (item) => normalizeKey(item.factoryId) === normalizeKey(factoryId)
+    );
     return match?.seconds ?? card.totalSeconds ?? 0;
   }
-  return card.totalPt ?? card.totalSeconds ?? 0;
+  const ptMatch = card.totalPtByFactory?.find(
+    (item) => normalizeKey(item.factoryId) === normalizeKey(factoryId)
+  );
+  return ptMatch?.seconds ?? card.totalPt ?? card.totalSeconds ?? 0;
 };
 
 const buildDateKey = (date) => {
@@ -349,7 +421,7 @@ const buildDays = (baseDate, count, holidaySet = new Set()) => {
   return Array.from({ length: count }).map((_, index) => {
     const date = new Date(baseDate);
     date.setDate(baseDate.getDate() + index);
-    const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
     const key = buildDateKey(date);
     const isSunday = date.getDay() === 0;
     return {
@@ -769,11 +841,108 @@ const AssignBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
+  const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [activeDrag, setActiveDrag] = useState(null);
+  const [loading, setLoading] = useState(false);
   const startDateRef = useRef(new Date());
   const splitCounterRef = useRef(1);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 10, HOLIDAY_SET));
+
+  useEffect(() => {
+    runtimeLines = lines;
+  }, [lines]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchJson = async (path) => {
+      const response = await fetch(`${API_BASE}${path}`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || `Request failed: ${path}`);
+      }
+      return data;
+    };
+
+    const loadSourceData = async () => {
+      setLoading(true);
+      try {
+        const [styles, factories] = await Promise.all([
+          fetchStylesFromApi().catch(() => []),
+          fetchJson('/factories').catch(() => []),
+        ]);
+
+        const safeFactories = Array.isArray(factories) ? factories : [];
+        const lineListResults = await Promise.all(
+          safeFactories.map((factory) =>
+            fetchJson(`/lines?factoryId=${factory.id}`).catch(() => [])
+          )
+        );
+        const workerListResults = await Promise.all(
+          safeFactories.map((factory) =>
+            fetchJson(`/line-workers?factoryId=${factory.id}`).catch(() => [])
+          )
+        );
+        const attributes = await fetchJson('/attributes').catch(() => null);
+        const colors = Array.isArray(attributes?.colors) ? attributes.colors : [];
+        const colorNameMap = new Map(
+          colors.map((item) => [normalizeColorKey(item?.code), item?.name || item?.code || ''])
+        );
+
+        const nextLines = safeFactories.flatMap((factory, index) => {
+          const lineRows = Array.isArray(lineListResults[index]) ? lineListResults[index] : [];
+          const workers = Array.isArray(workerListResults[index]) ? workerListResults[index] : [];
+          return lineRows.map((line) => {
+            const assignedCount = workers.filter(
+              (worker) => normalizeKey(worker?.currentLineId) === normalizeKey(line?.id)
+            ).length;
+            const headcount = Math.max(assignedCount, 1);
+            return {
+              id: String(line.id),
+              name: line.name || `Line ${line.id}`,
+              headcount,
+              shift: '08:00~17:00',
+              dailyCapacitySeconds: headcount * DAILY_CAPACITY_SECONDS,
+              factoryId: factory.id,
+              factoryName: factory.name || `Factory ${factory.id}`,
+            };
+          });
+        });
+
+        const orders = loadOrders();
+        const nextCards = buildCardsFromOrders({
+          orders,
+          styles,
+          factories: safeFactories,
+          colorNameMap,
+        });
+
+        if (!cancelled) {
+          setLines(nextLines);
+          setCards(nextCards);
+          setAssignments((prev) =>
+            prev
+              .filter((item) => nextLines.some((line) => normalizeKey(line.id) === normalizeKey(item.lineId)))
+              .filter((item) => nextCards.some((card) => card.id === item.cardId))
+          );
+          setSelectedCardId((prev) => (nextCards.some((card) => card.id === prev) ? prev : null));
+        }
+      } catch (_error) {
+        if (!cancelled) {
+          setLines([]);
+          setCards([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadSourceData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
@@ -844,9 +1013,10 @@ const AssignBoard = () => {
       (card) =>
         card.styleName.toLowerCase().includes(lower) ||
         card.customer.toLowerCase().includes(lower) ||
+        (card.colorName ? card.colorName.toLowerCase().includes(lower) : false) ||
         (card.orderNo ? card.orderNo.toLowerCase().includes(lower) : false)
     );
-  }, [searchTerm, assignedCardIds]);
+  }, [cards, searchTerm, assignedCardIds]);
 
   const handleDragStart = (event) => {
     const { active } = event;
@@ -990,12 +1160,21 @@ const AssignBoard = () => {
         orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
         customer: card.customer,
         label: card.styleName,
+        colorName: card.colorName,
         previewUrl: card.previewUrl,
         imageUrl: card.imageUrl,
         thumbnailUrl: card.thumbnailUrl,
         quantity: card.quantity,
         originOrderId: getCardOriginId(card) ?? cardId,
         basis,
+        proposalBasis: basis,
+        proposalSeconds: totalSeconds,
+        contractedSeconds: totalSeconds,
+        ctStatus: 'PENDING',
+        ctSource: basis,
+        ctAgreedBy: null,
+        ctAgreedAt: null,
+        ctNote: '',
         color: colors.color,
         stripeColor: colors.stripe,
         totalSeconds,
@@ -1138,7 +1317,7 @@ const AssignBoard = () => {
 
   const promptSplitQuantity = (quantity) => {
     if (!quantity || quantity <= 1) return null;
-    const input = window.prompt(`분할할 수량을 입력하세요 (1 ~ ${quantity - 1})`);
+    const input = window.prompt(`Enter split quantity (1 ~ ${quantity - 1})`);
     if (input == null) return null;
     const value = Number(input);
     if (!Number.isFinite(value)) return null;
@@ -1150,7 +1329,8 @@ const AssignBoard = () => {
   const buildSplitCard = (card, quantity, ratio, newId) => {
     const totalSeconds = scaleValue(card.totalSeconds, ratio);
     const totalPt = scaleValue(card.totalPt, ratio);
-    const totalStByFactory = scaleStList(card.totalStByFactory, ratio);
+    const totalPtByFactory = scaleTimeList(card.totalPtByFactory, ratio);
+    const totalStByFactory = scaleTimeList(card.totalStByFactory, ratio);
     const originOrderId = getCardOriginId(card) ?? card.id;
     return {
       ...card,
@@ -1159,6 +1339,7 @@ const AssignBoard = () => {
       quantity,
       totalSeconds,
       totalPt,
+      totalPtByFactory,
       totalStByFactory,
       status: resolveCardStatus(card, totalPt, totalStByFactory),
     };
@@ -1198,6 +1379,11 @@ const AssignBoard = () => {
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
 
     const scaledSeconds = scaleValue(target.totalSeconds, remainRatio) || 1;
+    const scaledProposal = scaleValue(target.proposalSeconds ?? target.totalSeconds, remainRatio) || 1;
+    const scaledContracted =
+      target.contractedSeconds == null
+        ? target.contractedSeconds
+        : scaleValue(target.contractedSeconds, remainRatio) || 1;
     const range = recomputeAssignmentRange(target, scaledSeconds, days);
     setAssignments((prev) =>
       prev.map((item) =>
@@ -1206,6 +1392,8 @@ const AssignBoard = () => {
               ...item,
               quantity: remainQty,
               totalSeconds: scaledSeconds,
+              proposalSeconds: scaledProposal,
+              contractedSeconds: scaledContracted,
               ...range,
             }
           : item
@@ -1223,14 +1411,16 @@ const AssignBoard = () => {
   const buildCardFromAssignment = (assignment) => {
     const card = cards.find((item) => item.id === assignment.cardId);
     if (card) return card;
+    const basis = assignment.proposalBasis || assignment.basis;
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
       quantity: assignment.quantity ?? 0,
       totalSeconds: assignment.totalSeconds ?? 0,
       totalPt: assignment.totalSeconds ?? 0,
+      totalPtByFactory: [],
       totalStByFactory: [],
-      status: assignment.basis === 'ST' ? 'ST' : 'PT',
+      status: basis === 'ST' ? 'ST' : 'PT',
     };
   };
 
@@ -1257,6 +1447,9 @@ const AssignBoard = () => {
 
     const addedSeconds = resolveCardTotalSeconds(sourceCard, target.lineId);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
+    const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
+    const mergedContractedSeconds =
+      target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
 
     setCards((prev) => {
@@ -1272,6 +1465,8 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         totalSeconds: mergedSeconds,
+        proposalSeconds: mergedProposalSeconds,
+        contractedSeconds: mergedContractedSeconds,
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -1313,6 +1508,9 @@ const AssignBoard = () => {
     const sourceCard = buildCardFromAssignment(source);
     const addedSeconds = resolveCardTotalSeconds(sourceCard, target.lineId);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
+    const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
+    const mergedContractedSeconds =
+      target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
 
     setCards((prev) => {
@@ -1328,6 +1526,8 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         totalSeconds: mergedSeconds,
+        proposalSeconds: mergedProposalSeconds,
+        contractedSeconds: mergedContractedSeconds,
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -1342,14 +1542,44 @@ const AssignBoard = () => {
     return true;
   };
 
+  const handleResetAssignments = () => {
+    setAssignments([]);
+  };
+
+  const handleConfirmAssignments = () => {
+    const now = new Date().toISOString();
+    setAssignments((prev) =>
+      prev.map((item) => ({
+        ...item,
+        ctStatus: 'AGREED',
+        contractedSeconds: item.contractedSeconds ?? item.proposalSeconds ?? item.totalSeconds ?? 0,
+        ctSource: item.ctSource || item.proposalBasis || item.basis || 'MANUAL',
+        ctAgreedBy: item.ctAgreedBy || 'OPERATOR',
+        ctAgreedAt: item.ctAgreedAt || now,
+      }))
+    );
+  };
+
   return (
     <AppPageContainer
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">작업 배정</Typography>
+          <Typography variant="h6">Assignment</Typography>
           <Stack direction="row" spacing={1}>
-            <Button variant="outlined">배정 초기화</Button>
-            <Button variant="contained">배정 확정</Button>
+            <Button
+              variant="outlined"
+              onClick={handleResetAssignments}
+              disabled={assignments.length === 0}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleConfirmAssignments}
+              disabled={assignments.length === 0}
+            >
+              Confirm CT
+            </Button>
           </Stack>
         </Box>
       }
@@ -1364,14 +1594,14 @@ const AssignBoard = () => {
           <Grid item xs={12} md={4}>
             <Stack spacing={1.5}>
               <SearchInput
-                placeholder="스타일명 또는 고객사 검색"
+                placeholder="Search style/customer/color"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">미배정 카드</Typography>
+                <Typography variant="subtitle2">Unassigned Cards</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {filteredCards.length}건
+                  {loading ? 'Loading...' : `${filteredCards.length} items`}
                 </Typography>
               </Box>
               <Stack spacing={1}>
@@ -1397,13 +1627,13 @@ const AssignBoard = () => {
           <Grid item xs={12} md={8}>
             <Stack spacing={1.5}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">라인 타임라인</Typography>
+                <Typography variant="subtitle2">Line Timeline</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  드래그 앤 드롭으로 배정하세요
+                  Drag and drop cards to assign work
                 </Typography>
               </Box>
               <ScheduleTimeline
-                lines={mockLines}
+                lines={lines}
                 days={days}
                 assignments={assignmentsForRender}
                 onLinkPrev={handleLinkPrev}
@@ -1432,7 +1662,7 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                {activeDrag.orderNo ? activeDrag.orderNo : '미배정 카드'}
+                {activeDrag.orderNo ? activeDrag.orderNo : 'Unassigned card'}
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                 {activeDrag.label}
@@ -1451,3 +1681,4 @@ const AssignBoard = () => {
 };
 
 export default AssignBoard;
+

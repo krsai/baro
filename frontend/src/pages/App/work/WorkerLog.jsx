@@ -1,9 +1,9 @@
-import React from 'react';
-import { Box, Typography, IconButton, Button, Divider } from '@mui/material';
+﻿import React from 'react';
+import { Box, Button, Divider, IconButton } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import SearchableSelect from '../../../components/SearchableSelect';
-import WorkItemRow from './WorkItemRow'; // Assuming we create this for clarity
+import WorkItemRow from './WorkItemRow';
 
 const WorkerLog = ({
   log,
@@ -15,12 +15,11 @@ const WorkerLog = ({
   availableEmployees,
   customers,
   styles,
-  processes,
   factory,
+  takenWorkerIds,
 }) => {
-  const unselectedEmployees = availableEmployees.filter(
-    // Logic to prevent selecting the same worker twice can be added here
-    (emp) => emp.id !== log.worker?.id
+  const options = availableEmployees.filter(
+    (employee) => !takenWorkerIds?.has(employee.id) || employee.id === log.worker?.id
   );
 
   return (
@@ -28,18 +27,20 @@ const WorkerLog = ({
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <SearchableSelect
-            label="작업자"
-            options={availableEmployees}
+            label="Worker"
+            options={options}
             value={log.worker}
-            onChange={(e, val) => onWorkerChange(log.id, val)}
-            sx={{ width: '50%' }}
+            onChange={(_event, value) => onWorkerChange(log.id, value)}
+            sx={{ maxWidth: 360 }}
           />
         </Box>
         <IconButton onClick={() => onRemoveWorker(log.id)} color="error" sx={{ ml: 1 }} tabIndex={-1}>
           <DeleteIcon />
         </IconButton>
       </Box>
+
       <Divider />
+
       <Box sx={{ pt: 2 }}>
         {log.items.map((item) => (
           <WorkItemRow
@@ -50,17 +51,13 @@ const WorkerLog = ({
             onEnter={() => onAddItem(log.id)}
             customers={customers}
             styles={styles}
-            processes={processes}
             factory={factory}
           />
         ))}
+
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
-          <Button
-            startIcon={<AddCircleOutlineIcon />}
-            onClick={() => onAddItem(log.id)}
-            disabled={!log.worker}
-          >
-            작업 항목 추가
+          <Button startIcon={<AddCircleOutlineIcon />} onClick={() => onAddItem(log.id)} disabled={!log.worker}>
+            Add Item
           </Button>
         </Box>
       </Box>

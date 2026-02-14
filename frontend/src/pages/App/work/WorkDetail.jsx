@@ -1,5 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { Box, Typography, IconButton, Button, Paper, Divider, Grid, TextField } from '@mui/material';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  IconButton,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -7,200 +16,302 @@ import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import SearchableSelect from '../../../components/SearchableSelect';
-import { useAuth } from '../../../context/AuthContext';
+import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import WorkerLog from './WorkerLog';
 
-// --- Mock Data ---
-const factories = [
-  { id: 1, name: '하노이 1공장', perSecondWage: 0.1 },
-  { id: 2, name: '다낭 2공장', perSecondWage: 0.09 },
-];
-const employees = [
-  { id: 101, name: 'John Doe', factoryId: 1 },
-  { id: 102, name: 'Jane Smith', factoryId: 1 },
-  { id: 201, name: 'Peter Pan', factoryId: 2 },
-  { id: 202, name: 'Tony Stark', factoryId: 1 },
-];
-const customers = [ { id: 1, name: '더산' }, { id: 2, name: '나이키' }, { id: 3, name: '아디다스' }];
-const styles = [
-  { id: 'S-001', name: '클래식 데님 자켓', customerId: 1 },
-  { id: 'S-002', name: '하이웨이스트 와이드 팬츠', customerId: 2 },
-  { id: 'S-003', name: '오버핏 린넨 셔츠', customerId: 1 },
-];
-const processes = [
-  { id: 1, styleId: 'S-001', name: '소매 부착', paymentStandard: 'PT', paymentValue: 50 },
-  { id: 2, styleId: 'S-001', name: '칼라 조립', paymentStandard: 'ST', paymentValue: 80 },
-  { id: 3, styleId: 'S-002', name: '허리 밴드', paymentStandard: 'PT', paymentValue: 60 },
-];
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
-const WorkDetail = ({ onClose }) => {
+const buildLogId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const buildItemId = () => `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+const toSeconds = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return parsed > 0 ? Math.round(parsed) : 0;
+};
+
+const resolveCtSeconds = (process) => {
+  if (!process) return 0;
+  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.st ?? process.pt);
+};
+
+const WorkDetail = ({ onClose, onSave }) => {
   const [workDate, setWorkDate] = useState(dayjs());
+  const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [styles, setStyles] = useState([]);
   const [workerLogs, setWorkerLogs] = useState([]);
-  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
 
-  const filteredEmployees = useMemo(() => {
-    if (!selectedFactory) return [];
-    return employees.filter((emp) => emp.factoryId === selectedFactory.id);
-  }, [selectedFactory]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchJson = async (path) => {
+      const response = await fetch(`${API_BASE}${path}`);
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || `Request failed: ${path}`);
+      }
+      return data;
+    };
+
+    const loadBaseData = async () => {
+      setLoading(true);
+      try {
+        const [factoryRows, customerRows, styleRows] = await Promise.all([
+          fetchJson('/factories').catch(() => []),
+          fetchJson('/customers').catch(() => []),
+          fetchStylesFromApi().catch(() => []),
+        ]);
+        if (cancelled) return;
+        setFactories(Array.isArray(factoryRows) ? factoryRows : []);
+        setCustomers(Array.isArray(customerRows) ? customerRows : []);
+        setStyles(Array.isArray(styleRows) ? styleRows : []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadBaseData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEmployees = async () => {
+      if (!selectedFactory?.id) {
+        setEmployees([]);
+        return;
+      }
+      try {
+        const response = await fetch(`${API_BASE}/employees?factoryId=${selectedFactory.id}`);
+        const data = await response.json().catch(() => null);
+        if (!response.ok || cancelled) {
+          if (!cancelled) setEmployees([]);
+          return;
+        }
+        const list = (Array.isArray(data) ? data : []).map((employee) => ({
+          ...employee,
+          name: employee.name || `Worker ${employee.id}`,
+        }));
+        if (!cancelled) setEmployees(list);
+      } catch (_error) {
+        if (!cancelled) setEmployees([]);
+      }
+    };
+
+    setWorkerLogs([]);
+    loadEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFactory?.id]);
+
+  const takenWorkerIds = useMemo(
+    () => new Set(workerLogs.map((log) => log.worker?.id).filter(Boolean)),
+    [workerLogs]
+  );
 
   const handleAddWorker = () => {
-    setWorkerLogs([...workerLogs, { id: Date.now(), worker: null, items: [] }]);
+    setWorkerLogs((prev) => [...prev, { id: buildLogId(), worker: null, items: [] }]);
   };
 
   const handleRemoveWorker = (logId) => {
-    setWorkerLogs(workerLogs.filter((log) => log.id !== logId));
+    setWorkerLogs((prev) => prev.filter((log) => log.id !== logId));
   };
 
-  const handleWorkerChange = (logId, newWorker) => {
-    setWorkerLogs(
-      workerLogs.map((log) =>
-        log.id === logId ? { ...log, worker: newWorker } : log
-      )
+  const handleWorkerChange = (logId, nextWorker) => {
+    setWorkerLogs((prev) =>
+      prev.map((log) => (log.id === logId ? { ...log, worker: nextWorker } : log))
     );
   };
 
   const handleAddItem = (logId) => {
-    const newLogs = workerLogs.map((log) => {
-      if (log.id === logId) {
-        const newItem = { id: Date.now(), customer: null, style: null, process: null, quantity: '' };
-        return { ...log, items: [...log.items, newItem] };
-      }
-      return log;
-    });
-    setWorkerLogs(newLogs);
+    setWorkerLogs((prev) =>
+      prev.map((log) =>
+        log.id === logId
+          ? { ...log, items: [...log.items, { id: buildItemId(), customer: null, style: null, process: null, quantity: '' }] }
+          : log
+      )
+    );
   };
 
   const handleRemoveItem = (logId, itemId) => {
-    const newLogs = workerLogs.map((log) => {
-      if (log.id === logId) {
-        return { ...log, items: log.items.filter((item) => item.id !== itemId) };
-      }
-      return log;
-    });
-    setWorkerLogs(newLogs);
+    setWorkerLogs((prev) =>
+      prev.map((log) =>
+        log.id === logId
+          ? { ...log, items: log.items.filter((item) => item.id !== itemId) }
+          : log
+      )
+    );
   };
 
   const handleItemChange = (logId, itemId, field, value) => {
-    const newLogs = workerLogs.map((log) => {
-      if (log.id === logId) {
-        const newItems = log.items.map((item) => {
-          if (item.id === itemId) {
-            const updatedItem = { ...item, [field]: value };
+    setWorkerLogs((prev) =>
+      prev.map((log) => {
+        if (log.id !== logId) return log;
+        return {
+          ...log,
+          items: log.items.map((item) => {
+            if (item.id !== itemId) return item;
+            const next = { ...item, [field]: value };
             if (field === 'customer') {
-              updatedItem.style = null;
-              updatedItem.process = null;
+              next.style = null;
+              next.process = null;
             }
             if (field === 'style') {
-              updatedItem.process = null;
+              next.process = null;
             }
-            return updatedItem;
-          }
-          return item;
-        });
-        return { ...log, items: newItems };
-      }
-      return log;
-    });
-    setWorkerLogs(newLogs);
+            return next;
+          }),
+        };
+      })
+    );
   };
 
-  const totalCalculatedWage = useMemo(() => {
-    if (!selectedFactory) return '0.00';
-    return workerLogs
-      .flatMap(log => log.items)
-      .reduce((total, item) => {
-        if (!item.process || !item.quantity) return total;
-        const wagePerPiece = item.process.paymentValue * selectedFactory.perSecondWage;
-        return total + wagePerPiece * item.quantity;
-      }, 0)
-      .toFixed(2);
-  }, [workerLogs, selectedFactory]);
+  const summary = useMemo(() => {
+    const records = workerLogs.flatMap((log) =>
+      log.items
+        .filter((item) => item.process && Number(item.quantity) > 0)
+        .map((item) => ({
+          workerId: log.worker?.id ?? null,
+          workerName: log.worker?.name || '',
+          customerName: item.customer?.name || '',
+          styleId: item.style?.id || '',
+          styleName: item.style?.name || '',
+          processCode: item.process?.code || '',
+          processName: item.process?.name || '',
+          ctSeconds: resolveCtSeconds(item.process),
+          quantity: Number(item.quantity) || 0,
+        }))
+    );
+
+    const totalContractedSeconds = records.reduce(
+      (sum, row) => sum + row.ctSeconds * row.quantity,
+      0
+    );
+
+    return {
+      records,
+      workerCount: new Set(records.map((row) => row.workerId).filter(Boolean)).size,
+      itemCount: records.length,
+      totalContractedSeconds,
+    };
+  }, [workerLogs]);
+
+  const handleSave = () => {
+    if (!selectedFactory) return;
+    if (summary.records.length === 0) return;
+
+    onSave?.({
+      workDate: workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
+      factoryId: selectedFactory.id,
+      factoryName: selectedFactory.name,
+      ctBasis: 'CT',
+      workerCount: summary.workerCount,
+      itemCount: summary.itemCount,
+      totalContractedSeconds: summary.totalContractedSeconds,
+      records: summary.records,
+      note: 'Attendance integration pending',
+    });
+  };
 
   return (
-    <Box sx={{ width: '50vw', p: 3, display: 'flex', flexDirection: 'column', height: '90vh' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexShrink: 0 }}>
-        <Typography variant="h5" component="h2" fontWeight="bold">작업 기록</Typography>
-        <IconButton onClick={onClose}><CloseIcon /></IconButton>
+    <Box sx={{ width: { xs: '100vw', md: '56vw' }, p: 3, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Work Log Input</Typography>
+        <IconButton onClick={onClose}>
+          <CloseIcon />
+        </IconButton>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexShrink: 0 }}>
-        <Box sx={{ flex: 1 }}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
-              label="작업일자"
-              value={workDate}
-              onChange={setWorkDate}
-              sx={{ width: '100%' }}
-              slotProps={{ textField: { autoFocus: true } }}
-            />
-          </LocalizationProvider>
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <SearchableSelect
-            label="공장"
-            options={factories}
-            value={selectedFactory}
-            onChange={(e, val) => {
-              setSelectedFactory(val);
-              setWorkerLogs([]);
-            }}
-            sx={{ width: '100%' }}
+      <Alert severity="info" sx={{ mb: 2 }}>
+        CT is the only payroll basis. PT/ST are not used directly for payout.
+      </Alert>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <DatePicker
+            label="Work Date"
+            value={workDate}
+            onChange={setWorkDate}
+            sx={{ minWidth: 220 }}
+            slotProps={{ textField: { fullWidth: true } }}
           />
-        </Box>
-        <Box sx={{ flex: 1 }}>
-          <TextField
-            label="작성자"
-            value={user?.name || ''}
-            InputProps={{
-              readOnly: true,
-            }}
-            sx={{ width: '100%' }}
-          />
-        </Box>
-      </Box>
-      
-      <Paper variant="outlined" sx={{ flexGrow: 1, p: 2, overflowY: 'auto' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+        </LocalizationProvider>
+
+        <SearchableSelect
+          label="Factory"
+          options={factories}
+          value={selectedFactory}
+          onChange={(_event, value) => setSelectedFactory(value)}
+          disabled={loading}
+          sx={{ minWidth: 240 }}
+          isOptionEqualToValue={(option, value) => option?.id === value?.id}
+        />
+
+        <TextField
+          label="CT Basis"
+          value="CT"
+          InputProps={{ readOnly: true }}
+          sx={{ minWidth: 140 }}
+        />
+      </Stack>
+
+      <Paper variant="outlined" sx={{ flex: 1, p: 2, overflow: 'auto' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={handleAddWorker}
             disabled={!selectedFactory}
-            sx={{width: '100%'}}
           >
-            작업자 추가
+            Add Worker
           </Button>
         </Box>
-        {workerLogs.length === 0 && (
-            <Typography color="text.secondary" align="center" sx={{p: 4}}>
-                먼저 공장을 선택하고 작업자를 추가하세요.
-            </Typography>
+
+        {workerLogs.length === 0 ? (
+          <Typography color="text.secondary" align="center" sx={{ py: 6 }}>
+            Select a factory and add worker logs.
+          </Typography>
+        ) : (
+          workerLogs.map((log) => (
+            <WorkerLog
+              key={log.id}
+              log={log}
+              onWorkerChange={handleWorkerChange}
+              onRemoveWorker={handleRemoveWorker}
+              onAddItem={handleAddItem}
+              onRemoveItem={handleRemoveItem}
+              onItemChange={handleItemChange}
+              availableEmployees={employees}
+              customers={customers}
+              styles={styles}
+              factory={selectedFactory}
+              takenWorkerIds={takenWorkerIds}
+            />
+          ))
         )}
-        {workerLogs.map((log) => (
-          <WorkerLog
-            key={log.id}
-            log={log}
-            onWorkerChange={handleWorkerChange}
-            onRemoveWorker={handleRemoveWorker}
-            onAddItem={handleAddItem}
-            onRemoveItem={handleRemoveItem}
-            onItemChange={handleItemChange}
-            availableEmployees={filteredEmployees}
-            customers={customers}
-            styles={styles}
-            processes={processes}
-            factory={selectedFactory}
-          />
-        ))}
       </Paper>
 
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <Typography variant="h6">총 합계: ${totalCalculatedWage}</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="outlined" onClick={onClose}>취소</Button>
-          <Button variant="contained" disabled={workerLogs.length === 0}>저장</Button>
-        </Box>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+          Total CT: {summary.totalContractedSeconds.toLocaleString()} sec
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleSave} disabled={!selectedFactory || summary.records.length === 0}>
+            Save
+          </Button>
+        </Stack>
       </Box>
     </Box>
   );

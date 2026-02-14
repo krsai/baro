@@ -3,8 +3,8 @@ import { Box, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const statusLabel = {
-  PT: 'PT 기준',
-  ST: 'ST 기준',
+  PT: 'PT 제안',
+  ST: 'ST 제안',
   NONE: '기준 없음',
 };
 
@@ -14,7 +14,9 @@ const statusPalette = {
   NONE: { border: '#E6A8B6', text: '#A34355' },
 };
 
-const hasPt = (card) => Number(card.totalPt) > 0;
+const hasPt = (card) =>
+  Number(card.totalPt) > 0 ||
+  (Array.isArray(card.totalPtByFactory) && card.totalPtByFactory.some((item) => item.seconds > 0));
 const hasSt = (card) =>
   Array.isArray(card.totalStByFactory) && card.totalStByFactory.some((item) => item.seconds > 0);
 
@@ -144,7 +146,7 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
             </Typography>
           </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
-            수량: {card.quantity}
+            {card.colorName ? `색상: ${card.colorName} · ` : ''}수량: {card.quantity}
           </Typography>
         </Stack>
       </Box>

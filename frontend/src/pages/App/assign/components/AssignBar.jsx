@@ -44,6 +44,12 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
   const durationValue = assignment.workDays ?? getDurationDays(assignment);
   const durationLabel = formatDuration(durationValue);
+  const ctLabel =
+    assignment.ctStatus === 'AGREED'
+      ? 'CT 확정'
+      : assignment.ctStatus === 'REJECTED'
+        ? 'CT 반려'
+        : 'CT 대기';
 
   return (
     <Box
@@ -166,8 +172,24 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             textAlign: 'left',
           }}
         >
-          {`${assignment.customer} · ${assignment.label} · 수량 ${assignment.quantity ?? '-'}`}
+          {`${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''} · 수량 ${assignment.quantity ?? '-'}`}
         </Typography>
+      </Box>
+      <Box
+        sx={{
+          position: 'absolute',
+          right: 8,
+          bottom: 8,
+          px: 0.7,
+          py: 0.15,
+          borderRadius: 1,
+          backgroundColor: 'rgba(255,255,255,0.75)',
+          fontSize: 10,
+          fontWeight: 700,
+          color: '#3f4c5f',
+        }}
+      >
+        {ctLabel}
       </Box>
       <Box
         sx={{

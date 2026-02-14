@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
+  Chip,
   Paper,
   Table,
   TableBody,
@@ -9,7 +10,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import FactoryDetail from './factoryDetail/FactoryDetail';
@@ -28,14 +28,14 @@ const FactoryList = () => {
     setLoading(true);
     try {
       const response = await fetch(`${API_BASE}/factories`);
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (response.ok) {
         setFactories(Array.isArray(data) ? data : []);
       } else {
-        showNotification(data?.error || '공장 목록을 불러오지 못했습니다.', 'error');
+        showNotification(data?.error || 'Failed to load factories.', 'error');
       }
     } catch (_error) {
-      showNotification('공장 목록을 불러오지 못했습니다.', 'error');
+      showNotification('Failed to load factories.', 'error');
     } finally {
       setLoading(false);
     }
@@ -85,95 +85,106 @@ const FactoryList = () => {
           body: JSON.stringify(payload),
         }
       );
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        showNotification(data?.error || '공장 저장에 실패했습니다.', 'error');
+        showNotification(data?.error || 'Failed to save factory.', 'error');
         return;
       }
 
       if (isEdit) {
-        setFactories((prev) => prev.map((f) => (f.id === data.id ? data : f)));
+        setFactories((prev) => prev.map((factory) => (factory.id === data.id ? data : factory)));
       } else {
         setFactories((prev) => [...prev, data]);
       }
       handleDetailClose();
-      showNotification('공장 정보가 저장되었습니다.', 'success');
+      showNotification('Factory saved.', 'success');
     } catch (_error) {
-      showNotification('공장 저장 중 오류가 발생했습니다.', 'error');
+      showNotification('Failed to save factory.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
         <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClick}>
-          공장 추가
+          Add Factory
         </Button>
       </Box>
+
       <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>공장명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>관리자</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>급여 기준</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>초당 급여</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Factory</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Contact</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Manager</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Proposal Basis</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Wage / sec</TableCell>
               </TableRow>
             </TableHead>
+
             <TableBody>
               {loading && (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    불러오는 중...
+                    Loading...
                   </TableCell>
                 </TableRow>
               )}
+
               {!loading && factories.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    등록된 공장이 없습니다.
+                    No factories found.
                   </TableCell>
                 </TableRow>
               )}
-              {factories.map((factory) => (
-                <TableRow
-                  key={factory.id}
-                  hover
-                  onDoubleClick={() => handleRowDoubleClick(factory)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell>{factory.name}</TableCell>
-                  <TableCell>{factory.address}</TableCell>
-                  <TableCell>{factory.countryCode} {factory.phoneNumber}</TableCell>
-                  <TableCell>{factory.manager}</TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={factory.wageStandard || '-'}
-                      color={factory.wageStandard === 'ST' ? 'success' : 'warning'}
-                      size="small"
-                      sx={{ fontWeight: 'bold', minWidth: 50 }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const raw = factory.wagePerSecond;
-                      const value =
-                        raw === '' || raw === null || raw === undefined ? Number.NaN : Number(raw);
-                      return Number.isFinite(value) ? `${value.toFixed(2)}동` : '-';
-                    })()}
-                  </TableCell>
-                </TableRow>
-              ))}
+
+              {factories.map((factory) => {
+                const rawWage = factory.wagePerSecond;
+                const wage =
+                  rawWage === '' || rawWage === null || rawWage === undefined
+                    ? Number.NaN
+                    : Number(rawWage);
+
+                return (
+                  <TableRow
+                    key={factory.id}
+                    hover
+                    onDoubleClick={() => handleRowDoubleClick(factory)}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <TableCell>{factory.name || '-'}</TableCell>
+                    <TableCell>{factory.address || '-'}</TableCell>
+                    <TableCell>{`${factory.countryCode || ''} ${factory.phoneNumber || ''}`.trim() || '-'}</TableCell>
+                    <TableCell>{factory.manager || '-'}</TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={
+                          factory.wageStandard === 'ST'
+                            ? 'ST Proposal'
+                            : factory.wageStandard === 'PT'
+                              ? 'PT Proposal'
+                              : '-'
+                        }
+                        color={factory.wageStandard === 'ST' ? 'success' : 'warning'}
+                        size="small"
+                        sx={{ fontWeight: 'bold', minWidth: 90 }}
+                      />
+                    </TableCell>
+                    <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
+
       <FactoryDetail
         open={isDetailOpen}
         onClose={handleDetailClose}

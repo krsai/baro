@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Drawer,
-  Typography,
-  TextField,
   Button,
-  Grid,
   Divider,
+  Drawer,
+  Grid,
   IconButton,
-  ToggleButtonGroup,
+  TextField,
   ToggleButton,
+  ToggleButtonGroup,
+  Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
@@ -20,8 +20,7 @@ const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
 
 const parseNumber = (value) => {
   if (value === '' || value === null || value === undefined) return Number.NaN;
-  const normalized =
-    typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+  const normalized = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
@@ -57,44 +56,37 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         targetMonthlyWage: factory.targetMonthlyWage ?? '',
         wagePerSecond: factory.wagePerSecond ?? '',
       });
-    } else {
-      // Reset for new factory
-      setFormData({
-        name: '',
-        address: '',
-        countryCode: '+84',
-        phoneNumber: '',
-        manager: '',
-        wageStandard: 'PT',
-        targetMonthlyWage: '',
-        wagePerSecond: '',
-      });
+      return;
     }
+
+    setFormData({
+      name: '',
+      address: '',
+      countryCode: '+84',
+      phoneNumber: '',
+      manager: '',
+      wageStandard: 'PT',
+      targetMonthlyWage: '',
+      wagePerSecond: '',
+    });
   }, [factory, open]);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
+  const handleInputChange = (event) => {
+    const { name, value } = event.target;
     if (name === 'targetMonthlyWage') {
-      const digitsOnly = value.replace(/[^\d]/g, '');
       setFormData((prev) => ({
         ...prev,
-        [name]: digitsOnly,
+        targetMonthlyWage: value.replace(/[^\d]/g, ''),
       }));
       return;
     }
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
-  
-  const handleWageStandardChange = (event, newStandard) => {
-    if (newStandard !== null) {
-      setFormData((prev) => ({
-        ...prev,
-        wageStandard: newStandard,
-      }));
-    }
+
+  const handleWageStandardChange = (_event, nextValue) => {
+    if (!nextValue) return;
+    setFormData((prev) => ({ ...prev, wageStandard: nextValue }));
   };
 
   const computedWagePerSecond = useMemo(() => {
@@ -113,14 +105,15 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
   const handleSave = () => {
     const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
-    const resolvedWagePerSecond = Number.isFinite(computedWagePerSecond)
+    const wagePerSecond = Number.isFinite(computedWagePerSecond)
       ? computedWagePerSecond
       : formData.wagePerSecond ?? '';
-    onSave({
+
+    onSave?.({
       ...factory,
       ...formData,
       targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
-      wagePerSecond: resolvedWagePerSecond,
+      wagePerSecond,
     });
   };
 
@@ -128,97 +121,107 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     <Drawer anchor="right" open={open} onClose={onClose}>
       <Box sx={{ width: 500, p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">{factory ? '공장 정보 수정' : '새 공장 추가'}</Typography>
+          <Typography variant="h6">{factory ? 'Edit Factory' : 'Add Factory'}</Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
         </Box>
+
         <Divider sx={{ mb: 3 }} />
 
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="공장명"
+              label="Factory Name"
               name="name"
               value={formData.name}
               onChange={handleInputChange}
               required
             />
           </Grid>
+
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="주소"
+              label="Address"
               name="address"
               value={formData.address}
               onChange={handleInputChange}
             />
           </Grid>
+
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="관리자"
+              label="Manager"
               name="manager"
               value={formData.manager}
               onChange={handleInputChange}
             />
           </Grid>
+
           <Grid item xs={5}>
             <TextField
               fullWidth
-              label="국가코드"
+              label="Country Code"
               name="countryCode"
               value={formData.countryCode}
               onChange={handleInputChange}
             />
           </Grid>
+
           <Grid item xs={7}>
             <TextField
               fullWidth
-              label="전화번호"
+              label="Phone"
               name="phoneNumber"
               value={formData.phoneNumber}
               onChange={handleInputChange}
             />
           </Grid>
+
           <Grid item xs={12}>
-            <Typography variant="subtitle2" gutterBottom>급여 기준</Typography>
+            <Typography variant="subtitle2" gutterBottom>
+              Default Proposal Basis
+            </Typography>
             <ToggleButtonGroup
-                value={formData.wageStandard}
-                exclusive
-                onChange={handleWageStandardChange}
-                fullWidth
+              value={formData.wageStandard}
+              exclusive
+              onChange={handleWageStandardChange}
+              fullWidth
             >
-                <ToggleButton value="PT">PT (Provisional Time)</ToggleButton>
-                <ToggleButton value="ST">ST (Standard Time)</ToggleButton>
+              <ToggleButton value="PT">PT (Provisional Proposal)</ToggleButton>
+              <ToggleButton value="ST">ST (Statistical Proposal)</ToggleButton>
             </ToggleButtonGroup>
           </Grid>
+
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="목표 급여 (월, 동)"
+              label="Target Monthly Wage"
               name="targetMonthlyWage"
               value={formatWithCommas(formData.targetMonthlyWage)}
               onChange={handleInputChange}
               inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
             />
           </Grid>
+
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="초당 급여 (동)"
+              label="Wage / sec"
               name="wagePerSecond"
               value={computedWageDisplay}
               InputProps={{ readOnly: true }}
-              helperText="26일 × 8시간 기준 자동 계산"
+              helperText="Auto-calculated from monthly target"
             />
           </Grid>
         </Grid>
-        
+
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave}>
-            저장
+            Save
           </Button>
         </Box>
       </Box>

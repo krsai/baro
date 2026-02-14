@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
+  Drawer,
   Paper,
   Table,
   TableBody,
@@ -9,110 +11,120 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Drawer,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import WorkDetail from './WorkDetail';
 
-const WorkList = () => {
-  // 임시 데이터 (추후 API 연동 시 교체)
-  const [workLogs] = useState([
-    {
-      id: 1,
-      date: '2023-10-26',
-      factory: '하노이 1공장',
-      wageStandard: 'PT',
-      workerCount: 15,
-      processCount: 4,
-      totalStandardTime: 48600,
-      totalWorkingHours: 54000,
-    },
-    {
-      id: 2,
-      date: '2023-10-26',
-      factory: '다낭 2공장',
-      wageStandard: 'ST',
-      workerCount: 10,
-      processCount: 3,
-      totalStandardTime: 32000,
-      totalWorkingHours: 36000,
-    },
-    {
-      id: 3,
-      date: '2023-10-25',
-      factory: '하노이 1공장',
-      wageStandard: 'PT',
-      workerCount: 14,
-      processCount: 4,
-      totalStandardTime: 45000,
-      totalWorkingHours: 50400,
-    },
-  ]);
+const STORAGE_KEY = 'baro_work_logs_v2';
 
+const loadWorkLogs = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+};
+
+const saveWorkLogs = (logs) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+};
+
+const formatSeconds = (value) => {
+  const seconds = Number(value) || 0;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+};
+
+const WorkList = () => {
+  const [workLogs, setWorkLogs] = useState(() => loadWorkLogs());
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const toggleDrawer = (open) => () => {
-    setIsDrawerOpen(open);
-  };
+  const sortedLogs = useMemo(
+    () =>
+      [...workLogs].sort(
+        (a, b) => new Date(b.workDate || b.createdAt || 0).getTime() - new Date(a.workDate || a.createdAt || 0).getTime()
+      ),
+    [workLogs]
+  );
 
-  const formatAverageTime = (totalSeconds, count) => {
-    if (!count) return '0시간 0분';
-    const avgSeconds = totalSeconds / count;
-    const hours = Math.floor(avgSeconds / 3600);
-    const minutes = Math.floor((avgSeconds % 3600) / 60);
-    return `${hours}시간 ${minutes}분`;
+  const toggleDrawer = (open) => () => setIsDrawerOpen(open);
+
+  const handleSaveLog = (payload) => {
+    const nextLog = {
+      id: `work-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      ctBasis: 'CT',
+      ...payload,
+    };
+    setWorkLogs((prev) => {
+      const next = [nextLog, ...prev];
+      saveWorkLogs(next);
+      return next;
+    });
+    setIsDrawerOpen(false);
   };
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6">Work Logs</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={toggleDrawer(true)}>
-          작업 기록 추가
+          Add Work Log
         </Button>
       </Box>
+
+      <Alert severity="info" sx={{ mb: 2 }}>
+        Payroll basis is CT only. PT/ST are used as proposal data.
+      </Alert>
 
       <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">
-            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+            <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>날짜</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>공장</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>작업자 수</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>총 공정 종류</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>인당 평균 작업 시간 (PT/ST)</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>인당 평균 근로 시간</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>생산 효율</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Factory</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Basis</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Workers</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Rows</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Total CT</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Note</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {workLogs.map((log) => (
-                <TableRow key={log.id} hover>
-                  <TableCell>{log.date}</TableCell>
-                  <TableCell>{log.factory}</TableCell>
-                  <TableCell>{log.workerCount}명</TableCell>
-                  <TableCell>{log.processCount}개</TableCell>
-                  <TableCell>
-                    {formatAverageTime(log.totalStandardTime, log.workerCount)} ({log.wageStandard})
-                  </TableCell>
-                  <TableCell>{formatAverageTime(log.totalWorkingHours, log.workerCount)}</TableCell>
-                  <TableCell>
-                    {((log.totalStandardTime / log.totalWorkingHours) * 100).toFixed(1)}%
+              {sortedLogs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 4 }}>
+                    No work logs yet.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                sortedLogs.map((log) => (
+                  <TableRow key={log.id} hover>
+                    <TableCell>{log.workDate || '-'}</TableCell>
+                    <TableCell>{log.factoryName || '-'}</TableCell>
+                    <TableCell>{log.ctBasis || 'CT'}</TableCell>
+                    <TableCell>{log.workerCount ?? 0}</TableCell>
+                    <TableCell>{log.itemCount ?? 0}</TableCell>
+                    <TableCell>{formatSeconds(log.totalContractedSeconds)}</TableCell>
+                    <TableCell>{log.note || '-'}</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
 
-      {/* 오른쪽 슬라이드 패널 (Drawer) */}
-      <Drawer
-        anchor="right"
-        open={isDrawerOpen}
-        onClose={toggleDrawer(false)}
-      >
-        <WorkDetail onClose={toggleDrawer(false)} />
+      <Drawer anchor="right" open={isDrawerOpen} onClose={toggleDrawer(false)}>
+        <WorkDetail onClose={toggleDrawer(false)} onSave={handleSaveLog} />
       </Drawer>
     </Box>
   );
