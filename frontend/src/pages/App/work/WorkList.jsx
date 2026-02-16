@@ -1,6 +1,5 @@
 ﻿import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Drawer,
@@ -85,10 +84,6 @@ const WorkList = () => {
           작업 기록 추가
         </Button>
       </Box>
-
-      <Alert severity="info" sx={{ mb: 2 }}>
-        급여 산정 기준은 CT만 사용합니다. PT/AT는 제안 데이터로만 활용됩니다.
-      </Alert>
 
       <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>

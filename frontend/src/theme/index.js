@@ -145,6 +145,33 @@ const theme = createTheme({
         size: 'small',
       },
     },
+    MuiDateField: {
+      defaultProps: {
+        format: 'YYYY-MM-DD',
+      },
+    },
+    MuiPickersTextField: {
+      defaultProps: {
+        variant: 'outlined',
+        size: 'small',
+      },
+    },
+    MuiPickersOutlinedInput: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#F5F6F8',
+          '& .MuiPickersOutlinedInput-notchedOutline': {
+            border: 'none',
+          },
+          '&:hover': {
+            backgroundColor: '#EBEDF0',
+          },
+          '&.Mui-focused': {
+            backgroundColor: '#E0E2E5',
+          },
+        },
+      },
+    },
     MuiOutlinedInput: {
       styleOverrides: {
         root: {

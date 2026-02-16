@@ -1,12 +1,10 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   IconButton,
   Paper,
   Stack,
-  TextField,
   Typography,
 } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -233,10 +231,6 @@ const WorkDetail = ({ onClose, onSave }) => {
         </IconButton>
       </Box>
 
-      <Alert severity="info" sx={{ mb: 2 }}>
-        급여 산정 기준은 CT만 사용합니다. PT/AT는 지급 기준으로 직접 사용하지 않습니다.
-      </Alert>
-
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
         <LocalizationProvider
           dateAdapter={AdapterDayjs}
@@ -261,13 +255,6 @@ const WorkDetail = ({ onClose, onSave }) => {
           disabled={loading}
           sx={{ minWidth: 240 }}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
-        />
-
-        <TextField
-          label="CT 기준"
-          value="CT"
-          InputProps={{ readOnly: true }}
-          sx={{ minWidth: 140 }}
         />
       </Stack>
 
