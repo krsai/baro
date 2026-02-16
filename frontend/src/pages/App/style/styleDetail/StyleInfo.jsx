@@ -8,6 +8,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
+import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -419,7 +420,13 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
           <Stack spacing={2} sx={{ mt: 2.5, mb: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>{processes.length} 개</Typography>
+                  <Typography variant="body2" sx={{fontWeight: '500'}}>
+                    {formatNumberWithCommas(processes.length, {
+                      fallback: '0',
+                      maximumFractionDigits: 0,
+                    })}{' '}
+                    개
+                  </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">총 PT</Typography>

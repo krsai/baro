@@ -29,6 +29,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import {
   loadOrders,
   saveOrders,
@@ -49,6 +50,21 @@ const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(45 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const ORDER_LIST_COLUMN_WIDTHS = {
+  orderNumber: '12%',
+  buyer: '18%',
+  seller: '18%',
+  style: '20%',
+  totalQuantity: '10%',
+  dueDate: '10%',
+  status: '8%',
+  actions: '4%',
+};
+const ORDER_LIST_TEXT_ELLIPSIS_SX = {
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+};
 const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
@@ -63,6 +79,20 @@ const GENDER_PASTEL_STYLES = {
 const normalizeOrderStatus = (status) => (status || '').replace(/\s+/g, '').trim();
 
 const isOrderDeletable = (status) => normalizeOrderStatus(status) === '주문접수';
+const toOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+const hasRelationshipPair = (pairs, buyerOrgId, sellerOrgId) => {
+  const buyerIdNum = toOrgId(buyerOrgId);
+  const sellerIdNum = toOrgId(sellerOrgId);
+  if (!buyerIdNum || !sellerIdNum) return false;
+  return (Array.isArray(pairs) ? pairs : []).some(
+    (pair) =>
+      Number(pair?.brandOrgId) === buyerIdNum &&
+      Number(pair?.manufacturerOrgId) === sellerIdNum
+  );
+};
 const getStyleGroupKey = (item) => {
   if (item?.styleId) return `style:${item.styleId}`;
   if (item?.styleName) return `style-name:${item.styleName}`;
@@ -170,10 +200,14 @@ const normalizeOrderItem = (item) => {
 
 const buildInitialFormData = () => ({
   orderNumber: '',
+  buyerOrgId: '',
+  buyerOrgName: '',
+  sellerOrgId: '',
+  sellerOrgName: '',
   customerId: '',
   customerName: '',
   dueDate: '',
-  status: '주문접수',
+  status: ORDER_STATUSES[0],
   items: [createOrderItem()],
 });
 
@@ -184,7 +218,14 @@ const normalizeOrderForm = (order) => {
   return {
     ...base,
     ...order,
-    customerName: order.customerName || order.customer || base.customerName,
+    buyerOrgId: order.buyerOrgId || order.customerId || base.buyerOrgId,
+    buyerOrgName:
+      order.buyerOrgName || order.customerName || order.customer || base.buyerOrgName,
+    sellerOrgId: order.sellerOrgId || base.sellerOrgId,
+    sellerOrgName: order.sellerOrgName || base.sellerOrgName,
+    customerId: order.customerId || order.buyerOrgId || base.customerId,
+    customerName:
+      order.customerName || order.buyerOrgName || order.customer || base.customerName,
     items: items.map(normalizeOrderItem),
     status: order.status || base.status,
   };
@@ -206,20 +247,39 @@ const OrderList = () => {
   const isNewOrder = orderId === 'new';
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification, navigateToPath, closeTab } = useApp();
+  const { devBypass, devProfile } = useAuth();
 
   const [orders, setOrders] = useState(() => loadOrders());
   const [styles, setStyles] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [buyerOptions, setBuyerOptions] = useState([]);
+  const [sellerOptions, setSellerOptions] = useState([]);
+  const [relationshipPairs, setRelationshipPairs] = useState([]);
+  const [currentOrgOption, setCurrentOrgOption] = useState(null);
+  const [partyRoleHint, setPartyRoleHint] = useState('');
+  const [loadingParties, setLoadingParties] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
   const detailInitKeyRef = useRef(null);
+  const activeOrgId = useMemo(
+    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
+    [devBypass, devProfile?.orgId]
+  );
+  const fixedSellerOrg = useMemo(() => {
+    if (partyRoleHint !== 'MANUFACTURER') return null;
+    const currentOrgId = toOrgId(currentOrgOption?.id);
+    if (!currentOrgId) return null;
+    return {
+      id: currentOrgId,
+      name: currentOrgOption?.name || '',
+    };
+  }, [partyRoleHint, currentOrgOption]);
+  const isSellerLocked = Boolean(fixedSellerOrg);
 
-  const refreshStyles = async () => {
+  const refreshStyles = async (orgId = null) => {
     try {
-      const items = await fetchStylesFromApi();
+      const items = await fetchStylesFromApi({ orgId });
       setStyles(items);
     } catch (error) {
       setStyles([]);
@@ -228,39 +288,99 @@ const OrderList = () => {
   };
 
   useEffect(() => {
-    refreshStyles();
-  }, []);
+    refreshStyles(activeOrgId);
+  }, [activeOrgId]);
 
   useEffect(() => {
-    const fetchCustomers = async () => {
-      setLoadingCustomers(true);
+    const fetchOrderParties = async () => {
+      setLoadingParties(true);
       try {
-        const response = await fetch(`${API_BASE}/customers`);
+        const query = activeOrgId ? `?orgId=${activeOrgId}` : '';
+        const response = await fetch(`${API_BASE}/order-parties${query}`);
         const data = await response.json();
         if (response.ok) {
-          setCustomers(Array.isArray(data) ? data : []);
+          setBuyerOptions(Array.isArray(data?.buyerOrgOptions) ? data.buyerOrgOptions : []);
+          setSellerOptions(Array.isArray(data?.sellerOrgOptions) ? data.sellerOrgOptions : []);
+          setRelationshipPairs(
+            Array.isArray(data?.relationshipPairs) ? data.relationshipPairs : []
+          );
+          setCurrentOrgOption(data?.currentOrg || null);
+          setPartyRoleHint(data?.roleHint || '');
         } else {
-          setCustomers([]);
-          showNotification(data?.error || '고객사 목록을 불러오지 못했습니다.', 'error');
+          setBuyerOptions([]);
+          setSellerOptions([]);
+          setRelationshipPairs([]);
+          setCurrentOrgOption(null);
+          setPartyRoleHint('');
+          showNotification(data?.error || '주문 파트너 정보를 불러오지 못했습니다.', 'error');
         }
       } catch (_error) {
-        setCustomers([]);
-        showNotification('고객사 목록을 불러오지 못했습니다.', 'error');
+        setBuyerOptions([]);
+        setSellerOptions([]);
+        setRelationshipPairs([]);
+        setCurrentOrgOption(null);
+        setPartyRoleHint('');
+        showNotification('주문 파트너 정보를 불러오지 못했습니다.', 'error');
       } finally {
-        setLoadingCustomers(false);
+        setLoadingParties(false);
       }
     };
 
-    fetchCustomers();
-  }, [API_BASE, showNotification]);
+    fetchOrderParties();
+  }, [API_BASE, activeOrgId, showNotification]);
 
   useEffect(() => {
-    if (formData.customerId || !formData.customerName) return;
-    const match = customers.find((customer) => customer.name === formData.customerName);
-    if (match) {
-      setFormData((prev) => ({ ...prev, customerId: match.id }));
-    }
-  }, [customers, formData.customerId, formData.customerName]);
+    if (buyerOptions.length === 0 && sellerOptions.length === 0) return;
+
+    setFormData((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      const selectedBuyer =
+        buyerOptions.find((option) => Number(option.id) === Number(prev.buyerOrgId)) ||
+        buyerOptions.find((option) => option.name === prev.buyerOrgName) ||
+        null;
+      const fallbackBuyer =
+        selectedBuyer || (buyerOptions.length === 1 ? buyerOptions[0] : null);
+      if (fallbackBuyer) {
+        if (Number(next.buyerOrgId) !== Number(fallbackBuyer.id)) {
+          next.buyerOrgId = fallbackBuyer.id;
+          changed = true;
+        }
+        if (next.buyerOrgName !== fallbackBuyer.name) {
+          next.buyerOrgName = fallbackBuyer.name;
+          changed = true;
+        }
+        if (Number(next.customerId) !== Number(fallbackBuyer.id)) {
+          next.customerId = fallbackBuyer.id;
+          changed = true;
+        }
+        if (next.customerName !== fallbackBuyer.name) {
+          next.customerName = fallbackBuyer.name;
+          changed = true;
+        }
+      }
+
+      const selectedSeller =
+        sellerOptions.find((option) => Number(option.id) === Number(prev.sellerOrgId)) ||
+        sellerOptions.find((option) => option.name === prev.sellerOrgName) ||
+        null;
+      const fallbackSeller =
+        fixedSellerOrg || selectedSeller || (sellerOptions.length === 1 ? sellerOptions[0] : null);
+      if (fallbackSeller) {
+        if (Number(next.sellerOrgId) !== Number(fallbackSeller.id)) {
+          next.sellerOrgId = fallbackSeller.id;
+          changed = true;
+        }
+        if (next.sellerOrgName !== fallbackSeller.name) {
+          next.sellerOrgName = fallbackSeller.name;
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [buyerOptions, sellerOptions, fixedSellerOrg]);
 
   useEffect(() => {
     if (!isDetailMode) {
@@ -310,12 +430,14 @@ const OrderList = () => {
       if (!searchTerm) return true;
 
       const orderNumber = order.orderNumber || '';
-      const customer = order.customerName || order.customer || '';
+      const buyer = order.buyerOrgName || order.customerName || order.customer || '';
+      const seller = order.sellerOrgName || '';
       const styleSummary = formatStyleSummary(order.items || []);
       const styleNames = getStyleDisplayNames(order.items || []).join(' ');
       return (
         orderNumber.toLowerCase().includes(lowerTerm) ||
-        customer.toLowerCase().includes(lowerTerm) ||
+        buyer.toLowerCase().includes(lowerTerm) ||
+        seller.toLowerCase().includes(lowerTerm) ||
         styleSummary.toLowerCase().includes(lowerTerm) ||
         styleNames.toLowerCase().includes(lowerTerm)
       );
@@ -332,21 +454,44 @@ const OrderList = () => {
       })),
     [styles]
   );
+  const selectedBuyerName = formData.buyerOrgName || formData.customerName || '';
 
   const availableStyleOptions = useMemo(() => {
-    if (!formData.customerName) return [];
-    return styleOptions.filter((style) => style.customer === formData.customerName);
-  }, [styleOptions, formData.customerName]);
+    if (!selectedBuyerName) return [];
+    return styleOptions.filter((style) => style.customer === selectedBuyerName);
+  }, [styleOptions, selectedBuyerName]);
 
-  const customerValue = useMemo(() => {
-    if (formData.customerId) {
-      return customers.find((customer) => customer.id === formData.customerId) || null;
+  const buyerValue = useMemo(() => {
+    if (formData.buyerOrgId) {
+      return (
+        buyerOptions.find((option) => Number(option.id) === Number(formData.buyerOrgId)) ||
+        null
+      );
     }
-    if (formData.customerName) {
-      return customers.find((customer) => customer.name === formData.customerName) || null;
+    if (formData.buyerOrgName) {
+      return buyerOptions.find((option) => option.name === formData.buyerOrgName) || null;
     }
     return null;
-  }, [customers, formData.customerId, formData.customerName]);
+  }, [buyerOptions, formData.buyerOrgId, formData.buyerOrgName]);
+
+  const sellerValue = useMemo(() => {
+    if (fixedSellerOrg) {
+      return (
+        sellerOptions.find((option) => Number(option.id) === Number(fixedSellerOrg.id)) ||
+        fixedSellerOrg
+      );
+    }
+    if (formData.sellerOrgId) {
+      return (
+        sellerOptions.find((option) => Number(option.id) === Number(formData.sellerOrgId)) ||
+        null
+      );
+    }
+    if (formData.sellerOrgName) {
+      return sellerOptions.find((option) => option.name === formData.sellerOrgName) || null;
+    }
+    return null;
+  }, [sellerOptions, formData.sellerOrgId, formData.sellerOrgName, fixedSellerOrg]);
 
   const groupedStyleItems = useMemo(() => {
     const groupMap = new Map();
@@ -435,17 +580,22 @@ const OrderList = () => {
     closeDetailAndGoList();
   };
 
-  const handleCustomerChange = (_event, customer) => {
+  const handleBuyerChange = (_event, customer) => {
     setFormData((prev) => {
-      const nextCustomerId = customer?.id || '';
-      const nextCustomerName = customer?.name || '';
-      if (nextCustomerId === prev.customerId && nextCustomerName === prev.customerName) {
+      const nextBuyerOrgId = customer?.id || '';
+      const nextBuyerOrgName = customer?.name || '';
+      if (
+        nextBuyerOrgId === prev.buyerOrgId &&
+        nextBuyerOrgName === prev.buyerOrgName
+      ) {
         return prev;
       }
       return {
         ...prev,
-        customerId: nextCustomerId,
-        customerName: nextCustomerName,
+        buyerOrgId: nextBuyerOrgId,
+        buyerOrgName: nextBuyerOrgName,
+        customerId: nextBuyerOrgId,
+        customerName: nextBuyerOrgName,
         items: prev.items.map((item) => ({
           ...item,
           styleId: '',
@@ -455,6 +605,14 @@ const OrderList = () => {
         })),
       };
     });
+  };
+  const handleSellerChange = (_event, seller) => {
+    if (isSellerLocked) return;
+    setFormData((prev) => ({
+      ...prev,
+      sellerOrgId: seller?.id || '',
+      sellerOrgName: seller?.name || '',
+    }));
   };
 
   const handleInputChange = (event) => {
@@ -474,7 +632,7 @@ const OrderList = () => {
   };
 
   const handleStyleChange = (itemIdOrIds, style) => {
-    if (!formData.customerName) {
+    if (!selectedBuyerName) {
       showNotification('고객사를 먼저 선택하세요.', 'warning');
       return;
     }
@@ -617,11 +775,19 @@ const OrderList = () => {
   };
 
   const validateOrder = () => {
+    const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
+    const resolvedSellerOrgName = fixedSellerOrg?.name || formData.sellerOrgName;
     if (!formData.orderNumber.trim()) {
       return '주문번호를 입력하세요.';
     }
-    if (!formData.customerName) {
-      return '고객사를 선택하세요.';
+    if (!formData.buyerOrgName || !toOrgId(formData.buyerOrgId)) {
+      return '발주자(브랜드)를 선택하세요.';
+    }
+    if (!resolvedSellerOrgName || !resolvedSellerOrgId) {
+      return '제작사(제조사)를 선택하세요.';
+    }
+    if (!hasRelationshipPair(relationshipPairs, formData.buyerOrgId, resolvedSellerOrgId)) {
+      return '연결된 관계의 발주자/제작사 조합만 선택할 수 있습니다.';
     }
     if (!formData.dueDate) {
       return '납기일을 입력하세요.';
@@ -680,7 +846,13 @@ const OrderList = () => {
 
     const payload = {
       ...formData,
-      customerName: formData.customerName,
+      buyerOrgId: toOrgId(formData.buyerOrgId),
+      buyerOrgName: formData.buyerOrgName,
+      sellerOrgId: toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId),
+      sellerOrgName: fixedSellerOrg?.name || formData.sellerOrgName,
+      customerId: toOrgId(formData.buyerOrgId),
+      customerName: formData.buyerOrgName,
+      customer: formData.buyerOrgName,
       items: sanitizedItems,
       totalQuantity,
       updatedAt: new Date().toISOString(),
@@ -712,15 +884,33 @@ const OrderList = () => {
   if (!isDetailMode) {
     return (
       <AppPageContainer>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', md: 'center' },
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 1.5,
+            mb: 2,
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flex: 1, minWidth: 0 }}
+          >
             <SearchInput
-              placeholder="주문번호, 고객사, 스타일 검색..."
+              placeholder="주문번호, 발주자/제작사, 스타일 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{ width: 360 }}
+              sx={{
+                width: { xs: '100%', sm: 'auto' },
+                minWidth: { sm: 320 },
+                maxWidth: { lg: 640 },
+                flex: 1,
+              }}
             />
-            <FormControl size="small" sx={{ minWidth: 140 }}>
+            <FormControl size="small" sx={{ width: { xs: '100%', sm: 160 }, flexShrink: 0 }}>
               <InputLabel id="order-status-filter-label">상태</InputLabel>
               <Select
                 labelId="order-status-filter-label"
@@ -737,28 +927,64 @@ const OrderList = () => {
               </Select>
             </FormControl>
           </Stack>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAdd}
+            sx={{ minWidth: 144, alignSelf: { xs: 'stretch', md: 'auto' }, flexShrink: 0 }}
+          >
             주문 추가
           </Button>
         </Box>
-        <Paper variant="outlined" sx={{ width: '100%' }}>
-          <TableContainer>
-            <Table stickyHeader size="small">
+        <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
+          <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+            <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 980 }}>
               <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold' }}>주문번호</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>고객사(브랜드)</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>스타일</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', textAlign: 'right' }}>합계 수량</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>납기일</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>상태</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>관리</TableCell>
+                  <TableCell
+                    sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderNumber }}
+                  >
+                    주문번호
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.buyer }}>
+                    발주자(브랜드)
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.seller }}>
+                    제작사(제조사)
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.style }}>
+                    스타일
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 'bold',
+                      width: ORDER_LIST_COLUMN_WIDTHS.totalQuantity,
+                      textAlign: 'right',
+                    }}
+                  >
+                    합계 수량
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.dueDate }}>
+                    납기일
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.status }}>
+                    상태
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 'bold',
+                      width: ORDER_LIST_COLUMN_WIDTHS.actions,
+                      textAlign: 'center',
+                    }}
+                  >
+                    관리
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredOrders.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                    <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                       등록된 주문이 없습니다.
                     </TableCell>
                   </TableRow>
@@ -772,18 +998,27 @@ const OrderList = () => {
                       onDoubleClick={() => handleEdit(order)}
                       sx={{ cursor: 'pointer' }}
                     >
-                      <TableCell>{order.orderNumber}</TableCell>
-                      <TableCell>{order.customerName || order.customer || '-'}</TableCell>
-                      <TableCell>{formatStyleSummary(order.items)}</TableCell>
-                      <TableCell sx={{ textAlign: 'right' }}>{order.totalQuantity ?? '-'}</TableCell>
-                      <TableCell>{order.dueDate || '-'}</TableCell>
-                      <TableCell>{order.status || '-'}</TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                        {order.buyerOrgName || order.customerName || order.customer || '-'}
+                      </TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                        {order.sellerOrgName || '-'}
+                      </TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                        {formatStyleSummary(order.items)}
+                      </TableCell>
+                      <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {order.totalQuantity ?? '-'}
+                      </TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.dueDate || '-'}</TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.status || '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
                         <IconButton
                           size="small"
                           color="error"
                           disabled={!deletable}
-                          title={deletable ? '주문 삭제' : '주문접수 상태에서만 삭제 가능'}
+                          title={deletable ? '주문 삭제' : '주문접수 상태에서만 삭제 가능합니다.'}
                           onClick={(event) => {
                             event.stopPropagation();
                             handleDeleteOrder(order);
@@ -820,9 +1055,9 @@ const OrderList = () => {
         </Stack>
       </Box>
 
-      {!loadingCustomers && customers.length === 0 && (
+      {!loadingParties && (buyerOptions.length === 0 || sellerOptions.length === 0) && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          연결된 고객사가 없습니다. 고객 관리에서 브랜드를 먼저 등록하세요.
+          연결된 주문 파트너가 없습니다. 고객 관계(제조사-브랜드)를 먼저 등록하세요.
         </Alert>
       )}
 
@@ -839,17 +1074,35 @@ const OrderList = () => {
           </Grid>
           <Grid item xs={12} sm={6}>
             <Autocomplete
-              options={customers}
-              value={customerValue}
-              onChange={handleCustomerChange}
+              options={buyerOptions}
+              value={buyerValue}
+              onChange={handleBuyerChange}
               getOptionLabel={(option) => option?.name || ''}
               isOptionEqualToValue={(option, value) => option?.id === value?.id}
-              loading={loadingCustomers}
+              loading={loadingParties}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="고객사(브랜드)"
-                  placeholder={loadingCustomers ? '불러오는 중...' : '고객사를 선택하세요'}
+                  label="발주자 (Brand)"
+                  placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택하세요'}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <Autocomplete
+              options={sellerOptions}
+              value={sellerValue}
+              onChange={handleSellerChange}
+              disabled={loadingParties || isSellerLocked}
+              getOptionLabel={(option) => option?.name || ''}
+              isOptionEqualToValue={(option, value) => option?.id === value?.id}
+              loading={loadingParties}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="제작사 (Manufacturer)"
+                  placeholder={loadingParties ? '불러오는 중...' : '제작사를 선택하세요'}
                 />
               )}
             />
@@ -951,7 +1204,7 @@ const OrderList = () => {
                             id: group.styleId || `group-${group.key}`,
                             name: group.styleName,
                             styleCode: group.styleCode || '',
-                            customer: formData.customerName || '',
+                            customer: selectedBuyerName,
                           }
                         : null);
                     const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
@@ -991,7 +1244,7 @@ const OrderList = () => {
                             <Autocomplete
                               options={availableStyleOptions}
                               value={groupStyleOption}
-                              disabled={!formData.customerName}
+                              disabled={!selectedBuyerName}
                               onChange={(_event, newValue) => handleStyleChange(group.rowItemIds, newValue)}
                               getOptionLabel={(option) => option?.name || ''}
                               isOptionEqualToValue={(option, value) => option?.id === value?.id}
@@ -1003,7 +1256,7 @@ const OrderList = () => {
                                 />
                               )}
                               noOptionsText={
-                                formData.customerName
+                                selectedBuyerName
                                   ? '등록된 스타일이 없습니다.'
                                   : '고객사를 먼저 선택하세요.'
                               }

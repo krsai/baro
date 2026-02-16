@@ -11,23 +11,17 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
+import {
+  formatDigitsWithCommas,
+  parseNumberLike,
+} from '../../../../utils/numberFormat';
 
 const WORK_DAYS_PER_MONTH = 26;
 const HOURS_PER_DAY = 8;
 const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
 
 const parseNumber = (value) => {
-  if (value === '' || value === null || value === undefined) return Number.NaN;
-  const normalized = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
-};
-
-const formatWithCommas = (value) => {
-  if (value === '' || value === null || value === undefined) return '';
-  const digits = String(value).replace(/[^\d]/g, '');
-  if (!digits) return '';
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parseNumberLike(value);
 };
 
 const FactoryDetail = ({ open, onClose, onSave, factory }) => {
@@ -176,7 +170,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               fullWidth
               label="Target Monthly Wage"
               name="targetMonthlyWage"
-              value={formatWithCommas(formData.targetMonthlyWage)}
+              value={formatDigitsWithCommas(formData.targetMonthlyWage)}
               onChange={handleInputChange}
               inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
             />

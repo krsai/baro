@@ -30,6 +30,14 @@ enum OrgMembershipStatus {
   TERMINATED
 }
 
+enum OrganizationSubscriptionStatus {
+  NOT_SUBSCRIBED
+  TRIAL
+  ACTIVE
+  GRACE
+  SUSPENDED
+}
+
 enum SystemRole {
   SYSTEM_ADMIN
   USER
@@ -61,6 +69,7 @@ model Organization {
   categories AttrCategory[]
   roles      AttrRole[]
   processes  AttrProcess[]
+  subscription OrganizationSubscription?
   memberships OrgMembership[]
   factories  Factory[]
   employees  Employee[]
@@ -68,6 +77,24 @@ model Organization {
   styles     Style[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
+}
+
+model OrganizationSubscription {
+  id              Int                            @id @default(autoincrement())
+  orgId           Int                            @unique
+  status          OrganizationSubscriptionStatus @default(NOT_SUBSCRIBED)
+  membershipEmail String?
+  billingEmail    String?
+  trialStartedAt  DateTime?
+  trialEndsAt     DateTime?
+  activatedAt     DateTime?
+  suspendedAt     DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([status])
 }
 
 model OrgMembership {

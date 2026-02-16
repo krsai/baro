@@ -58,17 +58,17 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
     <Paper
       ref={setNodeRef}
       variant="outlined"
-      onClick={() => onSelect?.(card)}
+      onClick={() => onSelect?.(card.id)}
       onPointerDown={(event) => {
         if (event.button !== 2) return;
         event.preventDefault();
         event.stopPropagation();
-        onSplit?.();
+        onSplit?.(card.id);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onSplit?.();
+        onSplit?.(card.id);
       }}
       sx={{
         p: 1.5,
@@ -153,4 +153,4 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
   );
 };
 
-export default StyleCard;
+export default React.memo(StyleCard);

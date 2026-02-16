@@ -18,7 +18,7 @@ const DEFAULT_ORG = {
   industry: "봉제",
   address: "",
   phone: "",
-  email: "krsailer82@gmail.com",
+  email: "baro.garment@gmail.com",
   type: "MANUFACTURER",
 };
 
@@ -89,14 +89,130 @@ const MEMBERSHIP_STATUSES = new Set([
   "SUSPENDED",
   "TERMINATED",
 ]);
+const SUBSCRIPTION_STATUSES = new Set([
+  "NOT_SUBSCRIBED",
+  "TRIAL",
+  "ACTIVE",
+  "GRACE",
+  "SUSPENDED",
+]);
+const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
+const TRIAL_DAYS = 30;
 const resolveRole = (value, fallback = "WORKER") =>
   ROLE_OPTIONS.has(value) ? value : fallback;
 const resolveStatus = (value) =>
   MEMBERSHIP_STATUSES.has(value) ? value : null;
+const resolveSubscriptionStatus = (value) =>
+  SUBSCRIPTION_STATUSES.has(value) ? value : null;
 const isManufacturerOrg = (org) => org?.type === "MANUFACTURER";
 const isBrandOrg = (org) => org?.type === "BRAND";
+const addDays = (date, days) =>
+  new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
-const getPrimaryOrganization = async () => {
+const isBaroOrganization = (organization) => {
+  const normalizedName =
+    typeof organization?.name === "string"
+      ? organization.name.trim().toLowerCase()
+      : "";
+  const normalizedCode =
+    typeof organization?.code === "string"
+      ? organization.code.trim().toUpperCase()
+      : "";
+  return normalizedName === "baro" || normalizedName.startsWith("baro") || normalizedCode === "BARO";
+};
+
+const normalizeSubscriptionEmailInput = (value, fieldName, fallback) => {
+  if (value === undefined) return { value: fallback };
+  if (value === null) return { value: null };
+  if (typeof value !== "string") {
+    return { error: `${fieldName} must be a string` };
+  }
+  const normalized = normalizeEmail(value);
+  if (!normalized) return { value: null };
+  if (!normalized.includes("@")) {
+    return { error: `${fieldName} is invalid` };
+  }
+  return { value: normalized };
+};
+
+const normalizeDateInput = (value, fieldName, fallback) => {
+  if (value === undefined) return { value: fallback };
+  if (value === null || value === "") return { value: null };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { error: `${fieldName} is invalid` };
+  }
+  return { value: date };
+};
+
+const ensureOrganizationSubscription = async (organization) => {
+  if (!organization) return null;
+
+  const existing = await prisma.organizationSubscription.findUnique({
+    where: { orgId: organization.id },
+  });
+  if (existing) {
+    if (!isBaroOrganization(organization)) return existing;
+
+    const patch = {};
+    if (!existing.membershipEmail) {
+      patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
+    }
+    if (!existing.billingEmail) {
+      patch.billingEmail = BARO_SUBSCRIPTION_EMAIL;
+    }
+    if (existing.status === "ACTIVE" && !existing.activatedAt) {
+      patch.activatedAt = new Date();
+    }
+
+    if (Object.keys(patch).length === 0) return existing;
+    return prisma.organizationSubscription.update({
+      where: { id: existing.id },
+      data: patch,
+    });
+  }
+
+  if (isBaroOrganization(organization)) {
+    return prisma.organizationSubscription.create({
+      data: {
+        orgId: organization.id,
+        status: "ACTIVE",
+        membershipEmail: BARO_SUBSCRIPTION_EMAIL,
+        billingEmail: BARO_SUBSCRIPTION_EMAIL,
+        activatedAt: new Date(),
+      },
+    });
+  }
+
+  return prisma.organizationSubscription.create({
+    data: {
+      orgId: organization.id,
+      status: "NOT_SUBSCRIBED",
+    },
+  });
+};
+
+const attachOrganizationSubscription = async (organization) => {
+  if (!organization) return null;
+  const subscription = await ensureOrganizationSubscription(organization);
+  return { ...organization, subscription };
+};
+
+const ensureOrganizationAccessible = (organization, options = {}) => {
+  if (!organization) return organization;
+  if (options.allowSuspended) return organization;
+  if (organization.subscription?.status === "SUSPENDED") {
+    throw createHttpError(403, "organization is suspended");
+  }
+  return organization;
+};
+const createHttpError = (status, message) => {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+};
+
+const getPrimaryOrganization = async (options = {}) => {
   let organization = await prisma.organization.findFirst({
     orderBy: { id: "asc" },
   });
@@ -105,15 +221,152 @@ const getPrimaryOrganization = async () => {
     organization = await prisma.organization.create({ data: DEFAULT_ORG });
   }
 
-  return organization;
+  const withSubscription = await attachOrganizationSubscription(organization);
+  return ensureOrganizationAccessible(withSubscription, options);
 };
 
-const getOrganizationByQuery = async (req) => {
+const getOrganizationByQuery = async (req, options = {}) => {
   const orgId = Number(req.query.orgId);
   if (Number.isFinite(orgId)) {
-    return prisma.organization.findUnique({ where: { id: orgId } });
+    const organization = await prisma.organization.findUnique({ where: { id: orgId } });
+    if (!organization) return null;
+    const withSubscription = await attachOrganizationSubscription(organization);
+    return ensureOrganizationAccessible(withSubscription, options);
   }
-  return getPrimaryOrganization();
+  return getPrimaryOrganization(options);
+};
+
+const toOrganizationResponse = (organization) => {
+  if (!organization) return organization;
+  const { subscription, ...rest } = organization;
+  return {
+    ...rest,
+    subscription: subscription
+      ? {
+          id: subscription.id,
+          status: subscription.status,
+          membershipEmail: subscription.membershipEmail ?? null,
+          billingEmail: subscription.billingEmail ?? null,
+          trialStartedAt: subscription.trialStartedAt ?? null,
+          trialEndsAt: subscription.trialEndsAt ?? null,
+          activatedAt: subscription.activatedAt ?? null,
+          suspendedAt: subscription.suspendedAt ?? null,
+          updatedAt: subscription.updatedAt ?? null,
+          createdAt: subscription.createdAt ?? null,
+        }
+      : null,
+  };
+};
+
+const hasSubscriptionPayload = (payload = {}) =>
+  payload.subscriptionStatus !== undefined ||
+  payload.status !== undefined ||
+  payload.membershipEmail !== undefined ||
+  payload.billingEmail !== undefined ||
+  payload.trialStartedAt !== undefined ||
+  payload.trialEndsAt !== undefined;
+
+const applySubscriptionPayload = async (organization, payload = {}) => {
+  const current = await ensureOrganizationSubscription(organization);
+  if (!current) {
+    throw createHttpError(404, "subscription not found");
+  }
+  if (!hasSubscriptionPayload(payload)) {
+    return current;
+  }
+
+  const rawStatus = payload.subscriptionStatus ?? payload.status;
+  let nextStatus = current.status;
+  if (rawStatus !== undefined) {
+    const resolved = resolveSubscriptionStatus(rawStatus);
+    if (!resolved) {
+      throw createHttpError(400, "invalid subscription status");
+    }
+    nextStatus = resolved;
+  }
+
+  const membershipEmailResolved = normalizeSubscriptionEmailInput(
+    payload.membershipEmail,
+    "membershipEmail",
+    current.membershipEmail ?? null
+  );
+  if (membershipEmailResolved.error) {
+    throw createHttpError(400, membershipEmailResolved.error);
+  }
+  const billingEmailResolved = normalizeSubscriptionEmailInput(
+    payload.billingEmail,
+    "billingEmail",
+    current.billingEmail ?? null
+  );
+  if (billingEmailResolved.error) {
+    throw createHttpError(400, billingEmailResolved.error);
+  }
+
+  const trialStartedAtResolved = normalizeDateInput(
+    payload.trialStartedAt,
+    "trialStartedAt",
+    current.trialStartedAt
+  );
+  if (trialStartedAtResolved.error) {
+    throw createHttpError(400, trialStartedAtResolved.error);
+  }
+  const trialEndsAtResolved = normalizeDateInput(
+    payload.trialEndsAt,
+    "trialEndsAt",
+    current.trialEndsAt
+  );
+  if (trialEndsAtResolved.error) {
+    throw createHttpError(400, trialEndsAtResolved.error);
+  }
+
+  const now = new Date();
+  let membershipEmail = membershipEmailResolved.value;
+  let billingEmail = billingEmailResolved.value;
+  let trialStartedAt = trialStartedAtResolved.value;
+  let trialEndsAt = trialEndsAtResolved.value;
+  let activatedAt = current.activatedAt;
+  let suspendedAt = current.suspendedAt;
+
+  if (nextStatus === "TRIAL") {
+    if (!trialStartedAt) {
+      trialStartedAt = now;
+    }
+    if (!trialEndsAt) {
+      trialEndsAt = addDays(trialStartedAt, TRIAL_DAYS);
+    }
+  }
+
+  if (nextStatus === "ACTIVE") {
+    if (!membershipEmail || !billingEmail) {
+      throw createHttpError(
+        400,
+        "membershipEmail and billingEmail are required for ACTIVE"
+      );
+    }
+    if (!activatedAt) {
+      activatedAt = now;
+    }
+    suspendedAt = null;
+  }
+
+  if (nextStatus === "SUSPENDED") {
+    suspendedAt = now;
+  } else if (rawStatus !== undefined) {
+    suspendedAt = null;
+  }
+
+  return prisma.organizationSubscription.update({
+    where: { id: current.id },
+    data: {
+      status: nextStatus,
+      membershipEmail,
+      billingEmail,
+      trialStartedAt,
+      trialEndsAt,
+      activatedAt,
+      suspendedAt,
+    },
+  });
 };
 
 const toCustomerResponse = (relationship) => {
@@ -187,6 +440,21 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
   };
 };
+const toOrganizationOption = (organization) => ({
+  id: organization?.id ?? null,
+  name: organization?.name ?? "",
+  code: organization?.code ?? null,
+  type: organization?.type ?? null,
+});
+const toUniqueOrganizationOptions = (organizations = []) => {
+  const byId = new Map();
+  organizations.forEach((organization) => {
+    const id = Number(organization?.id);
+    if (!Number.isFinite(id) || byId.has(id)) return;
+    byId.set(id, toOrganizationOption(organization));
+  });
+  return Array.from(byId.values());
+};
 
 const findStyleConflict = async ({
   orgId,
@@ -255,7 +523,11 @@ const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
   return lineIds;
 };
 
+const initializedAttributeOrgs = new Set();
+
 const seedAttributesIfEmpty = async (orgId) => {
+  if (initializedAttributeOrgs.has(orgId)) return;
+
   const [colorCount, categoryCount, roleCount, processCount] =
     await Promise.all([
     prisma.attrColor.count({ where: { orgId } }),
@@ -297,6 +569,8 @@ const seedAttributesIfEmpty = async (orgId) => {
   if (actions.length > 0) {
     await prisma.$transaction(actions);
   }
+
+  initializedAttributeOrgs.add(orgId);
 };
 
 const syncSection = async (model, orgId, items) => {
@@ -354,12 +628,15 @@ app.get("/organizations", async (_req, res) => {
   const organizations = await prisma.organization.findMany({
     orderBy: { id: "asc" },
   });
-  res.json(organizations);
+  const withSubscriptions = await Promise.all(
+    organizations.map((organization) => attachOrganizationSubscription(organization))
+  );
+  res.json(withSubscriptions.map(toOrganizationResponse));
 });
 
 app.get("/organizations/primary", async (_req, res) => {
-  const organization = await getPrimaryOrganization();
-  res.json(organization);
+  const organization = await getPrimaryOrganization({ allowSuspended: true });
+  res.json(toOrganizationResponse(organization));
 });
 
 const listOrgMemberships = async (req, res) => {
@@ -777,10 +1054,7 @@ app.post("/employees", async (req, res) => {
 });
 
 app.get("/factories", async (req, res) => {
-  const orgId = Number(req.query.orgId);
-  const organization = Number.isFinite(orgId)
-    ? await prisma.organization.findUnique({ where: { id: orgId } })
-    : await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
 
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
@@ -1075,26 +1349,27 @@ app.get("/line-workers", async (req, res) => {
     }
   }
 
-  const workers = await prisma.employee.findMany({
-    where: {
-      orgId: organization.id,
-      ...(hasFactoryFilter ? { factoryId } : {}),
-      membership: { role: "WORKER", status: "ACTIVE" },
-    },
-    include: { membership: true },
-    orderBy: [{ factoryId: "asc" }, { id: "asc" }],
-  });
-
-  const assignments = await prisma.lineAssignment.findMany({
-    where: {
-      line: {
+  const [workers, assignments] = await Promise.all([
+    prisma.employee.findMany({
+      where: {
         orgId: organization.id,
         ...(hasFactoryFilter ? { factoryId } : {}),
+        membership: { role: "WORKER", status: "ACTIVE" },
       },
-      endAt: null,
-    },
-    select: { employeeId: true, lineId: true },
-  });
+      include: { membership: true },
+      orderBy: [{ factoryId: "asc" }, { id: "asc" }],
+    }),
+    prisma.lineAssignment.findMany({
+      where: {
+        line: {
+          orgId: organization.id,
+          ...(hasFactoryFilter ? { factoryId } : {}),
+        },
+        endAt: null,
+      },
+      select: { employeeId: true, lineId: true },
+    }),
+  ]);
 
   const assignmentByEmployee = new Map();
   assignments.forEach((assignment) => {
@@ -1213,6 +1488,56 @@ app.get("/customers", async (req, res) => {
   });
 
   res.json(relationships.map(toCustomerResponse));
+});
+
+app.get("/order-parties", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  if (!isManufacturerOrg(organization) && !isBrandOrg(organization)) {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid organization type",
+    });
+  }
+
+  const where = isManufacturerOrg(organization)
+    ? { manufacturerOrgId: organization.id }
+    : { brandOrgId: organization.id };
+
+  const relationships = await prisma.orgRelationship.findMany({
+    where,
+    include: {
+      manufacturer: true,
+      brand: true,
+    },
+    orderBy: { id: "asc" },
+  });
+
+  const relationshipPairs = relationships.map((relationship) => ({
+    manufacturerOrgId: relationship.manufacturerOrgId,
+    brandOrgId: relationship.brandOrgId,
+  }));
+
+  const buyerOrgOptions = isManufacturerOrg(organization)
+    ? toUniqueOrganizationOptions(relationships.map((relationship) => relationship.brand))
+    : [toOrganizationOption(organization)];
+
+  const sellerOrgOptions = isManufacturerOrg(organization)
+    ? [toOrganizationOption(organization)]
+    : toUniqueOrganizationOptions(
+        relationships.map((relationship) => relationship.manufacturer)
+      );
+
+  res.json({
+    currentOrg: toOrganizationOption(organization),
+    roleHint: isManufacturerOrg(organization) ? "MANUFACTURER" : "BRAND",
+    buyerOrgOptions,
+    sellerOrgOptions,
+    relationshipPairs,
+  });
 });
 
 app.post("/customers", async (req, res) => {
@@ -1420,10 +1745,30 @@ app.get("/styles", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const compact = req.query.compact === "1" || req.query.compact === "true";
 
   const styles = await prisma.style.findMany({
     where: { orgId: organization.id },
     orderBy: { uid: "asc" },
+    ...(compact
+      ? {
+          // Skip heavy BOM payload for list pages that only need summary/process data.
+          select: {
+            styleId: true,
+            styleCode: true,
+            name: true,
+            customer: true,
+            registrationDate: true,
+            designer: true,
+            collection: true,
+            season: true,
+            imageUrls: true,
+            processes: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }
+      : {}),
   });
 
   res.json(styles.map(toStyleResponse));
@@ -1724,6 +2069,8 @@ app.put("/attributes", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  // Attributes were updated manually, so force a one-time recheck on next GET.
+  initializedAttributeOrgs.delete(organization.id);
   const payload = req.body ?? {};
 
   const tasks = [];
@@ -1819,7 +2166,9 @@ app.post("/organizations", async (req, res) => {
     },
   });
 
-  res.status(201).json(organization);
+  await applySubscriptionPayload(organization, req.body ?? {});
+  const withSubscription = await attachOrganizationSubscription(organization);
+  res.status(201).json(toOrganizationResponse(withSubscription));
 });
 
 app.put("/organizations/:id", async (req, res) => {
@@ -1875,7 +2224,44 @@ app.put("/organizations/:id", async (req, res) => {
     },
   });
 
-  res.json(organization);
+  await applySubscriptionPayload(organization, req.body ?? {});
+  const withSubscription = await attachOrganizationSubscription(organization);
+  res.json(toOrganizationResponse(withSubscription));
+});
+
+app.get("/organizations/:id/subscription", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id },
+  });
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const subscription = await ensureOrganizationSubscription(organization);
+  res.json(subscription);
+});
+
+app.patch("/organizations/:id/subscription", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id },
+  });
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  await applySubscriptionPayload(organization, req.body ?? {});
+  const withSubscription = await attachOrganizationSubscription(organization);
+  res.json(toOrganizationResponse(withSubscription));
 });
 
 const assignOrgMembership = async (req, res) => {
@@ -1918,6 +2304,17 @@ const assignOrgMembership = async (req, res) => {
 };
 
 app.post("/org-memberships/assign", assignOrgMembership);
+
+app.use((error, _req, res, _next) => {
+  if (error?.status && Number.isFinite(Number(error.status))) {
+    return res.status(Number(error.status)).json({
+      ok: false,
+      error: error.message || "request failed",
+    });
+  }
+  console.error(error);
+  return res.status(500).json({ ok: false, error: "internal server error" });
+});
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

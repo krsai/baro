@@ -1,3 +1,5 @@
+import { formatNumberWithCommas } from './numberFormat';
+
 const toOptionalNumber = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -69,5 +71,5 @@ export const parseOptionalSecondsInput = (value) => {
 export const formatSeconds = (value) => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return '-';
-  return `${parsed}초`;
+  return `${formatNumberWithCommas(parsed)}초`;
 };

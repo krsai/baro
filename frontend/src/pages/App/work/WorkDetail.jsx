@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import SearchableSelect from '../../../components/SearchableSelect';
+import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import WorkerLog from './WorkerLog';
 
@@ -296,7 +297,12 @@ const WorkDetail = ({ onClose, onSave }) => {
 
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-          총 CT: {summary.totalContractedSeconds.toLocaleString()}초
+          총 CT:{' '}
+          {formatNumberWithCommas(summary.totalContractedSeconds, {
+            fallback: '0',
+            maximumFractionDigits: 0,
+          })}
+          초
         </Typography>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" onClick={onClose}>

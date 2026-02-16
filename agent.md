@@ -68,6 +68,7 @@
 - 목표: 향후 여러 회사에 판매 가능하도록 최소한의 테넌트 분리 기준을 미리 정의한다.
 - 방식: 단일 DB/스키마 + 테넌트 컬럼(`orgId`) 방식으로 분리한다.
 - 기준 엔티티: `Organization`(회사)을 테넌트의 기준으로 둔다.
+- 구독 관리: 각 `Organization`은 1개의 `OrganizationSubscription` 레코드를 가진다. (상태: `NOT_SUBSCRIBED`/`TRIAL`/`ACTIVE`/`GRACE`/`SUSPENDED`)
 - 적용 범위: 주요 도메인 테이블은 모두 `orgId`를 필수로 가진다.
 - 접근 제어(기본): 모든 API는 현재 로그인 사용자의 `orgId`로만 조회/저장한다.
 - 접근 제어(거래): 주문/관계 등 거래성 데이터는 관계로 연결된 상대 조직만 접근 가능하다.
@@ -80,7 +81,8 @@
 - 핵심 전제: "고객사"와 "봉제공장"은 모두 동일한 `Organization`(회사) 엔티티로 관리한다.
 - 조직 구분: `Organization.type`으로 제조사/브랜드를 구분한다. (예: `MANUFACTURER`, `BRAND`)
 - 회사 코드: `Organization.code`는 제조사/브랜드 공통 필드이며, **4자리 영문 대문자 약어**로 관리한다. 전체 조직에서 **유니크**해야 한다. (예: `BRVN`, `TSKR`)
-- 사용자 소속: `OrgMembership`로 사용자의 조직 소속과 역할/상태를 관리한다.
+- 사용자 소속/권한: `OrgMembership`로 사용자의 조직 소속과 역할/상태를 관리한다.
+- 고객 구독 상태: `OrganizationSubscription`으로 조직 단위 구독 상태와 연락 이메일(멤버십/정산)을 관리한다.
 - 공장 소유: `Factory`는 제조사 `Organization`에 소속된다. (`factory.orgId`)
 - 제한: `Organization.type = BRAND`는 공장을 갖지 않는다. 공장 정보는 `MANUFACTURER`에서만 등록/조회한다.
 - 관계/거래: 고객사-제조사 관계는 `OrgRelationship`으로 관리한다. (`Relationship`/`Account` 용어는 사용하지 않는다.)
@@ -258,55 +260,60 @@
 1. **Organization**
    - 용도: 제조사/브랜드 공통 회사 엔티티
    - 핵심 필드: `name`, `code`(4자리 영문 대문자, 유니크), `type`(MANUFACTURER/BRAND), 기본 회사 정보
-   - 관계: `OrgMembership`, `Factory`, `Employee`, `OrgRelationship`, `Attr*`
+   - 관계: `OrganizationSubscription`, `OrgMembership`, `Factory`, `Employee`, `OrgRelationship`, `Attr*`
 
-2. **OrgMembership**
-   - 용도: 조직별 사용자 승인/상태/역할 관리 (가입 신청 → 승인)
+2. **OrganizationSubscription**
+   - 용도: 조직 단위 SaaS 구독 상태/연락처 관리 (결제/운영 상태)
+   - 핵심 필드: `orgId`(유니크), `status`(`NOT_SUBSCRIBED`/`TRIAL`/`ACTIVE`/`GRACE`/`SUSPENDED`), `membershipEmail`, `billingEmail`
+   - 관계: `Organization`(1:1)
+
+3. **OrgMembership**
+   - 용도: 조직 내 사용자 소속/승인/권한 관리 (가입 신청 → 승인)
    - 핵심 필드: `orgId`, `email`, `role`, `status`, `requestedAt`, `approvedAt`
    - 관계: `Organization`(N:1), `Employee`(1:1, 선택)
 
-3. **Factory**
+4. **Factory**
    - 용도: 제조사 조직의 공장
    - 핵심 필드: `orgId`, `name`, 임금 관련 필드
    - 관계: `Organization`(N:1), `Employee`(1:N)
 
-4. **Line**
+5. **Line**
    - 용도: 공장 내 생산 라인
    - 핵심 필드: `orgId`, `factoryId`, `name`, `managerEmployeeId`, `isActive`
    - 관계: `Factory`(N:1), `LineAssignment`(1:N)
 
-5. **LineAssignment**
+6. **LineAssignment**
    - 용도: 라인 ↔ 직원 배정 이력 (현재 배정은 `endAt = null`)
    - 핵심 필드: `lineId`, `employeeId`, `startAt`, `endAt`
    - 관계: `Line`(N:1), `Employee`(N:1)
 
-6. **Employee**
+7. **Employee**
    - 용도: 제조사 조직의 직원 정보 (승인된 멤버십과 연결)
    - 핵심 필드: `orgId`, `orgMembershipId`, `factoryId`, `roleId`, 인사/급여 관련 필드
    - 관계: `Organization`, `OrgMembership`, `Factory`, `AttrRole`, `LineAssignment`
 
-7. **OrgRelationship**
+8. **OrgRelationship**
    - 용도: 제조사 ↔ 브랜드 고객 관계
    - 핵심 필드: `manufacturerOrgId`, `brandOrgId`, 관계 전용 필드(담당자/연락처/메모 등)
    - 관계: `Organization`(제조사/브랜드)
    - 참고: 고객 코드 표시는 브랜드 `Organization.code`를 사용
 
-8. **AttrColor / AttrCategory / AttrRole / AttrProcess**
+9. **AttrColor / AttrCategory / AttrRole / AttrProcess**
    - 용도: 조직별 기준 속성 데이터(공정/역할/분류 등)
    - 핵심 필드: `orgId`, `code`, `name`
    - 관계: `Organization`(N:1)
    - 참고: `Size/Gender`는 현재 DB 속성 테이블이 아니라 프론트 상수(`productAttributes`)로 관리
 
-9. **Style**
+10. **Style**
    - 용도: 스타일 마스터(기본정보/공정/BOM 스냅샷성 데이터)
    - 핵심 필드: `orgId`, `styleId`, `styleCode`, `name`, `customer`, `processes(Json)`, `bom(Json)`
    - 관계: `Organization`(N:1)
    - 제약: `orgId + styleId` 유니크
 
-10. **SystemUser**
+11. **SystemUser**
    - 용도: 시스템 전역 사용자 (플랫폼 운영자용)
 
-### 7.1. 조직 및 사용자 구조 (Organization & User Structure)
+### 7.1. 조직/권한/구독 구조 (Organization, Access, Subscription)
 
 1.  **조직 (Organization)**: 시스템의 최상위 회사 단위입니다. 제조사/브랜드 구분은 `Organization.type`으로 합니다. (예: `MANUFACTURER`, `BRAND`)
     - 조직 코드는 `Organization.code`로 관리하며 4자리 영문 대문자 약어를 사용합니다. (예: `BRVN`, `TSKR`)
@@ -315,33 +322,42 @@
     - 공장 급여 계산: 목표 월 급여 입력 시 `초당 급여 = 월급 / 26일 / 8시간 / 60 / 60` (소수점 2자리 표시).
 3.  **라인 (Line)**: 공장 내에 존재하는 물리적/논리적 생산 라인입니다. (예: `A라인`, `B라인`)
 4.  **직원 (Employee)**: 특정 공장에 소속된 사용자입니다. 직원은 특정 라인에 배치될 수 있습니다.
-5.  **역할 (Role)**: 사용자의 시스템 권한과 업무 범위를 정의합니다. 다음 4가지 역할로 구분합니다.
-    -   **관리자 (Admin)**: 시스템 전체 설정, 사용자 관리, 기준 정보 관리 등 최고 권한을 가집니다.
-    -   **운영자 (Operator)**: 생산 계획 수립, 작업 배정, 공정 관리 등 공장 운영 전반을 담당합니다.
-    -   **회계사 (Accountant)**: 작업 실적에 따른 급여 정산, 비용 관리 등 재무 데이터를 처리합니다.
-    -   **작업자 (Worker)**: 생산 라인에서 실제 작업을 수행하고 실적을 기록합니다. (라인장은 작업자 중 지정됩니다.)
-6.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. `Organization.type = BRAND`에 해당합니다. (예: `더산`)
+5.  **권한 모델 (Access Role)**:
+    - `OrgMembership.role`은 시스템 접근 권한 역할입니다. (`ADMIN`, `OPERATOR`, `ACCOUNTANT`, `WORKER`)
+    - **관리자(Admin)**는 업체 기능의 최상위 권한으로, 기본 관리자 계정은 수정/삭제 불가 정책을 적용합니다.
+    - 그 외 권한/역할 분리는 조직 관리자(Admin)가 메뉴 단위 권한 정책에 따라 확장합니다.
+6.  **업무 역할 (Job Role)**:
+    - `AttrRole`은 생산/업무 직무 분류용이며, 권한(Role)과 분리합니다.
+    - 조직 관리자(Admin)가 업체 내부 운영 목적에 맞게 역할 종류를 추가/수정할 수 있습니다.
+7.  **고객사 (Customer)**: 제품 생산을 의뢰하는 회사입니다. `Organization.type = BRAND`에 해당합니다. (예: `더산`)
 
-### 7.1.1. 가입/승인 흐름 (Organization Membership)
+### 7.1.1. 사용자 소속 가입/승인 흐름 (OrgMembership)
 - 사용자는 소셜 로그인 이후 **조직 미소속 상태**로 시작한다.
 - 사용자는 시스템에 등록된 `Organization`을 선택하여 **가입 신청**을 한다. (상태: `PENDING`)
-- 조직의 **운영 관리자(해당 조직 Admin/Operator)**가 승인하면 소속이 확정된다. (상태: `ACTIVE`)
-- 제조사 조직은 승인 후 **공장/라인 배정 입력**이 가능해진다. 브랜드 조직은 공장 배정이 없다.
-- **시스템 운영자(System Admin)**는 전체 플랫폼 관리 권한이며, 조직 운영자와 구분된다.
-- **권한 제어는 마지막 단계에서 일괄 적용한다.** (현재는 승인/배정 기능 우선 구현)
-- 메뉴 권한은 역할(Role) 기반으로 설계하며, **당분간은 모든 역할이 모든 메뉴를 볼 수 있도록 설정**한다. (권한 때문에 개발 지연 방지 목적)
+- 조직의 운영 관리자(해당 조직 `ADMIN`)가 승인하면 소속이 확정된다. (상태: `ACTIVE`)
+- 제조사 조직은 승인 후 공장/라인 배정 입력이 가능해진다. 브랜드 조직은 공장 배정이 없다.
+- 시스템 운영자(System Admin)는 플랫폼 전역 권한이며, 조직 운영자와 구분된다.
 
-#### 7.1.2. 조직 이동/퇴사 관리 (Future Work)
+### 7.1.2. 조직 구독 흐름 (OrganizationSubscription)
+- 각 `Organization`은 **반드시 1개의 구독 레코드**를 가진다.
+- 기본 상태는 `NOT_SUBSCRIBED`이며, 조직/거래처 데이터(`Organization`, `OrgRelationship`)는 구독과 별개로 유지된다.
+- `TRIAL`은 기본 30일이며, 만료 전 **수동 승인**으로 `ACTIVE` 전환한다.
+- `ACTIVE` 전환 시 `membershipEmail`과 `billingEmail`이 모두 필요하다. (동일 이메일 허용)
+- `GRACE`는 유예 상태이며, 미승인/미정산 지속 시 `SUSPENDED`로 전환한다.
+- `SUSPENDED`는 조직 단위 전체 기능 차단 상태로 취급한다.
+- 현재 BARO는 `ACTIVE` 상태로 운영하며, 멤버십/정산 이메일 모두 `baro.garment@gmail.com`을 기본값으로 사용한다.
+
+#### 7.1.3. 조직 이동/퇴사 관리 (Future Work)
 *향후 구현 예정. 현재는 정책만 기록.*
-- `OrgMembership`는 **조직별 이력 레코드**로 유지한다. 퇴사는 삭제하지 않고 `TERMINATED`로 표시한다.
+- `OrgMembership`는 조직별 이력 레코드로 유지한다. 퇴사는 삭제하지 않고 `TERMINATED`로 표시한다.
 - 조직 이동 시 흐름:
   - 이전 조직 `OrgMembership` → `TERMINATED` (또는 `SUSPENDED`)
   - 새 조직 `OrgMembership` → 승인 후 `ACTIVE`
   - 제조사 조직일 경우 `Employee`는 새 `orgMembershipId`로 생성/갱신
 - 다중 소속 정책은 추후 결정한다.
-  - 기본안: **단일 ACTIVE 소속만 허용** (승인 시 기존 ACTIVE 종료)
-  - 대안: **복수 ACTIVE 소속 허용** (로그인 후 조직 선택/전환 UI 필요)
-- 장기적으로는 이메일 대신 **Auth user id 기반 User 테이블**을 도입해 OrgMembership이 `userId`를 참조하도록 개선한다.
+  - 기본안: 단일 ACTIVE 소속만 허용 (승인 시 기존 ACTIVE 종료)
+  - 대안: 복수 ACTIVE 소속 허용 (로그인 후 조직 선택/전환 UI 필요)
+- 장기적으로는 이메일 대신 Auth user id 기반 User 테이블을 도입해 OrgMembership이 `userId`를 참조하도록 개선한다.
 
 ### 7.2. 스타일 및 공정 관리 (Style & Process Management)
 
@@ -986,4 +1002,47 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - 질문 최소화: 저장소 탐색으로 확인 가능한 내용은 질문하지 않습니다.
 - 질문이 필요한 경우: 기능 방향을 바꾸는 고영향 의사결정만 짧게 묻고, 가능하면 한 번에 묶어서 확인합니다.
 - 기본값 진행: 명시되지 않은 선택지는 프로젝트의 기존 패턴과 최근 합의를 기본값으로 적용하고, 결과를 변경사항에 기록합니다.
+
+## 10. 최근 작업 내역 (2026-02-16)
+
+### 10.1. 작업 배정 화면 성능/로딩 개선
+- 프론트엔드 배정 화면(`AssignBoard`, `ScheduleTimeline`, `StyleCard`)의 렌더 경로를 정리하고 핫패스 연산을 최적화했습니다.
+- `/styles` 조회 시 `compact` 응답을 활용해 로딩 페이로드를 줄이는 방향으로 보완했습니다.
+- 백엔드 조회 일부를 병렬화해 초기 로딩 시간을 단축했습니다.
+
+### 10.2. 주문 화면 UX 개선
+- 주문 상세에서 제조사 선택 흐름을 실제 소속/권한 기준에 맞게 보정했습니다.
+- 주문 목록은 글로벌 디자인을 유지하되, 정보 배치와 비율(가독성 중심) 위주로 조정했습니다.
+
+### 10.3. 스타일 공정 등록 UX 개선
+- 공정 등록/수정을 드로어 중심에서 목록 인라인 편집 중심으로 개선했습니다.
+- 동일 공정 중복 선택을 추가/수정 모두에서 차단했습니다.
+- 공정 입력 영역을 컴팩트하게 재배치하고 과도한 보조 문구를 제거했습니다.
+- 시간(초) 표시 포맷에 천 단위 콤마를 적용했습니다.
+
+### 10.4. 인증/조직 관리 보강
+- 로그인 및 조직 멤버십 관련 화면/흐름을 보강해 멀티조직 시나리오 대응 범위를 넓혔습니다.
+
+### 10.5. 검증
+- 프론트엔드 변경 사항은 `npm --prefix frontend run build` 기준으로 빌드 검증을 수행했습니다.
+
+## 11. 중복 코드 관리 규칙 (중요)
+
+### 11.1. 기본 원칙
+- 동일 도메인 책임(저장/조회/정규화/포맷)은 단일 유틸 또는 단일 API 모듈에서 처리합니다.
+- 화면 컴포넌트에서 스토리지 read/write 로직을 재정의하지 않고 공용 유틸을 재사용합니다.
+- 세 자릿수 콤마 포맷은 공용 유틸 `frontend/src/utils/numberFormat.js`를 단일 기준으로 사용합니다.
+- 시간(초) 표시는 `processTime`에서 `numberFormat`을 재사용해 일관성을 유지합니다.
+- 신규 유틸 추가 전 `frontend/src/utils`에서 기존 기능 검색을 먼저 수행합니다. (`rg` 권장)
+
+### 11.2. 현재 점검 결과 (2026-02-16)
+- `localData.js`의 `saveStyle`은 현재 직접 사용처가 없어 레거시 성격으로 분류합니다.
+- 스타일 도메인의 실사용 진입점은 `styleApi`이며, `loadStyles`는 초기 1회 마이그레이션 목적 사용으로 제한합니다.
+- 로컬 스토리지 접근 로직 일부가 화면 단에 분산되어 있어(`WorkList`, `AuthContext`) 점진 통합이 필요합니다.
+
+### 11.3. 중복 제거 TODO
+- [ ] `saveStyle` 제거 또는 `@deprecated` 표기 후 제거 일정 확정
+- [ ] `loadStyles`를 `loadLegacyStyles`로 명확화(마이그레이션 목적 강조)
+- [ ] `WorkList`의 localStorage 로직을 공용 storage 유틸로 통합
+- [ ] `AuthContext`의 개발용 localStorage 접근 공용화 여부 검토 후 중복 제거
 

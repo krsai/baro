@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from 'react';
+﻿import React, { memo, useMemo } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
@@ -8,7 +8,7 @@ const ROW_HEIGHT = 74;
 const BAR_HEIGHT = 50;
 const BAR_GAP = 4;
 
-const DropCell = ({ id, isHoliday }) => {
+const DropCell = memo(({ id, isHoliday }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
   const baseColor = isHoliday ? '#FCECEF' : 'transparent';
 
@@ -25,7 +25,7 @@ const DropCell = ({ id, isHoliday }) => {
       }}
     />
   );
-};
+});
 
 const buildRange = (assignment) => {
   const startOffset = (assignment.startDayOffsetPercent ?? 0) / 100;
@@ -45,28 +45,24 @@ const buildRange = (assignment) => {
   };
 };
 
-const assignLanes = (items) => {
-  const lanes = [];
+const assignLanes = (items, rangeById = new Map()) => {
+  const laneEndByIndex = [];
   const placed = [];
 
   items.forEach((item) => {
-    const range = buildRange(item);
+    const range = rangeById.get(item.id) || buildRange(item);
     let laneIndex = 0;
-    while (laneIndex < lanes.length) {
-      const conflict = lanes[laneIndex].some((existing) => {
-        const other = buildRange(existing);
-        return !(range.end <= other.start || range.start >= other.end);
-      });
-      if (!conflict) break;
+
+    while (laneIndex < laneEndByIndex.length) {
+      if (range.start >= laneEndByIndex[laneIndex]) break;
       laneIndex += 1;
     }
 
-    if (!lanes[laneIndex]) lanes[laneIndex] = [];
-    lanes[laneIndex].push(item);
+    laneEndByIndex[laneIndex] = range.end;
     placed.push({ ...item, laneIndex });
   });
 
-  return { placed, laneCount: lanes.length || 1 };
+  return { placed, laneCount: laneEndByIndex.length || 1 };
 };
 
 const getOrderKey = (assignment) => {
@@ -119,8 +115,51 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
       if (!map.has(item.lineId)) map.set(item.lineId, []);
       map.get(item.lineId).push(item);
     });
+    map.forEach((items) => {
+      items.sort((a, b) => getOrderKey(a) - getOrderKey(b));
+    });
     return map;
   }, [lines, assignments]);
+
+  const lineLayouts = useMemo(() => {
+    const map = new Map();
+
+    lines.forEach((line) => {
+      const lineAssignments = assignmentsByLine.get(line.id) || [];
+      const linkableIds = new Set();
+      lineAssignments.forEach((item, index) => {
+        if (index === 0) return;
+        const prev = lineAssignments[index - 1];
+        const expected = getNextStartIndex(prev, days);
+        if (item.startIndex > expected) {
+          linkableIds.add(item.id);
+        }
+      });
+
+      const rangeById = new Map();
+      lineAssignments.forEach((assignment) => {
+        rangeById.set(assignment.id, buildRange(assignment));
+      });
+
+      const { placed, laneCount } = assignLanes(lineAssignments, rangeById);
+      const placedWithLayout = placed.map((assignment) => {
+        const range = rangeById.get(assignment.id) || buildRange(assignment);
+        const widthCells = Math.max(range.end - range.start, 0);
+        return {
+          ...assignment,
+          leftPx: range.start * CELL_WIDTH,
+          widthPx: Math.max(widthCells * CELL_WIDTH, 120),
+          topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
+          heightPx: BAR_HEIGHT,
+          workDays: getWorkingDuration(assignment, days),
+        };
+      });
+
+      map.set(line.id, { placed: placedWithLayout, laneCount, linkableIds });
+    });
+
+    return map;
+  }, [lines, assignmentsByLine, days]);
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
@@ -173,20 +212,12 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
           </TableHead>
           <TableBody>
             {lines.map((line) => {
-              const lineAssignments = assignmentsByLine.get(line.id) || [];
-              const sortedByStart = lineAssignments
-                .slice()
-                .sort((a, b) => getOrderKey(a) - getOrderKey(b));
-              const linkableIds = new Set();
-              sortedByStart.forEach((item, index) => {
-                if (index === 0) return;
-                const prev = sortedByStart[index - 1];
-                const expected = getNextStartIndex(prev, days);
-                if (item.startIndex > expected) {
-                  linkableIds.add(item.id);
-                }
-              });
-              const { placed, laneCount } = assignLanes(lineAssignments);
+              const layout = lineLayouts.get(line.id) || {
+                placed: [],
+                laneCount: 1,
+                linkableIds: new Set(),
+              };
+              const { placed, laneCount, linkableIds } = layout;
               const rowHeight = Math.max(ROW_HEIGHT, laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP);
 
               return (
@@ -232,27 +263,10 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
                       })}
 
                       {placed.map((assignment) => {
-                        const startOffset = (assignment.startDayOffsetPercent ?? 0) / 100;
-                        const startPercent = (assignment.startDayPercent ?? 100) / 100;
-                        const endPercent = (assignment.endDayPercent ?? 100) / 100;
-                        const fullDays = Math.max(assignment.endIndex - assignment.startIndex - 1, 0);
-                        const widthCells =
-                          assignment.startIndex === assignment.endIndex
-                            ? startPercent
-                            : startPercent + fullDays + endPercent;
-                        const workDays = getWorkingDuration(assignment, days);
-
                         return (
                           <AssignBar
                             key={assignment.id}
-                            assignment={{
-                              ...assignment,
-                              leftPx: (assignment.startIndex + startOffset) * CELL_WIDTH,
-                              widthPx: Math.max(widthCells * CELL_WIDTH, 120),
-                              topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
-                              heightPx: BAR_HEIGHT,
-                              workDays,
-                            }}
+                            assignment={assignment}
                             showLinkPrev={linkableIds.has(assignment.id)}
                             onLinkPrev={onLinkPrev}
                             onSplit={onSplit}

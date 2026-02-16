@@ -1,155 +1,583 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
-  Typography,
-  Paper,
   Button,
+  IconButton,
+  Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
+  TableFooter,
   TableHead,
   TableRow,
-  TableFooter,
-  IconButton,
-  Drawer,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ProcessForm from './ProcessForm';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import EditIcon from '@mui/icons-material/Edit';
+import SearchableSelect from '../../../../components/SearchableSelect';
+import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
   calculateProcessLineTotal,
   calculateProcessTotal,
   formatSeconds,
   hasAnyProcessTime,
+  normalizeProcess,
   normalizeProcesses,
+  parseOptionalSecondsInput,
+  resolveProcessActualTime,
 } from '../../../../utils/processTime';
 
+const masterProcesses = [
+  { id: 1, code: 'P001', name: '주머니 달기', description: '자켓이나 코트의 주머니를 부착합니다.' },
+  { id: 2, code: 'P002', name: '소매 달기', description: '몸통과 블라우스의 소매를 부착합니다.' },
+  { id: 3, code: 'P003', name: '단추 달기', description: '모든 의류에 단추를 답니다.' },
+  { id: 4, code: 'P004', name: '지퍼 달기', description: '바지나 재킷의 지퍼를 부착합니다.' },
+  { id: 5, code: 'P005', name: '라벨 부착', description: '브랜드 또는 사이즈 라벨을 부착합니다.' },
+];
+
+const createEmptyDraft = () => ({
+  process: null,
+  quantity: 1,
+  pt: '',
+});
+
+const getProcessIdentity = (process) => {
+  if (!process || typeof process !== 'object') return '';
+  if (process.id !== null && process.id !== undefined && process.id !== '') {
+    return `id:${String(process.id)}`;
+  }
+  const code = String(process.code ?? '')
+    .trim()
+    .toUpperCase();
+  if (code) return `code:${code}`;
+  const name = String(process.name ?? '')
+    .trim()
+    .toLowerCase();
+  return name ? `name:${name}` : '';
+};
+
+const createInstanceId = (process) =>
+  `${process?.code || process?.name || 'PROC'}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
+const findMasterProcess = (process, options) => {
+  if (!process) return null;
+  return (
+    options.find((item) => item.id === process.id) ||
+    options.find((item) => item.code === process.code) ||
+    options.find((item) => item.name === process.name) ||
+    null
+  );
+};
+
+const createDraftFromProcess = (process, options) => ({
+  process: findMasterProcess(process, options),
+  quantity: Math.max(1, Number.parseInt(process?.quantity, 10) || 1),
+  pt: process?.pt === null || process?.pt === undefined ? '' : String(process.pt),
+});
+
+const buildProcessPayload = (draft, existingProcess = null) =>
+  normalizeProcess({
+    ...(existingProcess || {}),
+    id: draft.process?.id ?? existingProcess?.id,
+    code: draft.process?.code ?? existingProcess?.code,
+    name: draft.process?.name ?? existingProcess?.name,
+    description: draft.process?.description ?? existingProcess?.description,
+    quantity: Math.max(1, Number.parseInt(draft.quantity, 10) || 1),
+    pt: parseOptionalSecondsInput(draft.pt),
+    at: resolveProcessActualTime({
+      existingAt: existingProcess?.at ?? null,
+      workStats: {
+        actualTime: draft.process?.actualTime ?? existingProcess?.actualTime ?? null,
+      },
+    }),
+    instanceId: existingProcess?.instanceId || createInstanceId(draft.process),
+  });
+
 const StyleProcess = ({ processes = [], onProcessesChange }) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [editingProcess, setEditingProcess] = useState(null);
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
+  const processOptions = useMemo(() => {
+    const byIdentity = new Map();
+    masterProcesses.forEach((process) => {
+      byIdentity.set(getProcessIdentity(process), process);
+    });
+    safeProcesses.forEach((process) => {
+      const identity = getProcessIdentity(process);
+      if (!identity || byIdentity.has(identity)) return;
+      byIdentity.set(identity, {
+        id: process.id,
+        code: process.code,
+        name: process.name,
+        description: process.description || '',
+      });
+    });
+    return Array.from(byIdentity.values());
+  }, [safeProcesses]);
 
-  const handleOpenAddDrawer = () => {
-    setEditingProcess(null);
-    setIsDrawerOpen(true);
-  };
-
-  const handleOpenEditDrawer = (process) => {
-    setEditingProcess(process);
-    setIsDrawerOpen(true);
-  };
-
-  const handleDrawerClose = () => {
-    setIsDrawerOpen(false);
-    // It's good practice to reset the editing state when the drawer closes
-    setEditingProcess(null);
-  };
-
-  const handleSave = (data) => {
-    if (editingProcess) {
-      // Edit mode
-      const updatedProcesses = safeProcesses.map((p) =>
-        p.instanceId === editingProcess.instanceId ? { ...p, ...data } : p
-      );
-      onProcessesChange(updatedProcesses);
-    } else {
-      // Add mode
-      onProcessesChange([...safeProcesses, ...normalizeProcesses(data)]);
-    }
-  };
-
-  const handleRemoveProcess = (instanceId) => {
-    onProcessesChange(safeProcesses.filter((p) => p.instanceId !== instanceId));
-  };
-  
-  const onDragEnd = (result) => {
-    if (!result.destination) return;
-    const newProcesses = Array.from(safeProcesses);
-    const [reorderedItem] = newProcesses.splice(result.source.index, 1);
-    newProcesses.splice(result.destination.index, 0, reorderedItem);
-    onProcessesChange(newProcesses);
-  };
+  const [isAddingRow, setIsAddingRow] = useState(false);
+  const [addDraft, setAddDraft] = useState(createEmptyDraft);
+  const [addError, setAddError] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(createEmptyDraft);
+  const [editError, setEditError] = useState('');
 
   const totalPT = useMemo(() => calculateProcessTotal(safeProcesses, 'pt'), [safeProcesses]);
   const totalAT = useMemo(() => calculateProcessTotal(safeProcesses, 'at'), [safeProcesses]);
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
 
+  const addDisabledIdentitySet = useMemo(() => {
+    const set = new Set();
+    safeProcesses.forEach((process) => {
+      const identity = getProcessIdentity(process);
+      if (identity) set.add(identity);
+    });
+    return set;
+  }, [safeProcesses]);
+
+  const editDisabledIdentitySet = useMemo(() => {
+    const set = new Set();
+    safeProcesses.forEach((process) => {
+      if (process.instanceId === editingId) return;
+      const identity = getProcessIdentity(process);
+      if (identity) set.add(identity);
+    });
+    return set;
+  }, [editingId, safeProcesses]);
+
+  const validateDraft = (draft, options = {}) => {
+    const { ignoreInstanceId = null } = options;
+    if (!draft.process) return '공정을 선택해주세요.';
+    const quantity = Number.parseInt(draft.quantity, 10);
+    if (!Number.isFinite(quantity) || quantity <= 0) return '수량은 1 이상이어야 합니다.';
+
+    const identity = getProcessIdentity(draft.process);
+    if (!identity) return '유효한 공정을 선택해주세요.';
+
+    const duplicated = safeProcesses.some((process) => {
+      if (ignoreInstanceId && process.instanceId === ignoreInstanceId) return false;
+      return getProcessIdentity(process) === identity;
+    });
+    if (duplicated) return '이미 등록된 공정입니다.';
+
+    return '';
+  };
+
+  const handleStartAddRow = () => {
+    if (editingId) return;
+    setIsAddingRow(true);
+    setAddDraft(createEmptyDraft());
+    setAddError('');
+  };
+
+  const handleCancelAddRow = () => {
+    setIsAddingRow(false);
+    setAddDraft(createEmptyDraft());
+    setAddError('');
+  };
+
+  const handleSaveAddRow = () => {
+    const errorMessage = validateDraft(addDraft);
+    if (errorMessage) {
+      setAddError(errorMessage);
+      return;
+    }
+    const nextProcess = buildProcessPayload(addDraft);
+    onProcessesChange([...safeProcesses, nextProcess]);
+    handleCancelAddRow();
+  };
+
+  const handleStartEdit = (process) => {
+    setIsAddingRow(false);
+    setAddDraft(createEmptyDraft());
+    setAddError('');
+    setEditingId(process.instanceId);
+    setEditDraft(createDraftFromProcess(process, processOptions));
+    setEditError('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditDraft(createEmptyDraft());
+    setEditError('');
+  };
+
+  const handleSaveEdit = (process) => {
+    const errorMessage = validateDraft(editDraft, { ignoreInstanceId: process.instanceId });
+    if (errorMessage) {
+      setEditError(errorMessage);
+      return;
+    }
+
+    const updatedProcess = buildProcessPayload(editDraft, process);
+    const nextProcesses = safeProcesses.map((item) =>
+      item.instanceId === process.instanceId ? updatedProcess : item
+    );
+    onProcessesChange(nextProcesses);
+    handleCancelEdit();
+  };
+
+  const handleRemoveProcess = (instanceId) => {
+    onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
+    if (editingId === instanceId) {
+      handleCancelEdit();
+    }
+  };
+
+  const onDragEnd = (result) => {
+    if (isAddingRow || editingId) return;
+    if (!result.destination) return;
+
+    const nextProcesses = Array.from(safeProcesses);
+    const [reorderedItem] = nextProcesses.splice(result.source.index, 1);
+    nextProcesses.splice(result.destination.index, 0, reorderedItem);
+    onProcessesChange(nextProcesses);
+  };
+
+  const renderRowActions = (process) => (
+    <Stack direction="row" spacing={0.5} justifyContent="center">
+      <Tooltip title="수정">
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => handleStartEdit(process)}
+            disabled={isAddingRow || Boolean(editingId)}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="삭제">
+        <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Stack>
+  );
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
         <Typography variant="h6">스타일 공정 목록</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleOpenAddDrawer}>
-          스타일 공정 추가
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleStartAddRow}
+          disabled={isAddingRow || Boolean(editingId)}
+          sx={{
+            minWidth: 108,
+            height: 36,
+            px: 1.5,
+            boxShadow: 'none',
+            borderRadius: 1.5,
+          }}
+        >
+          행 추가
         </Button>
       </Box>
 
-      <Paper variant="outlined">
+      <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         <TableContainer>
           <DragDropContext onDragEnd={onDragEnd}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{width: '5%'}}></TableCell>
-                  <TableCell>공정명</TableCell>
-                  <TableCell align="right">수량</TableCell>
-                  <TableCell align="right">PT</TableCell>
-                  <TableCell align="right">AT(자동)</TableCell>
-                  <TableCell align="right">총 PT</TableCell>
-                  <TableCell align="right">총 AT</TableCell>
-                  <TableCell align="center">삭제</TableCell>
+                  <TableCell sx={{ width: 70 }}>순서</TableCell>
+                  <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
+                  <TableCell align="right" sx={{ width: 90 }}>
+                    수량
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: 110 }}>
+                    PT
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>
+                    AT(자동)
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>
+                    총 PT
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>
+                    총 AT
+                  </TableCell>
+                  <TableCell align="center" sx={{ width: 120 }}>
+                    작업
+                  </TableCell>
                 </TableRow>
               </TableHead>
-              <Droppable droppableId="processes">
+
+              <Droppable droppableId="style-processes">
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                    {safeProcesses.map((process, index) => (
-                      <Draggable key={process.instanceId} draggableId={process.instanceId} index={index}>
-                        {(provided) => (
-                          <TableRow 
-                            ref={provided.innerRef} 
-                            {...provided.draggableProps} 
-                            {...provided.dragHandleProps} 
-                            hover
-                            onDoubleClick={() => handleOpenEditDrawer(process)}
-                            sx={{ cursor: 'pointer' }}
-                          >
-                            <TableCell sx={{ cursor: 'grab' }}>{index + 1}</TableCell>
-                            <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
-                            <TableCell align="right">{process.quantity}</TableCell>
-                            <TableCell align="right">{formatSeconds(process.pt)}</TableCell>
-                            <TableCell align="right">{formatSeconds(process.at)}</TableCell>
-                            <TableCell align="right">
-                              {formatSeconds(calculateProcessLineTotal(process, 'pt'))}
-                            </TableCell>
-                            <TableCell align="right">
-                              {formatSeconds(calculateProcessLineTotal(process, 'at'))}
-                            </TableCell>
-                            <TableCell align="center">
-                              <IconButton size="small" onClick={(e) => {
-                                e.stopPropagation(); // prevent double click event from firing
-                                handleRemoveProcess(process.instanceId)
-                              }}>
-                                <DeleteIcon />
+                    {isAddingRow && (
+                      <TableRow sx={{ backgroundColor: '#f8fafc' }}>
+                        <TableCell align="center" sx={{ color: 'text.secondary' }}>
+                          신규
+                        </TableCell>
+                        <TableCell>
+                          <SearchableSelect
+                            size="small"
+                            label="공정 선택"
+                            options={processOptions}
+                            value={addDraft.process}
+                            onChange={(_event, value) => {
+                              setAddDraft((prev) => ({ ...prev, process: value }));
+                              setAddError('');
+                            }}
+                            getOptionLabel={(option) => `[${option.code}] ${option.name}`}
+                            isOptionEqualToValue={(option, value) =>
+                              option.id === value?.id || option.code === value?.code
+                            }
+                            getOptionDisabled={(option) =>
+                              addDisabledIdentitySet.has(getProcessIdentity(option))
+                            }
+                            sx={{ width: '100%' }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={addDraft.quantity}
+                            onChange={(event) =>
+                              setAddDraft((prev) => ({
+                                ...prev,
+                                quantity: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
+                              }))
+                            }
+                            inputProps={{ min: 1 }}
+                            sx={{ width: 76 }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={addDraft.pt}
+                            onChange={(event) => {
+                              setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
+                            }}
+                            inputProps={{ min: 0 }}
+                            placeholder="-"
+                            sx={{ width: 86 }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">-</TableCell>
+                        <TableCell align="right">
+                          {formatSeconds(calculateProcessLineTotal(buildProcessPayload(addDraft), 'pt'))}
+                        </TableCell>
+                        <TableCell align="right">-</TableCell>
+                        <TableCell align="center">
+                          <Stack direction="row" spacing={0.5} justifyContent="center">
+                            <Tooltip title="저장">
+                              <IconButton size="small" onClick={handleSaveAddRow}>
+                                <CheckIcon fontSize="small" />
                               </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </Draggable>
-                    ))}
+                            </Tooltip>
+                            <Tooltip title="취소">
+                              <IconButton size="small" onClick={handleCancelAddRow}>
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {addError && isAddingRow && (
+                      <TableRow sx={{ backgroundColor: '#f8fafc' }}>
+                        <TableCell colSpan={8} sx={{ py: 0.75 }}>
+                          <Typography variant="caption" color="error">
+                            {addError}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {safeProcesses.length === 0 && !isAddingRow ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                          등록된 공정이 없습니다. 상단의 행 추가로 바로 입력해보세요.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      safeProcesses.map((process, index) => (
+                        <Draggable
+                          key={process.instanceId}
+                          draggableId={process.instanceId}
+                          index={index}
+                          isDragDisabled={Boolean(isAddingRow || editingId)}
+                        >
+                          {(dragProvided) => {
+                            const isEditing = editingId === process.instanceId;
+                            const previewProcess = isEditing
+                              ? buildProcessPayload(editDraft, process)
+                              : process;
+
+                            return (
+                              <>
+                                <TableRow
+                                  ref={dragProvided.innerRef}
+                                  {...dragProvided.draggableProps}
+                                  hover
+                                  onDoubleClick={() => {
+                                    if (!isAddingRow && !editingId) handleStartEdit(process);
+                                  }}
+                                  sx={{ cursor: isEditing ? 'default' : 'pointer' }}
+                                >
+                                  <TableCell
+                                    align="center"
+                                    {...dragProvided.dragHandleProps}
+                                    sx={{
+                                      cursor: isAddingRow || editingId ? 'not-allowed' : 'grab',
+                                      color: 'text.secondary',
+                                    }}
+                                  >
+                                    <Stack
+                                      direction="row"
+                                      spacing={0.25}
+                                      alignItems="center"
+                                      justifyContent="center"
+                                    >
+                                      <DragIndicatorIcon fontSize="small" />
+                                      <Typography variant="caption">{index + 1}</Typography>
+                                    </Stack>
+                                  </TableCell>
+
+                                  <TableCell>
+                                    {isEditing ? (
+                                      <SearchableSelect
+                                        size="small"
+                                        label="공정 선택"
+                                        options={processOptions}
+                                        value={editDraft.process}
+                                        onChange={(_event, value) => {
+                                          setEditDraft((prev) => ({ ...prev, process: value }));
+                                          setEditError('');
+                                        }}
+                                        getOptionLabel={(option) => `[${option.code}] ${option.name}`}
+                                        isOptionEqualToValue={(option, value) =>
+                                          option.id === value?.id || option.code === value?.code
+                                        }
+                                        getOptionDisabled={(option) =>
+                                          editDisabledIdentitySet.has(getProcessIdentity(option))
+                                        }
+                                        sx={{ width: '100%' }}
+                                      />
+                                    ) : (
+                                      `[${process.code}] ${process.name}`
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell align="right">
+                                    {isEditing ? (
+                                      <TextField
+                                        size="small"
+                                        type="number"
+                                        value={editDraft.quantity}
+                                        onChange={(event) =>
+                                          setEditDraft((prev) => ({
+                                            ...prev,
+                                            quantity: Math.max(
+                                              1,
+                                              Number.parseInt(event.target.value, 10) || 1
+                                            ),
+                                          }))
+                                        }
+                                        inputProps={{ min: 1 }}
+                                        sx={{ width: 76 }}
+                                      />
+                                    ) : (
+                                      formatNumberWithCommas(process.quantity, {
+                                        fallback: '-',
+                                        maximumFractionDigits: 0,
+                                      })
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell align="right">
+                                    {isEditing ? (
+                                      <TextField
+                                        size="small"
+                                        type="number"
+                                        value={editDraft.pt}
+                                        onChange={(event) =>
+                                          setEditDraft((prev) => ({ ...prev, pt: event.target.value }))
+                                        }
+                                        inputProps={{ min: 0 }}
+                                        placeholder="-"
+                                        sx={{ width: 86 }}
+                                      />
+                                    ) : (
+                                      formatSeconds(process.pt)
+                                    )}
+                                  </TableCell>
+
+                                  <TableCell align="right">{formatSeconds(previewProcess.at)}</TableCell>
+                                  <TableCell align="right">
+                                    {formatSeconds(calculateProcessLineTotal(previewProcess, 'pt'))}
+                                  </TableCell>
+                                  <TableCell align="right">
+                                    {formatSeconds(calculateProcessLineTotal(previewProcess, 'at'))}
+                                  </TableCell>
+                                  <TableCell align="center">
+                                    {isEditing ? (
+                                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                                        <Tooltip title="저장">
+                                          <IconButton size="small" onClick={() => handleSaveEdit(process)}>
+                                            <CheckIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="취소">
+                                          <IconButton size="small" onClick={handleCancelEdit}>
+                                            <CloseIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      </Stack>
+                                    ) : (
+                                      renderRowActions(process)
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+
+                                {isEditing && editError && (
+                                  <TableRow>
+                                    <TableCell colSpan={8} sx={{ py: 0.75 }}>
+                                      <Typography variant="caption" color="error">
+                                        {editError}
+                                      </Typography>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            );
+                          }}
+                        </Draggable>
+                      ))
+                    )}
                     {provided.placeholder}
                   </TableBody>
                 )}
               </Droppable>
+
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={5} align="right" sx={{ fontWeight: 'bold' }}>총 시간 합계</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                  <TableCell colSpan={5} align="right" sx={{ fontWeight: 700 }}>
+                    총 시간 합계
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {hasAT ? formatSeconds(totalAT) : '-'}
                   </TableCell>
                   <TableCell />
@@ -159,18 +587,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           </DragDropContext>
         </TableContainer>
       </Paper>
-
-      <Drawer
-        anchor="right"
-        open={isDrawerOpen}
-        onClose={handleDrawerClose}
-      >
-        <ProcessForm
-          onClose={handleDrawerClose} 
-          onSave={handleSave}
-          initialData={editingProcess}
-        />
-      </Drawer>
     </Box>
   );
 };

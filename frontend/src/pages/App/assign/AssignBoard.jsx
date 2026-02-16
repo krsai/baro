@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Grid, Stack, Typography } from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -864,7 +864,7 @@ const AssignBoard = () => {
       setLoading(true);
       try {
         const [styles, factories, lines, workers, attributes] = await Promise.all([
-          fetchStylesFromApi().catch(() => []),
+          fetchStylesFromApi({ compact: true }).catch(() => []),
           fetchJson('/factories').catch(() => []),
           fetchJson('/lines').catch(() => []),
           fetchJson('/line-workers').catch(() => []),
@@ -1001,6 +1001,10 @@ const AssignBoard = () => {
     () => new Map(cards.map((card) => [card.id, card])),
     [cards]
   );
+  const assignmentById = useMemo(
+    () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
+    [assignments]
+  );
 
   const assignmentsForRender = useMemo(() => {
     return assignments.map((item) => {
@@ -1012,26 +1016,30 @@ const AssignBoard = () => {
     });
   }, [assignments, cardById]);
 
+  const unassignedCards = useMemo(
+    () => cards.filter((card) => !assignedCardIds.has(card.id)),
+    [cards, assignedCardIds]
+  );
+
   const filteredCards = useMemo(() => {
-    const pool = cards.filter((card) => !assignedCardIds.has(card.id));
-    if (!searchTerm) return pool;
+    if (!searchTerm) return unassignedCards;
     const lower = searchTerm.toLowerCase();
-    return pool.filter(
+    return unassignedCards.filter(
       (card) =>
         card.styleName.toLowerCase().includes(lower) ||
         card.customer.toLowerCase().includes(lower) ||
         (card.colorName ? card.colorName.toLowerCase().includes(lower) : false) ||
         (card.orderNo ? card.orderNo.toLowerCase().includes(lower) : false)
     );
-  }, [cards, searchTerm, assignedCardIds]);
+  }, [unassignedCards, searchTerm]);
 
-  const handleDragStart = (event) => {
+  const handleDragStart = useCallback((event) => {
     const { active } = event;
     if (!active) return;
     const id = String(active.id);
     if (id.startsWith('card-')) {
       const cardId = id.replace('card-', '');
-      const card = cards.find((item) => item.id === cardId);
+      const card = cardById.get(cardId);
       if (card) {
         setActiveDrag({
           type: 'card',
@@ -1047,7 +1055,7 @@ const AssignBoard = () => {
     }
     if (id.startsWith('assign-')) {
       const assignmentId = id.replace('assign-', '');
-      const assignment = assignments.find((item) => item.id === assignmentId);
+      const assignment = assignmentById.get(assignmentId);
       if (assignment) {
         setActiveDrag({
           type: 'assignment',
@@ -1057,11 +1065,11 @@ const AssignBoard = () => {
         });
       }
     }
-  };
+  }, [cardById, assignmentById]);
 
-  const handleDragCancel = () => {
+  const handleDragCancel = useCallback(() => {
     setActiveDrag(null);
-  };
+  }, []);
 
   const handleDragEnd = (event) => {
     const { active, over } = event;
@@ -1097,10 +1105,10 @@ const AssignBoard = () => {
 
     if (overId.startsWith('assign-drop-')) {
       const targetId = overId.replace('assign-drop-', '');
-      const targetAssignment = assignments.find((item) => item.id === targetId);
+      const targetAssignment = assignmentById.get(targetId);
       if (targetAssignment && activeId.startsWith('card-')) {
         const sourceCardId = activeId.replace('card-', '');
-        const sourceCard = cards.find((item) => item.id === sourceCardId);
+        const sourceCard = cardById.get(sourceCardId);
         if (sourceCard && getAssignmentOriginId(targetAssignment) === getCardOriginId(sourceCard)) {
           if (mergeCardIntoAssignment(targetId, sourceCardId)) {
             setActiveDrag(null);
@@ -1123,7 +1131,7 @@ const AssignBoard = () => {
 
     if (overId.startsWith('assign-drop-')) {
       const targetId = overId.replace('assign-drop-', '');
-      targetOnDay = assignments.find((item) => item.id === targetId);
+      targetOnDay = assignmentById.get(targetId) ?? null;
       if (targetOnDay) {
         lineId = targetOnDay.lineId;
         dayIndex = targetOnDay.startIndex;
@@ -1143,7 +1151,7 @@ const AssignBoard = () => {
 
     if (activeId.startsWith('card-')) {
       const cardId = activeId.replace('card-', '');
-      const card = cards.find((item) => item.id === cardId);
+      const card = cardById.get(cardId);
       if (!card) {
         setActiveDrag(null);
         return;
@@ -1322,7 +1330,7 @@ const AssignBoard = () => {
     });
   };
 
-  const promptSplitQuantity = (quantity) => {
+  const promptSplitQuantity = useCallback((quantity) => {
     if (!quantity || quantity <= 1) return null;
     const input = window.prompt(`분할할 수량을 입력하세요 (1 ~ ${quantity - 1})`);
     if (input == null) return null;
@@ -1331,9 +1339,9 @@ const AssignBoard = () => {
     const qty = Math.floor(value);
     if (qty <= 0 || qty >= quantity) return null;
     return qty;
-  };
+  }, []);
 
-  const buildSplitCard = (card, quantity, ratio, newId) => {
+  const buildSplitCard = useCallback((card, quantity, ratio, newId) => {
     const totalSeconds = scaleValue(card.totalSeconds, ratio);
     const totalPt = scaleValue(card.totalPt, ratio);
     const totalAt = scaleValue(card.totalAt, ratio);
@@ -1348,10 +1356,10 @@ const AssignBoard = () => {
       totalAt,
       status: resolveCardStatus(card, totalPt, totalAt),
     };
-  };
+  }, []);
 
-  const handleSplitCard = (cardId) => {
-    const card = cards.find((item) => item.id === cardId);
+  const handleSplitCard = useCallback((cardId) => {
+    const card = cardById.get(cardId);
     if (!card) return;
     const quantity = Number(card.quantity);
     const splitQty = promptSplitQuantity(quantity);
@@ -1364,12 +1372,12 @@ const AssignBoard = () => {
     const splitCard = buildSplitCard(card, splitQty, ratio, newId);
 
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
-  };
+  }, [cardById, promptSplitQuantity, buildSplitCard]);
 
-  const handleSplitAssignment = (assignmentId) => {
-    const target = assignments.find((item) => item.id === assignmentId);
+  const handleSplitAssignment = useCallback((assignmentId) => {
+    const target = assignmentById.get(assignmentId);
     if (!target?.cardId) return;
-    const card = cards.find((item) => item.id === target.cardId);
+    const card = cardById.get(target.cardId);
     if (!card) return;
     const quantity = Number(card.quantity ?? target.quantity);
     const splitQty = promptSplitQuantity(quantity);
@@ -1404,17 +1412,17 @@ const AssignBoard = () => {
           : item
       )
     );
-  };
+  }, [assignmentById, cardById, promptSplitQuantity, buildSplitCard, days]);
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
     if (assignment.originOrderId) return assignment.originOrderId;
-    const card = cards.find((item) => item.id === assignment.cardId);
+    const card = cardById.get(assignment.cardId);
     return getCardOriginId(card) ?? assignment.cardId ?? assignment.id;
   };
 
   const buildCardFromAssignment = (assignment) => {
-    const card = cards.find((item) => item.id === assignment.cardId);
+    const card = cardById.get(assignment.cardId);
     if (card) return card;
     const basis = assignment.proposalBasis || assignment.basis;
     return {
@@ -1444,8 +1452,8 @@ const AssignBoard = () => {
   };
 
   const mergeCardIntoAssignment = (targetAssignmentId, sourceCardId) => {
-    const target = assignments.find((item) => item.id === targetAssignmentId);
-    const sourceCard = cards.find((item) => item.id === sourceCardId);
+    const target = assignmentById.get(targetAssignmentId);
+    const sourceCard = cardById.get(sourceCardId);
     if (!target || !sourceCard) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
@@ -1486,8 +1494,8 @@ const AssignBoard = () => {
   };
 
   const mergeAssignmentIntoCardTarget = (targetCardId, sourceAssignmentId) => {
-    const targetCard = cards.find((item) => item.id === targetCardId);
-    const sourceAssignment = assignments.find((item) => item.id === sourceAssignmentId);
+    const targetCard = cardById.get(targetCardId);
+    const sourceAssignment = assignmentById.get(sourceAssignmentId);
     if (!targetCard || !sourceAssignment) return false;
     if (getCardOriginId(targetCard) !== getAssignmentOriginId(sourceAssignment)) return false;
 
@@ -1504,8 +1512,8 @@ const AssignBoard = () => {
 
   const mergeAssignments = (targetAssignmentId, sourceAssignmentId) => {
     if (!targetAssignmentId || !sourceAssignmentId || targetAssignmentId === sourceAssignmentId) return false;
-    const target = assignments.find((item) => item.id === targetAssignmentId);
-    const source = assignments.find((item) => item.id === sourceAssignmentId);
+    const target = assignmentById.get(targetAssignmentId);
+    const source = assignmentById.get(sourceAssignmentId);
     if (!target || !source) return false;
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
@@ -1620,8 +1628,8 @@ const AssignBoard = () => {
                   >
                     <StyleCard
                       card={card}
-                      onSelect={() => setSelectedCardId(card.id)}
-                      onSplit={() => handleSplitCard(card.id)}
+                      onSelect={setSelectedCardId}
+                      onSplit={handleSplitCard}
                     />
                   </Box>
                 ))}
@@ -1685,4 +1693,3 @@ const AssignBoard = () => {
 };
 
 export default AssignBoard;
-

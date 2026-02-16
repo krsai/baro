@@ -50,7 +50,7 @@ const DRAWER_WIDTH = 260;
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut } = useAuth();
+  const { signOut, devBypass, devProfile } = useAuth();
   const {
     sidebarOpen,
     toggleSidebar,
@@ -369,6 +369,21 @@ const MainLayout = () => {
               BARO
             </Button>
           </Box>
+          {devBypass && devProfile?.label ? (
+            <Box
+              sx={{
+                px: 1.2,
+                py: 0.4,
+                borderRadius: 1,
+                bgcolor: '#E7F0FF',
+                color: 'primary.main',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              {`DEV · ${devProfile.label}`}
+            </Box>
+          ) : null}
         </Toolbar>
       </AppBar>
 

@@ -29,6 +29,14 @@ const ROLE_OPTIONS = [
   { value: 'WORKER', label: 'Worker' },
 ];
 
+const SUBSCRIPTION_STATUS_OPTIONS = [
+  { value: 'NOT_SUBSCRIBED', label: 'Not Subscribed' },
+  { value: 'TRIAL', label: 'Trial' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'GRACE', label: 'Grace' },
+  { value: 'SUSPENDED', label: 'Suspended' },
+];
+
 const OrgMembership = () => {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
@@ -40,6 +48,9 @@ const OrgMembership = () => {
     code: '',
     type: 'MANUFACTURER',
     email: '',
+    subscriptionStatus: 'NOT_SUBSCRIBED',
+    membershipEmail: '',
+    billingEmail: '',
     representative: '',
     address: '',
     phone: '',
@@ -112,6 +123,13 @@ const OrgMembership = () => {
       showNotification('Please enter an organization name.', 'error');
       return;
     }
+    if (
+      orgForm.subscriptionStatus === 'ACTIVE' &&
+      (!orgForm.membershipEmail.trim() || !orgForm.billingEmail.trim())
+    ) {
+      showNotification('Active subscription requires membership and billing emails.', 'error');
+      return;
+    }
 
     setSavingOrg(true);
     try {
@@ -120,6 +138,9 @@ const OrgMembership = () => {
         code: orgForm.code.trim(),
         type: orgForm.type,
         email: orgForm.email.trim(),
+        subscriptionStatus: orgForm.subscriptionStatus,
+        membershipEmail: orgForm.membershipEmail.trim(),
+        billingEmail: orgForm.billingEmail.trim(),
         representative: orgForm.representative.trim(),
         address: orgForm.address.trim(),
         phone: orgForm.phone.trim(),
@@ -142,6 +163,9 @@ const OrgMembership = () => {
         name: '',
         code: '',
         email: '',
+        subscriptionStatus: 'NOT_SUBSCRIBED',
+        membershipEmail: '',
+        billingEmail: '',
         representative: '',
         address: '',
         phone: '',
@@ -255,6 +279,42 @@ const OrgMembership = () => {
                   name="email"
                   value={orgForm.email}
                   onChange={handleOrgChange}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Subscription Status"
+                  name="subscriptionStatus"
+                  value={orgForm.subscriptionStatus}
+                  onChange={handleOrgChange}
+                >
+                  {SUBSCRIPTION_STATUS_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Membership Email"
+                  name="membershipEmail"
+                  value={orgForm.membershipEmail}
+                  onChange={handleOrgChange}
+                  placeholder="membership@domain.com"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Billing Email"
+                  name="billingEmail"
+                  value={orgForm.billingEmail}
+                  onChange={handleOrgChange}
+                  placeholder="billing@domain.com"
                 />
               </Grid>
               <Grid item xs={12}>
