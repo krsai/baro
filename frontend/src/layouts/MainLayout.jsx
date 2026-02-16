@@ -184,6 +184,10 @@ const MainLayout = () => {
       if (path.startsWith('/order/') && path !== '/order') {
         openOptions.replacePrefix = '/order/';
       }
+      // For work history detail pages, ensure only one detail tab is open.
+      if (path.startsWith('/work-history/') && path !== '/work-history') {
+        openOptions.replacePrefix = '/work-history/';
+      }
       
       // The `openTab` function from context already checks for duplicates,
       // so we can call it directly. This removes the dependency on `openTabs`.

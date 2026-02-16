@@ -2,7 +2,6 @@
 import {
   Box,
   Button,
-  Drawer,
   Paper,
   Table,
   TableBody,
@@ -13,26 +12,8 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import WorkDetail from './WorkDetail';
-
-const STORAGE_KEY = 'baro_work_logs_v2';
-
-const loadWorkLogs = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
-    return [];
-  }
-};
-
-const saveWorkLogs = (logs) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-};
+import { useApp } from '../../../context/AppContext';
+import { loadWorkLogs } from './workLogStorage';
 
 const formatSeconds = (value) => {
   const seconds = Number(value) || 0;
@@ -48,39 +29,35 @@ const formatNote = (note) => {
 };
 
 const WorkList = () => {
-  const [workLogs, setWorkLogs] = useState(() => loadWorkLogs());
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const { navigateToPath } = useApp();
+  const [workLogs] = useState(() => loadWorkLogs());
 
   const sortedLogs = useMemo(
     () =>
       [...workLogs].sort(
-        (a, b) => new Date(b.workDate || b.createdAt || 0).getTime() - new Date(a.workDate || a.createdAt || 0).getTime()
+        (a, b) =>
+          new Date(b.workDate || b.createdAt || 0).getTime() -
+          new Date(a.workDate || a.createdAt || 0).getTime()
       ),
     [workLogs]
   );
 
-  const toggleDrawer = (open) => () => setIsDrawerOpen(open);
-
-  const handleSaveLog = (payload) => {
-    const nextLog = {
-      id: `work-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      ctBasis: 'CT',
-      ...payload,
-    };
-    setWorkLogs((prev) => {
-      const next = [nextLog, ...prev];
-      saveWorkLogs(next);
-      return next;
+  const handleAdd = () => {
+    navigateToPath('/work-history/new', { label: '작업 기록 추가' });
+  };
+  const handleEdit = (log) => {
+    if (!log?.id) return;
+    const labelSuffix = log.workDate || log.factoryName || log.id;
+    navigateToPath(`/work-history/${log.id}`, {
+      label: `작업 기록 ${labelSuffix}`,
     });
-    setIsDrawerOpen(false);
   };
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">작업 기록</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={toggleDrawer(true)}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
           작업 기록 추가
         </Button>
       </Box>
@@ -108,7 +85,12 @@ const WorkList = () => {
                 </TableRow>
               ) : (
                 sortedLogs.map((log) => (
-                  <TableRow key={log.id} hover>
+                  <TableRow
+                    key={log.id}
+                    hover
+                    onDoubleClick={() => handleEdit(log)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell>{log.workDate || '-'}</TableCell>
                     <TableCell>{log.factoryName || '-'}</TableCell>
                     <TableCell>{log.ctBasis || 'CT'}</TableCell>
@@ -123,10 +105,6 @@ const WorkList = () => {
           </Table>
         </TableContainer>
       </Paper>
-
-      <Drawer anchor="right" open={isDrawerOpen} onClose={toggleDrawer(false)}>
-        <WorkDetail onClose={toggleDrawer(false)} onSave={handleSaveLog} />
-      </Drawer>
     </Box>
   );
 };

@@ -20,6 +20,7 @@ import Assign from './pages/App/Assign';
 import AssignBoard from './pages/App/assign/AssignBoard';
 import AssignDetail from './pages/App/assign/AssignDetail';
 import Work from './pages/App/Work';
+import WorkEntry from './pages/App/work/WorkEntry';
 import AuthCallback from './pages/Auth/AuthCallback';
 import { useAuth } from './context/AuthContext';
 import Attribute from './pages/App/Attribute';
@@ -123,6 +124,14 @@ const router = createBrowserRouter([
           {
             path: 'work-history',
             element: <Work />,
+          },
+          {
+            path: 'work-history/new',
+            element: <WorkEntry />,
+          },
+          {
+            path: 'work-history/:workLogId',
+            element: <WorkEntry />,
           },
           {
             path: 'attribute',

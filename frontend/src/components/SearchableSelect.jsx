@@ -17,13 +17,19 @@ import { Autocomplete, TextField } from '@mui/material';
  */
 const SearchableSelect = ({ 
   label, 
-  options, 
+  options = [], 
   value, 
   onChange, 
-  getOptionLabel = (option) => option.name,
+  getOptionLabel = (option) => option?.name || '',
   disabled = false,
+  textFieldProps = {},
   ...props
 }) => {
+  const {
+    inputProps: customInputProps = {},
+    ...restTextFieldProps
+  } = textFieldProps;
+
   return (
     <Autocomplete
       value={value}
@@ -32,7 +38,17 @@ const SearchableSelect = ({
       getOptionLabel={getOptionLabel}
       disabled={disabled}
       {...props}
-      renderInput={(params) => <TextField {...params} label={label} />}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
+          {...restTextFieldProps}
+          inputProps={{
+            ...(params.inputProps || {}),
+            ...customInputProps,
+          }}
+        />
+      )}
     />
   );
 };

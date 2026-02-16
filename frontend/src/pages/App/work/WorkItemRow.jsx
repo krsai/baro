@@ -1,7 +1,8 @@
 ﻿import React, { useEffect, useMemo, useRef } from 'react';
-import { Box, IconButton, TextField } from '@mui/material';
+import { Box, IconButton, TextField, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchableSelect from '../../../components/SearchableSelect';
+import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const toSeconds = (value) => {
   const parsed = Number(value);
@@ -44,8 +45,23 @@ const calculateWage = (item, factory) => {
   };
 };
 
-const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, styles, factory }) => {
-  const rowRef = useRef(null);
+const WorkItemRow = ({
+  item,
+  itemIndex,
+  disabled,
+  focusRequest,
+  onItemChange,
+  onRemoveItem,
+  onRequestAddItem,
+  onRequestActionFocus,
+  customers,
+  styles,
+  factory,
+}) => {
+  const customerInputRef = useRef(null);
+  const styleInputRef = useRef(null);
+  const processInputRef = useRef(null);
+  const quantityInputRef = useRef(null);
 
   const filteredStyles = useMemo(
     () =>
@@ -57,54 +73,102 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
   const processOptions = useMemo(() => buildProcessOptions(item.style), [item.style]);
   const wageInfo = calculateWage(item, factory);
+  const canMoveToNextItem = !disabled && Boolean(item.process) && Number(item.quantity) > 0;
 
   useEffect(() => {
-    if (!item.customer && rowRef.current) {
-      const input = rowRef.current.querySelector('input');
-      if (input) input.focus();
-    }
-  }, []);
+    if (!focusRequest?.token || focusRequest.itemId !== item.id) return;
+
+    const focusMap = {
+      customer: customerInputRef.current,
+      style: styleInputRef.current,
+      process: processInputRef.current,
+      quantity: quantityInputRef.current,
+    };
+
+    requestAnimationFrame(() => {
+      const target = focusMap[focusRequest.field] || customerInputRef.current;
+      target?.focus();
+    });
+  }, [focusRequest?.token, focusRequest?.itemId, focusRequest?.field, item.id]);
 
   return (
-    <Box ref={rowRef} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-      <Box sx={{ minWidth: 180, flex: '1 1 180px' }}>
+    <Box
+      sx={{
+        mb: 1,
+        p: 1,
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1.5,
+        backgroundColor: disabled ? '#fafafa' : '#fff',
+      }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+          항목 {itemIndex}
+        </Typography>
+        <IconButton onClick={onRemoveItem} color="error" tabIndex={-1} size="small" disabled={disabled}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Box>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1,
+          gridTemplateColumns: {
+            xs: '1fr',
+            md: 'minmax(150px, 1.15fr) minmax(170px, 1.15fr) minmax(220px, 1.35fr) 90px 110px 140px 160px',
+          },
+        }}
+      >
         <SearchableSelect
           label="고객사"
           options={customers}
           value={item.customer}
           onChange={(_event, value) => onItemChange('customer', value)}
+          disabled={disabled}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          textFieldProps={{
+            size: 'small',
+            placeholder: '고객사 선택',
+            inputRef: customerInputRef,
+          }}
         />
-      </Box>
 
-      <Box sx={{ minWidth: 180, flex: '1 1 180px' }}>
         <SearchableSelect
           label="스타일"
           options={filteredStyles}
           value={item.style}
           onChange={(_event, value) => onItemChange('style', value)}
-          disabled={!item.customer}
+          disabled={disabled || !item.customer}
           getOptionLabel={(option) => option?.name || ''}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          textFieldProps={{
+            size: 'small',
+            placeholder: '스타일 선택',
+            inputRef: styleInputRef,
+          }}
         />
-      </Box>
 
-      <Box sx={{ minWidth: 220, flex: '1 1 220px' }}>
         <SearchableSelect
           label="공정"
           options={processOptions}
           value={item.process}
           onChange={(_event, value) => onItemChange('process', value)}
-          disabled={!item.style}
+          disabled={disabled || !item.style}
           getOptionLabel={(option) => `[${option?.code || '-'}] ${option?.name || ''}`}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          textFieldProps={{
+            size: 'small',
+            placeholder: '공정 선택',
+            inputRef: processInputRef,
+          }}
         />
-      </Box>
 
-      <Box sx={{ width: 110 }}>
         <TextField
           label="수량"
           type="number"
+          size="small"
           value={item.quantity}
           onChange={(event) => {
             const raw = event.target.value;
@@ -118,48 +182,86 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
             }
           }}
           onKeyDown={(event) => {
-            if (['-', '+', 'e', 'E', '.'].includes(event.key)) event.preventDefault();
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing) onEnter?.();
+            if (['-', '+', 'e', 'E', '.'].includes(event.key)) {
+              event.preventDefault();
+              return;
+            }
+
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing && canMoveToNextItem) {
+              event.preventDefault();
+              onRequestAddItem?.();
+              return;
+            }
+
+            if (
+              event.key === 'Tab' &&
+              !event.shiftKey &&
+              !event.ctrlKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              onRequestActionFocus?.();
+            }
           }}
-          disabled={!item.process}
+          disabled={disabled || !item.process}
+          inputRef={quantityInputRef}
           inputProps={{ min: 1 }}
           fullWidth
         />
-      </Box>
 
-      <Box sx={{ width: 120 }}>
         <TextField
           label="CT(초/개)"
-          value={item.process ? String(wageInfo.ctSeconds) : '-'}
+          size="small"
+          value={
+            item.process
+              ? formatNumberWithCommas(wageInfo.ctSeconds, {
+                  fallback: '0',
+                  maximumFractionDigits: 0,
+                })
+              : '-'
+          }
           InputProps={{ readOnly: true }}
-          variant="filled"
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
           fullWidth
         />
-      </Box>
 
-      <Box sx={{ width: 160 }}>
         <TextField
           label="공임(개당)"
-          value={item.process ? wageInfo.wagePerPiece.toFixed(2) : '-'}
+          size="small"
+          value={
+            item.process
+              ? `${formatNumberWithCommas(wageInfo.wagePerPiece, {
+                  fallback: '0',
+                  maximumFractionDigits: 2,
+                })} 원`
+              : '-'
+          }
           InputProps={{ readOnly: true }}
-          variant="filled"
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
           fullWidth
         />
-      </Box>
 
-      <Box sx={{ width: 180 }}>
         <TextField
-          label="합계(CT)"
-          value={item.quantity ? wageInfo.totalWage.toFixed(2) : '-'}
+          label="총 공임"
+          size="small"
+          value={
+            item.quantity
+              ? `${formatNumberWithCommas(wageInfo.totalWage, {
+                  fallback: '0',
+                  maximumFractionDigits: 2,
+                })} 원`
+              : '-'
+          }
           InputProps={{ readOnly: true }}
-          variant="filled"
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
           fullWidth
         />
       </Box>
-
-      <IconButton onClick={onRemoveItem} color="error" tabIndex={-1}>
-        <DeleteIcon />
-      </IconButton>
     </Box>
   );
 };
