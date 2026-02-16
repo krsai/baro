@@ -26,6 +26,12 @@ const buildProcessOptions = (style) => {
     ctSeconds: resolveCtSeconds(process),
   }));
 };
+const normalizeKeyPart = (value) => String(value ?? '').trim().toLowerCase();
+const resolveCustomerKey = (customer) => normalizeKeyPart(customer?.id ?? customer?.name);
+const resolveStyleKey = (style) => normalizeKeyPart(style?.id ?? style?.name);
+const resolveColorKey = (color) => normalizeKeyPart(color?.id ?? color?.code ?? color?.name);
+const resolveProcessKey = (process) =>
+  normalizeKeyPart(process?.code ?? process?.name ?? process?.id);
 
 const calculateWage = (item, factory) => {
   const quantity = Number(item?.quantity) || 0;
@@ -56,11 +62,14 @@ const WorkItemRow = ({
   onRequestActionFocus,
   customers,
   styles,
+  colors = [],
+  allItems = [],
   factory,
 }) => {
   const customerInputRef = useRef(null);
   const styleInputRef = useRef(null);
   const processInputRef = useRef(null);
+  const colorInputRef = useRef(null);
   const quantityInputRef = useRef(null);
 
   const filteredStyles = useMemo(
@@ -72,6 +81,40 @@ const WorkItemRow = ({
   );
 
   const processOptions = useMemo(() => buildProcessOptions(item.style), [item.style]);
+  const selectedCustomerKey = resolveCustomerKey(item.customer);
+  const selectedStyleKey = resolveStyleKey(item.style);
+  const selectedColorKey = resolveColorKey(item.color);
+  const selectedProcessKey = resolveProcessKey(item.process);
+  const takenProcessKeySet = useMemo(() => {
+    if (!selectedCustomerKey || !selectedStyleKey || !selectedColorKey) return new Set();
+
+    const taken = new Set();
+    allItems.forEach((entry) => {
+      if (!entry || entry.id === item.id) return;
+      if (resolveCustomerKey(entry.customer) !== selectedCustomerKey) return;
+      if (resolveStyleKey(entry.style) !== selectedStyleKey) return;
+      if (resolveColorKey(entry.color) !== selectedColorKey) return;
+      const processKey = resolveProcessKey(entry.process);
+      if (processKey) taken.add(processKey);
+    });
+    return taken;
+  }, [allItems, item.id, selectedColorKey, selectedCustomerKey, selectedStyleKey]);
+  const isProcessOptionDisabled = (option) => takenProcessKeySet.has(resolveProcessKey(option));
+  const takenColorKeySet = useMemo(() => {
+    if (!selectedCustomerKey || !selectedStyleKey || !selectedProcessKey) return new Set();
+
+    const taken = new Set();
+    allItems.forEach((entry) => {
+      if (!entry || entry.id === item.id) return;
+      if (resolveCustomerKey(entry.customer) !== selectedCustomerKey) return;
+      if (resolveStyleKey(entry.style) !== selectedStyleKey) return;
+      if (resolveProcessKey(entry.process) !== selectedProcessKey) return;
+      const colorKey = resolveColorKey(entry.color);
+      if (colorKey) taken.add(colorKey);
+    });
+    return taken;
+  }, [allItems, item.id, selectedCustomerKey, selectedProcessKey, selectedStyleKey]);
+  const isColorOptionDisabled = (option) => takenColorKeySet.has(resolveColorKey(option));
   const wageInfo = calculateWage(item, factory);
   const canMoveToNextItem = !disabled && Boolean(item.process) && Number(item.quantity) > 0;
 
@@ -82,6 +125,7 @@ const WorkItemRow = ({
       customer: customerInputRef.current,
       style: styleInputRef.current,
       process: processInputRef.current,
+      color: colorInputRef.current,
       quantity: quantityInputRef.current,
     };
 
@@ -117,7 +161,7 @@ const WorkItemRow = ({
           gap: 1,
           gridTemplateColumns: {
             xs: '1fr',
-            md: 'minmax(150px, 1.15fr) minmax(170px, 1.15fr) minmax(220px, 1.35fr) 90px 110px 140px 160px',
+            md: 'minmax(140px, 1.05fr) minmax(160px, 1.1fr) minmax(130px, 1fr) minmax(220px, 1.4fr) 90px 110px 140px 160px',
           },
         }}
       >
@@ -151,13 +195,34 @@ const WorkItemRow = ({
         />
 
         <SearchableSelect
+          label="색상"
+          options={colors}
+          value={item.color}
+          onChange={(_event, value) => onItemChange('color', value)}
+          disabled={disabled || !item.style}
+          getOptionLabel={(option) => option?.name || option?.code || ''}
+          isOptionEqualToValue={(option, value) =>
+            option?.id === value?.id ||
+            String(option?.code || '') === String(value?.code || '') ||
+            String(option?.name || '') === String(value?.name || '')
+          }
+          getOptionDisabled={isColorOptionDisabled}
+          textFieldProps={{
+            size: 'small',
+            placeholder: '색상 선택',
+            inputRef: colorInputRef,
+          }}
+        />
+
+        <SearchableSelect
           label="공정"
           options={processOptions}
           value={item.process}
           onChange={(_event, value) => onItemChange('process', value)}
-          disabled={disabled || !item.style}
+          disabled={disabled || !item.style || !item.color}
           getOptionLabel={(option) => `[${option?.code || '-'}] ${option?.name || ''}`}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          getOptionDisabled={isProcessOptionDisabled}
           textFieldProps={{
             size: 'small',
             placeholder: '공정 선택',

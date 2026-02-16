@@ -21,6 +21,7 @@ import 'dayjs/locale/ko';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import { fetchAttributes } from '../../../utils/attributeApi';
 import WorkerLog from './WorkerLog';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -32,6 +33,7 @@ const buildEmptyItem = () => ({
   customer: null,
   style: null,
   process: null,
+  color: null,
   quantity: '',
 });
 const buildWorkerLog = () => ({
@@ -40,24 +42,33 @@ const buildWorkerLog = () => ({
   items: [buildEmptyItem()],
 });
 const buildFocusToken = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-const buildProcessComboKey = (item) => {
-  const customerKey = item?.customer?.id ?? item?.customer?.name ?? '';
-  const styleKey = item?.style?.id ?? item?.style?.name ?? '';
-  const processKey = item?.process?.id ?? item?.process?.code ?? '';
+const normalizeKeyPart = (value) => String(value ?? '').trim().toLowerCase();
+const resolveCustomerKey = (customer) => normalizeKeyPart(customer?.id ?? customer?.name);
+const resolveStyleKey = (style) => normalizeKeyPart(style?.id ?? style?.name);
+const resolveColorKey = (color) => normalizeKeyPart(color?.id ?? color?.code ?? color?.name);
+const resolveProcessKey = (process) =>
+  normalizeKeyPart(process?.code ?? process?.name ?? process?.id);
+const buildProcessComboKey = ({ customer, style, color, process }) => {
+  const customerKey = resolveCustomerKey(customer);
+  const styleKey = resolveStyleKey(style);
+  const colorKey = resolveColorKey(color);
+  const processKey = resolveProcessKey(process);
 
-  if (!customerKey || !styleKey || !processKey) return '';
-  return `${String(customerKey)}::${String(styleKey)}::${String(processKey)}`;
+  if (!customerKey || !styleKey || !colorKey || !processKey) return '';
+  return `${customerKey}::${styleKey}::${colorKey}::${processKey}`;
 };
 const hasDuplicateProcessCombo = (items = []) => {
   const seen = new Set();
   for (const item of items) {
-    const key = buildProcessComboKey(item);
+    const key = buildProcessComboKey(item || {});
     if (!key) continue;
     if (seen.has(key)) return true;
     seen.add(key);
   }
   return false;
 };
+const findDuplicateWorkerLogIndex = (workerLogs = []) =>
+  workerLogs.findIndex((log) => hasDuplicateProcessCombo(log?.items));
 const equalsText = (left, right) =>
   String(left || '').trim() === String(right || '').trim();
 const findCustomerValue = (customers, customerName, fallbackIndex) => {
@@ -120,6 +131,35 @@ const findProcessValue = (record, styleValue, fallbackIndex) => {
     contractedSeconds: ctSeconds,
   };
 };
+const findColorValue = (colors, record, fallbackIndex) => {
+  if (!record) return null;
+
+  const colorId = record.colorId;
+  const colorCode = record.colorCode;
+  const colorName = record.colorName;
+
+  if (colorId !== null && colorId !== undefined && colorId !== '') {
+    const byId = colors.find((color) => String(color?.id || '') === String(colorId));
+    if (byId) return byId;
+  }
+
+  if (colorCode) {
+    const byCode = colors.find((color) => equalsText(color?.code, colorCode));
+    if (byCode) return byCode;
+  }
+
+  if (colorName) {
+    const byName = colors.find((color) => equalsText(color?.name, colorName));
+    if (byName) return byName;
+  }
+
+  if (!colorId && !colorCode && !colorName) return null;
+  return {
+    id: colorId || `virtual-color-${fallbackIndex}`,
+    code: colorCode || '',
+    name: colorName || colorCode || '색상',
+  };
+};
 const findWorkerValue = (employees, record, fallbackIndex) => {
   if (record?.workerId !== null && record?.workerId !== undefined && record.workerId !== '') {
     const matched = employees.find(
@@ -134,7 +174,7 @@ const findWorkerValue = (employees, record, fallbackIndex) => {
     name: record?.workerName || `작업자 ${fallbackIndex + 1}`,
   };
 };
-const buildWorkerLogsFromRecords = (records, { employees, customers, styles }) => {
+const buildWorkerLogsFromRecords = (records, { employees, customers, styles, colors }) => {
   const safeRecords = Array.isArray(records) ? records : [];
   if (safeRecords.length === 0) return [];
 
@@ -157,11 +197,13 @@ const buildWorkerLogsFromRecords = (records, { employees, customers, styles }) =
     const customer = findCustomerValue(customers, record?.customerName, index);
     const style = findStyleValue(styles, record, index);
     const process = findProcessValue(record, style, index);
+    const color = findColorValue(colors, record, index);
     groups.get(workerKey).items.push({
       id: buildItemId(),
       customer,
       style,
       process,
+      color,
       quantity: Number(record?.quantity) > 0 ? Number(record.quantity) : '',
     });
   });
@@ -195,6 +237,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [employees, setEmployees] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [styles, setStyles] = useState([]);
+  const [colors, setColors] = useState([]);
   const [workerLogs, setWorkerLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [itemFocusRequest, setItemFocusRequest] = useState(null);
@@ -220,15 +263,17 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     const loadBaseData = async () => {
       setLoading(true);
       try {
-        const [factoryRows, customerRows, styleRows] = await Promise.all([
+        const [factoryRows, customerRows, styleRows, attributeData] = await Promise.all([
           fetchJson('/factories').catch(() => []),
           fetchJson('/customers').catch(() => []),
           fetchStylesFromApi().catch(() => []),
+          fetchAttributes().catch(() => null),
         ]);
         if (cancelled) return;
         setFactories(Array.isArray(factoryRows) ? factoryRows : []);
         setCustomers(Array.isArray(customerRows) ? customerRows : []);
         setStyles(Array.isArray(styleRows) ? styleRows : []);
+        setColors(Array.isArray(attributeData?.colors) ? attributeData.colors : []);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -338,6 +383,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       employees,
       customers,
       styles,
+      colors,
     });
 
     if (nextWorkerLogs.length > 0) {
@@ -352,7 +398,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setItemFocusRequest(null);
     setWorkerFocusRequest(null);
     initializedRecordsLogIdRef.current = initialLog.id;
-  }, [customers, employees, initialLog, selectedFactory, styles]);
+  }, [colors, customers, employees, initialLog, selectedFactory, styles]);
 
   const takenWorkerIds = useMemo(
     () => new Set(workerLogs.map((log) => log.worker?.id).filter(Boolean)),
@@ -449,9 +495,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             if (field === 'customer') {
               next.style = null;
               next.process = null;
+              next.color = null;
             }
             if (field === 'style') {
               next.process = null;
+              next.color = null;
             }
             return next;
           });
@@ -467,7 +515,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 
     if (duplicateDetected) {
       setDuplicateEntryMessage(
-        '같은 작업자 내에서는 고객사/스타일/공정 조합을 중복 입력할 수 없습니다. 수량으로 합산해 주세요.'
+        '같은 작업자 내에서는 고객사/스타일/색상/공정 조합을 중복 입력할 수 없습니다. 수량으로 합산해 주세요.'
       );
       return;
     }
@@ -487,6 +535,9 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           styleName: item.style?.name || '',
           processCode: item.process?.code || '',
           processName: item.process?.name || '',
+          colorId: item.color?.id ?? null,
+          colorCode: item.color?.code || '',
+          colorName: item.color?.name || '',
           ctSeconds: resolveCtSeconds(item.process),
           quantity: Number(item.quantity) || 0,
         }))
@@ -513,6 +564,15 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const handleSave = () => {
     if (!selectedFactory) return;
     if (summary.records.length === 0) return;
+    const duplicateWorkerLogIndex = findDuplicateWorkerLogIndex(workerLogs);
+    if (duplicateWorkerLogIndex >= 0) {
+      const duplicateLog = workerLogs[duplicateWorkerLogIndex];
+      const workerLabel = duplicateLog?.worker?.name || `작업자 ${duplicateWorkerLogIndex + 1}`;
+      setDuplicateEntryMessage(
+        `${workerLabel}에 고객사/스타일/색상/공정 중복 항목이 있습니다. 수량으로 합산 후 저장해 주세요.`
+      );
+      return;
+    }
 
     onSave?.({
       workDate: workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
@@ -670,6 +730,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
               availableEmployees={employees}
               customers={customers}
               styles={styles}
+              colors={colors}
               factory={selectedFactory}
               takenWorkerIds={takenWorkerIds}
               focusRequest={itemFocusRequest?.logId === log.id ? itemFocusRequest : null}

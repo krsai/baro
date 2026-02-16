@@ -16,6 +16,7 @@ const WorkerLog = ({
   availableEmployees,
   customers,
   styles,
+  colors,
   factory,
   takenWorkerIds,
   focusRequest,
@@ -101,6 +102,8 @@ const WorkerLog = ({
               onRequestActionFocus={focusAddItemButton}
               customers={customers}
               styles={styles}
+              colors={colors}
+              allItems={log.items}
               factory={factory}
             />
           ))
