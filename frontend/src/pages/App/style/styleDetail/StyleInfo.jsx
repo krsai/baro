@@ -112,16 +112,16 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     () => calculateProcessTotal(normalizedProcesses, 'pt'),
     [normalizedProcesses]
   );
-  const totalST = useMemo(
-    () => calculateProcessTotal(normalizedProcesses, 'st'),
+  const totalAT = useMemo(
+    () => calculateProcessTotal(normalizedProcesses, 'at'),
     [normalizedProcesses]
   );
   const hasTotalPT = useMemo(
     () => hasAnyProcessTime(normalizedProcesses, 'pt'),
     [normalizedProcesses]
   );
-  const hasTotalST = useMemo(
-    () => hasAnyProcessTime(normalizedProcesses, 'st'),
+  const hasTotalAT = useMemo(
+    () => hasAnyProcessTime(normalizedProcesses, 'at'),
     [normalizedProcesses]
   );
 
@@ -428,9 +428,9 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
                   </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 ST</Typography>
+                  <Typography variant="body2" color="text.secondary">총 AT</Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>
-                    {hasTotalST ? formatSeconds(totalST) : '-'}
+                    {hasTotalAT ? formatSeconds(totalAT) : '-'}
                   </Typography>
               </Box>
           </Stack>

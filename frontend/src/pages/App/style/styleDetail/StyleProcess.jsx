@@ -73,9 +73,9 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   };
 
   const totalPT = useMemo(() => calculateProcessTotal(safeProcesses, 'pt'), [safeProcesses]);
-  const totalST = useMemo(() => calculateProcessTotal(safeProcesses, 'st'), [safeProcesses]);
+  const totalAT = useMemo(() => calculateProcessTotal(safeProcesses, 'at'), [safeProcesses]);
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
-  const hasST = useMemo(() => hasAnyProcessTime(safeProcesses, 'st'), [safeProcesses]);
+  const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
 
   return (
     <Box>
@@ -96,9 +96,9 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   <TableCell>공정명</TableCell>
                   <TableCell align="right">수량</TableCell>
                   <TableCell align="right">PT</TableCell>
-                  <TableCell align="right">ST(자동)</TableCell>
+                  <TableCell align="right">AT(자동)</TableCell>
                   <TableCell align="right">총 PT</TableCell>
-                  <TableCell align="right">총 ST</TableCell>
+                  <TableCell align="right">총 AT</TableCell>
                   <TableCell align="center">삭제</TableCell>
                 </TableRow>
               </TableHead>
@@ -120,12 +120,12 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
                             <TableCell align="right">{process.quantity}</TableCell>
                             <TableCell align="right">{formatSeconds(process.pt)}</TableCell>
-                            <TableCell align="right">{formatSeconds(process.st)}</TableCell>
+                            <TableCell align="right">{formatSeconds(process.at)}</TableCell>
                             <TableCell align="right">
                               {formatSeconds(calculateProcessLineTotal(process, 'pt'))}
                             </TableCell>
                             <TableCell align="right">
-                              {formatSeconds(calculateProcessLineTotal(process, 'st'))}
+                              {formatSeconds(calculateProcessLineTotal(process, 'at'))}
                             </TableCell>
                             <TableCell align="center">
                               <IconButton size="small" onClick={(e) => {
@@ -150,7 +150,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    {hasST ? formatSeconds(totalST) : '-'}
+                    {hasAT ? formatSeconds(totalAT) : '-'}
                   </TableCell>
                   <TableCell />
                 </TableRow>

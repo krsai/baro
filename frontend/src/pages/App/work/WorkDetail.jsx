@@ -32,7 +32,7 @@ const toSeconds = (value) => {
 
 const resolveCtSeconds = (process) => {
   if (!process) return 0;
-  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.st ?? process.pt);
+  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.at ?? process.pt);
 };
 
 const WorkDetail = ({ onClose, onSave }) => {
@@ -232,7 +232,7 @@ const WorkDetail = ({ onClose, onSave }) => {
       </Box>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        CT is the only payroll basis. PT/ST are not used directly for payout.
+        CT is the only payroll basis. PT/AT are not used directly for payout.
       </Alert>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>

@@ -24,7 +24,7 @@ import {
   formatSeconds,
   normalizeProcess,
   parseOptionalSecondsInput,
-  resolveProcessStandardTime,
+  resolveProcessActualTime,
 } from '../../../../utils/processTime';
 
 // Mock data for master processes - in a real app, this would be fetched.
@@ -86,14 +86,13 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
     if (!selectedProcess) return null;
     return {
       actualTime: selectedProcess.actualTime ?? initialData?.actualTime ?? null,
-      qualityFactor: selectedProcess.qualityFactor ?? initialData?.qualityFactor ?? null,
     };
   }, [initialData, selectedProcess]);
 
-  const calculatedStandardTime = useMemo(
+  const calculatedActualTime = useMemo(
     () =>
-      resolveProcessStandardTime({
-        existingSt: isEditMode ? initialData?.st : null,
+      resolveProcessActualTime({
+        existingAt: isEditMode ? initialData?.at : null,
         workStats: selectedWorkStats,
       }),
     [initialData, isEditMode, selectedWorkStats]
@@ -105,7 +104,7 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
       instanceId: instanceId || `${baseProcess.id}-${Date.now()}`,
       quantity,
       pt: parseOptionalSecondsInput(provisionalTime),
-      st: calculatedStandardTime,
+      at: calculatedActualTime,
     });
 
   const handleAddToList = () => {
@@ -191,12 +190,12 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
           </Grid>
           <Grid item xs={12} sm={3}>
             <TextField
-              label="ST (자동 계산, 초)"
-              value={calculatedStandardTime ?? ''}
+              label="AT (자동 계산, 초)"
+              value={calculatedActualTime ?? ''}
               placeholder="작업 기록 누적 후 계산"
               fullWidth
               InputProps={{ readOnly: true }}
-              helperText="AT/QF 기반 자동 산출"
+              helperText="회귀 분석 기반 자동 산출"
             />
           </Grid>
           <Grid item xs={12} sm={2}>
@@ -230,13 +229,13 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
                   PT
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }} align="right">
-                  ST(자동)
+                  AT(자동)
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }} align="right">
                   총 PT
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }} align="right">
-                  총 ST
+                  총 AT
                 </TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }} align="center">
                   삭제
@@ -256,12 +255,12 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
                     <TableCell>{`[${process.code}] ${process.name}`}</TableCell>
                     <TableCell align="right">{process.quantity}</TableCell>
                     <TableCell align="right">{formatSeconds(process.pt)}</TableCell>
-                    <TableCell align="right">{formatSeconds(process.st)}</TableCell>
+                    <TableCell align="right">{formatSeconds(process.at)}</TableCell>
                     <TableCell align="right">
                       {formatSeconds(calculateProcessLineTotal(process, 'pt'))}
                     </TableCell>
                     <TableCell align="right">
-                      {formatSeconds(calculateProcessLineTotal(process, 'st'))}
+                      {formatSeconds(calculateProcessLineTotal(process, 'at'))}
                     </TableCell>
                     <TableCell align="center">
                       <IconButton
@@ -318,12 +317,12 @@ const ProcessForm = ({ onClose, onSave, initialData }) => {
         </Grid>
         <Grid item xs={4}>
           <TextField
-            label="ST (자동 계산, 초)"
-            value={calculatedStandardTime ?? ''}
+            label="AT (자동 계산, 초)"
+            value={calculatedActualTime ?? ''}
             placeholder="작업 기록 누적 후 계산"
             fullWidth
             InputProps={{ readOnly: true }}
-            helperText="AT/QF 기반 자동 산출"
+            helperText="회귀 분석 기반 자동 산출"
           />
         </Grid>
       </Grid>

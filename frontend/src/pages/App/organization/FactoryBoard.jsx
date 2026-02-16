@@ -165,13 +165,13 @@ const FactoryList = () => {
                     <TableCell align="center">
                       <Chip
                         label={
-                          factory.wageStandard === 'ST'
-                            ? 'ST Proposal'
+                          factory.wageStandard === 'AT'
+                            ? 'AT Proposal'
                             : factory.wageStandard === 'PT'
                               ? 'PT Proposal'
                               : '-'
                         }
-                        color={factory.wageStandard === 'ST' ? 'success' : 'warning'}
+                        color={factory.wageStandard === 'AT' ? 'success' : 'warning'}
                         size="small"
                         sx={{ fontWeight: 'bold', minWidth: 90 }}
                       />

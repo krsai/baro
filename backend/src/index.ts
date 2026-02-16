@@ -1543,6 +1543,36 @@ app.put("/styles/:styleId", async (req, res) => {
   res.json(toStyleResponse(updated));
 });
 
+app.delete("/styles/:styleId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const styleId = (req.params.styleId ?? "").trim();
+  if (!styleId) {
+    return res.status(400).json({ ok: false, error: "styleId is required" });
+  }
+
+  try {
+    await prisma.style.delete({
+      where: {
+        orgId_styleId: {
+          orgId: organization.id,
+          styleId,
+        },
+      },
+    });
+    res.status(204).send();
+  } catch (error) {
+    // P2025 = Record to delete does not exist.
+    if (error?.code === 'P2025') {
+      return res.status(404).json({ ok: false, error: "style not found" });
+    }
+    res.status(500).json({ ok: false, error: "failed to delete style" });
+  }
+});
+
 app.post("/styles/import", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {

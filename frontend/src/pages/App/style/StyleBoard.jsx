@@ -10,12 +10,23 @@ import {
   TableHead,
   TableRow,
   Box,
+  IconButton,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../../../context/AppContext';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import StyleDetail from './StyleDetail';
-import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import {
+  fetchStyles as fetchStylesFromApi,
+  deleteStyle,
+} from '../../../utils/styleApi';
+import { loadOrders } from '../../../utils/localData';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -33,6 +44,8 @@ const StyleBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isConfirmOpen, setConfirmOpen] = useState(false);
+  const [styleToDelete, setStyleToDelete] = useState(null);
 
   const refreshStyles = async () => {
     setLoading(true);
@@ -59,6 +72,43 @@ const StyleBoard = () => {
     navigateToPath('/style/new', { label: '신규 스타일' });
   };
 
+  const handleDeleteClick = (style, event) => {
+    event.stopPropagation();
+    setStyleToDelete(style);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmClose = () => {
+    setConfirmOpen(false);
+    setStyleToDelete(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!styleToDelete) return;
+
+    // Check if the style is used in any orders from localStorage
+    const orders = loadOrders();
+    const isStyleInUse = orders.some((order) =>
+      (order.items || []).some((item) => item.styleId === styleToDelete.id)
+    );
+
+    if (isStyleInUse) {
+      showNotification('해당 스타일은 주문에 사용 중이므로 삭제할 수 없습니다.', 'error');
+      handleConfirmClose();
+      return;
+    }
+
+    try {
+      await deleteStyle(styleToDelete.id);
+      setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
+      showNotification('스타일이 삭제되었습니다.', 'success');
+    } catch (error) {
+      showNotification(error?.message || '스타일 삭제에 실패했습니다.', 'error');
+    } finally {
+      handleConfirmClose();
+    }
+  };
+
   const filteredStyles = useMemo(() => {
     if (!searchTerm) {
       return styles;
@@ -78,13 +128,13 @@ const StyleBoard = () => {
       filteredStyles.map((style) => {
         const processes = normalizeProcesses(style.processes);
         const totalPT = calculateProcessTotal(processes, 'pt');
-        const totalST = calculateProcessTotal(processes, 'st');
+        const totalAT = calculateProcessTotal(processes, 'at');
         return {
           ...style,
           totalPT,
-          totalST,
+          totalAT,
           hasTotalPT: hasAnyProcessTime(processes, 'pt'),
-          hasTotalST: hasAnyProcessTime(processes, 'st'),
+          hasTotalAT: hasAnyProcessTime(processes, 'at'),
         };
       }),
     [filteredStyles]
@@ -98,11 +148,7 @@ const StyleBoard = () => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-        <Button
-          onClick={handleAddNewClick}
-          variant="contained"
-          color="primary"
-        >
+        <Button onClick={handleAddNewClick} variant="contained" color="primary">
           스타일 추가
         </Button>
       </Box>
@@ -116,14 +162,15 @@ const StyleBoard = () => {
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일 코드</TableCell>
                 <TableCell>총 PT</TableCell>
-                <TableCell>총 ST</TableCell>
+                <TableCell>총 AT</TableCell>
                 <TableCell>등록일</TableCell>
+                <TableCell align="center">작업</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                  <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                     {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
                   </TableCell>
                 </TableRow>
@@ -139,14 +186,37 @@ const StyleBoard = () => {
                   <TableCell>{style.name || '-'}</TableCell>
                   <TableCell>{style.styleCode || style.id || '-'}</TableCell>
                   <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
-                  <TableCell>{style.hasTotalST ? formatSeconds(style.totalST) : '-'}</TableCell>
+                  <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
                   <TableCell>{style.registrationDate || '-'}</TableCell>
+                  <TableCell align="center">
+                    <IconButton
+                      aria-label="delete"
+                      size="small"
+                      onClick={(e) => handleDeleteClick(style, e)}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
+      <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
+        <DialogTitle>스타일 삭제 확인</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            정말로 '{styleToDelete?.name}' 스타일을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleConfirmClose}>취소</Button>
+          <Button onClick={handleDeleteConfirm} color="error">
+            삭제
+          </Button>
+        </DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };

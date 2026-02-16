@@ -19,7 +19,7 @@ const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 
 const BASIS_COLORS = {
   PT: { color: '#DCE9FF', stripe: '#9FB9F2' },
-  ST: { color: '#DFF3E5', stripe: '#9ED5B3' },
+  AT: { color: '#DFF3E5', stripe: '#9ED5B3' },
   NONE: { color: '#F7D8E0', stripe: '#E6A8B6' },
 };
 
@@ -111,9 +111,7 @@ const getFactoryMappedSeconds = (source, factoryId) => {
 };
 
 const getProcessSeconds = (process, factoryId, field) => {
-  const perFactoryField = field === 'pt' ? process?.ptByFactory : process?.stByFactory;
-  const perFactory = getFactoryMappedSeconds(perFactoryField, factoryId);
-  if (perFactory != null) return perFactory;
+  // PT/AT are now factory-common (no per-factory values)
   return toSeconds(process?.[field]);
 };
 
@@ -141,30 +139,18 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
       return;
     }
 
-    const mergedPtByFactory = mergeFactorySeconds(
-      existing.totalPtByFactory ?? [],
-      nextCard.totalPtByFactory ?? []
-    );
-    const mergedStByFactory = mergeFactorySeconds(
-      existing.totalStByFactory ?? [],
-      nextCard.totalStByFactory ?? []
-    );
     const mergedTotalPt = (existing.totalPt ?? 0) + (nextCard.totalPt ?? 0);
-    const mergedHasSt =
-      mergedStByFactory.some((entry) => entry.seconds > 0) ||
-      existing.status === 'ST' ||
-      nextCard.status === 'ST';
-    const mergedHasPt =
-      mergedTotalPt > 0 || mergedPtByFactory.some((entry) => entry.seconds > 0);
-    const mergedStatus = mergedHasSt ? 'ST' : mergedHasPt ? 'PT' : 'NONE';
+    const mergedTotalAt = (existing.totalAt ?? 0) + (nextCard.totalAt ?? 0);
+    const mergedHasAt = mergedTotalAt > 0 || existing.status === 'AT' || nextCard.status === 'AT';
+    const mergedHasPt = mergedTotalPt > 0;
+    const mergedStatus = mergedHasAt ? 'AT' : mergedHasPt ? 'PT' : 'NONE';
 
     const merged = {
       ...existing,
       quantity: (existing.quantity ?? 0) + (nextCard.quantity ?? 0),
       totalSeconds: (existing.totalSeconds ?? 0) + (nextCard.totalSeconds ?? 0),
       totalPt: mergedTotalPt,
-      totalPtByFactory: mergedPtByFactory,
-      totalStByFactory: mergedStByFactory,
+      totalAt: mergedTotalAt,
       status: mergedStatus,
       processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
     };
@@ -188,30 +174,14 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
         if ((Number(quantity) || 0) <= 0) return;
 
         const normalizedColor = normalizeColorKey(colorId);
-        const colorName = colorNameMap.get(normalizedColor) || normalizedColor || 'Unknown color';
-        const totalPtByFactory = safeFactories.map((factory) => ({
-          factoryId: factory.id,
-          factoryName: factory.name,
-          seconds: getTotalByFactory(processes, 'pt', factory.id, quantity),
-        }));
-        const totalStByFactory = safeFactories.map((factory) => ({
-          factoryId: factory.id,
-          factoryName: factory.name,
-          seconds: getTotalByFactory(processes, 'st', factory.id, quantity),
-        }));
-
-        const totalPtFallback =
-          totalPtByFactory.length > 0
-            ? totalPtByFactory[0].seconds
-            : getTotalByFactory(processes, 'pt', null, quantity);
-        const totalStFallback =
-          totalStByFactory.length > 0
-            ? totalStByFactory[0].seconds
-            : getTotalByFactory(processes, 'st', null, quantity);
-        const hasSt = totalStByFactory.some((entry) => entry.seconds > 0) || totalStFallback > 0;
-        const hasPt = totalPtByFactory.some((entry) => entry.seconds > 0) || totalPtFallback > 0;
-        const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-        const totalSeconds = hasSt ? totalStFallback : totalPtFallback;
+        const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
+        // PT/AT are factory-common values (not per-factory)
+        const totalPt = getTotalByFactory(processes, 'pt', null, quantity);
+        const totalAt = getTotalByFactory(processes, 'at', null, quantity);
+        const hasAt = totalAt > 0;
+        const hasPt = totalPt > 0;
+        const status = hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';
+        const totalSeconds = hasAt ? totalAt : totalPt;
 
         upsertCard({
           id: createCardId(order?.id ?? order?.orderNumber ?? `order-${orderIndex}`, styleId, normalizedColor),
@@ -223,7 +193,7 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
           orderNo: order?.orderNumber || order?.id || '-',
           customer: order?.customerName || order?.customer || '-',
           styleId,
-          styleName: item?.styleName || style?.name || `Style ${itemIndex + 1}`,
+          styleName: item?.styleName || style?.name || `스타일 ${itemIndex + 1}`,
           styleCode: item?.styleCode || style?.styleCode || '',
           colorId: normalizedColor,
           colorName,
@@ -231,9 +201,8 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
           processCount: processes.length,
           status,
           totalSeconds,
-          totalPt: totalPtFallback,
-          totalPtByFactory,
-          totalStByFactory,
+          totalPt,
+          totalAt,
           previewUrl:
             Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
         });
@@ -262,26 +231,20 @@ const getDayCapacitySeconds = (dayIndex, lineId, days) => {
   return getLineCapacitySeconds(lineId);
 };
 
-const hasPt = (card) =>
-  Number(card.totalPt) > 0 ||
-  (Array.isArray(card.totalPtByFactory) && card.totalPtByFactory.some((item) => item.seconds > 0));
-const hasSt = (card) =>
-  Array.isArray(card.totalStByFactory) && card.totalStByFactory.some((item) => item.seconds > 0);
+const hasPt = (card) => Number(card.totalPt) > 0;
+const hasAt = (card) => Number(card.totalAt) > 0;
 
 const getCardBasis = (card) => {
-  if (!hasPt(card) && !hasSt(card)) return 'NONE';
-  if (hasSt(card)) return 'ST';
+  if (!hasPt(card) && !hasAt(card)) return 'NONE';
+  if (hasAt(card)) return 'AT';
   return 'PT';
 };
 
-const resolveCardStatus = (card, nextPt, nextStList) => {
-  const ptPresent =
-    Number(nextPt) > 0 ||
-    (Array.isArray(card?.totalPtByFactory) && card.totalPtByFactory.some((item) => item.seconds > 0));
-  const stPresent =
-    Array.isArray(nextStList) && nextStList.some((item) => item.seconds > 0);
-  if (!ptPresent && !stPresent) return 'NONE';
-  return stPresent ? 'ST' : 'PT';
+const resolveCardStatus = (card, nextPt, nextAt) => {
+  const ptPresent = Number(nextPt) > 0;
+  const atPresent = Number(nextAt) > 0;
+  if (!ptPresent && !atPresent) return 'NONE';
+  return atPresent ? 'AT' : 'PT';
 };
 
 const scaleValue = (value, ratio) => {
@@ -319,19 +282,14 @@ const mergeCardData = (target, source) => {
   const mergedQuantity = (target.quantity ?? 0) + (source.quantity ?? 0);
   const mergedTotalSeconds = (target.totalSeconds ?? 0) + (source.totalSeconds ?? 0);
   const mergedTotalPt = (target.totalPt ?? 0) + (source.totalPt ?? 0);
-  const mergedPtByFactory = mergeTimeLists(
-    target.totalPtByFactory ?? [],
-    source.totalPtByFactory ?? []
-  );
-  const mergedSt = mergeTimeLists(target.totalStByFactory ?? [], source.totalStByFactory ?? []);
+  const mergedTotalAt = (target.totalAt ?? 0) + (source.totalAt ?? 0);
   return {
     ...target,
     quantity: mergedQuantity,
     totalSeconds: mergedTotalSeconds,
     totalPt: mergedTotalPt,
-    totalPtByFactory: mergedPtByFactory,
-    totalStByFactory: mergedSt,
-    status: resolveCardStatus(target, mergedTotalPt, mergedSt),
+    totalAt: mergedTotalAt,
+    status: resolveCardStatus(target, mergedTotalPt, mergedTotalAt),
     originOrderId: getCardOriginId(target),
   };
 };
@@ -400,18 +358,11 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days) => {
 const resolveCardTotalSeconds = (card, lineId) => {
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
-  const line = runtimeLines.find((item) => item.id === lineId);
-  const factoryId = line?.factoryId;
-  if (basis === 'ST') {
-    const match = card.totalStByFactory?.find(
-      (item) => normalizeKey(item.factoryId) === normalizeKey(factoryId)
-    );
-    return match?.seconds ?? card.totalSeconds ?? 0;
+  // PT/AT are factory-common values
+  if (basis === 'AT') {
+    return card.totalAt ?? card.totalSeconds ?? 0;
   }
-  const ptMatch = card.totalPtByFactory?.find(
-    (item) => normalizeKey(item.factoryId) === normalizeKey(factoryId)
-  );
-  return ptMatch?.seconds ?? card.totalPt ?? card.totalSeconds ?? 0;
+  return card.totalPt ?? card.totalSeconds ?? 0;
 };
 
 const buildDateKey = (date) => {
@@ -425,7 +376,7 @@ const buildDays = (baseDate, count, holidaySet = new Set()) => {
   return Array.from({ length: count }).map((_, index) => {
     const date = new Date(baseDate);
     date.setDate(baseDate.getDate() + index);
-    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+    const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
     const key = buildDateKey(date);
     const isSunday = date.getDay() === 0;
     return {
@@ -853,7 +804,7 @@ const AssignBoard = () => {
   const splitCounterRef = useRef(1);
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
-  const [days, setDays] = useState(() => buildDays(startDateRef.current, 10, holidaySet));
+  const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
 
   useEffect(() => {
     runtimeLines = lines;
@@ -980,7 +931,7 @@ const AssignBoard = () => {
     return next;
   };
 
-  const extendDays = (extra = 10) => {
+  const extendDays = (extra = 20) => {
     return ensureDaysLength(days.length + extra);
   };
 
@@ -1346,7 +1297,7 @@ const AssignBoard = () => {
 
   const promptSplitQuantity = (quantity) => {
     if (!quantity || quantity <= 1) return null;
-    const input = window.prompt(`Enter split quantity (1 ~ ${quantity - 1})`);
+    const input = window.prompt(`분할할 수량을 입력하세요 (1 ~ ${quantity - 1})`);
     if (input == null) return null;
     const value = Number(input);
     if (!Number.isFinite(value)) return null;
@@ -1358,8 +1309,7 @@ const AssignBoard = () => {
   const buildSplitCard = (card, quantity, ratio, newId) => {
     const totalSeconds = scaleValue(card.totalSeconds, ratio);
     const totalPt = scaleValue(card.totalPt, ratio);
-    const totalPtByFactory = scaleTimeList(card.totalPtByFactory, ratio);
-    const totalStByFactory = scaleTimeList(card.totalStByFactory, ratio);
+    const totalAt = scaleValue(card.totalAt, ratio);
     const originOrderId = getCardOriginId(card) ?? card.id;
     return {
       ...card,
@@ -1368,9 +1318,8 @@ const AssignBoard = () => {
       quantity,
       totalSeconds,
       totalPt,
-      totalPtByFactory,
-      totalStByFactory,
-      status: resolveCardStatus(card, totalPt, totalStByFactory),
+      totalAt,
+      status: resolveCardStatus(card, totalPt, totalAt),
     };
   };
 
@@ -1447,9 +1396,8 @@ const AssignBoard = () => {
       quantity: assignment.quantity ?? 0,
       totalSeconds: assignment.totalSeconds ?? 0,
       totalPt: assignment.totalSeconds ?? 0,
-      totalPtByFactory: [],
-      totalStByFactory: [],
-      status: basis === 'ST' ? 'ST' : 'PT',
+      totalAt: 0,
+      status: basis === 'AT' ? 'AT' : 'PT',
     };
   };
 
@@ -1593,21 +1541,21 @@ const AssignBoard = () => {
     <AppPageContainer
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">Assignment</Typography>
+          <Typography variant="h6">작업 배정</Typography>
           <Stack direction="row" spacing={1}>
             <Button
               variant="outlined"
               onClick={handleResetAssignments}
               disabled={assignments.length === 0}
             >
-              Reset
+              초기화
             </Button>
             <Button
               variant="contained"
               onClick={handleConfirmAssignments}
               disabled={assignments.length === 0}
             >
-              Confirm CT
+              CT 확정
             </Button>
           </Stack>
         </Box>
@@ -1623,14 +1571,14 @@ const AssignBoard = () => {
           <Grid item xs={12} md={4}>
             <Stack spacing={1.5}>
               <SearchInput
-                placeholder="Search style/customer/color"
+                placeholder="스타일/고객사/색상 검색"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">Unassigned Cards</Typography>
+                <Typography variant="subtitle2">미배정 카드</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {loading ? 'Loading...' : `${filteredCards.length} items`}
+                  {loading ? '로딩 중...' : `${filteredCards.length}개`}
                 </Typography>
               </Box>
               <Stack spacing={1}>
@@ -1656,9 +1604,9 @@ const AssignBoard = () => {
           <Grid item xs={12} md={8}>
             <Stack spacing={1.5}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">Line Timeline</Typography>
+                <Typography variant="subtitle2">라인 타임라인</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Drag and drop cards to assign work
+                  카드를 드래그하여 라인에 배정하세요
                 </Typography>
               </Box>
               <ScheduleTimeline
@@ -1691,7 +1639,7 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                {activeDrag.orderNo ? activeDrag.orderNo : 'Unassigned card'}
+                {activeDrag.orderNo ? activeDrag.orderNo : '미배정 카드'}
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                 {activeDrag.label}

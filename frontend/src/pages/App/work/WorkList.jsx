@@ -81,7 +81,7 @@ const WorkList = () => {
       </Box>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        Payroll basis is CT only. PT/ST are used as proposal data.
+        Payroll basis is CT only. PT/AT are used as proposal data.
       </Alert>
 
       <Paper variant="outlined" sx={{ width: '100%' }}>

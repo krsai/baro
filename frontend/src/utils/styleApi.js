@@ -129,3 +129,10 @@ export const updateStyle = async (styleId, style) => {
   });
   return normalizeStyle(data);
 };
+
+export const deleteStyle = async (styleId) => {
+  await ensureStyleMigrationOnce();
+  await requestJSON(`/styles/${encodeURIComponent(styleId)}`, {
+    method: 'DELETE',
+  });
+};

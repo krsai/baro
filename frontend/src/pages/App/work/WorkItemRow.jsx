@@ -11,7 +11,7 @@ const toSeconds = (value) => {
 
 const resolveCtSeconds = (process) => {
   if (!process) return 0;
-  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.st ?? process.pt);
+  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.at ?? process.pt);
 };
 
 const buildProcessOptions = (style) => {
@@ -21,7 +21,7 @@ const buildProcessOptions = (style) => {
     code: process.code || '',
     name: process.name || `Process ${index + 1}`,
     pt: process.pt,
-    st: process.st,
+    at: process.at,
     ctSeconds: resolveCtSeconds(process),
   }));
 };

@@ -128,7 +128,18 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
         <Table stickyHeader size="small" sx={{ minWidth: '100%', width: 'max-content' }}>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: 190 }}>라인</TableCell>
+              <TableCell
+                sx={{
+                  width: 190,
+                  minWidth: 190,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: (theme) => theme.zIndex.appBar + 2,
+                  backgroundColor: 'background.paper',
+                }}
+              >
+                라인
+              </TableCell>
               {days.map((day) => {
                 const isHoliday = day.isSunday || day.isHoliday;
                 return (
@@ -171,7 +182,16 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
 
               return (
                 <TableRow key={line.id} hover>
-                  <TableCell>
+                  <TableCell
+                    sx={{
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: (theme) => theme.zIndex.appBar + 1,
+                      backgroundColor: 'background.paper',
+                      borderRight: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
                     <Typography variant="caption" color="text.secondary">
                       {line.factoryName}
                     </Typography>

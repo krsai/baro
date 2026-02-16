@@ -73,8 +73,6 @@ const HolidayBoard = () => {
   const selectedKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
   const isSelectedHoliday = holidaySet.has(selectedKey);
   const isSelectedSunday = selectedDate.day() === 0;
-  const isSelectedPast = selectedDate.startOf('day').isBefore(getTodayStart(), 'day');
-  const isSelectedLockedHoliday = isSelectedHoliday && isSelectedPast;
 
   const persistHolidayKeys = (nextKeys, message) => {
     const saved = saveHolidays(nextKeys);
@@ -92,11 +90,6 @@ const HolidayBoard = () => {
       return;
     }
 
-    if (isSelectedLockedHoliday) {
-      showNotification('지난 날짜 휴일은 해제할 수 없습니다.', 'warning');
-      return;
-    }
-
     if (isSelectedHoliday) {
       persistHolidayKeys(
         holidayKeys.filter((key) => key !== selectedKey),
@@ -109,11 +102,6 @@ const HolidayBoard = () => {
   };
 
   const handleRemoveHoliday = (dateKey) => {
-    if (isPastDateKey(dateKey)) {
-      showNotification('지난 날짜 휴일은 해제할 수 없습니다.', 'warning');
-      return;
-    }
-
     persistHolidayKeys(
       holidayKeys.filter((key) => key !== dateKey),
       '휴일에서 제거했습니다.'
@@ -155,16 +143,10 @@ const HolidayBoard = () => {
             <Button
               variant={isSelectedHoliday ? 'outlined' : 'contained'}
               onClick={handleToggleSelectedHoliday}
-              disabled={isSelectedSunday || isSelectedLockedHoliday}
+              disabled={isSelectedSunday}
             >
               {isSelectedHoliday ? '선택일 휴일 해제' : '선택일 휴일 등록'}
             </Button>
-
-            {isSelectedLockedHoliday && (
-              <Typography variant="caption" color="text.secondary">
-                지난 날짜로 지정된 휴일은 해제할 수 없습니다.
-              </Typography>
-            )}
 
             {isSelectedSunday && (
               <Typography variant="caption" color="text.secondary">
@@ -202,7 +184,7 @@ const HolidayBoard = () => {
                         ? `${formatHolidayLabel(dateKey)} (지남)`
                         : formatHolidayLabel(dateKey)
                     }
-                    onDelete={isPastHoliday ? undefined : () => handleRemoveHoliday(dateKey)}
+                    onDelete={() => handleRemoveHoliday(dateKey)}
                     color="error"
                     variant="outlined"
                     sx={

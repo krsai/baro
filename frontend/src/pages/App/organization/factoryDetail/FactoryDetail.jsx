@@ -192,7 +192,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               fullWidth
             >
               <ToggleButton value="PT">PT (Provisional Proposal)</ToggleButton>
-              <ToggleButton value="ST">ST (Statistical Proposal)</ToggleButton>
+              <ToggleButton value="AT">AT (Actual Time Proposal)</ToggleButton>
             </ToggleButtonGroup>
           </Grid>
 
