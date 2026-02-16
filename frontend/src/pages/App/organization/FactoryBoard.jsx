@@ -2,7 +2,6 @@
 import {
   Box,
   Button,
-  Chip,
   Paper,
   Table,
   TableBody,
@@ -70,7 +69,6 @@ const FactoryList = () => {
       countryCode: savedData.countryCode,
       phoneNumber: savedData.phoneNumber,
       manager: savedData.manager,
-      wageStandard: savedData.wageStandard,
       targetMonthlyWage: savedData.targetMonthlyWage,
       wagePerSecond: savedData.wagePerSecond,
     };
@@ -122,7 +120,6 @@ const FactoryList = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Manager</TableCell>
-                <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Proposal Basis</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Wage / sec</TableCell>
               </TableRow>
             </TableHead>
@@ -130,7 +127,7 @@ const FactoryList = () => {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                  <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                     Loading...
                   </TableCell>
                 </TableRow>
@@ -138,7 +135,7 @@ const FactoryList = () => {
 
               {!loading && factories.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                  <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                     No factories found.
                   </TableCell>
                 </TableRow>
@@ -162,20 +159,6 @@ const FactoryList = () => {
                     <TableCell>{factory.address || '-'}</TableCell>
                     <TableCell>{`${factory.countryCode || ''} ${factory.phoneNumber || ''}`.trim() || '-'}</TableCell>
                     <TableCell>{factory.manager || '-'}</TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={
-                          factory.wageStandard === 'AT'
-                            ? 'AT Proposal'
-                            : factory.wageStandard === 'PT'
-                              ? 'PT Proposal'
-                              : '-'
-                        }
-                        color={factory.wageStandard === 'AT' ? 'success' : 'warning'}
-                        size="small"
-                        sx={{ fontWeight: 'bold', minWidth: 90 }}
-                      />
-                    </TableCell>
                     <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                   </TableRow>
                 );

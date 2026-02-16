@@ -415,6 +415,7 @@ const MainLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: 0,
           pl: { md: `${DRAWER_WIDTH}px` },
           pt: '64px',
           display: 'flex',
@@ -489,7 +490,7 @@ const MainLayout = () => {
           </Tabs>
         </Box>
 
-        <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto', bgcolor: 'white' }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', bgcolor: 'white' }}>
           <Outlet />
         </Box>
       </Box>

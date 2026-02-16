@@ -7,8 +7,6 @@ import {
   Grid,
   IconButton,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -39,7 +37,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     countryCode: '+84',
     phoneNumber: '',
     manager: '',
-    wageStandard: 'PT',
     targetMonthlyWage: '',
     wagePerSecond: '',
   });
@@ -52,7 +49,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         countryCode: factory.countryCode || '+84',
         phoneNumber: factory.phoneNumber || '',
         manager: factory.manager || '',
-        wageStandard: factory.wageStandard || 'PT',
         targetMonthlyWage: factory.targetMonthlyWage ?? '',
         wagePerSecond: factory.wagePerSecond ?? '',
       });
@@ -65,7 +61,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       countryCode: '+84',
       phoneNumber: '',
       manager: '',
-      wageStandard: 'PT',
       targetMonthlyWage: '',
       wagePerSecond: '',
     });
@@ -82,11 +77,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     }
 
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleWageStandardChange = (_event, nextValue) => {
-    if (!nextValue) return;
-    setFormData((prev) => ({ ...prev, wageStandard: nextValue }));
   };
 
   const computedWagePerSecond = useMemo(() => {
@@ -179,21 +169,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               value={formData.phoneNumber}
               onChange={handleInputChange}
             />
-          </Grid>
-
-          <Grid item xs={12}>
-            <Typography variant="subtitle2" gutterBottom>
-              Default Proposal Basis
-            </Typography>
-            <ToggleButtonGroup
-              value={formData.wageStandard}
-              exclusive
-              onChange={handleWageStandardChange}
-              fullWidth
-            >
-              <ToggleButton value="PT">PT (Provisional Proposal)</ToggleButton>
-              <ToggleButton value="AT">AT (Actual Time Proposal)</ToggleButton>
-            </ToggleButtonGroup>
           </Grid>
 
           <Grid item xs={12} sm={6}>

@@ -123,8 +123,17 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
   }, [lines, assignments]);
 
   return (
-    <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
-      <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+    <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+      <TableContainer
+        sx={{
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+        }}
+      >
         <Table stickyHeader size="small" sx={{ minWidth: '100%', width: 'max-content' }}>
           <TableHead>
             <TableRow>

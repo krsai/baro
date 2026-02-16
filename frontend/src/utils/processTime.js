@@ -13,16 +13,20 @@ const toPositiveInt = (value, fallback = 1) => {
 
 const hasTime = (value) => typeof value === 'number' && Number.isFinite(value);
 
-export const normalizeProcess = (process = {}, index = 0) => ({
-  ...process,
-  instanceId:
-    typeof process.instanceId === 'string' && process.instanceId.trim()
-      ? process.instanceId
-      : `${process.code || 'PROC'}-${process.id || index}-${index}`,
-  quantity: toPositiveInt(process.quantity, 1),
-  pt: toOptionalNumber(process.pt),
-  at: toOptionalNumber(process.at ?? process.st),
-});
+export const normalizeProcess = (process = {}, index = 0) => {
+  const { st: _legacySt, ...safeProcess } = process || {};
+
+  return {
+    ...safeProcess,
+    instanceId:
+      typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
+        ? safeProcess.instanceId
+        : `${safeProcess.code || 'PROC'}-${safeProcess.id || index}-${index}`,
+    quantity: toPositiveInt(safeProcess.quantity, 1),
+    pt: toOptionalNumber(safeProcess.pt),
+    at: toOptionalNumber(safeProcess.at),
+  };
+};
 
 export const normalizeProcesses = (processes) => {
   if (!Array.isArray(processes)) return [];
@@ -30,7 +34,7 @@ export const normalizeProcesses = (processes) => {
 };
 
 // AT is now calculated via regression analysis from work records.
-// The old ST = AT * QF formula has been removed (QF concept deprecated).
+// Legacy ST keys are ignored and stripped during normalization.
 // AT represents actual work time including sub-tasks (thread tangles, adjustments, rework).
 // Foundation hook: connect work log regression-based AT here once Work domain is integrated.
 export const resolveProcessActualTime = ({ existingAt = null, workStats = null }) => {

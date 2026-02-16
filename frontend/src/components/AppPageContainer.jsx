@@ -3,8 +3,8 @@ import { Box, Stack, Typography, Divider } from '@mui/material';
 
 const AppPageContainer = ({ header, children, footer }) => {
   return (
-    <Box component="main" sx={{ flexGrow: 1, p: 0 }}> {/* Root Box no longer has padding */}
-      <Stack spacing={3} sx={{ height: '100%', p: 1 }}> {/* Padding moved to Stack for consistent spacing around content */}
+    <Box component="main" sx={{ flexGrow: 1, p: 0, minWidth: 0 }}>
+      <Stack spacing={3} sx={{ height: '100%', p: 1, minWidth: 0 }}>
         {/* Page Header */}
         {header && (
           <Box sx={{ pb: 2, borderBottom: '1px solid #e0e0e0' }}> {/* Visual separation */}
@@ -13,7 +13,7 @@ const AppPageContainer = ({ header, children, footer }) => {
         )}
 
         {/* Page Content */}
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           {children}
         </Box>
 

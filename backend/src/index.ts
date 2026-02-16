@@ -1,7 +1,7 @@
 ﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { PrismaClient } from ".prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
 
@@ -142,6 +142,27 @@ const ensureArray = (value) => (Array.isArray(value) ? value : []);
 const toStyleIdentityKey = (customer, value) =>
   `${(customer ?? "").trim()}::${(value ?? "").trim()}`;
 
+const toOptionalSeconds = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed < 0 ? 0 : Math.round(parsed);
+};
+
+const normalizeStyleProcess = (process) => {
+  if (!process || typeof process !== "object" || Array.isArray(process)) {
+    return process;
+  }
+  const { st: _legacySt, ...rest } = process;
+  const next = { ...rest };
+  if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
+  if ("at" in next) next.at = toOptionalSeconds(next.at);
+  return next;
+};
+
+const normalizeStyleProcesses = (value) =>
+  ensureArray(value).map((process) => normalizeStyleProcess(process));
+
 const normalizeStylePayload = (payload, fallbackStyleId = null) => {
   const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
   const styleId = rawId || fallbackStyleId || createStyleId();
@@ -161,7 +182,7 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
     collection: resolveOptionalString(payload?.collection, null),
     season: resolveOptionalString(payload?.season, null),
     imageUrls: ensureArray(payload?.imageUrls),
-    processes: ensureArray(payload?.processes),
+    processes: normalizeStyleProcesses(payload?.processes),
     bom: ensureArray(payload?.bom),
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
   };
@@ -203,7 +224,7 @@ const toStyleResponse = (style) => ({
   collection: style.collection ?? "",
   season: style.season ?? "",
   imageUrls: ensureArray(style.imageUrls),
-  processes: ensureArray(style.processes),
+  processes: normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
   createdAt: style.createdAt,
@@ -785,7 +806,6 @@ app.post("/factories", async (req, res) => {
     countryCode,
     phoneNumber,
     manager,
-    wageStandard,
     targetMonthlyWage,
     wagePerSecond,
   } = req.body ?? {};
@@ -802,7 +822,6 @@ app.post("/factories", async (req, res) => {
       countryCode: countryCode?.trim?.() ?? countryCode ?? null,
       phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
       manager: manager?.trim?.() ?? manager ?? null,
-      wageStandard: wageStandard || "PT",
       targetMonthlyWage: toNumberOrNull(targetMonthlyWage),
       wagePerSecond: toNumberOrNull(wagePerSecond),
     },
@@ -837,7 +856,6 @@ app.put("/factories/:id", async (req, res) => {
     countryCode,
     phoneNumber,
     manager,
-    wageStandard,
     targetMonthlyWage,
     wagePerSecond,
   } = req.body ?? {};
@@ -850,7 +868,6 @@ app.put("/factories/:id", async (req, res) => {
       countryCode: countryCode?.trim?.() ?? countryCode ?? null,
       phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
       manager: manager?.trim?.() ?? manager ?? null,
-      wageStandard: wageStandard || existing.wageStandard,
       targetMonthlyWage: toNumberOrNull(targetMonthlyWage),
       wagePerSecond: toNumberOrNull(wagePerSecond),
     },

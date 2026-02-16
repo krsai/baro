@@ -100,7 +100,6 @@ model Factory {
   countryCode      String?
   phoneNumber      String?
   manager          String?
-  wageStandard      String  @default("PT")
   targetMonthlyWage Float?
   wagePerSecond    Float?
   createdAt        DateTime @default(now())

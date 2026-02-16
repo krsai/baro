@@ -1567,9 +1567,9 @@ const AssignBoard = () => {
         onDragCancel={handleDragCancel}
         autoScroll={false}
       >
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <Stack spacing={1.5}>
+        <Grid container spacing={2} sx={{ minWidth: 0 }}>
+          <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
+            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <SearchInput
                 placeholder="스타일/고객사/색상 검색"
                 value={searchTerm}
@@ -1601,8 +1601,8 @@ const AssignBoard = () => {
               </Stack>
             </Stack>
           </Grid>
-          <Grid item xs={12} md={8}>
-            <Stack spacing={1.5}>
+          <Grid item xs={12} md={8} sx={{ minWidth: 0 }}>
+            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">라인 타임라인</Typography>
                 <Typography variant="caption" color="text.secondary">
