@@ -19,7 +19,7 @@ const buildProcessOptions = (style) => {
   return rows.map((process, index) => ({
     id: process.instanceId || process.id || `${style?.id || 'style'}-proc-${index}`,
     code: process.code || '',
-    name: process.name || `Process ${index + 1}`,
+    name: process.name || `공정 ${index + 1}`,
     pt: process.pt,
     at: process.at,
     ctSeconds: resolveCtSeconds(process),
@@ -69,7 +69,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
     <Box ref={rowRef} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
       <Box sx={{ minWidth: 180, flex: '1 1 180px' }}>
         <SearchableSelect
-          label="Customer"
+          label="고객사"
           options={customers}
           value={item.customer}
           onChange={(_event, value) => onItemChange('customer', value)}
@@ -79,7 +79,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ minWidth: 180, flex: '1 1 180px' }}>
         <SearchableSelect
-          label="Style"
+          label="스타일"
           options={filteredStyles}
           value={item.style}
           onChange={(_event, value) => onItemChange('style', value)}
@@ -91,7 +91,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ minWidth: 220, flex: '1 1 220px' }}>
         <SearchableSelect
-          label="Process"
+          label="공정"
           options={processOptions}
           value={item.process}
           onChange={(_event, value) => onItemChange('process', value)}
@@ -103,7 +103,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ width: 110 }}>
         <TextField
-          label="Qty"
+          label="수량"
           type="number"
           value={item.quantity}
           onChange={(event) => {
@@ -129,7 +129,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ width: 120 }}>
         <TextField
-          label="CT sec/pc"
+          label="CT(초/개)"
           value={item.process ? String(wageInfo.ctSeconds) : '-'}
           InputProps={{ readOnly: true }}
           variant="filled"
@@ -139,7 +139,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ width: 160 }}>
         <TextField
-          label="Wage/pc"
+          label="공임(개당)"
           value={item.process ? wageInfo.wagePerPiece.toFixed(2) : '-'}
           InputProps={{ readOnly: true }}
           variant="filled"
@@ -149,7 +149,7 @@ const WorkItemRow = ({ item, onItemChange, onRemoveItem, onEnter, customers, sty
 
       <Box sx={{ width: 180 }}>
         <TextField
-          label="Total (CT)"
+          label="합계(CT)"
           value={item.quantity ? wageInfo.totalWage.toFixed(2) : '-'}
           InputProps={{ readOnly: true }}
           variant="filled"

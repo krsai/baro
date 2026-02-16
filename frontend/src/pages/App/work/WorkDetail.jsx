@@ -15,6 +15,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
+import 'dayjs/locale/ko';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import WorkerLog from './WorkerLog';
@@ -97,7 +98,7 @@ const WorkDetail = ({ onClose, onSave }) => {
         }
         const list = (Array.isArray(data) ? data : []).map((employee) => ({
           ...employee,
-          name: employee.name || `Worker ${employee.id}`,
+          name: employee.name || `작업자 ${employee.id}`,
         }));
         if (!cancelled) setEmployees(list);
       } catch (_error) {
@@ -218,27 +219,27 @@ const WorkDetail = ({ onClose, onSave }) => {
       itemCount: summary.itemCount,
       totalContractedSeconds: summary.totalContractedSeconds,
       records: summary.records,
-      note: 'Attendance integration pending',
+      note: '출결 연동 예정',
     });
   };
 
   return (
     <Box sx={{ width: { xs: '100vw', md: '56vw' }, p: 3, height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Work Log Input</Typography>
+        <Typography variant="h6">작업 기록 입력</Typography>
         <IconButton onClick={onClose}>
           <CloseIcon />
         </IconButton>
       </Box>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        CT is the only payroll basis. PT/AT are not used directly for payout.
+        급여 산정 기준은 CT만 사용합니다. PT/AT는 지급 기준으로 직접 사용하지 않습니다.
       </Alert>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
           <DatePicker
-            label="Work Date"
+            label="작업일자"
             value={workDate}
             onChange={setWorkDate}
             sx={{ minWidth: 220 }}
@@ -247,7 +248,7 @@ const WorkDetail = ({ onClose, onSave }) => {
         </LocalizationProvider>
 
         <SearchableSelect
-          label="Factory"
+          label="공장"
           options={factories}
           value={selectedFactory}
           onChange={(_event, value) => setSelectedFactory(value)}
@@ -257,7 +258,7 @@ const WorkDetail = ({ onClose, onSave }) => {
         />
 
         <TextField
-          label="CT Basis"
+          label="CT 기준"
           value="CT"
           InputProps={{ readOnly: true }}
           sx={{ minWidth: 140 }}
@@ -272,13 +273,13 @@ const WorkDetail = ({ onClose, onSave }) => {
             onClick={handleAddWorker}
             disabled={!selectedFactory}
           >
-            Add Worker
+            작업자 추가
           </Button>
         </Box>
 
         {workerLogs.length === 0 ? (
           <Typography color="text.secondary" align="center" sx={{ py: 6 }}>
-            Select a factory and add worker logs.
+            공장을 선택한 뒤 작업자를 추가하세요.
           </Typography>
         ) : (
           workerLogs.map((log) => (
@@ -302,14 +303,14 @@ const WorkDetail = ({ onClose, onSave }) => {
 
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-          Total CT: {summary.totalContractedSeconds.toLocaleString()} sec
+          총 CT: {summary.totalContractedSeconds.toLocaleString()}초
         </Typography>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" onClick={onClose}>
-            Cancel
+            취소
           </Button>
           <Button variant="contained" onClick={handleSave} disabled={!selectedFactory || summary.records.length === 0}>
-            Save
+            저장
           </Button>
         </Stack>
       </Box>

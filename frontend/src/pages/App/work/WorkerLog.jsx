@@ -27,7 +27,7 @@ const WorkerLog = ({
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
         <Box sx={{ flex: 1 }}>
           <SearchableSelect
-            label="Worker"
+            label="작업자"
             options={options}
             value={log.worker}
             onChange={(_event, value) => onWorkerChange(log.id, value)}
@@ -57,7 +57,7 @@ const WorkerLog = ({
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Button startIcon={<AddCircleOutlineIcon />} onClick={() => onAddItem(log.id)} disabled={!log.worker}>
-            Add Item
+            항목 추가
           </Button>
         </Box>
       </Box>

@@ -39,7 +39,7 @@ const formatSeconds = (value) => {
   const seconds = Number(value) || 0;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  return `${hours}h ${minutes}m`;
+  return `${hours}시간 ${minutes}분`;
 };
 
 const WorkList = () => {
@@ -74,14 +74,14 @@ const WorkList = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Work Logs</Typography>
+        <Typography variant="h6">작업 기록</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={toggleDrawer(true)}>
-          Add Work Log
+          작업 기록 추가
         </Button>
       </Box>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        Payroll basis is CT only. PT/AT are used as proposal data.
+        급여 산정 기준은 CT만 사용합니다. PT/AT는 제안 데이터로만 활용됩니다.
       </Alert>
 
       <Paper variant="outlined" sx={{ width: '100%' }}>
@@ -89,20 +89,20 @@ const WorkList = () => {
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Date</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Factory</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Basis</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Workers</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Rows</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Total CT</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Note</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>작업일자</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>공장</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>기준</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>작업자 수</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>항목 수</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>총 CT</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>비고</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {sortedLogs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 4 }}>
-                    No work logs yet.
+                    등록된 작업 기록이 없습니다.
                   </TableCell>
                 </TableRow>
               ) : (
