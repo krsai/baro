@@ -42,6 +42,12 @@ const formatSeconds = (value) => {
   return `${hours}시간 ${minutes}분`;
 };
 
+const formatNote = (note) => {
+  if (!note) return '-';
+  if (note === 'Attendance integration pending') return '출결 연동 예정';
+  return note;
+};
+
 const WorkList = () => {
   const [workLogs, setWorkLogs] = useState(() => loadWorkLogs());
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -114,7 +120,7 @@ const WorkList = () => {
                     <TableCell>{log.workerCount ?? 0}</TableCell>
                     <TableCell>{log.itemCount ?? 0}</TableCell>
                     <TableCell>{formatSeconds(log.totalContractedSeconds)}</TableCell>
-                    <TableCell>{log.note || '-'}</TableCell>
+                    <TableCell>{formatNote(log.note)}</TableCell>
                   </TableRow>
                 ))
               )}

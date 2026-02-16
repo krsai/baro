@@ -125,16 +125,31 @@ const getTotalByFactory = (processes, field, factoryId, quantity) =>
 const createCardId = (orderId, styleId, colorId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}`;
 
-const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
-  const safeFactories = Array.isArray(factories) ? factories : [];
+const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
   const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
   const cards = [];
   const cardMap = new Map();
+  const cardIndexMap = new Map();
+  const styleProcessSummaryMap = new Map();
+
+  styleMap.forEach((style, styleId) => {
+    const processes = normalizeProcesses(style?.processes);
+    const unitPtSeconds = getTotalByFactory(processes, 'pt', null, 1);
+    const unitAtSeconds = getTotalByFactory(processes, 'at', null, 1);
+    styleProcessSummaryMap.set(styleId, {
+      processCount: processes.length,
+      unitPtSeconds,
+      unitAtSeconds,
+      previewUrl:
+        Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
+    });
+  });
 
   const upsertCard = (nextCard) => {
     const existing = cardMap.get(nextCard.id);
     if (!existing) {
       cardMap.set(nextCard.id, nextCard);
+      cardIndexMap.set(nextCard.id, cards.length);
       cards.push(nextCard);
       return;
     }
@@ -155,8 +170,8 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
       processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
     };
     cardMap.set(nextCard.id, merged);
-    const index = cards.findIndex((card) => card.id === nextCard.id);
-    if (index >= 0) cards[index] = merged;
+    const index = cardIndexMap.get(nextCard.id);
+    if (index != null) cards[index] = merged;
   };
 
   (Array.isArray(orders) ? orders : []).forEach((order, orderIndex) => {
@@ -166,7 +181,8 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
       if (!styleId) return;
 
       const style = styleMap.get(styleId);
-      const processes = normalizeProcesses(style?.processes);
+      const processSummary = styleProcessSummaryMap.get(styleId);
+      const processCount = processSummary?.processCount ?? 0;
       const colorBuckets = resolveItemColorBuckets(item);
       if (colorBuckets.length === 0) return;
 
@@ -176,8 +192,8 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
         const normalizedColor = normalizeColorKey(colorId);
         const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
         // PT/AT are factory-common values (not per-factory)
-        const totalPt = getTotalByFactory(processes, 'pt', null, quantity);
-        const totalAt = getTotalByFactory(processes, 'at', null, quantity);
+        const totalPt = (processSummary?.unitPtSeconds ?? 0) * quantity;
+        const totalAt = (processSummary?.unitAtSeconds ?? 0) * quantity;
         const hasAt = totalAt > 0;
         const hasPt = totalPt > 0;
         const status = hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';
@@ -198,13 +214,12 @@ const buildCardsFromOrders = ({ orders, styles, factories, colorNameMap }) => {
           colorId: normalizedColor,
           colorName,
           quantity,
-          processCount: processes.length,
+          processCount,
           status,
           totalSeconds,
           totalPt,
           totalAt,
-          previewUrl:
-            Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
+          previewUrl: processSummary?.previewUrl ?? '',
         });
       });
     });
@@ -848,35 +863,36 @@ const AssignBoard = () => {
     const loadSourceData = async () => {
       setLoading(true);
       try {
-        const [styles, factories] = await Promise.all([
+        const [styles, factories, lines, workers, attributes] = await Promise.all([
           fetchStylesFromApi().catch(() => []),
           fetchJson('/factories').catch(() => []),
+          fetchJson('/lines').catch(() => []),
+          fetchJson('/line-workers').catch(() => []),
+          fetchJson('/attributes').catch(() => null),
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];
-        const lineListResults = await Promise.all(
-          safeFactories.map((factory) =>
-            fetchJson(`/lines?factoryId=${factory.id}`).catch(() => [])
-          )
+        const safeLines = Array.isArray(lines) ? lines : [];
+        const safeWorkers = Array.isArray(workers) ? workers : [];
+        const factoryById = new Map(
+          safeFactories.map((factory, index) => [normalizeKey(factory?.id), { ...factory, __order: index }])
         );
-        const workerListResults = await Promise.all(
-          safeFactories.map((factory) =>
-            fetchJson(`/line-workers?factoryId=${factory.id}`).catch(() => [])
-          )
-        );
-        const attributes = await fetchJson('/attributes').catch(() => null);
+        const lineHeadcountMap = safeWorkers.reduce((map, worker) => {
+          const key = normalizeKey(worker?.currentLineId);
+          if (!key) return map;
+          map.set(key, (map.get(key) || 0) + 1);
+          return map;
+        }, new Map());
         const colors = Array.isArray(attributes?.colors) ? attributes.colors : [];
         const colorNameMap = new Map(
           colors.map((item) => [normalizeColorKey(item?.code), item?.name || item?.code || ''])
         );
 
-        const nextLines = safeFactories.flatMap((factory, index) => {
-          const lineRows = Array.isArray(lineListResults[index]) ? lineListResults[index] : [];
-          const workers = Array.isArray(workerListResults[index]) ? workerListResults[index] : [];
-          return lineRows.map((line) => {
-            const assignedCount = workers.filter(
-              (worker) => normalizeKey(worker?.currentLineId) === normalizeKey(line?.id)
-            ).length;
+        const nextLines = safeLines
+          .filter((line) => factoryById.has(normalizeKey(line?.factoryId)))
+          .map((line) => {
+            const factory = factoryById.get(normalizeKey(line?.factoryId));
+            const assignedCount = lineHeadcountMap.get(normalizeKey(line?.id)) || 0;
             const headcount = Math.max(assignedCount, 1);
             return {
               id: String(line.id),
@@ -884,29 +900,35 @@ const AssignBoard = () => {
               headcount,
               shift: '08:00~17:00',
               dailyCapacitySeconds: headcount * DAILY_CAPACITY_SECONDS,
-              factoryId: factory.id,
-              factoryName: factory.name || `Factory ${factory.id}`,
+              factoryId: factory?.id,
+              factoryName: factory?.name || `Factory ${line?.factoryId}`,
+              factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
             };
-          });
-        });
+          })
+          .sort((a, b) => {
+            if (a.factoryOrder !== b.factoryOrder) return a.factoryOrder - b.factoryOrder;
+            return normalizeKey(a.id).localeCompare(normalizeKey(b.id), undefined, { numeric: true });
+          })
+          .map(({ factoryOrder, ...line }) => line);
 
         const orders = loadOrders();
         const nextCards = buildCardsFromOrders({
           orders,
           styles,
-          factories: safeFactories,
           colorNameMap,
         });
 
         if (!cancelled) {
+          const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
+          const nextCardIdSet = new Set(nextCards.map((card) => card.id));
           setLines(nextLines);
           setCards(nextCards);
           setAssignments((prev) =>
             prev
-              .filter((item) => nextLines.some((line) => normalizeKey(line.id) === normalizeKey(item.lineId)))
-              .filter((item) => nextCards.some((card) => card.id === item.cardId))
+              .filter((item) => nextLineIdSet.has(normalizeKey(item.lineId)))
+              .filter((item) => nextCardIdSet.has(item.cardId))
           );
-          setSelectedCardId((prev) => (nextCards.some((card) => card.id === prev) ? prev : null));
+          setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
         }
       } catch (_error) {
         if (!cancelled) {
@@ -975,15 +997,20 @@ const AssignBoard = () => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));
   }, [assignments]);
 
+  const cardById = useMemo(
+    () => new Map(cards.map((card) => [card.id, card])),
+    [cards]
+  );
+
   const assignmentsForRender = useMemo(() => {
     return assignments.map((item) => {
       if (item.quantity != null) return item;
       if (!item.cardId) return item;
-      const card = cards.find((source) => source.id === item.cardId);
+      const card = cardById.get(item.cardId);
       if (!card) return item;
       return { ...item, quantity: card.quantity };
     });
-  }, [assignments, cards]);
+  }, [assignments, cardById]);
 
   const filteredCards = useMemo(() => {
     const pool = cards.filter((card) => !assignedCardIds.has(card.id));

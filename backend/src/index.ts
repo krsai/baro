@@ -889,20 +889,22 @@ app.get("/lines", async (req, res) => {
   }
 
   const factoryId = Number(req.query.factoryId);
-  if (!Number.isFinite(factoryId)) {
-    return res.status(400).json({ ok: false, error: "factoryId is required" });
-  }
-
-  const factory = await prisma.factory.findFirst({
-    where: { id: factoryId, orgId: organization.id },
-  });
-  if (!factory) {
-    return res.status(404).json({ ok: false, error: "factory not found" });
+  const hasFactoryFilter = Number.isFinite(factoryId);
+  if (hasFactoryFilter) {
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
   }
 
   const lines = await prisma.line.findMany({
-    where: { orgId: organization.id, factoryId },
-    orderBy: { id: "asc" },
+    where: {
+      orgId: organization.id,
+      ...(hasFactoryFilter ? { factoryId } : {}),
+    },
+    orderBy: [{ factoryId: "asc" }, { id: "asc" }],
   });
 
   res.json(lines);
@@ -1063,29 +1065,34 @@ app.get("/line-workers", async (req, res) => {
   }
 
   const factoryId = Number(req.query.factoryId);
-  if (!Number.isFinite(factoryId)) {
-    return res.status(400).json({ ok: false, error: "factoryId is required" });
-  }
-
-  const factory = await prisma.factory.findFirst({
-    where: { id: factoryId, orgId: organization.id },
-  });
-  if (!factory) {
-    return res.status(404).json({ ok: false, error: "factory not found" });
+  const hasFactoryFilter = Number.isFinite(factoryId);
+  if (hasFactoryFilter) {
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
   }
 
   const workers = await prisma.employee.findMany({
     where: {
       orgId: organization.id,
-      factoryId,
+      ...(hasFactoryFilter ? { factoryId } : {}),
       membership: { role: "WORKER", status: "ACTIVE" },
     },
     include: { membership: true },
-    orderBy: { id: "asc" },
+    orderBy: [{ factoryId: "asc" }, { id: "asc" }],
   });
 
   const assignments = await prisma.lineAssignment.findMany({
-    where: { line: { factoryId, orgId: organization.id }, endAt: null },
+    where: {
+      line: {
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+      },
+      endAt: null,
+    },
     select: { employeeId: true, lineId: true },
   });
 

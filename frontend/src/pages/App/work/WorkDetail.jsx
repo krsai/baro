@@ -12,6 +12,7 @@ import {
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { koKR as datePickerKoKR } from '@mui/x-date-pickers/locales';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
@@ -237,11 +238,16 @@ const WorkDetail = ({ onClose, onSave }) => {
       </Alert>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
+        <LocalizationProvider
+          dateAdapter={AdapterDayjs}
+          adapterLocale="ko"
+          localeText={datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText}
+        >
           <DatePicker
             label="작업일자"
             value={workDate}
             onChange={setWorkDate}
+            format="YYYY-MM-DD"
             sx={{ minWidth: 220 }}
             slotProps={{ textField: { fullWidth: true } }}
           />
