@@ -9,6 +9,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+import { fetchAttributes } from '../../../../utils/attributeApi';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -22,6 +23,8 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -43,6 +46,22 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
 
     fetchCustomers();
   }, [API_BASE]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      setLoadingCategories(true);
+      try {
+        const data = await fetchAttributes();
+        setCategories(Array.isArray(data?.categories) ? data.categories : []);
+      } catch (_error) {
+        setCategories([]);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+  }, []);
 
   // TODO: Implement adding new images, which involves creating blob URLs,
   // uploading them, and then updating the parent state.
@@ -85,7 +104,6 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
 
   const [styleDetailsData, setStyleDetailsData] = useState(
     {
-      Category: '',
       Fabric: '',
       Gender: '',
       'Size Spec': '',
@@ -288,17 +306,28 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">카테고리</Typography>
               <Select
-                name="Category"
-                value={styleDetailsData['Category']}
-                onChange={handleDetailsChange}
+                name="collection"
+                value={formData.collection || ''}
+                onChange={handleInputChange}
                 displayEmpty
                 sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
-                <MenuItem value="Outer">Outer</MenuItem>
-                <MenuItem value="Top">Top</MenuItem>
-                <MenuItem value="Bottom">Bottom</MenuItem>
-                <MenuItem value="Dress">Dress</MenuItem>
+                {loadingCategories && (
+                  <MenuItem value="" disabled>
+                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
+                  </MenuItem>
+                )}
+                {!loadingCategories && categories.length === 0 && (
+                  <MenuItem value="" disabled>
+                    <Typography variant="body2" color="text.secondary">등록된 카테고리가 없습니다</Typography>
+                  </MenuItem>
+                )}
+                {categories.map((category) => (
+                  <MenuItem key={category.id || category.code || category.name} value={category.name}>
+                    {category.name}
+                  </MenuItem>
+                ))}
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

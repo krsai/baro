@@ -141,7 +141,7 @@ const StyleDetail = () => {
     name: '스타일명',
     customer: '고객사',
     designer: '디자이너',
-    collection: '컬렉션',
+    collection: '카테고리',
     season: '시즌',
     imageUrls: '스타일 사진',
     processes: '공정 목록',
