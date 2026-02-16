@@ -25,6 +25,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
+import { fetchAttributes, updateAttributes } from '../../../utils/attributeApi';
 
 // 초기 Mock Data 정의
 const initialData = {
@@ -71,7 +72,6 @@ const sectionConfigs = [
 ];
 
 const AttrBoard = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
 
   // 전체 데이터 상태 관리
@@ -94,22 +94,19 @@ const AttrBoard = () => {
   };
 
   useEffect(() => {
-    const fetchAttributes = async () => {
+    const loadAttributes = async () => {
       try {
-        const response = await fetch(`${API_BASE}/attributes`);
-        const data = await response.json();
-        if (response.ok) {
-          const normalized = normalizeData(data);
-          setFormData(normalized);
-          setOriginalData(JSON.parse(JSON.stringify(normalized)));
-        }
+        const data = await fetchAttributes();
+        const normalized = normalizeData(data);
+        setFormData(normalized);
+        setOriginalData(JSON.parse(JSON.stringify(normalized)));
       } catch (_error) {
         // fallback to initialData
       }
     };
 
-    fetchAttributes();
-  }, [API_BASE]);
+    loadAttributes();
+  }, []);
 
   // 변경 사항 감지
   useEffect(() => {
@@ -209,17 +206,7 @@ const AttrBoard = () => {
           return;
         }
 
-        const response = await fetch(`${API_BASE}/attributes`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(changedPayload),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          setIsSaving(false);
-          showNotification(data?.error || '속성 저장에 실패했습니다.', 'error');
-          return;
-        }
+        const data = await updateAttributes(changedPayload);
         const normalized = normalizeData({ ...formData, ...data });
         setFormData(normalized);
         setOriginalData(JSON.parse(JSON.stringify(normalized)));

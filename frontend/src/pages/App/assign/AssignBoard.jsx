@@ -6,6 +6,7 @@ import SearchInput from '../../../components/SearchInput';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import { fetchAttributes } from '../../../utils/attributeApi';
 import {
   HOLIDAY_UPDATED_EVENT,
   STORAGE_KEYS,
@@ -868,7 +869,7 @@ const AssignBoard = () => {
           fetchJson('/factories').catch(() => []),
           fetchJson('/lines').catch(() => []),
           fetchJson('/line-workers').catch(() => []),
-          fetchJson('/attributes').catch(() => null),
+          fetchAttributes().catch(() => null),
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];

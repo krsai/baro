@@ -16,6 +16,7 @@ import {
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
+import { fetchAttributes } from '../../../utils/attributeApi';
 
 const EMPLOYEE_STATUS_OPTIONS = [
   { value: 'ACTIVE', label: '재직' },
@@ -243,11 +244,8 @@ const EmployeeBoard = () => {
   const fetchAttrRoles = async (orgId) => {
     if (!orgId) return;
     try {
-      const response = await fetch(`${API_BASE}/attributes?orgId=${orgId}`);
-      const data = await response.json();
-      if (response.ok) {
-        setAttrRoles(Array.isArray(data?.roles) ? data.roles : []);
-      }
+      const data = await fetchAttributes({ orgId });
+      setAttrRoles(Array.isArray(data?.roles) ? data.roles : []);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '역할 정보를 불러오지 못했습니다.' });
     }

@@ -147,17 +147,21 @@
 
 ### 4.4. API 연동
 - 프론트엔드는 비즈니스 데이터에 대해 로컬 저장소를 1차 저장소로 사용하지 않고, 백엔드 API를 1차 소스로 사용합니다.
+- `localStorage`는 아래 예외 목적에서만 사용합니다.
+  - 스타일 초기 1회 이관 소스 (`baro_styles_v1` -> `POST /styles/import`)
+  - 주문/작업기록 드래프트 및 화면 편의용 임시 저장
+  - 휴일 캘린더 임시 저장
+  - 인증 개발 편의 플래그(개발 환경 한정)
 - 스타일(Style) 도메인의 기준 API는 다음과 같습니다.
   - `GET /styles`: 스타일 목록 조회
   - `GET /styles/:styleId`: 스타일 상세 조회
   - `POST /styles`: 스타일 등록
   - `PUT /styles/:styleId`: 스타일 수정
+  - `DELETE /styles/:styleId`: 스타일 삭제
   - `POST /styles/import`: 로컬 데이터 일괄 이관(초기 1회)
 - 주문(Order) 화면은 주문 본문 저장은 기존 로컬 저장을 유지하되, 스타일 선택 목록은 `/styles` API에서 조회합니다.
 - 신규 스타일 저장 성공 후 기본 이동은 상세가 아니라 스타일 목록(`/style`)으로 이동합니다.
-- 스타일 로컬 데이터(`baro_styles_v1`)는 자동 1회 이관 정책을 적용합니다.
-  - 서버 스타일이 비어 있고 로컬 데이터가 있을 때만 `POST /styles/import`를 1회 시도합니다.
-  - 이관 완료 플래그(`baro_style_migrated_to_api_v1`)를 저장하여 중복 이관을 방지합니다.
+- 스타일 저장소/이관의 상세 규칙은 `7.2.2 스타일 저장소 전환 규칙`을 단일 기준으로 따릅니다.
 
 ### 4.5. 코드 스타일
 - 프로젝트에 설정된 Prettier와 ESLint 규칙을 따릅니다. (설정 필요)
@@ -190,6 +194,13 @@
   - 예: `npm --prefix frontend run build -- --minify=false`
 - 최종 머지/배포 전에는 반드시 정식 빌드(`npm --prefix frontend run build`)로 최종 검증합니다.
 
+### 4.9. 공용 유틸 재사용 규칙
+- 동일 도메인 책임(저장/조회/정규화/포맷)은 단일 유틸 또는 단일 API 모듈에서 처리합니다.
+- 세 자릿수 콤마 포맷은 `frontend/src/utils/numberFormat.js`를 단일 기준으로 사용합니다.
+- 시간(초) 표시는 `processTime`이 `numberFormat`을 재사용하는 구조를 유지합니다.
+- 속성(`/attributes`) 조회/저장은 `frontend/src/utils/attributeApi.js`를 단일 경로로 사용합니다.
+- 신규 유틸 추가 전 `frontend/src/utils`에서 기존 기능 검색을 먼저 수행합니다. (`rg` 권장)
+
 ## 5. 메뉴 구조 (Menu Structure)
 
 *이 섹션은 `frontend/src/layouts/MainLayout.jsx`의 `menuItems`를 기준으로 한 좌측 네비게이션 메뉴의 실제 구조를 정의합니다.*
@@ -197,18 +208,21 @@
 - **대시보드 (Dashboard)**
 - **영업 관리 (Sales Management)**
   - 주문 (Order)
-  - 스타일 관리 (Style Management)
+  - 스타일 (Style)
 - **생산 관리 (Production Management)**
   - 작업 배정 (Task Assignment)
   - 작업 기록 (Work History)
 - **조직 관리 (Organization Management)**
   - 사업체 관리 (Business Management)
+  - 라인 관리 (Line Management)
   - 직원 관리 (Employee Management)
   - 고객 관리 (Customer Management)
 - **기본 정보 (Basic Information)**
   - 속성 관리 (Attribute Management)
   - 권한 관리 (Permission Management)
+  - 휴일 관리 (Holiday Management)
 - **시스템 설정 (System Settings)**
+  - 멤버쉽 관리 (Membership Management)
 
 ## 6. 프론트엔드 구조 규칙 (Frontend Architecture Rules)
 
@@ -368,9 +382,9 @@
     - **범위**: 본 앱에서 '공정'은 **봉제 공정**만 의미합니다. 포장, QC(검수) 등 기타 작업은 현재 범위에서 제외합니다.
     - **식별 원칙**: 공정은 **스타일 + 공정 조합**으로 식별합니다. 이름이 같더라도 스타일이 다르면 다른 공정입니다. (예: 스타일 A의 주머니 달기 ≠ 스타일 B의 주머니 달기)
 3.  **공정 데이터의 흐름 (Process Data Flow)**:
-    -   **공정 등록**: `속성 관리(AttrProcess.jsx)` 페이지에서 표준화된 공정 목록(예: '주머니 달기', '지퍼 부착')을 등록합니다.
+    -   **공정 등록**: `속성 관리(AttrBoard.jsx)`에서 표준 공정을 등록/수정/삭제하고, 백엔드 `PUT /attributes`로 저장합니다.
         -   **목적**: "주머니 봉제", "봉제 주머니"와 같이 동일한 작업임에도 텍스트가 달라 발생하는 데이터 파편화를 방지하고, 명칭을 통일합니다.
-    -   **공정 사용**: `스타일 관리`의 공정 정보(`App/style/styleDetail/StyleProcess.jsx`)와 입력 양식(`App/style/styleDetail/ProcessForm.jsx`) 등에서 표준 공정 목록을 호출하여 사용합니다.
+    -   **공정 사용**: `스타일 관리` 공정 정보 화면(`App/style/styleDetail/StyleProcess.jsx`)은 `GET /attributes` 기반 표준 공정 목록을 조회해 선택 옵션으로 사용합니다.
     -   **목표**: 모든 스타일에 걸쳐 동일한 공정에는 일관된 명칭과 기준을 사용하게 하여 데이터의 정합성을 보장합니다.
     -   **활용 계획**: 통일된 공정 명칭을 기반으로 축적된 데이터는 추후 **AT, DT 산출 시 신뢰할 수 있는 통계적 가이드(도움말)**로 활용됩니다. 수집된 데이터를 바탕으로 특정 의류 카테고리(예: '바지')의 특정 공정(예: '주머니 달기')에 평균적으로 소요되는 시간을 분석하여, 신규 스타일의 PT(임시 제안 시간) 설정 시 참고용으로 제공합니다.
 
@@ -1002,47 +1016,4 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
 - 질문 최소화: 저장소 탐색으로 확인 가능한 내용은 질문하지 않습니다.
 - 질문이 필요한 경우: 기능 방향을 바꾸는 고영향 의사결정만 짧게 묻고, 가능하면 한 번에 묶어서 확인합니다.
 - 기본값 진행: 명시되지 않은 선택지는 프로젝트의 기존 패턴과 최근 합의를 기본값으로 적용하고, 결과를 변경사항에 기록합니다.
-
-## 10. 최근 작업 내역 (2026-02-16)
-
-### 10.1. 작업 배정 화면 성능/로딩 개선
-- 프론트엔드 배정 화면(`AssignBoard`, `ScheduleTimeline`, `StyleCard`)의 렌더 경로를 정리하고 핫패스 연산을 최적화했습니다.
-- `/styles` 조회 시 `compact` 응답을 활용해 로딩 페이로드를 줄이는 방향으로 보완했습니다.
-- 백엔드 조회 일부를 병렬화해 초기 로딩 시간을 단축했습니다.
-
-### 10.2. 주문 화면 UX 개선
-- 주문 상세에서 제조사 선택 흐름을 실제 소속/권한 기준에 맞게 보정했습니다.
-- 주문 목록은 글로벌 디자인을 유지하되, 정보 배치와 비율(가독성 중심) 위주로 조정했습니다.
-
-### 10.3. 스타일 공정 등록 UX 개선
-- 공정 등록/수정을 드로어 중심에서 목록 인라인 편집 중심으로 개선했습니다.
-- 동일 공정 중복 선택을 추가/수정 모두에서 차단했습니다.
-- 공정 입력 영역을 컴팩트하게 재배치하고 과도한 보조 문구를 제거했습니다.
-- 시간(초) 표시 포맷에 천 단위 콤마를 적용했습니다.
-
-### 10.4. 인증/조직 관리 보강
-- 로그인 및 조직 멤버십 관련 화면/흐름을 보강해 멀티조직 시나리오 대응 범위를 넓혔습니다.
-
-### 10.5. 검증
-- 프론트엔드 변경 사항은 `npm --prefix frontend run build` 기준으로 빌드 검증을 수행했습니다.
-
-## 11. 중복 코드 관리 규칙 (중요)
-
-### 11.1. 기본 원칙
-- 동일 도메인 책임(저장/조회/정규화/포맷)은 단일 유틸 또는 단일 API 모듈에서 처리합니다.
-- 화면 컴포넌트에서 스토리지 read/write 로직을 재정의하지 않고 공용 유틸을 재사용합니다.
-- 세 자릿수 콤마 포맷은 공용 유틸 `frontend/src/utils/numberFormat.js`를 단일 기준으로 사용합니다.
-- 시간(초) 표시는 `processTime`에서 `numberFormat`을 재사용해 일관성을 유지합니다.
-- 신규 유틸 추가 전 `frontend/src/utils`에서 기존 기능 검색을 먼저 수행합니다. (`rg` 권장)
-
-### 11.2. 현재 점검 결과 (2026-02-16)
-- `localData.js`의 `saveStyle`은 현재 직접 사용처가 없어 레거시 성격으로 분류합니다.
-- 스타일 도메인의 실사용 진입점은 `styleApi`이며, `loadStyles`는 초기 1회 마이그레이션 목적 사용으로 제한합니다.
-- 로컬 스토리지 접근 로직 일부가 화면 단에 분산되어 있어(`WorkList`, `AuthContext`) 점진 통합이 필요합니다.
-
-### 11.3. 중복 제거 TODO
-- [ ] `saveStyle` 제거 또는 `@deprecated` 표기 후 제거 일정 확정
-- [ ] `loadStyles`를 `loadLegacyStyles`로 명확화(마이그레이션 목적 강조)
-- [ ] `WorkList`의 localStorage 로직을 공용 storage 유틸로 통합
-- [ ] `AuthContext`의 개발용 localStorage 접근 공용화 여부 검토 후 중복 제거
 

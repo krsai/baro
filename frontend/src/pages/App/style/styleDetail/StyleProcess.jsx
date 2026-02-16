@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -25,6 +25,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
   calculateProcessLineTotal,
   calculateProcessTotal,
@@ -36,19 +37,26 @@ import {
   resolveProcessActualTime,
 } from '../../../../utils/processTime';
 
-const masterProcesses = [
-  { id: 1, code: 'P001', name: '주머니 달기', description: '자켓이나 코트의 주머니를 부착합니다.' },
-  { id: 2, code: 'P002', name: '소매 달기', description: '몸통과 블라우스의 소매를 부착합니다.' },
-  { id: 3, code: 'P003', name: '단추 달기', description: '모든 의류에 단추를 답니다.' },
-  { id: 4, code: 'P004', name: '지퍼 달기', description: '바지나 재킷의 지퍼를 부착합니다.' },
-  { id: 5, code: 'P005', name: '라벨 부착', description: '브랜드 또는 사이즈 라벨을 부착합니다.' },
-];
-
 const createEmptyDraft = () => ({
   process: null,
   quantity: 1,
   pt: '',
 });
+
+const normalizeProcessOption = (item) => {
+  const code = String(item?.code ?? '')
+    .trim()
+    .toUpperCase();
+  const name = String(item?.name ?? '').trim();
+  if (!code && !name) return null;
+  return {
+    id: item?.id ?? null,
+    code: code || name,
+    name: name || code,
+    description: String(item?.description ?? '').trim(),
+    actualTime: item?.actualTime ?? null,
+  };
+};
 
 const getProcessIdentity = (process) => {
   if (!process || typeof process !== 'object') return '';
@@ -106,10 +114,48 @@ const buildProcessPayload = (draft, existingProcess = null) =>
 
 const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
+  const [attributeProcesses, setAttributeProcesses] = useState([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
+  const [optionsError, setOptionsError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    const loadAttributeProcesses = async () => {
+      setIsLoadingOptions(true);
+      setOptionsError('');
+      try {
+        const data = await fetchProcessAttributes();
+        if (!active) return;
+        setAttributeProcesses(Array.isArray(data) ? data : []);
+      } catch (_error) {
+        if (!active) return;
+        setAttributeProcesses([]);
+        setOptionsError('표준 공정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+      } finally {
+        if (active) {
+          setIsLoadingOptions(false);
+        }
+      }
+    };
+
+    loadAttributeProcesses();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const normalizedAttributeOptions = useMemo(
+    () => attributeProcesses.map((item) => normalizeProcessOption(item)).filter(Boolean),
+    [attributeProcesses]
+  );
   const processOptions = useMemo(() => {
     const byIdentity = new Map();
-    masterProcesses.forEach((process) => {
-      byIdentity.set(getProcessIdentity(process), process);
+    normalizedAttributeOptions.forEach((process) => {
+      const identity = getProcessIdentity(process);
+      if (!identity || byIdentity.has(identity)) return;
+      byIdentity.set(identity, process);
     });
     safeProcesses.forEach((process) => {
       const identity = getProcessIdentity(process);
@@ -119,10 +165,11 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
         code: process.code,
         name: process.name,
         description: process.description || '',
+        actualTime: process.actualTime ?? null,
       });
     });
     return Array.from(byIdentity.values());
-  }, [safeProcesses]);
+  }, [normalizedAttributeOptions, safeProcesses]);
 
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
@@ -154,6 +201,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     });
     return set;
   }, [editingId, safeProcesses]);
+  const canStartAdd = !isLoadingOptions && processOptions.length > 0;
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
@@ -174,7 +222,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   };
 
   const handleStartAddRow = () => {
-    if (editingId) return;
+    if (editingId || !canStartAdd) return;
     setIsAddingRow(true);
     setAddDraft(createEmptyDraft());
     setAddError('');
@@ -273,7 +321,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleStartAddRow}
-          disabled={isAddingRow || Boolean(editingId)}
+          disabled={isAddingRow || Boolean(editingId) || !canStartAdd}
           sx={{
             minWidth: 108,
             height: 36,
@@ -285,6 +333,22 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           행 추가
         </Button>
       </Box>
+
+      {isLoadingOptions && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          표준 공정 목록을 불러오는 중입니다.
+        </Typography>
+      )}
+      {!isLoadingOptions && optionsError && (
+        <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1 }}>
+          {optionsError}
+        </Typography>
+      )}
+      {!isLoadingOptions && !optionsError && processOptions.length === 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          속성 관리에서 공정을 먼저 등록해주세요.
+        </Typography>
+      )}
 
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         <TableContainer>
