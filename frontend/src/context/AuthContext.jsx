@@ -25,10 +25,12 @@ const normalizeDevProfile = (profile) => {
 
   const next = { ...DEFAULT_DEV_PROFILE, ...profile };
   const fallbackLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || DEFAULT_DEV_PROFILE.label;
+  const hasKnownKey = Boolean(DEV_PROFILE_LABEL_BY_KEY[next.key]);
   const rawLabel = typeof next.label === 'string' ? next.label.trim() : '';
   const hasSuspiciousLabel = !rawLabel || rawLabel.includes('?') || rawLabel.includes('\uFFFD');
 
-  next.label = hasSuspiciousLabel ? fallbackLabel : rawLabel;
+  // For known dev profiles, always pin to canonical labels to avoid mojibake from old localStorage.
+  next.label = hasKnownKey || hasSuspiciousLabel ? fallbackLabel : rawLabel;
   return next;
 };
 

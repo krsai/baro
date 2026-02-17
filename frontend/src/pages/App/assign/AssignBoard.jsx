@@ -4,19 +4,45 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
-import { requestJSON } from '../../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { fetchOrders as fetchOrdersFromApi } from '../../../utils/orderApi';
 import {
   HOLIDAY_UPDATED_EVENT,
   STORAGE_KEYS,
   loadHolidays,
-  loadOrders,
 } from '../../../utils/localData';
 import { normalizeProcesses } from '../../../utils/processTime';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
+const toNonNegativeNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+};
+const resolveLineHours = (line) => {
+  const shiftHours = toNonNegativeNumber(line?.shiftHours, 8);
+  const overtimeHours = toNonNegativeNumber(line?.overtimeHours, 0);
+  return { shiftHours, overtimeHours, totalHours: shiftHours + overtimeHours };
+};
+const resolveLineDailyCapacitySeconds = (line, headcount) => {
+  const directCapacity = Number(line?.dailyCapacitySeconds);
+  if (Number.isFinite(directCapacity) && directCapacity > 0) {
+    return Math.round(directCapacity);
+  }
+  const { totalHours } = resolveLineHours(line);
+  return Math.round(Math.max(0, headcount) * totalHours * 60 * 60);
+};
+const formatLineShiftLabel = (line) => {
+  const { shiftHours, overtimeHours } = resolveLineHours(line);
+  if (overtimeHours > 0) {
+    return `${shiftHours}h + OT ${overtimeHours}h`;
+  }
+  return `${shiftHours}h`;
+};
 
 const BASIS_COLORS = {
   PT: { color: '#DCE9FF', stripe: '#9FB9F2' },
@@ -27,7 +53,6 @@ const BASIS_COLORS = {
 const initialCards = [];
 const initialLines = [];
 const initialAssignments = [];
-let runtimeLines = [];
 
 const mergeCardsWithSaved = (baseCards, savedCards) => {
   const merged = [];
@@ -257,10 +282,12 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
   return cards;
 };
 
-const getLineCapacitySeconds = (lineId) => {
+const getLineCapacitySeconds = (lineId, lineCapacityById = null) => {
   if (!lineId) return DAILY_CAPACITY_SECONDS;
-  const line = runtimeLines.find((item) => item.id === lineId);
-  return line?.dailyCapacitySeconds ?? DAILY_CAPACITY_SECONDS;
+  const key = normalizeKey(lineId);
+  const resolved = Number(lineCapacityById?.get?.(key));
+  if (!Number.isFinite(resolved) || resolved <= 0) return DAILY_CAPACITY_SECONDS;
+  return resolved;
 };
 
 const isNonWorkingDay = (dayIndex, days) => {
@@ -270,9 +297,9 @@ const isNonWorkingDay = (dayIndex, days) => {
   return day.isSunday || day.isHoliday;
 };
 
-const getDayCapacitySeconds = (dayIndex, lineId, days) => {
+const getDayCapacitySeconds = (dayIndex, lineId, days, lineCapacityById = null) => {
   if (isNonWorkingDay(dayIndex, days)) return 0;
-  return getLineCapacitySeconds(lineId);
+  return getLineCapacitySeconds(lineId, lineCapacityById);
 };
 
 const hasPt = (card) => Number(card.totalPt) > 0;
@@ -338,10 +365,15 @@ const mergeCardData = (target, source) => {
   };
 };
 
-const recomputeAssignmentRange = (assignment, totalSeconds, days) => {
+const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityById = null) => {
   const startDayOffsetPercent = assignment.startDayOffsetPercent ?? 0;
   const startIndex = assignment.startIndex;
-  const startCapacity = getDayCapacitySeconds(startIndex, assignment.lineId, days);
+  const startCapacity = getDayCapacitySeconds(
+    startIndex,
+    assignment.lineId,
+    days,
+    lineCapacityById
+  );
   const startOffsetSeconds = (startDayOffsetPercent / 100) * startCapacity;
   const startAvailable = Math.max(startCapacity - startOffsetSeconds, 0);
   let remaining = totalSeconds;
@@ -369,7 +401,12 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days) => {
       cursor += 1;
       continue;
     }
-    const dailyCapacity = getDayCapacitySeconds(cursor, assignment.lineId, days);
+    const dailyCapacity = getDayCapacitySeconds(
+      cursor,
+      assignment.lineId,
+      days,
+      lineCapacityById
+    );
     if (dailyCapacity <= 0) {
       endIndex = cursor;
       cursor += 1;
@@ -399,7 +436,7 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days) => {
   };
 };
 
-const resolveCardTotalSeconds = (card, lineId) => {
+const resolveCardTotalSeconds = (card) => {
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
   // PT/AT are factory-common values
@@ -432,13 +469,13 @@ const buildDays = (baseDate, count, holidaySet = new Set()) => {
   });
 };
 
-const getUsageSeconds = (assignment, days) => {
+const getUsageSeconds = (assignment, days, lineCapacityById = null) => {
   const startPercent = (assignment.startDayPercent ?? 100) / 100;
   const endPercent = (assignment.endDayPercent ?? 100) / 100;
   const usage = [];
 
   for (let i = assignment.startIndex; i <= assignment.endIndex; i += 1) {
-    const dailyCapacity = getDayCapacitySeconds(i, assignment.lineId, days);
+    const dailyCapacity = getDayCapacitySeconds(i, assignment.lineId, days, lineCapacityById);
     if (dailyCapacity <= 0) {
       usage.push({ dayIndex: i, seconds: 0 });
       continue;
@@ -461,20 +498,28 @@ const getUsageSeconds = (assignment, days) => {
   return usage;
 };
 
-const buildUsageMap = (assignments, lineId, totalDays, days) => {
+const buildUsageMap = (assignments, lineId, totalDays, days, lineCapacityById = null) => {
   const usage = Array.from({ length: totalDays }).map(() => 0);
   assignments
     .filter((item) => item.lineId === lineId)
     .forEach((item) => {
-      getUsageSeconds(item, days).forEach(({ dayIndex, seconds }) => {
+      getUsageSeconds(item, days, lineCapacityById).forEach(({ dayIndex, seconds }) => {
         if (usage[dayIndex] != null) usage[dayIndex] += seconds;
       });
     });
   return usage;
 };
 
-const planAssignment = ({ startIndex, totalSeconds, lineId, assignments, totalDays, days }) => {
-  const usage = buildUsageMap(assignments, lineId, totalDays, days);
+const planAssignment = ({
+  startIndex,
+  totalSeconds,
+  lineId,
+  assignments,
+  totalDays,
+  days,
+  lineCapacityById,
+}) => {
+  const usage = buildUsageMap(assignments, lineId, totalDays, days, lineCapacityById);
   let remaining = totalSeconds;
   let dayIndex = startIndex;
   while (dayIndex < totalDays && isNonWorkingDay(dayIndex, days)) {
@@ -482,7 +527,7 @@ const planAssignment = ({ startIndex, totalSeconds, lineId, assignments, totalDa
   }
   if (dayIndex >= totalDays) return null;
 
-  const startCapacity = getDayCapacitySeconds(dayIndex, lineId, days);
+  const startCapacity = getDayCapacitySeconds(dayIndex, lineId, days, lineCapacityById);
   if (startCapacity <= 0 || usage[dayIndex] >= startCapacity) return null;
 
   const startOffsetPercent = (usage[dayIndex] / startCapacity) * 100;
@@ -510,7 +555,7 @@ const planAssignment = ({ startIndex, totalSeconds, lineId, assignments, totalDa
     if (usage[cursor] > 0) {
       return null;
     }
-    const dailyCapacity = getDayCapacitySeconds(cursor, lineId, days);
+    const dailyCapacity = getDayCapacitySeconds(cursor, lineId, days, lineCapacityById);
     if (dailyCapacity <= 0) {
       cursor += 1;
       continue;
@@ -547,16 +592,24 @@ const getTargetOnDay = (assignments, lineId, dayIndex) => {
   );
 };
 
-const getAssignmentTotalSeconds = (assignment, days) => {
-  return getUsageSeconds(assignment, days).reduce((sum, item) => sum + item.seconds, 0);
+const getAssignmentTotalSeconds = (assignment, days, lineCapacityById = null) => {
+  return getUsageSeconds(assignment, days, lineCapacityById).reduce(
+    (sum, item) => sum + item.seconds,
+    0
+  );
 };
 
-const getNextStartIndex = (assignment, days) => {
+const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
   if (!assignment) return null;
-  const usage = getUsageSeconds(assignment, days);
+  const usage = getUsageSeconds(assignment, days, lineCapacityById);
   const lastUsage = usage.find((item) => item.dayIndex === assignment.endIndex);
   if (!lastUsage) return assignment.endIndex;
-  const dailyCapacity = getDayCapacitySeconds(assignment.endIndex, assignment.lineId, days);
+  const dailyCapacity = getDayCapacitySeconds(
+    assignment.endIndex,
+    assignment.lineId,
+    days,
+    lineCapacityById
+  );
   if (dailyCapacity > 0 && lastUsage.seconds < dailyCapacity) {
     return assignment.endIndex;
   }
@@ -577,6 +630,7 @@ const rebuildLineWithInsert = ({
   assignments,
   totalDays,
   days,
+  lineCapacityById,
 }) => {
   const lineItems = assignments
     .filter((item) => item.lineId === lineId)
@@ -593,7 +647,7 @@ const rebuildLineWithInsert = ({
     if (targetIndex === -1) return null;
     before = lineItems.slice(0, targetIndex + 1);
     after = lineItems.slice(targetIndex + 1);
-    insertIndex = getNextStartIndex(before[before.length - 1], days);
+    insertIndex = getNextStartIndex(before[before.length - 1], days, lineCapacityById);
     if (insertIndex == null || insertIndex >= totalDays) return null;
   } else if (insertBeforeId) {
     const targetIndex = lineItems.findIndex((item) => item.id === insertBeforeId);
@@ -613,11 +667,14 @@ const rebuildLineWithInsert = ({
   const placed = before.map((item) => ({ ...item }));
   let planned = planAssignment({
     startIndex: insertIndex,
-    totalSeconds: insertItem.totalSeconds ?? getAssignmentTotalSeconds(insertItem, days),
+    totalSeconds:
+      insertItem.totalSeconds ??
+      getAssignmentTotalSeconds(insertItem, days, lineCapacityById),
     lineId,
     assignments: placed,
     totalDays,
     days,
+    lineCapacityById,
   });
 
   if (!planned) return null;
@@ -628,13 +685,18 @@ const rebuildLineWithInsert = ({
     ...planned,
   });
 
-  let cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+  let cursorStart = getNextStartIndex(
+    placed[placed.length - 1],
+    days,
+    lineCapacityById
+  );
 
   const queue = after;
 
   for (const item of queue) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
-    const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item, days);
+    const totalSeconds =
+      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
     planned = planAssignment({
       startIndex: cursorStart,
       totalSeconds,
@@ -642,6 +704,7 @@ const rebuildLineWithInsert = ({
       assignments: placed,
       totalDays,
       days,
+      lineCapacityById,
     });
 
     if (!planned) return null;
@@ -652,7 +715,11 @@ const rebuildLineWithInsert = ({
       ...planned,
     });
 
-    cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+    cursorStart = getNextStartIndex(
+      placed[placed.length - 1],
+      days,
+      lineCapacityById
+    );
   }
 
   return [
@@ -670,7 +737,7 @@ const getNextAssignmentAfterDay = (items, lineId, dayIndex, excludeId) => {
   return sorted.find((item) => item.startIndex > dayIndex) || null;
 };
 
-const buildConnectedChain = (items, startIndex, days) => {
+const buildConnectedChain = (items, startIndex, days, lineCapacityById = null) => {
   if (startIndex == null || startIndex < 0) return [];
   const chain = [];
   for (let i = startIndex; i < items.length; i += 1) {
@@ -678,7 +745,11 @@ const buildConnectedChain = (items, startIndex, days) => {
       chain.push(items[i]);
       continue;
     }
-    const expectedStart = getNextStartIndex(chain[chain.length - 1], days);
+    const expectedStart = getNextStartIndex(
+      chain[chain.length - 1],
+      days,
+      lineCapacityById
+    );
     if (items[i].startIndex === expectedStart) {
       chain.push(items[i]);
     } else {
@@ -696,6 +767,7 @@ const rebuildLineWithChain = ({
   assignments,
   totalDays,
   days,
+  lineCapacityById,
 }) => {
   if (!Array.isArray(chainItems) || chainItems.length === 0) return null;
   const chainIds = new Set(chainItems.map((item) => item.id));
@@ -714,7 +786,7 @@ const rebuildLineWithChain = ({
     if (targetIndex === -1) return null;
     before = lineItems.slice(0, targetIndex + 1);
     after = lineItems.slice(targetIndex + 1);
-    insertIndex = getNextStartIndex(before[before.length - 1], days);
+    insertIndex = getNextStartIndex(before[before.length - 1], days, lineCapacityById);
     if (insertIndex == null || insertIndex >= totalDays) return null;
   } else {
     lineItems.forEach((item) => {
@@ -730,7 +802,8 @@ const rebuildLineWithChain = ({
   let cursorStart = insertIndex;
 
   for (const item of chainItems) {
-    const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item, days);
+    const totalSeconds =
+      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
     const planned = planAssignment({
       startIndex: cursorStart,
       totalSeconds,
@@ -738,6 +811,7 @@ const rebuildLineWithChain = ({
       assignments: placed,
       totalDays,
       days,
+      lineCapacityById,
     });
 
     if (!planned) return null;
@@ -748,12 +822,17 @@ const rebuildLineWithChain = ({
       ...planned,
     });
 
-    cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+    cursorStart = getNextStartIndex(
+      placed[placed.length - 1],
+      days,
+      lineCapacityById
+    );
   }
 
   for (const item of after) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
-      const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item, days);
+      const totalSeconds =
+        item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
       const planned = planAssignment({
         startIndex: cursorStart,
         totalSeconds,
@@ -761,6 +840,7 @@ const rebuildLineWithChain = ({
         assignments: placed,
         totalDays,
         days,
+        lineCapacityById,
       });
 
     if (!planned) return null;
@@ -771,7 +851,11 @@ const rebuildLineWithChain = ({
       ...planned,
     });
 
-      cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+      cursorStart = getNextStartIndex(
+        placed[placed.length - 1],
+        days,
+        lineCapacityById
+      );
     }
 
   return [
@@ -780,7 +864,15 @@ const rebuildLineWithChain = ({
   ];
 };
 
-const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalDays, days }) => {
+const rebuildLineWithReplace = ({
+  lineId,
+  targetId,
+  newItem,
+  assignments,
+  totalDays,
+  days,
+  lineCapacityById,
+}) => {
   const lineItems = assignments
     .filter((item) => item.lineId === lineId)
     .slice()
@@ -795,11 +887,13 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
   const placed = before.map((item) => ({ ...item }));
   const planned = planAssignment({
     startIndex: insertIndex,
-    totalSeconds: newItem.totalSeconds ?? getAssignmentTotalSeconds(newItem, days),
+    totalSeconds:
+      newItem.totalSeconds ?? getAssignmentTotalSeconds(newItem, days, lineCapacityById),
     lineId,
     assignments: placed,
     totalDays,
     days,
+    lineCapacityById,
   });
   if (!planned) return null;
 
@@ -809,10 +903,15 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
     ...planned,
   });
 
-  let cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+  let cursorStart = getNextStartIndex(
+    placed[placed.length - 1],
+    days,
+    lineCapacityById
+  );
   for (const item of after) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
-    const totalSeconds = item.totalSeconds ?? getAssignmentTotalSeconds(item, days);
+    const totalSeconds =
+      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
     const nextPlanned = planAssignment({
       startIndex: cursorStart,
       totalSeconds,
@@ -820,6 +919,7 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
       assignments: placed,
       totalDays,
       days,
+      lineCapacityById,
     });
     if (!nextPlanned) return null;
     placed.push({
@@ -827,7 +927,11 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
       lineId,
       ...nextPlanned,
     });
-    cursorStart = getNextStartIndex(placed[placed.length - 1], days);
+    cursorStart = getNextStartIndex(
+      placed[placed.length - 1],
+      days,
+      lineCapacityById
+    );
   }
 
   return [
@@ -838,6 +942,7 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
 
 const AssignBoard = () => {
   const { showNotification } = useApp();
+  const { devBypass, devProfile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
@@ -856,10 +961,23 @@ const AssignBoard = () => {
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
-
-  useEffect(() => {
-    runtimeLines = lines;
+  const lineCapacityById = useMemo(() => {
+    const map = new Map();
+    lines.forEach((line) => {
+      const key = normalizeKey(line?.id);
+      if (!key) return;
+      const parsed = Number(line?.dailyCapacitySeconds);
+      const resolved =
+        Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
+      map.set(key, resolved);
+    });
+    return map;
   }, [lines]);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     const syncHolidays = () => {
@@ -890,13 +1008,15 @@ const AssignBoard = () => {
     const loadSourceData = async () => {
       setLoading(true);
       try {
-        const [styles, factories, lines, workers, attributes, boardState] = await Promise.all([
-          fetchStylesFromApi({ compact: true }).catch(() => []),
-          requestJSON('/factories').catch(() => []),
-          requestJSON('/lines').catch(() => []),
-          requestJSON('/line-workers').catch(() => []),
-          fetchAttributes().catch(() => null),
-          requestJSON('/assignment-board-state').catch(() => null),
+        const orgQuery = buildQueryString({ orgId: activeOrgId });
+        const [styles, orders, factories, lines, workers, attributes, boardState] = await Promise.all([
+          fetchStylesFromApi({ compact: true, orgId: activeOrgId }).catch(() => []),
+          fetchOrdersFromApi({ orgId: activeOrgId }).catch(() => []),
+          requestJSON('/factories' + orgQuery).catch(() => []),
+          requestJSON('/lines' + orgQuery).catch(() => []),
+          requestJSON('/line-workers' + orgQuery).catch(() => []),
+          fetchAttributes({ orgId: activeOrgId }).catch(() => null),
+          requestJSON('/assignment-board-state' + orgQuery).catch(() => null),
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];
@@ -926,8 +1046,10 @@ const AssignBoard = () => {
               id: String(line.id),
               name: line.name || `Line ${line.id}`,
               headcount,
-              shift: '08:00~17:00',
-              dailyCapacitySeconds: headcount * DAILY_CAPACITY_SECONDS,
+              shift: line?.shift || formatLineShiftLabel(line),
+              shiftHours: toNonNegativeNumber(line?.shiftHours, 8),
+              overtimeHours: toNonNegativeNumber(line?.overtimeHours, 0),
+              dailyCapacitySeconds: resolveLineDailyCapacitySeconds(line, headcount),
               factoryId: factory?.id,
               factoryName: factory?.name || `Factory ${line?.factoryId}`,
               factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
@@ -939,9 +1061,8 @@ const AssignBoard = () => {
           })
           .map(({ factoryOrder, ...line }) => line);
 
-        const orders = loadOrders();
         const nextCards = buildCardsFromOrders({
-          orders,
+          orders: Array.isArray(orders) ? orders : [],
           styles,
           colorNameMap,
         });
@@ -1010,7 +1131,7 @@ const AssignBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeOrgId]);
 
   useEffect(() => {
     if (!persistReadyRef.current) return;
@@ -1028,7 +1149,7 @@ const AssignBoard = () => {
       persistSeqRef.current = currentSeq;
       setPersisting(true);
       try {
-        await requestJSON('/assignment-board-state', {
+        await requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cards, assignments }),
@@ -1055,7 +1176,7 @@ const AssignBoard = () => {
         persistTimerRef.current = null;
       }
     };
-  }, [assignments, cards, showNotification]);
+  }, [activeOrgId, assignments, cards, showNotification]);
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
@@ -1069,37 +1190,77 @@ const AssignBoard = () => {
   };
 
   const tryPlanAssignment = (params) => {
-    let planned = planAssignment({ ...params, totalDays: days.length, days });
+    let planned = planAssignment({
+      ...params,
+      totalDays: days.length,
+      days,
+      lineCapacityById,
+    });
     if (!planned) {
       const extended = extendDays(10);
-      planned = planAssignment({ ...params, totalDays: extended.length, days: extended });
+      planned = planAssignment({
+        ...params,
+        totalDays: extended.length,
+        days: extended,
+        lineCapacityById,
+      });
     }
     return planned;
   };
 
   const tryRebuildLineWithInsert = (params) => {
-    let result = rebuildLineWithInsert({ ...params, totalDays: days.length, days });
+    let result = rebuildLineWithInsert({
+      ...params,
+      totalDays: days.length,
+      days,
+      lineCapacityById,
+    });
     if (!result) {
       const extended = extendDays(10);
-      result = rebuildLineWithInsert({ ...params, totalDays: extended.length, days: extended });
+      result = rebuildLineWithInsert({
+        ...params,
+        totalDays: extended.length,
+        days: extended,
+        lineCapacityById,
+      });
     }
     return result;
   };
 
   const tryRebuildLineWithChain = (params) => {
-    let result = rebuildLineWithChain({ ...params, totalDays: days.length, days });
+    let result = rebuildLineWithChain({
+      ...params,
+      totalDays: days.length,
+      days,
+      lineCapacityById,
+    });
     if (!result) {
       const extended = extendDays(10);
-      result = rebuildLineWithChain({ ...params, totalDays: extended.length, days: extended });
+      result = rebuildLineWithChain({
+        ...params,
+        totalDays: extended.length,
+        days: extended,
+        lineCapacityById,
+      });
     }
     return result;
   };
 
   const tryRebuildLineWithReplace = (params) => {
-    let result = rebuildLineWithReplace({ ...params, totalDays: days.length, days });
+    let result = rebuildLineWithReplace({
+      ...params,
+      totalDays: days.length,
+      days,
+      lineCapacityById,
+    });
     if (!result) {
       const extended = extendDays(10);
-      result = rebuildLineWithReplace({ ...params, totalDays: extended.length, days: extended });
+      result = rebuildLineWithReplace({
+        ...params,
+        totalDays: extended.length,
+        days: extended,
+        lineCapacityById,
+      });
     }
     return result;
   };
@@ -1272,7 +1433,7 @@ const AssignBoard = () => {
         setActiveDrag(null);
         return;
       }
-      const totalSeconds = resolveCardTotalSeconds(card, lineId);
+      const totalSeconds = resolveCardTotalSeconds(card);
       if (!totalSeconds) {
         setActiveDrag(null);
         return;
@@ -1367,7 +1528,7 @@ const AssignBoard = () => {
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
-        const totalSeconds = getAssignmentTotalSeconds(target, days);
+        const totalSeconds = getAssignmentTotalSeconds(target, days, lineCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
           const planned = tryPlanAssignment({
@@ -1424,9 +1585,9 @@ const AssignBoard = () => {
       const targetIndex = lineItems.findIndex((item) => item.id === assignmentId);
       if (targetIndex <= 0) return prev;
       const prevItem = lineItems[targetIndex - 1];
-      const insertIndex = getNextStartIndex(prevItem, days);
+      const insertIndex = getNextStartIndex(prevItem, days, lineCapacityById);
       if (insertIndex == null) return prev;
-      const chain = buildConnectedChain(lineItems, targetIndex, days);
+      const chain = buildConnectedChain(lineItems, targetIndex, days, lineCapacityById);
       if (chain.length === 0) return prev;
 
       const moved = tryRebuildLineWithChain({
@@ -1508,7 +1669,12 @@ const AssignBoard = () => {
       target.contractedSeconds == null
         ? target.contractedSeconds
         : scaleValue(target.contractedSeconds, remainRatio) || 1;
-    const range = recomputeAssignmentRange(target, scaledSeconds, days);
+    const range = recomputeAssignmentRange(
+      target,
+      scaledSeconds,
+      days,
+      lineCapacityById
+    );
     setAssignments((prev) =>
       prev.map((item) =>
         item.id === assignmentId
@@ -1523,7 +1689,7 @@ const AssignBoard = () => {
           : item
       )
     );
-  }, [assignmentById, cardById, promptSplitQuantity, buildSplitCard, days]);
+  }, [assignmentById, cardById, promptSplitQuantity, buildSplitCard, days, lineCapacityById]);
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
@@ -1568,7 +1734,7 @@ const AssignBoard = () => {
     if (!target || !sourceCard) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
-    const addedSeconds = resolveCardTotalSeconds(sourceCard, target.lineId);
+    const addedSeconds = resolveCardTotalSeconds(sourceCard);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
     const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
     const mergedContractedSeconds =
@@ -1629,7 +1795,7 @@ const AssignBoard = () => {
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
     const sourceCard = buildCardFromAssignment(source);
-    const addedSeconds = resolveCardTotalSeconds(sourceCard, target.lineId);
+    const addedSeconds = resolveCardTotalSeconds(sourceCard);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
     const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
     const mergedContractedSeconds =

@@ -45,13 +45,14 @@ const buildPayload = (data) => {
   const today = new Date().toISOString().slice(0, 10);
   const trimmedName = (data.name || '').trim();
   const trimmedCode = (data.styleCode || '').trim();
+  const fallbackCode = (data.id || '').trim();
   return {
     ...createEmptyStyle(),
     ...data,
     id: data.id,
     name: trimmedName,
     customer: (data.customer || '').trim(),
-    styleCode: trimmedCode || trimmedName,
+    styleCode: trimmedCode || fallbackCode,
     registrationDate: data.registrationDate || today,
   };
 };

@@ -22,6 +22,7 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
+import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import WorkerLog from './WorkerLog';
 
@@ -166,6 +167,12 @@ const findWorkerValue = (employees, record, fallbackIndex) => {
     );
     if (matched) return matched;
   }
+  if (record?.workerName) {
+    const matchedByName = employees.find((employee) =>
+      equalsText(employee?.name, record.workerName)
+    );
+    if (matchedByName) return matchedByName;
+  }
 
   if (!record?.workerName && !record?.workerId) return null;
   return {
@@ -219,17 +226,58 @@ const toSeconds = (value) => {
   return parsed > 0 ? Math.round(parsed) : 0;
 };
 
+const resolveFirstPositiveSeconds = (...values) => {
+  for (const value of values) {
+    const seconds = toSeconds(value);
+    if (seconds > 0) return seconds;
+  }
+  return 0;
+};
+
 const resolveCtSeconds = (process) => {
   if (!process) return 0;
-  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.at ?? process.pt);
+  return resolveFirstPositiveSeconds(
+    process.ctSeconds,
+    process.contractedSeconds,
+    process.at,
+    process.pt
+  );
 };
 
 const toOptionalNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const toPositiveIdOrNull = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.trunc(parsed);
+  return rounded > 0 ? rounded : null;
+};
+const reconcileWorkerForFactory = (worker, employees = []) => {
+  if (!worker) return null;
+
+  const workerId = toPositiveIdOrNull(worker.id);
+  if (workerId) {
+    const matchedById = employees.find(
+      (employee) => toPositiveIdOrNull(employee?.id) === workerId
+    );
+    if (matchedById) return matchedById;
+  }
+
+  const workerName = String(worker?.name || '').trim();
+  if (workerName) {
+    const matchedByName = employees.find((employee) =>
+      equalsText(employee?.name, workerName)
+    );
+    if (matchedByName) return matchedByName;
+  }
+
+  return null;
+};
 
 const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => {
+  const { devBypass, devProfile } = useAuth();
   const [workDate, setWorkDate] = useState(dayjs());
   const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(null);
@@ -242,10 +290,17 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [itemFocusRequest, setItemFocusRequest] = useState(null);
   const [workerFocusRequest, setWorkerFocusRequest] = useState(null);
   const [duplicateEntryMessage, setDuplicateEntryMessage] = useState('');
+  const [saveErrorMessage, setSaveErrorMessage] = useState('');
+  const [note, setNote] = useState('');
   const cancelButtonRef = useRef(null);
   const initializedMetaLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
   const isPageMode = mode === 'page';
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,11 +308,12 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     const loadBaseData = async () => {
       setLoading(true);
       try {
+        const query = buildQueryString({ orgId: activeOrgId });
         const [factoryRows, customerRows, styleRows, attributeData] = await Promise.all([
-          requestJSON('/factories').catch(() => []),
-          requestJSON('/customers').catch(() => []),
-          fetchStylesFromApi().catch(() => []),
-          fetchAttributes().catch(() => null),
+          requestJSON('/factories' + query).catch(() => []),
+          requestJSON('/customers' + query).catch(() => []),
+          fetchStylesFromApi({ orgId: activeOrgId }).catch(() => []),
+          fetchAttributes({ orgId: activeOrgId }).catch(() => null),
         ]);
         if (cancelled) return;
         setFactories(Array.isArray(factoryRows) ? factoryRows : []);
@@ -273,12 +329,21 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeOrgId]);
 
   useEffect(() => {
     initializedMetaLogIdRef.current = '';
     initializedRecordsLogIdRef.current = '';
   }, [initialLog?.id]);
+
+  useEffect(() => {
+    if (initialLog?.id) {
+      setNote(initialLog.note || '');
+    } else {
+      setNote('');
+    }
+    setSaveErrorMessage('');
+  }, [initialLog?.id, initialLog?.note]);
 
   useEffect(() => {
     if (!initialLog?.id) return;
@@ -317,7 +382,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       }
       try {
         const data = await requestJSON(
-          `/employees${buildQueryString({ factoryId: selectedFactory.id })}`
+          `/employees${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`
         );
         if (cancelled) return;
         const list = (Array.isArray(data) ? data : []).map((employee) => ({
@@ -328,13 +393,29 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           setEmployees(list);
           if (isPendingInitialHydration) {
             // 상세 수정 초기화 중에는 기존 기록 복원 effect가 workerLogs를 세팅한다.
-          } else if (list.length > 0) {
-            const initialWorkerLog = buildWorkerLog();
-            setWorkerLogs([initialWorkerLog]);
-            setWorkerFocusRequest({ logId: initialWorkerLog.id, token: buildFocusToken() });
           } else {
-            setWorkerLogs([]);
-            setWorkerFocusRequest(null);
+            let nextInitialWorkerLogId = null;
+            setWorkerLogs((prev) => {
+              if (!Array.isArray(prev) || prev.length === 0) {
+                if (list.length === 0) return [];
+                const initialWorkerLog = buildWorkerLog();
+                nextInitialWorkerLogId = initialWorkerLog.id;
+                return [initialWorkerLog];
+              }
+
+              // Preserve current input rows on factory change, but remap worker selection to
+              // employees that actually belong to the selected factory.
+              return prev.map((log) => ({
+                ...log,
+                worker: reconcileWorkerForFactory(log.worker, list),
+                items: Array.isArray(log.items) && log.items.length > 0 ? log.items : [buildEmptyItem()],
+              }));
+            });
+            if (nextInitialWorkerLogId) {
+              setWorkerFocusRequest({ logId: nextInitialWorkerLogId, token: buildFocusToken() });
+            } else {
+              setWorkerFocusRequest(null);
+            }
           }
           setItemFocusRequest(null);
           setDuplicateEntryMessage('');
@@ -345,16 +426,14 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     };
 
     setEmployees([]);
-    setWorkerLogs([]);
     setItemFocusRequest(null);
-    setWorkerFocusRequest(null);
     setDuplicateEntryMessage('');
     loadEmployees();
 
     return () => {
       cancelled = true;
     };
-  }, [initialLog?.id, selectedFactory?.id]);
+  }, [activeOrgId, initialLog?.id, selectedFactory?.id]);
 
   useEffect(() => {
     if (!initialLog?.id) return;
@@ -516,7 +595,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       log.items
         .filter((item) => item.process && Number(item.quantity) > 0)
         .map((item) => ({
-          workerId: log.worker?.id ?? null,
+          workerId: toPositiveIdOrNull(log.worker?.id),
           workerName: log.worker?.name || '',
           customerName: item.customer?.name || '',
           styleId: item.style?.id || '',
@@ -550,8 +629,24 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const excludedItemCount = Math.max(0, totalInputItemCount - summary.records.length);
 
   const handleSave = () => {
+    setSaveErrorMessage('');
     if (!selectedFactory) return;
     if (summary.records.length === 0) return;
+    const invalidWorkerLogIndex = workerLogs.findIndex((log) => {
+      const workerId = toPositiveIdOrNull(log.worker?.id);
+      if (workerId) return false;
+      return log.items.some((item) => item.process && Number(item.quantity) > 0);
+    });
+    if (invalidWorkerLogIndex >= 0) {
+      setSaveErrorMessage(
+        `작업자 ${invalidWorkerLogIndex + 1} 항목에 유효한 작업자 ID가 없습니다. 작업자를 다시 선택해 주세요.`
+      );
+      return;
+    }
+    if (selectedFactoryWagePerSecond == null || selectedFactoryWagePerSecond <= 0) {
+      setSaveErrorMessage('초당 공임이 0 이하이거나 미설정 상태입니다. 공장 공임을 먼저 설정해 주세요.');
+      return;
+    }
     const duplicateWorkerLogIndex = findDuplicateWorkerLogIndex(workerLogs);
     if (duplicateWorkerLogIndex >= 0) {
       const duplicateLog = workerLogs[duplicateWorkerLogIndex];
@@ -572,7 +667,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       itemCount: summary.itemCount,
       totalContractedSeconds: summary.totalContractedSeconds,
       records: summary.records,
-      note: '출결 연동 예정',
+      note: note.trim(),
     });
   };
 
@@ -660,9 +755,25 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             <Chip size="small" label={`미완성 ${excludedItemCount}건`} color="warning" variant="outlined" />
           ) : null}
         </Stack>
+        <TextField
+          label="비고"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          size="small"
+          fullWidth
+          multiline
+          minRows={2}
+          sx={{ mt: 1.5 }}
+          placeholder="메모를 입력해 주세요."
+        />
         {duplicateEntryMessage ? (
           <Alert severity="warning" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
             {duplicateEntryMessage}
+          </Alert>
+        ) : null}
+        {saveErrorMessage ? (
+          <Alert severity="error" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+            {saveErrorMessage}
           </Alert>
         ) : null}
         <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>

@@ -10,9 +10,22 @@ const toSeconds = (value) => {
   return parsed > 0 ? Math.round(parsed) : 0;
 };
 
+const resolveFirstPositiveSeconds = (...values) => {
+  for (const value of values) {
+    const seconds = toSeconds(value);
+    if (seconds > 0) return seconds;
+  }
+  return 0;
+};
+
 const resolveCtSeconds = (process) => {
   if (!process) return 0;
-  return toSeconds(process.ctSeconds ?? process.contractedSeconds ?? process.at ?? process.pt);
+  return resolveFirstPositiveSeconds(
+    process.ctSeconds,
+    process.contractedSeconds,
+    process.at,
+    process.pt
+  );
 };
 
 const buildProcessOptions = (style) => {
@@ -36,11 +49,14 @@ const resolveProcessKey = (process) =>
 const calculateWage = (item, factory) => {
   const quantity = Number(item?.quantity) || 0;
   if (!item?.process || quantity <= 0 || !factory) {
-    return { ctSeconds: 0, wagePerPiece: 0, totalWage: 0 };
+    return { ctSeconds: 0, wagePerPiece: 0, totalWage: 0, hasValidWage: true };
   }
 
   const ctSeconds = resolveCtSeconds(item.process);
-  const wagePerSecond = Number(factory.wagePerSecond) || 0;
+  const wagePerSecond = Number(factory.wagePerSecond);
+  if (!Number.isFinite(wagePerSecond) || wagePerSecond <= 0) {
+    return { ctSeconds, wagePerPiece: 0, totalWage: 0, hasValidWage: false };
+  }
   const wagePerPiece = ctSeconds * wagePerSecond;
   const totalWage = wagePerPiece * quantity;
 
@@ -48,6 +64,7 @@ const calculateWage = (item, factory) => {
     ctSeconds,
     wagePerPiece,
     totalWage,
+    hasValidWage: true,
   };
 };
 
@@ -305,16 +322,23 @@ const WorkItemRow = ({
           label="공임(개당)"
           size="small"
           value={
-            item.process
+            item.process && wageInfo.hasValidWage
               ? `${formatNumberWithCommas(wageInfo.wagePerPiece, {
                   fallback: '0',
                   maximumFractionDigits: 2,
                 })} 원`
-              : '-'
+              : item.process
+                ? '공임 미설정'
+                : '-'
           }
           InputProps={{ readOnly: true }}
           inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          sx={{
+            '& .MuiInputBase-root': { backgroundColor: '#f8fafc' },
+            ...(item.process && !wageInfo.hasValidWage
+              ? { '& .MuiInputBase-input': { color: 'warning.main', fontWeight: 700 } }
+              : {}),
+          }}
           fullWidth
         />
 
@@ -322,16 +346,23 @@ const WorkItemRow = ({
           label="총 공임"
           size="small"
           value={
-            item.quantity
+            item.quantity && wageInfo.hasValidWage
               ? `${formatNumberWithCommas(wageInfo.totalWage, {
                   fallback: '0',
                   maximumFractionDigits: 2,
                 })} 원`
-              : '-'
+              : item.quantity
+                ? '공임 미설정'
+                : '-'
           }
           InputProps={{ readOnly: true }}
           inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          sx={{
+            '& .MuiInputBase-root': { backgroundColor: '#f8fafc' },
+            ...(item.quantity && !wageInfo.hasValidWage
+              ? { '& .MuiInputBase-input': { color: 'warning.main', fontWeight: 700 } }
+              : {}),
+          }}
           fullWidth
         />
       </Box>

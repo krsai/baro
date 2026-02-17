@@ -75,7 +75,9 @@ model Organization {
   employees  Employee[]
   lines      Line[]
   styles     Style[]
+  orders     WorkOrder[]
   workLogs   WorkLog[]
+  workRecords WorkRecord[]
   assignmentBoardState AssignmentBoardState?
   assignmentPlans AssignmentPlan[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
@@ -303,6 +305,31 @@ model Style {
   @@index([orgId])
 }
 
+model WorkOrder {
+  id           Int      @id @default(autoincrement())
+  orgId        Int
+  orderId      String
+  orderNumber  String
+  buyerOrgId   Int?
+  buyerOrgName String?
+  sellerOrgId  Int?
+  sellerOrgName String?
+  customerId   Int?
+  customerName String?
+  dueDate      String?
+  status       String
+  items        Json?
+  totalQuantity Int     @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, orderId])
+  @@index([orgId])
+  @@index([orgId, orderNumber])
+}
+
 model AssignmentPlan {
   id                    Int      @id @default(autoincrement())
   orgId                 Int
@@ -362,9 +389,38 @@ model WorkLog {
   updatedAt              DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
+  workRecords  WorkRecord[]
 
   @@index([orgId, workDate])
   @@index([orgId, createdAt])
+}
+
+model WorkRecord {
+  id           Int      @id @default(autoincrement())
+  orgId        Int
+  workLogId    Int
+  workerId     Int?
+  workerName   String?
+  customerName String?
+  styleId      String?
+  styleName    String?
+  processCode  String?
+  processName  String?
+  colorId      Int?
+  colorCode    String?
+  colorName    String?
+  ctSeconds    Int      @default(0)
+  quantity     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  workLog      WorkLog      @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, workLogId])
+  @@index([orgId, workerId])
+  @@index([orgId, styleId])
+  @@index([workLogId])
 }
 
 model AssignmentBoardState {

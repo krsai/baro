@@ -26,7 +26,6 @@ import {
   fetchStyles as fetchStylesFromApi,
   deleteStyle,
 } from '../../../utils/styleApi';
-import { loadOrders } from '../../../utils/localData';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -85,18 +84,6 @@ const StyleBoard = () => {
 
   const handleDeleteConfirm = async () => {
     if (!styleToDelete) return;
-
-    // Check if the style is used in any orders from localStorage
-    const orders = loadOrders();
-    const isStyleInUse = orders.some((order) =>
-      (order.items || []).some((item) => item.styleId === styleToDelete.id)
-    );
-
-    if (isStyleInUse) {
-      showNotification('해당 스타일은 주문에 사용 중이므로 삭제할 수 없습니다.', 'error');
-      handleConfirmClose();
-      return;
-    }
 
     try {
       await deleteStyle(styleToDelete.id);

@@ -15,6 +15,7 @@ import {
   DialogActions,
   TextField,
   Grid,
+  Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -49,6 +50,11 @@ const CustomerList = () => {
   const [formData, setFormData] = useState(buildFormData());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeOrgType = useMemo(
+    () => (devBypass ? String(devProfile?.orgType || '').toUpperCase() : ''),
+    [devBypass, devProfile?.orgType]
+  );
+  const isReadOnly = activeOrgType === 'BRAND';
   const activeOrgId = useMemo(() => {
     if (!devBypass) return null;
     const orgId = Number(devProfile?.orgId);
@@ -91,12 +97,17 @@ const CustomerList = () => {
   }, [customers, searchTerm]);
 
   const handleAdd = () => {
+    if (isReadOnly) {
+      showNotification('브랜드 조직은 고객을 수정할 수 없습니다. 조회만 가능합니다.', 'info');
+      return;
+    }
     setEditingCustomer(null);
     setFormData(buildFormData());
     setOpenDialog(true);
   };
 
   const handleRowDoubleClick = (customer) => {
+    if (isReadOnly) return;
     setEditingCustomer(customer);
     setFormData(buildFormData(customer));
     setOpenDialog(true);
@@ -110,6 +121,10 @@ const CustomerList = () => {
 
   const handleSave = async () => {
     if (saving) return;
+    if (isReadOnly) {
+      showNotification('브랜드 조직은 고객을 수정할 수 없습니다. 조회만 가능합니다.', 'info');
+      return;
+    }
     const trimmedName = formData.name.trim();
     if (!trimmedName) {
       showNotification('고객명을 입력해 주세요.', 'error');
@@ -168,10 +183,20 @@ const CustomerList = () => {
           onChange={(e) => setSearchTerm(e.target.value)}
           sx={{ width: 420 }}
         />
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleAdd}
+          disabled={isReadOnly}
+        >
           고객 추가
         </Button>
       </Box>
+      {isReadOnly && (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          현재 조직은 브랜드 유형이라 고객 정보는 조회 전용입니다.
+        </Alert>
+      )}
       <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">

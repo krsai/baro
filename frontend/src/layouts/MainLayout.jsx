@@ -230,9 +230,30 @@ const MainLayout = () => {
     [menuItems, openTab, setActiveTabId] // No longer depends on openTabs
   );
 
+  useEffect(() => {
+    const currentPath = location.pathname || '/';
+    if (activeTabId !== currentPath) {
+      setActiveTabId(currentPath);
+    }
+
+    if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
+    // Allow the user to close the dashboard tab and stay in an empty workspace.
+    if (openTabs.length === 0 && currentPath === '/') return;
+    if (openTabs.some((tab) => tab.id === currentPath)) return;
+
+    const flattenedMenuItems = menuItems.flatMap((item) =>
+      item.isParent ? item.children : [item]
+    );
+    const matchedMenu =
+      flattenedMenuItems.find((item) => item.path === currentPath) ||
+      flattenedMenuItems.find((item) => currentPath.startsWith(item.path + '/'));
+    const label = matchedMenu?.label || currentPath;
+    openTab({ id: currentPath, label, path: currentPath });
+  }, [activeTabId, location.pathname, menuItems, openTab, openTabs]);
+
   // Provide the navigation handler to the rest of the app via context.
   useEffect(() => {
-    setNavigateToPath(() => handleNavigation);
+    setNavigateToPath(handleNavigation);
   }, [handleNavigation, setNavigateToPath]);
 
   const handleLogout = async () => {

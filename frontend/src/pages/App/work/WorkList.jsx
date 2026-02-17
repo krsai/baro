@@ -16,6 +16,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 
 const formatSeconds = (value) => {
@@ -33,9 +34,15 @@ const formatNote = (note) => {
 
 const WorkList = () => {
   const { navigateToPath, showNotification } = useApp();
+  const { devBypass, devProfile } = useAuth();
   const [workLogs, setWorkLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +50,7 @@ const WorkList = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const rows = await loadWorkLogs();
+        const rows = await loadWorkLogs({ orgId: activeOrgId });
         if (!cancelled) {
           setWorkLogs(Array.isArray(rows) ? rows : []);
         }
@@ -61,7 +68,7 @@ const WorkList = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeOrgId, showNotification]);
 
   const sortedLogs = useMemo(
     () =>
@@ -99,7 +106,7 @@ const WorkList = () => {
     const currentId = String(workLogId);
     setDeletingId(currentId);
     try {
-      const deleted = await deleteWorkLog(workLogId);
+      const deleted = await deleteWorkLog(workLogId, { orgId: activeOrgId });
       setWorkLogs((prev) =>
         prev.filter((item) => String(item?.id || '') !== currentId)
       );

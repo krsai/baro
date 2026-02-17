@@ -1,32 +1,36 @@
-import { requestJSON } from '../../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
-export const loadWorkLogs = async () => {
-  const data = await requestJSON('/work-logs');
+export const loadWorkLogs = async (options = {}) => {
+  const query = buildQueryString({ orgId: options?.orgId, factoryId: options?.factoryId });
+  const data = await requestJSON('/work-logs' + query);
   return Array.isArray(data) ? data : [];
 };
 
-export const appendWorkLog = async (payload) => {
-  return requestJSON('/work-logs', {
+export const appendWorkLog = async (payload, options = {}) => {
+  const query = buildQueryString({ orgId: options?.orgId });
+  return requestJSON('/work-logs' + query, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload ?? {}),
   });
 };
 
-export const findWorkLogById = async (workLogId) => {
+export const findWorkLogById = async (workLogId, options = {}) => {
   if (!workLogId) return null;
   try {
-    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`);
+    const query = buildQueryString({ orgId: options?.orgId });
+    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query);
   } catch (error) {
     if (error?.status === 404) return null;
     throw error;
   }
 };
 
-export const updateWorkLog = async (workLogId, payload) => {
+export const updateWorkLog = async (workLogId, payload, options = {}) => {
   if (!workLogId) return null;
   try {
-    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`, {
+    const query = buildQueryString({ orgId: options?.orgId });
+    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload ?? {}),
@@ -37,10 +41,11 @@ export const updateWorkLog = async (workLogId, payload) => {
   }
 };
 
-export const deleteWorkLog = async (workLogId) => {
+export const deleteWorkLog = async (workLogId, options = {}) => {
   if (!workLogId) return false;
   try {
-    await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`, {
+    const query = buildQueryString({ orgId: options?.orgId });
+    await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'DELETE',
     });
     return true;

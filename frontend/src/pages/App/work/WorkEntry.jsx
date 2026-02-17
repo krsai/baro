@@ -1,17 +1,24 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import WorkDetail from './WorkDetail';
 import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage';
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
   const { navigateToPath, closeTab, showNotification } = useApp();
+  const { devBypass, devProfile } = useAuth();
 
   const isEditMode = Boolean(workLogId) && workLogId !== 'new';
   const [loading, setLoading] = useState(Boolean(isEditMode));
   const [existingLog, setExistingLog] = useState(null);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
 
   const closeEntry = useCallback(() => {
     navigateToPath('/work-history', { label: '작업 기록' });
@@ -33,7 +40,7 @@ const WorkEntry = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const record = await findWorkLogById(workLogId);
+        const record = await findWorkLogById(workLogId, { orgId: activeOrgId });
         if (cancelled) return;
         if (!record) {
           showNotification('작업 기록을 찾을 수 없습니다.', 'error');
@@ -55,13 +62,13 @@ const WorkEntry = () => {
     return () => {
       cancelled = true;
     };
-  }, [isEditMode, workLogId]);
+  }, [activeOrgId, closeEntry, isEditMode, showNotification, workLogId]);
 
   const handleSave = useCallback(
     async (payload) => {
       try {
         if (isEditMode && workLogId) {
-          const updated = await updateWorkLog(workLogId, payload);
+          const updated = await updateWorkLog(workLogId, payload, { orgId: activeOrgId });
           if (!updated) {
             showNotification('작업 기록 수정에 실패했습니다.', 'error');
             return;
@@ -71,14 +78,14 @@ const WorkEntry = () => {
           return;
         }
 
-        await appendWorkLog(payload);
+        await appendWorkLog(payload, { orgId: activeOrgId });
         showNotification('작업 기록이 저장되었습니다.', 'success');
         closeEntry();
       } catch (_error) {
         showNotification('작업 기록 저장에 실패했습니다.', 'error');
       }
     },
-    [closeEntry, isEditMode, showNotification, workLogId]
+    [activeOrgId, closeEntry, isEditMode, showNotification, workLogId]
   );
 
   if (loading) {

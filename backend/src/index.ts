@@ -72,6 +72,13 @@ const toNumberOrNull = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const toPositiveIntOrNull = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.trunc(parsed);
+  return rounded > 0 ? rounded : null;
+};
 const resolveOptionalString = (value, fallback = null) => {
   if (value === undefined) return fallback;
   if (value === null) return null;
@@ -82,6 +89,7 @@ const resolveOptionalString = (value, fallback = null) => {
   return fallback;
 };
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
+const LINE_ELIGIBLE_ROLES = ["ADMIN", "OPERATOR", "WORKER"];
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
   "ACTIVE",
@@ -118,7 +126,7 @@ const isBaroOrganization = (organization) => {
     typeof organization?.code === "string"
       ? organization.code.trim().toUpperCase()
       : "";
-  return normalizedName === "baro" || normalizedName.startsWith("baro") || normalizedCode === "BARO";
+  return normalizedName === "baro" || normalizedCode === "BARO";
 };
 
 const normalizeSubscriptionEmailInput = (value, fieldName, fallback) => {
@@ -226,8 +234,18 @@ const getPrimaryOrganization = async (options = {}) => {
 };
 
 const getOrganizationByQuery = async (req, options = {}) => {
-  const orgId = Number(req.query.orgId);
-  if (Number.isFinite(orgId)) {
+  const rawOrgId =
+    req.query.orgId === undefined || req.query.orgId === null
+      ? ""
+      : String(req.query.orgId).trim();
+  if (rawOrgId !== "") {
+    if (!/^\d+$/.test(rawOrgId)) {
+      throw createHttpError(400, "invalid orgId");
+    }
+    const orgId = Number(rawOrgId);
+    if (!Number.isSafeInteger(orgId) || orgId <= 0) {
+      throw createHttpError(400, "invalid orgId");
+    }
     const organization = await prisma.organization.findUnique({ where: { id: orgId } });
     if (!organization) return null;
     const withSubscription = await attachOrganizationSubscription(organization);
@@ -369,19 +387,22 @@ const applySubscriptionPayload = async (organization, payload = {}) => {
   });
 };
 
-const toCustomerResponse = (relationship) => {
-  const brand = relationship.brand ?? {};
-  const brandCode = brand.code ?? relationship.customerCode ?? "";
+const toCustomerResponse = (relationship, perspective = "MANUFACTURER") => {
+  const targetOrg =
+    perspective === "BRAND" ? relationship.manufacturer ?? {} : relationship.brand ?? {};
+  const targetCode = targetOrg.code ?? relationship.customerCode ?? "";
   return {
     id: relationship.id,
     brandOrgId: relationship.brandOrgId,
-    code: brandCode,
-    name: brand.name ?? "",
-    manager: relationship.managerName ?? brand.representative ?? "",
-    phone: relationship.managerPhone ?? brand.phone ?? "",
-    email: relationship.managerEmail ?? brand.email ?? "",
+    manufacturerOrgId: relationship.manufacturerOrgId,
+    code: targetCode,
+    name: targetOrg.name ?? "",
+    manager: relationship.managerName ?? targetOrg.representative ?? "",
+    phone: relationship.managerPhone ?? targetOrg.phone ?? "",
+    email: relationship.managerEmail ?? targetOrg.email ?? "",
     registeredAt: relationship.createdAt,
-    brand,
+    brand: relationship.brand ?? null,
+    manufacturer: relationship.manufacturer ?? null,
   };
 };
 
@@ -423,7 +444,7 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
   const customer =
     typeof payload?.customer === "string" ? payload.customer.trim() : "";
   const styleCodeInput = resolveOptionalString(payload?.styleCode, null);
-  const styleCode = styleCodeInput ?? name;
+  const styleCode = styleCodeInput ?? styleId;
 
   return {
     styleId,
@@ -499,6 +520,119 @@ const toStyleResponse = (style) => ({
   updatedAt: style.updatedAt,
 });
 
+const sumOrderItemQuantity = (item = {}) => {
+  const direct = Number(item?.totalQuantity);
+  if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
+
+  const fromSizeQuantities = Object.values(item?.sizeQuantities ?? {}).reduce(
+    (sum, value) => sum + (Number(value) || 0),
+    0
+  );
+  if (fromSizeQuantities > 0) return Math.round(fromSizeQuantities);
+
+  const fromLegacyRows = ensureArray(item?.quantities).reduce(
+    (sum, row) => sum + (Number(row?.quantity) || 0),
+    0
+  );
+  if (fromLegacyRows > 0) return Math.round(fromLegacyRows);
+
+  return 0;
+};
+
+const normalizeOrderItems = (value) =>
+  ensureArray(value)
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      totalQuantity: sumOrderItemQuantity(item),
+    }));
+
+const buildOrderId = () =>
+  `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeOrderPayload = (payload = {}, fallback = null) => {
+  const fallbackOrderId =
+    typeof fallback?.orderId === "string" ? fallback.orderId.trim() : "";
+  const payloadOrderId =
+    typeof payload?.id === "string" ? payload.id.trim() : "";
+  const orderId = payloadOrderId || fallbackOrderId || buildOrderId();
+
+  const fallbackOrderNumber =
+    typeof fallback?.orderNumber === "string" ? fallback.orderNumber : "";
+  const orderNumber =
+    typeof payload?.orderNumber === "string"
+      ? payload.orderNumber.trim()
+      : fallbackOrderNumber;
+
+  const items = normalizeOrderItems(
+    payload?.items !== undefined ? payload.items : fallback?.items
+  );
+  const computedTotalQuantity = items.reduce(
+    (sum, item) => sum + (Number(item?.totalQuantity) || 0),
+    0
+  );
+
+  return {
+    orderId,
+    orderNumber,
+    buyerOrgId: toNumberOrNull(
+      payload?.buyerOrgId !== undefined ? payload.buyerOrgId : fallback?.buyerOrgId
+    ),
+    buyerOrgName: resolveOptionalString(
+      payload?.buyerOrgName,
+      fallback?.buyerOrgName ?? null
+    ),
+    sellerOrgId: toNumberOrNull(
+      payload?.sellerOrgId !== undefined
+        ? payload.sellerOrgId
+        : fallback?.sellerOrgId
+    ),
+    sellerOrgName: resolveOptionalString(
+      payload?.sellerOrgName,
+      fallback?.sellerOrgName ?? null
+    ),
+    customerId: toNumberOrNull(
+      payload?.customerId !== undefined ? payload.customerId : fallback?.customerId
+    ),
+    customerName: resolveOptionalString(
+      payload?.customerName ?? payload?.customer,
+      fallback?.customerName ?? null
+    ),
+    dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
+    status:
+      resolveOptionalString(payload?.status, fallback?.status ?? "주문접수") ??
+      "주문접수",
+    items,
+    totalQuantity: toNonNegativeInt(
+      payload?.totalQuantity !== undefined
+        ? payload.totalQuantity
+        : fallback?.totalQuantity,
+      computedTotalQuantity
+    ),
+  };
+};
+
+const toOrderResponse = (order) => {
+  const items = normalizeOrderItems(order?.items);
+  return {
+    id: order.orderId,
+    orderNumber: order.orderNumber ?? "",
+    buyerOrgId: order.buyerOrgId ?? null,
+    buyerOrgName: order.buyerOrgName ?? "",
+    sellerOrgId: order.sellerOrgId ?? null,
+    sellerOrgName: order.sellerOrgName ?? "",
+    customerId: order.customerId ?? order.buyerOrgId ?? null,
+    customerName: order.customerName ?? order.buyerOrgName ?? "",
+    customer: order.customerName ?? order.buyerOrgName ?? "",
+    dueDate: order.dueDate ?? "",
+    status: order.status ?? "",
+    items,
+    totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+  };
+};
+
 const normalizeDateKey = (value) => {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -517,10 +651,61 @@ const toOptionalFiniteNumber = (value, fallback = null) => {
   if (!Number.isFinite(parsed)) return fallback;
   return parsed;
 };
+const normalizeWorkRecordPayloadList = (records) => {
+  const rows = [];
+  let invalidWorkerRecordIndex = -1;
+
+  ensureArray(records).forEach((record, index) => {
+    if (!record || typeof record !== "object") return;
+    const quantity = toNonNegativeInt(record.quantity, 0);
+    if (quantity <= 0) return;
+
+    const workerId = toPositiveIntOrNull(record.workerId);
+    if (!workerId) {
+      if (invalidWorkerRecordIndex < 0) invalidWorkerRecordIndex = index;
+      return;
+    }
+
+    rows.push({
+      workerId,
+      workerName: resolveOptionalString(record.workerName, null),
+      customerName: resolveOptionalString(record.customerName, null),
+      styleId: resolveOptionalString(record.styleId, null),
+      styleName: resolveOptionalString(record.styleName, null),
+      processCode: resolveOptionalString(record.processCode, null),
+      processName: resolveOptionalString(record.processName, null),
+      colorId: toNumberOrNull(record.colorId),
+      colorCode: resolveOptionalString(record.colorCode, null),
+      colorName: resolveOptionalString(record.colorName, null),
+      ctSeconds: toNonNegativeInt(record.ctSeconds, 0),
+      quantity,
+    });
+  });
+
+  return { rows, invalidWorkerRecordIndex };
+};
+const toWorkRecordResponse = (record) => ({
+  workerId: record?.workerId ?? null,
+  workerName: record?.workerName ?? "",
+  customerName: record?.customerName ?? "",
+  styleId: record?.styleId ?? "",
+  styleName: record?.styleName ?? "",
+  processCode: record?.processCode ?? "",
+  processName: record?.processName ?? "",
+  colorId: record?.colorId ?? null,
+  colorCode: record?.colorCode ?? "",
+  colorName: record?.colorName ?? "",
+  ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
+  quantity: toNonNegativeInt(record?.quantity, 0),
+});
 const normalizeWorkLogPayload = (payload = {}, fallback = null) => {
   const workDateInput =
     payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
   const normalizedWorkDate = normalizeDateKey(workDateInput) || todayDateKey();
+  const normalizedRecords = normalizeWorkRecordPayloadList(
+    payload?.records !== undefined ? payload.records : fallback?.records
+  );
+  const records = normalizedRecords.rows;
 
   return {
     workDate: normalizedWorkDate,
@@ -554,9 +739,8 @@ const normalizeWorkLogPayload = (payload = {}, fallback = null) => {
       0
     ),
     note: resolveOptionalString(payload?.note, fallback?.note ?? null),
-    records: ensureArray(
-      payload?.records !== undefined ? payload.records : fallback?.records
-    ),
+    records,
+    invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
 const toWorkLogResponse = (workLog) => ({
@@ -570,13 +754,132 @@ const toWorkLogResponse = (workLog) => ({
   itemCount: workLog.itemCount ?? 0,
   totalContractedSeconds: workLog.totalContractedSeconds ?? 0,
   note: workLog.note ?? "",
-  records: ensureArray(workLog.records),
+  records:
+    Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0
+      ? workLog.workRecords.map(toWorkRecordResponse)
+      : ensureArray(workLog.records),
   createdAt: workLog.createdAt,
   updatedAt: workLog.updatedAt,
 });
-const toAssignmentBoardStateResponse = (state) => ({
+const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "AGREED", "REJECTED"]);
+const toOptionalNonNegativeInt = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.round(parsed));
+};
+const toOptionalFloat = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+};
+const toOptionalDateValue = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return date;
+};
+const resolveAssignmentCtStatus = (value) =>
+  ASSIGNMENT_CT_STATUSES.has(value) ? value : "PENDING";
+const toAssignmentPlanResponse = (plan) => ({
+  id: plan.externalId,
+  lineId: String(plan.lineId),
+  cardId: plan.cardId ?? "",
+  orderNo: plan.orderNo ?? "",
+  customer: plan.customer ?? "",
+  label: plan.label ?? "",
+  colorName: plan.colorName ?? "",
+  previewUrl: plan.previewUrl ?? "",
+  imageUrl: plan.imageUrl ?? "",
+  thumbnailUrl: plan.thumbnailUrl ?? "",
+  quantity: plan.quantity ?? null,
+  originOrderId: plan.originOrderId ?? "",
+  basis: plan.basis ?? "",
+  proposalBasis: plan.proposalBasis ?? "",
+  proposalSeconds: plan.proposalSeconds ?? null,
+  contractedSeconds: plan.contractedSeconds ?? null,
+  ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
+  ctSource: plan.ctSource ?? "",
+  ctAgreedBy: plan.ctAgreedBy ?? "",
+  ctAgreedAt: plan.ctAgreedAt ?? null,
+  ctNote: plan.ctNote ?? "",
+  color: plan.color ?? "",
+  stripeColor: plan.stripeColor ?? "",
+  totalSeconds: plan.totalSeconds ?? null,
+  startIndex: plan.startIndex,
+  endIndex: plan.endIndex,
+  startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
+  startDayPercent: plan.startDayPercent ?? null,
+  endDayPercent: plan.endDayPercent ?? null,
+  createdAt: plan.createdAt,
+  updatedAt: plan.updatedAt,
+});
+const normalizeAssignmentPlanPayload = (items, lineIdSet = null) =>
+  ensureArray(items)
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+
+      const externalId = resolveOptionalString(item.id ?? item.externalId, null);
+      const lineId = toNumberOrNull(item.lineId);
+      const lineIdNum = Number.isFinite(lineId) ? Math.round(lineId) : null;
+      if (!externalId || !lineIdNum) return null;
+      if (lineIdSet && !lineIdSet.has(lineIdNum)) return null;
+
+      const startIndex = toNonNegativeInt(item.startIndex, 0);
+      const endIndex = Math.max(startIndex, toNonNegativeInt(item.endIndex, startIndex));
+      const ctStatus = resolveAssignmentCtStatus(
+        resolveOptionalString(item.ctStatus, "PENDING") ?? "PENDING"
+      );
+
+      return {
+        lineId: lineIdNum,
+        externalId,
+        cardId: resolveOptionalString(item.cardId, null),
+        orderNo: resolveOptionalString(item.orderNo, null),
+        customer: resolveOptionalString(item.customer, null),
+        label: resolveOptionalString(item.label, null),
+        colorName: resolveOptionalString(item.colorName, null),
+        previewUrl: resolveOptionalString(item.previewUrl, null),
+        imageUrl: resolveOptionalString(item.imageUrl, null),
+        thumbnailUrl: resolveOptionalString(item.thumbnailUrl, null),
+        quantity: toOptionalNonNegativeInt(item.quantity, null),
+        originOrderId: resolveOptionalString(item.originOrderId, null),
+        basis: resolveOptionalString(item.basis, null),
+        proposalBasis: resolveOptionalString(item.proposalBasis, null),
+        proposalSeconds: toOptionalNonNegativeInt(item.proposalSeconds, null),
+        contractedSeconds: toOptionalNonNegativeInt(item.contractedSeconds, null),
+        ctStatus,
+        ctSource: resolveOptionalString(item.ctSource, null),
+        ctAgreedBy: resolveOptionalString(item.ctAgreedBy, null),
+        ctAgreedAt: toOptionalDateValue(item.ctAgreedAt, null),
+        ctNote: resolveOptionalString(item.ctNote, null),
+        color: resolveOptionalString(item.color, null),
+        stripeColor: resolveOptionalString(item.stripeColor, null),
+        totalSeconds: toOptionalNonNegativeInt(item.totalSeconds, null),
+        startIndex,
+        endIndex,
+        startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
+        startDayPercent: toOptionalFloat(item.startDayPercent, null),
+        endDayPercent: toOptionalFloat(item.endDayPercent, null),
+        updatedAt: new Date(),
+      };
+    })
+    .filter(Boolean)
+    .reduce((acc, item) => {
+      if (acc.seen.has(item.externalId)) return acc;
+      acc.seen.add(item.externalId);
+      acc.rows.push(item);
+      return acc;
+    }, { seen: new Set(), rows: [] }).rows;
+const toAssignmentBoardStateResponse = (state, assignmentPlans = null) => ({
   cards: ensureArray(state?.cards),
-  assignments: ensureArray(state?.assignments),
+  assignments: Array.isArray(assignmentPlans) && assignmentPlans.length > 0
+    ? assignmentPlans.map(toAssignmentPlanResponse)
+    : ensureArray(state?.assignments),
   createdAt: state?.createdAt ?? null,
   updatedAt: state?.updatedAt ?? null,
 });
@@ -602,71 +905,55 @@ const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
     data: { managerEmployeeId: null },
   });
 
+  // Keep denormalized employee.lineName aligned with active line assignment.
+  await prisma.employee.updateMany({
+    where: { id: employeeId },
+    data: { lineName: null },
+  });
+
   return lineIds;
 };
 
-const initializedAttributeOrgs = new Set();
-
 const seedAttributesIfEmpty = async (orgId) => {
-  if (initializedAttributeOrgs.has(orgId)) return;
-
-  const [colorCount, categoryCount, roleCount, processCount] =
-    await Promise.all([
-    prisma.attrColor.count({ where: { orgId } }),
-    prisma.attrCategory.count({ where: { orgId } }),
-    prisma.attrRole.count({ where: { orgId } }),
-    prisma.attrProcess.count({ where: { orgId } }),
+  await prisma.$transaction([
+    prisma.attrColor.createMany({
+      data: DEFAULT_ATTRIBUTES.colors.map((item) => ({ ...item, orgId })),
+      skipDuplicates: true,
+    }),
+    prisma.attrCategory.createMany({
+      data: DEFAULT_ATTRIBUTES.categories.map((item) => ({ ...item, orgId })),
+      skipDuplicates: true,
+    }),
+    prisma.attrRole.createMany({
+      data: DEFAULT_ATTRIBUTES.roles.map((item) => ({ ...item, orgId })),
+      skipDuplicates: true,
+    }),
+    prisma.attrProcess.createMany({
+      data: DEFAULT_ATTRIBUTES.processes.map((item) => ({ ...item, orgId })),
+      skipDuplicates: true,
+    }),
   ]);
-
-  const actions = [];
-  if (colorCount === 0) {
-    actions.push(
-      prisma.attrColor.createMany({
-        data: DEFAULT_ATTRIBUTES.colors.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-  if (categoryCount === 0) {
-    actions.push(
-      prisma.attrCategory.createMany({
-        data: DEFAULT_ATTRIBUTES.categories.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-  if (roleCount === 0) {
-    actions.push(
-      prisma.attrRole.createMany({
-        data: DEFAULT_ATTRIBUTES.roles.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-  if (processCount === 0) {
-    actions.push(
-      prisma.attrProcess.createMany({
-        data: DEFAULT_ATTRIBUTES.processes.map((item) => ({ ...item, orgId })),
-      })
-    );
-  }
-
-  if (actions.length > 0) {
-    await prisma.$transaction(actions);
-  }
-
-  initializedAttributeOrgs.add(orgId);
 };
 
-const syncSection = async (model, orgId, items) => {
+const syncSection = async (model, orgId, items, options = {}) => {
   const safeItems = Array.isArray(items) ? items : [];
   const incomingIds = safeItems
     .filter((item) => isNumericId(item.id))
     .map((item) => toId(item.id));
 
-  const deleteWhere =
-    incomingIds.length > 0
-      ? { orgId, id: { notIn: incomingIds } }
-      : { orgId };
-
-  await model.deleteMany({ where: deleteWhere });
+  const existing = await model.findMany({
+    where: { orgId },
+    select: { id: true },
+  });
+  const existingIds = existing.map((item) => item.id);
+  const incomingIdSet = new Set(incomingIds);
+  const deleteIds = existingIds.filter((id) => !incomingIdSet.has(id));
+  if (deleteIds.length > 0 && typeof options.beforeDeleteIds === "function") {
+    await options.beforeDeleteIds(deleteIds);
+  }
+  if (deleteIds.length > 0) {
+    await model.deleteMany({ where: { orgId, id: { in: deleteIds } } });
+  }
 
   const creates = [];
   const updates = [];
@@ -681,8 +968,8 @@ const syncSection = async (model, orgId, items) => {
 
     if (isNumericId(item.id)) {
       updates.push(
-        model.update({
-          where: { id: toId(item.id) },
+        model.updateMany({
+          where: { id: toId(item.id), orgId },
           data: { code, name },
         })
       );
@@ -692,7 +979,7 @@ const syncSection = async (model, orgId, items) => {
   }
 
   if (creates.length > 0) {
-    await model.createMany({ data: creates });
+    await model.createMany({ data: creates, skipDuplicates: true });
   }
 
   if (updates.length > 0) {
@@ -909,15 +1196,32 @@ app.patch("/org-memberships/:id/reject", async (req, res) => {
     return res.status(404).json({ ok: false, error: "membership not found" });
   }
 
-  await prisma.employee.deleteMany({
+  const now = new Date();
+  const employee = await prisma.employee.findUnique({
     where: { orgMembershipId: membership.id },
   });
+  if (employee) {
+    await closeActiveLineAssignments(employee.id, now);
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: {
+        leftAt: employee.leftAt ?? now,
+        leaveStartAt: employee.leaveStartAt ?? now,
+        leaveEndAt: employee.leaveEndAt ?? now,
+      },
+    });
+  }
 
-  await prisma.orgMembership.delete({
+  const updated = await prisma.orgMembership.update({
     where: { id },
+    data: {
+      status: "REJECTED",
+      approvedAt: now,
+      approvedBy: normalizedApprovedBy || membership.approvedBy || null,
+    },
   });
 
-  res.json({ ok: true });
+  res.json(updated);
 });
 
 app.patch("/org-memberships/:id", async (req, res) => {
@@ -1029,7 +1333,6 @@ app.post("/employees", async (req, res) => {
   const {
     orgMembershipId,
     factoryId,
-    lineName,
     position,
     roleId,
     name,
@@ -1122,7 +1425,6 @@ app.post("/employees", async (req, res) => {
       bankAccountNumber,
       existingEmployee?.bankAccountNumber ?? null
     ),
-    lineName: resolveOptionalString(lineName, existingEmployee?.lineName ?? null),
     position: resolveOptionalString(position, existingEmployee?.position ?? null),
   };
 
@@ -1132,7 +1434,27 @@ app.post("/employees", async (req, res) => {
     create: data,
   });
 
-  res.json(employee);
+  const activeAssignment = await prisma.lineAssignment.findFirst({
+    where: {
+      employeeId: employee.id,
+      endAt: null,
+      line: { orgId: membership.orgId },
+    },
+    include: {
+      line: {
+        select: { name: true },
+      },
+    },
+    orderBy: [{ startAt: "desc" }, { id: "desc" }],
+  });
+
+  const syncedLineName = activeAssignment?.line?.name ?? null;
+  const refreshedEmployee = await prisma.employee.update({
+    where: { id: employee.id },
+    data: { lineName: syncedLineName },
+  });
+
+  res.json(refreshedEmployee);
 });
 
 app.get("/factories", async (req, res) => {
@@ -1150,7 +1472,10 @@ app.get("/factories", async (req, res) => {
 });
 
 app.post("/factories", async (req, res) => {
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1192,7 +1517,10 @@ app.put("/factories/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1267,7 +1595,10 @@ app.get("/lines", async (req, res) => {
 });
 
 app.post("/lines", async (req, res) => {
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1316,7 +1647,10 @@ app.patch("/lines/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1372,7 +1706,7 @@ app.patch("/lines/:id", async (req, res) => {
           id: managerIdNum,
           orgId: organization.id,
           factoryId: existing.factoryId,
-          membership: { role: "WORKER", status: "ACTIVE" },
+          membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
         },
         include: { membership: true },
       });
@@ -1405,6 +1739,21 @@ app.patch("/lines/:id", async (req, res) => {
     data,
   });
 
+  if (typeof data.name === "string" && data.name.trim()) {
+    await prisma.employee.updateMany({
+      where: {
+        orgId: organization.id,
+        lineAssignments: {
+          some: {
+            lineId: updated.id,
+            endAt: null,
+          },
+        },
+      },
+      data: { lineName: updated.name },
+    });
+  }
+
   res.json(updated);
 });
 
@@ -1436,7 +1785,7 @@ app.get("/line-workers", async (req, res) => {
       where: {
         orgId: organization.id,
         ...(hasFactoryFilter ? { factoryId } : {}),
-        membership: { role: "WORKER", status: "ACTIVE" },
+        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
       },
       include: { membership: true },
       orderBy: [{ factoryId: "asc" }, { id: "asc" }],
@@ -1471,7 +1820,10 @@ app.get("/line-workers", async (req, res) => {
 });
 
 app.post("/line-assignments/assign", async (req, res) => {
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1500,7 +1852,7 @@ app.post("/line-assignments/assign", async (req, res) => {
       id: employeeIdNum,
       orgId: organization.id,
       factoryId: line.factoryId,
-      membership: { role: "WORKER", status: "ACTIVE" },
+      membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
     },
     include: { membership: true },
   });
@@ -1519,11 +1871,19 @@ app.post("/line-assignments/assign", async (req, res) => {
     },
   });
 
+  await prisma.employee.update({
+    where: { id: employee.id },
+    data: { lineName: line.name },
+  });
+
   res.status(201).json(assignment);
 });
 
 app.post("/line-assignments/unassign", async (req, res) => {
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res
       .status(400)
@@ -1591,6 +1951,11 @@ app.get("/work-logs/:id", async (req, res) => {
 
   const workLog = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
+    include: {
+      workRecords: {
+        orderBy: { id: "asc" },
+      },
+    },
   });
   if (!workLog) {
     return res.status(404).json({ ok: false, error: "work log not found" });
@@ -1606,6 +1971,12 @@ app.post("/work-logs", async (req, res) => {
   }
 
   const normalized = normalizeWorkLogPayload(req.body ?? {});
+  if (normalized.invalidWorkerRecordIndex >= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `records[${normalized.invalidWorkerRecordIndex}].workerId is required`,
+    });
+  }
   if (normalized.factoryId !== null) {
     const factory = await prisma.factory.findFirst({
       where: { id: normalized.factoryId, orgId: organization.id },
@@ -1615,14 +1986,40 @@ app.post("/work-logs", async (req, res) => {
     }
   }
 
-  const created = await prisma.workLog.create({
-    data: {
-      orgId: organization.id,
-      ...normalized,
+  const created = await prisma.$transaction(async (tx) => {
+    const { records, invalidWorkerRecordIndex: _invalidWorkerRecordIndex, ...workLogData } =
+      normalized;
+    const next = await tx.workLog.create({
+      data: {
+        orgId: organization.id,
+        ...workLogData,
+        // Keep the legacy JSON column empty and persist normalized rows in WorkRecord.
+        records: [],
+      },
+    });
+
+    if (records.length > 0) {
+      await tx.workRecord.createMany({
+        data: records.map((record) => ({
+          orgId: organization.id,
+          workLogId: next.id,
+          ...record,
+        })),
+      });
+    }
+
+    return next;
+  });
+  const createdWithRecords = await prisma.workLog.findUnique({
+    where: { id: created.id },
+    include: {
+      workRecords: {
+        orderBy: { id: "asc" },
+      },
     },
   });
 
-  res.status(201).json(toWorkLogResponse(created));
+  res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -1644,6 +2041,12 @@ app.put("/work-logs/:id", async (req, res) => {
   }
 
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
+  if (normalized.invalidWorkerRecordIndex >= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `records[${normalized.invalidWorkerRecordIndex}].workerId is required`,
+    });
+  }
   if (normalized.factoryId !== null) {
     const factory = await prisma.factory.findFirst({
       where: { id: normalized.factoryId, orgId: organization.id },
@@ -1653,12 +2056,43 @@ app.put("/work-logs/:id", async (req, res) => {
     }
   }
 
-  const updated = await prisma.workLog.update({
-    where: { id: existing.id },
-    data: normalized,
+  const updated = await prisma.$transaction(async (tx) => {
+    const { records, invalidWorkerRecordIndex: _invalidWorkerRecordIndex, ...workLogData } =
+      normalized;
+    const next = await tx.workLog.update({
+      where: { id: existing.id },
+      data: {
+        ...workLogData,
+        records: [],
+      },
+    });
+
+    await tx.workRecord.deleteMany({
+      where: { orgId: organization.id, workLogId: existing.id },
+    });
+
+    if (records.length > 0) {
+      await tx.workRecord.createMany({
+        data: records.map((record) => ({
+          orgId: organization.id,
+          workLogId: existing.id,
+          ...record,
+        })),
+      });
+    }
+
+    return next;
+  });
+  const updatedWithRecords = await prisma.workLog.findUnique({
+    where: { id: updated.id },
+    include: {
+      workRecords: {
+        orderBy: { id: "asc" },
+      },
+    },
   });
 
-  res.json(toWorkLogResponse(updated));
+  res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
@@ -1693,11 +2127,17 @@ app.get("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const state = await prisma.assignmentBoardState.findUnique({
-    where: { orgId: organization.id },
-  });
+  const [state, assignmentPlans] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+    }),
+    prisma.assignmentPlan.findMany({
+      where: { orgId: organization.id },
+      orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    }),
+  ]);
 
-  res.json(toAssignmentBoardStateResponse(state));
+  res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
 });
 
 app.put("/assignment-board-state", async (req, res) => {
@@ -1708,18 +2148,45 @@ app.put("/assignment-board-state", async (req, res) => {
 
   const cards = ensureArray(req.body?.cards);
   const assignments = ensureArray(req.body?.assignments);
-
-  const updated = await prisma.assignmentBoardState.upsert({
+  const lineRows = await prisma.line.findMany({
     where: { orgId: organization.id },
-    update: { cards, assignments },
-    create: {
-      orgId: organization.id,
-      cards,
-      assignments,
-    },
+    select: { id: true },
+  });
+  const lineIdSet = new Set(lineRows.map((line) => line.id));
+  const normalizedPlans = normalizeAssignmentPlanPayload(assignments, lineIdSet);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const state = await tx.assignmentBoardState.upsert({
+      where: { orgId: organization.id },
+      update: { cards, assignments },
+      create: {
+        orgId: organization.id,
+        cards,
+        assignments,
+      },
+    });
+
+    await tx.assignmentPlan.deleteMany({
+      where: { orgId: organization.id },
+    });
+
+    if (normalizedPlans.length > 0) {
+      await tx.assignmentPlan.createMany({
+        data: normalizedPlans.map((item) => ({
+          orgId: organization.id,
+          ...item,
+        })),
+      });
+    }
+
+    return state;
+  });
+  const persistedPlans = await prisma.assignmentPlan.findMany({
+    where: { orgId: organization.id },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
 
-  res.json(toAssignmentBoardStateResponse(updated));
+  res.json(toAssignmentBoardStateResponse(updated, persistedPlans));
 });
 
 app.get("/customers", async (req, res) => {
@@ -1728,20 +2195,24 @@ app.get("/customers", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  if (!isManufacturerOrg(organization)) {
+  if (!isManufacturerOrg(organization) && !isBrandOrg(organization)) {
     return res.status(400).json({
       ok: false,
-      error: "only manufacturer organizations can manage customers",
+      error: "invalid organization type",
     });
   }
 
+  const where = isManufacturerOrg(organization)
+    ? { manufacturerOrgId: organization.id }
+    : { brandOrgId: organization.id };
   const relationships = await prisma.orgRelationship.findMany({
-    where: { manufacturerOrgId: organization.id },
-    include: { brand: true },
+    where,
+    include: { brand: true, manufacturer: true },
     orderBy: { id: "asc" },
   });
 
-  res.json(relationships.map(toCustomerResponse));
+  const perspective = isManufacturerOrg(organization) ? "MANUFACTURER" : "BRAND";
+  res.json(relationships.map((item) => toCustomerResponse(item, perspective)));
 });
 
 app.get("/order-parties", async (req, res) => {
@@ -1792,6 +2263,109 @@ app.get("/order-parties", async (req, res) => {
     sellerOrgOptions,
     relationshipPairs,
   });
+});
+
+app.get("/orders", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const orders = await prisma.workOrder.findMany({
+    where: { orgId: organization.id },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(orders.map(toOrderResponse));
+});
+
+app.post("/orders", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const normalized = normalizeOrderPayload(req.body ?? {});
+  if (!normalized.orderNumber) {
+    return res.status(400).json({ ok: false, error: "orderNumber is required" });
+  }
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { orgId: organization.id, orderId: normalized.orderId },
+    select: { id: true },
+  });
+  if (existing) {
+    return res.status(409).json({ ok: false, error: "order already exists" });
+  }
+
+  const created = await prisma.workOrder.create({
+    data: {
+      orgId: organization.id,
+      ...normalized,
+    },
+  });
+
+  res.status(201).json(toOrderResponse(created));
+});
+
+app.put("/orders/:orderId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const orderId = String(req.params.orderId || "").trim();
+  if (!orderId) {
+    return res.status(400).json({ ok: false, error: "orderId is required" });
+  }
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { orgId: organization.id, orderId },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "order not found" });
+  }
+
+  const normalized = normalizeOrderPayload(req.body ?? {}, existing);
+  if (!normalized.orderNumber) {
+    return res.status(400).json({ ok: false, error: "orderNumber is required" });
+  }
+  // Route param is source of truth.
+  normalized.orderId = existing.orderId;
+
+  const updated = await prisma.workOrder.update({
+    where: { id: existing.id },
+    data: normalized,
+  });
+
+  res.json(toOrderResponse(updated));
+});
+
+app.delete("/orders/:orderId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const orderId = String(req.params.orderId || "").trim();
+  if (!orderId) {
+    return res.status(400).json({ ok: false, error: "orderId is required" });
+  }
+
+  const existing = await prisma.workOrder.findFirst({
+    where: { orgId: organization.id, orderId },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "order not found" });
+  }
+  if ((existing.status || "").replace(/\s+/g, "").trim() !== "주문접수") {
+    return res.status(409).json({
+      ok: false,
+      error: "only 주문접수 orders can be deleted",
+    });
+  }
+
+  await prisma.workOrder.delete({ where: { id: existing.id } });
+  res.status(204).send();
 });
 
 app.post("/customers", async (req, res) => {
@@ -2000,6 +2574,35 @@ app.put("/customers/:id", async (req, res) => {
   res.json(toCustomerResponse(refreshed));
 });
 
+app.delete("/customers/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  if (!isManufacturerOrg(organization)) {
+    return res.status(400).json({
+      ok: false,
+      error: "only manufacturer organizations can manage customers",
+    });
+  }
+
+  const existing = await prisma.orgRelationship.findFirst({
+    where: { id, manufacturerOrgId: organization.id },
+    select: { id: true },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "customer not found" });
+  }
+
+  await prisma.orgRelationship.delete({ where: { id: existing.id } });
+  res.status(204).send();
+});
+
 app.get("/styles", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -2183,6 +2786,23 @@ app.delete("/styles/:styleId", async (req, res) => {
     return res.status(400).json({ ok: false, error: "styleId is required" });
   }
 
+  const relatedOrders = await prisma.workOrder.findMany({
+    where: { orgId: organization.id },
+    select: { orderId: true, orderNumber: true, items: true },
+  });
+  const inUseOrder = relatedOrders.find((order) =>
+    ensureArray(order.items).some(
+      (item) => String(item?.styleId || "").trim() === styleId
+    )
+  );
+  if (inUseOrder) {
+    const orderLabel = inUseOrder.orderNumber || inUseOrder.orderId;
+    return res.status(409).json({
+      ok: false,
+      error: `style is used by order ${orderLabel}`,
+    });
+  }
+
   try {
     await prisma.style.delete({
       where: {
@@ -2211,13 +2831,6 @@ app.post("/styles/import", async (req, res) => {
   const rows = Array.isArray(req.body?.styles) ? req.body.styles : [];
   if (rows.length === 0) {
     return res.status(400).json({ ok: false, error: "styles is required" });
-  }
-
-  const existingCount = await prisma.style.count({
-    where: { orgId: organization.id },
-  });
-  if (existingCount > 0) {
-    return res.status(409).json({ ok: false, error: "styles already exist" });
   }
 
   const normalizedRows = rows
@@ -2250,6 +2863,30 @@ app.post("/styles/import", async (req, res) => {
       });
     }
     seenCodeKeys.add(codeKey);
+  }
+
+  const existingStyleRows = await prisma.style.findMany({
+    where: {
+      orgId: organization.id,
+      styleId: { in: normalizedRows.map((item) => item.styleId) },
+    },
+    select: { uid: true, styleId: true },
+  });
+  const existingStyleUidByStyleId = new Map(
+    existingStyleRows.map((row) => [row.styleId, row.uid])
+  );
+
+  for (const item of normalizedRows) {
+    const conflictMessage = await findStyleConflict({
+      orgId: organization.id,
+      customer: item.customer,
+      name: item.name,
+      styleCode: item.styleCode,
+      excludeUid: existingStyleUidByStyleId.get(item.styleId) ?? null,
+    });
+    if (conflictMessage) {
+      return res.status(409).json({ ok: false, error: conflictMessage });
+    }
   }
 
   await prisma.$transaction(
@@ -2329,8 +2966,6 @@ app.put("/attributes", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  // Attributes were updated manually, so force a one-time recheck on next GET.
-  initializedAttributeOrgs.delete(organization.id);
   const payload = req.body ?? {};
 
   const tasks = [];
@@ -2356,7 +2991,17 @@ app.put("/attributes", async (req, res) => {
   }
   if (payload.roles) {
     tasks.push(
-      syncSection(prisma.attrRole, organization.id, payload.roles).then(
+      syncSection(prisma.attrRole, organization.id, payload.roles, {
+        beforeDeleteIds: async (deleteIds) => {
+          await prisma.employee.updateMany({
+            where: {
+              orgId: organization.id,
+              roleId: { in: deleteIds },
+            },
+            data: { roleId: null },
+          });
+        },
+      }).then(
         (data) => {
           response.roles = data;
         }

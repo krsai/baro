@@ -31,8 +31,6 @@ import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
-  loadOrders,
-  saveOrders,
   loadOrderDraft,
   saveOrderDraft,
   clearOrderDraft,
@@ -44,6 +42,12 @@ import {
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import {
+  fetchOrders as fetchOrdersFromApi,
+  createOrder as createOrderToApi,
+  updateOrder as updateOrderToApi,
+  deleteOrder as deleteOrderToApi,
+} from '../../../utils/orderApi';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완료'];
@@ -249,7 +253,7 @@ const OrderList = () => {
   const { showNotification, navigateToPath, closeTab } = useApp();
   const { devBypass, devProfile } = useAuth();
 
-  const [orders, setOrders] = useState(() => loadOrders());
+  const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
   const [buyerOptions, setBuyerOptions] = useState([]);
   const [sellerOptions, setSellerOptions] = useState([]);
@@ -290,6 +294,29 @@ const OrderList = () => {
   useEffect(() => {
     refreshStyles(activeOrgId);
   }, [activeOrgId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOrdersFromDb = async () => {
+      try {
+        const items = await fetchOrdersFromApi({ orgId: activeOrgId });
+        if (!cancelled) {
+          setOrders(Array.isArray(items) ? items : []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOrders([]);
+          showNotification(error?.message || '주문 목록을 불러오지 못했습니다.', 'error');
+        }
+      }
+    };
+
+    loadOrdersFromDb();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrgId, showNotification]);
 
   useEffect(() => {
     const fetchOrderParties = async () => {
@@ -536,23 +563,25 @@ const OrderList = () => {
     });
   };
 
-  const handleDeleteOrder = (order) => {
+  const handleDeleteOrder = async (order) => {
     if (!order?.id) return;
     if (!isOrderDeletable(order.status)) {
-      showNotification('주문 상태가 주문접수인 건만 삭제할 수 있습니다.', 'warning');
+      showNotification('주문접수 상태의 주문만 삭제할 수 있습니다.', 'warning');
       return;
     }
 
     const orderLabel = order.orderNumber ? `주문 ${order.orderNumber}` : '해당 주문';
-    if (!window.confirm(`${orderLabel}을 삭제하시겠습니까?`)) {
+    if (!window.confirm(`${orderLabel}을(를) 삭제하시겠습니까?`)) {
       return;
     }
 
-    const nextOrders = orders.filter((target) => target.id !== order.id);
-    setOrders(nextOrders);
-    saveOrders(nextOrders);
-
-    showNotification('주문을 삭제했습니다.', 'success');
+    try {
+      await deleteOrderToApi(order.id, { orgId: activeOrgId });
+      setOrders((prev) => prev.filter((target) => target.id !== order.id));
+      showNotification('주문이 삭제되었습니다.', 'success');
+    } catch (error) {
+      showNotification(error?.message || '주문 삭제 중 오류가 발생했습니다.', 'error');
+    }
   };
 
   const closeDetailAndGoList = () => {
@@ -803,7 +832,7 @@ const OrderList = () => {
     return null;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const errorMessage = validateOrder();
     if (errorMessage) {
       showNotification(errorMessage, 'error');
@@ -817,12 +846,14 @@ const OrderList = () => {
         return acc;
       }, {});
       const totalQuantity = sumSizeQuantities(numericSizeQuantities);
-      const legacyQuantities = SIZE_COLUMNS.filter((size) => numericSizeQuantities[size] > 0).map((size) => ({
-        id: createId('qty'),
-        colorId: item.gender,
-        sizeId: size,
-        quantity: numericSizeQuantities[size],
-      }));
+      const legacyQuantities = SIZE_COLUMNS
+        .filter((size) => numericSizeQuantities[size] > 0)
+        .map((size) => ({
+          id: createId('qty'),
+          colorId: item.gender,
+          sizeId: size,
+          quantity: numericSizeQuantities[size],
+        }));
       return {
         ...item,
         gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : 'M',
@@ -848,27 +879,32 @@ const OrderList = () => {
       updatedAt: new Date().toISOString(),
     };
 
-    let nextOrders = [];
-    if (!isNewOrder) {
-      const existingOrder = orders.find((order) => order.id === orderId);
-      if (!existingOrder) {
-        showNotification('수정할 주문을 찾을 수 없습니다.', 'error');
-        return;
+    try {
+      if (!isNewOrder) {
+        const existingOrder = orders.find((order) => order.id === orderId);
+        if (!existingOrder) {
+          showNotification('수정할 주문 정보를 찾을 수 없습니다.', 'error');
+          return;
+        }
+        payload.id = existingOrder.id;
+        payload.createdAt = existingOrder.createdAt || payload.updatedAt;
+        const updated = await updateOrderToApi(existingOrder.id, payload, { orgId: activeOrgId });
+        setOrders((prev) =>
+          prev.map((order) => (order.id === existingOrder.id ? updated : order))
+        );
+      } else {
+        payload.id = createId('order');
+        payload.createdAt = payload.updatedAt;
+        const created = await createOrderToApi(payload, { orgId: activeOrgId });
+        setOrders((prev) => [created, ...prev]);
       }
-      payload.id = existingOrder.id;
-      payload.createdAt = existingOrder.createdAt || payload.updatedAt;
-      nextOrders = orders.map((order) => (order.id === existingOrder.id ? payload : order));
-    } else {
-      payload.id = createId('order');
-      payload.createdAt = payload.updatedAt;
-      nextOrders = [...orders, payload];
-    }
 
-    setOrders(nextOrders);
-    saveOrders(nextOrders);
-    clearOrderDraft();
-    showNotification('주문 정보가 저장되었습니다.', 'success');
-    closeDetailAndGoList();
+      clearOrderDraft();
+      showNotification('주문 정보가 저장되었습니다.', 'success');
+      closeDetailAndGoList();
+    } catch (error) {
+      showNotification(error?.message || '주문 저장 중 오류가 발생했습니다.', 'error');
+    }
   };
 
   if (!isDetailMode) {

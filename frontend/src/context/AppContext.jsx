@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { fetchAttributes } from '../utils/attributeApi';
 
 // Create the App Context
 const AppContext = createContext();
@@ -71,10 +72,41 @@ export const AppProvider = ({ children }) => {
     { id: 4, name: '작업자', description: '일반 작업자' },
   ]);
 
-  // Centralized navigation handler to be implemented in MainLayout
-  const [navigateToPath, setNavigateToPath] = useState(() => () =>
-    console.warn('navigateToPath is not implemented')
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const loadRoles = async () => {
+      try {
+        const data = await fetchAttributes();
+        const roleRows = Array.isArray(data?.roles) ? data.roles : [];
+        if (cancelled || roleRows.length === 0) return;
+        setRoles(
+          roleRows.map((role) => ({
+            id: role.id,
+            name: role.name || role.code || '',
+            description: role.code || '',
+          }))
+        );
+      } catch (_error) {
+        // keep fallback roles
+      }
+    };
+    loadRoles();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keep navigation handler in a ref to avoid function identity churn across renders.
+  const navigateToPathRef = useRef((..._args) => {
+    console.warn('navigateToPath is not implemented');
+  });
+  const navigateToPath = useCallback((...args) => navigateToPathRef.current(...args), []);
+  const setNavigateToPath = useCallback((nextHandler) => {
+    navigateToPathRef.current =
+      typeof nextHandler === 'function'
+        ? nextHandler
+        : () => console.warn('navigateToPath is not implemented');
+  }, []);
 
   const value = {
     // Loading state

@@ -18,6 +18,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const buildWorkerLabel = (worker) => {
@@ -28,6 +29,7 @@ const buildWorkerLabel = (worker) => {
 
 const LineBoard = () => {
   const { showNotification } = useApp();
+  const { devBypass, devProfile } = useAuth();
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [lines, setLines] = useState([]);
@@ -35,6 +37,13 @@ const LineBoard = () => {
   const [newLineName, setNewLineName] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
+  const buildOrgQuery = (params = {}) =>
+    buildQueryString({ ...params, orgId: activeOrgId });
 
   const lineWorkers = useMemo(() => {
     const byLine = new Map();
@@ -70,12 +79,15 @@ const LineBoard = () => {
 
   const fetchFactories = async () => {
     try {
-      const data = await requestJSON('/factories');
+      const data = await requestJSON('/factories' + buildOrgQuery());
       const list = Array.isArray(data) ? data : [];
       setFactories(list);
-      if (!selectedFactoryId && list.length > 0) {
-        setSelectedFactoryId(String(list[0].id));
-      }
+      setSelectedFactoryId((prev) => {
+        if (prev && list.some((factory) => String(factory.id) === String(prev))) {
+          return prev;
+        }
+        return list.length > 0 ? String(list[0].id) : '';
+      });
     } catch (error) {
       showNotification(error?.message || '공장 목록을 불러오는 데 실패했습니다.', 'error');
     }
@@ -84,7 +96,7 @@ const LineBoard = () => {
   const fetchLines = async (factoryId) => {
     if (!factoryId) return;
     try {
-      const data = await requestJSON('/lines' + buildQueryString({ factoryId }));
+      const data = await requestJSON('/lines' + buildOrgQuery({ factoryId }));
       setLines(Array.isArray(data) ? data : []);
     } catch (error) {
       showNotification(error?.message || '라인 목록을 불러오는 데 실패했습니다.', 'error');
@@ -94,7 +106,7 @@ const LineBoard = () => {
   const fetchWorkers = async (factoryId) => {
     if (!factoryId) return;
     try {
-      const data = await requestJSON('/line-workers' + buildQueryString({ factoryId }));
+      const data = await requestJSON('/line-workers' + buildOrgQuery({ factoryId }));
       setWorkers(Array.isArray(data) ? data : []);
     } catch (error) {
       showNotification(error?.message || '작업자 목록을 불러오는 데 실패했습니다.', 'error');
@@ -103,7 +115,7 @@ const LineBoard = () => {
 
   useEffect(() => {
     fetchFactories();
-  }, []);
+  }, [activeOrgId]);
 
   useEffect(() => {
     if (!selectedFactoryId) {
@@ -116,7 +128,7 @@ const LineBoard = () => {
     Promise.all([fetchLines(selectedFactoryId), fetchWorkers(selectedFactoryId)]).finally(
       () => setLoading(false)
     );
-  }, [selectedFactoryId]);
+  }, [activeOrgId, selectedFactoryId]);
 
   const handleAddLine = async () => {
     if (saving) return;
@@ -132,7 +144,7 @@ const LineBoard = () => {
 
     setSaving(true);
     try {
-      const data = await requestJSON('/lines', {
+      const data = await requestJSON('/lines' + buildOrgQuery(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ factoryId: Number(selectedFactoryId), name: trimmedName }),
@@ -151,7 +163,7 @@ const LineBoard = () => {
     if (saving) return;
     setSaving(true);
     try {
-      const data = await requestJSON(`/lines/${lineId}`, {
+      const data = await requestJSON(`/lines/${lineId}` + buildOrgQuery(), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ managerEmployeeId: managerEmployeeId || null }),
@@ -205,13 +217,13 @@ const LineBoard = () => {
     setSaving(true);
     try {
       if (isUnassigned) {
-        await requestJSON('/line-assignments/unassign', {
+        await requestJSON('/line-assignments/unassign' + buildOrgQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ employeeId }),
         });
       } else {
-        await requestJSON('/line-assignments/assign', {
+        await requestJSON('/line-assignments/assign' + buildOrgQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lineId: destinationLineId, employeeId }),
