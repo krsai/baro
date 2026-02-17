@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -53,6 +53,7 @@ const DRAWER_WIDTH = 260;
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentPath = location.pathname || '/';
   const { signOut, devBypass, devProfile } = useAuth();
   const {
     sidebarOpen,
@@ -73,6 +74,7 @@ const MainLayout = () => {
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
+  const skipAutoOpenPathRef = useRef(null);
 
   const fetchPendingEmployeeCount = React.useCallback(async () => {
     try {
@@ -84,9 +86,6 @@ const MainLayout = () => {
       // ignore fetch errors for badge
     }
   }, []);
-
-  // `activeTabId` is the single source of truth for the active tab.
-  const [activeTabId, setActiveTabId] = useState(location.pathname === '/' ? '/' : '');
 
   const menuItems = useMemo(
     () => [
@@ -182,15 +181,6 @@ const MainLayout = () => {
     return () => clearInterval(intervalId);
   }, [fetchPendingEmployeeCount]);
 
-  // This is the ONLY effect responsible for navigation.
-  // It runs when the source of truth (`activeTabId`) changes.
-  useEffect(() => {
-    if (!activeTabId) return;
-    if (activeTabId !== location.pathname) {
-      navigate(activeTabId);
-    }
-  }, [activeTabId, location.pathname, navigate]);
-
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
     (path, options) => {
@@ -224,19 +214,20 @@ const MainLayout = () => {
       }
       openTab({ id: path, label, path }, openOptions);
 
-      // Set the active tab. The `useEffect` above will handle navigation.
-      setActiveTabId(path);
+      if (path && currentPath !== path) {
+        navigate(path);
+      }
     },
-    [menuItems, openTab, setActiveTabId] // No longer depends on openTabs
+    [currentPath, menuItems, navigate, openTab]
   );
 
   useEffect(() => {
-    const currentPath = location.pathname || '/';
-    if (activeTabId !== currentPath) {
-      setActiveTabId(currentPath);
+    if (skipAutoOpenPathRef.current && currentPath !== skipAutoOpenPathRef.current) {
+      skipAutoOpenPathRef.current = null;
     }
 
     if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
+    if (skipAutoOpenPathRef.current === currentPath) return;
     // Allow the user to close the dashboard tab and stay in an empty workspace.
     if (openTabs.length === 0 && currentPath === '/') return;
     if (openTabs.some((tab) => tab.id === currentPath)) return;
@@ -249,7 +240,7 @@ const MainLayout = () => {
       flattenedMenuItems.find((item) => currentPath.startsWith(item.path + '/'));
     const label = matchedMenu?.label || currentPath;
     openTab({ id: currentPath, label, path: currentPath });
-  }, [activeTabId, location.pathname, menuItems, openTab, openTabs]);
+  }, [currentPath, menuItems, openTab, openTabs]);
 
   // Provide the navigation handler to the rest of the app via context.
   useEffect(() => {
@@ -269,8 +260,8 @@ const MainLayout = () => {
   };
 
   const handleTabChange = (event, newValue) => {
-    // User clicks a tab. Just update the active tab state.
-    setActiveTabId(newValue);
+    // User clicks a tab: make URL the only source of truth.
+    handleNavigation(newValue);
   };
 
   const handleCloseTab = (e, tabIdToClose) => {
@@ -281,19 +272,17 @@ const MainLayout = () => {
 
     const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);
 
-    // If we are closing the currently active tab, we must first change
-    // `activeTabId` to trigger navigation.
-    if (activeTabId === tabIdToClose) {
+    // If we are closing the currently active tab, route to a fallback first.
+    if (currentPath === tabIdToClose) {
       const fallbackIndex = Math.max(closingTabIndex - 1, 0);
       const newActiveTab = remainingTabs[fallbackIndex] || null;
+      skipAutoOpenPathRef.current = tabIdToClose;
 
       // If no tab remains, move to empty state.
       if (!newActiveTab) {
-        setActiveTabId('');
         navigate('/');
       } else {
-        // Set the new active tab. This will trigger the navigation `useEffect`.
-        setActiveTabId(newActiveTab.id);
+        navigate(newActiveTab.id);
       }
     }
 
@@ -309,9 +298,9 @@ const MainLayout = () => {
             <ListItem
               button
               onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
-              selected={!menu.isParent && activeTabId === menu.path}
+              selected={!menu.isParent && currentPath === menu.path}
               sx={
-                !menu.isParent && activeTabId === menu.path
+                !menu.isParent && currentPath === menu.path
                   ? {
                       backgroundColor: 'rgba(25, 118, 210, 0.08)', // A light blue background
                       color: 'primary.main',
@@ -342,12 +331,12 @@ const MainLayout = () => {
                       key={child.path}
                       onClick={() => handleMenuItemClick(child.path)}
                       selected={
-                        activeTabId === child.path ||
-                        (activeTabId ? activeTabId.startsWith(child.path + '/') : false)
+                        currentPath === child.path ||
+                        (currentPath ? currentPath.startsWith(child.path + '/') : false)
                       }
                       sx={
-                        activeTabId === child.path ||
-                        (activeTabId ? activeTabId.startsWith(child.path + '/') : false)
+                        currentPath === child.path ||
+                        (currentPath ? currentPath.startsWith(child.path + '/') : false)
                           ? {
                               pl: 4,
                               backgroundColor: 'rgba(25, 118, 210, 0.08)',
@@ -500,7 +489,7 @@ const MainLayout = () => {
       >
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
           <Tabs
-            value={activeTabId || false}
+            value={openTabs.some((tab) => tab.id === currentPath) ? currentPath : false}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
