@@ -91,6 +91,18 @@ const toSeconds = (value) => {
 
 const normalizeKey = (value) => String(value ?? '').trim();
 const normalizeColorKey = (value) => normalizeKey(value).toUpperCase();
+const normalizeGenderKey = (value) => {
+  const raw = normalizeKey(value).toUpperCase();
+  if (raw === 'M' || raw === 'W' || raw === 'U') return raw;
+  return 'U';
+};
+const resolveLegacyRowColorKey = (row) => {
+  const fromCode = normalizeColorKey(row?.colorCode || row?.color || row?.colorName);
+  if (fromCode) return fromCode;
+  const fromId = normalizeColorKey(row?.colorId);
+  if (!fromId || fromId === 'M' || fromId === 'W' || fromId === 'U') return 'UNSPEC';
+  return fromId;
+};
 
 const sumSizeQuantities = (sizeQuantities = {}) =>
   Object.values(sizeQuantities).reduce((sum, value) => sum + (Number(value) || 0), 0);
@@ -111,19 +123,26 @@ const resolveItemQuantity = (item) => {
   return 0;
 };
 
-const resolveColorBucketsFromLegacyRows = (rows = []) => {
+const resolveVariantBucketsFromLegacyRows = (rows = []) => {
   const bucket = new Map();
   rows.forEach((row) => {
     const quantity = Number(row?.quantity) || 0;
     if (quantity <= 0) return;
-    const colorKey = normalizeColorKey(row?.colorId || row?.color || row?.gender || 'UNSPEC');
-    bucket.set(colorKey, (bucket.get(colorKey) || 0) + quantity);
+    const colorId = resolveLegacyRowColorKey(row);
+    const gender = normalizeGenderKey(row?.gender || row?.colorId);
+    const bucketKey = `${colorId}::${gender}`;
+    const existing = bucket.get(bucketKey);
+    if (!existing) {
+      bucket.set(bucketKey, { colorId, gender, quantity });
+      return;
+    }
+    existing.quantity += quantity;
   });
-  return Array.from(bucket.entries()).map(([colorId, quantity]) => ({ colorId, quantity }));
+  return Array.from(bucket.values());
 };
 
-const resolveItemColorBuckets = (item) => {
-  const fromLegacyRows = resolveColorBucketsFromLegacyRows(
+const resolveItemVariantBuckets = (item) => {
+  const fromLegacyRows = resolveVariantBucketsFromLegacyRows(
     Array.isArray(item?.quantities) ? item.quantities : []
   );
   if (fromLegacyRows.length > 0) return fromLegacyRows;
@@ -131,8 +150,9 @@ const resolveItemColorBuckets = (item) => {
   const fallbackQuantity = resolveItemQuantity(item);
   if (fallbackQuantity <= 0) return [];
 
-  const fallbackColor = normalizeColorKey(item?.colorId || item?.colorCode || item?.gender || 'UNSPEC');
-  return [{ colorId: fallbackColor, quantity: fallbackQuantity }];
+  const fallbackColor = normalizeColorKey(item?.colorCode || item?.colorId || item?.color || 'UNSPEC');
+  const fallbackGender = normalizeGenderKey(item?.gender);
+  return [{ colorId: fallbackColor || 'UNSPEC', gender: fallbackGender, quantity: fallbackQuantity }];
 };
 
 const mergeFactorySeconds = (first = [], second = []) => {
@@ -176,8 +196,8 @@ const getTotalByFactory = (processes, field, factoryId, quantity) =>
     return sum + perPiece * quantity;
   }, 0);
 
-const createCardId = (orderId, styleId, colorId) =>
-  `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}`;
+const createCardId = (orderId, styleId, colorId, gender) =>
+  `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}::${normalizeGenderKey(gender)}`;
 
 const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
   const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
@@ -237,13 +257,14 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
       const style = styleMap.get(styleId);
       const processSummary = styleProcessSummaryMap.get(styleId);
       const processCount = processSummary?.processCount ?? 0;
-      const colorBuckets = resolveItemColorBuckets(item);
-      if (colorBuckets.length === 0) return;
+      const variantBuckets = resolveItemVariantBuckets(item);
+      if (variantBuckets.length === 0) return;
 
-      colorBuckets.forEach(({ colorId, quantity }) => {
+      variantBuckets.forEach(({ colorId, gender, quantity }) => {
         if ((Number(quantity) || 0) <= 0) return;
 
         const normalizedColor = normalizeColorKey(colorId);
+        const normalizedGender = normalizeGenderKey(gender);
         const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
         // PT/AT are factory-common values (not per-factory)
         const totalPt = (processSummary?.unitPtSeconds ?? 0) * quantity;
@@ -254,11 +275,17 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
         const totalSeconds = hasAt ? totalAt : totalPt;
 
         upsertCard({
-          id: createCardId(order?.id ?? order?.orderNumber ?? `order-${orderIndex}`, styleId, normalizedColor),
+          id: createCardId(
+            order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
+            styleId,
+            normalizedColor,
+            normalizedGender
+          ),
           originOrderId: createCardId(
             order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
             styleId,
-            normalizedColor
+            normalizedColor,
+            normalizedGender
           ),
           orderNo: order?.orderNumber || order?.id || '-',
           customer: order?.customerName || order?.customer || '-',
@@ -267,6 +294,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
           styleCode: item?.styleCode || style?.styleCode || '',
           colorId: normalizedColor,
           colorName,
+          gender: normalizedGender,
           quantity,
           processCount,
           status,
@@ -1280,11 +1308,14 @@ const AssignBoard = () => {
 
   const assignmentsForRender = useMemo(() => {
     return assignments.map((item) => {
-      if (item.quantity != null) return item;
       if (!item.cardId) return item;
       const card = cardById.get(item.cardId);
       if (!card) return item;
-      return { ...item, quantity: card.quantity };
+      return {
+        ...item,
+        quantity: item.quantity ?? card.quantity,
+        gender: item.gender ?? card.gender,
+      };
     });
   }, [assignments, cardById]);
 
@@ -1301,6 +1332,7 @@ const AssignBoard = () => {
         card.styleName.toLowerCase().includes(lower) ||
         card.customer.toLowerCase().includes(lower) ||
         (card.colorName ? card.colorName.toLowerCase().includes(lower) : false) ||
+        (card.gender ? String(card.gender).toLowerCase().includes(lower) : false) ||
         (card.orderNo ? card.orderNo.toLowerCase().includes(lower) : false)
     );
   }, [unassignedCards, searchTerm]);
@@ -1315,7 +1347,7 @@ const AssignBoard = () => {
       if (card) {
         setActiveDrag({
           type: 'card',
-          label: card.styleName,
+          label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
           orderNo: card.orderNo,
           previewUrl: card.previewUrl,
           imageUrl: card.imageUrl,
@@ -1446,8 +1478,9 @@ const AssignBoard = () => {
         lineId,
         orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
         customer: card.customer,
-        label: card.styleName,
+        label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
         colorName: card.colorName,
+        gender: card.gender,
         previewUrl: card.previewUrl,
         imageUrl: card.imageUrl,
         thumbnailUrl: card.thumbnailUrl,
@@ -1705,6 +1738,9 @@ const AssignBoard = () => {
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
+      styleName: assignment.label || '스타일',
+      colorName: assignment.colorName || '',
+      gender: normalizeGenderKey(assignment.gender),
       quantity: assignment.quantity ?? 0,
       totalSeconds: assignment.totalSeconds ?? 0,
       totalPt: assignment.totalSeconds ?? 0,

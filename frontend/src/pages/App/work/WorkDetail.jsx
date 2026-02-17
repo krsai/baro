@@ -617,7 +617,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 
     return {
       records,
-      workerCount: new Set(records.map((row) => row.workerId).filter(Boolean)).size,
+      workerCount: workerLogs.length,
       itemCount: records.length,
       totalContractedSeconds,
     };

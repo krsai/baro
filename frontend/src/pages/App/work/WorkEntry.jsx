@@ -8,7 +8,7 @@ import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage'
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
-  const { navigateToPath, closeTab, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useApp();
   const { devBypass, devProfile } = useAuth();
 
   const isEditMode = Boolean(workLogId) && workLogId !== 'new';
@@ -21,13 +21,18 @@ const WorkEntry = () => {
   }, [devBypass, devProfile?.orgId]);
 
   const closeEntry = useCallback(() => {
-    navigateToPath('/work-history', { label: '작업 기록' });
     if (isEditMode && workLogId) {
-      closeTab(`/work-history/${workLogId}`);
+      navigateToPath('/work-history', {
+        label: '작업 기록',
+        closeTabId: `/work-history/${workLogId}`,
+      });
       return;
     }
-    closeTab('/work-history/new');
-  }, [closeTab, isEditMode, navigateToPath, workLogId]);
+    navigateToPath('/work-history', {
+      label: '작업 기록',
+      closeTabId: '/work-history/new',
+    });
+  }, [isEditMode, navigateToPath, workLogId]);
 
   useEffect(() => {
     if (!isEditMode) {

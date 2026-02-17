@@ -172,7 +172,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             textAlign: 'left',
           }}
         >
-          {`${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''} · 수량 ${assignment.quantity ?? '-'}`}
+          {`${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''}${assignment.gender ? ` · ${assignment.gender}` : ''} · 수량 ${assignment.quantity ?? '-'}`}
         </Typography>
       </Box>
       <Box

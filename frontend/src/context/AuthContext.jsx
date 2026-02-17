@@ -20,6 +20,14 @@ const DEFAULT_DEV_PROFILE = {
   orgName: null,
 };
 
+const hasLikelyMojibake = (value) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return true;
+  if (text.includes('?') || text.includes('\uFFFD')) return true;
+  // Broken UTF-8/CP949 text often appears as CJK ideographs without Hangul.
+  return /[一-龥]/.test(text) && !/[가-힣]/.test(text);
+};
+
 const normalizeDevProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return null;
 
@@ -27,7 +35,7 @@ const normalizeDevProfile = (profile) => {
   const fallbackLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || DEFAULT_DEV_PROFILE.label;
   const hasKnownKey = Boolean(DEV_PROFILE_LABEL_BY_KEY[next.key]);
   const rawLabel = typeof next.label === 'string' ? next.label.trim() : '';
-  const hasSuspiciousLabel = !rawLabel || rawLabel.includes('?') || rawLabel.includes('\uFFFD');
+  const hasSuspiciousLabel = hasLikelyMojibake(rawLabel);
 
   // For known dev profiles, always pin to canonical labels to avoid mojibake from old localStorage.
   next.label = hasKnownKey || hasSuspiciousLabel ? fallbackLabel : rawLabel;

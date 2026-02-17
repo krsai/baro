@@ -36,6 +36,7 @@ import {
   clearOrderDraft,
 } from '../../../utils/localData';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import { fetchAttributes } from '../../../utils/attributeApi';
 import {
   SIZE_CODES,
   GENDER_CODES,
@@ -54,7 +55,7 @@ const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완�
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
-const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(45 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
 const ORDER_LIST_COLUMN_WIDTHS = {
   orderNumber: '12%',
   buyer: '18%',
@@ -105,15 +106,23 @@ const getStyleGroupKey = (item) => {
   return `item:${item?.id || ''}`;
 };
 const getStyleIdentity = (item) => item?.styleId || item?.styleName || item?.styleCode || '';
-const getStyleGenderKey = (styleIdentity, gender) => {
+const normalizeColorCode = (value) => String(value ?? '').trim().toUpperCase();
+const getStyleColorGenderKey = (styleIdentity, colorCode, gender) => {
   const normalizedGender = normalizeGenderCode(gender, '');
-  if (!styleIdentity || !normalizedGender) return '';
-  return `${styleIdentity}::${normalizedGender}`;
+  const normalizedColorCode = normalizeColorCode(colorCode);
+  if (!styleIdentity || !normalizedColorCode || !normalizedGender) return '';
+  return `${styleIdentity}::${normalizedColorCode}::${normalizedGender}`;
 };
-const hasDuplicateStyleGender = (items = []) => {
+const getItemColorCode = (item) =>
+  normalizeColorCode(item?.colorCode || item?.colorId || item?.color || '');
+const hasDuplicateStyleColorGender = (items = []) => {
   const seen = new Set();
   for (const item of items) {
-    const key = getStyleGenderKey(getStyleIdentity(item), item?.gender);
+    const key = getStyleColorGenderKey(
+      getStyleIdentity(item),
+      getItemColorCode(item),
+      item?.gender
+    );
     if (!key) continue;
     if (seen.has(key)) return true;
     seen.add(key);
@@ -125,10 +134,33 @@ const getGenderOrder = (gender) =>
 const getGenderPastelStyle = (gender) => GENDER_PASTEL_STYLES[gender] || GENDER_PASTEL_STYLES.default;
 const getLegacyGenderCodeFromRows = (rows = []) => {
   for (const row of rows) {
-    const code = normalizeGenderCode(row?.colorId || row?.gender, '');
+    const code = normalizeGenderCode(row?.gender || row?.colorId, '');
     if (code) return code;
   }
   return '';
+};
+const getLegacyColorCodeFromRows = (rows = []) => {
+  for (const row of rows) {
+    const fromCode = normalizeColorCode(row?.colorCode || row?.color);
+    if (fromCode) return fromCode;
+    const fromId = normalizeColorCode(row?.colorId);
+    if (fromId && !GENDER_OPTIONS.includes(fromId)) return fromId;
+  }
+  return '';
+};
+const getLegacyColorNameFromRows = (rows = []) => {
+  for (const row of rows) {
+    const name = String(row?.colorName || row?.color || '').trim();
+    if (name) return name;
+  }
+  return '';
+};
+const getLegacyColorIdFromRows = (rows = []) => {
+  for (const row of rows) {
+    const parsed = Number(row?.colorId);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
 };
 const normalizeSizeKey = (value) => {
   const raw = String(value || '')
@@ -168,7 +200,10 @@ const buildSizeQuantitiesFromLegacyRows = (rows = []) =>
 
 const normalizeQuantityRow = (row) => ({
   id: row?.id || createId('qty'),
-  colorId: row?.colorId || '',
+  colorId: row?.colorId ?? null,
+  colorCode: normalizeColorCode(row?.colorCode || row?.color || ''),
+  colorName: String(row?.colorName || row?.color || '').trim(),
+  gender: normalizeGenderCode(row?.gender || row?.colorId, ''),
   sizeId: row?.sizeId || '',
   quantity: row?.quantity ?? '',
 });
@@ -178,6 +213,9 @@ const createOrderItem = () => ({
   styleId: '',
   styleName: '',
   styleCode: '',
+  colorId: null,
+  colorCode: '',
+  colorName: '',
   gender: 'M',
   sizeQuantities: createSizeQuantities(),
 });
@@ -189,12 +227,25 @@ const normalizeOrderItem = (item) => {
       : [];
   const normalizedGender = normalizeGenderCode(item?.gender, '');
   const legacyGender = getLegacyGenderCodeFromRows(legacyRows);
+  const colorCodeFromItem = normalizeColorCode(item?.colorCode || item?.color || '');
+  const colorCodeFromLegacy = getLegacyColorCodeFromRows(legacyRows);
+  const colorCode = colorCodeFromItem || colorCodeFromLegacy;
+  const colorNameFromItem = String(item?.colorName || '').trim();
+  const colorName = colorNameFromItem || getLegacyColorNameFromRows(legacyRows);
+  const colorIdFromItem = Number(item?.colorId);
+  const colorId =
+    Number.isFinite(colorIdFromItem) && colorIdFromItem > 0
+      ? colorIdFromItem
+      : getLegacyColorIdFromRows(legacyRows);
 
   return {
     id: item?.id || createId('item'),
     styleId: item?.styleId || '',
     styleName: item?.styleName || '',
     styleCode: item?.styleCode || '',
+    colorId,
+    colorCode,
+    colorName,
     gender: normalizedGender || legacyGender || 'M',
     sizeQuantities:
       item?.sizeQuantities && typeof item.sizeQuantities === 'object'
@@ -250,11 +301,12 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const { showNotification, navigateToPath, closeTab } = useApp();
+  const { showNotification, navigateToPath } = useApp();
   const { devBypass, devProfile } = useAuth();
 
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
+  const [colorOptions, setColorOptions] = useState([]);
   const [buyerOptions, setBuyerOptions] = useState([]);
   const [sellerOptions, setSellerOptions] = useState([]);
   const [relationshipPairs, setRelationshipPairs] = useState([]);
@@ -293,6 +345,25 @@ const OrderList = () => {
 
   useEffect(() => {
     refreshStyles(activeOrgId);
+  }, [activeOrgId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadColors = async () => {
+      try {
+        const data = await fetchAttributes({ orgId: activeOrgId });
+        if (cancelled) return;
+        setColorOptions(Array.isArray(data?.colors) ? data.colors : []);
+      } catch (_error) {
+        if (!cancelled) setColorOptions([]);
+      }
+    };
+
+    loadColors();
+    return () => {
+      cancelled = true;
+    };
   }, [activeOrgId]);
 
   useEffect(() => {
@@ -477,6 +548,27 @@ const OrderList = () => {
     if (!selectedBuyerName) return [];
     return styleOptions.filter((style) => style.customer === selectedBuyerName);
   }, [styleOptions, selectedBuyerName]);
+  const normalizedColorOptions = useMemo(
+    () =>
+      colorOptions
+        .map((item) => ({
+          id: item?.id ?? null,
+          code: normalizeColorCode(item?.code),
+          name: String(item?.name || item?.code || '').trim(),
+        }))
+        .filter((item) => item.code),
+    [colorOptions]
+  );
+  const colorOptionByCode = useMemo(
+    () =>
+      new Map(
+        normalizedColorOptions.map((item) => [
+          item.code,
+          { id: item.id, code: item.code, name: item.name },
+        ])
+      ),
+    [normalizedColorOptions]
+  );
 
   const buyerValue = useMemo(() => {
     if (formData.buyerOrgId) {
@@ -531,10 +623,22 @@ const OrderList = () => {
       targetGroup.rows.push({ item, sourceIndex });
     });
 
+    const sortedGroups = Array.from(groupMap.values()).sort((a, b) => {
+      const styleA = String(a.styleName || a.styleCode || a.styleId || '').toLowerCase();
+      const styleB = String(b.styleName || b.styleCode || b.styleId || '').toLowerCase();
+      const styleDiff = styleA.localeCompare(styleB);
+      if (styleDiff !== 0) return styleDiff;
+      return String(a.key).localeCompare(String(b.key));
+    });
+
     let nextDisplayNo = 1;
-    return Array.from(groupMap.values()).map((group) => {
+    return sortedGroups.map((group) => {
       const rows = [...group.rows]
         .sort((a, b) => {
+          const colorA = String(a.item?.colorName || a.item?.colorCode || '').toLowerCase();
+          const colorB = String(b.item?.colorName || b.item?.colorCode || '').toLowerCase();
+          const colorDiff = colorA.localeCompare(colorB);
+          if (colorDiff !== 0) return colorDiff;
           const genderDiff = getGenderOrder(a.item.gender) - getGenderOrder(b.item.gender);
           if (genderDiff !== 0) return genderDiff;
           return a.sourceIndex - b.sourceIndex;
@@ -585,14 +689,18 @@ const OrderList = () => {
   };
 
   const closeDetailAndGoList = () => {
-    navigateToPath('/order', { label: '주문' });
     if (isNewOrder) {
-      closeTab('/order/new');
+      navigateToPath('/order', { label: '주문', closeTabId: '/order/new' });
       return;
     }
     if (orderId) {
-      closeTab(`/order/${orderId}`);
+      navigateToPath('/order', {
+        label: '주문',
+        closeTabId: `/order/${orderId}`,
+      });
+      return;
     }
+    navigateToPath('/order', { label: '주문' });
   };
 
   const handleCloseDetail = () => {
@@ -620,6 +728,10 @@ const OrderList = () => {
           styleId: '',
           styleName: '',
           styleCode: '',
+          colorId: null,
+          colorCode: '',
+          colorName: '',
+          gender: 'M',
           sizeQuantities: createSizeQuantities(),
         })),
       };
@@ -664,68 +776,62 @@ const OrderList = () => {
     const nextStyleName = style?.name || '';
     const nextStyleCode = style?.styleCode || '';
     const nextStyleIdentity = nextStyleId || nextStyleName || nextStyleCode;
-    const assignedGenderMap = new Map();
-
-    if (nextStyleIdentity) {
-      const usedGenderSet = new Set(
-        formData.items
-          .filter((item) => !targetIdSet.has(item.id) && getStyleIdentity(item) === nextStyleIdentity)
-          .map((item) => normalizeGenderCode(item.gender, ''))
-          .filter(Boolean)
-      );
-      const targetItems = formData.items.filter((item) => targetIdSet.has(item.id));
-
-      for (const item of targetItems) {
-        const preferredGender = normalizeGenderCode(item.gender, 'M');
-        let nextGender = preferredGender;
-
-        if (usedGenderSet.has(nextGender)) {
-          const fallbackGender = GENDER_OPTIONS.find((gender) => !usedGenderSet.has(gender));
-          if (!fallbackGender) {
-            showNotification('해당 스타일은 성별(M/W/U)이 모두 사용 중입니다.', 'warning');
-            return;
-          }
-          nextGender = fallbackGender;
-        }
-
-        usedGenderSet.add(nextGender);
-        assignedGenderMap.set(item.id, nextGender);
-      }
-    }
 
     const previewItems = formData.items.map((item) =>
       targetIdSet.has(item.id)
-        ? {
-            ...item,
-            styleId: nextStyleId,
-            styleName: nextStyleName,
-            styleCode: nextStyleCode,
-            gender: assignedGenderMap.get(item.id) || item.gender,
-          }
+        ? (() => {
+            const styleChanged = getStyleIdentity(item) !== nextStyleIdentity;
+            return {
+              ...item,
+              styleId: nextStyleId,
+              styleName: nextStyleName,
+              styleCode: nextStyleCode,
+              colorId: styleChanged ? null : item.colorId,
+              colorCode: styleChanged ? '' : getItemColorCode(item),
+              colorName: styleChanged ? '' : String(item.colorName || '').trim(),
+              gender: styleChanged ? 'M' : normalizeGenderCode(item.gender, 'M'),
+              sizeQuantities: styleChanged
+                ? createSizeQuantities()
+                : normalizeSizeQuantities(item.sizeQuantities),
+            };
+          })()
         : item
     );
 
-    if (hasDuplicateStyleGender(previewItems)) {
-      showNotification('같은 스타일에 같은 성별은 중복 선택할 수 없습니다.', 'warning');
+    if (hasDuplicateStyleColorGender(previewItems)) {
+      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
       return;
     }
 
     setFormData((prev) => ({
       ...prev,
-      items: prev.items.map((item) => {
-        if (!targetIdSet.has(item.id)) return item;
-        const nextGender = assignedGenderMap.get(item.id) || item.gender;
-        return {
-          ...item,
-          styleId: nextStyleId,
-          styleName: nextStyleName,
-          styleCode: nextStyleCode,
-          gender: nextGender,
-          sizeQuantities: createSizeQuantities(),
-        };
-      }),
+      items: previewItems,
     }));
   };
+
+  const handleColorChange = (itemId, value) => {
+    const nextColorCode = normalizeColorCode(value);
+    const selectedColor = colorOptionByCode.get(nextColorCode) || null;
+    const previewItems = formData.items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            colorId: selectedColor?.id ?? null,
+            colorCode: nextColorCode,
+            colorName: selectedColor?.name || '',
+          }
+        : item
+    );
+    if (hasDuplicateStyleColorGender(previewItems)) {
+      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      items: previewItems,
+    }));
+  };
+
   const handleGenderChange = (itemId, value) => {
     if (!GENDER_OPTIONS.includes(value)) return;
     const previewItems = formData.items.map((item) =>
@@ -736,8 +842,8 @@ const OrderList = () => {
           }
         : item
     );
-    if (hasDuplicateStyleGender(previewItems)) {
-      showNotification('같은 스타일에 같은 성별은 중복 선택할 수 없습니다.', 'warning');
+    if (hasDuplicateStyleColorGender(previewItems)) {
+      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
       return;
     }
 
@@ -818,6 +924,9 @@ const OrderList = () => {
       if (!item.styleId) {
         return '모든 스타일을 선택해 주세요.';
       }
+      if (!getItemColorCode(item)) {
+        return '모든 스타일에 색상을 선택해 주세요.';
+      }
       if (!GENDER_OPTIONS.includes(item.gender)) {
         return '모든 스타일의 성별 코드(M/W/U)를 선택해 주세요.';
       }
@@ -826,8 +935,8 @@ const OrderList = () => {
         return '스타일별 사이즈 수량을 입력해 주세요.';
       }
     }
-    if (hasDuplicateStyleGender(formData.items)) {
-      return '같은 스타일에 같은 성별은 한 번만 입력할 수 있습니다.';
+    if (hasDuplicateStyleColorGender(formData.items)) {
+      return '같은 스타일/색상/성별 조합은 한 번만 입력할 수 있습니다.';
     }
     return null;
   };
@@ -846,16 +955,31 @@ const OrderList = () => {
         return acc;
       }, {});
       const totalQuantity = sumSizeQuantities(numericSizeQuantities);
+      const safeColorCode = getItemColorCode(item);
+      const colorOption = colorOptionByCode.get(safeColorCode) || null;
+      const safeColorName = String(item.colorName || colorOption?.name || safeColorCode).trim();
+      const safeColorId =
+        Number.isFinite(Number(item.colorId)) && Number(item.colorId) > 0
+          ? Number(item.colorId)
+          : Number.isFinite(Number(colorOption?.id)) && Number(colorOption?.id) > 0
+            ? Number(colorOption.id)
+            : null;
       const legacyQuantities = SIZE_COLUMNS
         .filter((size) => numericSizeQuantities[size] > 0)
         .map((size) => ({
           id: createId('qty'),
-          colorId: item.gender,
+          colorId: safeColorId ?? safeColorCode,
+          colorCode: safeColorCode,
+          colorName: safeColorName,
+          gender: item.gender,
           sizeId: size,
           quantity: numericSizeQuantities[size],
         }));
       return {
         ...item,
+        colorId: safeColorId,
+        colorCode: safeColorCode,
+        colorName: safeColorName,
         gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : 'M',
         sizeQuantities: numericSizeQuantities,
         quantities: legacyQuantities,
@@ -1201,6 +1325,7 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>스타일명/코드 선택</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>스타일 코드</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>색상</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>성별</TableCell>
                   {SIZE_COLUMNS.map((size) => (
                     <TableCell
@@ -1237,9 +1362,15 @@ const OrderList = () => {
                     const genderStyle = getGenderPastelStyle(item.gender);
                     const isFirstRow = rowIndex === 0;
                     const rowStyleIdentity = getStyleIdentity(item);
+                    const rowColorCode = getItemColorCode(item);
                     const disabledGenderSet = new Set(
                       formData.items
-                        .filter((other) => other.id !== item.id && getStyleIdentity(other) === rowStyleIdentity)
+                        .filter(
+                          (other) =>
+                            other.id !== item.id &&
+                            getStyleIdentity(other) === rowStyleIdentity &&
+                            getItemColorCode(other) === rowColorCode
+                        )
                         .map((other) => normalizeGenderCode(other.gender, ''))
                         .filter(Boolean)
                     );
@@ -1312,8 +1443,28 @@ const OrderList = () => {
                         <TableCell>
                           <FormControl fullWidth size="small">
                             <Select
+                              value={rowColorCode}
+                              onChange={(event) => handleColorChange(item.id, event.target.value)}
+                              displayEmpty
+                              disabled={!rowStyleIdentity}
+                            >
+                              <MenuItem value="">
+                                <em>색상 선택</em>
+                              </MenuItem>
+                              {normalizedColorOptions.map((color) => (
+                                <MenuItem key={color.code} value={color.code}>
+                                  {color.name || color.code}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell>
+                          <FormControl fullWidth size="small">
+                            <Select
                               value={normalizeGenderCode(item.gender, 'M')}
                               onChange={(event) => handleGenderChange(item.id, event.target.value)}
+                              disabled={!rowStyleIdentity || !rowColorCode}
                             >
                               {GENDER_OPTIONS.map((gender) => (
                                 <MenuItem

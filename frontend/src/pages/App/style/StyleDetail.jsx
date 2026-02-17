@@ -62,7 +62,7 @@ const StyleDetail = () => {
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
   const [currentTab, setCurrentTab] = useState('basicInfo');
-  const { showNotification, navigateToPath, closeTab } = useApp();
+  const { showNotification, navigateToPath } = useApp();
 
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
@@ -167,8 +167,10 @@ const StyleDetail = () => {
         showNotification('신규 스타일이 생성되었습니다.', 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
-        navigateToPath('/style', { label: '스타일' });
-        closeTab('/style/new');
+        navigateToPath('/style', {
+          label: '스타일',
+          closeTabId: '/style/new',
+        });
       } catch (error) {
         showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
       }

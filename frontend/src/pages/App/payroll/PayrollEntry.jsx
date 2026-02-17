@@ -6,7 +6,7 @@ import { useApp } from '../../../context/AppContext';
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
-  const { navigateToPath, closeTab, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useApp();
   const isEditMode = Boolean(payrollId) && payrollId !== 'new';
 
   const [payMonth, setPayMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -14,13 +14,18 @@ const PayrollEntry = () => {
   const [note, setNote] = useState('');
 
   const closeEntry = useCallback(() => {
-    navigateToPath('/payroll', { label: '급여 계산' });
     if (isEditMode && payrollId) {
-      closeTab(`/payroll/${payrollId}`);
+      navigateToPath('/payroll', {
+        label: '급여 계산',
+        closeTabId: `/payroll/${payrollId}`,
+      });
       return;
     }
-    closeTab('/payroll/new');
-  }, [closeTab, isEditMode, navigateToPath, payrollId]);
+    navigateToPath('/payroll', {
+      label: '급여 계산',
+      closeTabId: '/payroll/new',
+    });
+  }, [isEditMode, navigateToPath, payrollId]);
 
   const handleSave = () => {
     showNotification('급여 계산 페이지가 연결되었습니다. 저장 기능은 다음 단계에서 구현하세요.', 'info');

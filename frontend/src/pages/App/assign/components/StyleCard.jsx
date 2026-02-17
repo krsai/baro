@@ -145,7 +145,9 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
             </Typography>
           </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
-            {card.colorName ? `색상: ${card.colorName} · ` : ''}수량: {card.quantity}
+            {card.colorName ? `색상: ${card.colorName} · ` : ''}
+            {card.gender ? `성별: ${card.gender} · ` : ''}
+            수량: {card.quantity}
           </Typography>
         </Stack>
       </Box>

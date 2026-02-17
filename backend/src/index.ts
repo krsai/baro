@@ -1,7 +1,7 @@
-﻿import express from "express";
+﻿import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type OrgUserRole, type Prisma } from "@prisma/client";
 
 dotenv.config();
 
@@ -19,7 +19,7 @@ const DEFAULT_ORG = {
   address: "",
   phone: "",
   email: "baro.garment@gmail.com",
-  type: "MANUFACTURER",
+  type: "MANUFACTURER" as const,
 };
 
 const DEFAULT_ATTRIBUTES = {
@@ -50,36 +50,39 @@ const DEFAULT_ATTRIBUTES = {
   ],
 };
 
-const isNumericId = (value) => {
+const isNumericId = (value: unknown): boolean => {
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value === "string") return /^\d+$/.test(value);
   return false;
 };
 
-const toId = (value) => Number(value);
-const normalizeEmail = (value) => {
+const toId = (value: unknown): number => Number(value);
+const normalizeEmail = (value: unknown): string => {
   if (typeof value !== "string") return "";
   return value.trim().toLowerCase();
 };
-const normalizeOrgCode = (value) => {
+const normalizeOrgCode = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toUpperCase();
   return trimmed === "" ? null : trimmed;
 };
-const isValidOrgCode = (value) => /^[A-Z]{4}$/.test(value);
-const toNumberOrNull = (value) => {
+const isValidOrgCode = (value: string): boolean => /^[A-Z]{4}$/.test(value);
+const toNumberOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
-const toPositiveIntOrNull = (value) => {
+const toPositiveIntOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.trunc(parsed);
   return rounded > 0 ? rounded : null;
 };
-const resolveOptionalString = (value, fallback = null) => {
+const resolveOptionalString = (
+  value: unknown,
+  fallback: string | null = null
+): string | null => {
   if (value === undefined) return fallback;
   if (value === null) return null;
   if (typeof value === "string") {
@@ -89,7 +92,7 @@ const resolveOptionalString = (value, fallback = null) => {
   return fallback;
 };
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
-const LINE_ELIGIBLE_ROLES = ["ADMIN", "OPERATOR", "WORKER"];
+const LINE_ELIGIBLE_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR", "WORKER"];
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
   "ACTIVE",
@@ -106,18 +109,20 @@ const SUBSCRIPTION_STATUSES = new Set([
 ]);
 const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
 const TRIAL_DAYS = 30;
-const resolveRole = (value, fallback = "WORKER") =>
-  ROLE_OPTIONS.has(value) ? value : fallback;
-const resolveStatus = (value) =>
+const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
+  ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;
+const resolveStatus = (value: any) =>
   MEMBERSHIP_STATUSES.has(value) ? value : null;
-const resolveSubscriptionStatus = (value) =>
+const resolveSubscriptionStatus = (value: any) =>
   SUBSCRIPTION_STATUSES.has(value) ? value : null;
-const isManufacturerOrg = (org) => org?.type === "MANUFACTURER";
-const isBrandOrg = (org) => org?.type === "BRAND";
-const addDays = (date, days) =>
+const isManufacturerOrg = (org: { type?: string | null } | null | undefined) =>
+  org?.type === "MANUFACTURER";
+const isBrandOrg = (org: { type?: string | null } | null | undefined) =>
+  org?.type === "BRAND";
+const addDays = (date: Date, days: number): Date =>
   new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
-const isBaroOrganization = (organization) => {
+const isBaroOrganization = (organization: any) => {
   const normalizedName =
     typeof organization?.name === "string"
       ? organization.name.trim().toLowerCase()
@@ -129,7 +134,11 @@ const isBaroOrganization = (organization) => {
   return normalizedName === "baro" || normalizedCode === "BARO";
 };
 
-const normalizeSubscriptionEmailInput = (value, fieldName, fallback) => {
+const normalizeSubscriptionEmailInput = (
+  value: unknown,
+  fieldName: string,
+  fallback: string | null
+) => {
   if (value === undefined) return { value: fallback };
   if (value === null) return { value: null };
   if (typeof value !== "string") {
@@ -143,17 +152,21 @@ const normalizeSubscriptionEmailInput = (value, fieldName, fallback) => {
   return { value: normalized };
 };
 
-const normalizeDateInput = (value, fieldName, fallback) => {
+const normalizeDateInput = (
+  value: unknown,
+  fieldName: string,
+  fallback: Date | null
+) => {
   if (value === undefined) return { value: fallback };
   if (value === null || value === "") return { value: null };
-  const date = new Date(value);
+  const date = new Date(value as any);
   if (Number.isNaN(date.getTime())) {
     return { error: `${fieldName} is invalid` };
   }
   return { value: date };
 };
 
-const ensureOrganizationSubscription = async (organization) => {
+const ensureOrganizationSubscription = async (organization: any) => {
   if (!organization) return null;
 
   const existing = await prisma.organizationSubscription.findUnique({
@@ -162,7 +175,7 @@ const ensureOrganizationSubscription = async (organization) => {
   if (existing) {
     if (!isBaroOrganization(organization)) return existing;
 
-    const patch = {};
+    const patch: any = {};
     if (!existing.membershipEmail) {
       patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
     }
@@ -200,13 +213,13 @@ const ensureOrganizationSubscription = async (organization) => {
   });
 };
 
-const attachOrganizationSubscription = async (organization) => {
+const attachOrganizationSubscription = async (organization: any) => {
   if (!organization) return null;
   const subscription = await ensureOrganizationSubscription(organization);
   return { ...organization, subscription };
 };
 
-const ensureOrganizationAccessible = (organization, options = {}) => {
+const ensureOrganizationAccessible = (organization: any, options: any = {}) => {
   if (!organization) return organization;
   if (options.allowSuspended) return organization;
   if (organization.subscription?.status === "SUSPENDED") {
@@ -214,8 +227,8 @@ const ensureOrganizationAccessible = (organization, options = {}) => {
   }
   return organization;
 };
-const createHttpError = (status, message) => {
-  const error = new Error(message);
+const createHttpError = (status: number, message: string) => {
+  const error = new Error(message) as Error & { status: number };
   error.status = status;
   return error;
 };
@@ -233,7 +246,7 @@ const getPrimaryOrganization = async (options = {}) => {
   return ensureOrganizationAccessible(withSubscription, options);
 };
 
-const getOrganizationByQuery = async (req, options = {}) => {
+const getOrganizationByQuery = async (req: Request, options = {}) => {
   const rawOrgId =
     req.query.orgId === undefined || req.query.orgId === null
       ? ""
@@ -254,7 +267,7 @@ const getOrganizationByQuery = async (req, options = {}) => {
   return getPrimaryOrganization(options);
 };
 
-const toOrganizationResponse = (organization) => {
+const toOrganizationResponse = (organization: any) => {
   if (!organization) return organization;
   const { subscription, ...rest } = organization;
   return {
@@ -276,7 +289,7 @@ const toOrganizationResponse = (organization) => {
   };
 };
 
-const hasSubscriptionPayload = (payload = {}) =>
+const hasSubscriptionPayload = (payload: any = {}) =>
   payload.subscriptionStatus !== undefined ||
   payload.status !== undefined ||
   payload.membershipEmail !== undefined ||
@@ -284,7 +297,7 @@ const hasSubscriptionPayload = (payload = {}) =>
   payload.trialStartedAt !== undefined ||
   payload.trialEndsAt !== undefined;
 
-const applySubscriptionPayload = async (organization, payload = {}) => {
+const applySubscriptionPayload = async (organization: any, payload: any = {}) => {
   const current = await ensureOrganizationSubscription(organization);
   if (!current) {
     throw createHttpError(404, "subscription not found");
@@ -373,21 +386,22 @@ const applySubscriptionPayload = async (organization, payload = {}) => {
     suspendedAt = null;
   }
 
+  const updateData: any = {
+    status: nextStatus,
+    activatedAt,
+    suspendedAt,
+    ...(membershipEmail !== undefined ? { membershipEmail } : {}),
+    ...(billingEmail !== undefined ? { billingEmail } : {}),
+    ...(trialStartedAt !== undefined ? { trialStartedAt } : {}),
+    ...(trialEndsAt !== undefined ? { trialEndsAt } : {}),
+  };
   return prisma.organizationSubscription.update({
     where: { id: current.id },
-    data: {
-      status: nextStatus,
-      membershipEmail,
-      billingEmail,
-      trialStartedAt,
-      trialEndsAt,
-      activatedAt,
-      suspendedAt,
-    },
+    data: updateData,
   });
 };
 
-const toCustomerResponse = (relationship, perspective = "MANUFACTURER") => {
+const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTURER") => {
   const targetOrg =
     perspective === "BRAND" ? relationship.manufacturer ?? {} : relationship.brand ?? {};
   const targetCode = targetOrg.code ?? relationship.customerCode ?? "";
@@ -412,18 +426,18 @@ const createStyleId = () =>
     .slice(2, 6)
     .toUpperCase()}`;
 
-const ensureArray = (value) => (Array.isArray(value) ? value : []);
-const toStyleIdentityKey = (customer, value) =>
+const ensureArray = (value: any): any[] => (Array.isArray(value) ? value : []);
+const toStyleIdentityKey = (customer: any, value: any) =>
   `${(customer ?? "").trim()}::${(value ?? "").trim()}`;
 
-const toOptionalSeconds = (value) => {
+const toOptionalSeconds = (value: any) => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   return parsed < 0 ? 0 : Math.round(parsed);
 };
 
-const normalizeStyleProcess = (process) => {
+const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
   }
@@ -434,10 +448,10 @@ const normalizeStyleProcess = (process) => {
   return next;
 };
 
-const normalizeStyleProcesses = (value) =>
+const normalizeStyleProcesses = (value: any) =>
   ensureArray(value).map((process) => normalizeStyleProcess(process));
 
-const normalizeStylePayload = (payload, fallbackStyleId = null) => {
+const normalizeStylePayload = (payload: any, fallbackStyleId: string | null = null) => {
   const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
   const styleId = rawId || fallbackStyleId || createStyleId();
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
@@ -461,14 +475,14 @@ const normalizeStylePayload = (payload, fallbackStyleId = null) => {
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
   };
 };
-const toOrganizationOption = (organization) => ({
+const toOrganizationOption = (organization: any) => ({
   id: organization?.id ?? null,
   name: organization?.name ?? "",
   code: organization?.code ?? null,
   type: organization?.type ?? null,
 });
-const toUniqueOrganizationOptions = (organizations = []) => {
-  const byId = new Map();
+const toUniqueOrganizationOptions = (organizations: any[] = []) => {
+  const byId = new Map<number, any>();
   organizations.forEach((organization) => {
     const id = Number(organization?.id);
     if (!Number.isFinite(id) || byId.has(id)) return;
@@ -483,14 +497,23 @@ const findStyleConflict = async ({
   name,
   styleCode,
   excludeUid = null,
+}: {
+  orgId: number;
+  customer: string;
+  name: string;
+  styleCode: string;
+  excludeUid?: number | null;
 }) => {
+  const where: any = {
+    orgId,
+    customer,
+    OR: [{ name }, { styleCode }],
+  };
+  if (Number.isFinite(excludeUid)) {
+    where.NOT = { uid: excludeUid as number };
+  }
   const conflict = await prisma.style.findFirst({
-    where: {
-      orgId,
-      customer,
-      ...(Number.isFinite(excludeUid) ? { NOT: { uid: excludeUid } } : {}),
-      OR: [{ name }, { styleCode }],
-    },
+    where,
     select: { uid: true, name: true, styleCode: true },
   });
   if (!conflict) return null;
@@ -503,7 +526,7 @@ const findStyleConflict = async ({
   return "style already exists for this customer";
 };
 
-const toStyleResponse = (style) => ({
+const toStyleResponse = (style: any) => ({
   id: style.styleId,
   styleCode: style.styleCode ?? "",
   name: style.name ?? "",
@@ -520,18 +543,18 @@ const toStyleResponse = (style) => ({
   updatedAt: style.updatedAt,
 });
 
-const sumOrderItemQuantity = (item = {}) => {
+const sumOrderItemQuantity = (item: any = {}) => {
   const direct = Number(item?.totalQuantity);
   if (Number.isFinite(direct) && direct > 0) return Math.round(direct);
 
   const fromSizeQuantities = Object.values(item?.sizeQuantities ?? {}).reduce(
-    (sum, value) => sum + (Number(value) || 0),
+    (sum: number, value: any) => sum + (Number(value) || 0),
     0
   );
   if (fromSizeQuantities > 0) return Math.round(fromSizeQuantities);
 
   const fromLegacyRows = ensureArray(item?.quantities).reduce(
-    (sum, row) => sum + (Number(row?.quantity) || 0),
+    (sum: number, row: any) => sum + (Number(row?.quantity) || 0),
     0
   );
   if (fromLegacyRows > 0) return Math.round(fromLegacyRows);
@@ -539,7 +562,7 @@ const sumOrderItemQuantity = (item = {}) => {
   return 0;
 };
 
-const normalizeOrderItems = (value) =>
+const normalizeOrderItems = (value: any) =>
   ensureArray(value)
     .filter((item) => item && typeof item === "object")
     .map((item) => ({
@@ -550,7 +573,7 @@ const normalizeOrderItems = (value) =>
 const buildOrderId = () =>
   `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const normalizeOrderPayload = (payload = {}, fallback = null) => {
+const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   const fallbackOrderId =
     typeof fallback?.orderId === "string" ? fallback.orderId.trim() : "";
   const payloadOrderId =
@@ -612,7 +635,7 @@ const normalizeOrderPayload = (payload = {}, fallback = null) => {
   };
 };
 
-const toOrderResponse = (order) => {
+const toOrderResponse = (order: any) => {
   const items = normalizeOrderItems(order?.items);
   return {
     id: order.orderId,
@@ -633,26 +656,26 @@ const toOrderResponse = (order) => {
   };
 };
 
-const normalizeDateKey = (value) => {
+const normalizeDateKey = (value: any) => {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
 const todayDateKey = () => new Date().toISOString().slice(0, 10);
-const toNonNegativeInt = (value, fallback = 0) => {
+const toNonNegativeInt = (value: any, fallback = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.round(parsed));
 };
-const toOptionalFiniteNumber = (value, fallback = null) => {
+const toOptionalFiniteNumber = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return parsed;
 };
-const normalizeWorkRecordPayloadList = (records) => {
-  const rows = [];
+const normalizeWorkRecordPayloadList = (records: any) => {
+  const rows: any[] = [];
   let invalidWorkerRecordIndex = -1;
 
   ensureArray(records).forEach((record, index) => {
@@ -684,7 +707,7 @@ const normalizeWorkRecordPayloadList = (records) => {
 
   return { rows, invalidWorkerRecordIndex };
 };
-const toWorkRecordResponse = (record) => ({
+const toWorkRecordResponse = (record: any) => ({
   workerId: record?.workerId ?? null,
   workerName: record?.workerName ?? "",
   customerName: record?.customerName ?? "",
@@ -698,7 +721,7 @@ const toWorkRecordResponse = (record) => ({
   ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
   quantity: toNonNegativeInt(record?.quantity, 0),
 });
-const normalizeWorkLogPayload = (payload = {}, fallback = null) => {
+const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const workDateInput =
     payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
   const normalizedWorkDate = normalizeDateKey(workDateInput) || todayDateKey();
@@ -743,7 +766,7 @@ const normalizeWorkLogPayload = (payload = {}, fallback = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
-const toWorkLogResponse = (workLog) => ({
+const toWorkLogResponse = (workLog: any) => ({
   id: workLog.id,
   workDate: workLog.workDate,
   factoryId: workLog.factoryId ?? null,
@@ -762,30 +785,30 @@ const toWorkLogResponse = (workLog) => ({
   updatedAt: workLog.updatedAt,
 });
 const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "AGREED", "REJECTED"]);
-const toOptionalNonNegativeInt = (value, fallback = null) => {
+const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.round(parsed));
 };
-const toOptionalFloat = (value, fallback = null) => {
+const toOptionalFloat = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return parsed;
 };
-const toOptionalDateValue = (value, fallback = null) => {
+const toOptionalDateValue = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallback;
   return date;
 };
-const resolveAssignmentCtStatus = (value) =>
+const resolveAssignmentCtStatus = (value: any) =>
   ASSIGNMENT_CT_STATUSES.has(value) ? value : "PENDING";
-const toAssignmentPlanResponse = (plan) => ({
+const toAssignmentPlanResponse = (plan: any) => ({
   id: plan.externalId,
   lineId: String(plan.lineId),
   cardId: plan.cardId ?? "",
@@ -818,14 +841,17 @@ const toAssignmentPlanResponse = (plan) => ({
   createdAt: plan.createdAt,
   updatedAt: plan.updatedAt,
 });
-const normalizeAssignmentPlanPayload = (items, lineIdSet = null) =>
+const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | null = null) =>
   ensureArray(items)
     .map((item) => {
       if (!item || typeof item !== "object") return null;
 
       const externalId = resolveOptionalString(item.id ?? item.externalId, null);
       const lineId = toNumberOrNull(item.lineId);
-      const lineIdNum = Number.isFinite(lineId) ? Math.round(lineId) : null;
+      const lineIdNum =
+        typeof lineId === "number" && Number.isFinite(lineId)
+          ? Math.round(lineId)
+          : null;
       if (!externalId || !lineIdNum) return null;
       if (lineIdSet && !lineIdSet.has(lineIdNum)) return null;
 
@@ -868,14 +894,14 @@ const normalizeAssignmentPlanPayload = (items, lineIdSet = null) =>
         updatedAt: new Date(),
       };
     })
-    .filter(Boolean)
-    .reduce((acc, item) => {
+    .filter((item): item is any => Boolean(item))
+    .reduce((acc: any, item: any) => {
       if (acc.seen.has(item.externalId)) return acc;
       acc.seen.add(item.externalId);
       acc.rows.push(item);
       return acc;
-    }, { seen: new Set(), rows: [] }).rows;
-const toAssignmentBoardStateResponse = (state, assignmentPlans = null) => ({
+    }, { seen: new Set<string>(), rows: [] as any[] }).rows;
+const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | null = null) => ({
   cards: ensureArray(state?.cards),
   assignments: Array.isArray(assignmentPlans) && assignmentPlans.length > 0
     ? assignmentPlans.map(toAssignmentPlanResponse)
@@ -884,7 +910,7 @@ const toAssignmentBoardStateResponse = (state, assignmentPlans = null) => ({
   updatedAt: state?.updatedAt ?? null,
 });
 
-const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
+const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = new Date()) => {
   const activeAssignments = await prisma.lineAssignment.findMany({
     where: { employeeId, endAt: null },
     select: { lineId: true },
@@ -914,7 +940,7 @@ const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
   return lineIds;
 };
 
-const seedAttributesIfEmpty = async (orgId) => {
+const seedAttributesIfEmpty = async (orgId: number) => {
   await prisma.$transaction([
     prisma.attrColor.createMany({
       data: DEFAULT_ATTRIBUTES.colors.map((item) => ({ ...item, orgId })),
@@ -935,7 +961,7 @@ const seedAttributesIfEmpty = async (orgId) => {
   ]);
 };
 
-const syncSection = async (model, orgId, items, options = {}) => {
+const syncSection = async (model: any, orgId: number, items: any, options: any = {}) => {
   const safeItems = Array.isArray(items) ? items : [];
   const incomingIds = safeItems
     .filter((item) => isNumericId(item.id))
@@ -945,9 +971,9 @@ const syncSection = async (model, orgId, items, options = {}) => {
     where: { orgId },
     select: { id: true },
   });
-  const existingIds = existing.map((item) => item.id);
+  const existingIds = existing.map((item: any) => item.id);
   const incomingIdSet = new Set(incomingIds);
-  const deleteIds = existingIds.filter((id) => !incomingIdSet.has(id));
+  const deleteIds = existingIds.filter((id: any) => !incomingIdSet.has(id));
   if (deleteIds.length > 0 && typeof options.beforeDeleteIds === "function") {
     await options.beforeDeleteIds(deleteIds);
   }
@@ -1008,7 +1034,7 @@ app.get("/organizations/primary", async (_req, res) => {
   res.json(toOrganizationResponse(organization));
 });
 
-const listOrgMemberships = async (req, res) => {
+const listOrgMemberships = async (req: Request, res: Response) => {
   const orgId = Number(req.query.orgId);
   const status = resolveStatus(req.query.status);
   const email = normalizeEmail(req.query.email);
@@ -1254,7 +1280,7 @@ app.patch("/org-memberships/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid status" });
   }
 
-  const data = {
+  const data: any = {
     role: nextRole,
     status: nextStatus ?? membership.status,
   };
@@ -1278,7 +1304,7 @@ app.patch("/org-memberships/:id", async (req, res) => {
     });
 
     const currentStatus = data.status ?? membership.status;
-    const employeeData = {
+    const employeeData: any = {
       orgId: membership.orgId,
     };
 
@@ -1300,7 +1326,6 @@ app.patch("/org-memberships/:id", async (req, res) => {
       where: { orgMembershipId: membership.id },
       update: employeeData,
       create: {
-        orgId: membership.orgId,
         orgMembershipId: membership.id,
         joinedAt: existingEmployee?.joinedAt ?? now,
         ...employeeData,
@@ -1665,7 +1690,7 @@ app.patch("/lines/:id", async (req, res) => {
   }
 
   const { name, isActive, managerEmployeeId } = req.body ?? {};
-  const data = {};
+  const data: any = {};
 
   if (typeof name === "string") {
     const trimmedName = name.trim();
@@ -2172,7 +2197,7 @@ app.put("/assignment-board-state", async (req, res) => {
 
     if (normalizedPlans.length > 0) {
       await tx.assignmentPlan.createMany({
-        data: normalizedPlans.map((item) => ({
+        data: normalizedPlans.map((item: any) => ({
           orgId: organization.id,
           ...item,
         })),
@@ -2554,16 +2579,16 @@ app.put("/customers/:id", async (req, res) => {
     });
   }
 
+  const relationshipUpdateData: any = {
+    managerName: resolveOptionalString(manager, existing.managerName),
+    managerPhone: resolveOptionalString(phone, existing.managerPhone),
+    managerEmail: resolveOptionalString(email, existing.managerEmail),
+    memo: resolveOptionalString(memo, existing.memo),
+    ...(code !== undefined ? { customerCode: normalizedCode } : {}),
+  };
   await prisma.orgRelationship.update({
     where: { id: existing.id },
-    data: {
-      customerCode:
-        code !== undefined ? normalizedCode : existing.customerCode,
-      managerName: resolveOptionalString(manager, existing.managerName),
-      managerPhone: resolveOptionalString(phone, existing.managerPhone),
-      managerEmail: resolveOptionalString(email, existing.managerEmail),
-      memo: resolveOptionalString(memo, existing.memo),
-    },
+    data: relationshipUpdateData,
   });
 
   const refreshed = await prisma.orgRelationship.findUnique({
@@ -2815,7 +2840,7 @@ app.delete("/styles/:styleId", async (req, res) => {
     res.status(204).send();
   } catch (error) {
     // P2025 = Record to delete does not exist.
-    if (error?.code === 'P2025') {
+    if ((error as any)?.code === "P2025") {
       return res.status(404).json({ ok: false, error: "style not found" });
     }
     res.status(500).json({ ok: false, error: "failed to delete style" });
@@ -2834,8 +2859,8 @@ app.post("/styles/import", async (req, res) => {
   }
 
   const normalizedRows = rows
-    .map((item) => normalizeStylePayload(item))
-    .filter((item) => item.name && item.customer);
+    .map((item: any) => normalizeStylePayload(item))
+    .filter((item: any) => item.name && item.customer);
 
   if (normalizedRows.length === 0) {
     return res
@@ -2868,7 +2893,7 @@ app.post("/styles/import", async (req, res) => {
   const existingStyleRows = await prisma.style.findMany({
     where: {
       orgId: organization.id,
-      styleId: { in: normalizedRows.map((item) => item.styleId) },
+      styleId: { in: normalizedRows.map((item: any) => item.styleId) },
     },
     select: { uid: true, styleId: true },
   });
@@ -2890,7 +2915,7 @@ app.post("/styles/import", async (req, res) => {
   }
 
   await prisma.$transaction(
-    normalizedRows.map((item) =>
+    normalizedRows.map((item: any) =>
       prisma.style.upsert({
         where: {
           orgId_styleId: {
@@ -2969,7 +2994,12 @@ app.put("/attributes", async (req, res) => {
   const payload = req.body ?? {};
 
   const tasks = [];
-  const response = {};
+  const response: {
+    colors?: any[];
+    categories?: any[];
+    roles?: any[];
+    processes?: any[];
+  } = {};
 
   if (payload.colors) {
     tasks.push(
@@ -2992,7 +3022,7 @@ app.put("/attributes", async (req, res) => {
   if (payload.roles) {
     tasks.push(
       syncSection(prisma.attrRole, organization.id, payload.roles, {
-        beforeDeleteIds: async (deleteIds) => {
+        beforeDeleteIds: async (deleteIds: number[]) => {
           await prisma.employee.updateMany({
             where: {
               orgId: organization.id,
@@ -3114,19 +3144,21 @@ app.put("/organizations/:id", async (req, res) => {
     }
   }
 
+  const organizationUpdateData: Prisma.OrganizationUpdateInput = {
+    name,
+    businessNumber,
+    representative,
+    industry,
+    address,
+    phone,
+    email,
+    type,
+    ...(code !== undefined ? { code: normalizedCode } : {}),
+  };
+
   const organization = await prisma.organization.update({
     where: { id },
-    data: {
-      name,
-      code: code !== undefined ? normalizedCode : undefined,
-      businessNumber,
-      representative,
-      industry,
-      address,
-      phone,
-      email,
-      type,
-    },
+    data: organizationUpdateData,
   });
 
   await applySubscriptionPayload(organization, req.body ?? {});
@@ -3169,7 +3201,7 @@ app.patch("/organizations/:id/subscription", async (req, res) => {
   res.json(toOrganizationResponse(withSubscription));
 });
 
-const assignOrgMembership = async (req, res) => {
+const assignOrgMembership = async (req: Request, res: Response) => {
   const { orgId, email, role } = req.body ?? {};
   const orgIdNum = Number(orgId);
   const normalizedEmail = normalizeEmail(email);
@@ -3210,11 +3242,12 @@ const assignOrgMembership = async (req, res) => {
 
 app.post("/org-memberships/assign", assignOrgMembership);
 
-app.use((error, _req, res, _next) => {
-  if (error?.status && Number.isFinite(Number(error.status))) {
-    return res.status(Number(error.status)).json({
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const status = Number((error as any)?.status);
+  if (Number.isFinite(status)) {
+    return res.status(status).json({
       ok: false,
-      error: error.message || "request failed",
+      error: (error as any)?.message || "request failed",
     });
   }
   console.error(error);

@@ -17,31 +17,35 @@ export const AppProvider = ({ children }) => {
 
   const openTab = useCallback((tab, options) => {
     setOpenTabs((prev) => {
-      let tabs = [...prev];
+      let tabs = prev;
+      let changed = false;
       const pattern = options?.replacePrefix;
 
       // If a replacement pattern is given, first remove old tabs matching it.
       if (pattern) {
-        tabs = tabs.filter(t => !t.id.startsWith(pattern));
+        const filtered = tabs.filter((t) => !t.id.startsWith(pattern));
+        if (filtered.length !== tabs.length) {
+          changed = true;
+          tabs = filtered;
+        }
       }
 
-      // Now, add the new tab if it's not already in the (potentially filtered) list.
-      const tabExists = tabs.some(t => t.id === tab.id);
+      // Add the new tab only if it does not already exist.
+      const tabExists = tabs.some((t) => t.id === tab.id);
       if (!tabExists) {
+        changed = true;
         tabs = [...tabs, tab];
       }
-      
-      // If the new tab was one of the ones filtered out, this logic re-adds it.
-      // If it wasn't filtered and already existed, the list remains the same.
-      // If it's brand new, it gets added.
-      return tabs;
+
+      return changed ? tabs : prev;
     });
   }, []);
 
   const closeTab = useCallback((tabId) => {
-    setOpenTabs((prevOpenTabs) =>
-      prevOpenTabs.filter((t) => t.id !== tabId)
-    );
+    setOpenTabs((prevOpenTabs) => {
+      const nextTabs = prevOpenTabs.filter((t) => t.id !== tabId);
+      return nextTabs.length === prevOpenTabs.length ? prevOpenTabs : nextTabs;
+    });
   }, []);
 
   // Helper to show notifications
@@ -65,12 +69,7 @@ export const AppProvider = ({ children }) => {
 
   const [factories, setFactories] = useState([]);
 
-  const [roles, setRoles] = useState([
-    { id: 1, name: '관리자', description: '전사 관리 권한' },
-    { id: 2, name: '운영자', description: '공장 운영 관리' },
-    { id: 3, name: '매니저', description: '팀 매니저' },
-    { id: 4, name: '작업자', description: '일반 작업자' },
-  ]);
+  const [roles, setRoles] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +86,7 @@ export const AppProvider = ({ children }) => {
           }))
         );
       } catch (_error) {
-        // keep fallback roles
+        // keep empty roles on failure
       }
     };
     loadRoles();

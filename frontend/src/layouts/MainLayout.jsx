@@ -161,7 +161,7 @@ const MainLayout = () => {
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
-        children: [{ label: '멤버쉽 관리', icon: <TuneIcon />, path: '/system-setting' }],
+        children: [{ label: '멤버십 관리', icon: <TuneIcon />, path: '/system-setting' }],
       },
     ],
     [
@@ -185,6 +185,10 @@ const MainLayout = () => {
   const handleNavigation = React.useCallback(
     (path, options) => {
       const openOptions = {};
+      const closeTabId =
+        typeof options?.closeTabId === 'string' && options.closeTabId.trim()
+          ? options.closeTabId
+          : null;
       // For style detail pages, ensure only one is open at a time.
       if (path.startsWith('/style/') && path !== '/style') {
         openOptions.replacePrefix = '/style/';
@@ -200,6 +204,13 @@ const MainLayout = () => {
       // For payroll detail pages, ensure only one detail tab is open.
       if (path.startsWith('/payroll/') && path !== '/payroll') {
         openOptions.replacePrefix = '/payroll/';
+      }
+
+      // If a caller requests closing a tab as part of navigation, block auto re-open
+      // for that path during this transition and close it before route sync.
+      if (closeTabId) {
+        skipAutoOpenPathRef.current = closeTabId;
+        closeTab(closeTabId);
       }
       
       // The `openTab` function from context already checks for duplicates,
@@ -218,7 +229,7 @@ const MainLayout = () => {
         navigate(path);
       }
     },
-    [currentPath, menuItems, navigate, openTab]
+    [closeTab, currentPath, menuItems, navigate, openTab]
   );
 
   useEffect(() => {
@@ -265,6 +276,7 @@ const MainLayout = () => {
   };
 
   const handleCloseTab = (e, tabIdToClose) => {
+    e.preventDefault();
     e.stopPropagation();
 
     const closingTabIndex = openTabs.findIndex((t) => t.id === tabIdToClose);
@@ -531,6 +543,10 @@ const MainLayout = () => {
                     <IconButton
                       component="span"
                       size="small"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
                       onClick={(e) => handleCloseTab(e, tab.id)}
                       sx={{
                         ml: 1,
