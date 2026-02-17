@@ -1,16 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+import { buildQueryString, requestJSON } from './apiClient';
 
 const normalizeArray = (value) => (Array.isArray(value) ? value : []);
-
-const toQuery = (params = {}) => {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === null || value === undefined || value === '') return;
-    query.set(key, String(value));
-  });
-  const encoded = query.toString();
-  return encoded ? `?${encoded}` : '';
-};
 
 const normalizeAttributeItem = (item = {}) => ({
   id: item.id ?? null,
@@ -56,26 +46,11 @@ const normalizeAttributePayload = (payload = {}) => {
   return normalized;
 };
 
-const requestJSON = async (path, options = {}) => {
-  const response = await fetch(`${API_BASE}${path}`, options);
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      typeof data?.error === 'string'
-        ? data.error
-        : `Request failed (${response.status})`;
-    const error = new Error(message);
-    error.status = response.status;
-    throw error;
-  }
-  return data;
-};
-
 export const fetchAttributes = async (options = {}) => {
   const orgId = Number(options?.orgId);
   const hasOrgFilter = Number.isFinite(orgId);
   const data = await requestJSON(
-    `/attributes${toQuery({
+    `/attributes${buildQueryString({
       orgId: hasOrgFilter ? orgId : undefined,
     })}`
   );
@@ -87,7 +62,7 @@ export const updateAttributes = async (payload, options = {}) => {
   const hasOrgFilter = Number.isFinite(orgId);
   const body = normalizeAttributePayload(payload);
   const data = await requestJSON(
-    `/attributes${toQuery({
+    `/attributes${buildQueryString({
       orgId: hasOrgFilter ? orgId : undefined,
     })}`,
     {

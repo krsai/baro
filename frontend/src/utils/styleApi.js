@@ -1,27 +1,11 @@
 import { loadStyles } from './localData';
 import { normalizeProcesses } from './processTime';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+import { buildQueryString, createHttpError, requestJSON } from './apiClient';
 const STYLE_MIGRATION_KEY = 'baro_style_migrated_to_api_v1';
 
 let migrationPromise = null;
 
-const toError = (message, status) => {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-};
-
 const normalizeArray = (value) => (Array.isArray(value) ? value : []);
-const toQuery = (params = {}) => {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === null || value === undefined || value === '') return;
-    query.set(key, String(value));
-  });
-  const raw = query.toString();
-  return raw ? `?${raw}` : '';
-};
 
 const normalizeStyle = (value = {}) => ({
   id: value.id || '',
@@ -40,22 +24,12 @@ const normalizeStyle = (value = {}) => ({
   updatedAt: value.updatedAt || null,
 });
 
-const requestJSON = async (path, options = {}) => {
-  const response = await fetch(`${API_BASE}${path}`, options);
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      typeof data?.error === 'string'
-        ? data.error
-        : `Request failed (${response.status})`;
-    throw toError(message, response.status);
-  }
-  return data;
-};
-
 const fetchStylesFromServer = async (options = {}) => {
   const data = await requestJSON(
-    `/styles${toQuery({ orgId: options.orgId, compact: options.compact ? 1 : undefined })}`
+    `/styles${buildQueryString({
+      orgId: options.orgId,
+      compact: options.compact ? 1 : undefined,
+    })}`
   );
   if (!Array.isArray(data)) return [];
   return data.map(normalizeStyle);
@@ -121,7 +95,7 @@ export const fetchStyles = async (options = {}) => {
 
 export const fetchStyleById = async (styleId) => {
   if (!styleId) {
-    throw toError('styleId is required', 400);
+    throw createHttpError('styleId is required', 400);
   }
   await ensureStyleMigrationOnce();
   const data = await requestJSON(`/styles/${encodeURIComponent(styleId)}`);

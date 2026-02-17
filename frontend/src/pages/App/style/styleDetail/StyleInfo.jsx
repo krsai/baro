@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import { fetchAttributes } from '../../../../utils/attributeApi';
+import { requestJSON } from '../../../../utils/apiClient';
 import {
   calculateProcessTotal,
   formatSeconds,
@@ -18,7 +19,6 @@ import {
 } from '../../../../utils/processTime';
 
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [customers, setCustomers] = useState([]);
@@ -30,13 +30,8 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     const fetchCustomers = async () => {
       setLoadingCustomers(true);
       try {
-        const response = await fetch(`${API_BASE}/customers`);
-        const data = await response.json();
-        if (response.ok) {
-          setCustomers(Array.isArray(data) ? data : []);
-        } else {
-          setCustomers([]);
-        }
+        const data = await requestJSON('/customers');
+        setCustomers(Array.isArray(data) ? data : []);
       } catch (_error) {
         setCustomers([]);
       } finally {
@@ -45,7 +40,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     };
 
     fetchCustomers();
-  }, [API_BASE]);
+  }, []);
 
   useEffect(() => {
     const loadCategories = async () => {

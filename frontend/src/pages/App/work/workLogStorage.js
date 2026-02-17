@@ -1,59 +1,51 @@
-const STORAGE_KEY = 'baro_work_logs_v2';
+import { requestJSON } from '../../../utils/apiClient';
 
-export const loadWorkLogs = () => {
-  if (typeof window === 'undefined') return [];
+export const loadWorkLogs = async () => {
+  const data = await requestJSON('/work-logs');
+  return Array.isArray(data) ? data : [];
+};
+
+export const appendWorkLog = async (payload) => {
+  return requestJSON('/work-logs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload ?? {}),
+  });
+};
+
+export const findWorkLogById = async (workLogId) => {
+  if (!workLogId) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_error) {
-    return [];
+    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`);
+  } catch (error) {
+    if (error?.status === 404) return null;
+    throw error;
   }
 };
 
-export const saveWorkLogs = (logs) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.isArray(logs) ? logs : []));
-};
-
-export const appendWorkLog = (payload) => {
-  const nextLog = {
-    id: `work-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    ctBasis: 'CT',
-    ...payload,
-  };
-  const nextLogs = [nextLog, ...loadWorkLogs()];
-  saveWorkLogs(nextLogs);
-  return nextLog;
-};
-
-export const findWorkLogById = (workLogId) => {
+export const updateWorkLog = async (workLogId, payload) => {
   if (!workLogId) return null;
-  return (
-    loadWorkLogs().find((log) => String(log?.id || '') === String(workLogId)) ||
-    null
-  );
+  try {
+    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload ?? {}),
+    });
+  } catch (error) {
+    if (error?.status === 404) return null;
+    throw error;
+  }
 };
 
-export const updateWorkLog = (workLogId, payload) => {
-  if (!workLogId) return null;
-
-  const logs = loadWorkLogs();
-  let updatedLog = null;
-  const nextLogs = logs.map((log) => {
-    if (String(log?.id || '') !== String(workLogId)) return log;
-    updatedLog = {
-      ...log,
-      ...payload,
-      id: log.id,
-      updatedAt: new Date().toISOString(),
-    };
-    return updatedLog;
-  });
-
-  if (!updatedLog) return null;
-  saveWorkLogs(nextLogs);
-  return updatedLog;
+export const deleteWorkLog = async (workLogId) => {
+  if (!workLogId) return false;
+  try {
+    await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}`, {
+      method: 'DELETE',
+    });
+    return true;
+  } catch (error) {
+    if (error?.status === 404) return false;
+    throw error;
+  }
 };

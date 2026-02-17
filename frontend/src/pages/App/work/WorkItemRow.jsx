@@ -84,7 +84,6 @@ const WorkItemRow = ({
   const selectedCustomerKey = resolveCustomerKey(item.customer);
   const selectedStyleKey = resolveStyleKey(item.style);
   const selectedColorKey = resolveColorKey(item.color);
-  const selectedProcessKey = resolveProcessKey(item.process);
   const takenProcessKeySet = useMemo(() => {
     if (!selectedCustomerKey || !selectedStyleKey || !selectedColorKey) return new Set();
 
@@ -100,23 +99,25 @@ const WorkItemRow = ({
     return taken;
   }, [allItems, item.id, selectedColorKey, selectedCustomerKey, selectedStyleKey]);
   const isProcessOptionDisabled = (option) => takenProcessKeySet.has(resolveProcessKey(option));
-  const takenColorKeySet = useMemo(() => {
-    if (!selectedCustomerKey || !selectedStyleKey || !selectedProcessKey) return new Set();
-
-    const taken = new Set();
-    allItems.forEach((entry) => {
-      if (!entry || entry.id === item.id) return;
-      if (resolveCustomerKey(entry.customer) !== selectedCustomerKey) return;
-      if (resolveStyleKey(entry.style) !== selectedStyleKey) return;
-      if (resolveProcessKey(entry.process) !== selectedProcessKey) return;
-      const colorKey = resolveColorKey(entry.color);
-      if (colorKey) taken.add(colorKey);
-    });
-    return taken;
-  }, [allItems, item.id, selectedCustomerKey, selectedProcessKey, selectedStyleKey]);
-  const isColorOptionDisabled = (option) => takenColorKeySet.has(resolveColorKey(option));
   const wageInfo = calculateWage(item, factory);
   const canMoveToNextItem = !disabled && Boolean(item.process) && Number(item.quantity) > 0;
+  const moveFocusTo = (event, targetRef) => {
+    if (
+      event.key !== 'Tab' ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      event.nativeEvent?.isComposing
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    requestAnimationFrame(() => {
+      targetRef?.current?.focus();
+    });
+  };
 
   useEffect(() => {
     if (!focusRequest?.token || focusRequest.itemId !== item.id) return;
@@ -170,12 +171,14 @@ const WorkItemRow = ({
           options={customers}
           value={item.customer}
           onChange={(_event, value) => onItemChange('customer', value)}
+          autoHighlight
           disabled={disabled}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
           textFieldProps={{
             size: 'small',
             placeholder: '고객사 선택',
             inputRef: customerInputRef,
+            onKeyDown: (event) => moveFocusTo(event, styleInputRef),
           }}
         />
 
@@ -184,6 +187,7 @@ const WorkItemRow = ({
           options={filteredStyles}
           value={item.style}
           onChange={(_event, value) => onItemChange('style', value)}
+          autoHighlight
           disabled={disabled || !item.customer}
           getOptionLabel={(option) => option?.name || ''}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
@@ -191,6 +195,7 @@ const WorkItemRow = ({
             size: 'small',
             placeholder: '스타일 선택',
             inputRef: styleInputRef,
+            onKeyDown: (event) => moveFocusTo(event, colorInputRef),
           }}
         />
 
@@ -199,6 +204,7 @@ const WorkItemRow = ({
           options={colors}
           value={item.color}
           onChange={(_event, value) => onItemChange('color', value)}
+          autoHighlight
           disabled={disabled || !item.style}
           getOptionLabel={(option) => option?.name || option?.code || ''}
           isOptionEqualToValue={(option, value) =>
@@ -206,11 +212,11 @@ const WorkItemRow = ({
             String(option?.code || '') === String(value?.code || '') ||
             String(option?.name || '') === String(value?.name || '')
           }
-          getOptionDisabled={isColorOptionDisabled}
           textFieldProps={{
             size: 'small',
             placeholder: '색상 선택',
             inputRef: colorInputRef,
+            onKeyDown: (event) => moveFocusTo(event, processInputRef),
           }}
         />
 
@@ -219,6 +225,7 @@ const WorkItemRow = ({
           options={processOptions}
           value={item.process}
           onChange={(_event, value) => onItemChange('process', value)}
+          autoHighlight
           disabled={disabled || !item.style || !item.color}
           getOptionLabel={(option) => `[${option?.code || '-'}] ${option?.name || ''}`}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
@@ -227,6 +234,7 @@ const WorkItemRow = ({
             size: 'small',
             placeholder: '공정 선택',
             inputRef: processInputRef,
+            onKeyDown: (event) => moveFocusTo(event, quantityInputRef),
           }}
         />
 

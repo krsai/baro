@@ -38,7 +38,6 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const closeTab = useCallback((tabId) => {
-    if (tabId === '/') return;
     setOpenTabs((prevOpenTabs) =>
       prevOpenTabs.filter((t) => t.id !== tabId)
     );

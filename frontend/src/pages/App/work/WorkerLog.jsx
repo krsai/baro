@@ -65,6 +65,7 @@ const WorkerLog = ({
           options={options}
           value={log.worker}
           onChange={(_event, value) => onWorkerChange(log.id, value)}
+          autoHighlight
           sx={{ maxWidth: { xs: '100%', md: 360 } }}
           textFieldProps={{
             size: 'small',

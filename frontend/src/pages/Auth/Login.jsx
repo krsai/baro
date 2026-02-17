@@ -3,8 +3,7 @@ import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { Container, Button, Typography, Box, Link, CircularProgress, Stack } from '@mui/material';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+import { requestJSON } from '../../utils/apiClient';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -23,9 +22,8 @@ const Login = () => {
 
     const loadOrganizations = async () => {
       try {
-        const response = await fetch(`${API_BASE}/organizations`);
-        const data = await response.json().catch(() => []);
-        if (!response.ok || cancelled) return;
+        const data = await requestJSON('/organizations').catch(() => []);
+        if (cancelled) return;
         setOrganizations(Array.isArray(data) ? data : []);
       } catch (_error) {
         if (!cancelled) setOrganizations([]);
@@ -143,8 +141,7 @@ const Login = () => {
 
           {!isSupabaseConfigured && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
-              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행하세요.
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과 `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
             </Typography>
           )}
           <Link component={RouterLink} to="/signup" variant="body2">

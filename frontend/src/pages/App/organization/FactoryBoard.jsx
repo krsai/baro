@@ -1,7 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
 import {
-  Box,
-  Button,
   Paper,
   Table,
   TableBody,
@@ -11,11 +9,14 @@ import {
   TableRow,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import AppPageContainer from '../../../components/AppPageContainer';
+import PageSectionHeader from '../../../components/PageSectionHeader';
+import TableStatusRow from '../../../components/TableStatusRow';
 import FactoryDetail from './factoryDetail/FactoryDetail';
 import { useApp } from '../../../context/AppContext';
+import { requestJSON } from '../../../utils/apiClient';
 
 const FactoryList = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const [factories, setFactories] = useState([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedFactory, setSelectedFactory] = useState(null);
@@ -26,13 +27,8 @@ const FactoryList = () => {
   const fetchFactories = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/factories`);
-      const data = await response.json().catch(() => null);
-      if (response.ok) {
-        setFactories(Array.isArray(data) ? data : []);
-      } else {
-        showNotification(data?.error || 'Failed to load factories.', 'error');
-      }
+      const data = await requestJSON('/factories');
+      setFactories(Array.isArray(data) ? data : []);
     } catch (_error) {
       showNotification('Failed to load factories.', 'error');
     } finally {
@@ -42,7 +38,7 @@ const FactoryList = () => {
 
   useEffect(() => {
     fetchFactories();
-  }, [API_BASE]);
+  }, []);
 
   const handleAddClick = () => {
     setSelectedFactory(null);
@@ -75,25 +71,23 @@ const FactoryList = () => {
 
     try {
       const isEdit = Boolean(savedData.id);
-      const response = await fetch(
-        isEdit ? `${API_BASE}/factories/${savedData.id}` : `${API_BASE}/factories`,
+      const data = await requestJSON(
+        isEdit ? `/factories/${savedData.id}` : '/factories',
         {
           method: isEdit ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         }
       );
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        showNotification(data?.error || 'Failed to save factory.', 'error');
-        return;
-      }
 
       if (isEdit) {
-        setFactories((prev) => prev.map((factory) => (factory.id === data.id ? data : factory)));
+        setFactories((prev) =>
+          prev.map((factory) => (factory.id === data.id ? data : factory))
+        );
       } else {
         setFactories((prev) => [...prev, data]);
       }
+
       handleDetailClose();
       showNotification('Factory saved.', 'success');
     } catch (_error) {
@@ -104,13 +98,16 @@ const FactoryList = () => {
   };
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAddClick}>
-          Add Factory
-        </Button>
-      </Box>
-
+    <AppPageContainer
+      header={
+        <PageSectionHeader
+          title="Factories"
+          actionLabel="Add Factory"
+          actionIcon={<AddIcon />}
+          onAction={handleAddClick}
+        />
+      }
+    >
       <Paper variant="outlined" sx={{ width: '100%' }}>
         <TableContainer>
           <Table stickyHeader size="small">
@@ -123,46 +120,37 @@ const FactoryList = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>Wage / sec</TableCell>
               </TableRow>
             </TableHead>
-
             <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    Loading...
-                  </TableCell>
-                </TableRow>
+              {loading ? (
+                <TableStatusRow colSpan={5} message="Loading..." />
+              ) : factories.length === 0 ? (
+                <TableStatusRow colSpan={5} message="No factories found." />
+              ) : (
+                factories.map((factory) => {
+                  const rawWage = factory.wagePerSecond;
+                  const wage =
+                    rawWage === '' || rawWage === null || rawWage === undefined
+                      ? Number.NaN
+                      : Number(rawWage);
+
+                  return (
+                    <TableRow
+                      key={factory.id}
+                      hover
+                      onDoubleClick={() => handleRowDoubleClick(factory)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell>{factory.name || '-'}</TableCell>
+                      <TableCell>{factory.address || '-'}</TableCell>
+                      <TableCell>
+                        {`${factory.countryCode || ''} ${factory.phoneNumber || ''}`.trim() || '-'}
+                      </TableCell>
+                      <TableCell>{factory.manager || '-'}</TableCell>
+                      <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
+                    </TableRow>
+                  );
+                })
               )}
-
-              {!loading && factories.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    No factories found.
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {factories.map((factory) => {
-                const rawWage = factory.wagePerSecond;
-                const wage =
-                  rawWage === '' || rawWage === null || rawWage === undefined
-                    ? Number.NaN
-                    : Number(rawWage);
-
-                return (
-                  <TableRow
-                    key={factory.id}
-                    hover
-                    onDoubleClick={() => handleRowDoubleClick(factory)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>{factory.name || '-'}</TableCell>
-                    <TableCell>{factory.address || '-'}</TableCell>
-                    <TableCell>{`${factory.countryCode || ''} ${factory.phoneNumber || ''}`.trim() || '-'}</TableCell>
-                    <TableCell>{factory.manager || '-'}</TableCell>
-                    <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
-                  </TableRow>
-                );
-              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -174,7 +162,7 @@ const FactoryList = () => {
         onSave={handleSave}
         factory={selectedFactory}
       />
-    </Box>
+    </AppPageContainer>
   );
 };
 

@@ -75,6 +75,9 @@ model Organization {
   employees  Employee[]
   lines      Line[]
   styles     Style[]
+  workLogs   WorkLog[]
+  assignmentBoardState AssignmentBoardState?
+  assignmentPlans AssignmentPlan[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
@@ -153,6 +156,7 @@ model Line {
   factory      Factory      @relation(fields: [factoryId], references: [id])
   manager      Employee?    @relation("LineManager", fields: [managerEmployeeId], references: [id])
   assignments  LineAssignment[]
+  assignmentPlans AssignmentPlan[]
 
   @@index([orgId])
   @@index([factoryId])
@@ -296,5 +300,82 @@ model Style {
   @@unique([orgId, styleId])
   @@unique([orgId, customer, name])
   @@unique([orgId, customer, styleCode])
+  @@index([orgId])
+}
+
+model AssignmentPlan {
+  id                    Int      @id @default(autoincrement())
+  orgId                 Int
+  lineId                Int
+  externalId            String
+  cardId                String?
+  orderNo               String?
+  customer              String?
+  label                 String?
+  colorName             String?
+  previewUrl            String?
+  imageUrl              String?
+  thumbnailUrl          String?
+  quantity              Int?
+  originOrderId         String?
+  basis                 String?
+  proposalBasis         String?
+  proposalSeconds       Int?
+  contractedSeconds     Int?
+  ctStatus              String   @default("PENDING")
+  ctSource              String?
+  ctAgreedBy            String?
+  ctAgreedAt            DateTime?
+  ctNote                String?
+  color                 String?
+  stripeColor           String?
+  totalSeconds          Int?
+  startIndex            Int
+  endIndex              Int
+  startDayOffsetPercent Float?
+  startDayPercent       Float?
+  endDayPercent         Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime
+
+  line         Line         @relation(fields: [lineId], references: [id])
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, externalId])
+  @@index([orgId, lineId])
+}
+
+model WorkLog {
+  id                     Int      @id @default(autoincrement())
+  orgId                  Int
+  workDate               String
+  factoryId              Int?
+  factoryName            String?
+  factoryWagePerSecond   Float?
+  ctBasis                String   @default("CT")
+  workerCount            Int      @default(0)
+  itemCount              Int      @default(0)
+  totalContractedSeconds Int      @default(0)
+  note                   String?
+  records                Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, workDate])
+  @@index([orgId, createdAt])
+}
+
+model AssignmentBoardState {
+  id          Int      @id @default(autoincrement())
+  orgId       Int      @unique
+  cards       Json?
+  assignments Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
   @@index([orgId])
 }

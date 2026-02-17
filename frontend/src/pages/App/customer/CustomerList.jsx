@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Table,
@@ -19,7 +19,10 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -36,8 +39,8 @@ const buildFormData = (customer) => ({
 });
 
 const CustomerList = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
+  const { devBypass, devProfile } = useAuth();
 
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,19 +49,23 @@ const CustomerList = () => {
   const [formData, setFormData] = useState(buildFormData());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const orgId = Number(devProfile?.orgId);
+    return Number.isFinite(orgId) ? orgId : null;
+  }, [devBypass, devProfile?.orgId]);
+  const customerQuery = useMemo(
+    () => buildQueryString({ orgId: activeOrgId }),
+    [activeOrgId]
+  );
 
   const fetchCustomers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/customers`);
-      const data = await response.json();
-      if (response.ok) {
-        setCustomers(Array.isArray(data) ? data : []);
-      } else {
-        showNotification(data?.error || '고객사 목록을 불러오지 못했습니다.', 'error');
-      }
-    } catch (_error) {
-      showNotification('고객사 목록을 불러오지 못했습니다.', 'error');
+      const data = await requestJSON(`/customers${customerQuery}`);
+      setCustomers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      showNotification(error?.message || '고객 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
     }
@@ -66,7 +73,7 @@ const CustomerList = () => {
 
   useEffect(() => {
     fetchCustomers();
-  }, [API_BASE]);
+  }, [customerQuery]);
 
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
@@ -105,7 +112,7 @@ const CustomerList = () => {
     if (saving) return;
     const trimmedName = formData.name.trim();
     if (!trimmedName) {
-      showNotification('고객사명을 입력해 주세요.', 'error');
+      showNotification('고객명을 입력해 주세요.', 'error');
       return;
     }
 
@@ -120,19 +127,16 @@ const CustomerList = () => {
 
     try {
       const isEdit = Boolean(editingCustomer?.id);
-      const response = await fetch(
-        isEdit ? `${API_BASE}/customers/${editingCustomer.id}` : `${API_BASE}/customers`,
+      const data = await requestJSON(
+        isEdit
+          ? `/customers/${editingCustomer.id}${customerQuery}`
+          : `/customers${customerQuery}`,
         {
           method: isEdit ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         }
       );
-      const data = await response.json();
-      if (!response.ok) {
-        showNotification(data?.error || '고객사 저장에 실패했습니다.', 'error');
-        return;
-      }
 
       if (isEdit) {
         setCustomers((prev) => prev.map((c) => (c.id === data.id ? data : c)));
@@ -140,11 +144,11 @@ const CustomerList = () => {
         setCustomers((prev) => [...prev, data]);
       }
 
-      showNotification('고객사 정보가 저장되었습니다.', 'success');
+      showNotification('고객 정보가 저장되었습니다.', 'success');
       setOpenDialog(false);
       setEditingCustomer(null);
-    } catch (_error) {
-      showNotification('고객사 저장 중 오류가 발생했습니다.', 'error');
+    } catch (error) {
+      showNotification(error?.message || '고객 저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -159,7 +163,7 @@ const CustomerList = () => {
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <SearchInput
-          placeholder="고객사명, 코드 또는 담당자 검색..."
+          placeholder="고객명, 코드 또는 담당자 검색..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           sx={{ width: 420 }}
@@ -174,7 +178,7 @@ const CustomerList = () => {
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>고객 코드</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>고객사명</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>고객명</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
@@ -183,18 +187,10 @@ const CustomerList = () => {
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    불러오는 중...
-                  </TableCell>
-                </TableRow>
+                <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
               )}
               {!loading && filteredCustomers.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                    등록된 고객사가 없습니다.
-                  </TableCell>
-                </TableRow>
+                <TableStatusRow colSpan={6} message="등록된 고객이 없습니다." sx={{ py: 2 }} />
               )}
               {filteredCustomers.map((customer) => (
                 <TableRow
@@ -217,7 +213,7 @@ const CustomerList = () => {
       </Paper>
 
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingCustomer ? '고객사 정보 수정' : '신규 고객사 등록'}</DialogTitle>
+        <DialogTitle>{editingCustomer ? '고객 정보 수정' : '신규 고객 등록'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
@@ -232,7 +228,7 @@ const CustomerList = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 name="name"
-                label="고객사명"
+                label="고객명"
                 value={formData.name}
                 onChange={handleInputChange}
                 fullWidth

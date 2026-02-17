@@ -4,6 +4,11 @@ import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 const AuthContext = createContext(null);
 const DEV_BYPASS_KEY = 'dev_bypass';
 const DEV_PROFILE_KEY = 'dev_bypass_profile';
+const DEV_PROFILE_LABEL_BY_KEY = {
+  SYSTEM_ADMIN: '시스템 관리자',
+  MANUFACTURER_ADMIN: '제조사 Admin',
+  BRAND_ADMIN: '브랜드 Admin',
+};
 const DEFAULT_DEV_PROFILE = {
   key: 'MANUFACTURER_ADMIN',
   label: '제조사 Admin',
@@ -15,12 +20,24 @@ const DEFAULT_DEV_PROFILE = {
   orgName: null,
 };
 
+const normalizeDevProfile = (profile) => {
+  if (!profile || typeof profile !== 'object') return null;
+
+  const next = { ...DEFAULT_DEV_PROFILE, ...profile };
+  const fallbackLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || DEFAULT_DEV_PROFILE.label;
+  const rawLabel = typeof next.label === 'string' ? next.label.trim() : '';
+  const hasSuspiciousLabel = !rawLabel || rawLabel.includes('?') || rawLabel.includes('\uFFFD');
+
+  next.label = hasSuspiciousLabel ? fallbackLabel : rawLabel;
+  return next;
+};
+
 const loadDevProfile = () => {
   try {
     const raw = localStorage.getItem(DEV_PROFILE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : null;
+    return normalizeDevProfile(parsed);
   } catch (_error) {
     return null;
   }
@@ -40,6 +57,15 @@ export const AuthProvider = ({ children }) => {
     if (devProfile) return;
     setDevProfile(DEFAULT_DEV_PROFILE);
     localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(DEFAULT_DEV_PROFILE));
+  }, [devBypass, devProfile]);
+
+  useEffect(() => {
+    if (!devBypass || !devProfile) return;
+    const normalized = normalizeDevProfile(devProfile);
+    if (!normalized) return;
+    if (JSON.stringify(normalized) === JSON.stringify(devProfile)) return;
+    setDevProfile(normalized);
+    localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(normalized));
   }, [devBypass, devProfile]);
 
   useEffect(() => {
@@ -106,10 +132,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const enableDevBypass = (profile = DEFAULT_DEV_PROFILE) => {
-    const nextProfile =
-      profile && typeof profile === 'object'
-        ? { ...DEFAULT_DEV_PROFILE, ...profile }
-        : DEFAULT_DEV_PROFILE;
+    const nextProfile = normalizeDevProfile(profile) || DEFAULT_DEV_PROFILE;
     setDevBypass(true);
     setDevProfile(nextProfile);
     localStorage.setItem(DEV_BYPASS_KEY, '1');
@@ -132,11 +155,7 @@ export const AuthProvider = ({ children }) => {
     [session, user, devBypass, devProfile, loading]
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

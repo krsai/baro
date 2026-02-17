@@ -22,9 +22,8 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import WorkerLog from './WorkerLog';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 const buildLogId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const buildItemId = () => `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -251,21 +250,12 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   useEffect(() => {
     let cancelled = false;
 
-    const fetchJson = async (path) => {
-      const response = await fetch(`${API_BASE}${path}`);
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(data?.error || `Request failed: ${path}`);
-      }
-      return data;
-    };
-
     const loadBaseData = async () => {
       setLoading(true);
       try {
         const [factoryRows, customerRows, styleRows, attributeData] = await Promise.all([
-          fetchJson('/factories').catch(() => []),
-          fetchJson('/customers').catch(() => []),
+          requestJSON('/factories').catch(() => []),
+          requestJSON('/customers').catch(() => []),
           fetchStylesFromApi().catch(() => []),
           fetchAttributes().catch(() => null),
         ]);
@@ -326,12 +316,10 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         return;
       }
       try {
-        const response = await fetch(`${API_BASE}/employees?factoryId=${selectedFactory.id}`);
-        const data = await response.json().catch(() => null);
-        if (!response.ok || cancelled) {
-          if (!cancelled) setEmployees([]);
-          return;
-        }
+        const data = await requestJSON(
+          `/employees${buildQueryString({ factoryId: selectedFactory.id })}`
+        );
+        if (cancelled) return;
         const list = (Array.isArray(data) ? data : []).map((employee) => ({
           ...employee,
           name: employee.name || `작업자 ${employee.id}`,
@@ -634,6 +622,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             options={factories}
             value={selectedFactory}
             onChange={(_event, value) => setSelectedFactory(value)}
+            autoHighlight
             disabled={loading}
             sx={{ minWidth: 240 }}
             textFieldProps={{ size: 'small' }}

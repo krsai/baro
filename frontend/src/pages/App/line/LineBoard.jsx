@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -18,6 +18,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const buildWorkerLabel = (worker) => {
   if (worker?.name && worker.name.trim()) return worker.name.trim();
@@ -26,7 +27,6 @@ const buildWorkerLabel = (worker) => {
 };
 
 const LineBoard = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
@@ -50,19 +50,14 @@ const LineBoard = () => {
       }
     });
 
-    // Sort workers within each line to put the manager first.
     lines.forEach((line) => {
       const workersInLine = byLine.get(String(line.id));
-      if (workersInLine && line.managerEmployeeId) {
-        workersInLine.sort((a, b) => {
-          if (a.id === line.managerEmployeeId) return -1;
-          if (b.id === line.managerEmployeeId) return 1;
-          // For non-managers, you could sort by name or another attribute if desired
-          if (a.name < b.name) return -1;
-          if (a.name > b.name) return 1;
-          return 0;
-        });
-      }
+      if (!workersInLine) return;
+      workersInLine.sort((a, b) => {
+        if (a.id === line.managerEmployeeId) return -1;
+        if (b.id === line.managerEmployeeId) return 1;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
     });
 
     return { byLine, unassigned };
@@ -75,55 +70,40 @@ const LineBoard = () => {
 
   const fetchFactories = async () => {
     try {
-      const response = await fetch(`${API_BASE}/factories`);
-      const data = await response.json();
-      if (response.ok) {
-        const list = Array.isArray(data) ? data : [];
-        setFactories(list);
-        if (!selectedFactoryId && list.length > 0) {
-          setSelectedFactoryId(String(list[0].id));
-        }
-      } else {
-        showNotification(data?.error || '공장 목록을 불러오는 데 실패했습니다.', 'error');
+      const data = await requestJSON('/factories');
+      const list = Array.isArray(data) ? data : [];
+      setFactories(list);
+      if (!selectedFactoryId && list.length > 0) {
+        setSelectedFactoryId(String(list[0].id));
       }
-    } catch (_error) {
-      showNotification('공장 목록을 불러오는 데 실패했습니다.', 'error');
+    } catch (error) {
+      showNotification(error?.message || '공장 목록을 불러오는 데 실패했습니다.', 'error');
     }
   };
 
   const fetchLines = async (factoryId) => {
     if (!factoryId) return;
     try {
-      const response = await fetch(`${API_BASE}/lines?factoryId=${factoryId}`);
-      const data = await response.json();
-      if (response.ok) {
-        setLines(Array.isArray(data) ? data : []);
-      } else {
-        showNotification(data?.error || '라인 목록을 불러오는 데 실패했습니다.', 'error');
-      }
-    } catch (_error) {
-      showNotification('라인 목록을 불러오는 데 실패했습니다.', 'error');
+      const data = await requestJSON('/lines' + buildQueryString({ factoryId }));
+      setLines(Array.isArray(data) ? data : []);
+    } catch (error) {
+      showNotification(error?.message || '라인 목록을 불러오는 데 실패했습니다.', 'error');
     }
   };
 
   const fetchWorkers = async (factoryId) => {
     if (!factoryId) return;
     try {
-      const response = await fetch(`${API_BASE}/line-workers?factoryId=${factoryId}`);
-      const data = await response.json();
-      if (response.ok) {
-        setWorkers(Array.isArray(data) ? data : []);
-      } else {
-        showNotification(data?.error || '작업자 목록을 불러오는 데 실패했습니다.', 'error');
-      }
-    } catch (_error) {
-      showNotification('작업자 목록을 불러오는 데 실패했습니다.', 'error');
+      const data = await requestJSON('/line-workers' + buildQueryString({ factoryId }));
+      setWorkers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      showNotification(error?.message || '작업자 목록을 불러오는 데 실패했습니다.', 'error');
     }
   };
 
   useEffect(() => {
     fetchFactories();
-  }, [API_BASE]);
+  }, []);
 
   useEffect(() => {
     if (!selectedFactoryId) {
@@ -131,39 +111,37 @@ const LineBoard = () => {
       setWorkers([]);
       return;
     }
+
     setLoading(true);
-    Promise.all([fetchLines(selectedFactoryId), fetchWorkers(selectedFactoryId)])
-      .finally(() => setLoading(false));
-  }, [API_BASE, selectedFactoryId]);
+    Promise.all([fetchLines(selectedFactoryId), fetchWorkers(selectedFactoryId)]).finally(
+      () => setLoading(false)
+    );
+  }, [selectedFactoryId]);
 
   const handleAddLine = async () => {
     if (saving) return;
     const trimmedName = newLineName.trim();
     if (!selectedFactoryId) {
-      showNotification('먼저 공장을 선택하세요.', 'warning');
+      showNotification('먼저 공장을 선택해 주세요.', 'warning');
       return;
     }
     if (!trimmedName) {
       showNotification('라인 이름은 필수입니다.', 'warning');
       return;
     }
+
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/lines`, {
+      const data = await requestJSON('/lines', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ factoryId: Number(selectedFactoryId), name: trimmedName }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        showNotification(data?.error || '라인 생성에 실패했습니다.', 'error');
-        return;
-      }
       setLines((prev) => [...prev, data]);
       setNewLineName('');
       showNotification('라인이 생성되었습니다.', 'success');
-    } catch (_error) {
-      showNotification('라인 생성에 실패했습니다.', 'error');
+    } catch (error) {
+      showNotification(error?.message || '라인 생성에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -173,20 +151,15 @@ const LineBoard = () => {
     if (saving) return;
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/lines/${lineId}`, {
+      const data = await requestJSON(`/lines/${lineId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ managerEmployeeId: managerEmployeeId || null }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        showNotification(data?.error || '라인 정보 업데이트에 실패했습니다.', 'error');
-        return;
-      }
       setLines((prev) => prev.map((line) => (line.id === data.id ? data : line)));
       showNotification('라인 관리자가 지정되었습니다.', 'success');
-    } catch (_error) {
-      showNotification('라인 정보 업데이트에 실패했습니다.', 'error');
+    } catch (error) {
+      showNotification(error?.message || '라인 정보 업데이트에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -206,23 +179,19 @@ const LineBoard = () => {
     if (!isUnassigned && !lineMatch) return;
 
     const destinationLineId = isUnassigned ? null : Number(lineMatch[1]);
-    const sourceLineId =
-      workers.find((worker) => worker.id === employeeId)?.currentLineId ?? null;
+    const sourceLineId = workers.find((worker) => worker.id === employeeId)?.currentLineId ?? null;
 
-    if (String(sourceLineId ?? '') === String(destinationLineId ?? '')) {
-      return;
-    }
+    if (String(sourceLineId ?? '') === String(destinationLineId ?? '')) return;
 
     const previousWorkers = workers;
     const previousLines = lines;
 
     setWorkers((prev) =>
       prev.map((worker) =>
-        worker.id === employeeId
-          ? { ...worker, currentLineId: destinationLineId }
-          : worker
+        worker.id === employeeId ? { ...worker, currentLineId: destinationLineId } : worker
       )
     );
+
     if (sourceLineId) {
       setLines((prev) =>
         prev.map((line) =>
@@ -236,33 +205,22 @@ const LineBoard = () => {
     setSaving(true);
     try {
       if (isUnassigned) {
-        const response = await fetch(`${API_BASE}/line-assignments/unassign`, {
+        await requestJSON('/line-assignments/unassign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ employeeId }),
         });
-        if (!response.ok) {
-          const data = await response.json();
-          showNotification(data?.error || '작업자 배정 해제에 실패했습니다.', 'error');
-          return;
-        }
       } else {
-        const lineId = Number(lineMatch[1]);
-        const response = await fetch(`${API_BASE}/line-assignments/assign`, {
+        await requestJSON('/line-assignments/assign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineId, employeeId }),
+          body: JSON.stringify({ lineId: destinationLineId, employeeId }),
         });
-        if (!response.ok) {
-          const data = await response.json();
-          showNotification(data?.error || '작업자 배정에 실패했습니다.', 'error');
-          return;
-        }
       }
-    } catch (_error) {
+    } catch (error) {
       setWorkers(previousWorkers);
       setLines(previousLines);
-      showNotification('배정 정보 업데이트에 실패했습니다.', 'error');
+      showNotification(error?.message || '배정 정보 업데이트에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -285,7 +243,9 @@ const LineBoard = () => {
             borderColor: isManager ? 'primary.main' : 'divider',
           }}
         >
-          <Typography variant="body2" fontWeight="medium">{buildWorkerLabel(worker)}</Typography>
+          <Typography variant="body2" fontWeight="medium">
+            {buildWorkerLabel(worker)}
+          </Typography>
           {worker.email && (
             <Typography variant="caption" color="text.secondary">
               {worker.email}
@@ -311,12 +271,10 @@ const LineBoard = () => {
               label="공장 선택"
               value={selectedFactoryId}
               onChange={(event) => setSelectedFactoryId(event.target.value)}
-              sx={{ minWidth: 200, flexShrink: 0 }}
+              sx={{ minWidth: 220, flexShrink: 0 }}
               disabled={loading}
             >
-              {factories.length === 0 && (
-                <MenuItem value="">공장이 없습니다</MenuItem>
-              )}
+              {factories.length === 0 && <MenuItem value="">공장이 없습니다</MenuItem>}
               {factories.map((factory) => (
                 <MenuItem key={factory.id} value={String(factory.id)}>
                   {factory.name}
@@ -345,37 +303,28 @@ const LineBoard = () => {
         </Paper>
 
         <DragDropContext onDragEnd={handleDragEnd}>
-          <Grid container spacing={3} alignItems="stretch">
+          <Grid container spacing={2}>
             <Grid item xs={12} md={4} lg={3}>
-              <Paper variant="outlined" sx={{ p: 2, height: '100%', bgcolor: 'grey.50' }}>
-                <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                  <Typography variant="h6" component="h2">미배정 작업자</Typography>
+              <Paper variant="outlined" sx={{ p: 2, minHeight: 400 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="h6" component="h2">
+                    미배정 작업자
+                  </Typography>
                   <Chip size="small" label={lineWorkers.unassigned.length} color="info" />
                 </Stack>
+
                 <Droppable droppableId="unassigned">
                   {(provided, snapshot) => (
                     <Box
                       ref={provided.innerRef}
                       {...provided.droppableProps}
                       sx={{
-                        minHeight: 200,
+                        minHeight: 320,
                         p: 1,
-                        borderRadius: 1.5,
-                        border: '2px dashed',
-                        borderColor: 'divider',
-                        backgroundColor: snapshot.isDraggingOver
-                          ? 'rgba(25, 118, 210, 0.08)'
-                          : 'transparent',
-                        transition: 'background-color 0.2s ease',
+                        borderRadius: 1,
+                        backgroundColor: snapshot.isDraggingOver ? 'action.selected' : 'transparent',
                       }}
                     >
-                      {lineWorkers.unassigned.length === 0 && !loading &&(
-                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: 100 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            배정되지 않은 작업자가 없습니다.
-                          </Typography>
-                        </Box>
-                      )}
                       {lineWorkers.unassigned.map((worker, index) => renderWorkerCard(worker, index))}
                       {provided.placeholder}
                     </Box>
@@ -383,67 +332,69 @@ const LineBoard = () => {
                 </Droppable>
               </Paper>
             </Grid>
-            
+
             <Grid item xs={12} md={8} lg={9}>
-              <Grid container spacing={3}>
+              <Grid container spacing={2}>
                 {lines.map((line) => {
-                  const workersForLine = lineWorkers.byLine.get(String(line.id)) ?? [];
+                  const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
+
                   return (
-                    <Grid item xs={12} lg={6} xl={4} key={line.id}>
-                      <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
-                        <Stack direction="row" spacing={1} alignItems="center" mb={2}>
-                          <Typography variant="h6" component="h3">{line.name}</Typography>
-                          <Chip size="small" label={workersForLine.length} />
-                        </Stack>
+                    <Grid item xs={12} sm={6} lg={4} key={line.id}>
+                      <Paper variant="outlined" sx={{ p: 2, minHeight: 400 }}>
+                        <Stack spacing={1.5}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Typography variant="h6" component="h3">
+                              {line.name}
+                            </Typography>
+                            <Chip size="small" label={workersInLine.length} color="primary" />
+                          </Stack>
 
-                        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                          <InputLabel>라인 관리자</InputLabel>
-                          <Select
-                            label="라인 관리자"
-                            value={line.managerEmployeeId ? String(line.managerEmployeeId) : ''}
-                            onChange={(event) => handleManagerChange(line.id, event.target.value)}
-                            disabled={saving || workersForLine.length === 0}
-                          >
-                            <MenuItem value="">없음</MenuItem>
-                            {workersForLine.map((worker) => (
-                              <MenuItem key={worker.id} value={String(worker.id)}>
-                                {buildWorkerLabel(worker)}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        <Droppable droppableId={`line-${line.id}`}>
-                          {(provided, snapshot) => (
-                            <Box
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              sx={{
-                                minHeight: 200,
-                                p: 1,
-                                borderRadius: 1.5,
-                                border: '2px dashed',
-                                borderColor: 'divider',
-                                backgroundColor: snapshot.isDraggingOver
-                                  ? 'rgba(76, 175, 80, 0.08)'
-                                  : 'transparent',
-                                transition: 'background-color 0.2s ease',
-                              }}
+                          <FormControl size="small" fullWidth>
+                            <InputLabel id={`manager-label-${line.id}`}>라인 관리자</InputLabel>
+                            <Select
+                              labelId={`manager-label-${line.id}`}
+                              label="라인 관리자"
+                              value={line.managerEmployeeId || ''}
+                              onChange={(event) =>
+                                handleManagerChange(line.id, event.target.value || null)
+                              }
+                              disabled={saving}
                             >
-                              {workersForLine.length === 0 && (
-                                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: 100 }}>
-                                <Typography variant="body2" color="text.secondary">
-                                  작업자를 여기에 드롭하세요.
-                                </Typography>
-                                </Box>
-                              )}
-                              {workersForLine.map((worker, index) =>
-                                renderWorkerCard(worker, index, line.managerEmployeeId === worker.id)
-                              )}
-                              {provided.placeholder}
-                            </Box>
-                          )}
-                        </Droppable>
+                              <MenuItem value="">관리자 없음</MenuItem>
+                              {workersInLine.map((worker) => (
+                                <MenuItem key={worker.id} value={worker.id}>
+                                  {buildWorkerLabel(worker)}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+
+                          <Droppable droppableId={`line-${line.id}`}>
+                            {(provided, snapshot) => (
+                              <Box
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                                sx={{
+                                  minHeight: 260,
+                                  p: 1,
+                                  borderRadius: 1,
+                                  backgroundColor: snapshot.isDraggingOver
+                                    ? 'action.selected'
+                                    : 'transparent',
+                                }}
+                              >
+                                {workersInLine.map((worker, index) =>
+                                  renderWorkerCard(
+                                    worker,
+                                    index,
+                                    worker.id === line.managerEmployeeId
+                                  )
+                                )}
+                                {provided.placeholder}
+                              </Box>
+                            )}
+                          </Droppable>
+                        </Stack>
                       </Paper>
                     </Grid>
                   );
@@ -454,9 +405,13 @@ const LineBoard = () => {
         </DragDropContext>
 
         {loading && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
-            로딩 중...
-          </Typography>
+          <Alert severity="info">라인/작업자 정보를 불러오는 중입니다.</Alert>
+        )}
+
+        {!loading && selectedFactory && lines.length === 0 && (
+          <Alert severity="warning">
+            {`${selectedFactory.name}에 등록된 라인이 없습니다. 상단에서 라인을 추가해 주세요.`}
+          </Alert>
         )}
       </Stack>
     </AppPageContainer>

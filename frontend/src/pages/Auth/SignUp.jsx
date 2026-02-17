@@ -5,7 +5,6 @@ import GoogleIcon from '@mui/icons-material/Google';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 
-
 const SignUp = () => {
   const { signInWithGoogle, loading, isSupabaseConfigured } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,7 +27,7 @@ const SignUp = () => {
         }}
       >
         <Typography component="h1" variant="h5">
-          소셜 계정으로 시작하기
+          테스트 계정으로 시작하기
         </Typography>
         <Box sx={{ mt: 3, width: '100%' }}>
           <Button
@@ -39,15 +38,13 @@ const SignUp = () => {
             onClick={handleSocialLogin}
             disabled={isSubmitting || loading || !isSupabaseConfigured}
           >
-            {isSubmitting || loading ? '시작 중' : 'Google 계정으로 시작하기'}
+            {isSubmitting || loading ? '시작 중...' : 'Google 계정으로 시작하기'}
           </Button>
           {!isSupabaseConfigured && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
-              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행하세요.
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과 `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
             </Typography>
           )}
-          {/* Add other social logins here */}
         </Box>
         <Link component={RouterLink} to="/login" variant="body2" sx={{ mt: 2 }}>
           이미 계정이 있으신가요? 이메일로 로그인

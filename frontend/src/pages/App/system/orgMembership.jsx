@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const ORG_TYPES = [
   { value: 'MANUFACTURER', label: 'Manufacturer' },
@@ -38,7 +39,6 @@ const SUBSCRIPTION_STATUS_OPTIONS = [
 ];
 
 const OrgMembership = () => {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification } = useApp();
 
   const [organizations, setOrganizations] = useState([]);
@@ -68,13 +68,11 @@ const OrgMembership = () => {
   const fetchOrganizations = async () => {
     setLoadingOrgs(true);
     try {
-      const response = await fetch(`${API_BASE}/organizations`);
-      const data = await response.json();
-      if (response.ok) {
-        setOrganizations(data);
-        if (!assignForm.orgId && data.length > 0) {
-          setAssignForm((prev) => ({ ...prev, orgId: String(data[0].id) }));
-        }
+      const data = await requestJSON('/organizations');
+      const list = Array.isArray(data) ? data : [];
+      setOrganizations(list);
+      if (!assignForm.orgId && list.length > 0) {
+        setAssignForm((prev) => ({ ...prev, orgId: String(list[0].id) }));
       }
     } catch (_error) {
       // ignore fetch errors in UI for now
@@ -86,11 +84,10 @@ const OrgMembership = () => {
   const fetchMembers = async (orgId) => {
     if (!orgId) return;
     try {
-      const response = await fetch(`${API_BASE}/org-memberships?orgId=${orgId}`);
-      const data = await response.json();
-      if (response.ok) {
-        setMembers(data);
-      }
+      const data = await requestJSON(
+        `/org-memberships${buildQueryString({ orgId })}`
+      );
+      setMembers(Array.isArray(data) ? data : []);
     } catch (_error) {
       // ignore fetch errors in UI for now
     }
@@ -98,7 +95,7 @@ const OrgMembership = () => {
 
   useEffect(() => {
     fetchOrganizations();
-  }, [API_BASE]);
+  }, []);
 
   useEffect(() => {
     if (assignForm.orgId) {
@@ -145,16 +142,11 @@ const OrgMembership = () => {
         address: orgForm.address.trim(),
         phone: orgForm.phone.trim(),
       };
-      const response = await fetch(`${API_BASE}/organizations`, {
+      const data = await requestJSON('/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        showNotification(data?.error || 'Failed to create organization.', 'error');
-        return;
-      }
 
       setOrganizations((prev) => [...prev, data]);
       setAssignForm((prev) => ({ ...prev, orgId: String(data.id) }));
@@ -171,8 +163,8 @@ const OrgMembership = () => {
         phone: '',
       }));
       showNotification('Organization created.', 'success');
-    } catch (_error) {
-      showNotification('An error occurred while creating the organization.', 'error');
+    } catch (error) {
+      showNotification(error?.message || 'An error occurred while creating the organization.', 'error');
     } finally {
       setSavingOrg(false);
     }
@@ -192,7 +184,7 @@ const OrgMembership = () => {
 
     setAssigning(true);
     try {
-      const response = await fetch(`${API_BASE}/org-memberships/assign`, {
+      await requestJSON('/org-memberships/assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -201,17 +193,12 @@ const OrgMembership = () => {
           role: assignForm.role,
         }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        showNotification(data?.error || 'Failed to assign operator.', 'error');
-        return;
-      }
 
       setAssignForm((prev) => ({ ...prev, email: '' }));
       await fetchMembers(assignForm.orgId);
       showNotification('Operator assigned.', 'success');
-    } catch (_error) {
-      showNotification('An error occurred while assigning the operator.', 'error');
+    } catch (error) {
+      showNotification(error?.message || 'An error occurred while assigning the operator.', 'error');
     } finally {
       setAssigning(false);
     }

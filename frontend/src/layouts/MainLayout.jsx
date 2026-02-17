@@ -44,6 +44,9 @@ import ContentCut from '@mui/icons-material/ContentCut';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import CalculateIcon from '@mui/icons-material/Calculate';
+import { buildQueryString, requestJSON } from '../utils/apiClient';
 
 const DRAWER_WIDTH = 260;
 
@@ -67,96 +70,111 @@ const MainLayout = () => {
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
+  const [accountingOpen, setAccountingOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-
   const fetchPendingEmployeeCount = React.useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/org-memberships?status=PENDING`);
-      const data = await response.json();
-      if (response.ok) {
-        setPendingEmployeeCount(Array.isArray(data) ? data.length : 0);
-      }
+      const data = await requestJSON(
+        `/org-memberships${buildQueryString({ status: 'PENDING' })}`
+      );
+      setPendingEmployeeCount(Array.isArray(data) ? data.length : 0);
     } catch (_error) {
       // ignore fetch errors for badge
     }
-  }, [API_BASE]);
+  }, []);
 
   // `activeTabId` is the single source of truth for the active tab.
-  const [activeTabId, setActiveTabId] = useState(location.pathname);
+  const [activeTabId, setActiveTabId] = useState(location.pathname === '/' ? '/' : '');
 
-  const menuItems = useMemo(() => [
-    {
-      label: '대시보드',
-      icon: <HomeIcon />,
-      path: '/',
-      isParent: false,
-    },
-    {
-      label: '영업 관리',
-      icon: <ShoppingCartIcon />,
-      isParent: true,
-      isOpen: orderOpen,
-      setOpen: setOrderOpen,
-      children: [
-        { label: '주문', icon: <ListAltIcon />, path: '/order' },
-        { label: '스타일', icon: <StyleIcon />, path: '/style' },
-      ],
-    },
-    {
-      label: '생산 관리',
-      icon: <ProductionQuantityLimitsIcon />,
-      isParent: true,
-      isOpen: productionOpen,
-      setOpen: setProductionOpen,
-      children: [
-        { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
-        { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
-      ],
-    },
-    {
-      label: '조직 관리',
-      icon: <OrganizationIcon />,
-      isParent: true,
-      isOpen: adminOpen,
-      setOpen: setAdminOpen,
-      children: [
-        { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
-        { label: '라인 관리', icon: <ContentCut />, path: '/line' },
-        {
-          label: '직원 관리',
-          icon: <GroupIcon />,
-          path: '/employee',
-          badgeCount: pendingEmployeeCount,
-        },
-        { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
-      ],
-    },
-    {
-      label: '기본 정보',
-      icon: <InfoIcon />,
-      isParent: true,
-      isOpen: basicInfoOpen,
-      setOpen: setBasicInfoOpen,
-      children: [
-        { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
-        { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
-        { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
-      ],
-    },
-    {
-      label: '시스템 설정',
-      icon: <TuneIcon />,
-      isParent: true,
-      isOpen: systemOpen,
-      setOpen: setSystemOpen,
-      children: [
-        { label: '멤버쉽 관리', icon: <TuneIcon />, path: '/system-setting' },
-      ],
-    },
-  ], [adminOpen, basicInfoOpen, orderOpen, productionOpen, systemOpen, pendingEmployeeCount]);
+  const menuItems = useMemo(
+    () => [
+      {
+        label: '대시보드',
+        icon: <HomeIcon />,
+        path: '/',
+        isParent: false,
+      },
+      {
+        label: '영업 관리',
+        icon: <ShoppingCartIcon />,
+        isParent: true,
+        isOpen: orderOpen,
+        setOpen: setOrderOpen,
+        children: [
+          { label: '주문', icon: <ListAltIcon />, path: '/order' },
+          { label: '스타일', icon: <StyleIcon />, path: '/style' },
+        ],
+      },
+      {
+        label: '생산 관리',
+        icon: <ProductionQuantityLimitsIcon />,
+        isParent: true,
+        isOpen: productionOpen,
+        setOpen: setProductionOpen,
+        children: [
+          { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
+          { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
+        ],
+      },
+      {
+        label: '회계 관리',
+        icon: <AccountBalanceWalletIcon />,
+        isParent: true,
+        isOpen: accountingOpen,
+        setOpen: setAccountingOpen,
+        children: [{ label: '급여 계산', icon: <CalculateIcon />, path: '/payroll' }],
+      },
+      {
+        label: '조직 관리',
+        icon: <OrganizationIcon />,
+        isParent: true,
+        isOpen: adminOpen,
+        setOpen: setAdminOpen,
+        children: [
+          { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
+          { label: '라인 관리', icon: <ContentCut />, path: '/line' },
+          {
+            label: '직원 관리',
+            icon: <GroupIcon />,
+            path: '/employee',
+            badgeCount: pendingEmployeeCount,
+          },
+          { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
+        ],
+      },
+      {
+        label: '기본 정보',
+        icon: <InfoIcon />,
+        isParent: true,
+        isOpen: basicInfoOpen,
+        setOpen: setBasicInfoOpen,
+        children: [
+          { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
+          { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
+          { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
+        ],
+      },
+      {
+        label: '시스템 설정',
+        icon: <TuneIcon />,
+        isParent: true,
+        isOpen: systemOpen,
+        setOpen: setSystemOpen,
+        children: [{ label: '멤버쉽 관리', icon: <TuneIcon />, path: '/system-setting' }],
+      },
+    ],
+    [
+      accountingOpen,
+      adminOpen,
+      basicInfoOpen,
+      orderOpen,
+      productionOpen,
+      systemOpen,
+      pendingEmployeeCount,
+    ]
+  );
 
   useEffect(() => {
     fetchPendingEmployeeCount();
@@ -167,6 +185,7 @@ const MainLayout = () => {
   // This is the ONLY effect responsible for navigation.
   // It runs when the source of truth (`activeTabId`) changes.
   useEffect(() => {
+    if (!activeTabId) return;
     if (activeTabId !== location.pathname) {
       navigate(activeTabId);
     }
@@ -187,6 +206,10 @@ const MainLayout = () => {
       // For work history detail pages, ensure only one detail tab is open.
       if (path.startsWith('/work-history/') && path !== '/work-history') {
         openOptions.replacePrefix = '/work-history/';
+      }
+      // For payroll detail pages, ensure only one detail tab is open.
+      if (path.startsWith('/payroll/') && path !== '/payroll') {
+        openOptions.replacePrefix = '/payroll/';
       }
       
       // The `openTab` function from context already checks for duplicates,
@@ -232,18 +255,25 @@ const MainLayout = () => {
   const handleCloseTab = (e, tabIdToClose) => {
     e.stopPropagation();
 
-    // Prevent closing the main dashboard tab
-    if (tabIdToClose === '/') return;
-
     const closingTabIndex = openTabs.findIndex((t) => t.id === tabIdToClose);
     if (closingTabIndex === -1) return;
+
+    const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);
 
     // If we are closing the currently active tab, we must first change
     // `activeTabId` to trigger navigation.
     if (activeTabId === tabIdToClose) {
-      const newActiveTab = openTabs[closingTabIndex - 1] || openTabs[0];
-      // Set the new active tab. This will trigger the navigation `useEffect`.
-      setActiveTabId(newActiveTab.id);
+      const fallbackIndex = Math.max(closingTabIndex - 1, 0);
+      const newActiveTab = remainingTabs[fallbackIndex] || null;
+
+      // If no tab remains, move to empty state.
+      if (!newActiveTab) {
+        setActiveTabId('');
+        navigate('/');
+      } else {
+        // Set the new active tab. This will trigger the navigation `useEffect`.
+        setActiveTabId(newActiveTab.id);
+      }
     }
 
     // After (potentially) setting the new active tab, remove the closed tab from the list.
@@ -290,10 +320,13 @@ const MainLayout = () => {
                       button
                       key={child.path}
                       onClick={() => handleMenuItemClick(child.path)}
-                      selected={activeTabId === child.path || activeTabId.startsWith(child.path + '/')}
+                      selected={
+                        activeTabId === child.path ||
+                        (activeTabId ? activeTabId.startsWith(child.path + '/') : false)
+                      }
                       sx={
                         activeTabId === child.path ||
-                        activeTabId.startsWith(child.path + '/')
+                        (activeTabId ? activeTabId.startsWith(child.path + '/') : false)
                           ? {
                               pl: 4,
                               backgroundColor: 'rgba(25, 118, 210, 0.08)',
@@ -385,7 +418,7 @@ const MainLayout = () => {
                 fontWeight: 700,
               }}
             >
-              {`DEV · ${devProfile.label}`}
+              {`DEV | ${devProfile.label}`}
             </Box>
           ) : null}
         </Toolbar>
@@ -446,7 +479,7 @@ const MainLayout = () => {
       >
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
           <Tabs
-            value={activeTabId}
+            value={activeTabId || false}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
@@ -485,23 +518,21 @@ const MainLayout = () => {
                 label={
                   <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                     {tab.label}
-                    {tab.id !== '/' && (
-                      <IconButton
-                        component="span"
-                        size="small"
-                        onClick={(e) => handleCloseTab(e, tab.id)}
-                        sx={{
-                          ml: 1,
-                          mr: -1.5,
-                          p: '2px',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.08)',
-                          },
-                        }}
-                      >
-                        <CloseIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    )}
+                    <IconButton
+                      component="span"
+                      size="small"
+                      onClick={(e) => handleCloseTab(e, tab.id)}
+                      sx={{
+                        ml: 1,
+                        mr: -1.5,
+                        p: '2px',
+                        '&:hover': {
+                          bgcolor: 'rgba(0, 0, 0, 0.08)',
+                        },
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
                   </Box>
                 }
               />
@@ -510,7 +541,7 @@ const MainLayout = () => {
         </Box>
 
         <Box sx={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', bgcolor: 'white' }}>
-          <Outlet />
+          {openTabs.length > 0 ? <Outlet /> : null}
         </Box>
       </Box>
     </Box>
@@ -518,3 +549,4 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
+

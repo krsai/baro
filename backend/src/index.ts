@@ -499,6 +499,88 @@ const toStyleResponse = (style) => ({
   updatedAt: style.updatedAt,
 });
 
+const normalizeDateKey = (value) => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
+};
+const todayDateKey = () => new Date().toISOString().slice(0, 10);
+const toNonNegativeInt = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.round(parsed));
+};
+const toOptionalFiniteNumber = (value, fallback = null) => {
+  if (value === undefined) return fallback;
+  if (value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+};
+const normalizeWorkLogPayload = (payload = {}, fallback = null) => {
+  const workDateInput =
+    payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
+  const normalizedWorkDate = normalizeDateKey(workDateInput) || todayDateKey();
+
+  return {
+    workDate: normalizedWorkDate,
+    factoryId: toNumberOrNull(
+      payload?.factoryId !== undefined ? payload.factoryId : fallback?.factoryId
+    ),
+    factoryName: resolveOptionalString(
+      payload?.factoryName,
+      fallback?.factoryName ?? null
+    ),
+    factoryWagePerSecond: toOptionalFiniteNumber(
+      payload?.factoryWagePerSecond,
+      fallback?.factoryWagePerSecond ?? null
+    ),
+    ctBasis:
+      resolveOptionalString(payload?.ctBasis, fallback?.ctBasis ?? "CT") ?? "CT",
+    workerCount: toNonNegativeInt(
+      payload?.workerCount !== undefined
+        ? payload.workerCount
+        : fallback?.workerCount,
+      0
+    ),
+    itemCount: toNonNegativeInt(
+      payload?.itemCount !== undefined ? payload.itemCount : fallback?.itemCount,
+      0
+    ),
+    totalContractedSeconds: toNonNegativeInt(
+      payload?.totalContractedSeconds !== undefined
+        ? payload.totalContractedSeconds
+        : fallback?.totalContractedSeconds,
+      0
+    ),
+    note: resolveOptionalString(payload?.note, fallback?.note ?? null),
+    records: ensureArray(
+      payload?.records !== undefined ? payload.records : fallback?.records
+    ),
+  };
+};
+const toWorkLogResponse = (workLog) => ({
+  id: workLog.id,
+  workDate: workLog.workDate,
+  factoryId: workLog.factoryId ?? null,
+  factoryName: workLog.factoryName ?? "",
+  factoryWagePerSecond: workLog.factoryWagePerSecond ?? null,
+  ctBasis: workLog.ctBasis ?? "CT",
+  workerCount: workLog.workerCount ?? 0,
+  itemCount: workLog.itemCount ?? 0,
+  totalContractedSeconds: workLog.totalContractedSeconds ?? 0,
+  note: workLog.note ?? "",
+  records: ensureArray(workLog.records),
+  createdAt: workLog.createdAt,
+  updatedAt: workLog.updatedAt,
+});
+const toAssignmentBoardStateResponse = (state) => ({
+  cards: ensureArray(state?.cards),
+  assignments: ensureArray(state?.assignments),
+  createdAt: state?.createdAt ?? null,
+  updatedAt: state?.updatedAt ?? null,
+});
+
 const closeActiveLineAssignments = async (employeeId, endedAt = new Date()) => {
   const activeAssignments = await prisma.lineAssignment.findMany({
     where: { employeeId, endAt: null },
@@ -1468,6 +1550,178 @@ app.post("/line-assignments/unassign", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/work-logs", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const factoryId = Number(req.query.factoryId);
+  const hasFactoryFilter = Number.isFinite(factoryId);
+  if (hasFactoryFilter) {
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+  }
+
+  const workLogs = await prisma.workLog.findMany({
+    where: {
+      orgId: organization.id,
+      ...(hasFactoryFilter ? { factoryId } : {}),
+    },
+    orderBy: [{ workDate: "desc" }, { id: "desc" }],
+  });
+
+  res.json(workLogs.map(toWorkLogResponse));
+});
+
+app.get("/work-logs/:id", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const workLog = await prisma.workLog.findFirst({
+    where: { id, orgId: organization.id },
+  });
+  if (!workLog) {
+    return res.status(404).json({ ok: false, error: "work log not found" });
+  }
+
+  res.json(toWorkLogResponse(workLog));
+});
+
+app.post("/work-logs", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const normalized = normalizeWorkLogPayload(req.body ?? {});
+  if (normalized.factoryId !== null) {
+    const factory = await prisma.factory.findFirst({
+      where: { id: normalized.factoryId, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+  }
+
+  const created = await prisma.workLog.create({
+    data: {
+      orgId: organization.id,
+      ...normalized,
+    },
+  });
+
+  res.status(201).json(toWorkLogResponse(created));
+});
+
+app.put("/work-logs/:id", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const existing = await prisma.workLog.findFirst({
+    where: { id, orgId: organization.id },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "work log not found" });
+  }
+
+  const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
+  if (normalized.factoryId !== null) {
+    const factory = await prisma.factory.findFirst({
+      where: { id: normalized.factoryId, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+  }
+
+  const updated = await prisma.workLog.update({
+    where: { id: existing.id },
+    data: normalized,
+  });
+
+  res.json(toWorkLogResponse(updated));
+});
+
+app.delete("/work-logs/:id", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const existing = await prisma.workLog.findFirst({
+    where: { id, orgId: organization.id },
+    select: { id: true },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "work log not found" });
+  }
+
+  await prisma.workLog.delete({
+    where: { id: existing.id },
+  });
+
+  res.status(204).send();
+});
+
+app.get("/assignment-board-state", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const state = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+  });
+
+  res.json(toAssignmentBoardStateResponse(state));
+});
+
+app.put("/assignment-board-state", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const cards = ensureArray(req.body?.cards);
+  const assignments = ensureArray(req.body?.assignments);
+
+  const updated = await prisma.assignmentBoardState.upsert({
+    where: { orgId: organization.id },
+    update: { cards, assignments },
+    create: {
+      orgId: organization.id,
+      cards,
+      assignments,
+    },
+  });
+
+  res.json(toAssignmentBoardStateResponse(updated));
+});
+
 app.get("/customers", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -1541,7 +1795,10 @@ app.get("/order-parties", async (req, res) => {
 });
 
 app.post("/customers", async (req, res) => {
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res.status(400).json({
       ok: false,
@@ -1660,7 +1917,10 @@ app.put("/customers/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const organization = await getPrimaryOrganization();
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   if (!isManufacturerOrg(organization)) {
     return res.status(400).json({
       ok: false,

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
@@ -10,10 +10,8 @@ const WorkEntry = () => {
   const { navigateToPath, closeTab, showNotification } = useApp();
 
   const isEditMode = Boolean(workLogId) && workLogId !== 'new';
-  const existingLog = useMemo(
-    () => (isEditMode ? findWorkLogById(workLogId) : null),
-    [isEditMode, workLogId]
-  );
+  const [loading, setLoading] = useState(Boolean(isEditMode));
+  const [existingLog, setExistingLog] = useState(null);
 
   const closeEntry = useCallback(() => {
     navigateToPath('/work-history', { label: '작업 기록' });
@@ -25,32 +23,67 @@ const WorkEntry = () => {
   }, [closeTab, isEditMode, navigateToPath, workLogId]);
 
   useEffect(() => {
-    if (!isEditMode) return;
-    if (existingLog) return;
+    if (!isEditMode) {
+      setLoading(false);
+      setExistingLog(null);
+      return;
+    }
 
-    showNotification('작업 기록을 찾을 수 없습니다.', 'error');
-    closeEntry();
-  }, [closeEntry, existingLog, isEditMode, showNotification]);
-
-  const handleSave = useCallback(
-    (payload) => {
-      if (isEditMode && workLogId) {
-        const updated = updateWorkLog(workLogId, payload);
-        if (!updated) {
-          showNotification('작업 기록 수정에 실패했습니다.', 'error');
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const record = await findWorkLogById(workLogId);
+        if (cancelled) return;
+        if (!record) {
+          showNotification('작업 기록을 찾을 수 없습니다.', 'error');
+          closeEntry();
           return;
         }
-        showNotification('작업 기록이 수정되었습니다.', 'success');
-        closeEntry();
-        return;
+        setExistingLog(record);
+      } catch (_error) {
+        if (!cancelled) {
+          showNotification('작업 기록 조회에 실패했습니다.', 'error');
+          closeEntry();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
+    };
 
-      appendWorkLog(payload);
-      showNotification('작업 기록이 저장되었습니다.', 'success');
-      closeEntry();
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditMode, workLogId]);
+
+  const handleSave = useCallback(
+    async (payload) => {
+      try {
+        if (isEditMode && workLogId) {
+          const updated = await updateWorkLog(workLogId, payload);
+          if (!updated) {
+            showNotification('작업 기록 수정에 실패했습니다.', 'error');
+            return;
+          }
+          showNotification('작업 기록이 수정되었습니다.', 'success');
+          closeEntry();
+          return;
+        }
+
+        await appendWorkLog(payload);
+        showNotification('작업 기록이 저장되었습니다.', 'success');
+        closeEntry();
+      } catch (_error) {
+        showNotification('작업 기록 저장에 실패했습니다.', 'error');
+      }
     },
     [closeEntry, isEditMode, showNotification, workLogId]
   );
+
+  if (loading) {
+    return <AppPageContainer />;
+  }
 
   return (
     <AppPageContainer>

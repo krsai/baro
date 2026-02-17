@@ -45,9 +45,7 @@ const AuthCallback = () => {
         }}
       >
         <CircularProgress />
-        <Typography sx={{ mt: 2 }}>
-          인증 처리 중...
-        </Typography>
+        <Typography sx={{ mt: 2 }}>인증 처리 중...</Typography>
       </Box>
     </Container>
   );

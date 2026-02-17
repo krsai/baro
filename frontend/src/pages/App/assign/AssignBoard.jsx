@@ -3,10 +3,12 @@ import { Box, Button, Grid, Stack, Typography } from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import { useApp } from '../../../context/AppContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
+import { requestJSON } from '../../../utils/apiClient';
 import {
   HOLIDAY_UPDATED_EVENT,
   STORAGE_KEYS,
@@ -14,8 +16,6 @@ import {
   loadOrders,
 } from '../../../utils/localData';
 import { normalizeProcesses } from '../../../utils/processTime';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 
 const BASIS_COLORS = {
@@ -28,6 +28,34 @@ const initialCards = [];
 const initialLines = [];
 const initialAssignments = [];
 let runtimeLines = [];
+
+const mergeCardsWithSaved = (baseCards, savedCards) => {
+  const merged = [];
+  const indexById = new Map();
+
+  (Array.isArray(baseCards) ? baseCards : []).forEach((card) => {
+    if (!card?.id) return;
+    indexById.set(card.id, merged.length);
+    merged.push(card);
+  });
+
+  (Array.isArray(savedCards) ? savedCards : []).forEach((card) => {
+    if (!card?.id) return;
+    const existingIndex = indexById.get(card.id);
+    if (existingIndex == null) {
+      indexById.set(card.id, merged.length);
+      merged.push(card);
+      return;
+    }
+    merged[existingIndex] = {
+      ...merged[existingIndex],
+      ...card,
+      id: card.id,
+    };
+  });
+
+  return merged;
+};
 
 const toSeconds = (value) => {
   const parsed = Number(value);
@@ -809,6 +837,7 @@ const rebuildLineWithReplace = ({ lineId, targetId, newItem, assignments, totalD
 };
 
 const AssignBoard = () => {
+  const { showNotification } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
@@ -816,8 +845,14 @@ const AssignBoard = () => {
   const [assignments, setAssignments] = useState(initialAssignments);
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [persisting, setPersisting] = useState(false);
   const startDateRef = useRef(new Date());
   const splitCounterRef = useRef(1);
+  const persistReadyRef = useRef(false);
+  const persistTimerRef = useRef(null);
+  const persistSeqRef = useRef(0);
+  const lastSavedSnapshotRef = useRef('');
+  const persistErrorShownRef = useRef(false);
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
@@ -852,24 +887,16 @@ const AssignBoard = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const fetchJson = async (path) => {
-      const response = await fetch(`${API_BASE}${path}`);
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(data?.error || `Request failed: ${path}`);
-      }
-      return data;
-    };
-
     const loadSourceData = async () => {
       setLoading(true);
       try {
-        const [styles, factories, lines, workers, attributes] = await Promise.all([
+        const [styles, factories, lines, workers, attributes, boardState] = await Promise.all([
           fetchStylesFromApi({ compact: true }).catch(() => []),
-          fetchJson('/factories').catch(() => []),
-          fetchJson('/lines').catch(() => []),
-          fetchJson('/line-workers').catch(() => []),
+          requestJSON('/factories').catch(() => []),
+          requestJSON('/lines').catch(() => []),
+          requestJSON('/line-workers').catch(() => []),
           fetchAttributes().catch(() => null),
+          requestJSON('/assignment-board-state').catch(() => null),
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];
@@ -918,23 +945,61 @@ const AssignBoard = () => {
           styles,
           colorNameMap,
         });
+        const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
+
+        const hasSavedBoardState =
+          Array.isArray(boardState?.cards) || Array.isArray(boardState?.assignments);
+        const savedCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+        const savedAssignments = Array.isArray(boardState?.assignments) ? boardState.assignments : [];
+        const restoredCards = hasSavedBoardState
+          ? mergeCardsWithSaved(nextCards, savedCards)
+          : nextCards;
+        const restoredCardIdSet = new Set(
+          restoredCards.map((card) => card?.id).filter(Boolean)
+        );
+        const restoredAssignments = hasSavedBoardState
+          ? savedAssignments
+              .filter((item) => item?.id)
+              .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
+              .filter((item) => restoredCardIdSet.has(item?.cardId))
+              .map((item) => ({
+                ...item,
+                lineId: String(item.lineId),
+              }))
+          : [];
+        const maxSplit = restoredCards.reduce((max, card) => {
+          const matched = String(card?.id || '').match(/-S(\d+)$/);
+          if (!matched) return max;
+          const value = Number(matched[1]);
+          if (!Number.isFinite(value)) return max;
+          return Math.max(max, value);
+        }, 0);
+        const snapshot = JSON.stringify({
+          cards: restoredCards,
+          assignments: restoredAssignments,
+        });
 
         if (!cancelled) {
-          const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
-          const nextCardIdSet = new Set(nextCards.map((card) => card.id));
+          const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
           setLines(nextLines);
-          setCards(nextCards);
-          setAssignments((prev) =>
-            prev
-              .filter((item) => nextLineIdSet.has(normalizeKey(item.lineId)))
-              .filter((item) => nextCardIdSet.has(item.cardId))
-          );
+          setCards(restoredCards);
+          setAssignments(restoredAssignments);
           setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
+          splitCounterRef.current = maxSplit + 1;
+          lastSavedSnapshotRef.current = snapshot;
+          persistErrorShownRef.current = false;
+          setTimeout(() => {
+            if (!cancelled) {
+              persistReadyRef.current = true;
+            }
+          }, 0);
         }
       } catch (_error) {
         if (!cancelled) {
           setLines([]);
           setCards([]);
+          setAssignments([]);
+          persistReadyRef.current = true;
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -946,6 +1011,51 @@ const AssignBoard = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!persistReadyRef.current) return;
+
+    const snapshot = JSON.stringify({ cards, assignments });
+    if (snapshot === lastSavedSnapshotRef.current) return;
+
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+
+    persistTimerRef.current = setTimeout(async () => {
+      const currentSeq = persistSeqRef.current + 1;
+      persistSeqRef.current = currentSeq;
+      setPersisting(true);
+      try {
+        await requestJSON('/assignment-board-state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards, assignments }),
+        });
+        if (persistSeqRef.current === currentSeq) {
+          lastSavedSnapshotRef.current = snapshot;
+          setPersisting(false);
+        }
+        persistErrorShownRef.current = false;
+      } catch (_error) {
+        if (persistSeqRef.current === currentSeq) {
+          setPersisting(false);
+        }
+        if (!persistErrorShownRef.current) {
+          showNotification('작업 배정 저장에 실패했습니다.', 'error');
+          persistErrorShownRef.current = true;
+        }
+      }
+    }, 500);
+
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, [assignments, cards, showNotification]);
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
@@ -1578,7 +1688,10 @@ const AssignBoard = () => {
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">작업 배정</Typography>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary">
+              {persisting ? '저장 중...' : '자동 저장'}
+            </Typography>
             <Button
               variant="outlined"
               onClick={handleResetAssignments}

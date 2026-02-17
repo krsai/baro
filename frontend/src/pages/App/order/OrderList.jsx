@@ -43,6 +43,7 @@ import {
   GENDER_CODES,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완료'];
@@ -245,7 +246,6 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
   const { showNotification, navigateToPath, closeTab } = useApp();
   const { devBypass, devProfile } = useAuth();
 
@@ -295,39 +295,29 @@ const OrderList = () => {
     const fetchOrderParties = async () => {
       setLoadingParties(true);
       try {
-        const query = activeOrgId ? `?orgId=${activeOrgId}` : '';
-        const response = await fetch(`${API_BASE}/order-parties${query}`);
-        const data = await response.json();
-        if (response.ok) {
-          setBuyerOptions(Array.isArray(data?.buyerOrgOptions) ? data.buyerOrgOptions : []);
-          setSellerOptions(Array.isArray(data?.sellerOrgOptions) ? data.sellerOrgOptions : []);
-          setRelationshipPairs(
-            Array.isArray(data?.relationshipPairs) ? data.relationshipPairs : []
-          );
-          setCurrentOrgOption(data?.currentOrg || null);
-          setPartyRoleHint(data?.roleHint || '');
-        } else {
-          setBuyerOptions([]);
-          setSellerOptions([]);
-          setRelationshipPairs([]);
-          setCurrentOrgOption(null);
-          setPartyRoleHint('');
-          showNotification(data?.error || '주문 파트너 정보를 불러오지 못했습니다.', 'error');
-        }
-      } catch (_error) {
+        const query = buildQueryString({ orgId: activeOrgId });
+        const data = await requestJSON('/order-parties' + query);
+        setBuyerOptions(Array.isArray(data?.buyerOrgOptions) ? data.buyerOrgOptions : []);
+        setSellerOptions(Array.isArray(data?.sellerOrgOptions) ? data.sellerOrgOptions : []);
+        setRelationshipPairs(
+          Array.isArray(data?.relationshipPairs) ? data.relationshipPairs : []
+        );
+        setCurrentOrgOption(data?.currentOrg || null);
+        setPartyRoleHint(data?.roleHint || '');
+      } catch (error) {
         setBuyerOptions([]);
         setSellerOptions([]);
         setRelationshipPairs([]);
         setCurrentOrgOption(null);
         setPartyRoleHint('');
-        showNotification('주문 파트너 정보를 불러오지 못했습니다.', 'error');
+        showNotification(error?.message || '주문 파트너 정보를 불러오지 못했습니다.', 'error');
       } finally {
         setLoadingParties(false);
       }
     };
 
     fetchOrderParties();
-  }, [API_BASE, activeOrgId, showNotification]);
+  }, [activeOrgId, showNotification]);
 
   useEffect(() => {
     if (buyerOptions.length === 0 && sellerOptions.length === 0) return;
@@ -398,7 +388,7 @@ const OrderList = () => {
       const draft = loadOrderDraft();
       if (draft) {
         setFormData(normalizeOrderForm(draft));
-        showNotification('임시 저장된 주문을 불러왔습니다.', 'info');
+        showNotification('임시 저장한 주문을 불러왔습니다.', 'info');
       } else {
         setFormData(buildInitialFormData());
       }
@@ -554,7 +544,7 @@ const OrderList = () => {
     }
 
     const orderLabel = order.orderNumber ? `주문 ${order.orderNumber}` : '해당 주문';
-    if (!window.confirm(`${orderLabel}을(를) 삭제하시겠습니까?`)) {
+    if (!window.confirm(`${orderLabel}을 삭제하시겠습니까?`)) {
       return;
     }
 
@@ -562,7 +552,7 @@ const OrderList = () => {
     setOrders(nextOrders);
     saveOrders(nextOrders);
 
-    showNotification('주문이 삭제되었습니다.', 'success');
+    showNotification('주문을 삭제했습니다.', 'success');
   };
 
   const closeDetailAndGoList = () => {
@@ -633,7 +623,7 @@ const OrderList = () => {
 
   const handleStyleChange = (itemIdOrIds, style) => {
     if (!selectedBuyerName) {
-      showNotification('고객사를 먼저 선택하세요.', 'warning');
+      showNotification('발주자를 먼저 선택해 주세요.', 'warning');
       return;
     }
 
@@ -663,7 +653,7 @@ const OrderList = () => {
         if (usedGenderSet.has(nextGender)) {
           const fallbackGender = GENDER_OPTIONS.find((gender) => !usedGenderSet.has(gender));
           if (!fallbackGender) {
-            showNotification('해당 스타일은 성별(M/W/U)이 이미 모두 사용 중입니다.', 'warning');
+            showNotification('해당 스타일은 성별(M/W/U)이 모두 사용 중입니다.', 'warning');
             return;
           }
           nextGender = fallbackGender;
@@ -768,7 +758,7 @@ const OrderList = () => {
   const handleClearDraft = () => {
     clearOrderDraft();
     setFormData(buildInitialFormData());
-    showNotification('임시 저장을 삭제했습니다.', 'info');
+    showNotification('임시 저장본을 삭제했습니다.', 'info');
     if (isDetailMode) {
       closeDetailAndGoList();
     }
@@ -778,33 +768,33 @@ const OrderList = () => {
     const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
     const resolvedSellerOrgName = fixedSellerOrg?.name || formData.sellerOrgName;
     if (!formData.orderNumber.trim()) {
-      return '주문번호를 입력하세요.';
+      return '주문번호를 입력해 주세요.';
     }
     if (!formData.buyerOrgName || !toOrgId(formData.buyerOrgId)) {
-      return '발주자(브랜드)를 선택하세요.';
+      return '발주자를 선택해 주세요.';
     }
     if (!resolvedSellerOrgName || !resolvedSellerOrgId) {
-      return '제작사(제조사)를 선택하세요.';
+      return '수주자를 선택해 주세요.';
     }
     if (!hasRelationshipPair(relationshipPairs, formData.buyerOrgId, resolvedSellerOrgId)) {
-      return '연결된 관계의 발주자/제작사 조합만 선택할 수 있습니다.';
+      return '연결된 관계의 발주자/수주자 조합만 선택할 수 있습니다.';
     }
     if (!formData.dueDate) {
-      return '납기일을 입력하세요.';
+      return '납기일을 입력해 주세요.';
     }
     if (!formData.items.length) {
-      return '스타일을 추가하세요.';
+      return '스타일을 추가해 주세요.';
     }
     for (const item of formData.items) {
       if (!item.styleId) {
-        return '모든 스타일을 선택하세요.';
+        return '모든 스타일을 선택해 주세요.';
       }
       if (!GENDER_OPTIONS.includes(item.gender)) {
-        return '모든 스타일의 성별 코드(M/W/U)를 선택하세요.';
+        return '모든 스타일의 성별 코드(M/W/U)를 선택해 주세요.';
       }
       const totalQuantity = sumSizeQuantities(item.sizeQuantities);
       if (totalQuantity <= 0) {
-        return '스타일별 사이즈 수량을 입력하세요.';
+        return '스타일별 사이즈 수량을 입력해 주세요.';
       }
     }
     if (hasDuplicateStyleGender(formData.items)) {
@@ -900,7 +890,7 @@ const OrderList = () => {
             sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flex: 1, minWidth: 0 }}
           >
             <SearchInput
-              placeholder="주문번호, 발주자/제작사, 스타일 검색..."
+              placeholder="주문번호, 발주자, 수주자, 스타일 검색.."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               sx={{
@@ -950,7 +940,7 @@ const OrderList = () => {
                     발주자(브랜드)
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.seller }}>
-                    제작사(제조사)
+                    수주자(제조사)
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.style }}>
                     스타일
@@ -1057,7 +1047,7 @@ const OrderList = () => {
 
       {!loadingParties && (buyerOptions.length === 0 || sellerOptions.length === 0) && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          연결된 주문 파트너가 없습니다. 고객 관계(제조사-브랜드)를 먼저 등록하세요.
+          연결된 주문 파트너가 없습니다. 고객 관계를 먼저 등록해 주세요.
         </Alert>
       )}
 
@@ -1083,8 +1073,8 @@ const OrderList = () => {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="발주자 (Brand)"
-                  placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택하세요'}
+                  label="발주자(Brand)"
+                  placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택해 주세요'}
                 />
               )}
             />
@@ -1101,8 +1091,8 @@ const OrderList = () => {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="제작사 (Manufacturer)"
-                  placeholder={loadingParties ? '불러오는 중...' : '제작사를 선택하세요'}
+                  label="수주자(Manufacturer)"
+                  placeholder={loadingParties ? '불러오는 중...' : '수주자를 선택해 주세요'}
                 />
               )}
             />
@@ -1258,7 +1248,7 @@ const OrderList = () => {
                               noOptionsText={
                                 selectedBuyerName
                                   ? '등록된 스타일이 없습니다.'
-                                  : '고객사를 먼저 선택하세요.'
+                                  : '발주자를 먼저 선택해 주세요.'
                               }
                             />
                           </TableCell>
@@ -1274,6 +1264,7 @@ const OrderList = () => {
                           >
                             <TextField
                               size="small"
+                              label="스타일 코드"
                               value={group.styleCode || ''}
                               fullWidth
                               InputProps={{ readOnly: true }}
