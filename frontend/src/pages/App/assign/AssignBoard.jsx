@@ -90,6 +90,36 @@ const toSeconds = (value) => {
   if (parsed < 0) return 0;
   return Math.round(parsed);
 };
+const toNonNegativeInt = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.trunc(parsed);
+};
+const clampPercent = (value, fallback = 0, max = 100) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < 0) return 0;
+  if (parsed > max) return max;
+  return parsed;
+};
+const normalizeAssignmentLayout = (assignment) => {
+  if (!assignment || typeof assignment !== 'object') return assignment;
+  const startIndex = toNonNegativeInt(assignment.startIndex, 0);
+  const endIndex = Math.max(startIndex, toNonNegativeInt(assignment.endIndex, startIndex));
+  const startDayOffsetPercent = clampPercent(assignment.startDayOffsetPercent, 0, 99.999);
+  const startDayPercent = clampPercent(assignment.startDayPercent, 100, 100);
+  const endDayPercent = clampPercent(assignment.endDayPercent, startDayPercent, 100);
+
+  return {
+    ...assignment,
+    lineId: String(assignment.lineId ?? ''),
+    startIndex,
+    endIndex,
+    startDayOffsetPercent,
+    startDayPercent,
+    endDayPercent,
+  };
+};
 
 const normalizeKey = (value) => String(value ?? '').trim();
 const normalizeColorKey = (value) => normalizeKey(value).toUpperCase();
@@ -422,11 +452,9 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
   }
 
   let endIndex = startIndex;
-  const hasCalendar = Array.isArray(days);
   let cursor = startIndex + 1;
   while (remaining > 0) {
-    if (hasCalendar && cursor >= days.length) break;
-    if (hasCalendar && isNonWorkingDay(cursor, days)) {
+    if (isNonWorkingDay(cursor, days)) {
       endIndex = cursor;
       cursor += 1;
       continue;
@@ -1154,26 +1182,55 @@ const AssignBoard = () => {
         const restoredCardIdSet = new Set(
           restoredCards.map((card) => card?.id).filter(Boolean)
         );
-        const restoredAssignments = hasSavedBoardState
+        const normalizedSavedAssignments = hasSavedBoardState
           ? savedAssignments
               .filter((item) => item?.id)
               .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
               .filter((item) => restoredCardIdSet.has(item?.cardId))
-              .map((item) => {
-                const normalized = {
+              .map((item) =>
+                normalizeAssignmentLayout({
                   ...item,
                   lineId: String(item.lineId),
-                };
-                const linkedCard = restoredCardById.get(normalized.cardId);
-                if (!linkedCard) return normalized;
-                return syncAssignmentFromCard(
-                  normalized,
-                  linkedCard,
-                  days,
-                  nextLineCapacityById
+                })
+              )
+          : [];
+        const projectedMaxEndIndex = normalizedSavedAssignments.reduce((max, item) => {
+          const linkedCard = restoredCardById.get(item.cardId);
+          const totalSeconds = linkedCard
+            ? resolveCardTotalSeconds(linkedCard)
+            : toNonNegativeInt(item.totalSeconds, 0);
+          const lineCapacity = Math.max(
+            1,
+            getLineCapacitySeconds(item.lineId, nextLineCapacityById)
+          );
+          const estimatedDays = Math.max(1, Math.ceil(totalSeconds / lineCapacity));
+          return Math.max(max, item.endIndex, item.startIndex + estimatedDays + 14);
+        }, days.length - 1);
+        const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
+        const restoreDays =
+          restoreDayCount > days.length
+            ? buildDays(startDateRef.current, restoreDayCount, holidaySet)
+            : days;
+        const restoredAssignments = hasSavedBoardState
+          ? normalizedSavedAssignments
+              .map((item) => {
+                const linkedCard = restoredCardById.get(item.cardId);
+                if (!linkedCard) return item;
+                return normalizeAssignmentLayout(
+                  syncAssignmentFromCard(
+                    item,
+                    linkedCard,
+                    restoreDays,
+                    nextLineCapacityById
+                  )
                 );
               })
           : [];
+        const maxRestoredEndIndex = restoredAssignments.reduce(
+          (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+          0
+        );
+        const nextDayCount = Math.max(restoreDayCount, maxRestoredEndIndex + 10);
         const maxSplit = restoredCards.reduce((max, card) => {
           const matched = String(card?.id || '').match(/-S(\d+)$/);
           if (!matched) return max;
@@ -1191,6 +1248,9 @@ const AssignBoard = () => {
           setLines(nextLines);
           setCards(restoredCards);
           setAssignments(restoredAssignments);
+          if (nextDayCount > days.length) {
+            setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
+          }
           setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
           splitCounterRef.current = maxSplit + 1;
           lastSavedSnapshotRef.current = snapshot;
@@ -1222,7 +1282,8 @@ const AssignBoard = () => {
   useEffect(() => {
     if (!persistReadyRef.current) return;
 
-    const snapshot = JSON.stringify({ cards, assignments });
+    const normalizedAssignments = assignments.map((item) => normalizeAssignmentLayout(item));
+    const snapshot = JSON.stringify({ cards, assignments: normalizedAssignments });
     if (snapshot === lastSavedSnapshotRef.current) return;
 
     if (persistTimerRef.current) {
@@ -1238,7 +1299,7 @@ const AssignBoard = () => {
         await requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards, assignments }),
+          body: JSON.stringify({ cards, assignments: normalizedAssignments }),
         });
         if (persistSeqRef.current === currentSeq) {
           lastSavedSnapshotRef.current = snapshot;
@@ -1929,20 +1990,6 @@ const AssignBoard = () => {
     setAssignments([]);
   };
 
-  const handleConfirmAssignments = () => {
-    const now = new Date().toISOString();
-    setAssignments((prev) =>
-      prev.map((item) => ({
-        ...item,
-        ctStatus: 'AGREED',
-        contractedSeconds: item.contractedSeconds ?? item.proposalSeconds ?? item.totalSeconds ?? 0,
-        ctSource: item.ctSource || item.proposalBasis || item.basis || 'MANUAL',
-        ctAgreedBy: item.ctAgreedBy || 'OPERATOR',
-        ctAgreedAt: item.ctAgreedAt || now,
-      }))
-    );
-  };
-
   return (
     <AppPageContainer
       header={
@@ -1958,13 +2005,6 @@ const AssignBoard = () => {
               disabled={assignments.length === 0}
             >
               초기화
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleConfirmAssignments}
-              disabled={assignments.length === 0}
-            >
-              CT 확정
             </Button>
           </Stack>
         </Box>

@@ -49,6 +49,12 @@ const loadCustomersOnce = async () => {
   return customersInFlight;
 };
 
+const parseCurrencyValue = (value) => {
+  const normalized = String(value ?? '').replace(/[^\d.-]/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -188,7 +194,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
     [normalizedProcesses]
   );
 
-  const subtotal = costData.reduce((acc, item) => acc + parseFloat(item.cost.substring(1)), 0);
+  const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
   const overhead = subtotal * 0.1;
   const totalCost = subtotal + overhead;
   // --- End of Dummy Data ---
@@ -517,7 +523,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
 
           <Divider sx={{ my: 4 }} />
           
-          <Typography variant="h6" gutterBottom>예상 원가</Typography>
+          <Typography variant="h6" gutterBottom>예상 비용 (동)</Typography>
           <Paper elevation={2} sx={{ p: 2, mt: 2.5, bgcolor: 'grey.50' }}>
             <Stack spacing={2}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
@@ -534,18 +540,33 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
               <Divider sx={{ my: 1 }} />
               <Stack spacing={1}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body1">Subtotal</Typography>
-                  <Typography variant="body1">${subtotal.toFixed(2)}</Typography>
+                  <Typography variant="body1">소계</Typography>
+                  <Typography variant="body1">
+                    {`${formatNumberWithCommas(subtotal, {
+                      fallback: '0',
+                      maximumFractionDigits: 2,
+                    })} 동`}
+                  </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">Overhead (10%)</Typography>
-                  <Typography variant="body2" color="text.secondary">${overhead.toFixed(2)}</Typography>
+                  <Typography variant="body2" color="text.secondary">추가비용 (10%)</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {`${formatNumberWithCommas(overhead, {
+                      fallback: '0',
+                      maximumFractionDigits: 2,
+                    })} 동`}
+                  </Typography>
                 </Box>
               </Stack>
               <Divider sx={{ my: 1 }} />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>Total Cost</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>${totalCost.toFixed(2)}</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>총 비용</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                  {`${formatNumberWithCommas(totalCost, {
+                    fallback: '0',
+                    maximumFractionDigits: 2,
+                  })} 동`}
+                </Typography>
               </Box>
             </Stack>
           </Paper>

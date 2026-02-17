@@ -733,7 +733,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
                   : `${formatNumberWithCommas(selectedFactoryWagePerSecond, {
                       fallback: '0',
                       maximumFractionDigits: 2,
-                    })} 원/초`
+                    })} 동/초`
                 : '-'
             }
             InputProps={{ readOnly: true }}
@@ -858,7 +858,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
               : `${formatNumberWithCommas(totalExpectedWage, {
                   fallback: '0',
                   maximumFractionDigits: 2,
-                })} 원`}
+                })} 동`}
           </Typography>
           {excludedItemCount > 0 ? (
             <Typography variant="caption" color="warning.main">

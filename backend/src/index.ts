@@ -451,6 +451,124 @@ const normalizeStyleProcess = (process: any) => {
 const normalizeStyleProcesses = (value: any) =>
   ensureArray(value).map((process) => normalizeStyleProcess(process));
 
+const normalizeProcessCodeKey = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase();
+const normalizeProcessNameKey = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+const toStyleProcessMetricKey = (
+  styleId: string,
+  type: "code" | "name",
+  value: string
+) => `${styleId}::${type}:${value}`;
+
+const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
+  const records = await prisma.workRecord.findMany({
+    where: {
+      orgId,
+      ctSeconds: { gt: 0 },
+      quantity: { gt: 0 },
+      styleId: { not: null },
+    },
+    select: {
+      styleId: true,
+      processCode: true,
+      processName: true,
+      ctSeconds: true,
+      quantity: true,
+    },
+  });
+
+  const weightedByKey = new Map<string, { totalSeconds: number; totalQuantity: number }>();
+  records.forEach((record) => {
+    const styleId = String(record.styleId || "").trim();
+    if (!styleId) return;
+    const quantity = Number(record.quantity) || 0;
+    const ctSeconds = Number(record.ctSeconds) || 0;
+    if (quantity <= 0 || ctSeconds <= 0) return;
+
+    const processCodeKey = normalizeProcessCodeKey(record.processCode);
+    const processNameKey = normalizeProcessNameKey(record.processName);
+    const metricKey = processCodeKey
+      ? toStyleProcessMetricKey(styleId, "code", processCodeKey)
+      : processNameKey
+        ? toStyleProcessMetricKey(styleId, "name", processNameKey)
+        : "";
+    if (!metricKey) return;
+
+    const current = weightedByKey.get(metricKey) || {
+      totalSeconds: 0,
+      totalQuantity: 0,
+    };
+    current.totalSeconds += ctSeconds * quantity;
+    current.totalQuantity += quantity;
+    weightedByKey.set(metricKey, current);
+  });
+
+  if (weightedByKey.size === 0) {
+    return { updatedStyles: 0, updatedProcesses: 0 };
+  }
+
+  const styles = await prisma.style.findMany({
+    where: { orgId },
+    select: {
+      uid: true,
+      styleId: true,
+      processes: true,
+    },
+  });
+
+  let updatedStyles = 0;
+  let updatedProcesses = 0;
+  for (const style of styles) {
+    const normalizedProcesses = normalizeStyleProcesses(style.processes);
+    let changed = false;
+    const nextProcesses = normalizedProcesses.map((process) => {
+      if (!process || typeof process !== "object" || Array.isArray(process)) {
+        return process;
+      }
+
+      const codeKey = normalizeProcessCodeKey((process as any).code);
+      const nameKey = normalizeProcessNameKey((process as any).name);
+      const metric =
+        (codeKey
+          ? weightedByKey.get(
+              toStyleProcessMetricKey(style.styleId, "code", codeKey)
+            )
+          : null) ||
+        (nameKey
+          ? weightedByKey.get(
+              toStyleProcessMetricKey(style.styleId, "name", nameKey)
+            )
+          : null);
+      if (!metric || metric.totalQuantity <= 0) return process;
+
+      const nextAt = toOptionalSeconds(metric.totalSeconds / metric.totalQuantity);
+      const currentAt = toOptionalSeconds((process as any).at);
+      if (nextAt === null || currentAt === nextAt) return process;
+
+      changed = true;
+      updatedProcesses += 1;
+      return {
+        ...(process as any),
+        at: nextAt,
+      };
+    });
+
+    if (!changed) continue;
+    updatedStyles += 1;
+    await prisma.style.update({
+      where: { uid: style.uid },
+      data: { processes: nextProcesses },
+    });
+  }
+
+  return { updatedStyles, updatedProcesses };
+};
+
 const normalizeStylePayload = (payload: any, fallbackStyleId: string | null = null) => {
   const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
   const styleId = rawId || fallbackStyleId || createStyleId();
@@ -2230,6 +2348,7 @@ app.post("/work-logs", async (req, res) => {
       },
     },
   });
+  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
 
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
@@ -2303,6 +2422,7 @@ app.put("/work-logs/:id", async (req, res) => {
       },
     },
   });
+  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
 
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });
@@ -2329,6 +2449,7 @@ app.delete("/work-logs/:id", async (req, res) => {
   await prisma.workLog.delete({
     where: { id: existing.id },
   });
+  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
 
   res.status(204).send();
 });

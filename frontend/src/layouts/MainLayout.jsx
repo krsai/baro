@@ -114,6 +114,7 @@ const MainLayout = () => {
         setOpen: setProductionOpen,
         children: [
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
+          { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
         ],
       },

@@ -18,6 +18,17 @@ const formatDuration = (daysValue) => {
   return `${rounded}일`;
 };
 
+const CT_STATUS_META = {
+  PENDING: { label: 'CT 대기', background: '#F3F4F6', color: '#4B5563' },
+  AGREED: { label: 'CT 확정', background: '#DCFCE7', color: '#166534' },
+  REJECTED: { label: 'CT 반려', background: '#FEE2E2', color: '#991B1B' },
+};
+
+const normalizeCtStatus = (value) => {
+  if (value === 'AGREED' || value === 'REJECTED') return value;
+  return 'PENDING';
+};
+
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
@@ -48,12 +59,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
   const hideMetaBadges = Number(assignment.widthPx) < 156;
   const fullLabel = `${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''}${assignment.gender ? ` · ${assignment.gender}` : ''} · 수량 ${assignment.quantity ?? '-'}`;
   const compactLabel = `${assignment.label}${assignment.gender ? ` · ${assignment.gender}` : ''}`;
-  const ctLabel =
-    assignment.ctStatus === 'AGREED'
-      ? 'CT 확정'
-      : assignment.ctStatus === 'REJECTED'
-        ? 'CT 반려'
-        : 'CT 대기';
+  const ctStatus = normalizeCtStatus(assignment.ctStatus);
+  const ctMeta = CT_STATUS_META[ctStatus];
+  const ctLabel = ctMeta.label;
 
   return (
     <Box
@@ -194,10 +202,11 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             px: 0.7,
             py: 0.15,
             borderRadius: 1,
-            backgroundColor: 'rgba(255,255,255,0.75)',
+            backgroundColor: ctMeta.background,
+            border: '1px solid rgba(0,0,0,0.06)',
             fontSize: 10,
             fontWeight: 700,
-            color: '#3f4c5f',
+            color: ctMeta.color,
           }}
         >
           {ctLabel}

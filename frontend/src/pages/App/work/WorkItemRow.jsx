@@ -326,7 +326,7 @@ const WorkItemRow = ({
               ? `${formatNumberWithCommas(wageInfo.wagePerPiece, {
                   fallback: '0',
                   maximumFractionDigits: 2,
-                })} 원`
+                })} 동`
               : item.process
                 ? '공임 미설정'
                 : '-'
@@ -350,7 +350,7 @@ const WorkItemRow = ({
               ? `${formatNumberWithCommas(wageInfo.totalWage, {
                   fallback: '0',
                   maximumFractionDigits: 2,
-                })} 원`
+                })} 동`
               : item.quantity
                 ? '공임 미설정'
                 : '-'
