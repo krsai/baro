@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Typography,
   ToggleButton,
@@ -62,6 +62,11 @@ const StyleDetail = () => {
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
   const [currentTab, setCurrentTab] = useState('basicInfo');
+  const [loadedTabs, setLoadedTabs] = useState({
+    basicInfo: true,
+    processInfo: false,
+    bom: false,
+  });
   const { showNotification, navigateToPath } = useApp();
 
   const [originalData, setOriginalData] = useState(createEmptyStyle);
@@ -120,12 +125,22 @@ const StyleDetail = () => {
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState({});
 
-  const isDirty = !loadingStyle && JSON.stringify(originalData) !== JSON.stringify(styleFormData);
+  const originalSnapshot = useMemo(() => JSON.stringify(originalData), [originalData]);
+  const formSnapshot = useMemo(() => JSON.stringify(styleFormData), [styleFormData]);
+  const isDirty = !loadingStyle && originalSnapshot !== formSnapshot;
   useUnsavedChanges(isDirty);
 
   const handleChange = (_event, newValue) => {
     if (newValue !== null) {
       setCurrentTab(newValue);
+      setLoadedTabs((prev) =>
+        prev[newValue]
+          ? prev
+          : {
+              ...prev,
+              [newValue]: true,
+            }
+      );
     }
   };
 
@@ -206,6 +221,10 @@ const StyleDetail = () => {
       setOriginalData(saved);
       setStyleFormData(saved);
       setConfirmOpen(false);
+      navigateToPath('/style', {
+        label: 'style',
+        closeTabId: `/style/${styleId}`,
+      });
     } catch (error) {
       showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
     }
@@ -251,14 +270,27 @@ const StyleDetail = () => {
         <Typography color="text.secondary">스타일 정보를 불러오는 중입니다.</Typography>
       ) : (
         <>
-          {currentTab === 'basicInfo' && (
-            <StyleInfo isNew={isNew} formData={styleFormData} handleInputChange={handleStyleInputChange} />
+          {loadedTabs.basicInfo && (
+            <Box sx={{ display: currentTab === 'basicInfo' ? 'block' : 'none' }}>
+              <StyleInfo
+                isNew={isNew}
+                formData={styleFormData}
+                handleInputChange={handleStyleInputChange}
+              />
+            </Box>
           )}
-          {currentTab === 'processInfo' && (
-            <StyleProcess processes={styleFormData.processes} onProcessesChange={handleProcessesChange} />
+          {loadedTabs.processInfo && (
+            <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
+              <StyleProcess
+                processes={styleFormData.processes}
+                onProcessesChange={handleProcessesChange}
+              />
+            </Box>
           )}
-          {currentTab === 'bom' && (
-            <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
+          {loadedTabs.bom && (
+            <Box sx={{ display: currentTab === 'bom' ? 'block' : 'none' }}>
+              <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
+            </Box>
           )}
         </>
       )}

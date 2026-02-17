@@ -7,8 +7,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -22,6 +25,7 @@ const FactoryList = () => {
   const [selectedFactory, setSelectedFactory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingFactoryId, setDeletingFactoryId] = useState(null);
   const { showNotification } = useApp();
 
   const fetchFactories = async () => {
@@ -97,6 +101,36 @@ const FactoryList = () => {
     }
   };
 
+  const handleDeleteFactory = async (factory, event) => {
+    event?.stopPropagation?.();
+    if (!factory?.id || deletingFactoryId) return;
+    const confirmed = window.confirm(
+      `'${factory.name || 'Factory'}'를 삭제하시겠습니까?\n관련 라인/직원/라인배정도 함께 삭제됩니다.`
+    );
+    if (!confirmed) return;
+
+    setDeletingFactoryId(factory.id);
+    try {
+      const result = await requestJSON(`/factories/${factory.id}`, {
+        method: 'DELETE',
+      });
+      setFactories((prev) => prev.filter((item) => item.id !== factory.id));
+      if (selectedFactory?.id === factory.id) {
+        handleDetailClose();
+      }
+      const deletedEmployees = Number(result?.deletedEmployees) || 0;
+      const deletedLines = Number(result?.deletedLines) || 0;
+      showNotification(
+        `Factory deleted. lines: ${deletedLines}, employees: ${deletedEmployees}`,
+        'success'
+      );
+    } catch (error) {
+      showNotification(error?.message || 'Failed to delete factory.', 'error');
+    } finally {
+      setDeletingFactoryId(null);
+    }
+  };
+
   return (
     <AppPageContainer
       header={
@@ -118,13 +152,16 @@ const FactoryList = () => {
                 <TableCell sx={{ fontWeight: 'bold' }}>Contact</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Manager</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Wage / sec</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: 80, textAlign: 'center' }}>
+                  Actions
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={5} message="Loading..." />
+                <TableStatusRow colSpan={6} message="Loading..." />
               ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={5} message="No factories found." />
+                <TableStatusRow colSpan={6} message="No factories found." />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
@@ -147,6 +184,20 @@ const FactoryList = () => {
                       </TableCell>
                       <TableCell>{factory.manager || '-'}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        <Tooltip title="Delete factory">
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={(event) => handleDeleteFactory(factory, event)}
+                              disabled={deletingFactoryId === factory.id}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </TableCell>
                     </TableRow>
                   );
                 })

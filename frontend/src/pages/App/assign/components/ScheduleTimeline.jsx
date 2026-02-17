@@ -7,6 +7,7 @@ const CELL_WIDTH = 140;
 const ROW_HEIGHT = 74;
 const BAR_HEIGHT = 50;
 const BAR_GAP = 4;
+const MIN_BAR_WIDTH = 56;
 
 const DropCell = memo(({ id, isHoliday }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
@@ -123,6 +124,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
 
   const lineLayouts = useMemo(() => {
     const map = new Map();
+    const minWidthCells = MIN_BAR_WIDTH / CELL_WIDTH;
 
     lines.forEach((line) => {
       const lineAssignments = assignmentsByLine.get(line.id) || [];
@@ -138,7 +140,12 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
 
       const rangeById = new Map();
       lineAssignments.forEach((assignment) => {
-        rangeById.set(assignment.id, buildRange(assignment));
+        const rawRange = buildRange(assignment);
+        const rawWidthCells = Math.max(rawRange.end - rawRange.start, 0);
+        rangeById.set(assignment.id, {
+          start: rawRange.start,
+          end: rawRange.start + Math.max(rawWidthCells, minWidthCells),
+        });
       });
 
       const { placed, laneCount } = assignLanes(lineAssignments, rangeById);
@@ -148,7 +155,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
         return {
           ...assignment,
           leftPx: range.start * CELL_WIDTH,
-          widthPx: Math.max(widthCells * CELL_WIDTH, 120),
+          widthPx: widthCells * CELL_WIDTH,
           topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
           workDays: getWorkingDuration(assignment, days),

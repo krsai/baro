@@ -44,6 +44,10 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
   const durationValue = assignment.workDays ?? getDurationDays(assignment);
   const durationLabel = formatDuration(durationValue);
+  const isNarrow = Number(assignment.widthPx) < 132;
+  const hideMetaBadges = Number(assignment.widthPx) < 156;
+  const fullLabel = `${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''}${assignment.gender ? ` · ${assignment.gender}` : ''} · 수량 ${assignment.quantity ?? '-'}`;
+  const compactLabel = `${assignment.label}${assignment.gender ? ` · ${assignment.gender}` : ''}`;
   const ctLabel =
     assignment.ctStatus === 'AGREED'
       ? 'CT 확정'
@@ -60,19 +64,24 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
         left: assignment.leftPx,
         height: assignment.heightPx,
         borderRadius: 2,
-        px: 1.5,
-        pr: 6,
+        px: isNarrow ? 1 : 1.5,
+        pr: isNarrow ? 1 : 6,
         display: 'flex',
         alignItems: 'center',
         backgroundColor: mainColor,
         color: '#1f2a3a',
         width: assignment.widthPx,
         minWidth: 0,
+        // Link-to-previous button sits outside the bar on the left edge.
         overflow: 'visible',
         cursor: isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.06)',
-        zIndex: 20,
+        outline: 'none',
+        '&:focus-visible': {
+          boxShadow: '0 0 0 2px rgba(25,118,210,0.45), 0 2px 6px rgba(0,0,0,0.12)',
+        },
+        zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}
       style={style}
       title={`${assignment.customer} · ${assignment.label}`}
@@ -115,7 +124,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             color: '#374151',
             cursor: 'pointer',
             boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-            zIndex: 30,
+            zIndex: (theme) => theme.zIndex.appBar + 4,
           }}
           title="앞 주문과 연결"
         >
@@ -140,23 +149,23 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             src={previewUrl}
             alt={assignment.label}
             sx={{
-              width: 32,
-              height: 32,
+              width: isNarrow ? 24 : 32,
+              height: isNarrow ? 24 : 32,
               borderRadius: 1,
               objectFit: 'cover',
               border: '1px solid rgba(0,0,0,0.08)',
-              mr: 1.2,
+              mr: isNarrow ? 0.8 : 1.2,
               flexShrink: 0,
             }}
           />
         ) : (
           <Box
             sx={{
-              width: 32,
-              height: 32,
+              width: isNarrow ? 24 : 32,
+              height: isNarrow ? 24 : 32,
               borderRadius: 1,
               backgroundColor: stripe,
-              mr: 1.2,
+              mr: isNarrow ? 0.8 : 1.2,
               flexShrink: 0,
             }}
           />
@@ -164,7 +173,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
         <Typography
           variant="body2"
           sx={{
-            fontWeight: 600,
+            fontWeight: isNarrow ? 500 : 600,
+            fontSize: isNarrow ? 12 : undefined,
             minWidth: 0,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -172,41 +182,45 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
             textAlign: 'left',
           }}
         >
-          {`${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''}${assignment.gender ? ` · ${assignment.gender}` : ''} · 수량 ${assignment.quantity ?? '-'}`}
+          {isNarrow ? compactLabel : fullLabel}
         </Typography>
       </Box>
-      <Box
-        sx={{
-          position: 'absolute',
-          right: 8,
-          bottom: 8,
-          px: 0.7,
-          py: 0.15,
-          borderRadius: 1,
-          backgroundColor: 'rgba(255,255,255,0.75)',
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#3f4c5f',
-        }}
-      >
-        {ctLabel}
-      </Box>
-      <Box
-        sx={{
-          position: 'absolute',
-          right: 8,
-          top: 8,
-          px: 0.8,
-          py: 0.2,
-          borderRadius: 1,
-          backgroundColor: 'rgba(255,255,255,0.7)',
-          fontSize: 11,
-          fontWeight: 700,
-          color: '#364152',
-        }}
-      >
-        {durationLabel}
-      </Box>
+      {!hideMetaBadges && (
+        <Box
+          sx={{
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            px: 0.7,
+            py: 0.15,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.75)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#3f4c5f',
+          }}
+        >
+          {ctLabel}
+        </Box>
+      )}
+      {!hideMetaBadges && (
+        <Box
+          sx={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#364152',
+          }}
+        >
+          {durationLabel}
+        </Box>
+      )}
     </Box>
   );
 };

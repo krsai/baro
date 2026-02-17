@@ -72,10 +72,12 @@ const mergeCardsWithSaved = (baseCards, savedCards) => {
       merged.push(card);
       return;
     }
+    const baseCard = merged[existingIndex];
     merged[existingIndex] = {
-      ...merged[existingIndex],
       ...card,
-      id: card.id,
+      ...baseCard,
+      id: baseCard.id,
+      originOrderId: baseCard.originOrderId || card.originOrderId || baseCard.id,
     };
   });
 
@@ -472,6 +474,38 @@ const resolveCardTotalSeconds = (card) => {
     return card.totalAt ?? card.totalSeconds ?? 0;
   }
   return card.totalPt ?? card.totalSeconds ?? 0;
+};
+
+const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
+  if (!assignment || !card) return assignment;
+
+  const totalSeconds = resolveCardTotalSeconds(card);
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return assignment;
+
+  const basis = getCardBasis(card);
+  const next = {
+    ...assignment,
+    orderNo: card.orderNo ?? assignment.orderNo,
+    customer: card.customer ?? assignment.customer,
+    label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
+    colorName: card.colorName ?? assignment.colorName,
+    gender: card.gender ?? assignment.gender,
+    previewUrl: card.previewUrl ?? assignment.previewUrl,
+    imageUrl: card.imageUrl ?? assignment.imageUrl,
+    thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
+    quantity: card.quantity ?? assignment.quantity,
+    basis,
+    proposalBasis: basis,
+    totalSeconds,
+    proposalSeconds: totalSeconds,
+    contractedSeconds:
+      assignment.contractedSeconds == null ? assignment.contractedSeconds : totalSeconds,
+  };
+  const range = recomputeAssignmentRange(next, totalSeconds, days, lineCapacityById);
+  return {
+    ...next,
+    ...range,
+  };
 };
 
 const buildDateKey = (date) => {
@@ -1094,6 +1128,15 @@ const AssignBoard = () => {
           styles,
           colorNameMap,
         });
+        const nextLineCapacityById = new Map(
+          nextLines.map((line) => {
+            const key = normalizeKey(line?.id);
+            const parsed = Number(line?.dailyCapacitySeconds);
+            const resolved =
+              Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
+            return [key, resolved];
+          })
+        );
         const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
 
         const hasSavedBoardState =
@@ -1103,6 +1146,11 @@ const AssignBoard = () => {
         const restoredCards = hasSavedBoardState
           ? mergeCardsWithSaved(nextCards, savedCards)
           : nextCards;
+        const restoredCardById = new Map(
+          restoredCards
+            .filter((card) => card?.id)
+            .map((card) => [card.id, card])
+        );
         const restoredCardIdSet = new Set(
           restoredCards.map((card) => card?.id).filter(Boolean)
         );
@@ -1111,10 +1159,20 @@ const AssignBoard = () => {
               .filter((item) => item?.id)
               .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
               .filter((item) => restoredCardIdSet.has(item?.cardId))
-              .map((item) => ({
-                ...item,
-                lineId: String(item.lineId),
-              }))
+              .map((item) => {
+                const normalized = {
+                  ...item,
+                  lineId: String(item.lineId),
+                };
+                const linkedCard = restoredCardById.get(normalized.cardId);
+                if (!linkedCard) return normalized;
+                return syncAssignmentFromCard(
+                  normalized,
+                  linkedCard,
+                  days,
+                  nextLineCapacityById
+                );
+              })
           : [];
         const maxSplit = restoredCards.reduce((max, card) => {
           const matched = String(card?.id || '').match(/-S(\d+)$/);

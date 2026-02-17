@@ -326,6 +326,7 @@ model WorkOrder {
   organization Organization @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, orderId])
+  @@unique([orgId, customerId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
 }

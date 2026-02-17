@@ -18,6 +18,37 @@ import {
   normalizeProcesses,
 } from '../../../../utils/processTime';
 
+const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
+
+let customersCache = null;
+let customersCacheTimestamp = 0;
+let customersInFlight = null;
+
+const loadCustomersOnce = async () => {
+  if (
+    Array.isArray(customersCache) &&
+    Date.now() - customersCacheTimestamp <= CUSTOMERS_CACHE_TTL_MS
+  ) {
+    return customersCache;
+  }
+  if (customersInFlight) {
+    return customersInFlight;
+  }
+
+  customersInFlight = requestJSON('/customers')
+    .then((data) => {
+      const normalized = Array.isArray(data) ? data : [];
+      customersCache = normalized;
+      customersCacheTimestamp = Date.now();
+      return normalized;
+    })
+    .finally(() => {
+      customersInFlight = null;
+    });
+
+  return customersInFlight;
+};
+
 const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -27,35 +58,53 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const [loadingCategories, setLoadingCategories] = useState(false);
 
   useEffect(() => {
+    let active = true;
+
     const fetchCustomers = async () => {
       setLoadingCustomers(true);
       try {
-        const data = await requestJSON('/customers');
-        setCustomers(Array.isArray(data) ? data : []);
+        const data = await loadCustomersOnce();
+        if (!active) return;
+        setCustomers(data);
       } catch (_error) {
+        if (!active) return;
         setCustomers([]);
       } finally {
+        if (!active) return;
         setLoadingCustomers(false);
       }
     };
 
     fetchCustomers();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
+    let active = true;
+
     const loadCategories = async () => {
       setLoadingCategories(true);
       try {
         const data = await fetchAttributes();
+        if (!active) return;
         setCategories(Array.isArray(data?.categories) ? data.categories : []);
       } catch (_error) {
+        if (!active) return;
         setCategories([]);
       } finally {
+        if (!active) return;
         setLoadingCategories(false);
       }
     };
 
     loadCategories();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // TODO: Implement adding new images, which involves creating blob URLs,

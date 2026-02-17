@@ -55,6 +55,7 @@ const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완�
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
+const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
 const ORDER_LIST_COLUMN_WIDTHS = {
   orderNumber: '12%',
@@ -128,6 +129,44 @@ const hasDuplicateStyleColorGender = (items = []) => {
     seen.add(key);
   }
   return false;
+};
+const normalizeTextKey = (value) => String(value || '').trim().toLowerCase();
+const hasDuplicateOrderNumberByCustomer = ({
+  orders = [],
+  currentOrderId = '',
+  orderNumber = '',
+  buyerOrgId = null,
+  buyerOrgName = '',
+}) => {
+  const targetOrderNumber = String(orderNumber || '').trim();
+  if (!targetOrderNumber) return false;
+
+  const targetBuyerId = toOrgId(buyerOrgId);
+  const targetBuyerName = normalizeTextKey(buyerOrgName);
+
+  return (Array.isArray(orders) ? orders : []).some((order) => {
+    if (!order) return false;
+    if (currentOrderId && String(order.id || '') === String(currentOrderId)) return false;
+    if (String(order.orderNumber || '').trim() !== targetOrderNumber) return false;
+
+    const orderBuyerId = toOrgId(order.buyerOrgId ?? order.customerId);
+    if (targetBuyerId && orderBuyerId) {
+      return targetBuyerId === orderBuyerId;
+    }
+
+    const orderBuyerName = normalizeTextKey(
+      order.buyerOrgName || order.customerName || order.customer || ''
+    );
+    if (!targetBuyerName || !orderBuyerName) return false;
+    return targetBuyerName === orderBuyerName;
+  });
+};
+const resolveOrderSaveErrorMessage = (error) => {
+  const message = String(error?.message || '').trim();
+  if (message === 'order number already exists for this customer') {
+    return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
+  }
+  return message || '주문 저장 중 오류가 발생했습니다.';
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
@@ -318,6 +357,7 @@ const OrderList = () => {
   const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
   const detailInitKeyRef = useRef(null);
+  const styleAddButtonRef = useRef(null);
   const activeOrgId = useMemo(
     () => (devBypass ? toOrgId(devProfile?.orgId) : null),
     [devBypass, devProfile?.orgId]
@@ -879,6 +919,12 @@ const OrderList = () => {
       ),
     }));
   };
+  const handleLastSizeInputKeyDown = (event) => {
+    if (event.key !== 'Tab' || event.shiftKey) return;
+    if (!styleAddButtonRef.current) return;
+    event.preventDefault();
+    styleAddButtonRef.current.focus();
+  };
 
   const getItemTotal = (item) => sumSizeQuantities(item?.sizeQuantities);
 
@@ -913,6 +959,17 @@ const OrderList = () => {
     }
     if (!hasRelationshipPair(relationshipPairs, formData.buyerOrgId, resolvedSellerOrgId)) {
       return '연결된 관계의 발주자/수주자 조합만 선택할 수 있습니다.';
+    }
+    if (
+      hasDuplicateOrderNumberByCustomer({
+        orders,
+        currentOrderId: isNewOrder ? '' : orderId || '',
+        orderNumber: formData.orderNumber,
+        buyerOrgId: formData.buyerOrgId,
+        buyerOrgName: formData.buyerOrgName || formData.customerName,
+      })
+    ) {
+      return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
     }
     if (!formData.dueDate) {
       return '납기일을 입력해 주세요.';
@@ -1027,7 +1084,7 @@ const OrderList = () => {
       showNotification('주문 정보가 저장되었습니다.', 'success');
       closeDetailAndGoList();
     } catch (error) {
-      showNotification(error?.message || '주문 저장 중 오류가 발생했습니다.', 'error');
+      showNotification(resolveOrderSaveErrorMessage(error), 'error');
     }
   };
 
@@ -1301,7 +1358,12 @@ const OrderList = () => {
             >
               스타일 등록
             </Button>
-            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddItem}>
+            <Button
+              ref={styleAddButtonRef}
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={handleAddItem}
+            >
               스타일 추가
             </Button>
           </Stack>
@@ -1483,6 +1545,7 @@ const OrderList = () => {
                             <TextField
                               value={normalizedSizeQuantities[size]}
                               onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
+                              onKeyDown={size === LAST_SIZE_COLUMN ? handleLastSizeInputKeyDown : undefined}
                               size="small"
                               type="text"
                               placeholder="0"

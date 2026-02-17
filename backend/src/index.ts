@@ -594,17 +594,31 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     (sum, item) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
+  const buyerOrgId = toPositiveIntOrNull(
+    payload?.buyerOrgId !== undefined ? payload.buyerOrgId : fallback?.buyerOrgId
+  );
+  const customerId = toPositiveIntOrNull(
+    payload?.customerId !== undefined ? payload.customerId : fallback?.customerId
+  );
+  const resolvedCustomerId = customerId ?? buyerOrgId;
+  const resolvedBuyerOrgId = buyerOrgId ?? resolvedCustomerId;
+
+  const buyerOrgName = resolveOptionalString(
+    payload?.buyerOrgName ?? payload?.customerName ?? payload?.customer,
+    fallback?.buyerOrgName ?? fallback?.customerName ?? null
+  );
+  const customerName = resolveOptionalString(
+    payload?.customerName ?? payload?.customer ?? payload?.buyerOrgName,
+    fallback?.customerName ?? fallback?.buyerOrgName ?? null
+  );
+  const resolvedCustomerName = customerName ?? buyerOrgName;
+  const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
 
   return {
     orderId,
     orderNumber,
-    buyerOrgId: toNumberOrNull(
-      payload?.buyerOrgId !== undefined ? payload.buyerOrgId : fallback?.buyerOrgId
-    ),
-    buyerOrgName: resolveOptionalString(
-      payload?.buyerOrgName,
-      fallback?.buyerOrgName ?? null
-    ),
+    buyerOrgId: resolvedBuyerOrgId,
+    buyerOrgName: resolvedBuyerOrgName,
     sellerOrgId: toNumberOrNull(
       payload?.sellerOrgId !== undefined
         ? payload.sellerOrgId
@@ -614,13 +628,8 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
       payload?.sellerOrgName,
       fallback?.sellerOrgName ?? null
     ),
-    customerId: toNumberOrNull(
-      payload?.customerId !== undefined ? payload.customerId : fallback?.customerId
-    ),
-    customerName: resolveOptionalString(
-      payload?.customerName ?? payload?.customer,
-      fallback?.customerName ?? null
-    ),
+    customerId: resolvedCustomerId,
+    customerName: resolvedCustomerName,
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
     status:
       resolveOptionalString(payload?.status, fallback?.status ?? "주문접수") ??
@@ -633,6 +642,56 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
       computedTotalQuantity
     ),
   };
+};
+
+const resolveOrderCustomerIdentity = (order: any = {}) => {
+  const customerId = toPositiveIntOrNull(
+    order?.customerId !== undefined ? order.customerId : order?.buyerOrgId
+  );
+  const customerName = resolveOptionalString(
+    order?.customerName !== undefined ? order.customerName : order?.buyerOrgName,
+    null
+  );
+  return { customerId, customerName };
+};
+
+const findOrderNumberConflict = async ({
+  orgId,
+  orderNumber,
+  customerId,
+  customerName,
+  excludeOrderId = null,
+}: {
+  orgId: number;
+  orderNumber: string;
+  customerId?: number | null;
+  customerName?: string | null;
+  excludeOrderId?: string | null;
+}) => {
+  const normalizedOrderNumber = String(orderNumber || "").trim();
+  if (!normalizedOrderNumber) return null;
+
+  const where: any = {
+    orgId,
+    orderNumber: normalizedOrderNumber,
+  };
+  const resolvedCustomerId = toPositiveIntOrNull(customerId);
+  if (resolvedCustomerId) {
+    where.OR = [{ customerId: resolvedCustomerId }, { buyerOrgId: resolvedCustomerId }];
+  } else if (customerName) {
+    where.OR = [
+      { customerName: { equals: customerName, mode: "insensitive" } },
+      { buyerOrgName: { equals: customerName, mode: "insensitive" } },
+    ];
+  }
+  if (excludeOrderId) {
+    where.NOT = { orderId: excludeOrderId };
+  }
+
+  return prisma.workOrder.findFirst({
+    where,
+    select: { id: true, orderId: true },
+  });
 };
 
 const toOrderResponse = (order: any) => {
@@ -1585,6 +1644,134 @@ app.put("/factories/:id", async (req, res) => {
   res.json(factory);
 });
 
+app.delete("/factories/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no factories" });
+  }
+
+  const existing = await prisma.factory.findFirst({
+    where: { id, orgId: organization.id },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const deleted = await prisma.$transaction(
+    async (tx) => {
+      const lines = await tx.line.findMany({
+        where: { orgId: organization.id, factoryId: existing.id },
+        select: { id: true },
+      });
+      const lineIds = lines.map((line) => line.id);
+
+      const employees = await tx.employee.findMany({
+        where: { orgId: organization.id, factoryId: existing.id },
+        select: { id: true, orgMembershipId: true },
+      });
+      const employeeIds = employees.map((employee) => employee.id);
+      const membershipIds = employees.map((employee) => employee.orgMembershipId);
+
+      if (employeeIds.length > 0) {
+        await tx.line.updateMany({
+          where: {
+            orgId: organization.id,
+            managerEmployeeId: { in: employeeIds },
+          },
+          data: { managerEmployeeId: null },
+        });
+      }
+
+      let deletedAssignmentPlans = 0;
+      if (lineIds.length > 0) {
+        const result = await tx.assignmentPlan.deleteMany({
+          where: {
+            orgId: organization.id,
+            lineId: { in: lineIds },
+          },
+        });
+        deletedAssignmentPlans = result.count;
+      }
+
+      let deletedLineAssignments = 0;
+      const assignmentWhereOr: any[] = [];
+      if (lineIds.length > 0) {
+        assignmentWhereOr.push({ lineId: { in: lineIds } });
+      }
+      if (employeeIds.length > 0) {
+        assignmentWhereOr.push({ employeeId: { in: employeeIds } });
+      }
+      if (assignmentWhereOr.length > 0) {
+        const result = await tx.lineAssignment.deleteMany({
+          where: { OR: assignmentWhereOr },
+        });
+        deletedLineAssignments = result.count;
+      }
+
+      let deletedLines = 0;
+      if (lineIds.length > 0) {
+        const result = await tx.line.deleteMany({
+          where: {
+            orgId: organization.id,
+            id: { in: lineIds },
+          },
+        });
+        deletedLines = result.count;
+      }
+
+      let deletedEmployees = 0;
+      if (employeeIds.length > 0) {
+        const result = await tx.employee.deleteMany({
+          where: {
+            orgId: organization.id,
+            id: { in: employeeIds },
+          },
+        });
+        deletedEmployees = result.count;
+      }
+
+      let deletedMemberships = 0;
+      if (membershipIds.length > 0) {
+        const result = await tx.orgMembership.deleteMany({
+          where: {
+            orgId: organization.id,
+            id: { in: membershipIds },
+          },
+        });
+        deletedMemberships = result.count;
+      }
+
+      await tx.factory.delete({ where: { id: existing.id } });
+
+      return {
+        deletedLineAssignments,
+        deletedAssignmentPlans,
+        deletedLines,
+        deletedEmployees,
+        deletedMemberships,
+      };
+    },
+    { maxWait: 20_000, timeout: 120_000 }
+  );
+
+  res.json({
+    ok: true,
+    deletedFactoryId: existing.id,
+    deletedFactoryName: existing.name,
+    ...deleted,
+  });
+});
+
 app.get("/lines", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -2313,6 +2500,22 @@ app.post("/orders", async (req, res) => {
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
   }
+  if (!normalized.customerId) {
+    return res.status(400).json({ ok: false, error: "customerId is required" });
+  }
+  const customerIdentity = resolveOrderCustomerIdentity(normalized);
+  const orderNumberConflict = await findOrderNumberConflict({
+    orgId: organization.id,
+    orderNumber: normalized.orderNumber,
+    customerId: customerIdentity.customerId,
+    customerName: customerIdentity.customerName,
+  });
+  if (orderNumberConflict) {
+    return res.status(409).json({
+      ok: false,
+      error: "order number already exists for this customer",
+    });
+  }
 
   const existing = await prisma.workOrder.findFirst({
     where: { orgId: organization.id, orderId: normalized.orderId },
@@ -2353,6 +2556,23 @@ app.put("/orders/:orderId", async (req, res) => {
   const normalized = normalizeOrderPayload(req.body ?? {}, existing);
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
+  }
+  if (!normalized.customerId) {
+    return res.status(400).json({ ok: false, error: "customerId is required" });
+  }
+  const customerIdentity = resolveOrderCustomerIdentity(normalized);
+  const orderNumberConflict = await findOrderNumberConflict({
+    orgId: organization.id,
+    orderNumber: normalized.orderNumber,
+    customerId: customerIdentity.customerId,
+    customerName: customerIdentity.customerName,
+    excludeOrderId: existing.orderId,
+  });
+  if (orderNumberConflict) {
+    return res.status(409).json({
+      ok: false,
+      error: "order number already exists for this customer",
+    });
   }
   // Route param is source of truth.
   normalized.orderId = existing.orderId;
@@ -3243,6 +3463,28 @@ const assignOrgMembership = async (req: Request, res: Response) => {
 app.post("/org-memberships/assign", assignOrgMembership);
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const prismaErrorCode = String((error as any)?.code || "");
+  const prismaErrorTargetRaw = (error as any)?.meta?.target;
+  const prismaErrorTarget = Array.isArray(prismaErrorTargetRaw)
+    ? prismaErrorTargetRaw.map((item) => String(item))
+    : [String(prismaErrorTargetRaw || "")];
+  const hasCompositeTargetFields =
+    prismaErrorTarget.includes("orgId") &&
+    prismaErrorTarget.includes("customerId") &&
+    prismaErrorTarget.includes("orderNumber");
+  const isOrderNumberByCustomerUniqueError =
+    prismaErrorCode === "P2002" &&
+    (hasCompositeTargetFields ||
+      prismaErrorTarget.some((item) =>
+        /WorkOrder_orgId_customerId_orderNumber_key/i.test(item)
+      ));
+  if (isOrderNumberByCustomerUniqueError) {
+    return res.status(409).json({
+      ok: false,
+      error: "order number already exists for this customer",
+    });
+  }
+
   const status = Number((error as any)?.status);
   if (Number.isFinite(status)) {
     return res.status(status).json({

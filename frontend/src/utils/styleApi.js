@@ -2,10 +2,17 @@ import { loadStyles } from './localData';
 import { normalizeProcesses } from './processTime';
 import { buildQueryString, createHttpError, requestJSON } from './apiClient';
 const STYLE_MIGRATION_KEY = 'baro_style_migrated_to_api_v1';
+const STYLE_BY_ID_CACHE_TTL_MS = 30 * 1000;
 
 let migrationPromise = null;
+const styleByIdCache = new Map();
+const styleByIdInFlight = new Map();
 
 const normalizeArray = (value) => (Array.isArray(value) ? value : []);
+const toPositiveOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
 
 const normalizeStyle = (value = {}) => ({
   id: value.id || '',
@@ -23,6 +30,37 @@ const normalizeStyle = (value = {}) => ({
   createdAt: value.createdAt || null,
   updatedAt: value.updatedAt || null,
 });
+
+const readFreshStyleFromCache = (styleId) => {
+  const key = String(styleId || '');
+  if (!key) return null;
+  const cached = styleByIdCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > STYLE_BY_ID_CACHE_TTL_MS) {
+    styleByIdCache.delete(key);
+    return null;
+  }
+  return cached.style;
+};
+
+const writeStyleToCache = (style) => {
+  const key = String(style?.id || '');
+  if (!key) return;
+  styleByIdCache.set(key, {
+    style: normalizeStyle(style),
+    timestamp: Date.now(),
+  });
+};
+
+const removeStyleFromCache = (styleId) => {
+  const key = String(styleId || '');
+  if (!key) return;
+  styleByIdCache.delete(key);
+};
+
+const triggerStyleMigrationInBackground = () => {
+  ensureStyleMigrationOnce().catch(() => {});
+};
 
 const fetchStylesFromServer = async (options = {}) => {
   const data = await requestJSON(
@@ -82,49 +120,105 @@ export const ensureStyleMigrationOnce = async () => {
 };
 
 export const fetchStyles = async (options = {}) => {
-  const orgIdNum = Number(options?.orgId);
-  const hasOrgFilter = Number.isFinite(orgIdNum);
+  const orgIdNum = toPositiveOrgId(options?.orgId);
+  const hasOrgFilter = orgIdNum !== null;
   if (!hasOrgFilter) {
     await ensureStyleMigrationOnce();
   }
-  return fetchStylesFromServer({
+  const styles = await fetchStylesFromServer({
     orgId: hasOrgFilter ? orgIdNum : null,
     compact: Boolean(options?.compact),
   });
+  styles.forEach((style) => {
+    writeStyleToCache(style);
+  });
+  return styles;
 };
 
-export const fetchStyleById = async (styleId) => {
+export const fetchStyleById = async (styleId, options = {}) => {
   if (!styleId) {
     throw createHttpError('styleId is required', 400);
   }
-  await ensureStyleMigrationOnce();
-  const data = await requestJSON(`/styles/${encodeURIComponent(styleId)}`);
-  return normalizeStyle(data);
+
+  const key = String(styleId);
+  const forceRefresh = Boolean(options?.forceRefresh);
+
+  if (!forceRefresh) {
+    const cachedStyle = readFreshStyleFromCache(key);
+    if (cachedStyle) {
+      return cachedStyle;
+    }
+    const existingPromise = styleByIdInFlight.get(key);
+    if (existingPromise) {
+      return existingPromise;
+    }
+  }
+
+  const requestFromServer = async () => {
+    const data = await requestJSON(`/styles/${encodeURIComponent(key)}`);
+    const normalized = normalizeStyle(data);
+    writeStyleToCache(normalized);
+    return normalized;
+  };
+
+  const requestPromise = (async () => {
+    if (options?.skipMigration) {
+      return requestFromServer();
+    }
+
+    if (options?.waitForMigration) {
+      await ensureStyleMigrationOnce();
+      return requestFromServer();
+    }
+
+    const migrationTask = ensureStyleMigrationOnce().catch(() => null);
+    try {
+      return await requestFromServer();
+    } catch (error) {
+      if (error?.status !== 404) {
+        throw error;
+      }
+      await migrationTask;
+      return requestFromServer();
+    }
+  })();
+
+  styleByIdInFlight.set(key, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    styleByIdInFlight.delete(key);
+  }
 };
 
 export const createStyle = async (style) => {
-  await ensureStyleMigrationOnce();
+  triggerStyleMigrationInBackground();
   const data = await requestJSON('/styles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(normalizeStyle(style)),
   });
-  return normalizeStyle(data);
+  const normalized = normalizeStyle(data);
+  writeStyleToCache(normalized);
+  return normalized;
 };
 
 export const updateStyle = async (styleId, style) => {
-  await ensureStyleMigrationOnce();
+  triggerStyleMigrationInBackground();
   const data = await requestJSON(`/styles/${encodeURIComponent(styleId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(normalizeStyle(style)),
   });
-  return normalizeStyle(data);
+  const normalized = normalizeStyle(data);
+  writeStyleToCache(normalized);
+  return normalized;
 };
 
 export const deleteStyle = async (styleId) => {
-  await ensureStyleMigrationOnce();
+  triggerStyleMigrationInBackground();
   await requestJSON(`/styles/${encodeURIComponent(styleId)}`, {
     method: 'DELETE',
   });
+  removeStyleFromCache(styleId);
 };

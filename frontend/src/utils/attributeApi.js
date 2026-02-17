@@ -1,6 +1,14 @@
 import { buildQueryString, requestJSON } from './apiClient';
 
+const ATTRIBUTE_CACHE_TTL_MS = 30 * 1000;
+const attributesCache = new Map();
+const attributesInFlight = new Map();
+
 const normalizeArray = (value) => (Array.isArray(value) ? value : []);
+const toPositiveOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
 
 const normalizeAttributeItem = (item = {}) => ({
   id: item.id ?? null,
@@ -46,20 +54,62 @@ const normalizeAttributePayload = (payload = {}) => {
   return normalized;
 };
 
+const toAttributeCacheKey = (orgId, hasOrgFilter) =>
+  hasOrgFilter ? `org:${orgId}` : 'global';
+
+const readFreshAttributesCache = (cacheKey) => {
+  const cached = attributesCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > ATTRIBUTE_CACHE_TTL_MS) {
+    attributesCache.delete(cacheKey);
+    return null;
+  }
+  return cached.data;
+};
+
+const writeAttributesCache = (cacheKey, data) => {
+  attributesCache.set(cacheKey, {
+    data: normalizeAttributes(data),
+    timestamp: Date.now(),
+  });
+};
+
 export const fetchAttributes = async (options = {}) => {
-  const orgId = Number(options?.orgId);
-  const hasOrgFilter = Number.isFinite(orgId);
-  const data = await requestJSON(
-    `/attributes${buildQueryString({
-      orgId: hasOrgFilter ? orgId : undefined,
-    })}`
-  );
-  return normalizeAttributes(data);
+  const orgId = toPositiveOrgId(options?.orgId);
+  const hasOrgFilter = orgId !== null;
+  const forceRefresh = Boolean(options?.forceRefresh);
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+
+  if (!forceRefresh) {
+    const cached = readFreshAttributesCache(cacheKey);
+    if (cached) return cached;
+    const inflight = attributesInFlight.get(cacheKey);
+    if (inflight) return inflight;
+  }
+
+  const requestPromise = (async () => {
+    const data = await requestJSON(
+      `/attributes${buildQueryString({
+        orgId: hasOrgFilter ? orgId : undefined,
+      })}`
+    );
+    const normalized = normalizeAttributes(data);
+    writeAttributesCache(cacheKey, normalized);
+    return normalized;
+  })();
+
+  attributesInFlight.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    attributesInFlight.delete(cacheKey);
+  }
 };
 
 export const updateAttributes = async (payload, options = {}) => {
-  const orgId = Number(options?.orgId);
-  const hasOrgFilter = Number.isFinite(orgId);
+  const orgId = toPositiveOrgId(options?.orgId);
+  const hasOrgFilter = orgId !== null;
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
   const body = normalizeAttributePayload(payload);
   const data = await requestJSON(
     `/attributes${buildQueryString({
@@ -71,7 +121,19 @@ export const updateAttributes = async (payload, options = {}) => {
       body: JSON.stringify(body),
     }
   );
-  return normalizePartialAttributes(data);
+  const normalizedPartial = normalizePartialAttributes(data);
+  const previous = readFreshAttributesCache(cacheKey);
+  if (previous) {
+    const merged = {
+      ...previous,
+      ...normalizedPartial,
+    };
+    writeAttributesCache(cacheKey, merged);
+  } else {
+    attributesCache.delete(cacheKey);
+  }
+  attributesInFlight.delete(cacheKey);
+  return normalizedPartial;
 };
 
 export const fetchProcessAttributes = async (options = {}) => {
