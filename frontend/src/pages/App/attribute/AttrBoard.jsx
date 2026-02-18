@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Grid,
+  IconButton,
   Paper,
   Table,
   TableBody,
@@ -12,13 +19,6 @@ import {
   TableRow,
   TextField,
   Typography,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  CircularProgress,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -27,15 +27,12 @@ import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { fetchAttributes, updateAttributes } from '../../../utils/attributeApi';
 
-// 초기 Mock Data 정의
 const initialData = {
   colors: [],
   categories: [],
-  roles: [],
   processes: [],
 };
 
-// 섹션 설정 (테이블 컬럼 및 타이틀)
 const sectionConfigs = [
   {
     key: 'colors',
@@ -54,14 +51,6 @@ const sectionConfigs = [
     ],
   },
   {
-    key: 'roles',
-    title: '역할 (Role)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '역할명', width: '60%' },
-    ],
-  },
-  {
     key: 'processes',
     title: '공정 (Process)',
     columns: [
@@ -71,53 +60,63 @@ const sectionConfigs = [
   },
 ];
 
+const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
+
+const normalizeRows = (rows) =>
+  (Array.isArray(rows) ? rows : []).map((item = {}) => ({
+    id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: String(item.code ?? '').trim(),
+    name: String(item.name ?? '').trim(),
+  }));
+
+const normalizeData = (data) => ({
+  colors: normalizeRows(data?.colors),
+  categories: normalizeRows(data?.categories),
+  processes: normalizeRows(data?.processes),
+});
+
 const AttrBoard = () => {
   const { showNotification } = useApp();
 
-  // 전체 데이터 상태 관리
-  const [formData, setFormData] = useState(() => JSON.parse(JSON.stringify(initialData)));
-  const [originalData, setOriginalData] = useState(() => JSON.parse(JSON.stringify(initialData)));
-  
+  const [formData, setFormData] = useState(() => cloneDeep(initialData));
+  const [originalData, setOriginalData] = useState(() => cloneDeep(initialData));
   const [isDirty, setIsDirty] = useState(false);
-  const [isConfirmOpen, setConfirmOpen] = useState(false);
-  const [changes, setChanges] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const normalizeData = (data) => {
-    const safe = data || {};
-    return {
-      colors: Array.isArray(safe.colors) ? safe.colors : initialData.colors,
-      categories: Array.isArray(safe.categories) ? safe.categories : initialData.categories,
-      roles: Array.isArray(safe.roles) ? safe.roles : initialData.roles,
-      processes: Array.isArray(safe.processes) ? safe.processes : initialData.processes,
-    };
-  };
+  const [isConfirmOpen, setConfirmOpen] = useState(false);
+  const [changes, setChanges] = useState([]);
+
+  useUnsavedChanges(isDirty);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadAttributes = async () => {
       try {
         const data = await fetchAttributes();
+        if (cancelled) return;
+
         const normalized = normalizeData(data);
         setFormData(normalized);
-        setOriginalData(JSON.parse(JSON.stringify(normalized)));
+        setOriginalData(cloneDeep(normalized));
       } catch (_error) {
-        // fallback to initialData
+        if (!cancelled) {
+          setFormData(cloneDeep(initialData));
+          setOriginalData(cloneDeep(initialData));
+        }
       }
     };
 
     loadAttributes();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // 변경 사항 감지
   useEffect(() => {
-    const isChanged = JSON.stringify(formData) !== JSON.stringify(originalData);
-    setIsDirty(isChanged);
+    setIsDirty(JSON.stringify(formData) !== JSON.stringify(originalData));
   }, [formData, originalData]);
 
-  // 커스텀 훅을 사용하여 저장되지 않은 변경사항 보호 (전역 재사용 가능)
-  useUnsavedChanges(isDirty);
-
-  // 데이터 변경 핸들러
   const handleRowChange = (sectionKey, id, field, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -128,16 +127,16 @@ const AttrBoard = () => {
   };
 
   const handleAddRow = (sectionKey) => {
-    const newRow = { id: `new-${Date.now()}` };
-    // 해당 섹션의 컬럼들에 빈 값 초기화
-    const config = sectionConfigs.find(c => c.key === sectionKey);
-    config.columns.forEach(col => {
-      newRow[col.field] = '';
-    });
-
     setFormData((prev) => ({
       ...prev,
-      [sectionKey]: [...prev[sectionKey], newRow],
+      [sectionKey]: [
+        ...prev[sectionKey],
+        {
+          id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          code: '',
+          name: '',
+        },
+      ],
     }));
   };
 
@@ -148,150 +147,155 @@ const AttrBoard = () => {
     }));
   };
 
-  // 저장 로직
-  const handleSaveClick = () => {
-    if (isSaving) return;
-    // 변경 내역 분석
-    const detectedChanges = [];
+  const detectedChanges = useMemo(() => {
+    const results = [];
+
     sectionConfigs.forEach((section) => {
-      const orgList = originalData[section.key];
-      const curList = formData[section.key];
-      const title = section.title.split(' (')[0]; // 한글 제목만 추출
+      const sectionKey = section.key;
+      const beforeRows = originalData[sectionKey] || [];
+      const afterRows = formData[sectionKey] || [];
+      const title = section.title.split(' (')[0];
 
-      // 추가된 항목
-      curList.forEach(item => {
-        if (!orgList.find(o => o.id === item.id)) {
-          detectedChanges.push(`[${title}] 추가: ${item.name || item.code || '새 항목'}`);
+      afterRows.forEach((row) => {
+        if (!beforeRows.find((before) => String(before.id) === String(row.id))) {
+          results.push(`[${title}] 추가: ${row.name || row.code || '새 항목'}`);
         }
       });
 
-      // 삭제된 항목
-      orgList.forEach(item => {
-        if (!curList.find(c => c.id === item.id)) {
-          detectedChanges.push(`[${title}] 삭제: ${item.name || item.code}`);
+      beforeRows.forEach((row) => {
+        if (!afterRows.find((after) => String(after.id) === String(row.id))) {
+          results.push(`[${title}] 삭제: ${row.name || row.code || '항목'}`);
         }
       });
 
-      // 수정된 항목
-      curList.forEach(item => {
-        const orgItem = orgList.find(o => o.id === item.id);
-        if (orgItem && JSON.stringify(item) !== JSON.stringify(orgItem)) {
-          detectedChanges.push(`[${title}] 수정: ${item.name || item.code}`);
+      afterRows.forEach((row) => {
+        const before = beforeRows.find((item) => String(item.id) === String(row.id));
+        if (!before) return;
+        if (before.code !== row.code || before.name !== row.name) {
+          results.push(`[${title}] 수정: ${row.name || row.code || '항목'}`);
         }
       });
     });
 
+    return results;
+  }, [formData, originalData]);
+
+  const handleSaveClick = () => {
+    if (isSaving) return;
     setChanges(detectedChanges);
     setConfirmOpen(true);
   };
 
-  const handleConfirmSave = () => {
+  const handleConfirmSave = async () => {
     if (isSaving) return;
     setIsSaving(true);
-    const saveAttributes = async () => {
-      try {
-        const changedPayload = {};
-        sectionConfigs.forEach((section) => {
-          const originalSection = originalData[section.key] || [];
-          const currentSection = formData[section.key] || [];
-          if (JSON.stringify(originalSection) !== JSON.stringify(currentSection)) {
-            changedPayload[section.key] = currentSection;
-          }
-        });
 
-        if (Object.keys(changedPayload).length === 0) {
-          setConfirmOpen(false);
-          setIsSaving(false);
-          showNotification('변경 사항이 없습니다.', 'info');
-          return;
+    try {
+      const changedPayload = {};
+
+      sectionConfigs.forEach((section) => {
+        const sectionKey = section.key;
+        const beforeRows = originalData[sectionKey] || [];
+        const afterRows = formData[sectionKey] || [];
+        if (JSON.stringify(beforeRows) !== JSON.stringify(afterRows)) {
+          changedPayload[sectionKey] = afterRows;
         }
+      });
 
-        const data = await updateAttributes(changedPayload);
-        const normalized = normalizeData({ ...formData, ...data });
-        setFormData(normalized);
-        setOriginalData(JSON.parse(JSON.stringify(normalized)));
+      if (Object.keys(changedPayload).length === 0) {
         setConfirmOpen(false);
-        setIsSaving(false);
-        showNotification('속성 정보가 저장되었습니다.', 'success');
-      } catch (_error) {
-        setIsSaving(false);
-        showNotification('속성 저장 중 오류가 발생했습니다.', 'error');
+        showNotification('변경사항이 없습니다.', 'info');
+        return;
       }
-    };
 
-    saveAttributes();
-  };
-
-  const handleRevert = () => {
-    if (window.confirm('모든 변경 사항을 취소하고 되돌리시겠습니까?')) {
-      setFormData(JSON.parse(JSON.stringify(originalData)));
+      const response = await updateAttributes(changedPayload);
+      const merged = normalizeData({ ...formData, ...response });
+      setFormData(merged);
+      setOriginalData(cloneDeep(merged));
+      setConfirmOpen(false);
+      showNotification('속성 정보가 저장되었습니다.', 'success');
+    } catch (_error) {
+      showNotification('속성 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // 섹션 렌더링 헬퍼
-  const renderSection = (config) => {
-    return (
-      <Paper variant="outlined" sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
-            {config.title}
-          </Typography>
-          <Button 
-            size="small" 
-            variant="outlined" 
-            startIcon={<AddIcon />} 
-            onClick={() => handleAddRow(config.key)}
-          >
-            추가
-          </Button>
-        </Box>
-        <TableContainer sx={{ flexGrow: 1 }}>
-          <Table size="small" stickyHeader>
-            <TableHead>
-              <TableRow>
+  const handleRevert = () => {
+    if (!window.confirm('모든 변경사항을 취소하고 되돌리시겠습니까?')) return;
+    setFormData(cloneDeep(originalData));
+  };
+
+  const renderSection = (config) => (
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+          {config.title}
+        </Typography>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => handleAddRow(config.key)}
+        >
+          추가
+        </Button>
+      </Box>
+
+      <TableContainer sx={{ flexGrow: 1 }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              {config.columns.map((col) => (
+                <TableCell key={col.field} sx={{ fontWeight: 'bold', width: col.width }}>
+                  {col.label}
+                </TableCell>
+              ))}
+              <TableCell sx={{ width: '10%', textAlign: 'center' }}>삭제</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {formData[config.key].map((row) => (
+              <TableRow key={row.id} hover>
                 {config.columns.map((col) => (
-                  <TableCell key={col.field} sx={{ fontWeight: 'bold', width: col.width }}>
-                    {col.label}
+                  <TableCell key={col.field}>
+                    <TextField
+                      value={row[col.field] || ''}
+                      onChange={(e) =>
+                        handleRowChange(config.key, row.id, col.field, e.target.value)
+                      }
+                      fullWidth
+                      size="small"
+                      placeholder={col.label}
+                    />
                   </TableCell>
                 ))}
-                <TableCell sx={{ width: '10%', textAlign: 'center' }}>삭제</TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>
+                  <IconButton size="small" onClick={() => handleDeleteRow(config.key, row.id)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {formData[config.key].map((row) => (
-                <TableRow key={row.id} hover>
-                  {config.columns.map((col) => (
-                    <TableCell key={col.field}>
-                      <TextField
-                        value={row[col.field] || ''}
-                        onChange={(e) => handleRowChange(config.key, row.id, col.field, e.target.value)}
-                        fullWidth
-                        size="small"
-                        type={col.type || 'text'}
-                        placeholder={col.label}
-                      />
-                    </TableCell>
-                  ))}
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <IconButton size="small" onClick={() => handleDeleteRow(config.key, row.id)}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {formData[config.key].length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={config.columns.length + 1} sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}>
-                    데이터 없음
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-    );
-  };
+            ))}
+
+            {formData[config.key].length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={config.columns.length + 1}
+                  sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}
+                >
+                  데이터 없음
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
 
   return (
     <AppPageContainer>
@@ -299,58 +303,59 @@ const AttrBoard = () => {
         <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-              속성 관리 통합
+              속성 관리
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              사이즈/성별은 공통 코드(XS~4XL, M/W/U)로 고정되어 이 화면에서 관리하지 않습니다.
+              사이즈/성별은 공통 코드로 고정되어 있어 이 화면에서 관리하지 않습니다.
             </Typography>
           </Box>
 
-          {/* 저장/되돌리기 버튼 그룹 */}
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button 
-              variant="outlined" 
-              onClick={handleRevert} 
-              disabled={!isDirty || isSaving}
-            >
+            <Button variant="outlined" onClick={handleRevert} disabled={!isDirty || isSaving}>
               되돌리기
             </Button>
-            <Button 
-              variant="contained" 
-              onClick={handleSaveClick} 
+            <Button
+              variant="contained"
+              onClick={handleSaveClick}
               disabled={!isDirty || isSaving}
               startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              {isSaving ? '저장 중' : '저장'}
+              {isSaving ? '저장 중...' : '저장'}
             </Button>
           </Box>
         </Box>
-        
-        {/* 속성 섹션 그리드 배치 */}
+
         <Grid container spacing={3}>
           {sectionConfigs.map((config) => (
-            <Grid item xs={12} md={config.fullWidth ? 12 : 6} key={config.key}>
+            <Grid item xs={12} md={6} key={config.key}>
               {renderSection(config)}
             </Grid>
           ))}
         </Grid>
       </Box>
 
-      {/* 변경 사항 확인 다이얼로그 */}
       <Dialog open={isConfirmOpen} onClose={() => setConfirmOpen(false)}>
-        <DialogTitle>변경 사항 저장</DialogTitle>
+        <DialogTitle>변경사항 저장</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            다음 변경 사항을 저장하시겠습니까?
+            다음 변경사항을 저장하시겠습니까?
           </DialogContentText>
-          <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: '300px', overflow: 'auto' }}>
-            {changes.length > 0 ? changes.map((msg, idx) => (
-              <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>• {msg}</Typography>
-            )) : <Typography variant="body2">변경 사항이 감지되지 않았습니다.</Typography>}
+          <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 300, overflow: 'auto' }}>
+            {changes.length > 0 ? (
+              changes.map((message, index) => (
+                <Typography key={`${index}-${message}`} variant="body2" sx={{ mb: 0.5 }}>
+                  - {message}
+                </Typography>
+              ))
+            ) : (
+              <Typography variant="body2">변경사항이 감지되지 않았습니다.</Typography>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)} disabled={isSaving}>취소</Button>
+          <Button onClick={() => setConfirmOpen(false)} disabled={isSaving}>
+            취소
+          </Button>
           <Button
             onClick={handleConfirmSave}
             variant="contained"
@@ -358,7 +363,7 @@ const AttrBoard = () => {
             disabled={isSaving}
             startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
           >
-            {isSaving ? '저장 중' : '확인'}
+            {isSaving ? '저장 중...' : '확인'}
           </Button>
         </DialogActions>
       </Dialog>

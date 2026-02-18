@@ -2,43 +2,97 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
+
 const DEV_BYPASS_KEY = 'dev_bypass';
 const DEV_PROFILE_KEY = 'dev_bypass_profile';
+
 const DEV_PROFILE_LABEL_BY_KEY = {
-  SYSTEM_ADMIN: '시스템 관리자',
-  MANUFACTURER_ADMIN: '제조사 Admin',
-  BRAND_ADMIN: '브랜드 Admin',
+  SYSTEM_ADMIN: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
+  MANUFACTURER_ADMIN: '\uC81C\uC870\uC0AC Admin',
+  BRAND_ADMIN: '\uBE0C\uB79C\uB4DC Admin',
+  BARO_ADMIN: 'BARO \uAD00\uB9AC\uC790',
+  BARO_OPERATOR: 'BARO \uC6B4\uC601\uC790',
+  BARO_ACCOUNTANT: 'BARO \uD68C\uACC4\uC0AC',
+  BARO_WORKER: 'BARO \uC791\uC5C5\uC790(\uB77C\uC778\uC7A5)',
+  DEOSAN_ADMIN: '\uB354\uC0B0 \uAD00\uB9AC\uC790',
+  DEOSAN_OPERATOR: '\uB354\uC0B0 \uC6B4\uC601\uC790',
+  DEOSAN_ACCOUNTANT: '\uB354\uC0B0 \uD68C\uACC4\uC0AC',
+  DEOSAN_WORKER: '\uB354\uC0B0 \uC791\uC5C5\uC790',
 };
+
 const DEFAULT_DEV_PROFILE = {
-  key: 'MANUFACTURER_ADMIN',
-  label: '제조사 Admin',
+  key: 'BARO_ADMIN',
+  label: 'BARO \uAD00\uB9AC\uC790',
   entryType: 'ORG',
   systemRole: 'USER',
   orgType: 'MANUFACTURER',
   orgRole: 'ADMIN',
   orgId: null,
   orgName: null,
+  employeeName: 'BARO \uAD00\uB9AC\uC790 \uD14C\uC2A4\uD2B8',
+  email: 'baro-admin@test.local',
+  isLineLeader: false,
+  lineLeaderStartAt: null,
+  lineLeaderEndAt: null,
 };
+
+const normalizeCompactLower = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .toLowerCase();
+
+const normalizeUpper = (value) =>
+  typeof value === 'string' ? value.trim().toUpperCase() : '';
 
 const hasLikelyMojibake = (value) => {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text) return true;
-  if (text.includes('?') || text.includes('\uFFFD')) return true;
-  // Broken UTF-8/CP949 text often appears as CJK ideographs without Hangul.
-  return /[一-龥]/.test(text) && !/[가-힣]/.test(text);
+  return text.includes('?') || text.includes('\uFFFD');
+};
+
+const isLegacyBaroProfile = (profile) => {
+  if (!profile || typeof profile !== 'object') return false;
+  if (normalizeUpper(profile.entryType) !== 'ORG') return false;
+  if (normalizeUpper(profile.orgType) !== 'MANUFACTURER') return false;
+
+  const profileKey = normalizeUpper(profile.key);
+  if (!profileKey.startsWith('BARO_')) return false;
+
+  const orgNameKey = normalizeCompactLower(profile.orgName);
+  return orgNameKey === '' || orgNameKey === 'baro';
 };
 
 const normalizeDevProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return null;
 
   const next = { ...DEFAULT_DEV_PROFILE, ...profile };
+  next.entryType = normalizeUpper(next.entryType || 'ORG');
+  next.systemRole = normalizeUpper(next.systemRole || 'USER');
+  next.orgType = normalizeUpper(next.orgType);
+  next.orgRole = normalizeUpper(next.orgRole);
+
   const fallbackLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || DEFAULT_DEV_PROFILE.label;
   const hasKnownKey = Boolean(DEV_PROFILE_LABEL_BY_KEY[next.key]);
   const rawLabel = typeof next.label === 'string' ? next.label.trim() : '';
-  const hasSuspiciousLabel = hasLikelyMojibake(rawLabel);
+  next.label = hasKnownKey || hasLikelyMojibake(rawLabel) ? fallbackLabel : rawLabel;
 
-  // For known dev profiles, always pin to canonical labels to avoid mojibake from old localStorage.
-  next.label = hasKnownKey || hasSuspiciousLabel ? fallbackLabel : rawLabel;
+  const parsedOrgId = Number(next.orgId);
+  next.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
+  next.orgName = typeof next.orgName === 'string' && next.orgName.trim() ? next.orgName.trim() : null;
+
+  next.isLineLeader = next.isLineLeader === true;
+  if (!next.isLineLeader) {
+    next.lineLeaderStartAt = null;
+    next.lineLeaderEndAt = null;
+  }
+
+  // Recover old BARO test profiles that were pinned to duplicate empty org rows.
+  if (isLegacyBaroProfile(next)) {
+    next.orgId = null;
+    next.orgName = null;
+  }
+
   return next;
 };
 
@@ -57,23 +111,24 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [devBypass, setDevBypass] = useState(() => {
-    return localStorage.getItem(DEV_BYPASS_KEY) === '1';
-  });
+  const [devBypass, setDevBypass] = useState(() => localStorage.getItem(DEV_BYPASS_KEY) === '1');
   const [devProfile, setDevProfile] = useState(() => loadDevProfile());
 
   useEffect(() => {
     if (!devBypass) return;
     if (devProfile) return;
+
     setDevProfile(DEFAULT_DEV_PROFILE);
     localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(DEFAULT_DEV_PROFILE));
   }, [devBypass, devProfile]);
 
   useEffect(() => {
     if (!devBypass || !devProfile) return;
+
     const normalized = normalizeDevProfile(devProfile);
     if (!normalized) return;
     if (JSON.stringify(normalized) === JSON.stringify(devProfile)) return;
+
     setDevProfile(normalized);
     localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(normalized));
   }, [devBypass, devProfile]);
@@ -83,11 +138,13 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       return () => {};
     }
+
     let ignore = false;
 
     const loadSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (ignore) return;
+
       setSession(data.session ?? null);
       setUser(data.session?.user ?? null);
       setLoading(false);
@@ -112,11 +169,11 @@ export const AuthProvider = ({ children }) => {
       console.warn('Supabase is not configured.');
       return;
     }
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        // Always show the account chooser when multiple Google accounts are signed in.
         queryParams: {
           prompt: 'select_account',
         },
@@ -137,12 +194,14 @@ export const AuthProvider = ({ children }) => {
       clearDevBypass();
       return;
     }
+
     await supabase.auth.signOut();
     clearDevBypass();
   };
 
   const enableDevBypass = (profile = DEFAULT_DEV_PROFILE) => {
     const nextProfile = normalizeDevProfile(profile) || DEFAULT_DEV_PROFILE;
+
     setDevBypass(true);
     setDevProfile(nextProfile);
     localStorage.setItem(DEV_BYPASS_KEY, '1');
@@ -168,6 +227,4 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  return useContext(AuthContext);
-};
+export const useAuth = () => useContext(AuthContext);

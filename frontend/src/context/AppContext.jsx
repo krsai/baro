@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+} from 'react';
 import { fetchAttributes } from '../utils/attributeApi';
 
 // Create the App Context
@@ -11,9 +19,7 @@ export const AppProvider = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // --- Tab State ---
-  const [openTabs, setOpenTabs] = useState([
-    { id: '/', label: '대시보드', path: '/' },
-  ]);
+  const [openTabs, setOpenTabs] = useState([]);
 
   const openTab = useCallback((tab, options) => {
     setOpenTabs((prev) => {
@@ -49,18 +55,18 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   // Helper to show notifications
-  const showNotification = (message, type = 'info', duration = 3000) => {
+  const showNotification = useCallback((message, type = 'info', duration = 3000) => {
     setNotification({ message, type, id: Date.now() });
     if (duration) {
       setTimeout(() => setNotification(null), duration);
     }
-  };
+  }, []);
 
 
   // Helper to dismiss notification
-  const dismissNotification = () => {
+  const dismissNotification = useCallback(() => {
     setNotification(null);
-  };
+  }, []);
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => {
@@ -107,38 +113,55 @@ export const AppProvider = ({ children }) => {
         : () => console.warn('navigateToPath is not implemented');
   }, []);
 
-  const value = {
-    // Loading state
-    isLoading,
-    setIsLoading,
+  const value = useMemo(
+    () => ({
+      // Loading state
+      isLoading,
+      setIsLoading,
 
-    // Notification state
-    notification,
-    showNotification,
-    dismissNotification,
+      // Notification state
+      notification,
+      showNotification,
+      dismissNotification,
 
-    // Sidebar state
-    sidebarOpen,
-    setSidebarOpen,
-    toggleSidebar,
+      // Sidebar state
+      sidebarOpen,
+      setSidebarOpen,
+      toggleSidebar,
 
-    // Tab state
-    openTabs,
-    openTab,
-    closeTab,
+      // Tab state
+      openTabs,
+      openTab,
+      closeTab,
 
-    // Factories state
-    factories,
-    setFactories,
+      // Factories state
+      factories,
+      setFactories,
 
-    // Roles state
-    roles,
-    setRoles,
+      // Roles state
+      roles,
+      setRoles,
 
-    // Centralized navigation
-    navigateToPath,
-    setNavigateToPath,
-  };
+      // Centralized navigation
+      navigateToPath,
+      setNavigateToPath,
+    }),
+    [
+      closeTab,
+      dismissNotification,
+      factories,
+      isLoading,
+      navigateToPath,
+      notification,
+      openTab,
+      openTabs,
+      roles,
+      setNavigateToPath,
+      showNotification,
+      sidebarOpen,
+      toggleSidebar,
+    ]
+  );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
@@ -151,3 +174,4 @@ export const useApp = () => {
   }
   return context;
 };
+

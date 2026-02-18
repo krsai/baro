@@ -5,7 +5,6 @@ import {
   Button,
   Chip,
   Divider,
-  Grid,
   Paper,
   Stack,
   Table,
@@ -130,6 +129,51 @@ const buildDateKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const toScheduleDate = (baseDate, dayIndex) => {
+  const date = new Date(baseDate);
+  date.setDate(baseDate.getDate() + toNonNegativeInt(dayIndex, 0));
+  return date;
+};
+
+const toMonthStart = (date) => {
+  const target = new Date(date);
+  target.setDate(1);
+  target.setHours(0, 0, 0, 0);
+  return target;
+};
+
+const addMonths = (date, amount) => {
+  const target = new Date(date);
+  target.setMonth(target.getMonth() + amount);
+  return toMonthStart(target);
+};
+
+const isSameMonth = (left, right) =>
+  left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
+
+const formatMonthLabel = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const buildMonthlyCalendarDays = (monthDate) => {
+  const monthStart = toMonthStart(monthDate);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthStart.getMonth() + 1);
+  monthEnd.setDate(0);
+
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+  const gridEnd = new Date(monthEnd);
+  gridEnd.setDate(monthEnd.getDate() + (6 - monthEnd.getDay()));
+
+  const days = [];
+  for (const cursor = new Date(gridStart); cursor <= gridEnd; cursor.setDate(cursor.getDate() + 1)) {
+    days.push(new Date(cursor));
+  }
+  return days;
+};
+
 const isNonWorkingDate = (date, holidaySet) => {
   if (!date) return false;
   if (date.getDay() === 0) return true;
@@ -188,6 +232,8 @@ const ProductionPlanBoard = () => {
     date.setHours(0, 0, 0, 0);
     return date;
   });
+  const [calendarMonth, setCalendarMonth] = useState(() => toMonthStart(new Date()));
+  const todayKey = useMemo(() => buildDateKey(new Date()), []);
 
   const activeOrgId = useMemo(() => {
     if (!devBypass) return null;
@@ -294,15 +340,101 @@ const ProductionPlanBoard = () => {
     [assignmentsForView]
   );
 
+  const actionableAssignments = useMemo(
+    () =>
+      assignmentsForView.filter(
+        (assignment) => normalizeCtStatus(assignment?.status) !== 'AGREED'
+      ),
+    [assignmentsForView]
+  );
+
   const selectedAssignment = useMemo(() => {
-    if (!selectedAssignmentId) return assignmentsForView[0] || null;
-    return assignmentsForView.find((item) => String(item.id) === String(selectedAssignmentId)) || null;
-  }, [assignmentsForView, selectedAssignmentId]);
+    if (actionableAssignments.length === 0) return null;
+    if (!selectedAssignmentId) return actionableAssignments[0] || null;
+    return (
+      actionableAssignments.find(
+        (item) => String(item.id) === String(selectedAssignmentId)
+      ) ||
+      actionableAssignments[0] ||
+      null
+    );
+  }, [actionableAssignments, selectedAssignmentId]);
+  const selectedAssignmentBusy =
+    !!selectedAssignment &&
+    String(savingAssignmentId || '') === String(selectedAssignment.id);
 
   const assignmentViewById = useMemo(
     () => new Map(assignmentsForView.map((item) => [String(item.id), item])),
     [assignmentsForView]
   );
+
+  const actionableByDateKey = useMemo(() => {
+    const map = new Map();
+    actionableAssignments.forEach((assignment) => {
+      const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
+      const endIndex = Math.max(
+        startIndex,
+        toNonNegativeInt(assignment?.endIndex, startIndex)
+      );
+      for (let dayIndex = startIndex; dayIndex <= endIndex; dayIndex += 1) {
+        const key = buildDateKey(toScheduleDate(baseDate, dayIndex));
+        const current = map.get(key);
+        if (current) {
+          current.push(assignment);
+        } else {
+          map.set(key, [assignment]);
+        }
+      }
+    });
+    return map;
+  }, [actionableAssignments, baseDate]);
+
+  const selectedAssignmentDateKeys = useMemo(() => {
+    const keys = new Set();
+    if (!selectedAssignment) return keys;
+    const startIndex = toNonNegativeInt(selectedAssignment?.startIndex, 0);
+    const endIndex = Math.max(
+      startIndex,
+      toNonNegativeInt(selectedAssignment?.endIndex, startIndex)
+    );
+    for (let dayIndex = startIndex; dayIndex <= endIndex; dayIndex += 1) {
+      keys.add(buildDateKey(toScheduleDate(baseDate, dayIndex)));
+    }
+    return keys;
+  }, [
+    selectedAssignment?.id,
+    selectedAssignment?.startIndex,
+    selectedAssignment?.endIndex,
+    baseDate,
+  ]);
+
+  const calendarDays = useMemo(
+    () => buildMonthlyCalendarDays(calendarMonth),
+    [calendarMonth]
+  );
+
+  useEffect(() => {
+    if (actionableAssignments.length === 0) {
+      setSelectedAssignmentId('');
+      return;
+    }
+    setSelectedAssignmentId((prev) => {
+      const exists = actionableAssignments.some(
+        (item) => String(item.id) === String(prev)
+      );
+      return exists ? prev : String(actionableAssignments[0].id);
+    });
+  }, [actionableAssignments]);
+
+  useEffect(() => {
+    if (!selectedAssignment) return;
+    const targetMonth = toMonthStart(
+      toScheduleDate(baseDate, selectedAssignment?.startIndex)
+    );
+    setCalendarMonth((prev) =>
+      isSameMonth(prev, targetMonth) ? prev : targetMonth
+    );
+  }, [selectedAssignment?.id, selectedAssignment?.startIndex, baseDate]);
 
   const selectedDraftByProcess = useMemo(
     () => processProposalDrafts[String(selectedAssignment?.id || '')] || {},
@@ -762,11 +894,35 @@ const ProductionPlanBoard = () => {
         </Box>
       }
     >
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={7}>
-          <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
-            <TableContainer>
-              <Table size="small">
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 2,
+          gridTemplateColumns: {
+            xs: 'minmax(0, 1fr)',
+            md: 'minmax(0, 1.45fr) minmax(0, 1fr)',
+          },
+          alignItems: 'start',
+        }}
+      >
+        <Box sx={{ minWidth: 0 }}>
+          <Stack spacing={1.5}>
+            <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1.25,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'grey.50',
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  동의/조정 필요 계획 목록
+                </Typography>
+              </Box>
+              <TableContainer sx={{ maxHeight: 420 }}>
+                <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
                     <TableCell>상태</TableCell>
@@ -775,19 +931,17 @@ const ProductionPlanBoard = () => {
                     <TableCell align="right">수량</TableCell>
                     <TableCell>예상 일정</TableCell>
                     <TableCell align="right">예상 비용</TableCell>
-                    <TableCell align="right">처리</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
-                    <TableStatusRow colSpan={7} message="불러오는 중..." sx={{ py: 2 }} />
-                  ) : assignmentsForView.length === 0 ? (
-                    <TableStatusRow colSpan={7} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+                  ) : actionableAssignments.length === 0 ? (
+                    <TableStatusRow colSpan={6} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
                   ) : (
-                    assignmentsForView.map((assignment) => {
+                    actionableAssignments.map((assignment) => {
                       const statusMeta = STATUS_META[assignment.status] || STATUS_META.PENDING;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
-                      const rowBusy = String(savingAssignmentId || '') === String(assignment.id);
 
                       return (
                         <TableRow
@@ -832,44 +986,144 @@ const ProductionPlanBoard = () => {
                           <TableCell align="right">
                             {assignment.expectedCost == null ? '-' : formatCurrencyDong(assignment.expectedCost)}
                           </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleAgree(assignment.id);
-                                }}
-                                disabled={rowBusy || assignment.status === 'AGREED'}
-                              >
-                                {assignment.status === 'AGREED' ? '동의됨' : '동의'}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="warning"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleRequestAdjustment(assignment.id);
-                                }}
-                                disabled={rowBusy}
-                              >
-                                조정 요청
-                              </Button>
-                            </Stack>
-                          </TableCell>
                         </TableRow>
                       );
                     })
                   )}
                 </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
+                </Table>
+              </TableContainer>
+            </Paper>
 
-        <Grid item xs={12} md={5}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1,
+                  mb: 1,
+                }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  계획 일정 달력 (월)
+                </Typography>
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}>
+                    이전
+                  </Button>
+                  <Typography
+                    variant="body2"
+                    sx={{ minWidth: 78, textAlign: 'center', fontWeight: 600 }}
+                  >
+                    {formatMonthLabel(calendarMonth)}
+                  </Typography>
+                  <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}>
+                    다음
+                  </Button>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  overflow: 'hidden',
+                }}
+              >
+                {CALENDAR_WEEKDAYS.map((weekday, index) => (
+                  <Box
+                    key={`weekday-${weekday}`}
+                    sx={{
+                      px: 0.75,
+                      py: 0.5,
+                      bgcolor: 'grey.100',
+                      borderBottom: '1px solid',
+                      borderRight: index % 7 === 6 ? 'none' : '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                      {weekday}
+                    </Typography>
+                  </Box>
+                ))}
+
+                {calendarDays.map((date, index) => {
+                  const dateKey = buildDateKey(date);
+                  const dayAssignments = actionableByDateKey.get(dateKey) || [];
+                  const inCurrentMonth = isSameMonth(date, calendarMonth);
+                  const isToday = dateKey === todayKey;
+                  const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
+
+                  return (
+                    <Box
+                      key={dateKey}
+                      sx={{
+                        minHeight: 94,
+                        p: 0.75,
+                        borderRight: index % 7 === 6 ? 'none' : '1px solid',
+                        borderBottom: index >= calendarDays.length - 7 ? 'none' : '1px solid',
+                        borderColor: 'divider',
+                        bgcolor: inSelectedRange
+                          ? 'rgba(25, 118, 210, 0.10)'
+                          : inCurrentMonth
+                            ? 'background.paper'
+                            : 'grey.50',
+                        opacity: inCurrentMonth ? 1 : 0.55,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          mb: 0.5,
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: isToday || inSelectedRange ? 700 : 500 }}>
+                          {date.getDate()}
+                        </Typography>
+                        {dayAssignments.length > 0 ? (
+                          <Chip size="small" label={`${dayAssignments.length}`} sx={{ height: 18 }} />
+                        ) : null}
+                      </Box>
+                      <Stack spacing={0.4}>
+                        {dayAssignments.slice(0, 2).map((assignment) => (
+                          <Box
+                            key={`${dateKey}-${assignment.id}`}
+                            onClick={() => setSelectedAssignmentId(String(assignment.id))}
+                            sx={{
+                              px: 0.5,
+                              py: 0.3,
+                              borderRadius: 0.75,
+                              bgcolor: 'rgba(25, 118, 210, 0.12)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ display: 'block' }} noWrap>
+                              {assignment?.line?.name || `L${assignment?.lineId || '-'}`}
+                            </Typography>
+                          </Box>
+                        ))}
+                        {dayAssignments.length > 2 ? (
+                          <Typography variant="caption" color="text.secondary">
+                            +{dayAssignments.length - 2} more
+                          </Typography>
+                        ) : null}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Paper>
+          </Stack>
+        </Box>
+
+        <Box sx={{ minWidth: 0 }}>
           <Stack spacing={1.5}>
             {selectedAssignment ? (
               <>
@@ -906,6 +1160,26 @@ const ProductionPlanBoard = () => {
                     <Typography variant="body2">
                       <strong>예상 일정:</strong> {formatScheduleRange(baseDate, selectedAssignment)}
                     </Typography>
+                  </Stack>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => handleAgree(selectedAssignment.id)}
+                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED'}
+                    >
+                      {selectedAssignment.status === 'AGREED' ? '동의됨' : '동의'}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => handleRequestAdjustment(selectedAssignment.id)}
+                      disabled={selectedAssignmentBusy}
+                    >
+                      조정 요청
+                    </Button>
                   </Stack>
                 </Paper>
 
@@ -1146,12 +1420,9 @@ const ProductionPlanBoard = () => {
             ) : (
               <Alert severity="info">왼쪽 목록에서 배정 작업을 선택해 주세요.</Alert>
             )}
-            <Alert severity="warning">
-              조정 요청은 운영팀 검토로 접수됩니다. 운영팀이 조정안을 확정하기 전까지 현재 라인 배정은 유지됩니다.
-            </Alert>
           </Stack>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </AppPageContainer>
   );
 };

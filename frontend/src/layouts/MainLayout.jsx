@@ -47,6 +47,9 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
+import { canAccessPath } from '../utils/accessControl';
+import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
+import useNetworkLoading from '../hooks/useNetworkLoading';
 
 const DRAWER_WIDTH = 260;
 
@@ -66,6 +69,7 @@ const MainLayout = () => {
     notification,
     dismissNotification,
   } = useApp();
+  const networkLoading = useNetworkLoading();
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
@@ -75,20 +79,47 @@ const MainLayout = () => {
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const skipAutoOpenPathRef = useRef(null);
+  const pendingNavigationPathRef = useRef(null);
+  const activeOrgId = useMemo(() => {
+    if (!devBypass) return null;
+    const parsed = Number(devProfile?.orgId);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, [devBypass, devProfile?.orgId]);
+  const authState = useMemo(
+    () => ({
+      isAuthenticated: true,
+      devBypass,
+      devProfile,
+    }),
+    [devBypass, devProfile]
+  );
+  const hasPathAccess = React.useCallback(
+    (path) => canAccessPath(path, authState),
+    [authState]
+  );
+  const canViewEmployeeMenu = hasPathAccess('/employee');
 
   const fetchPendingEmployeeCount = React.useCallback(async () => {
+    if (!canViewEmployeeMenu) {
+      setPendingEmployeeCount(0);
+      return;
+    }
     try {
       const data = await requestJSON(
-        `/org-memberships${buildQueryString({ status: 'PENDING' })}`
+        `/org-memberships${buildQueryString({
+          status: 'PENDING',
+          orgId: activeOrgId,
+        })}`,
+        { skipGlobalLoading: true }
       );
       setPendingEmployeeCount(Array.isArray(data) ? data.length : 0);
     } catch (_error) {
       // ignore fetch errors for badge
     }
-  }, []);
+  }, [activeOrgId, canViewEmployeeMenu]);
 
-  const menuItems = useMemo(
-    () => [
+  const menuItems = useMemo(() => {
+    const baseItems = [
       {
         label: '대시보드',
         icon: <HomeIcon />,
@@ -164,27 +195,53 @@ const MainLayout = () => {
         setOpen: setSystemOpen,
         children: [{ label: '멤버십 관리', icon: <TuneIcon />, path: '/system-setting' }],
       },
-    ],
-    [
-      accountingOpen,
-      adminOpen,
-      basicInfoOpen,
-      orderOpen,
-      productionOpen,
-      systemOpen,
-      pendingEmployeeCount,
-    ]
-  );
+    ];
 
+    return baseItems
+      .map((item) => {
+        if (!item.isParent) {
+          return hasPathAccess(item.path) ? item : null;
+        }
+        const visibleChildren = item.children.filter((child) =>
+          hasPathAccess(child.path)
+        );
+        if (visibleChildren.length === 0) return null;
+        return {
+          ...item,
+          children: visibleChildren,
+        };
+      })
+      .filter(Boolean);
+  }, [
+    accountingOpen,
+    adminOpen,
+    basicInfoOpen,
+    hasPathAccess,
+    orderOpen,
+    pendingEmployeeCount,
+    productionOpen,
+    systemOpen,
+  ]);
   useEffect(() => {
+    if (!canViewEmployeeMenu) {
+      setPendingEmployeeCount(0);
+      return () => {};
+    }
     fetchPendingEmployeeCount();
     const intervalId = setInterval(fetchPendingEmployeeCount, 30000);
     return () => clearInterval(intervalId);
-  }, [fetchPendingEmployeeCount]);
+  }, [canViewEmployeeMenu, fetchPendingEmployeeCount]);
 
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
     (path, options) => {
+      if (!hasPathAccess(path)) {
+        if (currentPath !== '/') {
+          navigate('/');
+        }
+        return;
+      }
+
       const openOptions = {};
       const closeTabId =
         typeof options?.closeTabId === 'string' && options.closeTabId.trim()
@@ -227,13 +284,21 @@ const MainLayout = () => {
       openTab({ id: path, label, path }, openOptions);
 
       if (path && currentPath !== path) {
+        pendingNavigationPathRef.current = path;
         navigate(path);
       }
     },
-    [closeTab, currentPath, menuItems, navigate, openTab]
+    [closeTab, currentPath, hasPathAccess, menuItems, navigate, openTab]
   );
 
   useEffect(() => {
+    if (pendingNavigationPathRef.current) {
+      if (pendingNavigationPathRef.current !== currentPath) {
+        return;
+      }
+      pendingNavigationPathRef.current = null;
+    }
+
     if (skipAutoOpenPathRef.current && currentPath !== skipAutoOpenPathRef.current) {
       skipAutoOpenPathRef.current = null;
     }
@@ -253,6 +318,18 @@ const MainLayout = () => {
     const label = matchedMenu?.label || currentPath;
     openTab({ id: currentPath, label, path: currentPath });
   }, [currentPath, menuItems, openTab, openTabs]);
+
+  useEffect(() => {
+    const blockedTabIds = openTabs
+      .filter((tab) => !hasPathAccess(tab?.path || tab?.id))
+      .map((tab) => tab.id);
+    if (blockedTabIds.length === 0) return;
+
+    blockedTabIds.forEach((tabId) => closeTab(tabId));
+    if (blockedTabIds.includes(currentPath)) {
+      navigate('/');
+    }
+  }, [closeTab, currentPath, hasPathAccess, navigate, openTabs]);
 
   // Provide the navigation handler to the rest of the app via context.
   useEffect(() => {
@@ -567,8 +644,23 @@ const MainLayout = () => {
           </Tabs>
         </Box>
 
-        <Box sx={{ flexGrow: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', bgcolor: 'white' }}>
+        <Box
+          sx={{
+            flexGrow: 1,
+            minWidth: 0,
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            bgcolor: 'white',
+            position: 'relative',
+          }}
+        >
           {openTabs.length > 0 ? <Outlet /> : null}
+          <GlobalLoadingOverlay
+            open={networkLoading.isLoading}
+            startedAt={networkLoading.startedAt}
+            activeRequestCount={networkLoading.activeRequestCount}
+          />
         </Box>
       </Box>
     </Box>
@@ -576,4 +668,5 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
+
 

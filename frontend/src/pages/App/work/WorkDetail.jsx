@@ -378,6 +378,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     const loadEmployees = async () => {
       if (!selectedFactory?.id) {
         setEmployees([]);
+        setWorkerLogs([]);
+        setWorkerFocusRequest(null);
         return;
       }
       try {
@@ -609,6 +611,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           quantity: Number(item.quantity) || 0,
         }))
     );
+    const workerIdSet = new Set(
+      records
+        .map((record) => toPositiveIdOrNull(record.workerId))
+        .filter((workerId) => workerId !== null)
+    );
 
     const totalContractedSeconds = records.reduce(
       (sum, row) => sum + row.ctSeconds * row.quantity,
@@ -617,7 +624,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 
     return {
       records,
-      workerCount: workerLogs.length,
+      workerCount: workerIdSet.size,
       itemCount: records.length,
       totalContractedSeconds,
     };

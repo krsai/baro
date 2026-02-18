@@ -108,6 +108,7 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
+const HARD_CODED_SYSTEM_ADMIN_EMAIL = "system-admin@test.local";
 const TRIAL_DAYS = 30;
 const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
   ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;
@@ -398,6 +399,17 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   return prisma.organizationSubscription.update({
     where: { id: current.id },
     data: updateData,
+  });
+};
+
+const ensureHardcodedSystemAdmin = async () => {
+  const email = normalizeEmail(HARD_CODED_SYSTEM_ADMIN_EMAIL);
+  if (!email) return null;
+
+  return prisma.systemUser.upsert({
+    where: { email },
+    update: { systemRole: "SYSTEM_ADMIN" },
+    create: { email, systemRole: "SYSTEM_ADMIN" },
   });
 };
 
@@ -3618,6 +3630,15 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => {
-  console.log(`API running on http://localhost:${port}`);
+
+const startServer = async () => {
+  await ensureHardcodedSystemAdmin();
+  app.listen(port, () => {
+    console.log(`API running on http://localhost:${port}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error("failed to start API server", error);
+  process.exit(1);
 });
