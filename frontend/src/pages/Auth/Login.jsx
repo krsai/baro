@@ -99,6 +99,23 @@ const Login = () => {
             const orgType = normalizeUpper(org?.type);
             const typeLabel = ORG_TYPE_LABEL_BY_KEY[orgType] || orgType || '\uC870\uC9C1';
 
+            let lineManagerEmails = new Set();
+            if (orgType === 'MANUFACTURER') {
+              const [lineWorkers, lines] = await Promise.all([
+                requestJSON(`/line-workers${buildQueryString({ orgId })}`).catch(() => []),
+                requestJSON(`/lines${buildQueryString({ orgId })}`).catch(() => []),
+              ]);
+              const managerEmpIds = new Set(
+                (Array.isArray(lines) ? lines : []).map((l) => l.managerEmployeeId).filter(Boolean)
+              );
+              lineManagerEmails = new Set(
+                (Array.isArray(lineWorkers) ? lineWorkers : [])
+                  .filter((w) => managerEmpIds.has(w.id))
+                  .map((w) => String(w.email || '').trim().toLowerCase())
+                  .filter(Boolean)
+              );
+            }
+
             const profiles = memberships
               .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
               .filter((membership) => isTestAccountEmail(membership?.email))
@@ -107,8 +124,9 @@ const Login = () => {
                 const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole];
                 if (!roleLabel) return null;
                 if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
+                if (orgRole === 'WORKER' && !lineManagerEmails.has(membership?.email?.toLowerCase())) return null;
 
-                const isLineLeader = orgType === 'MANUFACTURER' && orgRole === 'WORKER';
+                const isLineLeader = orgRole === 'WORKER';
                 const roleLabelWithLineLeader = isLineLeader
                   ? `${roleLabel}(\uB77C\uC778\uC7A5)`
                   : roleLabel;

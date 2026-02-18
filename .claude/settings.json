@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(echo:*)",
-      "Bash(node --input-type=commonjs:*)"
+      "Bash(node --input-type=commonjs:*)",
+      "Bash(node:*)"
     ]
   }
 }
