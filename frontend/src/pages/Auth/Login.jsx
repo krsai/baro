@@ -12,80 +12,48 @@ import {
 } from '@mui/material';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
-import { requestJSON } from '../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../utils/apiClient';
 
-const DEV_ORG_SEEDS = [
-  {
-    key: 'BARO',
-    name: 'BARO',
-    aliases: [
-      'BARO',
-      '\uBC14\uB85C',
-      '\uBC14\uB85C\uAC00\uBA3C\uD2B8',
-      '\uBC14\uB85C \uAC00\uBA3C\uD2B8',
-    ],
-    type: 'MANUFACTURER',
-    typeLabel: '\uC218\uC8FC\uC790',
-  },
-  {
-    key: 'DEOSAN',
-    name: '\uB354\uC0B0',
-    aliases: ['DEOSAN', '\uB354\uC0B0'],
-    type: 'BRAND',
-    typeLabel: '\uBC1C\uC8FC\uC790',
-  },
-];
+const TEST_ACCOUNT_EMAIL_SUFFIX = '@test.local';
 
-const DEV_ROLE_PRESETS = [
-  { key: 'ADMIN', label: '\uAD00\uB9AC\uC790' },
-  { key: 'OPERATOR', label: '\uC6B4\uC601\uC790' },
-  { key: 'ACCOUNTANT', label: '\uD68C\uACC4\uC0AC' },
-  { key: 'WORKER', label: '\uC791\uC5C5\uC790' },
-];
+const ORG_TYPE_LABEL_BY_KEY = {
+  MANUFACTURER: '\uC218\uC8FC\uC790',
+  BRAND: '\uBC1C\uC8FC\uC790',
+};
 
-const normalizeNameKey = (value) =>
-  String(value || '')
-    .trim()
-    .replace(/\s+/g, '')
-    .toLowerCase();
+const ORG_ROLE_LABEL_BY_KEY = {
+  ADMIN: '\uAD00\uB9AC\uC790',
+  OPERATOR: '\uC6B4\uC601\uC790',
+  ACCOUNTANT: '\uD68C\uACC4\uC0AC',
+  WORKER: '\uC791\uC5C5\uC790',
+};
 
-const pickOrgBySeed = (organizations, seed) => {
-  const orgs = (Array.isArray(organizations) ? organizations : []).filter(
-    (org) => String(org?.type || '').toUpperCase() === seed.type
-  );
-  if (orgs.length === 0) return null;
+const SYSTEM_ADMIN_PROFILE = {
+  key: 'SYSTEM_ADMIN',
+  label: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
+  entryType: 'SYSTEM',
+  systemRole: 'SYSTEM_ADMIN',
+  orgType: null,
+  orgRole: null,
+  orgId: null,
+  orgName: null,
+  email: 'system-admin@test.local',
+  employeeName: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
+  isLineLeader: false,
+  lineLeaderStartAt: null,
+  lineLeaderEndAt: null,
+};
 
-  const aliasKeys = new Set(
-    [seed.name, ...(Array.isArray(seed.aliases) ? seed.aliases : [])]
-      .map(normalizeNameKey)
-      .filter(Boolean)
-  );
-  const aliasList = Array.from(aliasKeys);
-  const ranked = orgs
-    .map((org) => {
-      const nameKey = normalizeNameKey(org?.name);
-      const codeKey = normalizeNameKey(org?.code);
-      let score = 0;
+const normalizeUpper = (value) =>
+  typeof value === 'string' ? value.trim().toUpperCase() : '';
 
-      if (aliasKeys.has(nameKey)) score += 100;
-      if (aliasKeys.has(codeKey)) score += 60;
-      if (
-        aliasList.some(
-          (alias) => alias && nameKey && (alias.includes(nameKey) || nameKey.includes(alias))
-        )
-      ) {
-        score += 20;
-      }
+const isTestAccountEmail = (value) =>
+  String(value || '').trim().toLowerCase().endsWith(TEST_ACCOUNT_EMAIL_SUFFIX);
 
-      return { org, score };
-    })
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      return Number(a.org?.id || 0) - Number(b.org?.id || 0);
-    });
-
-  if (ranked[0]?.score > 0) return ranked[0].org;
-  return orgs[0];
+const sortRoleOrder = (role) => {
+  const order = ['ADMIN', 'OPERATOR', 'ACCOUNTANT', 'WORKER'];
+  const index = order.indexOf(role);
+  return index === -1 ? 99 : index;
 };
 
 const Login = () => {
@@ -97,103 +65,99 @@ const Login = () => {
     isSupabaseConfigured,
     enableDevBypass,
   } = useAuth();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [organizations, setOrganizations] = useState([]);
-  const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [orgRoleProfiles, setOrgRoleProfiles] = useState([]);
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/');
-    }
+    if (isAuthenticated) navigate('/');
   }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadOrganizations = async () => {
-      setLoadingOrgs(true);
+    const loadDevProfilesFromDb = async () => {
+      setLoadingProfiles(true);
       try {
-        const data = await requestJSON('/organizations').catch(() => []);
-        let nextOrganizations = Array.isArray(data) ? [...data] : [];
+        const organizationRows = await requestJSON('/organizations').catch(() => []);
+        const organizations = Array.isArray(organizationRows) ? organizationRows : [];
 
-        for (const seed of DEV_ORG_SEEDS) {
-          const existing = pickOrgBySeed(nextOrganizations, seed);
-          if (existing) continue;
-
-          try {
-            const created = await requestJSON('/organizations', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: seed.name,
-                type: seed.type,
-              }),
-            });
-            if (created?.id) {
-              nextOrganizations = [...nextOrganizations, created];
+        const grouped = await Promise.all(
+          organizations.map(async (org) => {
+            const orgId = Number(org?.id);
+            if (!Number.isFinite(orgId) || orgId <= 0) {
+              return { org, profiles: [] };
             }
-          } catch (_error) {
-            // ignore organization seed errors in login UI
-          }
-        }
 
-        if (cancelled) return;
-        setOrganizations(nextOrganizations);
+            const membershipRows = await requestJSON(
+              `/org-memberships${buildQueryString({ orgId })}`
+            ).catch(() => []);
+            const memberships = Array.isArray(membershipRows) ? membershipRows : [];
+            const orgType = normalizeUpper(org?.type);
+            const typeLabel = ORG_TYPE_LABEL_BY_KEY[orgType] || orgType || '\uC870\uC9C1';
+
+            const profiles = memberships
+              .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
+              .filter((membership) => isTestAccountEmail(membership?.email))
+              .map((membership) => {
+                const orgRole = normalizeUpper(membership?.role);
+                const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole];
+                if (!roleLabel) return null;
+                if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
+
+                const isLineLeader = orgType === 'MANUFACTURER' && orgRole === 'WORKER';
+                return {
+                  key: `ORG_${orgId}_${membership?.id}`,
+                  roleLabel: isLineLeader ? `${roleLabel}(\uB77C\uC778\uC7A5)` : roleLabel,
+                  entryType: 'ORG',
+                  systemRole: 'USER',
+                  orgType,
+                  orgRole,
+                  orgId,
+                  orgName: org?.name ?? null,
+                  employeeName: `${org?.name || '\uC870\uC9C1'} ${roleLabel} \uD14C\uC2A4\uD2B8`,
+                  email: membership?.email || '',
+                  isLineLeader,
+                  lineLeaderStartAt: isLineLeader ? lineLeaderStartAt : null,
+                  lineLeaderEndAt: null,
+                };
+              })
+              .filter(Boolean)
+              .sort((a, b) => sortRoleOrder(a.orgRole) - sortRoleOrder(b.orgRole));
+
+            return { org, orgType, typeLabel, profiles };
+          })
+        );
+
+        const next = grouped
+          .filter((group) => Array.isArray(group.profiles) && group.profiles.length > 0)
+          .sort((a, b) => {
+            const typeOrder = { MANUFACTURER: 0, BRAND: 1 };
+            const aType = typeOrder[a.orgType] ?? 99;
+            const bType = typeOrder[b.orgType] ?? 99;
+            if (aType !== bType) return aType - bType;
+            return Number(a.org?.id || 0) - Number(b.org?.id || 0);
+          });
+
+        if (!cancelled) setOrgRoleProfiles(next);
       } catch (_error) {
-        if (!cancelled) setOrganizations([]);
+        if (!cancelled) setOrgRoleProfiles([]);
       } finally {
-        if (!cancelled) setLoadingOrgs(false);
+        if (!cancelled) setLoadingProfiles(false);
       }
     };
 
-    loadOrganizations();
+    loadDevProfilesFromDb();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lineLeaderStartAt]);
 
-  const orgBySeedKey = useMemo(
-    () =>
-      DEV_ORG_SEEDS.reduce((acc, seed) => {
-        acc[seed.key] = pickOrgBySeed(organizations, seed);
-        return acc;
-      }, {}),
-    [organizations]
-  );
-
-  const orgRoleProfiles = useMemo(
-    () =>
-      DEV_ORG_SEEDS.map((seed) => {
-        const org = orgBySeedKey[seed.key];
-        const profiles = DEV_ROLE_PRESETS.map((rolePreset) => {
-          const isLineLeader =
-            seed.type === 'MANUFACTURER' && rolePreset.key === 'WORKER';
-          const roleLabel = isLineLeader
-            ? `${rolePreset.label}(\uB77C\uC778\uC7A5)`
-            : rolePreset.label;
-
-          return {
-            key: `${seed.key}_${rolePreset.key}`,
-            label: `${seed.name} ${roleLabel}`,
-            roleLabel,
-            entryType: 'ORG',
-            systemRole: 'USER',
-            orgType: seed.type,
-            orgRole: rolePreset.key,
-            orgId: org?.id ?? null,
-            orgName: org?.name ?? seed.name,
-            employeeName: `${seed.name} ${rolePreset.label} \uD14C\uC2A4\uD2B8`,
-            email: `${seed.key.toLowerCase()}-${rolePreset.key.toLowerCase()}@test.local`,
-            isLineLeader,
-            lineLeaderStartAt: isLineLeader ? lineLeaderStartAt : null,
-            lineLeaderEndAt: null,
-          };
-        });
-
-        return { seed, org, profiles };
-      }),
-    [lineLeaderStartAt, orgBySeedKey]
+  const hasDevOrgProfiles = useMemo(
+    () => orgRoleProfiles.some((group) => Array.isArray(group.profiles) && group.profiles.length > 0),
+    [orgRoleProfiles]
   );
 
   const handleGoogleLogin = async () => {
@@ -208,6 +172,10 @@ const Login = () => {
     navigate('/');
   };
 
+  const handleSystemAdminBypass = () => {
+    handleDevBypass(SYSTEM_ADMIN_PROFILE);
+  };
+
   return (
     <Container component="main" maxWidth="xs">
       <Box
@@ -219,8 +187,9 @@ const Login = () => {
         }}
       >
         <Typography component="h1" variant="h5">
-          \uB85C\uADF8\uC778
+          로그인
         </Typography>
+
         <Box sx={{ mt: 3, width: '100%' }}>
           <Button
             fullWidth
@@ -237,72 +206,68 @@ const Login = () => {
             onClick={handleGoogleLogin}
             disabled={isSubmitting || loading || !isSupabaseConfigured}
           >
-            {isSubmitting || loading
-              ? '\uB85C\uADF8\uC778 \uC911...'
-              : 'Google \uACC4\uC815\uC73C\uB85C \uB85C\uADF8\uC778'}
+            {isSubmitting || loading ? '\uB85C\uADF8\uC778 \uC911...' : 'Google \uACC4\uC815\uC73C\uB85C \uB85C\uADF8\uC778'}
           </Button>
 
           <Stack spacing={1.2} sx={{ mb: 2 }}>
             <Button
               fullWidth
               variant="outlined"
-              onClick={() =>
-                handleDevBypass({
-                  key: 'SYSTEM_ADMIN',
-                  label: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
-                  entryType: 'SYSTEM',
-                  systemRole: 'SYSTEM_ADMIN',
-                  orgType: null,
-                  orgRole: null,
-                  orgId: null,
-                  orgName: null,
-                  email: 'system-admin@test.local',
-                  employeeName: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
-                  isLineLeader: false,
-                })
-              }
+              color="error"
+              onClick={handleSystemAdminBypass}
             >
-              \uAC1C\uBC1C \uC6B0\uD68C: \uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790
+              개발 우회: 시스템 관리자
             </Button>
 
             <Divider />
-            {orgRoleProfiles.map(({ seed, org, profiles }) => (
-              <Stack key={seed.key} spacing={0.8}>
+
+            {orgRoleProfiles.map(({ org, typeLabel, profiles, orgType }) => (
+              <Stack key={org?.id || `${org?.name}-${typeLabel}`} spacing={0.8}>
                 <Typography variant="caption" color="text.secondary">
-                  {`${seed.name} (${seed.typeLabel}) \uD14C\uC2A4\uD2B8 \uACC4\uC815`}
+                  {`${org?.name || '\uC870\uC9C1'} (${typeLabel})`}
                 </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {orgType === 'MANUFACTURER'
+                    ? '\uAD00\uB9AC\uC790/\uC6B4\uC601\uC790/\uD68C\uACC4\uC0AC/\uC791\uC5C5\uC790 \uD14C\uC2A4\uD2B8 \uACC4\uC815'
+                    : '\uAD00\uB9AC\uC790/\uC6B4\uC601\uC790/\uD68C\uACC4\uC0AC \uD14C\uC2A4\uD2B8 \uACC4\uC815 (\uC791\uC5C5\uC790 \uC81C\uC678)'}
+                </Typography>
+
                 {profiles.map((profile) => (
                   <Button
                     key={profile.key}
                     fullWidth
                     variant="outlined"
-                    disabled={loadingOrgs || !org?.id}
+                    disabled={loadingProfiles || !profile?.orgId}
                     onClick={() => handleDevBypass(profile)}
                   >
-                    {`\uAC1C\uBC1C \uC6B0\uD68C: ${profile.roleLabel}${org?.name ? ` (${org.name})` : ''}`}
+                    {`개발 우회: ${profile.roleLabel}`}
                   </Button>
                 ))}
               </Stack>
             ))}
+
             <Typography variant="caption" color="text.secondary">
-              {loadingOrgs
-                ? '\uD14C\uC2A4\uD2B8 \uC5C5\uCCB4 \uD655\uC778 \uC911...'
-                : 'BARO/\uB354\uC0B0 \uAE30\uC900 \uC5ED\uD560\uBCC4 \uD14C\uC2A4\uD2B8 \uACC4\uC815\uC744 \uC81C\uACF5\uD569\uB2C8\uB2E4.'}
+              {loadingProfiles
+                ? 'DB \uD14C\uC2A4\uD2B8 \uACC4\uC815 \uD655\uC778 \uC911...'
+                : hasDevOrgProfiles
+                  ? 'DB\uC5D0 \uB4F1\uB85D\uB41C @test.local \uACC4\uC815\uB9CC \uD45C\uC2DC\uD569\uB2C8\uB2E4.'
+                  : 'DB\uC5D0 \uD65C\uC131 \uD14C\uC2A4\uD2B8 \uACC4\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uD14C\uC2A4\uD2B8 \uC870\uC9C1/\uACC4\uC815\uC744 \uBA3C\uC800 \uC0DD\uC131\uD574 \uC8FC\uC138\uC694.'}
             </Typography>
           </Stack>
 
           {!isSupabaseConfigured && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              Supabase \uC124\uC815\uC774 \uD544\uC694\uD569\uB2C8\uB2E4. `.env`\uC5D0
-              `VITE_SUPABASE_URL`\uACFC `VITE_SUPABASE_ANON_KEY`\uB97C \uB123\uACE0 \uB2E4\uC2DC
-              \uC2E4\uD589\uD574 \uC8FC\uC138\uC694.
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
+              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
             </Typography>
           )}
+
           <Link component={RouterLink} to="/signup" variant="body2">
-            \uACC4\uC815\uC774 \uC5C6\uC73C\uBA74 \uD14C\uC2A4\uD2B8 \uACC4\uC815\uC73C\uB85C \uC2DC\uC791\uD558\uAE30
+            계정이 없으면 테스트 계정으로 시작하기
           </Link>
         </Box>
       </Box>
+
       <Copyright sx={{ mt: 8, mb: 4 }} />
     </Container>
   );

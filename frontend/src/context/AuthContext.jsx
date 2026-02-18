@@ -10,6 +10,13 @@ const DEV_PROFILE_LABEL_BY_KEY = {
   SYSTEM_ADMIN: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
   MANUFACTURER_ADMIN: '\uC81C\uC870\uC0AC Admin',
   BRAND_ADMIN: '\uBE0C\uB79C\uB4DC Admin',
+  TEST_MANUFACTURER_ADMIN: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uAD00\uB9AC\uC790',
+  TEST_MANUFACTURER_OPERATOR: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uC6B4\uC601\uC790',
+  TEST_MANUFACTURER_ACCOUNTANT: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uD68C\uACC4\uC0AC',
+  TEST_MANUFACTURER_WORKER: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uC791\uC5C5\uC790(\uB77C\uC778\uC7A5)',
+  TEST_BRAND_ADMIN: '\uD14C\uC2A4\uD2B8 \uBC1C\uC8FC\uC790 \uAD00\uB9AC\uC790',
+  TEST_BRAND_OPERATOR: '\uD14C\uC2A4\uD2B8 \uBC1C\uC8FC\uC790 \uC6B4\uC601\uC790',
+  TEST_BRAND_ACCOUNTANT: '\uD14C\uC2A4\uD2B8 \uBC1C\uC8FC\uC790 \uD68C\uACC4\uC0AC',
   BARO_ADMIN: 'BARO \uAD00\uB9AC\uC790',
   BARO_OPERATOR: 'BARO \uC6B4\uC601\uC790',
   BARO_ACCOUNTANT: 'BARO \uD68C\uACC4\uC0AC',
@@ -21,16 +28,16 @@ const DEV_PROFILE_LABEL_BY_KEY = {
 };
 
 const DEFAULT_DEV_PROFILE = {
-  key: 'BARO_ADMIN',
-  label: 'BARO \uAD00\uB9AC\uC790',
+  key: 'TEST_MANUFACTURER_ADMIN',
+  label: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uAD00\uB9AC\uC790',
   entryType: 'ORG',
   systemRole: 'USER',
   orgType: 'MANUFACTURER',
   orgRole: 'ADMIN',
   orgId: null,
   orgName: null,
-  employeeName: 'BARO \uAD00\uB9AC\uC790 \uD14C\uC2A4\uD2B8',
-  email: 'baro-admin@test.local',
+  employeeName: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uAD00\uB9AC\uC790 \uD14C\uC2A4\uD2B8',
+  email: 'manufacturer-admin@test.local',
   isLineLeader: false,
   lineLeaderStartAt: null,
   lineLeaderEndAt: null,
@@ -54,13 +61,19 @@ const hasLikelyMojibake = (value) => {
 const isLegacyBaroProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return false;
   if (normalizeUpper(profile.entryType) !== 'ORG') return false;
-  if (normalizeUpper(profile.orgType) !== 'MANUFACTURER') return false;
 
   const profileKey = normalizeUpper(profile.key);
-  if (!profileKey.startsWith('BARO_')) return false;
+  if (
+    profileKey === 'MANUFACTURER_ADMIN' ||
+    profileKey === 'BRAND_ADMIN' ||
+    profileKey.startsWith('BARO_') ||
+    profileKey.startsWith('DEOSAN_')
+  ) {
+    return true;
+  }
 
   const orgNameKey = normalizeCompactLower(profile.orgName);
-  return orgNameKey === '' || orgNameKey === 'baro';
+  return orgNameKey === '' || orgNameKey === 'baro' || orgNameKey === '\uB354\uC0B0';
 };
 
 const normalizeDevProfile = (profile) => {
@@ -89,8 +102,17 @@ const normalizeDevProfile = (profile) => {
 
   // Recover old BARO test profiles that were pinned to duplicate empty org rows.
   if (isLegacyBaroProfile(next)) {
+    next.key = DEFAULT_DEV_PROFILE.key;
+    next.label = DEFAULT_DEV_PROFILE.label;
+    next.orgType = DEFAULT_DEV_PROFILE.orgType;
+    next.orgRole = DEFAULT_DEV_PROFILE.orgRole;
+    next.email = DEFAULT_DEV_PROFILE.email;
+    next.employeeName = DEFAULT_DEV_PROFILE.employeeName;
     next.orgId = null;
     next.orgName = null;
+    next.isLineLeader = false;
+    next.lineLeaderStartAt = null;
+    next.lineLeaderEndAt = null;
   }
 
   return next;

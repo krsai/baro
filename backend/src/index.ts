@@ -92,7 +92,7 @@ const resolveOptionalString = (
   return fallback;
 };
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
-const LINE_ELIGIBLE_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR", "WORKER"];
+const LINE_ELIGIBLE_ROLES: OrgUserRole[] = ["WORKER"];
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
   "ACTIVE",

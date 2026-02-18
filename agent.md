@@ -110,6 +110,7 @@
 - `backend/`: 백엔드 프로젝트 루트입니다.
 - `backend/src/`: Express API 서버 코드를 위치시킵니다.
 - `backend/prisma/schema.prisma`: DB 스키마 기준 파일입니다.
+- `docs/test-initial-state.md`: 테스트 초기화 기준 상태(조직/계정/권한/관계/공장·라인)의 단일 기준 문서입니다.
 
 ## 4. 개발 컨벤션 및 규칙
 
@@ -224,6 +225,7 @@
   - 휴일 관리 (Holiday Management)
 - **시스템 설정 (System Settings)**
   - 멤버쉽 관리 (Membership Management)
+  - 접근 정책: `SYSTEM_ADMIN` 전용 (`SYSTEM` 엔트리). 조직 역할(`ADMIN`/`OPERATOR`/`ACCOUNTANT`/`WORKER`)에서는 메뉴 비노출.
 
 ## 6. 프론트엔드 구조 규칙 (Frontend Architecture Rules)
 
@@ -341,6 +343,7 @@
     - `OrgMembership.role`은 시스템 접근 권한 역할입니다. (`ADMIN`, `OPERATOR`, `ACCOUNTANT`, `WORKER`)
     - **관리자(Admin)**는 업체 기능의 최상위 권한으로, 기본 관리자 계정은 수정/삭제 불가 정책을 적용합니다.
     - 그 외 권한/역할 분리는 조직 관리자(Admin)가 메뉴 단위 권한 정책에 따라 확장합니다.
+    - `시스템 설정 > 멤버쉽 관리`는 조직 권한과 분리된 시스템 권한 영역이며, `SYSTEM_ADMIN`만 접근합니다.
 6.  **업무 역할 (Job Role)**:
     - `AttrRole`은 생산/업무 직무 분류용이며, 권한(Role)과 분리합니다.
     - 조직 관리자(Admin)가 업체 내부 운영 목적에 맞게 역할 종류를 추가/수정할 수 있습니다.

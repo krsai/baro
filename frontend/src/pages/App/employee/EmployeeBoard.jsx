@@ -18,7 +18,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
-import { fetchAttributes } from '../../../utils/attributeApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
 const EMPLOYEE_STATUS_OPTIONS = [
@@ -26,6 +25,18 @@ const EMPLOYEE_STATUS_OPTIONS = [
   { value: 'SUSPENDED', label: '휴직' },
   { value: 'TERMINATED', label: '퇴사' },
 ];
+
+const ORG_ROLE_OPTIONS = [
+  { value: 'ADMIN', label: '관리자' },
+  { value: 'OPERATOR', label: '운영자' },
+  { value: 'ACCOUNTANT', label: '회계사' },
+  { value: 'WORKER', label: '작업자' },
+];
+
+const getRoleOptionsByOrgType = (orgType) =>
+  String(orgType || '').toUpperCase() === 'BRAND'
+    ? ORG_ROLE_OPTIONS.filter((option) => option.value !== 'WORKER')
+    : ORG_ROLE_OPTIONS;
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -37,7 +48,7 @@ const buildEmployeeDraft = (member, employee) => ({
   name: employee?.name || '',
   bankName: employee?.bankName || '',
   bankAccountNumber: employee?.bankAccountNumber || '',
-  roleId: employee?.roleId ? String(employee.roleId) : '',
+  role: String(member?.role || 'WORKER').toUpperCase(),
   factoryId: employee?.factoryId ? String(employee.factoryId) : '',
   status: member.status,
 });
@@ -47,7 +58,7 @@ const EmployeeRow = React.memo(
     member,
     employee,
     factories,
-    attrRoles,
+    roleOptions,
     selectedOrgType,
     isUpdating,
     onSave,
@@ -134,16 +145,13 @@ const EmployeeRow = React.memo(
           <TextField
             select
             size="small"
-            value={draft.roleId}
-            onChange={(e) => handleDraftChange({ roleId: e.target.value })}
-            disabled={isUpdating || attrRoles.length === 0}
+            value={draft.role}
+            onChange={(e) => handleDraftChange({ role: e.target.value })}
+            disabled={isUpdating}
           >
-            <MenuItem value="">
-              {attrRoles.length === 0 ? '역할 없음' : '역할 선택'}
-            </MenuItem>
-            {attrRoles.map((role) => (
-              <MenuItem key={role.id} value={String(role.id)}>
-                {role.name}
+            {roleOptions.map((role) => (
+              <MenuItem key={role.value} value={role.value}>
+                {role.label}
               </MenuItem>
             ))}
           </TextField>
@@ -190,7 +198,6 @@ const EmployeeBoard = () => {
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrgId, setSelectedOrgId] = useState('');
   const [factories, setFactories] = useState([]);
-  const [attrRoles, setAttrRoles] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
   const [activeMembers, setActiveMembers] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -208,6 +215,10 @@ const EmployeeBoard = () => {
   const selectedOrg = useMemo(
     () => organizations.find((org) => String(org.id) === String(selectedOrgId)) || null,
     [organizations, selectedOrgId]
+  );
+  const roleOptions = useMemo(
+    () => getRoleOptionsByOrgType(selectedOrg?.type),
+    [selectedOrg?.type]
   );
 
   const employeeByMembership = useMemo(() => {
@@ -254,16 +265,6 @@ const EmployeeBoard = () => {
     }
   }, []);
 
-  const fetchAttrRoles = async (orgId) => {
-    if (!orgId) return;
-    try {
-      const data = await fetchAttributes({ orgId });
-      setAttrRoles(Array.isArray(data?.roles) ? data.roles : []);
-    } catch (_error) {
-      setStatusMessage({ type: 'error', text: '역할 정보를 불러오지 못했습니다.' });
-    }
-  };
-
   const fetchFactories = async (orgId, orgType) => {
     if (!orgId) return;
     if (orgType === 'BRAND') {
@@ -298,7 +299,6 @@ const EmployeeBoard = () => {
     fetchMemberships(selectedOrgId);
     fetchEmployees(selectedOrgId);
     fetchFactories(selectedOrgId, selectedOrg?.type);
-    fetchAttrRoles(selectedOrgId);
   }, [selectedOrgId, selectedOrg?.type, fetchMemberships, fetchEmployees]);
 
   const handleApprove = async (member) => {
@@ -307,7 +307,9 @@ const EmployeeBoard = () => {
     setStatusMessage(null);
 
     const factoryId = pendingFactoryOverrides[member.id] || '';
-    const roleId = pendingRoleOverrides[member.id] || '';
+    const selectedRole = String(
+      pendingRoleOverrides[member.id] || member.role || ''
+    ).toUpperCase();
 
     if (selectedOrg?.type !== 'BRAND' && !factoryId) {
       setStatusMessage({ type: 'error', text: '승인 전에 공장을 선택해 주세요.' });
@@ -315,7 +317,7 @@ const EmployeeBoard = () => {
       return;
     }
 
-    if (attrRoles.length > 0 && !roleId) {
+    if (!selectedRole) {
       setStatusMessage({ type: 'error', text: '승인 전에 역할을 선택해 주세요.' });
       setApprovingId(null);
       return;
@@ -326,10 +328,9 @@ const EmployeeBoard = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          role: member.role,
+          role: selectedRole,
           approvedBy: myEmail,
           factoryId: factoryId ? Number(factoryId) : null,
-          employeeRoleId: roleId ? Number(roleId) : null,
         }),
       });
 
@@ -380,7 +381,6 @@ const EmployeeBoard = () => {
           bankAccountNumber: draft.bankAccountNumber,
         };
 
-        if (draft.roleId) employeePayload.roleId = Number(draft.roleId);
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
 
         await requestJSON('/employees', {
@@ -389,12 +389,13 @@ const EmployeeBoard = () => {
           body: JSON.stringify(employeePayload),
         });
 
-        if (draft.status !== member.status) {
+        if (draft.status !== member.status || draft.role !== member.role) {
           await requestJSON(`/org-memberships/${member.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               status: draft.status,
+              role: draft.role,
               approvedBy: myEmail,
             }),
           });
@@ -518,27 +519,23 @@ const EmployeeBoard = () => {
                       </TableCell>
 
                       <TableCell>
-                        <TextField
-                          select
-                          size="small"
-                          value={pendingRoleOverrides[member.id] || ''}
-                          onChange={(e) =>
-                            setPendingRoleOverrides((prev) => ({
-                              ...prev,
-                              [member.id]: e.target.value,
-                            }))
-                          }
-                          sx={{ minWidth: 150 }}
-                          disabled={attrRoles.length === 0}
-                        >
-                          <MenuItem value="">
-                            {attrRoles.length === 0 ? '역할 없음' : '역할 선택'}
-                          </MenuItem>
-                          {attrRoles.map((role) => (
-                            <MenuItem key={role.id} value={String(role.id)}>
-                              {role.name}
-                            </MenuItem>
-                          ))}
+                            <TextField
+                              select
+                              size="small"
+                              value={pendingRoleOverrides[member.id] || member.role || ''}
+                              onChange={(e) =>
+                                setPendingRoleOverrides((prev) => ({
+                                  ...prev,
+                                  [member.id]: e.target.value,
+                                }))
+                              }
+                              sx={{ minWidth: 150 }}
+                            >
+                              {roleOptions.map((role) => (
+                                <MenuItem key={role.value} value={role.value}>
+                                  {role.label}
+                                </MenuItem>
+                              ))}
                         </TextField>
                       </TableCell>
 
@@ -610,7 +607,7 @@ const EmployeeBoard = () => {
                         member={member}
                         employee={employee}
                         factories={factories}
-                        attrRoles={attrRoles}
+                        roleOptions={roleOptions}
                         selectedOrgType={selectedOrg?.type}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}

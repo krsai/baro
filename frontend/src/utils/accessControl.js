@@ -139,7 +139,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.PERMISSION:
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);
     case FEATURE_KEYS.SYSTEM_SETTING:
-      return hasOrgRole(context, ORG_ROLES.OPERATOR);
+      return false;
     default:
       return false;
   }
