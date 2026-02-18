@@ -78,28 +78,17 @@
 
 ### 2.4. 멀티 플랫폼(고객사도 사용하는 구조) 설계
 - 목표: 고객사와 봉제공장이 모두 앱을 사용하고, 고객사가 여러 공장에 의뢰할 수 있는 플랫폼 구조를 지원한다.
-- 핵심 전제: "고객사"와 "봉제공장"은 모두 동일한 `Organization`(회사) 엔티티로 관리한다.
-- 조직 구분: `Organization.type`으로 제조사/브랜드를 구분한다. (예: `MANUFACTURER`, `BRAND`)
-- 회사 코드: `Organization.code`는 제조사/브랜드 공통 필드이며, **4자리 영문 대문자 약어**로 관리한다. 전체 조직에서 **유니크**해야 한다. (예: `BRVN`, `TSKR`)
-- 사용자 소속/권한: `OrgMembership`로 사용자의 조직 소속과 역할/상태를 관리한다.
-- 고객 구독 상태: `OrganizationSubscription`으로 조직 단위 구독 상태와 연락 이메일(멤버십/정산)을 관리한다.
-- 공장 소유: `Factory`는 제조사 `Organization`에 소속된다. (`factory.orgId`)
-- 제한: `Organization.type = BRAND`는 공장을 갖지 않는다. 공장 정보는 `MANUFACTURER`에서만 등록/조회한다.
-- 관계/거래: 고객사-제조사 관계는 `OrgRelationship`으로 관리한다. (`Relationship`/`Account` 용어는 사용하지 않는다.)
-- 고객(브랜드)은 `Organization.type = BRAND`를 기준으로 한다.
-- 제조사-브랜드 연결은 `OrgRelationship`(예: `manufacturerOrgId`, `brandOrgId`) 테이블에 저장한다.
-- 고객 관리(제조사 관점): 로그인한 제조사의 `orgId` 기준으로 연결된 브랜드만 조회/표시한다. (멀티테넌트 분리 1차 기준)
-- 고객 관리 화면 표시 정보: 브랜드 기본 정보 + 관계 전용 필드(담당자/연락처/이메일 등).
-- 고객 코드: 고객 관리 화면의 **고객 코드**는 브랜드 `Organization.code`와 동일하며, 제조사도 같은 규칙의 회사 코드를 가진다.
-- 고객 등록: 제조사에서 고객을 등록할 때 `brandOrgId`가 없으면 **브랜드 `Organization`을 자동 생성**하고 `OrgRelationship`으로 연결한다.
-- 주문 구조: 주문은 반드시 `buyerOrgId`(고객사)와 `sellerOrgId`(제조사)를 가진다.
-- 주문 필수값: `orderNumber + buyerOrgId + sellerOrgId`를 필수로 입력한다.
-- 주문 공유 방식: 별도 `공유 버튼` 없이 **저장 시 자동 공유**를 기본으로 한다. (거래관계 유효 시)
-- 주문 충돌 방지: 동일 조합(`buyerOrgId + sellerOrgId + orderNumber`)은 중복 생성하지 않고, 충돌 시 기존 주문을 반환해 동일 원본을 사용한다.
-- 다중 공장 의뢰: 주문을 공장별로 분할하는 방식을 기본으로 한다. (예: 주문을 공장별로 나누어 생성하거나 `OrderSplit` 개념으로 분배)
-- 접근 제어: 모든 조회/저장은 로그인 사용자의 `orgId`가 `buyerOrgId` 또는 `sellerOrgId`에 포함되거나, 관계로 연결된 경우만 허용한다.
-- 용어 통일: `Company`/`Corporation` 용어는 사용하지 않고 `Organization`으로 통일한다.
-- 예시 매핑: "바로"는 `Organization`이며, 역할에 따라 `MANUFACTURER` 또는 `BRAND`로 정의한다. 사용자는 `OrgMembership`로 연결한다.
+- 핵심 전제: "고객사"와 "봉제공장"은 모두 동일한 `Organization` 엔티티로 관리한다.
+- 조직 구분: `Organization.type`으로 제조사/브랜드를 구분한다. (`MANUFACTURER`, `BRAND`)
+- 회사 코드: `Organization.code`는 제조사/브랜드 공통 4자리 영문 대문자 코드이며 전체 조직에서 유니크다. (예: `BRVN`, `TSKR`)
+- 사용자 소속/권한: `OrgMembership`로 소속, 역할, 상태를 관리한다.
+- 구독 상태: `OrganizationSubscription`으로 조직 단위 구독 상태와 멤버십/정산 연락처를 관리한다.
+- 공장 소유: `Factory`는 제조사 조직에만 소속된다. (`BRAND`는 공장 미보유)
+- 고객사-제조사 관계는 `OrgRelationship`으로 관리한다. (`Relationship`/`Account` 용어 비사용)
+- 고객 관리(제조사 관점): 로그인 제조사의 `orgId`에 연결된 브랜드만 조회/표시한다.
+- 주문/스타일 공유 규칙과 충돌 처리의 상세는 `7.2`, `7.10`을 단일 기준으로 따른다.
+- 접근 제어: 거래성 데이터는 로그인 조직이 당사자(`buyerOrgId`/`sellerOrgId`/소유 조직)이거나 관계로 연결된 경우만 허용한다.
+- 용어 통일: `Company`/`Corporation` 대신 `Organization`만 사용한다.
 
 ## 3. 프로젝트 구조
 
@@ -619,15 +608,14 @@
 ### 7.7. 스타일 신규 등록 로직 (New Style Registration Logic)
 
 - **기본 정보 페이지 (Basic Information Page):**
-  - 스타일 등록 시, `고객사` 정보를 필수로 선택해야 합니다.
+  - `BRAND` 사용자는 고객사가 자기 조직으로 자동 고정됩니다.
+  - `MANUFACTURER` 사용자는 거래관계가 있는 브랜드를 고객사로 선택하며, 저장 시 `customerOrgId`로 소유 브랜드를 지정합니다.
   - **제품 카테고리(스타일 카테고리)**는 **`속성 관리`** 메뉴에서 미리 등록된 값을 불러와 선택합니다.
-  - 기타 필요한 기준 정보들을 API를 통해 호출하여 사용합니다. (세부 항목은 추후 정의)
+  - 기타 기준 정보는 API를 통해 조회합니다.
 
 - **공정 정보 페이지 (Process Information Page):**
-  - **권한 원칙:** 공정 정보 화면은 제조사(`MANUFACTURER`) 사용자에게만 제공하고, `BRAND` 사용자에게는 노출하지 않습니다.
-  - **공정 종류 표준화:** 제조사 조직의 `속성 관리` 공정 목록(`GET /attributes`)을 선택 옵션으로 사용합니다.
-  - **PT/AT 관리:** `ptSeconds`(수동 제안)와 `atSeconds`(자동 산출)를 분리 저장하며, 상세 산출 규칙은 `7.3`, `7.3.1`을 단일 기준으로 따릅니다.
-  - **정산 기준 분리:** 스타일 공정의 PT/AT는 제안값이며, 실제 지급 확정은 Assignment 단위 `CT` 스냅샷으로 처리합니다.
+  - 공정 화면/편집은 제조사(`MANUFACTURER`)에게만 제공하고 `BRAND`에는 노출하지 않습니다.
+  - 공정 선택/시간 산출/정산 기준은 `7.2`, `7.3` 규칙을 단일 기준으로 따릅니다.
 
 - **BOM (Bill of Materials) 페이지:**
   - BOM 정보는 추후 개발될 `재고 관리` 기능과 연동될 예정입니다.
