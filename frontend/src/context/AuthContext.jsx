@@ -27,6 +27,13 @@ const DEV_PROFILE_LABEL_BY_KEY = {
   DEOSAN_WORKER: '\uB354\uC0B0 \uC791\uC5C5\uC790',
 };
 
+const ORG_ROLE_LABEL_BY_KEY = {
+  ADMIN: '\uAD00\uB9AC\uC790',
+  OPERATOR: '\uC6B4\uC601\uC790',
+  ACCOUNTANT: '\uD68C\uACC4\uC0AC',
+  WORKER: '\uC791\uC5C5\uC790',
+};
+
 const DEFAULT_DEV_PROFILE = {
   key: 'TEST_MANUFACTURER_ADMIN',
   label: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uAD00\uB9AC\uC790',
@@ -76,19 +83,47 @@ const isLegacyBaroProfile = (profile) => {
   return orgNameKey === '' || orgNameKey === 'baro' || orgNameKey === '\uB354\uC0B0';
 };
 
+const buildDynamicDevProfileLabel = (profile) => {
+  if (!profile || typeof profile !== 'object') return '';
+  if (normalizeUpper(profile.entryType) === 'SYSTEM') {
+    return DEV_PROFILE_LABEL_BY_KEY.SYSTEM_ADMIN || '';
+  }
+
+  const orgName =
+    typeof profile.orgName === 'string' && profile.orgName.trim() ? profile.orgName.trim() : '';
+  const orgRole = normalizeUpper(profile.orgRole);
+  const baseRoleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole] || '';
+  const roleLabel =
+    profile.isLineLeader === true && orgRole === 'WORKER'
+      ? `${baseRoleLabel}(\uB77C\uC778\uC7A5)`
+      : baseRoleLabel;
+
+  if (orgName && roleLabel) return `${orgName} ${roleLabel}`;
+  if (orgName) return orgName;
+  return roleLabel;
+};
+
 const normalizeDevProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return null;
 
   const next = { ...DEFAULT_DEV_PROFILE, ...profile };
+  next.key = normalizeUpper(next.key || DEFAULT_DEV_PROFILE.key);
   next.entryType = normalizeUpper(next.entryType || 'ORG');
   next.systemRole = normalizeUpper(next.systemRole || 'USER');
   next.orgType = normalizeUpper(next.orgType);
   next.orgRole = normalizeUpper(next.orgRole);
 
-  const fallbackLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || DEFAULT_DEV_PROFILE.label;
-  const hasKnownKey = Boolean(DEV_PROFILE_LABEL_BY_KEY[next.key]);
+  const keyLabel = DEV_PROFILE_LABEL_BY_KEY[next.key] || '';
+  const hasKnownKey = Boolean(keyLabel);
+  const derivedLabel = buildDynamicDevProfileLabel(next);
+  const fallbackLabel = keyLabel || derivedLabel || DEFAULT_DEV_PROFILE.label;
   const rawLabel = typeof next.label === 'string' ? next.label.trim() : '';
-  next.label = hasKnownKey || hasLikelyMojibake(rawLabel) ? fallbackLabel : rawLabel;
+  const shouldUseFallbackLabel =
+    hasKnownKey ||
+    hasLikelyMojibake(rawLabel) ||
+    (derivedLabel &&
+      normalizeCompactLower(rawLabel) === normalizeCompactLower(DEFAULT_DEV_PROFILE.label));
+  next.label = shouldUseFallbackLabel ? fallbackLabel : rawLabel;
 
   const parsedOrgId = Number(next.orgId);
   next.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;

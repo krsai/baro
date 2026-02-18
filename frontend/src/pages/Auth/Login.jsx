@@ -108,9 +108,13 @@ const Login = () => {
                 if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
 
                 const isLineLeader = orgType === 'MANUFACTURER' && orgRole === 'WORKER';
+                const roleLabelWithLineLeader = isLineLeader
+                  ? `${roleLabel}(\uB77C\uC778\uC7A5)`
+                  : roleLabel;
                 return {
                   key: `ORG_${orgId}_${membership?.id}`,
-                  roleLabel: isLineLeader ? `${roleLabel}(\uB77C\uC778\uC7A5)` : roleLabel,
+                  roleLabel: roleLabelWithLineLeader,
+                  label: `${org?.name || '\uC870\uC9C1'} ${roleLabelWithLineLeader}`,
                   entryType: 'ORG',
                   systemRole: 'USER',
                   orgType,
