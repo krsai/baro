@@ -167,9 +167,11 @@ const loadDevProfile = () => {
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [devBypass, setDevBypass] = useState(() => localStorage.getItem(DEV_BYPASS_KEY) === '1');
   const [devProfile, setDevProfile] = useState(() => loadDevProfile());
+  const [loading, setLoading] = useState(() =>
+    isSupabaseConfigured && localStorage.getItem(DEV_BYPASS_KEY) !== '1'
+  );
 
   useEffect(() => {
     if (!devBypass) return;
@@ -196,6 +198,12 @@ export const AuthProvider = ({ children }) => {
       return () => {};
     }
 
+    if (devBypass) {
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     let ignore = false;
 
     const loadSession = async () => {
@@ -219,7 +227,7 @@ export const AuthProvider = ({ children }) => {
       ignore = true;
       listener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [devBypass]);
 
   const signInWithGoogle = async () => {
     if (!supabase) {

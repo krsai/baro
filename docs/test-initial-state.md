@@ -4,7 +4,7 @@ This file is the source-of-truth snapshot for the test reset target.
 
 ## Baseline ID
 
-- `test-baseline-v1.1`
+- `test-baseline-v1.3`
 - Captured on: `2026-02-18`
 
 ## Rules
@@ -54,9 +54,25 @@ All four employees are assigned to the same factory below.
 ## Factory and Line
 
 - Factory: `Sample Factory` (org: `TSMF`)
+- Target monthly wage: `8,000,000 VND`
+- Wage per second (derived): `10.68 VND/sec` (26 days/month, 8 hours/day)
 - Line: `Sample Line` (factory: `Sample Factory`)
 - Line manager: `Test Worker`
 - Active line assignment: `Test Worker` -> `Sample Line`
+
+## Attributes (TSMF only)
+
+- Processes are reset to exactly 10 rows below:
+- `P01` -> `테스트 공정 01`
+- `P02` -> `테스트 공정 02`
+- `P03` -> `테스트 공정 03`
+- `P04` -> `테스트 공정 04`
+- `P05` -> `테스트 공정 05`
+- `P06` -> `테스트 공정 06`
+- `P07` -> `테스트 공정 07`
+- `P08` -> `테스트 공정 08`
+- `P09` -> `테스트 공정 09`
+- `P10` -> `테스트 공정 10`
 
 ## Notes
 

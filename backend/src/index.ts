@@ -42,11 +42,16 @@ const DEFAULT_ATTRIBUTES = {
     { code: "WORKER", name: "작업자" },
   ],
   processes: [
-    { code: "P01", name: "주머니 달기" },
-    { code: "P02", name: "소매 달기" },
-    { code: "P03", name: "단추 달기" },
-    { code: "P04", name: "지퍼 달기" },
-    { code: "P05", name: "라벨 부착" },
+    { code: "P01", name: "테스트 공정 01" },
+    { code: "P02", name: "테스트 공정 02" },
+    { code: "P03", name: "테스트 공정 03" },
+    { code: "P04", name: "테스트 공정 04" },
+    { code: "P05", name: "테스트 공정 05" },
+    { code: "P06", name: "테스트 공정 06" },
+    { code: "P07", name: "테스트 공정 07" },
+    { code: "P08", name: "테스트 공정 08" },
+    { code: "P09", name: "테스트 공정 09" },
+    { code: "P10", name: "테스트 공정 10" },
   ],
 };
 
@@ -71,6 +76,30 @@ const toNumberOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const FACTORY_WORK_DAYS_PER_MONTH = 26;
+const FACTORY_WORK_HOURS_PER_DAY = 8;
+const FACTORY_WORK_SECONDS_PER_MONTH =
+  FACTORY_WORK_DAYS_PER_MONTH * FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
+const roundToScale = (value: number, digits = 2): number => {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+};
+const resolveFactoryWageFields = (
+  targetMonthlyWageInput: unknown,
+  wagePerSecondInput: unknown
+): { targetMonthlyWage: number | null; wagePerSecond: number | null } => {
+  const targetMonthlyWage = toNumberOrNull(targetMonthlyWageInput);
+  if (targetMonthlyWage === null) {
+    return {
+      targetMonthlyWage: null,
+      wagePerSecond: toNumberOrNull(wagePerSecondInput),
+    };
+  }
+  return {
+    targetMonthlyWage,
+    wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
+  };
 };
 const toPositiveIntOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
@@ -581,7 +610,11 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
   return { updatedStyles, updatedProcesses };
 };
 
-const normalizeStylePayload = (payload: any, fallbackStyleId: string | null = null) => {
+const normalizeStylePayload = (
+  payload: any,
+  fallbackStyleId: string | null = null,
+  options: { includeProcesses?: boolean } = {}
+) => {
   const rawId = typeof payload?.id === "string" ? payload.id.trim() : "";
   const styleId = rawId || fallbackStyleId || createStyleId();
   const name = typeof payload?.name === "string" ? payload.name.trim() : "";
@@ -589,6 +622,7 @@ const normalizeStylePayload = (payload: any, fallbackStyleId: string | null = nu
     typeof payload?.customer === "string" ? payload.customer.trim() : "";
   const styleCodeInput = resolveOptionalString(payload?.styleCode, null);
   const styleCode = styleCodeInput ?? styleId;
+  const includeProcesses = options.includeProcesses !== false;
 
   return {
     styleId,
@@ -600,7 +634,7 @@ const normalizeStylePayload = (payload: any, fallbackStyleId: string | null = nu
     collection: resolveOptionalString(payload?.collection, null),
     season: resolveOptionalString(payload?.season, null),
     imageUrls: ensureArray(payload?.imageUrls),
-    processes: normalizeStyleProcesses(payload?.processes),
+    processes: includeProcesses ? normalizeStyleProcesses(payload?.processes) : [],
     bom: ensureArray(payload?.bom),
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
   };
@@ -656,7 +690,10 @@ const findStyleConflict = async ({
   return "style already exists for this customer";
 };
 
-const toStyleResponse = (style: any) => ({
+const toStyleResponse = (
+  style: any,
+  options: { includeProcesses?: boolean } = {}
+) => ({
   id: style.styleId,
   styleCode: style.styleCode ?? "",
   name: style.name ?? "",
@@ -666,7 +703,10 @@ const toStyleResponse = (style: any) => ({
   collection: style.collection ?? "",
   season: style.season ?? "",
   imageUrls: ensureArray(style.imageUrls),
-  processes: normalizeStyleProcesses(style.processes),
+  processes:
+    options.includeProcesses === false
+      ? []
+      : normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
   createdAt: style.createdAt,
@@ -1708,6 +1748,7 @@ app.post("/factories", async (req, res) => {
   if (!name || typeof name !== "string") {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
+  const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
 
   const factory = await prisma.factory.create({
     data: {
@@ -1717,8 +1758,8 @@ app.post("/factories", async (req, res) => {
       countryCode: countryCode?.trim?.() ?? countryCode ?? null,
       phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
       manager: manager?.trim?.() ?? manager ?? null,
-      targetMonthlyWage: toNumberOrNull(targetMonthlyWage),
-      wagePerSecond: toNumberOrNull(wagePerSecond),
+      targetMonthlyWage: wageFields.targetMonthlyWage,
+      wagePerSecond: wageFields.wagePerSecond,
     },
   });
 
@@ -1757,6 +1798,7 @@ app.put("/factories/:id", async (req, res) => {
     targetMonthlyWage,
     wagePerSecond,
   } = req.body ?? {};
+  const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
 
   const factory = await prisma.factory.update({
     where: { id },
@@ -1766,8 +1808,8 @@ app.put("/factories/:id", async (req, res) => {
       countryCode: countryCode?.trim?.() ?? countryCode ?? null,
       phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
       manager: manager?.trim?.() ?? manager ?? null,
-      targetMonthlyWage: toNumberOrNull(targetMonthlyWage),
-      wagePerSecond: toNumberOrNull(wagePerSecond),
+      targetMonthlyWage: wageFields.targetMonthlyWage,
+      wagePerSecond: wageFields.wagePerSecond,
     },
   });
 
@@ -2986,6 +3028,7 @@ app.get("/styles", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
   const compact = req.query.compact === "1" || req.query.compact === "true";
 
   const styles = await prisma.style.findMany({
@@ -3012,7 +3055,7 @@ app.get("/styles", async (req, res) => {
       : {}),
   });
 
-  res.json(styles.map(toStyleResponse));
+  res.json(styles.map((style) => toStyleResponse(style, { includeProcesses })));
 });
 
 app.get("/styles/:styleId", async (req, res) => {
@@ -3020,6 +3063,7 @@ app.get("/styles/:styleId", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
 
   const styleId = (req.params.styleId ?? "").trim();
   if (!styleId) {
@@ -3033,7 +3077,7 @@ app.get("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "style not found" });
   }
 
-  res.json(toStyleResponse(style));
+  res.json(toStyleResponse(style, { includeProcesses }));
 });
 
 app.post("/styles", async (req, res) => {
@@ -3041,8 +3085,9 @@ app.post("/styles", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
 
-  const payload = normalizeStylePayload(req.body ?? {});
+  const payload = normalizeStylePayload(req.body ?? {}, null, { includeProcesses });
   if (!payload.name) {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
@@ -3076,7 +3121,7 @@ app.post("/styles", async (req, res) => {
     },
   });
 
-  res.status(201).json(toStyleResponse(created));
+  res.status(201).json(toStyleResponse(created, { includeProcesses }));
 });
 
 app.put("/styles/:styleId", async (req, res) => {
@@ -3084,6 +3129,7 @@ app.put("/styles/:styleId", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
 
   const styleId = (req.params.styleId ?? "").trim();
   if (!styleId) {
@@ -3108,11 +3154,12 @@ app.put("/styles/:styleId", async (req, res) => {
       collection: req.body?.collection ?? existing.collection,
       season: req.body?.season ?? existing.season,
       imageUrls: req.body?.imageUrls ?? existing.imageUrls,
-      processes: req.body?.processes ?? existing.processes,
+      processes: includeProcesses ? req.body?.processes ?? existing.processes : [],
       bom: req.body?.bom ?? existing.bom,
       bomNotes: req.body?.bomNotes ?? existing.bomNotes,
     },
-    existing.styleId
+    existing.styleId,
+    { includeProcesses }
   );
 
   if (!normalized.name) {
@@ -3150,7 +3197,7 @@ app.put("/styles/:styleId", async (req, res) => {
     },
   });
 
-  res.json(toStyleResponse(updated));
+  res.json(toStyleResponse(updated, { includeProcesses }));
 });
 
 app.delete("/styles/:styleId", async (req, res) => {
@@ -3205,6 +3252,7 @@ app.post("/styles/import", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
 
   const rows = Array.isArray(req.body?.styles) ? req.body.styles : [];
   if (rows.length === 0) {
@@ -3212,7 +3260,7 @@ app.post("/styles/import", async (req, res) => {
   }
 
   const normalizedRows = rows
-    .map((item: any) => normalizeStylePayload(item))
+    .map((item: any) => normalizeStylePayload(item, null, { includeProcesses }))
     .filter((item: any) => item.name && item.customer);
 
   if (normalizedRows.length === 0) {
@@ -3302,7 +3350,7 @@ app.post("/styles/import", async (req, res) => {
     orderBy: { uid: "asc" },
   });
 
-  res.status(201).json(imported.map(toStyleResponse));
+  res.status(201).json(imported.map((style) => toStyleResponse(style, { includeProcesses })));
 });
 
 app.get("/attributes", async (req, res) => {
@@ -3310,32 +3358,36 @@ app.get("/attributes", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
   await seedAttributesIfEmpty(organization.id);
 
   const [colors, categories, roles, processes] = await Promise.all([
-      prisma.attrColor.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-      prisma.attrCategory.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-      prisma.attrRole.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-      prisma.attrProcess.findMany({
-        where: { orgId: organization.id },
-        orderBy: { id: "asc" },
-      }),
-    ]);
+    prisma.attrColor.findMany({
+      where: { orgId: organization.id },
+      orderBy: { id: "asc" },
+    }),
+    prisma.attrCategory.findMany({
+      where: { orgId: organization.id },
+      orderBy: { id: "asc" },
+    }),
+    prisma.attrRole.findMany({
+      where: { orgId: organization.id },
+      orderBy: { id: "asc" },
+    }),
+    includeProcesses
+      ? prisma.attrProcess.findMany({
+          where: { orgId: organization.id },
+          orderBy: { id: "asc" },
+        })
+      : Promise.resolve([]),
+  ]);
 
   res.json({
     colors,
     categories,
     roles,
     processes,
+    canManageProcesses: includeProcesses,
   });
 });
 
@@ -3344,6 +3396,7 @@ app.put("/attributes", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeProcesses = isManufacturerOrg(organization);
   const payload = req.body ?? {};
 
   const tasks = [];
@@ -3392,6 +3445,12 @@ app.put("/attributes", async (req, res) => {
     );
   }
   if (payload.processes) {
+    if (!includeProcesses) {
+      return res.status(403).json({
+        ok: false,
+        error: "brand organizations cannot manage processes",
+      });
+    }
     tasks.push(
       syncSection(prisma.attrProcess, organization.id, payload.processes).then(
         (data) => {

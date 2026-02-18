@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import StyleDetail from './StyleDetail';
@@ -39,7 +40,11 @@ const StyleBoard = () => {
     return <StyleDetail />;
   }
 
+  const { devBypass, devProfile } = useAuth();
   const { navigateToPath, showNotification } = useApp();
+  const isBrandOrg =
+    devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
+  const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -113,6 +118,15 @@ const StyleBoard = () => {
   const rows = useMemo(
     () =>
       filteredStyles.map((style) => {
+        if (!canViewProcessSummary) {
+          return {
+            ...style,
+            totalPT: 0,
+            totalAT: 0,
+            hasTotalPT: false,
+            hasTotalAT: false,
+          };
+        }
         const processes = normalizeProcesses(style.processes);
         const totalPT = calculateProcessTotal(processes, 'pt');
         const totalAT = calculateProcessTotal(processes, 'at');
@@ -124,7 +138,7 @@ const StyleBoard = () => {
           hasTotalAT: hasAnyProcessTime(processes, 'at'),
         };
       }),
-    [filteredStyles]
+    [canViewProcessSummary, filteredStyles]
   );
 
   return (
@@ -148,8 +162,8 @@ const StyleBoard = () => {
                 <TableCell>고객사</TableCell>
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일 코드</TableCell>
-                <TableCell>총 PT</TableCell>
-                <TableCell>총 AT</TableCell>
+                {canViewProcessSummary ? <TableCell>총 PT</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>총 AT</TableCell> : null}
                 <TableCell>등록일</TableCell>
                 <TableCell align="center">작업</TableCell>
               </TableRow>
@@ -157,7 +171,10 @@ const StyleBoard = () => {
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                  <TableCell
+                    colSpan={canViewProcessSummary ? 7 : 5}
+                    sx={{ textAlign: 'center', color: 'text.secondary' }}
+                  >
                     {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
                   </TableCell>
                 </TableRow>
@@ -172,8 +189,12 @@ const StyleBoard = () => {
                   <TableCell>{style.customer || '-'}</TableCell>
                   <TableCell>{style.name || '-'}</TableCell>
                   <TableCell>{style.styleCode || style.id || '-'}</TableCell>
-                  <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
-                  <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
+                  {canViewProcessSummary ? (
+                    <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
+                  ) : null}
+                  {canViewProcessSummary ? (
+                    <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
+                  ) : null}
                   <TableCell>{style.registrationDate || '-'}</TableCell>
                   <TableCell align="center">
                     <IconButton

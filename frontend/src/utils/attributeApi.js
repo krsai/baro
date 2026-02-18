@@ -21,6 +21,7 @@ const normalizeAttributes = (data = {}) => ({
   categories: normalizeArray(data?.categories).map(normalizeAttributeItem),
   roles: normalizeArray(data?.roles).map(normalizeAttributeItem),
   processes: normalizeArray(data?.processes).map(normalizeAttributeItem),
+  canManageProcesses: data?.canManageProcesses !== false,
 });
 
 const normalizePartialAttributes = (data = {}) => {
@@ -36,6 +37,9 @@ const normalizePartialAttributes = (data = {}) => {
   }
   if (Array.isArray(data?.processes)) {
     normalized.processes = data.processes.map(normalizeAttributeItem);
+  }
+  if (typeof data?.canManageProcesses === 'boolean') {
+    normalized.canManageProcesses = data.canManageProcesses;
   }
   return normalized;
 };
@@ -78,6 +82,7 @@ export const fetchAttributes = async (options = {}) => {
   const orgId = toPositiveOrgId(options?.orgId);
   const hasOrgFilter = orgId !== null;
   const forceRefresh = Boolean(options?.forceRefresh);
+  const skipGlobalLoading = Boolean(options?.skipGlobalLoading);
   const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
 
   if (!forceRefresh) {
@@ -91,7 +96,8 @@ export const fetchAttributes = async (options = {}) => {
     const data = await requestJSON(
       `/attributes${buildQueryString({
         orgId: hasOrgFilter ? orgId : undefined,
-      })}`
+      })}`,
+      { skipGlobalLoading }
     );
     const normalized = normalizeAttributes(data);
     writeAttributesCache(cacheKey, normalized);

@@ -77,6 +77,14 @@ const normalizeData = (data) => ({
 
 const AttrBoard = () => {
   const { showNotification } = useApp();
+  const [canManageProcesses, setCanManageProcesses] = useState(true);
+  const visibleSectionConfigs = useMemo(
+    () =>
+      canManageProcesses
+        ? sectionConfigs
+        : sectionConfigs.filter((section) => section.key !== 'processes'),
+    [canManageProcesses]
+  );
 
   const [formData, setFormData] = useState(() => cloneDeep(initialData));
   const [originalData, setOriginalData] = useState(() => cloneDeep(initialData));
@@ -96,11 +104,13 @@ const AttrBoard = () => {
         const data = await fetchAttributes();
         if (cancelled) return;
 
+        setCanManageProcesses(data?.canManageProcesses !== false);
         const normalized = normalizeData(data);
         setFormData(normalized);
         setOriginalData(cloneDeep(normalized));
       } catch (_error) {
         if (!cancelled) {
+          setCanManageProcesses(true);
           setFormData(cloneDeep(initialData));
           setOriginalData(cloneDeep(initialData));
         }
@@ -150,7 +160,7 @@ const AttrBoard = () => {
   const detectedChanges = useMemo(() => {
     const results = [];
 
-    sectionConfigs.forEach((section) => {
+    visibleSectionConfigs.forEach((section) => {
       const sectionKey = section.key;
       const beforeRows = originalData[sectionKey] || [];
       const afterRows = formData[sectionKey] || [];
@@ -178,7 +188,7 @@ const AttrBoard = () => {
     });
 
     return results;
-  }, [formData, originalData]);
+  }, [formData, originalData, visibleSectionConfigs]);
 
   const handleSaveClick = () => {
     if (isSaving) return;
@@ -193,7 +203,7 @@ const AttrBoard = () => {
     try {
       const changedPayload = {};
 
-      sectionConfigs.forEach((section) => {
+      visibleSectionConfigs.forEach((section) => {
         const sectionKey = section.key;
         const beforeRows = originalData[sectionKey] || [];
         const afterRows = formData[sectionKey] || [];
@@ -326,7 +336,7 @@ const AttrBoard = () => {
         </Box>
 
         <Grid container spacing={3}>
-          {sectionConfigs.map((config) => (
+          {visibleSectionConfigs.map((config) => (
             <Grid item xs={12} md={6} key={config.key}>
               {renderSection(config)}
             </Grid>

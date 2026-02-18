@@ -18,6 +18,7 @@ import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import {
   createStyle as createStyleOnApi,
   fetchStyleById,
@@ -59,6 +60,10 @@ const buildPayload = (data) => {
 
 const StyleDetail = () => {
   const { styleId: styleIdParam } = useParams();
+  const { devBypass, devProfile } = useAuth();
+  const isBrandOrg =
+    devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
+  const canViewProcessInfo = !isBrandOrg;
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
   const [currentTab, setCurrentTab] = useState('basicInfo');
@@ -131,6 +136,7 @@ const StyleDetail = () => {
   useUnsavedChanges(isDirty);
 
   const handleChange = (_event, newValue) => {
+    if (newValue === 'processInfo' && !canViewProcessInfo) return;
     if (newValue !== null) {
       setCurrentTab(newValue);
       setLoadedTabs((prev) =>
@@ -244,7 +250,7 @@ const StyleDetail = () => {
           aria-label="style management toggle"
         >
           <ToggleButton value="basicInfo">기본 정보</ToggleButton>
-          <ToggleButton value="processInfo">공정 정보</ToggleButton>
+          {canViewProcessInfo ? <ToggleButton value="processInfo">공정 정보</ToggleButton> : null}
           <ToggleButton value="bom">BOM</ToggleButton>
         </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -276,10 +282,11 @@ const StyleDetail = () => {
                 isNew={isNew}
                 formData={styleFormData}
                 handleInputChange={handleStyleInputChange}
+                canViewProcessSummary={canViewProcessInfo}
               />
             </Box>
           )}
-          {loadedTabs.processInfo && (
+          {canViewProcessInfo && loadedTabs.processInfo && (
             <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
               <StyleProcess
                 processes={styleFormData.processes}

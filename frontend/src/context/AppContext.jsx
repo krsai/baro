@@ -54,6 +54,12 @@ export const AppProvider = ({ children }) => {
     });
   }, []);
 
+  const resetWorkspace = useCallback(() => {
+    setOpenTabs([]);
+    setSidebarOpen(false);
+    setNotification(null);
+  }, []);
+
   // Helper to show notifications
   const showNotification = useCallback((message, type = 'info', duration = 3000) => {
     setNotification({ message, type, id: Date.now() });
@@ -81,7 +87,7 @@ export const AppProvider = ({ children }) => {
     let cancelled = false;
     const loadRoles = async () => {
       try {
-        const data = await fetchAttributes();
+        const data = await fetchAttributes({ skipGlobalLoading: true });
         const roleRows = Array.isArray(data?.roles) ? data.roles : [];
         if (cancelled || roleRows.length === 0) return;
         setRoles(
@@ -133,6 +139,7 @@ export const AppProvider = ({ children }) => {
       openTabs,
       openTab,
       closeTab,
+      resetWorkspace,
 
       // Factories state
       factories,
@@ -155,6 +162,7 @@ export const AppProvider = ({ children }) => {
       notification,
       openTab,
       openTabs,
+      resetWorkspace,
       roles,
       setNavigateToPath,
       showNotification,

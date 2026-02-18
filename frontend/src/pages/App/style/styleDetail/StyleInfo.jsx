@@ -55,7 +55,12 @@ const parseCurrencyValue = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
+const StyleInfo = ({
+  formData = {},
+  handleInputChange,
+  isNew,
+  canViewProcessSummary = true,
+}) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [customers, setCustomers] = useState([]);
@@ -197,13 +202,14 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
   const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
   const overhead = subtotal * 0.1;
   const totalCost = subtotal + overhead;
+  const sectionWidth = canViewProcessSummary ? '33.33%' : '50%';
   // --- End of Dummy Data ---
 
   return (
     <Box>
       <Stack direction="row" spacing={3}>
         {/* Section 1: Image Uploader */}
-        <Paper sx={{ p: 2, width: '33.33%' }}>
+        <Paper sx={{ p: 2, width: sectionWidth }}>
           <Typography variant="h6" gutterBottom>스타일 사진</Typography>
           <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
             <Box
@@ -321,7 +327,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
         </Paper>
 
         {/* Section 2: Style Info & Details */}
-        <Paper sx={{ p: 2, width: '33.33%' }}>
+        <Paper sx={{ p: 2, width: sectionWidth }}>
           <Typography variant="h6" gutterBottom>스타일 정보</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -494,6 +500,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
         </Paper>
 
         {/* Section 3: Process Summary & Cost */}
+        {canViewProcessSummary ? (
         <Paper sx={{ p: 2, width: '33.33%' }}>
           <Typography variant="h6" gutterBottom>공정 정보 요약</Typography>
           <Stack spacing={2} sx={{ mt: 2.5, mb: 2 }}>
@@ -571,6 +578,7 @@ const StyleInfo = ({ formData = {}, handleInputChange, isNew }) => {
             </Stack>
           </Paper>
         </Paper>
+        ) : null}
       </Stack>
     </Box>
   );

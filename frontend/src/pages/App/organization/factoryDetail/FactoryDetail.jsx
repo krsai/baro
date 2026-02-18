@@ -105,7 +105,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     <Drawer anchor="right" open={open} onClose={onClose}>
       <Box sx={{ width: 500, p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">{factory ? 'Edit Factory' : 'Add Factory'}</Typography>
+          <Typography variant="h6">{factory ? '공장 수정' : '공장 추가'}</Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -117,7 +117,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="Factory Name"
+              label="공장명"
               name="name"
               value={formData.name}
               onChange={handleInputChange}
@@ -128,7 +128,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="Address"
+              label="주소"
               name="address"
               value={formData.address}
               onChange={handleInputChange}
@@ -138,7 +138,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12}>
             <TextField
               fullWidth
-              label="Manager"
+              label="관리자"
               name="manager"
               value={formData.manager}
               onChange={handleInputChange}
@@ -148,7 +148,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={5}>
             <TextField
               fullWidth
-              label="Country Code"
+              label="국가번호"
               name="countryCode"
               value={formData.countryCode}
               onChange={handleInputChange}
@@ -158,7 +158,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={7}>
             <TextField
               fullWidth
-              label="Phone"
+              label="전화번호"
               name="phoneNumber"
               value={formData.phoneNumber}
               onChange={handleInputChange}
@@ -168,29 +168,30 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="Target Monthly Wage"
+              label="월 목표 급여"
               name="targetMonthlyWage"
               value={formatDigitsWithCommas(formData.targetMonthlyWage)}
               onChange={handleInputChange}
               inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+              helperText="월 26일, 하루 8시간(08:00~17:00, 점심 1시간 제외) 기준"
             />
           </Grid>
 
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="Wage / sec"
+              label="초당 급여"
               name="wagePerSecond"
               value={computedWageDisplay}
               InputProps={{ readOnly: true }}
-              helperText="Auto-calculated from monthly target"
+              helperText="월 목표 급여 기준으로 자동 계산"
             />
           </Grid>
         </Grid>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave}>
-            Save
+            저장
           </Button>
         </Box>
       </Box>

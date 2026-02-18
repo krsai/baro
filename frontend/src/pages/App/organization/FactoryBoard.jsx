@@ -34,7 +34,7 @@ const FactoryList = () => {
       const data = await requestJSON('/factories');
       setFactories(Array.isArray(data) ? data : []);
     } catch (_error) {
-      showNotification('Failed to load factories.', 'error');
+      showNotification('공장 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
     }
@@ -93,9 +93,9 @@ const FactoryList = () => {
       }
 
       handleDetailClose();
-      showNotification('Factory saved.', 'success');
+      showNotification('공장 정보를 저장했습니다.', 'success');
     } catch (_error) {
-      showNotification('Failed to save factory.', 'error');
+      showNotification('공장 정보 저장에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -105,7 +105,7 @@ const FactoryList = () => {
     event?.stopPropagation?.();
     if (!factory?.id || deletingFactoryId) return;
     const confirmed = window.confirm(
-      `'${factory.name || 'Factory'}'를 삭제하시겠습니까?\n관련 라인/직원/라인배정도 함께 삭제됩니다.`
+      `'${factory.name || '공장'}'를 삭제하시겠습니까?\n관련 라인/직원/라인배정도 함께 삭제됩니다.`
     );
     if (!confirmed) return;
 
@@ -121,11 +121,11 @@ const FactoryList = () => {
       const deletedEmployees = Number(result?.deletedEmployees) || 0;
       const deletedLines = Number(result?.deletedLines) || 0;
       showNotification(
-        `Factory deleted. lines: ${deletedLines}, employees: ${deletedEmployees}`,
+        `공장을 삭제했습니다. 라인 ${deletedLines}개, 직원 ${deletedEmployees}명도 함께 삭제되었습니다.`,
         'success'
       );
     } catch (error) {
-      showNotification(error?.message || 'Failed to delete factory.', 'error');
+      showNotification(error?.message || '공장 삭제에 실패했습니다.', 'error');
     } finally {
       setDeletingFactoryId(null);
     }
@@ -135,8 +135,8 @@ const FactoryList = () => {
     <AppPageContainer
       header={
         <PageSectionHeader
-          title="Factories"
-          actionLabel="Add Factory"
+          title="공장 관리"
+          actionLabel="공장 추가"
           actionIcon={<AddIcon />}
           onAction={handleAddClick}
         />
@@ -147,21 +147,21 @@ const FactoryList = () => {
           <Table stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>Factory</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Contact</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Manager</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>Wage / sec</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>공장명</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>관리자</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>초당 급여</TableCell>
                 <TableCell sx={{ fontWeight: 'bold', width: 80, textAlign: 'center' }}>
-                  Actions
+                  관리
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={6} message="Loading..." />
+                <TableStatusRow colSpan={6} message="불러오는 중..." />
               ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={6} message="No factories found." />
+                <TableStatusRow colSpan={6} message="등록된 공장이 없습니다." />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
@@ -185,7 +185,7 @@ const FactoryList = () => {
                       <TableCell>{factory.manager || '-'}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        <Tooltip title="Delete factory">
+                        <Tooltip title="공장 삭제">
                           <span>
                             <IconButton
                               size="small"

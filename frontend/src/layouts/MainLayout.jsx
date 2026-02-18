@@ -65,6 +65,7 @@ const MainLayout = () => {
     openTabs,
     openTab,
     closeTab,
+    resetWorkspace,
     setNavigateToPath,
     notification,
     dismissNotification,
@@ -222,6 +223,7 @@ const MainLayout = () => {
     productionOpen,
     systemOpen,
   ]);
+  const isEmptyWorkspaceAtRoot = openTabs.length === 0 && currentPath === '/';
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);
@@ -337,8 +339,12 @@ const MainLayout = () => {
   }, [handleNavigation, setNavigateToPath]);
 
   const handleLogout = async () => {
-    await signOut();
-    navigate('/login');
+    try {
+      await signOut();
+    } finally {
+      resetWorkspace();
+      navigate('/login');
+    }
   };
 
   const handleMenuItemClick = (path) => {
@@ -383,14 +389,24 @@ const MainLayout = () => {
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <List sx={{ flex: 1, overflowY: 'auto' }}>
-        {menuItems.map((menu) => (
-          <React.Fragment key={menu.label}>
+        {menuItems.map((menu) => {
+          const isRootMenuSelected =
+            !menu.isParent &&
+            menu.path === '/' &&
+            currentPath === '/' &&
+            !isEmptyWorkspaceAtRoot;
+          const isNonRootMenuSelected =
+            !menu.isParent && menu.path !== '/' && currentPath === menu.path;
+          const isMenuSelected = isRootMenuSelected || isNonRootMenuSelected;
+
+          return (
+            <React.Fragment key={menu.label}>
             <ListItem
               button
               onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
-              selected={!menu.isParent && currentPath === menu.path}
+              selected={isMenuSelected}
               sx={
-                !menu.isParent && currentPath === menu.path
+                isMenuSelected
                   ? {
                       backgroundColor: 'rgba(25, 118, 210, 0.08)', // A light blue background
                       color: 'primary.main',
@@ -471,8 +487,9 @@ const MainLayout = () => {
                 </List>
               </Collapse>
             )}
-          </React.Fragment>
-        ))}
+            </React.Fragment>
+          );
+        })}
       </List>
 
       <Divider />
