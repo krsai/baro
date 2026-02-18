@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx vite build)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)"
     ]
   }
 }

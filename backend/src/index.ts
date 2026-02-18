@@ -687,66 +687,224 @@ const normalizeProcessNameKey = (value: any) =>
     .trim()
     .toLowerCase();
 const toStyleProcessMetricKey = (
-  styleId: string,
+  styleKey: string,
   type: "code" | "name",
   value: string
-) => `${styleId}::${type}:${value}`;
+) => `${styleKey}::${type}:${value}`;
+
+const normalizeComparableText = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { id: true, type: true },
+  });
+  if (!org) return [orgId];
+
+  const targetOrgIds = new Set<number>([org.id]);
+
+  if (org.type === "MANUFACTURER") {
+    const relationships = await prisma.orgRelationship.findMany({
+      where: { manufacturerOrgId: org.id },
+      select: { brandOrgId: true },
+    });
+    relationships.forEach((relationship) => {
+      const brandOrgId = Number(relationship?.brandOrgId);
+      if (Number.isSafeInteger(brandOrgId) && brandOrgId > 0) {
+        targetOrgIds.add(brandOrgId);
+      }
+    });
+  } else if (org.type === "BRAND") {
+    const relationships = await prisma.orgRelationship.findMany({
+      where: { brandOrgId: org.id },
+      select: { manufacturerOrgId: true },
+    });
+    relationships.forEach((relationship) => {
+      const manufacturerOrgId = Number(relationship?.manufacturerOrgId);
+      if (Number.isSafeInteger(manufacturerOrgId) && manufacturerOrgId > 0) {
+        targetOrgIds.add(manufacturerOrgId);
+      }
+    });
+  }
+
+  return Array.from(targetOrgIds.values());
+};
 
 const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
-  const records = await prisma.workRecord.findMany({
-    where: {
-      orgId,
-      ctSeconds: { gt: 0 },
-      quantity: { gt: 0 },
-      styleId: { not: null },
-    },
+  const workLogs = await prisma.workLog.findMany({
+    where: { orgId },
     select: {
-      styleId: true,
-      processCode: true,
-      processName: true,
-      ctSeconds: true,
-      quantity: true,
+      workerCount: true,
+      workRecords: {
+        where: {
+          quantity: { gt: 0 },
+          styleId: { not: null },
+        },
+        select: {
+          workerId: true,
+          styleId: true,
+          styleName: true,
+          customerName: true,
+          processCode: true,
+          processName: true,
+          quantity: true,
+        },
+      },
     },
+    orderBy: [{ workDate: "asc" }, { id: "asc" }],
   });
 
-  const weightedByKey = new Map<string, { totalSeconds: number; totalQuantity: number }>();
-  records.forEach((record) => {
+  const styleIds = Array.from(
+    new Set(
+      workLogs
+        .flatMap((workLog) => workLog.workRecords)
+        .map((record) => String(record.styleId || "").trim())
+        .filter((styleId) => styleId !== "")
+    )
+  );
+  if (styleIds.length === 0) {
+    return { updatedStyles: 0, updatedProcesses: 0 };
+  }
+
+  const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
+  const styleCandidates = await prisma.style.findMany({
+    where: {
+      orgId: { in: syncTargetOrgIds },
+      styleId: { in: styleIds },
+    },
+    select: {
+      uid: true,
+      orgId: true,
+      styleId: true,
+      name: true,
+      customer: true,
+      processes: true,
+    },
+  });
+  if (styleCandidates.length === 0) {
+    return { updatedStyles: 0, updatedProcesses: 0 };
+  }
+
+  const stylesByStyleId = new Map<string, any[]>();
+  styleCandidates.forEach((style) => {
+    const key = String(style.styleId || "").trim();
+    if (!key) return;
+    const current = stylesByStyleId.get(key) || [];
+    current.push(style);
+    stylesByStyleId.set(key, current);
+  });
+
+  const resolveCandidateStyle = (record: {
+    styleId: any;
+    styleName: any;
+    customerName: any;
+  }) => {
     const styleId = String(record.styleId || "").trim();
-    if (!styleId) return;
-    const quantity = Number(record.quantity) || 0;
-    const ctSeconds = Number(record.ctSeconds) || 0;
-    if (quantity <= 0 || ctSeconds <= 0) return;
+    if (!styleId) return null;
+    const candidates = stylesByStyleId.get(styleId) || [];
+    if (candidates.length === 0) return null;
 
-    const processCodeKey = normalizeProcessCodeKey(record.processCode);
-    const processNameKey = normalizeProcessNameKey(record.processName);
-    const metricKey = processCodeKey
-      ? toStyleProcessMetricKey(styleId, "code", processCodeKey)
-      : processNameKey
-        ? toStyleProcessMetricKey(styleId, "name", processNameKey)
-        : "";
-    if (!metricKey) return;
+    const recordCustomerKey = normalizeComparableText(record.customerName);
+    const recordStyleNameKey = normalizeComparableText(record.styleName);
+    const sameCustomerCandidates = recordCustomerKey
+      ? candidates.filter(
+          (candidate) =>
+            normalizeComparableText(candidate.customer) === recordCustomerKey
+        )
+      : candidates;
+    const sameNameCandidates = recordStyleNameKey
+      ? sameCustomerCandidates.filter(
+          (candidate) => normalizeComparableText(candidate.name) === recordStyleNameKey
+        )
+      : sameCustomerCandidates;
 
-    const current = weightedByKey.get(metricKey) || {
-      totalSeconds: 0,
-      totalQuantity: 0,
-    };
-    current.totalSeconds += ctSeconds * quantity;
-    current.totalQuantity += quantity;
-    weightedByKey.set(metricKey, current);
+    let resolvedStyle =
+      sameNameCandidates[0] ??
+      sameCustomerCandidates[0] ??
+      candidates.find((candidate) => Number(candidate.orgId) === orgId) ??
+      null;
+    if (!resolvedStyle && candidates.length === 1) {
+      resolvedStyle = candidates[0];
+    }
+    return resolvedStyle;
+  };
+
+  const weightedByKey = new Map<string, { totalSeconds: number; totalQuantity: number }>();
+  const matchedStyleUids = new Set<number>();
+  const workSecondsPerWorkerPerDay = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
+
+  workLogs.forEach((workLog) => {
+    const resolvedRows = workLog.workRecords
+      .map((record) => {
+        const quantity = Number(record.quantity) || 0;
+        if (quantity <= 0) return null;
+        const resolvedStyle = resolveCandidateStyle(record);
+        if (!resolvedStyle) return null;
+        const processCodeKey = normalizeProcessCodeKey(record.processCode);
+        const processNameKey = normalizeProcessNameKey(record.processName);
+        if (!processCodeKey && !processNameKey) return null;
+        return {
+          resolvedStyle,
+          quantity,
+          workerId: toPositiveIntOrNull(record.workerId),
+          processCodeKey,
+          processNameKey,
+        };
+      })
+      .filter(Boolean) as Array<{
+      resolvedStyle: any;
+      quantity: number;
+      workerId: number | null;
+      processCodeKey: string;
+      processNameKey: string;
+    }>;
+
+    if (resolvedRows.length === 0) return;
+
+    // AT 계산: 공정별로 그룹핑하여 공정별 투입 작업자 수 × 근무시간 / 생산수량
+    // (전체 workerCount를 수량 비율로 배분하면 모든 공정 AT가 동일해지는 버그 발생)
+    const perProcessGroups = new Map<
+      string,
+      { resolvedStyle: any; workerIds: Set<number>; totalQuantity: number }
+    >();
+
+    resolvedRows.forEach((row) => {
+      const metricKey = row.processCodeKey
+        ? toStyleProcessMetricKey(String(row.resolvedStyle.uid), "code", row.processCodeKey)
+        : toStyleProcessMetricKey(String(row.resolvedStyle.uid), "name", row.processNameKey);
+
+      const current = perProcessGroups.get(metricKey) || {
+        resolvedStyle: row.resolvedStyle,
+        workerIds: new Set<number>(),
+        totalQuantity: 0,
+      };
+      if (row.workerId !== null) current.workerIds.add(row.workerId);
+      current.totalQuantity += row.quantity;
+      perProcessGroups.set(metricKey, current);
+    });
+
+    perProcessGroups.forEach((group, metricKey) => {
+      if (group.totalQuantity <= 0) return;
+      matchedStyleUids.add(group.resolvedStyle.uid);
+
+      const workerCountForProcess = group.workerIds.size > 0 ? group.workerIds.size : 1;
+      const workerSecondsForProcess = workerCountForProcess * workSecondsPerWorkerPerDay;
+
+      const current = weightedByKey.get(metricKey) || { totalSeconds: 0, totalQuantity: 0 };
+      current.totalSeconds += workerSecondsForProcess;
+      current.totalQuantity += group.totalQuantity;
+      weightedByKey.set(metricKey, current);
+    });
   });
 
   if (weightedByKey.size === 0) {
     return { updatedStyles: 0, updatedProcesses: 0 };
   }
 
-  const styles = await prisma.style.findMany({
-    where: { orgId },
-    select: {
-      uid: true,
-      styleId: true,
-      processes: true,
-    },
-  });
+  const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
 
   let updatedStyles = 0;
   let updatedProcesses = 0;
@@ -763,12 +921,12 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
       const metric =
         (codeKey
           ? weightedByKey.get(
-              toStyleProcessMetricKey(style.styleId, "code", codeKey)
+              toStyleProcessMetricKey(String(style.uid), "code", codeKey)
             )
           : null) ||
         (nameKey
           ? weightedByKey.get(
-              toStyleProcessMetricKey(style.styleId, "name", nameKey)
+              toStyleProcessMetricKey(String(style.uid), "name", nameKey)
             )
           : null);
       if (!metric || metric.totalQuantity <= 0) return process;
