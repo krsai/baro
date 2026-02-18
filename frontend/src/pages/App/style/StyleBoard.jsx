@@ -27,12 +27,18 @@ import {
   fetchStyles as fetchStylesFromApi,
   deleteStyle,
 } from '../../../utils/styleApi';
+import { buildQueryString } from '../../../utils/apiClient';
 import {
   calculateProcessTotal,
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
 } from '../../../utils/processTime';
+
+const toOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
 
 const StyleBoard = () => {
   const { styleId } = useParams();
@@ -42,6 +48,10 @@ const StyleBoard = () => {
 
   const { devBypass, devProfile } = useAuth();
   const { navigateToPath, showNotification } = useApp();
+  const activeOrgId = useMemo(
+    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
+    [devBypass, devProfile?.orgId]
+  );
   const isBrandOrg =
     devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
@@ -54,7 +64,7 @@ const StyleBoard = () => {
   const refreshStyles = async () => {
     setLoading(true);
     try {
-      const items = await fetchStylesFromApi();
+      const items = await fetchStylesFromApi({ orgId: activeOrgId });
       setStyles(items);
     } catch (error) {
       setStyles([]);
@@ -66,10 +76,12 @@ const StyleBoard = () => {
 
   useEffect(() => {
     refreshStyles();
-  }, []);
+  }, [activeOrgId]);
 
   const handleRowDoubleClick = (style) => {
-    navigateToPath(`/style/${style.id}`, { label: `스타일 ${style.name || style.id}` });
+    const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
+    const query = buildQueryString({ ownerOrgId });
+    navigateToPath(`/style/${style.id}${query}`, { label: `스타일 ${style.name || style.id}` });
   };
 
   const handleAddNewClick = () => {
@@ -91,7 +103,10 @@ const StyleBoard = () => {
     if (!styleToDelete) return;
 
     try {
-      await deleteStyle(styleToDelete.id);
+      await deleteStyle(styleToDelete.id, {
+        orgId: activeOrgId,
+        ownerOrgId: toOrgId(styleToDelete?.ownerOrgId ?? styleToDelete?.customerOrgId),
+      });
       setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
       showNotification('스타일이 삭제되었습니다.', 'success');
     } catch (error) {

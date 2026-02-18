@@ -13,9 +13,19 @@ const toPositiveOrgId = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const toStyleCacheKey = (styleId, options = {}) => {
+  const key = String(styleId || '');
+  if (!key) return '';
+  const orgId = toPositiveOrgId(options?.orgId);
+  const ownerOrgId = toPositiveOrgId(options?.ownerOrgId);
+  return `${orgId || 'global'}:${ownerOrgId || 'any'}:${key}`;
+};
 
 const normalizeStyle = (value = {}) => ({
   id: value.id || '',
+  ownerOrgId: toPositiveOrgId(value.ownerOrgId ?? value.customerOrgId),
+  ownerOrgName: value.ownerOrgName || '',
+  customerOrgId: toPositiveOrgId(value.customerOrgId ?? value.ownerOrgId),
   styleCode: value.styleCode || '',
   name: value.name || '',
   customer: value.customer || '',
@@ -31,8 +41,8 @@ const normalizeStyle = (value = {}) => ({
   updatedAt: value.updatedAt || null,
 });
 
-const readFreshStyleFromCache = (styleId) => {
-  const key = String(styleId || '');
+const readFreshStyleFromCache = (styleId, options = {}) => {
+  const key = toStyleCacheKey(styleId, options);
   if (!key) return null;
   const cached = styleByIdCache.get(key);
   if (!cached) return null;
@@ -43,8 +53,11 @@ const readFreshStyleFromCache = (styleId) => {
   return cached.style;
 };
 
-const writeStyleToCache = (style) => {
-  const key = String(style?.id || '');
+const writeStyleToCache = (style, options = {}) => {
+  const key = toStyleCacheKey(style?.id, {
+    orgId: options?.orgId,
+    ownerOrgId: style?.ownerOrgId ?? style?.customerOrgId ?? options?.ownerOrgId,
+  });
   if (!key) return;
   styleByIdCache.set(key, {
     style: normalizeStyle(style),
@@ -52,10 +65,22 @@ const writeStyleToCache = (style) => {
   });
 };
 
-const removeStyleFromCache = (styleId) => {
-  const key = String(styleId || '');
-  if (!key) return;
-  styleByIdCache.delete(key);
+const removeStyleFromCache = (styleId, options = {}) => {
+  const normalizedStyleId = String(styleId || '');
+  if (!normalizedStyleId) return;
+
+  const scopedKey = toStyleCacheKey(normalizedStyleId, options);
+  if (scopedKey) {
+    styleByIdCache.delete(scopedKey);
+  }
+
+  // Also clear any stale entries for the same style id from other scopes.
+  const suffix = `:${normalizedStyleId}`;
+  Array.from(styleByIdCache.keys()).forEach((cacheKey) => {
+    if (cacheKey.endsWith(suffix)) {
+      styleByIdCache.delete(cacheKey);
+    }
+  });
 };
 
 const triggerStyleMigrationInBackground = () => {
@@ -66,6 +91,7 @@ const fetchStylesFromServer = async (options = {}) => {
   const data = await requestJSON(
     `/styles${buildQueryString({
       orgId: options.orgId,
+      ownerOrgId: options.ownerOrgId,
       compact: options.compact ? 1 : undefined,
     })}`
   );
@@ -127,10 +153,14 @@ export const fetchStyles = async (options = {}) => {
   }
   const styles = await fetchStylesFromServer({
     orgId: hasOrgFilter ? orgIdNum : null,
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     compact: Boolean(options?.compact),
   });
   styles.forEach((style) => {
-    writeStyleToCache(style);
+    writeStyleToCache(style, {
+      orgId: hasOrgFilter ? orgIdNum : null,
+      ownerOrgId: style?.ownerOrgId ?? style?.customerOrgId,
+    });
   });
   return styles;
 };
@@ -141,23 +171,31 @@ export const fetchStyleById = async (styleId, options = {}) => {
   }
 
   const key = String(styleId);
+  const cacheKey = toStyleCacheKey(key, options);
   const forceRefresh = Boolean(options?.forceRefresh);
 
   if (!forceRefresh) {
-    const cachedStyle = readFreshStyleFromCache(key);
+    const cachedStyle = readFreshStyleFromCache(key, options);
     if (cachedStyle) {
       return cachedStyle;
     }
-    const existingPromise = styleByIdInFlight.get(key);
+    const existingPromise = styleByIdInFlight.get(cacheKey);
     if (existingPromise) {
       return existingPromise;
     }
   }
 
   const requestFromServer = async () => {
-    const data = await requestJSON(`/styles/${encodeURIComponent(key)}`);
+    const query = buildQueryString({
+      orgId: toPositiveOrgId(options?.orgId),
+      ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+    });
+    const data = await requestJSON(`/styles/${encodeURIComponent(key)}${query}`);
     const normalized = normalizeStyle(data);
-    writeStyleToCache(normalized);
+    writeStyleToCache(normalized, {
+      orgId: toPositiveOrgId(options?.orgId),
+      ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+    });
     return normalized;
   };
 
@@ -183,42 +221,62 @@ export const fetchStyleById = async (styleId, options = {}) => {
     }
   })();
 
-  styleByIdInFlight.set(key, requestPromise);
+  styleByIdInFlight.set(cacheKey, requestPromise);
   try {
     return await requestPromise;
   } finally {
-    styleByIdInFlight.delete(key);
+    styleByIdInFlight.delete(cacheKey);
   }
 };
 
-export const createStyle = async (style) => {
+export const createStyle = async (style, options = {}) => {
   triggerStyleMigrationInBackground();
-  const data = await requestJSON('/styles', {
+  const query = buildQueryString({
+    orgId: toPositiveOrgId(options?.orgId),
+  });
+  const data = await requestJSON(`/styles${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(normalizeStyle(style)),
   });
   const normalized = normalizeStyle(data);
-  writeStyleToCache(normalized);
+  writeStyleToCache(normalized, {
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
+  });
   return normalized;
 };
 
-export const updateStyle = async (styleId, style) => {
+export const updateStyle = async (styleId, style, options = {}) => {
   triggerStyleMigrationInBackground();
-  const data = await requestJSON(`/styles/${encodeURIComponent(styleId)}`, {
+  const query = buildQueryString({
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
+  const data = await requestJSON(`/styles/${encodeURIComponent(styleId)}${query}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(normalizeStyle(style)),
   });
   const normalized = normalizeStyle(data);
-  writeStyleToCache(normalized);
+  writeStyleToCache(normalized, {
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
+  });
   return normalized;
 };
 
-export const deleteStyle = async (styleId) => {
+export const deleteStyle = async (styleId, options = {}) => {
   triggerStyleMigrationInBackground();
-  await requestJSON(`/styles/${encodeURIComponent(styleId)}`, {
+  const query = buildQueryString({
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
+  await requestJSON(`/styles/${encodeURIComponent(styleId)}${query}`, {
     method: 'DELETE',
   });
-  removeStyleFromCache(styleId);
+  removeStyleFromCache(styleId, {
+    orgId: toPositiveOrgId(options?.orgId),
+    ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
 };

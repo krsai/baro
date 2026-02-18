@@ -11,7 +11,7 @@ import {
   DialogContentText,
   DialogTitle,
 } from '@mui/material';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import StyleInfo from './styleDetail/StyleInfo';
 import StyleBom from './styleDetail/StyleBom';
@@ -19,14 +19,22 @@ import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
 
+const toOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 const createEmptyStyle = () => ({
   id: '',
+  ownerOrgId: null,
+  customerOrgId: null,
   styleCode: '',
   name: '',
   customer: '',
@@ -51,6 +59,8 @@ const buildPayload = (data) => {
     ...createEmptyStyle(),
     ...data,
     id: data.id,
+    ownerOrgId: toOrgId(data.ownerOrgId ?? data.customerOrgId),
+    customerOrgId: toOrgId(data.customerOrgId ?? data.ownerOrgId),
     name: trimmedName,
     customer: (data.customer || '').trim(),
     styleCode: trimmedCode || fallbackCode,
@@ -60,9 +70,22 @@ const buildPayload = (data) => {
 
 const StyleDetail = () => {
   const { styleId: styleIdParam } = useParams();
+  const location = useLocation();
   const { devBypass, devProfile } = useAuth();
+  const activeOrgId = useMemo(
+    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
+    [devBypass, devProfile?.orgId]
+  );
+  const ownerOrgIdFromQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return toOrgId(params.get('ownerOrgId'));
+  }, [location.search]);
   const isBrandOrg =
     devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
+  const defaultBrandCustomerName = useMemo(
+    () => (isBrandOrg ? String(devProfile?.orgName || '').trim() : ''),
+    [isBrandOrg, devProfile?.orgName]
+  );
   const canViewProcessInfo = !isBrandOrg;
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
@@ -77,6 +100,27 @@ const StyleDetail = () => {
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
+  const resolvedOwnerOrgId = useMemo(
+    () =>
+      toOrgId(
+        ownerOrgIdFromQuery ??
+          styleFormData.ownerOrgId ??
+          styleFormData.customerOrgId ??
+          originalData.ownerOrgId ??
+          originalData.customerOrgId
+      ),
+    [
+      ownerOrgIdFromQuery,
+      originalData.customerOrgId,
+      originalData.ownerOrgId,
+      styleFormData.customerOrgId,
+      styleFormData.ownerOrgId,
+    ]
+  );
+  const ownerOrgQuery = useMemo(
+    () => buildQueryString({ ownerOrgId: ownerOrgIdFromQuery }),
+    [ownerOrgIdFromQuery]
+  );
 
   useEffect(() => {
     let active = true;
@@ -85,6 +129,11 @@ const StyleDetail = () => {
       if (isNew) {
         if (active) {
           const empty = createEmptyStyle();
+          if (isBrandOrg) {
+            empty.customer = defaultBrandCustomerName;
+            empty.ownerOrgId = activeOrgId;
+            empty.customerOrgId = activeOrgId;
+          }
           setOriginalData(empty);
           setStyleFormData(empty);
           setLoadingStyle(false);
@@ -94,11 +143,16 @@ const StyleDetail = () => {
 
       setLoadingStyle(true);
       try {
-        const style = await fetchStyleById(styleId);
+        const style = await fetchStyleById(styleId, {
+          orgId: activeOrgId,
+          ownerOrgId: ownerOrgIdFromQuery,
+        });
         const normalized = {
           ...createEmptyStyle(),
           ...style,
           id: style.id || styleId,
+          ownerOrgId: toOrgId(style.ownerOrgId ?? style.customerOrgId),
+          customerOrgId: toOrgId(style.customerOrgId ?? style.ownerOrgId),
         };
         if (!active) return;
         setOriginalData(normalized);
@@ -109,6 +163,9 @@ const StyleDetail = () => {
           ...createEmptyStyle(),
           id: styleId,
           styleCode: styleId,
+          ownerOrgId: ownerOrgIdFromQuery,
+          customerOrgId: ownerOrgIdFromQuery,
+          customer: isBrandOrg ? defaultBrandCustomerName : '',
         };
         setOriginalData(fallback);
         setStyleFormData(fallback);
@@ -125,7 +182,15 @@ const StyleDetail = () => {
     return () => {
       active = false;
     };
-  }, [isNew, showNotification, styleId]);
+  }, [
+    activeOrgId,
+    defaultBrandCustomerName,
+    isBrandOrg,
+    isNew,
+    ownerOrgIdFromQuery,
+    showNotification,
+    styleId,
+  ]);
 
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState({});
@@ -152,7 +217,17 @@ const StyleDetail = () => {
 
   const handleStyleInputChange = (e) => {
     const { name, value } = e.target;
-    setStyleFormData((prev) => ({ ...prev, [name]: value }));
+    setStyleFormData((prev) => {
+      if (name !== 'customer') {
+        return { ...prev, [name]: value };
+      }
+      const nextCustomer = String(value || '').trim();
+      return {
+        ...prev,
+        customer: value,
+        customerOrgId: nextCustomer ? prev.customerOrgId : null,
+      };
+    });
   };
 
   const handleProcessesChange = (newProcesses) => {
@@ -175,16 +250,23 @@ const StyleDetail = () => {
       showNotification('스타일명을 입력하세요.', 'error');
       return;
     }
-    if (!styleFormData.customer?.trim()) {
+    if (!isBrandOrg && !styleFormData.customer?.trim()) {
       showNotification('고객사를 선택하세요.', 'error');
       return;
     }
 
     if (isNew) {
       const newId = styleFormData.id || createStyleId();
-      const payload = buildPayload({ ...styleFormData, id: newId });
+      const payload = buildPayload({
+        ...styleFormData,
+        id: newId,
+        customer: isBrandOrg
+          ? styleFormData.customer || defaultBrandCustomerName
+          : styleFormData.customer,
+        customerOrgId: styleFormData.customerOrgId || resolvedOwnerOrgId || null,
+      });
       try {
-        const saved = await createStyleOnApi(payload);
+        const saved = await createStyleOnApi(payload, { orgId: activeOrgId });
         showNotification('신규 스타일이 생성되었습니다.', 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
@@ -219,17 +301,24 @@ const StyleDetail = () => {
     const payload = buildPayload({
       ...styleFormData,
       id: originalData.id || styleId,
+      customer: isBrandOrg
+        ? styleFormData.customer || defaultBrandCustomerName
+        : styleFormData.customer,
+      customerOrgId: styleFormData.customerOrgId || resolvedOwnerOrgId || null,
     });
 
     try {
-      const saved = await updateStyleOnApi(styleId, payload);
+      const saved = await updateStyleOnApi(styleId, payload, {
+        orgId: activeOrgId,
+        ownerOrgId: resolvedOwnerOrgId,
+      });
       showNotification('스타일이 업데이트되었습니다.', 'success');
       setOriginalData(saved);
       setStyleFormData(saved);
       setConfirmOpen(false);
       navigateToPath('/style', {
         label: 'style',
-        closeTabId: `/style/${styleId}`,
+        closeTabId: `/style/${styleId}${ownerOrgQuery}`,
       });
     } catch (error) {
       showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
@@ -283,6 +372,8 @@ const StyleDetail = () => {
                 formData={styleFormData}
                 handleInputChange={handleStyleInputChange}
                 canViewProcessSummary={canViewProcessInfo}
+                isBrandOrg={isBrandOrg}
+                defaultCustomerName={defaultBrandCustomerName}
               />
             </Box>
           )}

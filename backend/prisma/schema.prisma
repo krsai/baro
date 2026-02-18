@@ -327,6 +327,7 @@ model WorkOrder {
 
   @@unique([orgId, orderId])
   @@unique([orgId, customerId, orderNumber])
+  @@unique([buyerOrgId, sellerOrgId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
 }

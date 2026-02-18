@@ -136,13 +136,17 @@ const hasDuplicateOrderNumberByCustomer = ({
   currentOrderId = '',
   orderNumber = '',
   buyerOrgId = null,
+  sellerOrgId = null,
   buyerOrgName = '',
+  sellerOrgName = '',
 }) => {
   const targetOrderNumber = String(orderNumber || '').trim();
   if (!targetOrderNumber) return false;
 
   const targetBuyerId = toOrgId(buyerOrgId);
+  const targetSellerId = toOrgId(sellerOrgId);
   const targetBuyerName = normalizeTextKey(buyerOrgName);
+  const targetSellerName = normalizeTextKey(sellerOrgName);
 
   return (Array.isArray(orders) ? orders : []).some((order) => {
     if (!order) return false;
@@ -150,15 +154,19 @@ const hasDuplicateOrderNumberByCustomer = ({
     if (String(order.orderNumber || '').trim() !== targetOrderNumber) return false;
 
     const orderBuyerId = toOrgId(order.buyerOrgId ?? order.customerId);
-    if (targetBuyerId && orderBuyerId) {
-      return targetBuyerId === orderBuyerId;
+    const orderSellerId = toOrgId(order.sellerOrgId);
+    if (targetBuyerId && targetSellerId && orderBuyerId && orderSellerId) {
+      return targetBuyerId === orderBuyerId && targetSellerId === orderSellerId;
     }
 
     const orderBuyerName = normalizeTextKey(
       order.buyerOrgName || order.customerName || order.customer || ''
     );
-    if (!targetBuyerName || !orderBuyerName) return false;
-    return targetBuyerName === orderBuyerName;
+    const orderSellerName = normalizeTextKey(order.sellerOrgName || '');
+    if (!targetBuyerName || !targetSellerName || !orderBuyerName || !orderSellerName) {
+      return false;
+    }
+    return targetBuyerName === orderBuyerName && targetSellerName === orderSellerName;
   });
 };
 const resolveOrderSaveErrorMessage = (error) => {
@@ -967,6 +975,8 @@ const OrderList = () => {
         orderNumber: formData.orderNumber,
         buyerOrgId: formData.buyerOrgId,
         buyerOrgName: formData.buyerOrgName || formData.customerName,
+        sellerOrgId: resolvedSellerOrgId,
+        sellerOrgName: resolvedSellerOrgName,
       })
     ) {
       return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';

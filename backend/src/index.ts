@@ -1,7 +1,7 @@
 ﻿import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { PrismaClient, type OrgUserRole, type Prisma } from "@prisma/client";
+import { PrismaClient, Prisma, type OrgUserRole } from "@prisma/client";
 
 dotenv.config();
 
@@ -655,6 +655,150 @@ const toUniqueOrganizationOptions = (organizations: any[] = []) => {
   return Array.from(byId.values());
 };
 
+const parseStyleOwnerOrgIdQuery = (rawValue: unknown): number | null => {
+  if (rawValue === undefined || rawValue === null || rawValue === "") return null;
+  const text = String(rawValue).trim();
+  if (!/^\d+$/.test(text)) {
+    throw createHttpError(400, "invalid ownerOrgId");
+  }
+  const parsed = Number(text);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw createHttpError(400, "invalid ownerOrgId");
+  }
+  return parsed;
+};
+
+const getAccessibleStyleOwnerOrgIds = async (organization: any) => {
+  if (isBrandOrg(organization)) {
+    return [organization.id];
+  }
+  if (!isManufacturerOrg(organization)) {
+    throw createHttpError(400, "invalid organization type");
+  }
+
+  const relationships = await prisma.orgRelationship.findMany({
+    where: { manufacturerOrgId: organization.id },
+    select: { brandOrgId: true },
+  });
+
+  const ownerIds = new Set<number>([organization.id]);
+  relationships.forEach((relationship) => {
+    const brandOrgId = Number(relationship?.brandOrgId);
+    if (Number.isSafeInteger(brandOrgId) && brandOrgId > 0) {
+      ownerIds.add(brandOrgId);
+    }
+  });
+
+  return Array.from(ownerIds.values());
+};
+
+const resolveStyleOwnerForCreateOrThrow = async ({
+  organization,
+  payload,
+}: {
+  organization: any;
+  payload: any;
+}) => {
+  if (isBrandOrg(organization)) {
+    return {
+      ownerOrgId: organization.id,
+      ownerOrgName: String(organization?.name || "").trim(),
+    };
+  }
+  if (!isManufacturerOrg(organization)) {
+    throw createHttpError(400, "invalid organization type");
+  }
+
+  const customerOrgId = toPositiveIntOrNull(
+    payload?.customerOrgId ?? payload?.buyerOrgId ?? payload?.customerId
+  );
+  const customerName =
+    typeof payload?.customer === "string" ? payload.customer.trim() : "";
+
+  if (customerOrgId) {
+    const relationship = await prisma.orgRelationship.findFirst({
+      where: {
+        manufacturerOrgId: organization.id,
+        brandOrgId: customerOrgId,
+      },
+      include: { brand: true },
+    });
+    if (!relationship?.brand) {
+      throw createHttpError(400, "customer relationship not found");
+    }
+    return {
+      ownerOrgId: relationship.brand.id,
+      ownerOrgName: String(relationship.brand.name || "").trim(),
+    };
+  }
+
+  if (!customerName) {
+    throw createHttpError(400, "customer is required");
+  }
+
+  const relationships = await prisma.orgRelationship.findMany({
+    where: { manufacturerOrgId: organization.id },
+    include: { brand: true },
+    orderBy: { id: "asc" },
+  });
+  const normalizedCustomerName = customerName.toLowerCase();
+  const matched = relationships.filter((relationship) => {
+    const brandName =
+      typeof relationship?.brand?.name === "string"
+        ? relationship.brand.name.trim().toLowerCase()
+        : "";
+    return brandName !== "" && brandName === normalizedCustomerName;
+  });
+
+  if (matched.length === 0 || !matched[0]?.brand) {
+    throw createHttpError(400, "customer relationship not found");
+  }
+  if (matched.length > 1) {
+    throw createHttpError(409, "multiple customers matched; provide customerOrgId");
+  }
+
+  return {
+    ownerOrgId: matched[0].brand.id,
+    ownerOrgName: String(matched[0].brand.name || "").trim(),
+  };
+};
+
+const resolveStyleByIdForAccess = async ({
+  organization,
+  styleId,
+  ownerOrgId,
+}: {
+  organization: any;
+  styleId: string;
+  ownerOrgId: number | null;
+}) => {
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  let ownerScope = accessibleOwnerOrgIds;
+
+  if (ownerOrgId !== null) {
+    if (!accessibleOwnerOrgIds.includes(ownerOrgId)) {
+      throw createHttpError(403, "style access denied");
+    }
+    ownerScope = [ownerOrgId];
+  }
+
+  const styles = await prisma.style.findMany({
+    where: {
+      styleId,
+      orgId: { in: ownerScope },
+    },
+    orderBy: { uid: "asc" },
+    take: ownerOrgId === null ? 2 : 1,
+  });
+
+  if (styles.length === 0) return null;
+  if (ownerOrgId === null && styles.length > 1) {
+    throw createHttpError(409, "multiple styles matched; specify ownerOrgId");
+  }
+
+  return styles[0];
+};
+
 const findStyleConflict = async ({
   orgId,
   customer,
@@ -695,6 +839,9 @@ const toStyleResponse = (
   options: { includeProcesses?: boolean } = {}
 ) => ({
   id: style.styleId,
+  ownerOrgId: style.orgId ?? null,
+  customerOrgId: style.orgId ?? null,
+  ownerOrgName: style.customer ?? "",
   styleCode: style.styleCode ?? "",
   name: style.name ?? "",
   customer: style.customer ?? "",
@@ -742,6 +889,7 @@ const normalizeOrderItems = (value: any) =>
 
 const buildOrderId = () =>
   `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const ORDER_CREATE_SERIALIZABLE_RETRIES = 2;
 
 const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   const fallbackOrderId =
@@ -814,60 +962,154 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   };
 };
 
-const resolveOrderCustomerIdentity = (order: any = {}) => {
-  const customerId = toPositiveIntOrNull(
-    order?.customerId !== undefined ? order.customerId : order?.buyerOrgId
-  );
-  const customerName = resolveOptionalString(
-    order?.customerName !== undefined ? order.customerName : order?.buyerOrgName,
-    null
-  );
-  return { customerId, customerName };
+const getOrderAccessWhere = (orgId: number) => [
+  { orgId },
+  { buyerOrgId: orgId },
+  { sellerOrgId: orgId },
+];
+
+const resolveOrderPartiesOrThrow = async ({
+  buyerOrgId,
+  sellerOrgId,
+  requesterOrgId,
+}: {
+  buyerOrgId: number | null;
+  sellerOrgId: number | null;
+  requesterOrgId: number;
+}) => {
+  if (!buyerOrgId) {
+    throw createHttpError(400, "buyerOrgId is required");
+  }
+  if (!sellerOrgId) {
+    throw createHttpError(400, "sellerOrgId is required");
+  }
+  if (buyerOrgId === sellerOrgId) {
+    throw createHttpError(400, "buyer and seller must be different organizations");
+  }
+  if (requesterOrgId !== buyerOrgId && requesterOrgId !== sellerOrgId) {
+    throw createHttpError(403, "request organization must be buyer or seller");
+  }
+
+  const organizations = await prisma.organization.findMany({
+    where: { id: { in: [buyerOrgId, sellerOrgId] } },
+    select: { id: true, name: true, type: true },
+  });
+
+  const buyer = organizations.find((item) => item.id === buyerOrgId) ?? null;
+  const seller = organizations.find((item) => item.id === sellerOrgId) ?? null;
+  if (!buyer || !seller) {
+    throw createHttpError(400, "buyer or seller organization not found");
+  }
+  if (!isBrandOrg(buyer)) {
+    throw createHttpError(400, "buyer organization must be BRAND");
+  }
+  if (!isManufacturerOrg(seller)) {
+    throw createHttpError(400, "seller organization must be MANUFACTURER");
+  }
+
+  const relationship = await prisma.orgRelationship.findFirst({
+    where: {
+      brandOrgId: buyerOrgId,
+      manufacturerOrgId: sellerOrgId,
+    },
+    select: { id: true },
+  });
+  if (!relationship) {
+    throw createHttpError(400, "buyer and seller must have an active relationship");
+  }
+
+  return { buyer, seller };
 };
 
-const findOrderNumberConflict = async ({
-  orgId,
+const findSharedOrderConflict = async ({
+  buyerOrgId,
+  sellerOrgId,
   orderNumber,
-  customerId,
-  customerName,
-  excludeOrderId = null,
+  excludeOrderRecordId = null,
 }: {
-  orgId: number;
+  buyerOrgId: number;
+  sellerOrgId: number;
   orderNumber: string;
-  customerId?: number | null;
-  customerName?: string | null;
-  excludeOrderId?: string | null;
+  excludeOrderRecordId?: number | null;
 }) => {
   const normalizedOrderNumber = String(orderNumber || "").trim();
   if (!normalizedOrderNumber) return null;
 
-  const where: any = {
-    orgId,
-    orderNumber: normalizedOrderNumber,
-  };
-  const resolvedCustomerId = toPositiveIntOrNull(customerId);
-  if (resolvedCustomerId) {
-    where.OR = [{ customerId: resolvedCustomerId }, { buyerOrgId: resolvedCustomerId }];
-  } else if (customerName) {
-    where.OR = [
-      { customerName: { equals: customerName, mode: "insensitive" } },
-      { buyerOrgName: { equals: customerName, mode: "insensitive" } },
-    ];
-  }
-  if (excludeOrderId) {
-    where.NOT = { orderId: excludeOrderId };
+  return prisma.workOrder.findFirst({
+    where: {
+      buyerOrgId,
+      sellerOrgId,
+      orderNumber: normalizedOrderNumber,
+      ...(excludeOrderRecordId ? { NOT: { id: excludeOrderRecordId } } : {}),
+    },
+    select: { id: true, orderId: true },
+    orderBy: { id: "asc" },
+  });
+};
+
+const createOrReuseSharedOrder = async ({
+  ownerOrgId,
+  normalized,
+}: {
+  ownerOrgId: number;
+  normalized: any;
+}) => {
+  for (let attempt = 0; attempt <= ORDER_CREATE_SERIALIZABLE_RETRIES; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const existing = await tx.workOrder.findFirst({
+            where: {
+              buyerOrgId: normalized.buyerOrgId,
+              sellerOrgId: normalized.sellerOrgId,
+              orderNumber: normalized.orderNumber,
+            },
+            orderBy: { id: "asc" },
+          });
+          if (existing) {
+            return { order: existing, created: false };
+          }
+
+          const created = await tx.workOrder.create({
+            data: {
+              orgId: ownerOrgId,
+              ...normalized,
+            },
+          });
+          return { order: created, created: true };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (error) {
+      const code = String((error as any)?.code || "");
+      if (code === "P2034" && attempt < ORDER_CREATE_SERIALIZABLE_RETRIES) {
+        continue;
+      }
+      if (code === "P2002") {
+        const existing = await prisma.workOrder.findFirst({
+          where: {
+            buyerOrgId: normalized.buyerOrgId,
+            sellerOrgId: normalized.sellerOrgId,
+            orderNumber: normalized.orderNumber,
+          },
+          orderBy: { id: "asc" },
+        });
+        if (existing) {
+          return { order: existing, created: false };
+        }
+      }
+      throw error;
+    }
   }
 
-  return prisma.workOrder.findFirst({
-    where,
-    select: { id: true, orderId: true },
-  });
+  throw createHttpError(409, "failed to create order due to concurrent updates");
 };
 
 const toOrderResponse = (order: any) => {
   const items = normalizeOrderItems(order?.items);
   return {
     id: order.orderId,
+    ownerOrgId: order.orgId ?? null,
     orderNumber: order.orderNumber ?? "",
     buyerOrgId: order.buyerOrgId ?? null,
     buyerOrgName: order.buyerOrgName ?? "",
@@ -2659,8 +2901,8 @@ app.get("/orders", async (req, res) => {
   }
 
   const orders = await prisma.workOrder.findMany({
-    where: { orgId: organization.id },
-    orderBy: { createdAt: "desc" },
+    where: { OR: getOrderAccessWhere(organization.id) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
   });
   res.json(orders.map(toOrderResponse));
 });
@@ -2675,39 +2917,25 @@ app.post("/orders", async (req, res) => {
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
   }
-  if (!normalized.customerId) {
-    return res.status(400).json({ ok: false, error: "customerId is required" });
-  }
-  const customerIdentity = resolveOrderCustomerIdentity(normalized);
-  const orderNumberConflict = await findOrderNumberConflict({
-    orgId: organization.id,
-    orderNumber: normalized.orderNumber,
-    customerId: customerIdentity.customerId,
-    customerName: customerIdentity.customerName,
+  const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
+  const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);
+  const { buyer, seller } = await resolveOrderPartiesOrThrow({
+    buyerOrgId,
+    sellerOrgId,
+    requesterOrgId: organization.id,
   });
-  if (orderNumberConflict) {
-    return res.status(409).json({
-      ok: false,
-      error: "order number already exists for this customer",
-    });
-  }
+  normalized.buyerOrgId = buyer.id;
+  normalized.buyerOrgName = buyer.name ?? "";
+  normalized.customerId = buyer.id;
+  normalized.customerName = buyer.name ?? "";
+  normalized.sellerOrgId = seller.id;
+  normalized.sellerOrgName = seller.name ?? "";
 
-  const existing = await prisma.workOrder.findFirst({
-    where: { orgId: organization.id, orderId: normalized.orderId },
-    select: { id: true },
+  const { order, created } = await createOrReuseSharedOrder({
+    ownerOrgId: organization.id,
+    normalized,
   });
-  if (existing) {
-    return res.status(409).json({ ok: false, error: "order already exists" });
-  }
-
-  const created = await prisma.workOrder.create({
-    data: {
-      orgId: organization.id,
-      ...normalized,
-    },
-  });
-
-  res.status(201).json(toOrderResponse(created));
+  res.status(created ? 201 : 200).json(toOrderResponse(order));
 });
 
 app.put("/orders/:orderId", async (req, res) => {
@@ -2722,7 +2950,10 @@ app.put("/orders/:orderId", async (req, res) => {
   }
 
   const existing = await prisma.workOrder.findFirst({
-    where: { orgId: organization.id, orderId },
+    where: {
+      orderId,
+      OR: getOrderAccessWhere(organization.id),
+    },
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
@@ -2732,21 +2963,30 @@ app.put("/orders/:orderId", async (req, res) => {
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
   }
-  if (!normalized.customerId) {
-    return res.status(400).json({ ok: false, error: "customerId is required" });
-  }
-  const customerIdentity = resolveOrderCustomerIdentity(normalized);
-  const orderNumberConflict = await findOrderNumberConflict({
-    orgId: organization.id,
+  const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
+  const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);
+  const { buyer, seller } = await resolveOrderPartiesOrThrow({
+    buyerOrgId,
+    sellerOrgId,
+    requesterOrgId: organization.id,
+  });
+  normalized.buyerOrgId = buyer.id;
+  normalized.buyerOrgName = buyer.name ?? "";
+  normalized.customerId = buyer.id;
+  normalized.customerName = buyer.name ?? "";
+  normalized.sellerOrgId = seller.id;
+  normalized.sellerOrgName = seller.name ?? "";
+
+  const orderNumberConflict = await findSharedOrderConflict({
+    buyerOrgId: buyer.id,
+    sellerOrgId: seller.id,
     orderNumber: normalized.orderNumber,
-    customerId: customerIdentity.customerId,
-    customerName: customerIdentity.customerName,
-    excludeOrderId: existing.orderId,
+    excludeOrderRecordId: existing.id,
   });
   if (orderNumberConflict) {
     return res.status(409).json({
       ok: false,
-      error: "order number already exists for this customer",
+      error: "order already exists for this buyer/seller pair",
     });
   }
   // Route param is source of truth.
@@ -2772,10 +3012,19 @@ app.delete("/orders/:orderId", async (req, res) => {
   }
 
   const existing = await prisma.workOrder.findFirst({
-    where: { orgId: organization.id, orderId },
+    where: {
+      orderId,
+      OR: getOrderAccessWhere(organization.id),
+    },
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
+  }
+  if (existing.orgId !== organization.id) {
+    return res.status(403).json({
+      ok: false,
+      error: "only order owner can delete",
+    });
   }
   if ((existing.status || "").replace(/\s+/g, "").trim() !== "주문접수") {
     return res.status(409).json({
@@ -3030,14 +3279,26 @@ app.get("/styles", async (req, res) => {
   }
   const includeProcesses = isManufacturerOrg(organization);
   const compact = req.query.compact === "1" || req.query.compact === "true";
+  const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  const ownerScope =
+    ownerOrgId === null
+      ? accessibleOwnerOrgIds
+      : accessibleOwnerOrgIds.includes(ownerOrgId)
+        ? [ownerOrgId]
+        : null;
+  if (!ownerScope) {
+    return res.status(403).json({ ok: false, error: "style access denied" });
+  }
 
   const styles = await prisma.style.findMany({
-    where: { orgId: organization.id },
+    where: { orgId: { in: ownerScope } },
     orderBy: { uid: "asc" },
     ...(compact
       ? {
           // Skip heavy BOM payload for list pages that only need summary/process data.
           select: {
+            orgId: true,
             styleId: true,
             styleCode: true,
             name: true,
@@ -3069,9 +3330,12 @@ app.get("/styles/:styleId", async (req, res) => {
   if (!styleId) {
     return res.status(400).json({ ok: false, error: "styleId is required" });
   }
+  const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
 
-  const style = await prisma.style.findFirst({
-    where: { orgId: organization.id, styleId },
+  const style = await resolveStyleByIdForAccess({
+    organization,
+    styleId,
+    ownerOrgId,
   });
   if (!style) {
     return res.status(404).json({ ok: false, error: "style not found" });
@@ -3091,12 +3355,17 @@ app.post("/styles", async (req, res) => {
   if (!payload.name) {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
+  const owner = await resolveStyleOwnerForCreateOrThrow({
+    organization,
+    payload: req.body ?? {},
+  });
+  payload.customer = owner.ownerOrgName || payload.customer;
   if (!payload.customer) {
     return res.status(400).json({ ok: false, error: "customer is required" });
   }
 
   const conflictMessage = await findStyleConflict({
-    orgId: organization.id,
+    orgId: owner.ownerOrgId,
     customer: payload.customer,
     name: payload.name,
     styleCode: payload.styleCode,
@@ -3106,7 +3375,7 @@ app.post("/styles", async (req, res) => {
   }
 
   const existing = await prisma.style.findFirst({
-    where: { orgId: organization.id, styleId: payload.styleId },
+    where: { orgId: owner.ownerOrgId, styleId: payload.styleId },
   });
   if (existing) {
     return res
@@ -3116,7 +3385,7 @@ app.post("/styles", async (req, res) => {
 
   const created = await prisma.style.create({
     data: {
-      orgId: organization.id,
+      orgId: owner.ownerOrgId,
       ...payload,
     },
   });
@@ -3135,9 +3404,12 @@ app.put("/styles/:styleId", async (req, res) => {
   if (!styleId) {
     return res.status(400).json({ ok: false, error: "styleId is required" });
   }
+  const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
 
-  const existing = await prisma.style.findFirst({
-    where: { orgId: organization.id, styleId },
+  const existing = await resolveStyleByIdForAccess({
+    organization,
+    styleId,
+    ownerOrgId,
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "style not found" });
@@ -3148,18 +3420,20 @@ app.put("/styles/:styleId", async (req, res) => {
       id: existing.styleId,
       styleCode: req.body?.styleCode ?? existing.styleCode,
       name: req.body?.name ?? existing.name,
-      customer: req.body?.customer ?? existing.customer,
+      customer: existing.customer,
       registrationDate: req.body?.registrationDate ?? existing.registrationDate,
       designer: req.body?.designer ?? existing.designer,
       collection: req.body?.collection ?? existing.collection,
       season: req.body?.season ?? existing.season,
       imageUrls: req.body?.imageUrls ?? existing.imageUrls,
-      processes: includeProcesses ? req.body?.processes ?? existing.processes : [],
+      processes: includeProcesses
+        ? req.body?.processes ?? existing.processes
+        : existing.processes,
       bom: req.body?.bom ?? existing.bom,
       bomNotes: req.body?.bomNotes ?? existing.bomNotes,
     },
     existing.styleId,
-    { includeProcesses }
+    { includeProcesses: true }
   );
 
   if (!normalized.name) {
@@ -3170,7 +3444,7 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const conflictMessage = await findStyleConflict({
-    orgId: organization.id,
+    orgId: existing.orgId,
     customer: normalized.customer,
     name: normalized.name,
     styleCode: normalized.styleCode,
@@ -3191,7 +3465,9 @@ app.put("/styles/:styleId", async (req, res) => {
       collection: normalized.collection,
       season: normalized.season,
       imageUrls: normalized.imageUrls,
-      processes: normalized.processes,
+      processes: includeProcesses
+        ? normalized.processes
+        : normalizeStyleProcesses(existing.processes),
       bom: normalized.bom,
       bomNotes: normalized.bomNotes,
     },
@@ -3210,9 +3486,26 @@ app.delete("/styles/:styleId", async (req, res) => {
   if (!styleId) {
     return res.status(400).json({ ok: false, error: "styleId is required" });
   }
+  const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
+
+  const existing = await resolveStyleByIdForAccess({
+    organization,
+    styleId,
+    ownerOrgId,
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "style not found" });
+  }
+  if (existing.orgId !== organization.id) {
+    return res
+      .status(403)
+      .json({ ok: false, error: "only owner organization can delete style" });
+  }
 
   const relatedOrders = await prisma.workOrder.findMany({
-    where: { orgId: organization.id },
+    where: {
+      OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.orgId }],
+    },
     select: { orderId: true, orderNumber: true, items: true },
   });
   const inUseOrder = relatedOrders.find((order) =>
@@ -3230,12 +3523,7 @@ app.delete("/styles/:styleId", async (req, res) => {
 
   try {
     await prisma.style.delete({
-      where: {
-        orgId_styleId: {
-          orgId: organization.id,
-          styleId,
-        },
-      },
+      where: { uid: existing.uid },
     });
     res.status(204).send();
   } catch (error) {
@@ -3664,6 +3952,22 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     prismaErrorTarget.includes("orgId") &&
     prismaErrorTarget.includes("customerId") &&
     prismaErrorTarget.includes("orderNumber");
+  const hasSharedOrderTargetFields =
+    prismaErrorTarget.includes("buyerOrgId") &&
+    prismaErrorTarget.includes("sellerOrgId") &&
+    prismaErrorTarget.includes("orderNumber");
+  const isOrderNumberByPairUniqueError =
+    prismaErrorCode === "P2002" &&
+    (hasSharedOrderTargetFields ||
+      prismaErrorTarget.some((item) =>
+        /WorkOrder_.*buyerOrgId.*sellerOrgId.*orderNumber.*_key/i.test(item)
+      ));
+  if (isOrderNumberByPairUniqueError) {
+    return res.status(409).json({
+      ok: false,
+      error: "order already exists for this buyer/seller pair",
+    });
+  }
   const isOrderNumberByCustomerUniqueError =
     prismaErrorCode === "P2002" &&
     (hasCompositeTargetFields ||

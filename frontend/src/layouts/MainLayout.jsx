@@ -80,6 +80,7 @@ const MainLayout = () => {
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const skipAutoOpenPathRef = useRef(null);
+  const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
   const activeOrgId = useMemo(() => {
     if (!devBypass) return null;
@@ -305,6 +306,7 @@ const MainLayout = () => {
       skipAutoOpenPathRef.current = null;
     }
 
+    if (isLoggingOutRef.current) return;
     if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
     if (skipAutoOpenPathRef.current === currentPath) return;
     // Allow the user to close the dashboard tab and stay in an empty workspace.
@@ -339,11 +341,15 @@ const MainLayout = () => {
   }, [handleNavigation, setNavigateToPath]);
 
   const handleLogout = async () => {
+    isLoggingOutRef.current = true;
+    skipAutoOpenPathRef.current = currentPath;
+    resetWorkspace();
+
     try {
       await signOut();
     } finally {
       resetWorkspace();
-      navigate('/login');
+      navigate('/login', { replace: true });
     }
   };
 

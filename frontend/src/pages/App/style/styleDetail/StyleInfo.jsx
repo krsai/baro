@@ -60,6 +60,8 @@ const StyleInfo = ({
   handleInputChange,
   isNew,
   canViewProcessSummary = true,
+  isBrandOrg = false,
+  defaultCustomerName = '',
 }) => {
   const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -67,11 +69,20 @@ const StyleInfo = ({
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const resolvedCustomerValue = isBrandOrg
+    ? formData.customer || defaultCustomerName || ''
+    : formData.customer || '';
 
   useEffect(() => {
     let active = true;
 
     const fetchCustomers = async () => {
+      if (isBrandOrg) {
+        if (!active) return;
+        setCustomers([]);
+        setLoadingCustomers(false);
+        return;
+      }
       setLoadingCustomers(true);
       try {
         const data = await loadCustomersOnce();
@@ -91,7 +102,7 @@ const StyleInfo = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [isBrandOrg]);
 
   useEffect(() => {
     let active = true;
@@ -178,6 +189,34 @@ const StyleInfo = ({
   const handleDetailsChange = (event) => {
     const { name, value } = event.target;
     setStyleDetailsData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCustomerChange = (event) => {
+    const nextCustomerName = event.target.value;
+    if (isBrandOrg) {
+      handleInputChange({
+        target: {
+          name: 'customer',
+          value: defaultCustomerName || nextCustomerName || '',
+        },
+      });
+      return;
+    }
+
+    const selected = customers.find((customer) => customer.name === nextCustomerName) || null;
+    const parsedOrgId = Number(selected?.brandOrgId ?? selected?.id);
+    handleInputChange({
+      target: {
+        name: 'customer',
+        value: nextCustomerName,
+      },
+    });
+    handleInputChange({
+      target: {
+        name: 'customerOrgId',
+        value: Number.isInteger(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null,
+      },
+    });
   };
   
   const costData = [];
@@ -334,25 +373,29 @@ const StyleInfo = ({
               <Typography variant="body2" color="text.secondary">고객사</Typography>
               <Select
                 name="customer"
-                value={formData.customer || ''}
-                onChange={handleInputChange}
+                value={resolvedCustomerValue}
+                onChange={handleCustomerChange}
                 displayEmpty
+                disabled={isBrandOrg}
                 sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled>
                   <Typography variant="body2" color="text.secondary">선택</Typography>
                 </MenuItem>
-                {loadingCustomers && (
+                {isBrandOrg && resolvedCustomerValue && (
+                  <MenuItem value={resolvedCustomerValue}>{resolvedCustomerValue}</MenuItem>
+                )}
+                {!isBrandOrg && loadingCustomers && (
                   <MenuItem value="" disabled>
                     <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
                   </MenuItem>
                 )}
-                {!loadingCustomers && customers.length === 0 && (
+                {!isBrandOrg && !loadingCustomers && customers.length === 0 && (
                   <MenuItem value="" disabled>
                     <Typography variant="body2" color="text.secondary">등록된 고객사가 없습니다</Typography>
                   </MenuItem>
                 )}
-                {customers.map((customer) => (
+                {!isBrandOrg && customers.map((customer) => (
                   <MenuItem key={customer.id || customer.name} value={customer.name}>
                     {customer.name}
                   </MenuItem>

@@ -93,6 +93,9 @@
 - 고객 코드: 고객 관리 화면의 **고객 코드**는 브랜드 `Organization.code`와 동일하며, 제조사도 같은 규칙의 회사 코드를 가진다.
 - 고객 등록: 제조사에서 고객을 등록할 때 `brandOrgId`가 없으면 **브랜드 `Organization`을 자동 생성**하고 `OrgRelationship`으로 연결한다.
 - 주문 구조: 주문은 반드시 `buyerOrgId`(고객사)와 `sellerOrgId`(제조사)를 가진다.
+- 주문 필수값: `orderNumber + buyerOrgId + sellerOrgId`를 필수로 입력한다.
+- 주문 공유 방식: 별도 `공유 버튼` 없이 **저장 시 자동 공유**를 기본으로 한다. (거래관계 유효 시)
+- 주문 충돌 방지: 동일 조합(`buyerOrgId + sellerOrgId + orderNumber`)은 중복 생성하지 않고, 충돌 시 기존 주문을 반환해 동일 원본을 사용한다.
 - 다중 공장 의뢰: 주문을 공장별로 분할하는 방식을 기본으로 한다. (예: 주문을 공장별로 나누어 생성하거나 `OrderSplit` 개념으로 분배)
 - 접근 제어: 모든 조회/저장은 로그인 사용자의 `orgId`가 `buyerOrgId` 또는 `sellerOrgId`에 포함되거나, 관계로 연결된 경우만 허용한다.
 - 용어 통일: `Company`/`Corporation` 용어는 사용하지 않고 `Organization`으로 통일한다.
@@ -160,6 +163,10 @@
   - `PUT /styles/:styleId`: 스타일 수정
   - `DELETE /styles/:styleId`: 스타일 삭제
   - `POST /styles/import`: 로컬 데이터 일괄 이관(초기 1회)
+- 스타일 API 파라미터/응답 규칙:
+  - `GET /styles`, `GET /styles/:styleId`, `PUT /styles/:styleId`, `DELETE /styles/:styleId`는 필요 시 `ownerOrgId`를 쿼리로 받아 소유 조직을 명시합니다.
+  - 제조사가 스타일을 대행 등록할 때는 `POST /styles` 요청에 `customerOrgId`를 포함해 소유 브랜드를 지정합니다.
+  - 스타일 응답은 `ownerOrgId`, `customerOrgId`, `ownerOrgName`을 포함하며, UI 라우팅/삭제 시 이 값을 사용합니다.
 - 주문(Order) 화면은 주문 본문 저장은 기존 로컬 저장을 유지하되, 스타일 선택 목록은 `/styles` API에서 조회합니다.
 - 신규 스타일 저장 성공 후 기본 이동은 상세가 아니라 스타일 목록(`/style`)으로 이동합니다.
 - 스타일 저장소/이관의 상세 규칙은 `7.2.2 스타일 저장소 전환 규칙`을 단일 기준으로 따릅니다.
@@ -382,6 +389,11 @@
 ### 7.2. 스타일 및 공정 관리 (Style & Process Management)
 
 1.  **스타일 (Style)**: 특정 고객사(브랜드) 요구를 반영한 의류 모델입니다. 하나의 스타일에는 여러 생산 공정이 포함됩니다.
+    - **소유권 원칙**: 스타일 소유권은 항상 발주자(`BRAND`)에 귀속됩니다.
+    - **대행 등록 원칙**: 수주자(`MANUFACTURER`)는 거래관계가 있는 경우 스타일을 대행 등록할 수 있으나, 소유권은 발주자에 유지됩니다.
+    - **생성 규칙**: `BRAND`가 등록하면 자기 조직 소유로 생성하고, `MANUFACTURER`가 등록하면 거래관계(`OrgRelationship`)로 연결된 `BRAND` 소유로 생성합니다. (권장 입력: `customerOrgId`)
+    - **조회 규칙**: `BRAND`는 자기 소유 스타일만 조회하고, `MANUFACTURER`는 거래관계로 연결된 `BRAND` 스타일(및 레거시 자기 소유 스타일)을 조회할 수 있습니다.
+    - **수정/삭제 규칙**: 수정 시 소유 조직(`ownerOrgId`)은 변경할 수 없고, 삭제는 소유 조직만 수행할 수 있습니다.
     - **이미지 관리**: 스타일 관련 이미지를 업로드 및 삭제할 수 있으며, 삭제 시 확인 절차(Confirm)를 거칩니다.
     - **데이터 통합**: 기본 정보, 공정 관리(Process), BOM 정보가 하나의 스타일 객체로 통합 관리됩니다.
 2.  **공정 (Process)**: 스타일을 생산하기 위한 개별 작업 단계이며, **소유권은 수주자(제조사 Organization)** 에 있습니다.
@@ -928,6 +940,10 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
     -   **계층적 선택 (Cascading Select)**: `고객사`를 먼저 선택하면, `스타일` 선택 목록에는 해당 고객사에 등록된 스타일만 필터링되어 표시됩니다.
     -   **역방향 자동 선택 (Reverse Auto-Select)**: `스타일명`을 먼저 선택하거나 변경할 경우, 해당 스타일이 소속된 `고객사`가 자동으로 선택(입력)되며, `스타일코드`가 존재할 경우 함께 자동 입력됩니다.
     -   **초기화 규칙**: `고객사`를 변경하면, 기존에 선택된 `스타일` 정보(명칭/코드)는 초기화됩니다.
+    -   **자동 공유 규칙**: 주문 저장 시 `orderNumber + buyerOrgId + sellerOrgId`가 모두 유효하고 두 조직의 거래관계가 존재하면, 주문은 자동으로 양측에 공유됩니다.
+    -   **중복 방지 규칙**: 동일 `buyerOrgId + sellerOrgId + orderNumber` 조합은 단일 원본 주문만 허용하며, 동시 등록 충돌 시 신규 생성 대신 기존 주문을 반환합니다.
+    -   **DB 제약 규칙**: `WorkOrder`는 `@@unique([buyerOrgId, sellerOrgId, orderNumber])` 제약으로 동일 주문쌍 중복을 DB 레벨에서 차단합니다.
+    -   **삭제 권한 규칙**: 주문 삭제는 상태가 `주문접수`일 때만 가능하며, 공유 참여 조직 중에서도 원본 소유 조직(`ownerOrgId`)만 삭제할 수 있습니다.
 
 ### 7.11. 라인 관리 (Line Management)
 
