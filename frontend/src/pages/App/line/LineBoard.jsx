@@ -29,7 +29,7 @@ const buildWorkerLabel = (worker) => {
 
 const LineBoard = () => {
   const { showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [lines, setLines] = useState([]);
@@ -37,11 +37,6 @@ const LineBoard = () => {
   const [newLineName, setNewLineName] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
   const buildOrgQuery = (params = {}) =>
     buildQueryString({ ...params, orgId: activeOrgId });
 

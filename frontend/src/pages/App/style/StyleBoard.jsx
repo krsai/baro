@@ -46,14 +46,9 @@ const StyleBoard = () => {
     return <StyleDetail />;
   }
 
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId, activeOrgType } = useAuth();
   const { navigateToPath, showNotification } = useApp();
-  const activeOrgId = useMemo(
-    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
-    [devBypass, devProfile?.orgId]
-  );
-  const isBrandOrg =
-    devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
+  const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');
   const [styles, setStyles] = useState([]);

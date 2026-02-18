@@ -12,10 +12,10 @@ This file is the source-of-truth snapshot for the test reset target.
 - Roles are hardcoded and resolved from `OrgMembership.role`.
 - Line assignment candidates must be `WORKER` only.
 - System admin account is not part of reset deletion.
-- `System Settings > Membership Management` is visible only for
+- `System Settings > Subscription Management` is visible only for
   `entryType=SYSTEM` + `systemRole=SYSTEM_ADMIN`.
 - Org bypass accounts (`ADMIN`, `OPERATOR`, `ACCOUNTANT`, `WORKER`) must not
-  see `Membership Management`.
+  see `Subscription Management`.
 
 ## System Users
 

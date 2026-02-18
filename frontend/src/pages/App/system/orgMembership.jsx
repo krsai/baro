@@ -178,7 +178,7 @@ const OrgMembership = () => {
     }
     const email = assignForm.email.trim();
     if (!email) {
-      showNotification('Please enter an operator email.', 'error');
+      showNotification('Please enter a member email.', 'error');
       return;
     }
 
@@ -196,9 +196,9 @@ const OrgMembership = () => {
 
       setAssignForm((prev) => ({ ...prev, email: '' }));
       await fetchMembers(assignForm.orgId);
-      showNotification('Operator assigned.', 'success');
+      showNotification('Access role assigned.', 'success');
     } catch (error) {
-      showNotification(error?.message || 'An error occurred while assigning the operator.', 'error');
+      showNotification(error?.message || 'An error occurred while assigning the role.', 'error');
     } finally {
       setAssigning(false);
     }
@@ -209,10 +209,10 @@ const OrgMembership = () => {
       header={
         <>
           <Typography component="h1" variant="h4">
-            Organization Membership / Operator Assignment
+            Organization Subscription / Access Assignment
           </Typography>
           <Typography sx={{ mt: 2, color: 'text.secondary' }}>
-            Create organizations and assign operator access.
+            Manage organization subscriptions and assign access roles.
           </Typography>
         </>
       }
@@ -287,11 +287,11 @@ const OrgMembership = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Membership Email"
+                  label="Subscription Contact Email"
                   name="membershipEmail"
                   value={orgForm.membershipEmail}
                   onChange={handleOrgChange}
-                  placeholder="membership@domain.com"
+                  placeholder="subscription@domain.com"
                 />
               </Grid>
               <Grid item xs={12}>
@@ -348,7 +348,7 @@ const OrgMembership = () => {
         <Grid item xs={12} md={6}>
           <Paper variant="outlined" sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              2) Operator Assignment
+              2) Access Role Assignment
             </Typography>
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -371,7 +371,7 @@ const OrgMembership = () => {
               <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Operator Email"
+                  label="Member Email"
                   name="email"
                   value={assignForm.email}
                   onChange={handleAssignChange}
@@ -401,14 +401,14 @@ const OrgMembership = () => {
                   disabled={assigning || organizations.length === 0}
                   startIcon={assigning ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                  {assigning ? 'Assigning...' : 'Assign Operator'}
+                  {assigning ? 'Assigning...' : 'Assign Role'}
                 </Button>
               </Grid>
             </Grid>
 
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Assigned Operators
+                Assigned Members
               </Typography>
               <Table size="small">
                 <TableHead>
@@ -427,7 +427,7 @@ const OrgMembership = () => {
                   {members.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={2} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        No operators assigned.
+                        No members assigned.
                       </TableCell>
                     </TableRow>
                   )}

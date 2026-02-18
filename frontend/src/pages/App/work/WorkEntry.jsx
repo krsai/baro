@@ -9,16 +9,11 @@ import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage'
 const WorkEntry = () => {
   const { workLogId } = useParams();
   const { navigateToPath, showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
 
   const isEditMode = Boolean(workLogId) && workLogId !== 'new';
   const [loading, setLoading] = useState(Boolean(isEditMode));
   const [existingLog, setExistingLog] = useState(null);
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
 
   const closeEntry = useCallback(() => {
     if (isEditMode && workLogId) {

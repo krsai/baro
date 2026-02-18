@@ -145,6 +145,10 @@
   - 주문/작업기록 드래프트 및 화면 편의용 임시 저장
   - 휴일 캘린더 임시 저장
   - 인증 개발 편의 플래그(개발 환경 한정)
+- 인증/권한 컨텍스트 연동 규칙:
+  - 프론트는 로그인 후 `GET /auth/context`로 접근 컨텍스트(`entryType`, `systemRole`, `orgId`, `orgType`, `orgRole`)를 동기화합니다.
+  - 프론트 API 요청은 `AuthContext`의 활성 컨텍스트를 기준으로 `x-user-email`, `x-org-id` 헤더를 자동 첨부합니다.
+  - 백엔드는 조직 조회/변경 시 요청 헤더 컨텍스트를 기준으로 접근 가능 조직 및 역할을 검증합니다.
 - 스타일(Style) 도메인의 기준 API는 다음과 같습니다.
   - `GET /styles`: 스타일 목록 조회
   - `GET /styles/:styleId`: 스타일 상세 조회
@@ -228,7 +232,7 @@
   - 권한 관리 (Permission Management)
   - 휴일 관리 (Holiday Management)
 - **시스템 설정 (System Settings)**
-  - 멤버쉽 관리 (Membership Management)
+  - 구독 관리 (Subscription Management)
   - 접근 정책: `SYSTEM_ADMIN` 전용 (`SYSTEM` 엔트리). 조직 역할(`ADMIN`/`OPERATOR`/`ACCOUNTANT`/`WORKER`)에서는 메뉴 비노출.
 
 ## 6. 프론트엔드 구조 규칙 (Frontend Architecture Rules)
@@ -341,7 +345,10 @@
     - `OrgMembership.role`은 시스템 접근 권한 역할입니다. (`ADMIN`, `OPERATOR`, `ACCOUNTANT`, `WORKER`)
     - **관리자(Admin)**는 업체 기능의 최상위 권한으로, 기본 관리자 계정은 수정/삭제 불가 정책을 적용합니다.
     - 그 외 권한/역할 분리는 조직 관리자(Admin)가 메뉴 단위 권한 정책에 따라 확장합니다.
-    - `시스템 설정 > 멤버쉽 관리`는 조직 권한과 분리된 시스템 권한 영역이며, `SYSTEM_ADMIN`만 접근합니다.
+    - 프론트 메뉴/라우팅 권한은 개발 우회(`devBypass`)와 일반 로그인 모두 동일한 접근 정책 매트릭스를 사용합니다.
+    - 백엔드 변경 API는 `requireOrgRole` 기준으로 역할을 강제하며, 조직 운영 변경 작업(주문/스타일/고객/속성 변경)은 기본적으로 `ADMIN`/`OPERATOR` 범위에서 수행합니다.
+    - 조직/구독 관리 작업(`POST/PUT /organizations`, `PATCH /organizations/:id/subscription`, `POST /org-memberships/assign`)은 `SYSTEM_ADMIN` 전용입니다.
+    - `시스템 설정 > 구독 관리`는 조직 권한과 분리된 시스템 권한 영역이며, `SYSTEM_ADMIN`만 접근합니다.
 6.  **업무 역할 (Job Role)**:
     - `AttrRole`은 생산/업무 직무 분류용이며, 권한(Role)과 분리합니다.
     - 조직 관리자(Admin)가 업체 내부 운영 목적에 맞게 역할 종류를 추가/수정할 수 있습니다.
@@ -381,8 +388,10 @@
     - **소유권 원칙**: 스타일 소유권은 항상 발주자(`BRAND`)에 귀속됩니다.
     - **대행 등록 원칙**: 수주자(`MANUFACTURER`)는 거래관계가 있는 경우 스타일을 대행 등록할 수 있으나, 소유권은 발주자에 유지됩니다.
     - **생성 규칙**: `BRAND`가 등록하면 자기 조직 소유로 생성하고, `MANUFACTURER`가 등록하면 거래관계(`OrgRelationship`)로 연결된 `BRAND` 소유로 생성합니다. (권장 입력: `customerOrgId`)
+    - **이관 규칙**: `POST /styles/import`도 생성 규칙과 동일하게 각 스타일의 소유 조직을 발주자(`BRAND`)로 해석해 저장합니다.
     - **조회 규칙**: `BRAND`는 자기 소유 스타일만 조회하고, `MANUFACTURER`는 거래관계로 연결된 `BRAND` 스타일(및 레거시 자기 소유 스타일)을 조회할 수 있습니다.
     - **수정/삭제 규칙**: 수정 시 소유 조직(`ownerOrgId`)은 변경할 수 없고, 삭제는 소유 조직만 수행할 수 있습니다.
+    - **응답 호환 필드 규칙**: 스타일 응답의 `customerOrgId`는 현재 호환 목적 필드로 `ownerOrgId`와 동일 값을 사용합니다.
     - **이미지 관리**: 스타일 관련 이미지를 업로드 및 삭제할 수 있으며, 삭제 시 확인 절차(Confirm)를 거칩니다.
     - **데이터 통합**: 기본 정보, 공정 관리(Process), BOM 정보가 하나의 스타일 객체로 통합 관리됩니다.
 2.  **공정 (Process)**: 스타일을 생산하기 위한 개별 작업 단계이며, **소유권은 수주자(제조사 Organization)** 에 있습니다.
@@ -929,6 +938,7 @@ Drag & Drop은 단순한 UI 이동이 아닙니다. Drop 발생 시:
     -   **역방향 자동 선택 (Reverse Auto-Select)**: `스타일명`을 먼저 선택하거나 변경할 경우, 해당 스타일이 소속된 `고객사`가 자동으로 선택(입력)되며, `스타일코드`가 존재할 경우 함께 자동 입력됩니다.
     -   **초기화 규칙**: `고객사`를 변경하면, 기존에 선택된 `스타일` 정보(명칭/코드)는 초기화됩니다.
     -   **자동 공유 규칙**: 주문 저장 시 `orderNumber + buyerOrgId + sellerOrgId`가 모두 유효하고 두 조직의 거래관계가 존재하면, 주문은 자동으로 양측에 공유됩니다.
+    -   **소유권 정규화 규칙**: 주문의 `ownerOrgId`는 발주자(`buyerOrgId`)로 정규화합니다. (생성/수정 시 일관 적용)
     -   **중복 방지 규칙**: 동일 `buyerOrgId + sellerOrgId + orderNumber` 조합은 단일 원본 주문만 허용하며, 동시 등록 충돌 시 신규 생성 대신 기존 주문을 반환합니다.
     -   **DB 제약 규칙**: `WorkOrder`는 `@@unique([buyerOrgId, sellerOrgId, orderNumber])` 제약으로 동일 주문쌍 중복을 DB 레벨에서 차단합니다.
     -   **삭제 권한 규칙**: 주문 삭제는 상태가 `주문접수`일 때만 가능하며, 공유 참여 조직 중에서도 원본 소유 조직(`ownerOrgId`)만 삭제할 수 있습니다.

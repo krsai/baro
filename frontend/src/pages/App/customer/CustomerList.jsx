@@ -41,7 +41,7 @@ const buildFormData = (customer) => ({
 
 const CustomerList = () => {
   const { showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId, activeOrgType } = useAuth();
 
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,16 +50,7 @@ const CustomerList = () => {
   const [formData, setFormData] = useState(buildFormData());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const activeOrgType = useMemo(
-    () => (devBypass ? String(devProfile?.orgType || '').toUpperCase() : ''),
-    [devBypass, devProfile?.orgType]
-  );
   const isReadOnly = activeOrgType === 'BRAND';
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const orgId = Number(devProfile?.orgId);
-    return Number.isFinite(orgId) ? orgId : null;
-  }, [devBypass, devProfile?.orgId]);
   const customerQuery = useMemo(
     () => buildQueryString({ orgId: activeOrgId }),
     [activeOrgId]

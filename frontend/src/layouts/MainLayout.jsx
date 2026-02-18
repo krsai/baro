@@ -57,7 +57,7 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname || '/';
-  const { signOut, devBypass, devProfile } = useAuth();
+  const { signOut, devBypass, devProfile, accessProfile, activeOrgId, isAuthenticated } = useAuth();
   const {
     sidebarOpen,
     toggleSidebar,
@@ -82,18 +82,14 @@ const MainLayout = () => {
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
   const authState = useMemo(
     () => ({
-      isAuthenticated: true,
+      isAuthenticated,
       devBypass,
       devProfile,
+      accessProfile,
     }),
-    [devBypass, devProfile]
+    [accessProfile, devBypass, devProfile, isAuthenticated]
   );
   const hasPathAccess = React.useCallback(
     (path) => canAccessPath(path, authState),
@@ -195,7 +191,7 @@ const MainLayout = () => {
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
-        children: [{ label: '멤버십 관리', icon: <TuneIcon />, path: '/system-setting' }],
+        children: [{ label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' }],
       },
     ];
 

@@ -1,10 +1,23 @@
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
+const requestContext = {
+  userEmail: '',
+  orgId: null,
+};
+
 const networkLoadingListeners = new Set();
 const activeNetworkRequestIds = new Set();
 let networkRequestSequence = 0;
 let networkLoadingStartedAt = null;
+
+export const setRequestContext = (next = {}) => {
+  const normalizedEmail =
+    typeof next.userEmail === 'string' ? next.userEmail.trim().toLowerCase() : '';
+  const parsedOrgId = Number(next.orgId);
+  requestContext.userEmail = normalizedEmail;
+  requestContext.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
+};
 
 const getNetworkLoadingSnapshot = () => ({
   isLoading: activeNetworkRequestIds.size > 0,
@@ -74,7 +87,18 @@ export const requestJSON = async (path, options = {}) => {
   const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
 
   try {
-    const response = await fetch(`${API_BASE}${path}`, requestOptions);
+    const headers = new Headers(requestOptions.headers || {});
+    if (requestContext.userEmail && !headers.has('x-user-email')) {
+      headers.set('x-user-email', requestContext.userEmail);
+    }
+    if (requestContext.orgId && !headers.has('x-org-id')) {
+      headers.set('x-org-id', String(requestContext.orgId));
+    }
+
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...requestOptions,
+      headers,
+    });
     const raw = await response.text();
     let data = null;
 

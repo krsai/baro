@@ -34,15 +34,10 @@ const formatNote = (note) => {
 
 const WorkList = () => {
   const { navigateToPath, showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
   const [workLogs, setWorkLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     let cancelled = false;

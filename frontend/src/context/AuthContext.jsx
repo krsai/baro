@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
+import { buildQueryString, requestJSON, setRequestContext } from '../utils/apiClient';
 
 const AuthContext = createContext(null);
 
@@ -164,11 +165,61 @@ const loadDevProfile = () => {
   }
 };
 
+const toPositiveOrgId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const normalizeAccessProfile = (profile) => {
+  if (!profile || typeof profile !== 'object') return null;
+
+  const entryType = normalizeUpper(profile.entryType || 'ORG');
+  if (entryType === 'SYSTEM') {
+    return {
+      entryType: 'SYSTEM',
+      systemRole: normalizeUpper(profile.systemRole || 'USER'),
+      orgType: null,
+      orgRole: null,
+      orgId: null,
+      orgName: null,
+      email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
+      label:
+        typeof profile.label === 'string' && profile.label.trim()
+          ? profile.label.trim()
+          : DEV_PROFILE_LABEL_BY_KEY.SYSTEM_ADMIN || '',
+    };
+  }
+
+  const orgType = normalizeUpper(profile.orgType);
+  const orgRole = normalizeUpper(profile.orgRole);
+  const orgName =
+    typeof profile.orgName === 'string' && profile.orgName.trim() ? profile.orgName.trim() : null;
+  const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole] || orgRole || '';
+
+  return {
+    entryType: 'ORG',
+    systemRole: normalizeUpper(profile.systemRole || 'USER'),
+    orgType,
+    orgRole,
+    orgId: toPositiveOrgId(profile.orgId),
+    orgName,
+    email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
+    label:
+      typeof profile.label === 'string' && profile.label.trim()
+        ? profile.label.trim()
+        : orgName && roleLabel
+          ? `${orgName} ${roleLabel}`
+          : orgName || roleLabel,
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [devBypass, setDevBypass] = useState(() => localStorage.getItem(DEV_BYPASS_KEY) === '1');
   const [devProfile, setDevProfile] = useState(() => loadDevProfile());
+  const [accessProfile, setAccessProfile] = useState(null);
+  const [accessLoading, setAccessLoading] = useState(false);
   const [loading, setLoading] = useState(() =>
     isSupabaseConfigured && localStorage.getItem(DEV_BYPASS_KEY) !== '1'
   );
@@ -191,6 +242,53 @@ export const AuthProvider = ({ children }) => {
     setDevProfile(normalized);
     localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(normalized));
   }, [devBypass, devProfile]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAccessProfile = async () => {
+      if (devBypass) {
+        if (!cancelled) {
+          setAccessProfile(null);
+          setAccessLoading(false);
+        }
+        return;
+      }
+
+      const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+      if (!email) {
+        if (!cancelled) {
+          setAccessProfile(null);
+          setAccessLoading(false);
+        }
+        return;
+      }
+
+      setAccessLoading(true);
+      try {
+        const data = await requestJSON(
+          `/auth/context${buildQueryString({
+            email,
+          })}`,
+          { skipGlobalLoading: true }
+        );
+        if (cancelled) return;
+        setAccessProfile(normalizeAccessProfile(data));
+      } catch (_error) {
+        if (cancelled) return;
+        setAccessProfile(null);
+      } finally {
+        if (!cancelled) {
+          setAccessLoading(false);
+        }
+      }
+    };
+
+    loadAccessProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [devBypass, user?.email]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -249,6 +347,9 @@ export const AuthProvider = ({ children }) => {
   const clearDevBypass = () => {
     setDevBypass(false);
     setDevProfile(null);
+    setAccessProfile(null);
+    setAccessLoading(false);
+    setRequestContext({ userEmail: '', orgId: null });
     localStorage.removeItem(DEV_BYPASS_KEY);
     localStorage.removeItem(DEV_PROFILE_KEY);
   };
@@ -273,20 +374,60 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
   };
 
+  const effectiveProfile = devBypass ? devProfile : accessProfile;
+  const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
+  const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
+  const activeOrgRole = normalizeUpper(effectiveProfile?.orgRole);
+
+  useEffect(() => {
+    const emailFromUser = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+    const emailFromProfile =
+      typeof effectiveProfile?.email === 'string'
+        ? effectiveProfile.email.trim().toLowerCase()
+        : '';
+
+    setRequestContext({
+      userEmail: emailFromProfile || emailFromUser,
+      orgId: activeOrgId,
+    });
+  }, [activeOrgId, effectiveProfile?.email, user?.email]);
+
+  const loadingState =
+    loading || (!devBypass && !!user && isSupabaseConfigured && accessLoading);
+  const hasWorkspaceAccess = devBypass || (!devBypass && !!user && !!accessProfile);
+
   const value = useMemo(
     () => ({
       session,
       user,
       devBypass,
       devProfile,
-      loading,
+      accessProfile,
+      activeOrgId,
+      activeOrgType,
+      activeOrgRole,
+      activeProfile: effectiveProfile,
+      loading: loadingState,
+      hasWorkspaceAccess,
       isAuthenticated: !!user || devBypass,
       isSupabaseConfigured,
       signInWithGoogle,
       signOut,
       enableDevBypass,
     }),
-    [session, user, devBypass, devProfile, loading]
+    [
+      session,
+      user,
+      devBypass,
+      devProfile,
+      accessProfile,
+      activeOrgId,
+      activeOrgType,
+      activeOrgRole,
+      effectiveProfile,
+      loadingState,
+      hasWorkspaceAccess,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

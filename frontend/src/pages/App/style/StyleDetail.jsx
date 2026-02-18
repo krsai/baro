@@ -71,20 +71,15 @@ const buildPayload = (data) => {
 const StyleDetail = () => {
   const { styleId: styleIdParam } = useParams();
   const location = useLocation();
-  const { devBypass, devProfile } = useAuth();
-  const activeOrgId = useMemo(
-    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
-    [devBypass, devProfile?.orgId]
-  );
+  const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const ownerOrgIdFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return toOrgId(params.get('ownerOrgId'));
   }, [location.search]);
-  const isBrandOrg =
-    devBypass && String(devProfile?.orgType || '').trim().toUpperCase() === 'BRAND';
+  const isBrandOrg = activeOrgType === 'BRAND';
   const defaultBrandCustomerName = useMemo(
-    () => (isBrandOrg ? String(devProfile?.orgName || '').trim() : ''),
-    [isBrandOrg, devProfile?.orgName]
+    () => (isBrandOrg ? String(activeProfile?.orgName || '').trim() : ''),
+    [activeProfile?.orgName, isBrandOrg]
   );
   const canViewProcessInfo = !isBrandOrg;
   const styleId = styleIdParam ?? 'new';

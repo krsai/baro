@@ -215,7 +215,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 
 const ProductionPlanBoard = () => {
   const { showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [cards, setCards] = useState([]);
@@ -234,12 +234,6 @@ const ProductionPlanBoard = () => {
   });
   const [calendarMonth, setCalendarMonth] = useState(() => toMonthStart(new Date()));
   const todayKey = useMemo(() => buildDateKey(new Date()), []);
-
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
 
   const lineById = useMemo(
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),

@@ -61,6 +61,7 @@ const Login = () => {
   const {
     signInWithGoogle,
     isAuthenticated,
+    hasWorkspaceAccess,
     loading,
     isSupabaseConfigured,
     enableDevBypass,
@@ -72,8 +73,8 @@ const Login = () => {
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/');
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated && hasWorkspaceAccess) navigate('/');
+  }, [hasWorkspaceAccess, isAuthenticated, navigate]);
 
   useEffect(() => {
     let cancelled = false;

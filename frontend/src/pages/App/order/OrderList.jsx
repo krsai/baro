@@ -349,7 +349,7 @@ const OrderList = () => {
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
   const { showNotification, navigateToPath } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
 
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
@@ -366,10 +366,6 @@ const OrderList = () => {
   const [formData, setFormData] = useState(buildInitialFormData);
   const detailInitKeyRef = useRef(null);
   const styleAddButtonRef = useRef(null);
-  const activeOrgId = useMemo(
-    () => (devBypass ? toOrgId(devProfile?.orgId) : null),
-    [devBypass, devProfile?.orgId]
-  );
   const fixedSellerOrg = useMemo(() => {
     if (partyRoleHint !== 'MANUFACTURER') return null;
     const currentOrgId = toOrgId(currentOrgOption?.id);

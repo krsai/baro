@@ -28,6 +28,29 @@ const FEATURE_KEYS = {
   SYSTEM_SETTING: 'SYSTEM_SETTING',
 };
 
+const MANUFACTURER_FEATURES = new Set([
+  FEATURE_KEYS.DASHBOARD,
+  FEATURE_KEYS.ORDER,
+  FEATURE_KEYS.STYLE,
+  FEATURE_KEYS.ASSIGNMENT,
+  FEATURE_KEYS.PRODUCTION_PLAN,
+  FEATURE_KEYS.WORK_HISTORY,
+  FEATURE_KEYS.PAYROLL,
+  FEATURE_KEYS.BUSINESS,
+  FEATURE_KEYS.LINE,
+  FEATURE_KEYS.EMPLOYEE,
+  FEATURE_KEYS.CUSTOMER,
+  FEATURE_KEYS.ATTRIBUTE,
+  FEATURE_KEYS.PERMISSION,
+  FEATURE_KEYS.HOLIDAY,
+]);
+
+const BRAND_FEATURES = new Set([
+  FEATURE_KEYS.DASHBOARD,
+  FEATURE_KEYS.ORDER,
+  FEATURE_KEYS.STYLE,
+]);
+
 const normalizeUpper = (value) =>
   typeof value === 'string' ? value.trim().toUpperCase() : '';
 
@@ -56,18 +79,20 @@ const hasOrgRole = (context, ...roles) =>
 const hasOrgType = (context, ...orgTypes) =>
   context.entryType === 'ORG' && orgTypes.includes(context.orgType);
 
-const buildAccessContext = ({ isAuthenticated, devBypass, devProfile }) => {
+const buildAccessContext = ({
+  isAuthenticated,
+  devBypass,
+  devProfile,
+  accessProfile,
+}) => {
   if (!isAuthenticated) return null;
+  const baseProfile = devBypass ? devProfile : accessProfile;
+  if (!baseProfile || typeof baseProfile !== 'object') return null;
 
-  // Until real member-session binding is introduced, keep existing behavior for normal login.
-  if (!devBypass) {
-    return { allowAll: true, entryType: 'LEGACY' };
-  }
-
-  const entryType = normalizeUpper(devProfile?.entryType || 'ORG');
-  const systemRole = normalizeUpper(devProfile?.systemRole || 'USER');
-  const orgType = normalizeUpper(devProfile?.orgType);
-  const orgRole = normalizeUpper(devProfile?.orgRole);
+  const entryType = normalizeUpper(baseProfile?.entryType || 'ORG');
+  const systemRole = normalizeUpper(baseProfile?.systemRole || 'USER');
+  const orgType = normalizeUpper(baseProfile?.orgType);
+  const orgRole = normalizeUpper(baseProfile?.orgRole);
 
   if (entryType === 'SYSTEM') {
     return {
@@ -82,7 +107,7 @@ const buildAccessContext = ({ isAuthenticated, devBypass, devProfile }) => {
     entryType: 'ORG',
     orgType,
     orgRole,
-    isLineLeader: isLineLeaderActive(devProfile),
+    isLineLeader: isLineLeaderActive(baseProfile),
   };
 };
 
@@ -92,11 +117,21 @@ const canAccessFeatureByContext = (featureKey, context) => {
   if (context.allowAll) return true;
 
   if (context.entryType === 'SYSTEM') {
-    return context.systemRole === 'SYSTEM_ADMIN';
+    return (
+      context.systemRole === 'SYSTEM_ADMIN' &&
+      featureKey === FEATURE_KEYS.SYSTEM_SETTING
+    );
   }
 
   const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND);
   const isManufacturer = hasOrgType(context, ORG_TYPES.MANUFACTURER);
+  const isBrand = hasOrgType(context, ORG_TYPES.BRAND);
+
+  // Org admin is the top role within the same org type feature scope.
+  if (hasOrgRole(context, ORG_ROLES.ADMIN)) {
+    if (isManufacturer) return MANUFACTURER_FEATURES.has(featureKey);
+    if (isBrand) return BRAND_FEATURES.has(featureKey);
+  }
 
   switch (featureKey) {
     case FEATURE_KEYS.DASHBOARD:
@@ -131,11 +166,16 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.PRODUCTION_PLAN:
       return (
         isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.WORKER) &&
-        context.isLineLeader === true
+        (
+          hasOrgRole(context, ORG_ROLES.ADMIN) ||
+          (hasOrgRole(context, ORG_ROLES.WORKER) && context.isLineLeader === true)
+        )
       );
     case FEATURE_KEYS.PAYROLL:
-      return isManufacturer && hasOrgRole(context, ORG_ROLES.ACCOUNTANT);
+      return (
+        isManufacturer &&
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
+      );
     case FEATURE_KEYS.PERMISSION:
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);
     case FEATURE_KEYS.SYSTEM_SETTING:

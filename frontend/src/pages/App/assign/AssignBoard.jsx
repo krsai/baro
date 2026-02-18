@@ -1032,7 +1032,7 @@ const rebuildLineWithReplace = ({
 
 const AssignBoard = () => {
   const { showNotification } = useApp();
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
@@ -1063,11 +1063,6 @@ const AssignBoard = () => {
     });
     return map;
   }, [lines]);
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     const syncHolidays = () => {

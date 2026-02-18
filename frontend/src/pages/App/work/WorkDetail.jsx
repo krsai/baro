@@ -277,7 +277,7 @@ const reconcileWorkerForFactory = (worker, employees = []) => {
 };
 
 const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => {
-  const { devBypass, devProfile } = useAuth();
+  const { activeOrgId } = useAuth();
   const [workDate, setWorkDate] = useState(dayjs());
   const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(null);
@@ -296,11 +296,6 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const initializedMetaLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
   const isPageMode = mode === 'page';
-  const activeOrgId = useMemo(() => {
-    if (!devBypass) return null;
-    const parsed = Number(devProfile?.orgId);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  }, [devBypass, devProfile?.orgId]);
 
   useEffect(() => {
     let cancelled = false;

@@ -30,7 +30,7 @@ import { canAccessPath } from './utils/accessControl';
 
 // 인증 상태를 확인하고, 인증되지 않은 사용자는 로그인으로 보냅니다.
 const ProtectedRoute = () => {
-  const { isAuthenticated, loading, devBypass, devProfile } = useAuth();
+  const { isAuthenticated, loading, devBypass, devProfile, accessProfile } = useAuth();
   const location = useLocation();
   const loadingStartedAtRef = React.useRef(null);
 
@@ -60,8 +60,12 @@ const ProtectedRoute = () => {
     isAuthenticated,
     devBypass,
     devProfile,
+    accessProfile,
   });
   if (!canAccessCurrentPath) {
+    if (location.pathname === '/') {
+      return <Navigate to="/login" replace />;
+    }
     return <Navigate to="/" replace />;
   }
 

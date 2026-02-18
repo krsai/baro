@@ -121,6 +121,13 @@ const resolveOptionalString = (
   return fallback;
 };
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
+const ORG_ACCESS_ROLES: OrgUserRole[] = [
+  "ADMIN",
+  "OPERATOR",
+  "ACCOUNTANT",
+  "WORKER",
+];
+const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR"];
 const LINE_ELIGIBLE_ROLES: OrgUserRole[] = ["WORKER"];
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
@@ -263,6 +270,25 @@ const createHttpError = (status: number, message: string) => {
   return error;
 };
 
+const readRequestHeader = (req: Request, name: string): string => {
+  const raw = req.header(name);
+  return typeof raw === "string" ? raw.trim() : "";
+};
+
+const getRequesterEmail = (req: Request): string => {
+  const headerEmail = normalizeEmail(readRequestHeader(req, "x-user-email"));
+  return headerEmail;
+};
+
+const getRequestedOrgIdText = (req: Request): string => {
+  const rawFromQuery =
+    req.query.orgId === undefined || req.query.orgId === null
+      ? ""
+      : String(req.query.orgId).trim();
+  if (rawFromQuery) return rawFromQuery;
+  return readRequestHeader(req, "x-org-id");
+};
+
 const getPrimaryOrganization = async (options = {}) => {
   let organization = await prisma.organization.findFirst({
     orderBy: { id: "asc" },
@@ -277,10 +303,8 @@ const getPrimaryOrganization = async (options = {}) => {
 };
 
 const getOrganizationByQuery = async (req: Request, options = {}) => {
-  const rawOrgId =
-    req.query.orgId === undefined || req.query.orgId === null
-      ? ""
-      : String(req.query.orgId).trim();
+  const rawOrgId = getRequestedOrgIdText(req);
+  const requesterEmail = getRequesterEmail(req);
   if (rawOrgId !== "") {
     if (!/^\d+$/.test(rawOrgId)) {
       throw createHttpError(400, "invalid orgId");
@@ -291,10 +315,172 @@ const getOrganizationByQuery = async (req: Request, options = {}) => {
     }
     const organization = await prisma.organization.findUnique({ where: { id: orgId } });
     if (!organization) return null;
+
+    if (requesterEmail) {
+      const [systemUser, membership] = await Promise.all([
+        prisma.systemUser.findUnique({
+          where: { email: requesterEmail },
+          select: { systemRole: true },
+        }),
+        prisma.orgMembership.findUnique({
+          where: { orgId_email: { orgId, email: requesterEmail } },
+          select: { status: true },
+        }),
+      ]);
+
+      const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
+      const isActiveMember = membership?.status === "ACTIVE";
+      if (!isSystemAdmin && !isActiveMember) {
+        throw createHttpError(403, "organization access denied");
+      }
+    }
+
     const withSubscription = await attachOrganizationSubscription(organization);
     return ensureOrganizationAccessible(withSubscription, options);
   }
+
+  if (requesterEmail) {
+    const [systemUser, membership] = await Promise.all([
+      prisma.systemUser.findUnique({
+        where: { email: requesterEmail },
+        select: { systemRole: true },
+      }),
+      prisma.orgMembership.findFirst({
+        where: {
+          email: requesterEmail,
+          status: "ACTIVE",
+        },
+        include: { organization: true },
+        orderBy: { id: "asc" },
+      }),
+    ]);
+
+    if (membership?.organization) {
+      const withSubscription = await attachOrganizationSubscription(
+        membership.organization
+      );
+      return ensureOrganizationAccessible(withSubscription, options);
+    }
+
+    if (systemUser?.systemRole === "SYSTEM_ADMIN") {
+      return getPrimaryOrganization(options);
+    }
+  }
+
   return getPrimaryOrganization(options);
+};
+
+const getRequestAccessContext = async (req: Request, options: any = {}) => {
+  const organization = await getOrganizationByQuery(req, options);
+  if (!organization) return null;
+
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    return {
+      organization,
+      requesterEmail: "",
+      systemUser: null,
+      orgMembership: null,
+    };
+  }
+
+  const [systemUser, orgMembership] = await Promise.all([
+    prisma.systemUser.findUnique({
+      where: { email: requesterEmail },
+      select: { systemRole: true },
+    }),
+    prisma.orgMembership.findUnique({
+      where: {
+        orgId_email: {
+          orgId: organization.id,
+          email: requesterEmail,
+        },
+      },
+      select: { role: true, status: true },
+    }),
+  ]);
+
+  return {
+    organization,
+    requesterEmail,
+    systemUser,
+    orgMembership,
+  };
+};
+
+const requireOrgRole = async (
+  req: Request,
+  res: Response,
+  options: {
+    allowedRoles?: OrgUserRole[];
+    allowSystemAdmin?: boolean;
+    allowSuspended?: boolean;
+  } = {}
+) => {
+  const {
+    allowedRoles = ORG_ACCESS_ROLES,
+    allowSystemAdmin = true,
+    allowSuspended = false,
+  } = options;
+  let context = null;
+  try {
+    context = await getRequestAccessContext(req, { allowSuspended });
+  } catch (error) {
+    const status = Number((error as any)?.status) || 500;
+    const message =
+      typeof (error as any)?.message === "string"
+        ? (error as any).message
+        : "failed to resolve access context";
+    res.status(status).json({ ok: false, error: message });
+    return null;
+  }
+  if (!context?.organization) {
+    res.status(404).json({ ok: false, error: "organization not found" });
+    return null;
+  }
+
+  if (!context.requesterEmail) {
+    res.status(401).json({ ok: false, error: "request user email is required" });
+    return null;
+  }
+
+  const isSystemAdmin = context.systemUser?.systemRole === "SYSTEM_ADMIN";
+  if (allowSystemAdmin && isSystemAdmin) return context;
+
+  if (!context.orgMembership || context.orgMembership.status !== "ACTIVE") {
+    res.status(403).json({ ok: false, error: "active org membership is required" });
+    return null;
+  }
+
+  if (
+    Array.isArray(allowedRoles) &&
+    allowedRoles.length > 0 &&
+    !allowedRoles.includes(context.orgMembership.role as OrgUserRole)
+  ) {
+    res.status(403).json({ ok: false, error: "insufficient org role" });
+    return null;
+  }
+
+  return context;
+};
+
+const requireSystemAdmin = async (req: Request, res: Response) => {
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    res.status(401).json({ ok: false, error: "request user email is required" });
+    return null;
+  }
+
+  const systemUser = await prisma.systemUser.findUnique({
+    where: { email: requesterEmail },
+    select: { systemRole: true },
+  });
+  if (systemUser?.systemRole !== "SYSTEM_ADMIN") {
+    res.status(403).json({ ok: false, error: "system admin access required" });
+    return null;
+  }
+
+  return { requesterEmail };
 };
 
 const toOrganizationResponse = (organization: any) => {
@@ -1047,13 +1233,12 @@ const findSharedOrderConflict = async ({
   });
 };
 
-const createOrReuseSharedOrder = async ({
-  ownerOrgId,
-  normalized,
-}: {
-  ownerOrgId: number;
-  normalized: any;
-}) => {
+const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => {
+  const resolvedOwnerOrgId = toPositiveIntOrNull(normalized?.buyerOrgId);
+  if (!resolvedOwnerOrgId) {
+    throw createHttpError(400, "buyerOrgId is required");
+  }
+
   for (let attempt = 0; attempt <= ORDER_CREATE_SERIALIZABLE_RETRIES; attempt += 1) {
     try {
       return await prisma.$transaction(
@@ -1067,12 +1252,19 @@ const createOrReuseSharedOrder = async ({
             orderBy: { id: "asc" },
           });
           if (existing) {
+            if (existing.orgId !== resolvedOwnerOrgId) {
+              const normalizedExisting = await tx.workOrder.update({
+                where: { id: existing.id },
+                data: { orgId: resolvedOwnerOrgId },
+              });
+              return { order: normalizedExisting, created: false };
+            }
             return { order: existing, created: false };
           }
 
           const created = await tx.workOrder.create({
             data: {
-              orgId: ownerOrgId,
+              orgId: resolvedOwnerOrgId,
               ...normalized,
             },
           });
@@ -1095,6 +1287,13 @@ const createOrReuseSharedOrder = async ({
           orderBy: { id: "asc" },
         });
         if (existing) {
+          if (existing.orgId !== resolvedOwnerOrgId) {
+            const normalizedExisting = await prisma.workOrder.update({
+              where: { id: existing.id },
+              data: { orgId: resolvedOwnerOrgId },
+            });
+            return { order: normalizedExisting, created: false };
+          }
           return { order: existing, created: false };
         }
       }
@@ -1107,9 +1306,10 @@ const createOrReuseSharedOrder = async ({
 
 const toOrderResponse = (order: any) => {
   const items = normalizeOrderItems(order?.items);
+  const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
   return {
     id: order.orderId,
-    ownerOrgId: order.orgId ?? null,
+    ownerOrgId,
     orderNumber: order.orderNumber ?? "",
     buyerOrgId: order.buyerOrgId ?? null,
     buyerOrgName: order.buyerOrgName ?? "",
@@ -1490,6 +1690,91 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/auth/context", async (req, res) => {
+  const requesterEmail = normalizeEmail(req.query.email) || getRequesterEmail(req);
+  if (!requesterEmail || !requesterEmail.includes("@")) {
+    return res.status(400).json({ ok: false, error: "email is required" });
+  }
+
+  const systemUser = await prisma.systemUser.findUnique({
+    where: { email: requesterEmail },
+    select: { systemRole: true },
+  });
+  if (systemUser?.systemRole === "SYSTEM_ADMIN") {
+    return res.json({
+      email: requesterEmail,
+      entryType: "SYSTEM",
+      systemRole: systemUser.systemRole,
+      orgId: null,
+      orgName: null,
+      orgType: null,
+      orgRole: null,
+    });
+  }
+
+  const requestedOrgIdText = getRequestedOrgIdText(req);
+  if (requestedOrgIdText) {
+    if (!/^\d+$/.test(requestedOrgIdText)) {
+      return res.status(400).json({ ok: false, error: "invalid orgId" });
+    }
+    const requestedOrgId = Number(requestedOrgIdText);
+    if (!Number.isSafeInteger(requestedOrgId) || requestedOrgId <= 0) {
+      return res.status(400).json({ ok: false, error: "invalid orgId" });
+    }
+
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_email: {
+          orgId: requestedOrgId,
+          email: requesterEmail,
+        },
+      },
+      include: { organization: true },
+    });
+    if (!membership || membership.status !== "ACTIVE" || !membership.organization) {
+      return res.status(403).json({
+        ok: false,
+        error: "active org membership is required",
+      });
+    }
+
+    return res.json({
+      email: requesterEmail,
+      entryType: "ORG",
+      systemRole: "USER",
+      orgId: membership.organization.id,
+      orgName: membership.organization.name ?? null,
+      orgType: membership.organization.type ?? null,
+      orgRole: membership.role,
+    });
+  }
+
+  const membership = await prisma.orgMembership.findFirst({
+    where: {
+      email: requesterEmail,
+      status: "ACTIVE",
+    },
+    include: { organization: true },
+    orderBy: { id: "asc" },
+  });
+  if (!membership || !membership.organization) {
+    return res.status(403).json({
+      ok: false,
+      error: "active org membership is required",
+    });
+  }
+
+  res.json({
+    email: requesterEmail,
+    entryType: "ORG",
+    systemRole: "USER",
+    orgId: membership.organization.id,
+    orgName: membership.organization.name ?? null,
+    orgType: membership.organization.type ?? null,
+    orgRole: membership.role,
+  });
+});
+
 app.get("/organizations", async (_req, res) => {
   const organizations = await prisma.organization.findMany({
     orderBy: { id: "asc" },
@@ -1506,11 +1791,25 @@ app.get("/organizations/primary", async (_req, res) => {
 });
 
 const listOrgMemberships = async (req: Request, res: Response) => {
-  const orgId = Number(req.query.orgId);
+  let organization = null;
+  try {
+    organization = await getOrganizationByQuery(req);
+  } catch (error) {
+    const status = Number((error as any)?.status) || 500;
+    const message =
+      typeof (error as any)?.message === "string"
+        ? (error as any).message
+        : "failed to resolve organization";
+    return res.status(status).json({ ok: false, error: message });
+  }
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
   const status = resolveStatus(req.query.status);
   const email = normalizeEmail(req.query.email);
   const where = {
-    ...(Number.isFinite(orgId) ? { orgId } : {}),
+    orgId: organization.id,
     ...(status ? { status } : {}),
     ...(email ? { email } : {}),
   };
@@ -1812,10 +2111,13 @@ app.patch("/org-memberships/:id", async (req, res) => {
 });
 
 app.get("/employees", async (req, res) => {
-  const orgId = Number(req.query.orgId);
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
   const factoryId = Number(req.query.factoryId);
   const where = {
-    ...(Number.isFinite(orgId) ? { orgId } : {}),
+    orgId: organization.id,
     ...(Number.isFinite(factoryId) ? { factoryId } : {}),
   };
   const employees = await prisma.employee.findMany({
@@ -2908,7 +3210,11 @@ app.get("/orders", async (req, res) => {
 });
 
 app.post("/orders", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -2931,15 +3237,16 @@ app.post("/orders", async (req, res) => {
   normalized.sellerOrgId = seller.id;
   normalized.sellerOrgName = seller.name ?? "";
 
-  const { order, created } = await createOrReuseSharedOrder({
-    ownerOrgId: organization.id,
-    normalized,
-  });
+  const { order, created } = await createOrReuseSharedOrder({ normalized });
   res.status(created ? 201 : 200).json(toOrderResponse(order));
 });
 
 app.put("/orders/:orderId", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -2994,14 +3301,21 @@ app.put("/orders/:orderId", async (req, res) => {
 
   const updated = await prisma.workOrder.update({
     where: { id: existing.id },
-    data: normalized,
+    data: {
+      ...normalized,
+      orgId: buyer.id,
+    },
   });
 
   res.json(toOrderResponse(updated));
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3020,7 +3334,8 @@ app.delete("/orders/:orderId", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
   }
-  if (existing.orgId !== organization.id) {
+  const ownerOrgId = existing.buyerOrgId ?? existing.orgId;
+  if (ownerOrgId !== organization.id) {
     return res.status(403).json({
       ok: false,
       error: "only order owner can delete",
@@ -3038,7 +3353,11 @@ app.delete("/orders/:orderId", async (req, res) => {
 });
 
 app.post("/customers", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3160,7 +3479,11 @@ app.put("/customers/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3249,7 +3572,11 @@ app.delete("/customers/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3345,7 +3672,11 @@ app.get("/styles/:styleId", async (req, res) => {
 });
 
 app.post("/styles", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3394,7 +3725,11 @@ app.post("/styles", async (req, res) => {
 });
 
 app.put("/styles/:styleId", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3477,7 +3812,11 @@ app.put("/styles/:styleId", async (req, res) => {
 });
 
 app.delete("/styles/:styleId", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3536,7 +3875,11 @@ app.delete("/styles/:styleId", async (req, res) => {
 });
 
 app.post("/styles/import", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3548,8 +3891,18 @@ app.post("/styles/import", async (req, res) => {
   }
 
   const normalizedRows = rows
-    .map((item: any) => normalizeStylePayload(item, null, { includeProcesses }))
-    .filter((item: any) => item.name && item.customer);
+    .map((item: any) => ({
+      raw: item,
+      normalized: normalizeStylePayload(item, null, { includeProcesses }),
+    }))
+    .filter((item: any) => {
+      if (!item.normalized?.name) return false;
+      if (item.normalized?.customer) return true;
+      const customerOrgId = toPositiveIntOrNull(
+        item.raw?.customerOrgId ?? item.raw?.buyerOrgId ?? item.raw?.customerId
+      );
+      return customerOrgId !== null;
+    });
 
   if (normalizedRows.length === 0) {
     return res
@@ -3557,10 +3910,24 @@ app.post("/styles/import", async (req, res) => {
       .json({ ok: false, error: "no valid styles to import" });
   }
 
+  const rowsWithOwner = await Promise.all(
+    normalizedRows.map(async (item: any) => {
+      const owner = await resolveStyleOwnerForCreateOrThrow({
+        organization,
+        payload: item.raw ?? item.normalized,
+      });
+      return {
+        ...item.normalized,
+        customer: owner.ownerOrgName || item.normalized.customer,
+        ownerOrgId: owner.ownerOrgId,
+      };
+    })
+  );
+
   const seenNameKeys = new Set();
   const seenCodeKeys = new Set();
-  for (const item of normalizedRows) {
-    const nameKey = toStyleIdentityKey(item.customer, item.name);
+  for (const item of rowsWithOwner) {
+    const nameKey = `${item.ownerOrgId}:${toStyleIdentityKey(item.customer, item.name)}`;
     if (seenNameKeys.has(nameKey)) {
       return res.status(409).json({
         ok: false,
@@ -3569,7 +3936,10 @@ app.post("/styles/import", async (req, res) => {
     }
     seenNameKeys.add(nameKey);
 
-    const codeKey = toStyleIdentityKey(item.customer, item.styleCode);
+    const codeKey = `${item.ownerOrgId}:${toStyleIdentityKey(
+      item.customer,
+      item.styleCode
+    )}`;
     if (seenCodeKeys.has(codeKey)) {
       return res.status(409).json({
         ok: false,
@@ -3579,24 +3949,32 @@ app.post("/styles/import", async (req, res) => {
     seenCodeKeys.add(codeKey);
   }
 
+  const uniqueOwnerOrgIds = Array.from(
+    new Set(rowsWithOwner.map((item: any) => item.ownerOrgId))
+  );
+  const uniqueStyleIds = Array.from(
+    new Set(rowsWithOwner.map((item: any) => item.styleId))
+  );
   const existingStyleRows = await prisma.style.findMany({
     where: {
-      orgId: organization.id,
-      styleId: { in: normalizedRows.map((item: any) => item.styleId) },
+      orgId: { in: uniqueOwnerOrgIds },
+      styleId: { in: uniqueStyleIds },
     },
-    select: { uid: true, styleId: true },
+    select: { uid: true, styleId: true, orgId: true },
   });
-  const existingStyleUidByStyleId = new Map(
-    existingStyleRows.map((row) => [row.styleId, row.uid])
+  const existingStyleUidByOwnerStyle = new Map(
+    existingStyleRows.map((row) => [`${row.orgId}:${row.styleId}`, row.uid])
   );
 
-  for (const item of normalizedRows) {
+  for (const item of rowsWithOwner) {
     const conflictMessage = await findStyleConflict({
-      orgId: organization.id,
+      orgId: item.ownerOrgId,
       customer: item.customer,
       name: item.name,
       styleCode: item.styleCode,
-      excludeUid: existingStyleUidByStyleId.get(item.styleId) ?? null,
+      excludeUid:
+        existingStyleUidByOwnerStyle.get(`${item.ownerOrgId}:${item.styleId}`) ??
+        null,
     });
     if (conflictMessage) {
       return res.status(409).json({ ok: false, error: conflictMessage });
@@ -3604,37 +3982,38 @@ app.post("/styles/import", async (req, res) => {
   }
 
   await prisma.$transaction(
-    normalizedRows.map((item: any) =>
-      prisma.style.upsert({
+    rowsWithOwner.map((item: any) => {
+      const { ownerOrgId, ...stylePayload } = item;
+      return prisma.style.upsert({
         where: {
           orgId_styleId: {
-            orgId: organization.id,
-            styleId: item.styleId,
+            orgId: ownerOrgId,
+            styleId: stylePayload.styleId,
           },
         },
         update: {
-          styleCode: item.styleCode,
-          name: item.name,
-          customer: item.customer,
-          registrationDate: item.registrationDate,
-          designer: item.designer,
-          collection: item.collection,
-          season: item.season,
-          imageUrls: item.imageUrls,
-          processes: item.processes,
-          bom: item.bom,
-          bomNotes: item.bomNotes,
+          styleCode: stylePayload.styleCode,
+          name: stylePayload.name,
+          customer: stylePayload.customer,
+          registrationDate: stylePayload.registrationDate,
+          designer: stylePayload.designer,
+          collection: stylePayload.collection,
+          season: stylePayload.season,
+          imageUrls: stylePayload.imageUrls,
+          processes: stylePayload.processes,
+          bom: stylePayload.bom,
+          bomNotes: stylePayload.bomNotes,
         },
         create: {
-          orgId: organization.id,
-          ...item,
+          orgId: ownerOrgId,
+          ...stylePayload,
         },
-      })
-    )
+      });
+    })
   );
 
   const imported = await prisma.style.findMany({
-    where: { orgId: organization.id },
+    where: { orgId: { in: uniqueOwnerOrgIds } },
     orderBy: { uid: "asc" },
   });
 
@@ -3680,7 +4059,11 @@ app.get("/attributes", async (req, res) => {
 });
 
 app.put("/attributes", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
@@ -3754,6 +4137,8 @@ app.put("/attributes", async (req, res) => {
 });
 
 app.post("/organizations", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
   const {
     name,
     code,
@@ -3807,6 +4192,8 @@ app.post("/organizations", async (req, res) => {
 });
 
 app.put("/organizations/:id", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ ok: false, error: "invalid id" });
@@ -3867,6 +4254,8 @@ app.put("/organizations/:id", async (req, res) => {
 });
 
 app.get("/organizations/:id/subscription", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ ok: false, error: "invalid id" });
@@ -3884,6 +4273,8 @@ app.get("/organizations/:id/subscription", async (req, res) => {
 });
 
 app.patch("/organizations/:id/subscription", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ ok: false, error: "invalid id" });
@@ -3902,6 +4293,8 @@ app.patch("/organizations/:id/subscription", async (req, res) => {
 });
 
 const assignOrgMembership = async (req: Request, res: Response) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
   const { orgId, email, role } = req.body ?? {};
   const orgIdNum = Number(orgId);
   const normalizedEmail = normalizeEmail(email);
