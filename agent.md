@@ -39,8 +39,8 @@
 ### 라인 capacity 계산
 - 일일 capacity = 라인 인원 수 × 시프트 시간(초)
 - LineAssignment로 인원 변동 이력 관리 (startAt / endAt)
-- 라인 인원이 변경되면 해당 라인의 AssignmentPlan capacity를 재계산해야 함
-- AssignmentPlan에는 계획 당시의 headcount가 별도 저장되지 않음 (현재 이슈)
+- 라인 인원이 변경되면 해당 라인의 AssignmentBoard capacity를 재계산 (트리거 방식)
+- headcount 스냅샷은 저장하지 않음 — 변경 시 재계산으로 처리
 
 ### 급여 계산 (아직 미개발)
 - 기준: WorkRecord의 ctSeconds × 수량 × factoryWagePerSecond
@@ -62,7 +62,8 @@ Organization (MANUFACTURER | BRAND)
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, startIndex, endIndex)
   └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 단일 자동저장
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
-       └─ WorkRecord (workerId, assignmentPlanId, ctSeconds snapshot, quantity)
+       └─ WorkRecord (workerId, ctSeconds snapshot, quantity)
+            ※ assignmentPlanId — todo 5번 완료 후 추가 예정
 
 ### AssignmentBoardState 주의사항
 - 조직당 단 1개의 레코드 (upsert)
@@ -91,7 +92,9 @@ Organization (MANUFACTURER | BRAND)
 3. 작업 배정 계획과 실제 작업 기록은 독립적으로 유지
 4. 수주 수량과 배정 카드 수량은 별도 관리 (카드는 수주를 쪼개서 배정)
 5. 급여 계산은 WorkRecord의 ctSeconds 기준 — Style.processes 변경 영향 없음
-6. 라인 인원 변경 시 해당 라인의 배정 계획 capacity 재계산 필요
+6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
+7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — 급여와 무관, 수량 초과 감지용 (미구현)
+8. 초과 공정(WorkRecord 누적 > finalQuantity) 시 급여 포함 여부: **미결 (추후 결정)**
 
 ---
 
