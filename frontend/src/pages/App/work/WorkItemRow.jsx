@@ -82,6 +82,7 @@ const WorkItemRow = ({
   colors = [],
   allItems = [],
   factory,
+  assignmentPlans = [],
 }) => {
   const customerInputRef = useRef(null);
   const styleInputRef = useRef(null);
@@ -153,13 +154,15 @@ const WorkItemRow = ({
     });
   }, [focusRequest?.token, focusRequest?.itemId, focusRequest?.field, item.id]);
 
+  const hasCard = Boolean(item.card);
+
   return (
     <Box
       sx={{
         mb: 1,
         p: 1,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: hasCard ? 'primary.light' : 'divider',
         borderRadius: 1.5,
         backgroundColor: disabled ? '#fafafa' : '#fff',
       }}
@@ -172,6 +175,23 @@ const WorkItemRow = ({
           <DeleteIcon fontSize="small" />
         </IconButton>
       </Box>
+
+      {assignmentPlans.length > 0 && (
+        <Box sx={{ mb: 1 }}>
+          <SearchableSelect
+            label="배정 카드 (선택)"
+            options={assignmentPlans}
+            value={item.card || null}
+            onChange={(_event, value) => onItemChange('card', value)}
+            disabled={disabled}
+            getOptionLabel={(option) =>
+              `[${option.orderNo || '-'}] ${option.label || ''}${option.colorName ? ` · ${option.colorName}` : ''}`
+            }
+            isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
+            textFieldProps={{ size: 'small', placeholder: '카드를 선택하면 스타일/색상이 자동 입력됩니다.' }}
+          />
+        </Box>
+      )}
 
       <Box
         sx={{
@@ -189,11 +209,11 @@ const WorkItemRow = ({
           value={item.customer}
           onChange={(_event, value) => onItemChange('customer', value)}
           autoHighlight
-          disabled={disabled}
+          disabled={disabled || hasCard}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
           textFieldProps={{
             size: 'small',
-            placeholder: '고객사 선택',
+            placeholder: hasCard ? '카드에서 자동 입력' : '고객사 선택',
             inputRef: customerInputRef,
             onKeyDown: (event) => moveFocusTo(event, styleInputRef),
           }}
@@ -205,12 +225,12 @@ const WorkItemRow = ({
           value={item.style}
           onChange={(_event, value) => onItemChange('style', value)}
           autoHighlight
-          disabled={disabled || !item.customer}
+          disabled={disabled || hasCard || !item.customer}
           getOptionLabel={(option) => option?.name || ''}
           isOptionEqualToValue={(option, value) => option?.id === value?.id}
           textFieldProps={{
             size: 'small',
-            placeholder: '스타일 선택',
+            placeholder: hasCard ? '카드에서 자동 입력' : '스타일 선택',
             inputRef: styleInputRef,
             onKeyDown: (event) => moveFocusTo(event, colorInputRef),
           }}
@@ -222,7 +242,7 @@ const WorkItemRow = ({
           value={item.color}
           onChange={(_event, value) => onItemChange('color', value)}
           autoHighlight
-          disabled={disabled || !item.style}
+          disabled={disabled || hasCard || !item.style}
           getOptionLabel={(option) => option?.name || option?.code || ''}
           isOptionEqualToValue={(option, value) =>
             option?.id === value?.id ||
@@ -231,7 +251,7 @@ const WorkItemRow = ({
           }
           textFieldProps={{
             size: 'small',
-            placeholder: '색상 선택',
+            placeholder: hasCard ? '카드에서 자동 입력' : '색상 선택',
             inputRef: colorInputRef,
             onKeyDown: (event) => moveFocusTo(event, processInputRef),
           }}

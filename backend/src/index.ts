@@ -1531,6 +1531,7 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       colorName: resolveOptionalString(record.colorName, null),
       ctSeconds: toNonNegativeInt(record.ctSeconds, 0),
       quantity,
+      assignmentPlanId: toPositiveIntOrNull(record.assignmentPlanId),
     });
   });
 
@@ -1549,6 +1550,7 @@ const toWorkRecordResponse = (record: any) => ({
   colorName: record?.colorName ?? "",
   ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
   quantity: toNonNegativeInt(record?.quantity, 0),
+  assignmentPlanId: record?.assignmentPlanId ?? null,
 });
 const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const workDateInput =
@@ -2997,6 +2999,41 @@ app.post("/line-assignments/unassign", async (req, res) => {
   await closeActiveLineAssignments(employee.id, new Date());
 
   res.json({ ok: true });
+});
+
+app.get("/assignment-plans", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const lineId = Number(req.query.lineId);
+  if (!Number.isFinite(lineId) || lineId <= 0) {
+    return res.status(400).json({ ok: false, error: "lineId is required" });
+  }
+
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId: organization.id, lineId },
+    orderBy: [{ startIndex: "asc" }, { id: "asc" }],
+  });
+
+  res.json(
+    plans.map((plan) => ({
+      dbId: plan.id,
+      id: plan.externalId,
+      lineId: String(plan.lineId),
+      orderNo: plan.orderNo ?? "",
+      label: plan.label ?? "",
+      customer: plan.customer ?? "",
+      colorName: plan.colorName ?? "",
+      color: plan.color ?? "",
+      quantity: plan.quantity ?? null,
+      contractedSeconds: plan.contractedSeconds ?? null,
+      ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
+      startIndex: plan.startIndex,
+      endIndex: plan.endIndex,
+    }))
+  );
 });
 
 app.get("/work-logs", async (req, res) => {

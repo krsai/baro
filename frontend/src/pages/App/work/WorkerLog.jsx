@@ -18,6 +18,7 @@ const WorkerLog = ({
   styles,
   colors,
   factory,
+  assignmentPlans,
   takenWorkerIds,
   focusRequest,
   focusWorkerRequest,
@@ -106,6 +107,7 @@ const WorkerLog = ({
               colors={colors}
               allItems={log.items}
               factory={factory}
+              assignmentPlans={assignmentPlans}
             />
           ))
         )}

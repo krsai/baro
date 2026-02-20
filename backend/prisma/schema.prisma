@@ -369,6 +369,7 @@ model AssignmentPlan {
 
   line         Line         @relation(fields: [lineId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  workRecords  WorkRecord[]
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
@@ -411,17 +412,20 @@ model WorkRecord {
   colorId      Int?
   colorCode    String?
   colorName    String?
+  assignmentPlanId Int?
   ctSeconds    Int      @default(0)
   quantity     Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  workLog      WorkLog      @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
+  assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
+  @@index([assignmentPlanId])
   @@index([workLogId])
 }
 

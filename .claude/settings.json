@@ -4,10 +4,13 @@
       "Bash(echo:*)",
       "Bash(node --input-type=commonjs:*)",
       "Bash(node:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma db push:*)"
     ],
     "additionalDirectories": [
-      "c:\\Users\\krsai\\Desktop\\baro"
+      "c:\\Users\\krsai\\Desktop\\baro",
+      "C:\\Users\\krsai\\Desktop\\baro\\backend\\prisma\\migrations"
     ]
   }
 }

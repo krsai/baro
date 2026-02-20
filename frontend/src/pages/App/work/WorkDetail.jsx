@@ -30,6 +30,8 @@ const buildLogId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2
 const buildItemId = () => `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const buildEmptyItem = () => ({
   id: buildItemId(),
+  card: null,
+  assignmentPlanId: null,
   customer: null,
   style: null,
   process: null,
@@ -281,6 +283,9 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [workDate, setWorkDate] = useState(dayjs());
   const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(null);
+  const [lines, setLines] = useState([]);
+  const [selectedLine, setSelectedLine] = useState(null);
+  const [assignmentPlans, setAssignmentPlans] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [styles, setStyles] = useState([]);
@@ -325,6 +330,32 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       cancelled = true;
     };
   }, [activeOrgId]);
+
+  useEffect(() => {
+    if (!selectedFactory?.id) {
+      setLines([]);
+      setSelectedLine(null);
+      setAssignmentPlans([]);
+      return;
+    }
+    let cancelled = false;
+    requestJSON(`/lines${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`)
+      .then((data) => { if (!cancelled) setLines(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setLines([]); });
+    return () => { cancelled = true; };
+  }, [selectedFactory?.id, activeOrgId]);
+
+  useEffect(() => {
+    if (!selectedLine?.id) {
+      setAssignmentPlans([]);
+      return;
+    }
+    let cancelled = false;
+    requestJSON(`/assignment-plans${buildQueryString({ lineId: selectedLine.id, orgId: activeOrgId })}`)
+      .then((data) => { if (!cancelled) setAssignmentPlans(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setAssignmentPlans([]); });
+    return () => { cancelled = true; };
+  }, [selectedLine?.id, activeOrgId]);
 
   useEffect(() => {
     initializedMetaLogIdRef.current = '';
@@ -556,7 +587,30 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         const nextItems = log.items.map((item) => {
             if (item.id !== itemId) return item;
             const next = { ...item, [field]: value };
+            if (field === 'card') {
+              if (value) {
+                next.customer = customers.find((c) => equalsText(c?.name, value.customer))
+                  || (value.customer ? { id: `virtual-c-${value.dbId}`, name: value.customer } : null);
+                next.style = styles.find((s) =>
+                  equalsText(s?.customer, value.customer) &&
+                  (equalsText(s?.name, value.label) || equalsText(s?.styleCode, value.label) || equalsText(s?.styleId, value.label))
+                ) || (value.label ? { id: `virtual-s-${value.dbId}`, name: value.label, customer: value.customer || '', processes: [] } : null);
+                next.color = colors.find((c) =>
+                  equalsText(c?.name, value.colorName) || equalsText(c?.code, value.colorName)
+                ) || (value.colorName ? { id: `virtual-cl-${value.dbId}`, name: value.colorName, code: value.colorName } : null);
+                next.process = null;
+                next.assignmentPlanId = value.dbId ?? null;
+              } else {
+                next.customer = null;
+                next.style = null;
+                next.color = null;
+                next.process = null;
+                next.assignmentPlanId = null;
+              }
+            }
             if (field === 'customer') {
+              next.card = null;
+              next.assignmentPlanId = null;
               next.style = null;
               next.process = null;
               next.color = null;
@@ -604,6 +658,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           colorName: item.color?.name || '',
           ctSeconds: resolveCtSeconds(item.process),
           quantity: Number(item.quantity) || 0,
+          assignmentPlanId: item.assignmentPlanId ?? null,
         }))
     );
     const workerIdSet = new Set(
@@ -726,6 +781,19 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             isOptionEqualToValue={(option, value) => option?.id === value?.id}
           />
 
+          <SearchableSelect
+            label="라인 (선택)"
+            options={lines}
+            value={selectedLine}
+            onChange={(_event, value) => setSelectedLine(value)}
+            autoHighlight
+            disabled={!selectedFactory || lines.length === 0}
+            sx={{ minWidth: 200 }}
+            getOptionLabel={(option) => option?.name || ''}
+            isOptionEqualToValue={(option, value) => option?.id === value?.id}
+            textFieldProps={{ size: 'small' }}
+          />
+
           <TextField
             label="초당 공임"
             value={
@@ -834,6 +902,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
               styles={styles}
               colors={colors}
               factory={selectedFactory}
+              assignmentPlans={assignmentPlans}
               takenWorkerIds={takenWorkerIds}
               focusRequest={itemFocusRequest?.logId === log.id ? itemFocusRequest : null}
               focusWorkerRequest={workerFocusRequest?.logId === log.id ? workerFocusRequest : null}
