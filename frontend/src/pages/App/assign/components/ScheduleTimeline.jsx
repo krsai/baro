@@ -3,10 +3,10 @@ import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, Tab
 import { useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
 
-const CELL_WIDTH = 140;
-const ROW_HEIGHT = 74;
-const BAR_HEIGHT = 50;
-const BAR_GAP = 4;
+const CELL_WIDTH = 100;
+const ROW_HEIGHT = 90;
+const BAR_HEIGHT = 64;
+const BAR_GAP = 6;
 const MIN_BAR_WIDTH = 56;
 
 const DropCell = memo(({ id, isHoliday }) => {
@@ -46,16 +46,18 @@ const buildRange = (assignment) => {
   };
 };
 
-const assignLanes = (items, rangeById = new Map()) => {
+const LANE_EPSILON = 1e-4;
+
+const assignLanes = (items) => {
   const laneEndByIndex = [];
   const placed = [];
 
   items.forEach((item) => {
-    const range = rangeById.get(item.id) || buildRange(item);
+    const range = buildRange(item);
     let laneIndex = 0;
 
     while (laneIndex < laneEndByIndex.length) {
-      if (range.start >= laneEndByIndex[laneIndex]) break;
+      if (range.start >= laneEndByIndex[laneIndex] - LANE_EPSILON) break;
       laneIndex += 1;
     }
 
@@ -148,7 +150,10 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
         });
       });
 
-      const { placed, laneCount } = assignLanes(lineAssignments, rangeById);
+      const { placed, laneCount } = assignLanes(lineAssignments);
+      const barsBlockHeight = laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP;
+      const rowHeightForLine = Math.max(ROW_HEIGHT, barsBlockHeight);
+      const verticalOffset = Math.round((rowHeightForLine - barsBlockHeight) / 2);
       const placedWithLayout = placed.map((assignment) => {
         const range = rangeById.get(assignment.id) || buildRange(assignment);
         const widthCells = Math.max(range.end - range.start, 0);
@@ -156,7 +161,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
           ...assignment,
           leftPx: range.start * CELL_WIDTH,
           widthPx: widthCells * CELL_WIDTH,
-          topPx: BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
+          topPx: verticalOffset + BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
           workDays: getWorkingDuration(assignment, days),
         };

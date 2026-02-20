@@ -59,31 +59,6 @@
 
 ---
 
-## 6. 카드 완료 처리 & 최종 수량 검증
-
-작업계획협의 화면에서 라인장이 완료 처리. 날짜 없이 최종 수량만 입력.
-5번(assignmentPlanId 연결) 완료 후 구현.
-
-### 확인 대상 파일
-- `backend/prisma/schema.prisma` — AssignmentPlan 모델 (필드 추가 위치)
-- `frontend/src/pages/ProductionPlan*.jsx` 또는 유사 파일 — 작업계획협의 화면
-
-### 완료 처리 동작
-- 완료 버튼 클릭 → 최종 수량 입력 팝업 (날짜 없음)
-- 시스템 체크: WorkRecord 누적 수량(assignmentPlanId 기준) > 최종 수량이면 경고 표시
-- 초과 공정 수량의 급여 포함 여부: 미결 (추후 결정)
-
-### 구현 단계
-1. schema.prisma: AssignmentPlan에 `isCompleted Boolean @default(false)`, `finalQuantity Int?` 추가
-2. `npx prisma migrate dev --name add_completion_fields_to_assignment_plan`
-3. backend API: AssignmentPlan 완료 처리 엔드포인트
-   - `PATCH /assignment-plans/:id/complete` — isCompleted=true, finalQuantity 저장
-   - 응답에 WorkRecord 누적 수량 포함 (초과 여부 계산용)
-4. frontend: 작업계획협의 화면에 완료 버튼 + 최종 수량 입력 팝업 추가
-5. frontend: 초과 공정 감지 시 경고 표시 UI
-
----
-
 ## 1. 급여 계산 기능 개발 (미개발)
 
 CT 기반 급여 계산 모듈 전체 구현. 데이터 기반 구조는 이미 준비됨.

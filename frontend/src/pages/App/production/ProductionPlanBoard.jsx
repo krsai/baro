@@ -4,6 +4,10 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Paper,
   Stack,
@@ -218,6 +222,9 @@ const ProductionPlanBoard = () => {
   const { activeOrgId } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
+  const [completionDialog, setCompletionDialog] = useState(null); // { assignment }
+  const [finalQuantityDraft, setFinalQuantityDraft] = useState('');
+  const [completionSaving, setCompletionSaving] = useState(false);
   const [cards, setCards] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [lines, setLines] = useState([]);
@@ -339,6 +346,11 @@ const ProductionPlanBoard = () => {
       assignmentsForView.filter(
         (assignment) => normalizeCtStatus(assignment?.status) !== 'AGREED'
       ),
+    [assignmentsForView]
+  );
+
+  const agreedAssignments = useMemo(
+    () => assignmentsForView.filter((assignment) => normalizeCtStatus(assignment?.status) === 'AGREED'),
     [assignmentsForView]
   );
 
@@ -870,6 +882,60 @@ const ProductionPlanBoard = () => {
     }
   };
 
+  const handleOpenCompletionDialog = (assignment) => {
+    setCompletionDialog({ assignment });
+    setFinalQuantityDraft(String(assignment?.quantity ?? ''));
+  };
+
+  const handleCloseCompletionDialog = () => {
+    if (completionSaving) return;
+    setCompletionDialog(null);
+    setFinalQuantityDraft('');
+  };
+
+  const handleConfirmCompletion = async () => {
+    if (!completionDialog?.assignment || completionSaving) return;
+    const assignment = completionDialog.assignment;
+    const finalQty = Number.parseInt(finalQuantityDraft, 10);
+    if (!Number.isFinite(finalQty) || finalQty < 0) {
+      showNotification('최종 수량을 올바르게 입력해주세요.', 'error');
+      return;
+    }
+
+    setCompletionSaving(true);
+    try {
+      const query = buildQueryString({ orgId: activeOrgId });
+      const result = await requestJSON(`/assignment-plans/${encodeURIComponent(String(assignment.id))}/complete${query}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finalQuantity: finalQty }),
+      });
+
+      // 보드 상태도 동기화
+      const nextAssignments = assignments.map((item) =>
+        String(item?.id) !== String(assignment.id)
+          ? item
+          : { ...item, isCompleted: true, finalQuantity: finalQty }
+      );
+      await persistBoardState(nextAssignments);
+
+      if (result?.isOverflow) {
+        showNotification(
+          `완료 처리됨. 누적 작업 수량(${result.accumulatedQuantity}개)이 최종 수량(${finalQty}개)을 초과합니다.`,
+          'warning'
+        );
+      } else {
+        showNotification(`완료 처리되었습니다. (최종 수량: ${finalQty}개)`, 'success');
+      }
+      setCompletionDialog(null);
+      setFinalQuantityDraft('');
+    } catch (error) {
+      showNotification(error?.message || '완료 처리에 실패했습니다.', 'error');
+    } finally {
+      setCompletionSaving(false);
+    }
+  };
+
   return (
     <AppPageContainer
       header={
@@ -988,6 +1054,97 @@ const ProductionPlanBoard = () => {
                 </Table>
               </TableContainer>
             </Paper>
+
+            {agreedAssignments.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: 'success.50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    CT 동의 완료 — 완료 처리 대상
+                  </Typography>
+                  <Chip size="small" label={`${agreedAssignments.length}건`} color="success" variant="outlined" />
+                </Box>
+                <TableContainer sx={{ maxHeight: 280 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>라인</TableCell>
+                        <TableCell>고객/스타일</TableCell>
+                        <TableCell align="right">배정수량</TableCell>
+                        <TableCell>일정</TableCell>
+                        <TableCell align="center">완료</TableCell>
+                        <TableCell align="center">처리</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {agreedAssignments.map((assignment) => (
+                        <TableRow key={assignment.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {assignment?.line?.name || `라인 ${assignment.lineId}`}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {assignment?.factory?.name || '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {assignment.customer || '-'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {assignment.label || '-'}
+                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right">
+                            {formatNumberWithCommas(assignment.quantity, { fallback: '-', maximumFractionDigits: 0 })}
+                          </TableCell>
+                          <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
+                          <TableCell align="center">
+                            {assignment.isCompleted ? (
+                              <Chip size="small" label={`완료 ${assignment.finalQuantity ?? '-'}개`} color="success" />
+                            ) : (
+                              <Chip size="small" label="미완료" variant="outlined" />
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            {assignment.isCompleted ? (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="inherit"
+                                onClick={() => handleOpenCompletionDialog(assignment)}
+                              >
+                                재처리
+                              </Button>
+                            ) : (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="success"
+                                onClick={() => handleOpenCompletionDialog(assignment)}
+                              >
+                                완료 처리
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            )}
 
             <Paper variant="outlined" sx={{ p: 2 }}>
               <Box
@@ -1417,6 +1574,67 @@ const ProductionPlanBoard = () => {
           </Stack>
         </Box>
       </Box>
+
+      {/* 완료 처리 Dialog */}
+      <Dialog
+        open={Boolean(completionDialog)}
+        onClose={handleCloseCompletionDialog}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>카드 완료 처리</DialogTitle>
+        <DialogContent>
+          {completionDialog?.assignment && (
+            <Stack spacing={1.5} sx={{ pt: 0.5 }}>
+              <Typography variant="body2">
+                <strong>고객:</strong> {completionDialog.assignment.customer || '-'}
+              </Typography>
+              <Typography variant="body2">
+                <strong>스타일:</strong> {completionDialog.assignment.label || '-'}
+                {completionDialog.assignment.colorName ? ` · ${completionDialog.assignment.colorName}` : ''}
+              </Typography>
+              <Typography variant="body2">
+                <strong>배정 수량:</strong>{' '}
+                {formatNumberWithCommas(completionDialog.assignment.quantity, {
+                  fallback: '-',
+                  maximumFractionDigits: 0,
+                })}개
+              </Typography>
+              <TextField
+                label="최종 완성 수량"
+                type="number"
+                size="small"
+                value={finalQuantityDraft}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || (/^\d+$/.test(raw) && Number(raw) >= 0)) {
+                    setFinalQuantityDraft(raw);
+                  }
+                }}
+                inputProps={{ min: 0 }}
+                fullWidth
+                autoFocus
+              />
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                저장 후 실제 작업 기록(WorkRecord) 누적 수량과 비교하여 초과 여부를 안내합니다.
+              </Alert>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCompletionDialog} disabled={completionSaving}>
+            취소
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleConfirmCompletion}
+            disabled={completionSaving || finalQuantityDraft === ''}
+          >
+            {completionSaving ? '저장 중...' : '완료 처리'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </AppPageContainer>
   );
 };

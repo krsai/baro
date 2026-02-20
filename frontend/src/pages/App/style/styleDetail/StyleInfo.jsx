@@ -444,6 +444,7 @@ const StyleInfo = ({
                 name="styleCode"
                 value={formData.styleCode || ''}
                 onChange={handleInputChange}
+                placeholder={formData.name || '스타일명과 동일'}
                 sx={{ width: '70%' }}
               />
             </Box>

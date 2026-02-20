@@ -1428,7 +1428,7 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
           });
           return { order: created, created: true };
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 }
       );
     } catch (error) {
       const code = String((error as any)?.code || "");
@@ -3032,8 +3032,81 @@ app.get("/assignment-plans", async (req, res) => {
       ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
       startIndex: plan.startIndex,
       endIndex: plan.endIndex,
+      isCompleted: plan.isCompleted,
+      finalQuantity: plan.finalQuantity ?? null,
+      completedAt: plan.completedAt ?? null,
     }))
   );
+});
+
+app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const { externalId } = req.params;
+  const finalQuantity = req.body?.finalQuantity != null ? Number(req.body.finalQuantity) : null;
+  if (finalQuantity !== null && (!Number.isFinite(finalQuantity) || finalQuantity < 0)) {
+    return res.status(400).json({ ok: false, error: "finalQuantity must be a non-negative number" });
+  }
+
+  const plan = await prisma.assignmentPlan.findUnique({
+    where: { orgId_externalId: { orgId: organization.id, externalId } },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      isCompleted: true,
+      finalQuantity: finalQuantity != null ? Math.round(finalQuantity) : null,
+      completedAt: new Date(),
+    },
+  });
+
+  const accumulatedResult = await prisma.workRecord.aggregate({
+    where: { assignmentPlanId: plan.id },
+    _sum: { quantity: true },
+  });
+  const accumulatedQuantity = accumulatedResult._sum.quantity ?? 0;
+  const isOverflow =
+    updatedPlan.finalQuantity != null && accumulatedQuantity > updatedPlan.finalQuantity;
+
+  res.json({
+    ok: true,
+    dbId: updatedPlan.id,
+    id: updatedPlan.externalId,
+    isCompleted: updatedPlan.isCompleted,
+    finalQuantity: updatedPlan.finalQuantity ?? null,
+    completedAt: updatedPlan.completedAt ?? null,
+    accumulatedQuantity,
+    isOverflow,
+  });
+});
+
+app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const { externalId } = req.params;
+  const plan = await prisma.assignmentPlan.findUnique({
+    where: { orgId_externalId: { orgId: organization.id, externalId } },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: { isCompleted: false, finalQuantity: null, completedAt: null },
+  });
+
+  res.json({ ok: true, dbId: updatedPlan.id, id: updatedPlan.externalId, isCompleted: false });
 });
 
 app.get("/work-logs", async (req, res) => {
@@ -3135,7 +3208,7 @@ app.post("/work-logs", async (req, res) => {
     }
 
     return next;
-  });
+  }, { timeout: 30000 });
   const createdWithRecords = await prisma.workLog.findUnique({
     where: { id: created.id },
     include: {
@@ -3144,9 +3217,11 @@ app.post("/work-logs", async (req, res) => {
       },
     },
   });
-  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
-
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
+  // AT는 참고값이므로 응답 후 백그라운드에서 동기화
+  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
+    console.error("[AT sync] WorkLog POST 후 실패:", err?.message);
+  });
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -3209,7 +3284,7 @@ app.put("/work-logs/:id", async (req, res) => {
     }
 
     return next;
-  });
+  }, { timeout: 30000 });
   const updatedWithRecords = await prisma.workLog.findUnique({
     where: { id: updated.id },
     include: {
@@ -3218,9 +3293,10 @@ app.put("/work-logs/:id", async (req, res) => {
       },
     },
   });
-  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
-
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
+  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
+    console.error("[AT sync] WorkLog PUT 후 실패:", err?.message);
+  });
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
@@ -3245,9 +3321,10 @@ app.delete("/work-logs/:id", async (req, res) => {
   await prisma.workLog.delete({
     where: { id: existing.id },
   });
-  await syncStyleProcessActualTimesFromWorkRecords(organization.id);
-
   res.status(204).send();
+  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
+    console.error("[AT sync] WorkLog DELETE 후 실패:", err?.message);
+  });
 });
 
 app.get("/assignment-board-state", async (req, res) => {
@@ -3309,7 +3386,7 @@ app.put("/assignment-board-state", async (req, res) => {
     }
 
     return state;
-  });
+  }, { timeout: 30000 });
   const persistedPlans = await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],

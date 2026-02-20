@@ -24,10 +24,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import EditIcon from '@mui/icons-material/Edit';
 import SearchableSelect from '../../../../components/SearchableSelect';
-import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
-  calculateProcessLineTotal,
   calculateProcessTotal,
   formatSeconds,
   hasAnyProcessTime,
@@ -39,7 +37,6 @@ import {
 
 const createEmptyDraft = () => ({
   process: null,
-  quantity: 1,
   pt: '',
 });
 
@@ -90,7 +87,6 @@ const findMasterProcess = (process, options) => {
 
 const createDraftFromProcess = (process, options) => ({
   process: findMasterProcess(process, options),
-  quantity: Math.max(1, Number.parseInt(process?.quantity, 10) || 1),
   pt: process?.pt === null || process?.pt === undefined ? '' : String(process.pt),
 });
 
@@ -101,7 +97,7 @@ const buildProcessPayload = (draft, existingProcess = null) =>
     code: draft.process?.code ?? existingProcess?.code,
     name: draft.process?.name ?? existingProcess?.name,
     description: draft.process?.description ?? existingProcess?.description,
-    quantity: Math.max(1, Number.parseInt(draft.quantity, 10) || 1),
+    quantity: 1,
     pt: parseOptionalSecondsInput(draft.pt),
     at: resolveProcessActualTime({
       existingAt: existingProcess?.at ?? null,
@@ -206,8 +202,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
     if (!draft.process) return '공정을 선택해주세요.';
-    const quantity = Number.parseInt(draft.quantity, 10);
-    if (!Number.isFinite(quantity) || quantity <= 0) return '수량은 1 이상이어야 합니다.';
 
     const identity = getProcessIdentity(draft.process);
     if (!identity) return '유효한 공정을 선택해주세요.';
@@ -358,20 +352,11 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>순서</TableCell>
                   <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
-                  <TableCell align="right" sx={{ width: 90 }}>
-                    수량
-                  </TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
                     PT
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
                     AT(자동)
-                  </TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
-                    총 PT
-                  </TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
-                    총 AT
                   </TableCell>
                   <TableCell align="center" sx={{ width: 120 }}>
                     작업
@@ -411,21 +396,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                           <TextField
                             size="small"
                             type="number"
-                            value={addDraft.quantity}
-                            onChange={(event) =>
-                              setAddDraft((prev) => ({
-                                ...prev,
-                                quantity: Math.max(1, Number.parseInt(event.target.value, 10) || 1),
-                              }))
-                            }
-                            inputProps={{ min: 1 }}
-                            sx={{ width: 76 }}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <TextField
-                            size="small"
-                            type="number"
                             value={addDraft.pt}
                             onChange={(event) => {
                               setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
@@ -434,10 +404,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             placeholder="-"
                             sx={{ width: 86 }}
                           />
-                        </TableCell>
-                        <TableCell align="right">-</TableCell>
-                        <TableCell align="right">
-                          {formatSeconds(calculateProcessLineTotal(buildProcessPayload(addDraft), 'pt'))}
                         </TableCell>
                         <TableCell align="right">-</TableCell>
                         <TableCell align="center">
@@ -459,7 +425,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                     {addError && isAddingRow && (
                       <TableRow sx={{ backgroundColor: '#f8fafc' }}>
-                        <TableCell colSpan={8} sx={{ py: 0.75 }}>
+                        <TableCell colSpan={5} sx={{ py: 0.75 }}>
                           <Typography variant="caption" color="error">
                             {addError}
                           </Typography>
@@ -469,7 +435,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                     {safeProcesses.length === 0 && !isAddingRow ? (
                       <TableRow>
-                        <TableCell colSpan={8} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                           등록된 공정이 없습니다. 상단의 행 추가로 바로 입력해보세요.
                         </TableCell>
                       </TableRow>
@@ -547,32 +513,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                       <TextField
                                         size="small"
                                         type="number"
-                                        value={editDraft.quantity}
-                                        onChange={(event) =>
-                                          setEditDraft((prev) => ({
-                                            ...prev,
-                                            quantity: Math.max(
-                                              1,
-                                              Number.parseInt(event.target.value, 10) || 1
-                                            ),
-                                          }))
-                                        }
-                                        inputProps={{ min: 1 }}
-                                        sx={{ width: 76 }}
-                                      />
-                                    ) : (
-                                      formatNumberWithCommas(process.quantity, {
-                                        fallback: '-',
-                                        maximumFractionDigits: 0,
-                                      })
-                                    )}
-                                  </TableCell>
-
-                                  <TableCell align="right">
-                                    {isEditing ? (
-                                      <TextField
-                                        size="small"
-                                        type="number"
                                         value={editDraft.pt}
                                         onChange={(event) =>
                                           setEditDraft((prev) => ({ ...prev, pt: event.target.value }))
@@ -587,12 +527,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                   </TableCell>
 
                                   <TableCell align="right">{formatSeconds(previewProcess.at)}</TableCell>
-                                  <TableCell align="right">
-                                    {formatSeconds(calculateProcessLineTotal(previewProcess, 'pt'))}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    {formatSeconds(calculateProcessLineTotal(previewProcess, 'at'))}
-                                  </TableCell>
                                   <TableCell align="center">
                                     {isEditing ? (
                                       <Stack direction="row" spacing={0.5} justifyContent="center">
@@ -615,7 +549,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                                 {isEditing && editError && (
                                   <TableRow>
-                                    <TableCell colSpan={8} sx={{ py: 0.75 }}>
+                                    <TableCell colSpan={5} sx={{ py: 0.75 }}>
                                       <Typography variant="caption" color="error">
                                         {editError}
                                       </Typography>
@@ -635,7 +569,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={5} align="right" sx={{ fontWeight: 700 }}>
+                  <TableCell colSpan={2} align="right" sx={{ fontWeight: 700 }}>
                     총 시간 합계
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>

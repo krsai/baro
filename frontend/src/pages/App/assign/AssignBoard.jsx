@@ -1295,6 +1295,7 @@ const AssignBoard = () => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cards, assignments: normalizedAssignments }),
+          skipGlobalLoading: true,
         });
         if (persistSeqRef.current === currentSeq) {
           lastSavedSnapshotRef.current = snapshot;

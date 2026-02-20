@@ -12,8 +12,10 @@
 ## 핵심 도메인 개념
 
 ### CT (Contracted Time) — 가장 중요한 개념
-- **CT = 계약된 사이클타임** (초/개 단위)
-- PT(Planned Time)와 AT(Actual Time)는 CT를 결정하기 위한 참고값일 뿐
+- **CT = 계약된 시간** (초/개 단위) — Cycle Time이 아님
+- PT(Planned Time): 스타일 등록 시 운영자가 입력하는 계획 시간
+- AT(Actual Time): 실제 WorkRecord 기반으로 산출되는 값 — 운영자가 직접 입력하지 않음
+- PT와 AT는 CT 결정을 위한 참고값일 뿐, **CT 확정 이후에는 PT/AT 변경과 완전히 무관**
 - **라인장이 동의(Agree)해야 CT가 확정(snapshot)**된다
 - 확정된 CT는 급여 계산의 기준이 됨
 - AssignmentPlan의 ctStatus: PENDING → AGREED / REJECTED
@@ -24,12 +26,14 @@
 - 실제 작업 기록이 배정 계획의 내용(CT, 수량 등)에 영향을 주지 않음
 - 현장에서는 A작업과 B작업을 섞어서 진행할 수 있고, 계획과 실제 순서가 다를 수 있음
 
-### 작업 기록 입력 흐름 (개선 예정)
-- 작업자는 모두 라인에 배정되므로, 작업 기록 입력 시 **라인에 배정된 카드 목록을 먼저 조회**
-- 카드 선택 → 스타일, 색상, 공정 목록 자동 로드 (CT 포함)
-- 작업자는 공정별 수량만 입력
+### 작업 기록 입력 흐름
+- **운영자**가 소속 공장 작업자들의 작업 기록을 대신 입력 (작업자 본인이 직접 입력하지 않음)
+- 공장 선택 → 라인 선택 → 해당 라인에 배정된 카드 목록 조회
+- 카드 선택 → 스타일, 색상, 공정 목록 자동 로드
+- 작업자 선택 → 공정별 수량만 입력
 - WorkRecord에 `assignmentPlanId` 자동 연결 → WorkRecord ↔ AssignmentPlan 연결 확보
 - 한 라인에 카드가 여러 개 있으면(A/B 혼용) 카드를 각각 선택해 기록
+- 현재는 배정된 카드 기반 작업 기록만 지원 (배정 외 작업 기록은 향후 검토)
 
 ### 급여 계산 기준
 - **급여 = WorkRecord 기반** — 공정이 기록되면 지급 대상 (옷 전체 완성 여부와 무관)
@@ -57,13 +61,12 @@ Organization (MANUFACTURER | BRAND)
        └─ Line
             └─ LineAssignment (직원-라인 배정, startAt/endAt)
   └─ Employee (OrgMembership 1:1)
-  └─ Style (processes: JSON [{code, name, PT, AT}], bom: JSON)
+  └─ Style (processes: JSON [{code, name, PT}], bom: JSON)  ※ AT는 WorkRecord 기반 산출값, 공정 수량 개념 없음(payload quantity=1 고정)
   └─ WorkOrder (items: JSON)
-  └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, startIndex, endIndex)
+  └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
   └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 단일 자동저장
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
-       └─ WorkRecord (workerId, ctSeconds snapshot, quantity)
-            ※ assignmentPlanId — todo 5번 완료 후 추가 예정
+       └─ WorkRecord (workerId, ctSeconds snapshot, quantity, assignmentPlanId)
 
 ### AssignmentBoardState 주의사항
 - 조직당 단 1개의 레코드 (upsert)
@@ -71,7 +74,8 @@ Organization (MANUFACTURER | BRAND)
 - 현재 버전 관리 없음 — 이전 상태 복원 불가
 
 ### 카드(Card) 개념
-- (수주 × 스타일 × 색상 × 성별) 조합으로 자동 생성되는 배정 단위
+- **(수주 × 스타일 × 색상 × 성별) 조합으로 자동 생성되는 배정 단위**
+- 같은 스타일·색상이라도 수주가 다르면 별개의 카드로 인식
 - 미배정(unassigned pool)과 배정(line timeline) 상태로 구분
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
 - 카드에 배정된 수량과 수주 수량은 독립적 (수동 관리)
@@ -87,13 +91,13 @@ Organization (MANUFACTURER | BRAND)
 
 ## 비즈니스 규칙
 
-1. CT는 라인장 동의 시점에 확정(snapshot)됨 — 이후 PT/AT 변경과 무관
+1. CT(Contracted Time)는 라인장 동의 시점에 확정(snapshot)됨 — 이후 PT/AT와 완전히 무관
 2. WorkLog/WorkRecord는 직원 퇴사 후에도 보존 (workerId nullable)
 3. 작업 배정 계획과 실제 작업 기록은 독립적으로 유지
 4. 수주 수량과 배정 카드 수량은 별도 관리 (카드는 수주를 쪼개서 배정)
 5. 급여 계산은 WorkRecord의 ctSeconds 기준 — Style.processes 변경 영향 없음
 6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
-7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — 급여와 무관, 수량 초과 감지용 (미구현)
+7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
 8. 초과 공정(WorkRecord 누적 > finalQuantity) 시 급여 포함 여부: **미결 (추후 결정)**
 
 ---
@@ -102,6 +106,8 @@ Organization (MANUFACTURER | BRAND)
 
 - 다국어: 한국어 UI, 영문 코드/enum
 - 날짜 인덱스: AssignmentPlan의 startIndex/endIndex는 달력 기준 일(day) 오프셋
+- 스타일 코드: 별도 입력이 없으면 스타일명과 동일하게 저장 (buildPayload fallback)
+- 타임라인 레인 배치: assignLanes는 실제 논리 범위(buildRange)로 충돌 감지, 시각 최소 너비(MIN_BAR_WIDTH)는 렌더 전용
 - 휴일: 브라우저 localStorage에 저장, 일요일 + 공휴일 제외하여 capacity 계산
 - 멀티테넌시: 모든 쿼리에 orgId 필터 필수
 - Supabase Auth + Express 미들웨어로 인증 처리

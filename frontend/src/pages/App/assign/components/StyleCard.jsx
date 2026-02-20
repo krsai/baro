@@ -71,7 +71,7 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
         onSplit?.(card.id);
       }}
       sx={{
-        p: 1.5,
+        p: 2,
         cursor: isDisabled ? 'not-allowed' : 'grab',
         transition: 'all 0.15s ease',
         pointerEvents: isDragging ? 'none' : 'auto',
@@ -92,8 +92,8 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
             src={previewUrl}
             alt={card.styleName}
             sx={{
-              width: 56,
-              height: 56,
+              width: 72,
+              height: 72,
               borderRadius: 1.5,
               objectFit: 'cover',
               border: '1px solid rgba(0,0,0,0.08)',
@@ -103,8 +103,8 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
         ) : (
           <Box
             sx={{
-              width: 56,
-              height: 56,
+              width: 72,
+              height: 72,
               borderRadius: 1.5,
               border: '1px dashed rgba(0,0,0,0.2)',
               backgroundColor: '#F7F7F8',

@@ -18,8 +18,8 @@ import {
   Tabs,
   Tab,
   Badge,
-  Snackbar,
-  Alert,
+  Fade,
+  Typography,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import HomeIcon from '@mui/icons-material/Home';
@@ -510,7 +510,7 @@ const MainLayout = () => {
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
       {/* Header */}
       <AppBar position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
-        <Toolbar>
+        <Toolbar sx={{ position: 'relative' }}>
           <IconButton
             color="inherit"
             aria-label="toggle menu"
@@ -525,6 +525,42 @@ const MainLayout = () => {
               BARO
             </Button>
           </Box>
+          {/* 탑바 중앙 토스트 */}
+          <Fade in={!!notification} timeout={{ enter: 180, exit: 300 }} unmountOnExit>
+            <Box
+              sx={{
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                px: 2.5,
+                py: 0.6,
+                borderRadius: 99,
+                bgcolor: {
+                  success: 'rgba(27, 94, 32, 0.88)',
+                  error: 'rgba(183, 28, 28, 0.88)',
+                  warning: 'rgba(230, 81, 0, 0.88)',
+                  info: 'rgba(13, 71, 161, 0.88)',
+                }[notification?.type] ?? 'rgba(33, 33, 33, 0.88)',
+                pointerEvents: 'none',
+                zIndex: 10,
+                maxWidth: '55vw',
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  color: '#fff',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {notification?.message || ''}
+              </Typography>
+            </Box>
+          </Fade>
+
           {devBypass && devProfile?.label ? (
             <Box
               sx={{
@@ -542,22 +578,6 @@ const MainLayout = () => {
           ) : null}
         </Toolbar>
       </AppBar>
-
-      <Snackbar
-        open={!!notification}
-        onClose={dismissNotification}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-        sx={{ mt: '64px' }}
-      >
-        <Alert
-          onClose={dismissNotification}
-          severity={notification?.type || 'info'}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {notification?.message || ''}
-        </Alert>
-      </Snackbar>
 
       {/* Sidebar */}
       <Drawer

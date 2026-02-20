@@ -364,6 +364,9 @@ model AssignmentPlan {
   startDayOffsetPercent Float?
   startDayPercent       Float?
   endDayPercent         Float?
+  isCompleted           Boolean  @default(false)
+  finalQuantity         Int?
+  completedAt           DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime
 
