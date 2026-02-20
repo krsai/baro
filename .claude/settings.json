@@ -3,7 +3,11 @@
     "allow": [
       "Bash(echo:*)",
       "Bash(node --input-type=commonjs:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(dir:*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\krsai\\Desktop\\baro"
     ]
   }
 }
