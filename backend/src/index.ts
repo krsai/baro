@@ -2240,6 +2240,9 @@ app.patch("/org-memberships/:id", async (req, res) => {
       employeeData.joinedAt = existingEmployee?.joinedAt ?? now;
       if (membership.status === "SUSPENDED") {
         employeeData.leaveEndAt = now;
+      } else if (membership.status === "TERMINATED") {
+        employeeData.leaveStartAt = null;
+        employeeData.leaveEndAt = null;
       }
       employeeData.leftAt = null;
     } else if (currentStatus === "SUSPENDED") {

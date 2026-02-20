@@ -171,6 +171,16 @@ const EmployeeRow = React.memo(
               </MenuItem>
             ))}
           </TextField>
+          {draft.status === 'TERMINATED' && (
+            <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+              퇴사 처리 시 작업 기록은 보존됩니다.
+            </Typography>
+          )}
+          {member.status === 'TERMINATED' && draft.status === 'ACTIVE' && (
+            <Typography variant="caption" color="primary" display="block" mt={0.5}>
+              재입사 처리됩니다. 저장 후 라인 배정을 확인해주세요.
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>{formatDate(joinedAt)}</TableCell>
