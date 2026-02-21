@@ -4610,6 +4610,169 @@ const assignOrgMembership = async (req: Request, res: Response) => {
 
 app.post("/org-memberships/assign", assignOrgMembership);
 
+// ─── Payroll ───────────────────────────────────────────────────────────────
+
+app.get("/payroll/snapshots", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  const snapshots = await prisma.payrollSnapshot.findMany({
+    where: { orgId: organization.id },
+    orderBy: { month: "desc" },
+    select: { id: true, month: true, lockedAt: true, lockedBy: true, createdAt: true },
+  });
+  return res.json(snapshots);
+});
+
+app.get("/payroll", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const month = String(req.query.month || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
+  }
+
+  // 확정된 스냅샷이 있으면 스냅샷 데이터 반환
+  const snapshot = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId: organization.id, month } },
+  });
+  if (snapshot) {
+    return res.json({
+      locked: true,
+      lockedAt: snapshot.lockedAt,
+      lockedBy: snapshot.lockedBy,
+      month,
+      employees: snapshot.data,
+    });
+  }
+
+  // 실시간 집계: 해당 월의 WorkLog + WorkRecord 조회
+  const workLogs = await prisma.workLog.findMany({
+    where: {
+      orgId: organization.id,
+      workDate: { startsWith: month },
+    },
+    include: {
+      workRecords: { orderBy: { id: "asc" } },
+    },
+  });
+
+  // 직원별 집계
+  const employeeMap = new Map<
+    string,
+    {
+      workerId: number | null;
+      workerName: string;
+      totalEarnings: number;
+      processes: Map<
+        string,
+        {
+          processCode: string;
+          processName: string;
+          totalQuantity: number;
+          totalEarnings: number;
+        }
+      >;
+    }
+  >();
+
+  for (const workLog of workLogs) {
+    const wagePerSecond = Number(workLog.factoryWagePerSecond);
+    const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
+
+    for (const record of workLog.workRecords) {
+      const key =
+        record.workerId != null
+          ? `w-${record.workerId}`
+          : `n-${record.workerName || "unknown"}`;
+
+      const ctSeconds = Number(record.ctSeconds);
+      const quantity = Number(record.quantity);
+      const earnings =
+        validWage && ctSeconds > 0 && quantity > 0
+          ? ctSeconds * quantity * wagePerSecond
+          : 0;
+
+      if (!employeeMap.has(key)) {
+        employeeMap.set(key, {
+          workerId: record.workerId ?? null,
+          workerName: record.workerName || "이름없음",
+          totalEarnings: 0,
+          processes: new Map(),
+        });
+      }
+
+      const emp = employeeMap.get(key)!;
+      emp.totalEarnings += earnings;
+
+      const processKey = record.processCode || record.processName || "unknown";
+      if (!emp.processes.has(processKey)) {
+        emp.processes.set(processKey, {
+          processCode: record.processCode || "",
+          processName: record.processName || processKey,
+          totalQuantity: 0,
+          totalEarnings: 0,
+        });
+      }
+      const proc = emp.processes.get(processKey)!;
+      proc.totalQuantity += quantity;
+      proc.totalEarnings += earnings;
+    }
+  }
+
+  const employees = Array.from(employeeMap.values())
+    .map((emp) => ({
+      workerId: emp.workerId,
+      workerName: emp.workerName,
+      totalEarnings: emp.totalEarnings,
+      processes: Array.from(emp.processes.values()),
+    }))
+    .sort((a, b) => b.totalEarnings - a.totalEarnings);
+
+  return res.json({ locked: false, month, employees });
+});
+
+app.post("/payroll/lock", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const { month, lockedBy, employees } = req.body ?? {};
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
+  }
+
+  const existing = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId: organization.id, month } },
+  });
+  if (existing) {
+    return res.status(409).json({ ok: false, error: "already locked" });
+  }
+
+  const snapshot = await prisma.payrollSnapshot.create({
+    data: {
+      orgId: organization.id,
+      month: String(month),
+      data: employees ?? [],
+      lockedAt: new Date(),
+      lockedBy: String(lockedBy || "unknown"),
+    },
+  });
+
+  return res.status(201).json(snapshot);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const prismaErrorCode = String((error as any)?.code || "");
   const prismaErrorTargetRaw = (error as any)?.meta?.target;

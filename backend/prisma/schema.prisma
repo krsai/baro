@@ -80,6 +80,7 @@ model Organization {
   workRecords WorkRecord[]
   assignmentBoardState AssignmentBoardState?
   assignmentPlans AssignmentPlan[]
+  payrollSnapshots PayrollSnapshot[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
@@ -430,6 +431,21 @@ model WorkRecord {
   @@index([orgId, styleId])
   @@index([assignmentPlanId])
   @@index([workLogId])
+}
+
+model PayrollSnapshot {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  month     String
+  data      Json
+  lockedAt  DateTime
+  lockedBy  String
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, month])
+  @@index([orgId])
 }
 
 model AssignmentBoardState {

@@ -128,6 +128,18 @@ const CtReviewBoard = () => {
       });
   }, [styles]);
 
+  const agreedItems = useMemo(() => {
+    return (Array.isArray(assignments) ? assignments : [])
+      .filter((a) => String(a?.ctStatus || '').toUpperCase() === 'AGREED')
+      .map((assignment) => {
+        const card = cardById.get(String(assignment?.cardId || '')) || null;
+        const line = lineById.get(String(assignment?.lineId || '')) || null;
+        const factory = line ? factoryById.get(String(line.factoryId)) || null : null;
+        return { ...assignment, card, line, factory };
+      })
+      .sort((a, b) => new Date(b.ctAgreedAt || 0) - new Date(a.ctAgreedAt || 0));
+  }, [assignments, cardById, lineById, factoryById]);
+
   const reviewItems = useMemo(() => {
     return (Array.isArray(assignments) ? assignments : [])
       .filter((a) => String(a?.ctStatus || '').toUpperCase() === 'REJECTED')
@@ -589,6 +601,102 @@ const CtReviewBoard = () => {
             </Table>
           </TableContainer>
         </Paper>
+        {/* ── CT 동의 완료 목록 ── */}
+        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Box
+            sx={{
+              px: 2,
+              py: 1.25,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'grey.50',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              CT 동의 완료 목록
+            </Typography>
+            <Chip
+              size="small"
+              label={`${agreedItems.length}건`}
+              color={agreedItems.length > 0 ? 'success' : 'default'}
+              variant="outlined"
+            />
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>라인 / 공장</TableCell>
+                  <TableCell>고객 / 스타일</TableCell>
+                  <TableCell align="right">수량</TableCell>
+                  <TableCell align="right">합의 CT (전체)</TableCell>
+                  <TableCell>동의 주체</TableCell>
+                  <TableCell>동의 일시</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+                ) : agreedItems.length === 0 ? (
+                  <TableStatusRow colSpan={6} message="CT 동의 완료된 배정이 없습니다." sx={{ py: 2 }} />
+                ) : (
+                  agreedItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item?.line?.name || `라인 ${item.lineId}`}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item?.factory?.name || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item.customer || '-'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.label || '-'}
+                          {item.colorName ? ` · ${item.colorName}` : ''}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatNumberWithCommas(item.quantity, {
+                          fallback: '-',
+                          maximumFractionDigits: 0,
+                        })}
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 600 }}>
+                        {formatSeconds(item.contractedSeconds)}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={item.ctAgreedBy === 'OPERATOR' ? '운영팀 승인' : '라인장 동의'}
+                          color={item.ctAgreedBy === 'OPERATOR' ? 'primary' : 'success'}
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption">
+                          {item.ctAgreedAt
+                            ? new Date(item.ctAgreedAt).toLocaleString('ko-KR', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })
+                            : '-'}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+
         {/* ── 스타일 CT 버전 현황 ── */}
         {styleCtSummaries.length > 0 && (
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
