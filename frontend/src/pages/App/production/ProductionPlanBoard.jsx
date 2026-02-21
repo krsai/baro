@@ -651,6 +651,15 @@ const ProductionPlanBoard = () => {
     [buildProcessRows, selectedAssignment]
   );
 
+  // 기본 CT와 다른 값이 입력된 공정이 하나라도 있으면 true
+  const hasCtAdjustment = useMemo(
+    () =>
+      selectedProcessRows.some(
+        (row) => row.hasDirectProposal && row.proposedSeconds !== row.baseSeconds
+      ),
+    [selectedProcessRows]
+  );
+
   const selectedCostSummary = useMemo(() => {
     if (!selectedAssignment) return null;
 
@@ -864,10 +873,6 @@ const ProductionPlanBoard = () => {
     const target = assignments.find((item) => String(item?.id) === String(assignmentId));
     const targetView = assignmentViewById.get(String(assignmentId)) || null;
     if (!target) return;
-
-    const confirmMessage =
-      '조정 요청 내용을 운영팀 검토 대상으로 등록합니다. 현재 라인 배정은 유지됩니다. 진행할까요?';
-    if (!window.confirm(confirmMessage)) return;
 
     const processRows = buildProcessRows(targetView);
     const orderQuantity = Math.max(1, toPositiveInt(target?.quantity, 1));
@@ -2018,18 +2023,18 @@ const ProductionPlanBoard = () => {
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Button
                       size="small"
-                      variant="contained"
+                      variant={hasCtAdjustment ? 'outlined' : 'contained'}
                       onClick={() => handleAgree(selectedAssignment.id)}
-                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED'}
+                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED' || hasCtAdjustment}
                     >
                       {selectedAssignment.status === 'AGREED' ? '동의됨' : '동의'}
                     </Button>
                     <Button
                       size="small"
-                      variant="outlined"
+                      variant={hasCtAdjustment ? 'contained' : 'outlined'}
                       color="warning"
                       onClick={() => handleRequestAdjustment(selectedAssignment.id)}
-                      disabled={selectedAssignmentBusy}
+                      disabled={selectedAssignmentBusy || !hasCtAdjustment}
                     >
                       조정 요청
                     </Button>
