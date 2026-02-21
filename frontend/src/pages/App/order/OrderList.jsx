@@ -1079,6 +1079,54 @@ const OrderList = () => {
         setOrders((prev) =>
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
+
+        // 수량 변경 감지 → 차이 카드 생성
+        const oldItemQtyMap = new Map(
+          (existingOrder.items || []).map((item) => [
+            String(item.id),
+            Number.isFinite(Number(item.totalQuantity)) && Number(item.totalQuantity) > 0
+              ? Number(item.totalQuantity)
+              : sumSizeQuantities(item.sizeQuantities || {}),
+          ])
+        );
+        const generatedDeltaCards = [];
+        for (const savedItem of sanitizedItems) {
+          const oldQty = oldItemQtyMap.get(String(savedItem.id));
+          if (oldQty === undefined) continue; // 신규 항목 — 건너뜀
+          const delta = savedItem.totalQuantity - oldQty;
+          if (delta === 0) continue;
+          generatedDeltaCards.push({
+            id: `delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: 'DELTA',
+            deltaType: delta > 0 ? 'PLUS' : 'MINUS',
+            quantity: Math.abs(delta),
+            workOrderId: String(existingOrder.id),
+            orderItemId: String(savedItem.id),
+            styleId: savedItem.styleId || '',
+            label: savedItem.styleName || savedItem.styleCode || '',
+            customer: formData.buyerOrgName || formData.customerName || '',
+            colorName: savedItem.colorName || savedItem.colorCode || '',
+            gender: savedItem.gender || '',
+            createdAt: new Date().toISOString(),
+          });
+        }
+        if (generatedDeltaCards.length > 0) {
+          try {
+            const bsQuery = buildQueryString({ orgId: activeOrgId });
+            const boardState = await requestJSON('/assignment-board-state' + bsQuery).catch(() => ({ cards: [], assignments: [] }));
+            await requestJSON('/assignment-board-state' + bsQuery, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cards: [...(Array.isArray(boardState?.cards) ? boardState.cards : []), ...generatedDeltaCards],
+                assignments: Array.isArray(boardState?.assignments) ? boardState.assignments : [],
+              }),
+            });
+            showNotification(`수량 변경 ${generatedDeltaCards.length}건이 배정 보드 미배정 풀에 추가되었습니다.`, 'info');
+          } catch (_deltaErr) {
+            // 비중요 오류 — 수주 저장 성공에 영향 없음
+          }
+        }
       } else {
         payload.id = createId('order');
         payload.createdAt = payload.updatedAt;

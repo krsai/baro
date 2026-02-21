@@ -246,20 +246,35 @@ const LineBoard = () => {
 
     setSaving(true);
     try {
+      let responseData;
       if (isUnassigned) {
-        await requestJSON('/line-assignments/unassign' + buildOrgQuery(), {
+        responseData = await requestJSON('/line-assignments/unassign' + buildOrgQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ employeeId }),
           skipGlobalLoading: true,
         });
       } else {
-        await requestJSON('/line-assignments/assign' + buildOrgQuery(), {
+        responseData = await requestJSON('/line-assignments/assign' + buildOrgQuery(), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lineId: destinationLineId, employeeId }),
           skipGlobalLoading: true,
         });
+      }
+
+      // API 응답의 lineHeadcounts로 라인 인원 수 갱신
+      const lineHeadcounts = responseData?.lineHeadcounts;
+      if (lineHeadcounts && typeof lineHeadcounts === 'object') {
+        setLines((prev) =>
+          prev.map((line) => {
+            const key = String(line.id);
+            if (key in lineHeadcounts) {
+              return { ...line, headcount: lineHeadcounts[key] };
+            }
+            return line;
+          })
+        );
       }
     } catch (error) {
       setWorkers(previousWorkers);

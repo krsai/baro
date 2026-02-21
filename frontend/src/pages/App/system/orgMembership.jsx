@@ -13,7 +13,13 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  Chip,
+  Collapse,
+  IconButton,
+  Divider,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
@@ -38,11 +44,40 @@ const SUBSCRIPTION_STATUS_OPTIONS = [
   { value: 'SUSPENDED', label: 'Suspended' },
 ];
 
+const STATUS_CHIP_COLOR = {
+  ACTIVE: 'success',
+  TRIAL: 'info',
+  GRACE: 'warning',
+  SUSPENDED: 'error',
+  NOT_SUBSCRIBED: 'default',
+};
+
+const SubscriptionChip = ({ status }) => (
+  <Chip
+    label={status ?? '—'}
+    size="small"
+    color={STATUS_CHIP_COLOR[status] ?? 'default'}
+    variant={status === 'ACTIVE' ? 'filled' : 'outlined'}
+  />
+);
+
 const OrgMembership = () => {
   const { showNotification } = useApp();
 
   const [organizations, setOrganizations] = useState([]);
   const [members, setMembers] = useState([]);
+
+  // 구독 편집
+  const [editingOrgId, setEditingOrgId] = useState(null);
+  const [subEditForm, setSubEditForm] = useState({
+    subscriptionStatus: '',
+    membershipEmail: '',
+    billingEmail: '',
+  });
+  const [savingSubscription, setSavingSubscription] = useState(false);
+
+  // 조직 등록 폼
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [orgForm, setOrgForm] = useState({
     name: '',
     code: '',
@@ -54,7 +89,11 @@ const OrgMembership = () => {
     representative: '',
     address: '',
     phone: '',
+    initialMemberEmail: '',
+    initialMemberRole: 'ADMIN',
   });
+
+  // 멤버 할당 폼
   const [assignForm, setAssignForm] = useState({
     orgId: '',
     email: '',
@@ -75,7 +114,7 @@ const OrgMembership = () => {
         setAssignForm((prev) => ({ ...prev, orgId: String(list[0].id) }));
       }
     } catch (_error) {
-      // ignore fetch errors in UI for now
+      // ignore
     } finally {
       setLoadingOrgs(false);
     }
@@ -84,12 +123,10 @@ const OrgMembership = () => {
   const fetchMembers = async (orgId) => {
     if (!orgId) return;
     try {
-      const data = await requestJSON(
-        `/org-memberships${buildQueryString({ orgId })}`
-      );
+      const data = await requestJSON(`/org-memberships${buildQueryString({ orgId })}`);
       setMembers(Array.isArray(data) ? data : []);
     } catch (_error) {
-      // ignore fetch errors in UI for now
+      // ignore
     }
   };
 
@@ -103,31 +140,79 @@ const OrgMembership = () => {
     }
   }, [assignForm.orgId]);
 
+  // --- 구독 편집 ---
+
+  const handleEditSubscription = (org) => {
+    if (editingOrgId === org.id) {
+      setEditingOrgId(null);
+      return;
+    }
+    setEditingOrgId(org.id);
+    setSubEditForm({
+      subscriptionStatus: org.subscription?.status ?? 'NOT_SUBSCRIBED',
+      membershipEmail: org.subscription?.membershipEmail ?? '',
+      billingEmail: org.subscription?.billingEmail ?? '',
+    });
+  };
+
+  const handleSubEditChange = (e) => {
+    const { name, value } = e.target;
+    setSubEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleUpdateSubscription = async () => {
+    if (savingSubscription || !editingOrgId) return;
+    if (
+      subEditForm.subscriptionStatus === 'ACTIVE' &&
+      (!subEditForm.membershipEmail.trim() || !subEditForm.billingEmail.trim())
+    ) {
+      showNotification('Active 상태에는 Membership Email과 Billing Email이 필요합니다.', 'error');
+      return;
+    }
+    setSavingSubscription(true);
+    try {
+      const updated = await requestJSON(`/organizations/${editingOrgId}/subscription`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subscriptionStatus: subEditForm.subscriptionStatus,
+          membershipEmail: subEditForm.membershipEmail.trim(),
+          billingEmail: subEditForm.billingEmail.trim(),
+        }),
+      });
+      setOrganizations((prev) =>
+        prev.map((org) => (org.id === editingOrgId ? updated : org))
+      );
+      showNotification('구독 정보가 업데이트되었습니다.', 'success');
+      setEditingOrgId(null);
+    } catch (error) {
+      showNotification(error?.message || '구독 업데이트 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setSavingSubscription(false);
+    }
+  };
+
+  // --- 조직 등록 ---
+
   const handleOrgChange = (e) => {
     const { name, value } = e.target;
     setOrgForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAssignChange = (e) => {
-    const { name, value } = e.target;
-    setAssignForm((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleCreateOrganization = async () => {
     if (savingOrg) return;
     const name = orgForm.name.trim();
     if (!name) {
-      showNotification('Please enter an organization name.', 'error');
+      showNotification('조직명을 입력해주세요.', 'error');
       return;
     }
     if (
       orgForm.subscriptionStatus === 'ACTIVE' &&
       (!orgForm.membershipEmail.trim() || !orgForm.billingEmail.trim())
     ) {
-      showNotification('Active subscription requires membership and billing emails.', 'error');
+      showNotification('Active 상태에는 Membership Email과 Billing Email이 필요합니다.', 'error');
       return;
     }
-
     setSavingOrg(true);
     try {
       const payload = {
@@ -148,12 +233,26 @@ const OrgMembership = () => {
         body: JSON.stringify(payload),
       });
 
+      // 초기 관리자 이메일이 입력되어 있으면 바로 할당
+      const initialEmail = orgForm.initialMemberEmail.trim();
+      if (initialEmail) {
+        await requestJSON('/org-memberships/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId: data.id,
+            email: initialEmail,
+            role: orgForm.initialMemberRole,
+          }),
+        });
+      }
+
       setOrganizations((prev) => [...prev, data]);
       setAssignForm((prev) => ({ ...prev, orgId: String(data.id) }));
-      setOrgForm((prev) => ({
-        ...prev,
+      setOrgForm({
         name: '',
         code: '',
+        type: 'MANUFACTURER',
         email: '',
         subscriptionStatus: 'NOT_SUBSCRIBED',
         membershipEmail: '',
@@ -161,27 +260,39 @@ const OrgMembership = () => {
         representative: '',
         address: '',
         phone: '',
-      }));
-      showNotification('Organization created.', 'success');
+        initialMemberEmail: '',
+        initialMemberRole: 'ADMIN',
+      });
+      setShowCreateForm(false);
+      showNotification(
+        initialEmail ? '조직이 생성되고 관리자가 할당되었습니다.' : '조직이 생성되었습니다.',
+        'success'
+      );
     } catch (error) {
-      showNotification(error?.message || 'An error occurred while creating the organization.', 'error');
+      showNotification(error?.message || '조직 생성 중 오류가 발생했습니다.', 'error');
     } finally {
       setSavingOrg(false);
     }
   };
 
+  // --- 멤버 할당 ---
+
+  const handleAssignChange = (e) => {
+    const { name, value } = e.target;
+    setAssignForm((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleAssignOperator = async () => {
     if (assigning) return;
     if (!assignForm.orgId) {
-      showNotification('Please select an organization.', 'error');
+      showNotification('조직을 선택해주세요.', 'error');
       return;
     }
     const email = assignForm.email.trim();
     if (!email) {
-      showNotification('Please enter a member email.', 'error');
+      showNotification('이메일을 입력해주세요.', 'error');
       return;
     }
-
     setAssigning(true);
     try {
       await requestJSON('/org-memberships/assign', {
@@ -193,12 +304,11 @@ const OrgMembership = () => {
           role: assignForm.role,
         }),
       });
-
       setAssignForm((prev) => ({ ...prev, email: '' }));
       await fetchMembers(assignForm.orgId);
-      showNotification('Access role assigned.', 'success');
+      showNotification('역할이 할당되었습니다.', 'success');
     } catch (error) {
-      showNotification(error?.message || 'An error occurred while assigning the role.', 'error');
+      showNotification(error?.message || '역할 할당 중 오류가 발생했습니다.', 'error');
     } finally {
       setAssigning(false);
     }
@@ -209,153 +319,345 @@ const OrgMembership = () => {
       header={
         <>
           <Typography component="h1" variant="h4">
-            Organization Subscription / Access Assignment
+            조직 · 구독 · 멤버 관리
           </Typography>
-          <Typography sx={{ mt: 2, color: 'text.secondary' }}>
-            Manage organization subscriptions and assign access roles.
+          <Typography sx={{ mt: 1, color: 'text.secondary' }}>
+            시스템 관리자 전용 — 조직을 등록하고 구독 상태와 사용자 접근 권한을 설정합니다.
           </Typography>
         </>
       }
     >
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+
+        {/* ── 1. 조직 목록 ── */}
+        <Grid item xs={12}>
           <Paper variant="outlined" sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              1) Organization Registration
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Organization Name"
-                  name="name"
-                  value={orgForm.name}
-                  onChange={handleOrgChange}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Organization Code"
-                  name="code"
-                  value={orgForm.code}
-                  onChange={handleOrgChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  select
-                  label="Organization Type"
-                  name="type"
-                  value={orgForm.type}
-                  onChange={handleOrgChange}
-                >
-                  {ORG_TYPES.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6">조직 목록</Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setShowCreateForm((v) => !v)}
+              >
+                {showCreateForm ? '취소' : '+ 새 조직 등록'}
+              </Button>
+            </Box>
+
+            {loadingOrgs ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>ID</TableCell>
+                    <TableCell>조직명</TableCell>
+                    <TableCell>유형</TableCell>
+                    <TableCell>구독 상태</TableCell>
+                    <TableCell>Membership Email</TableCell>
+                    <TableCell>Billing Email</TableCell>
+                    <TableCell align="right">구독 편집</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {organizations.map((org) => (
+                    <React.Fragment key={org.id}>
+                      <TableRow hover>
+                        <TableCell sx={{ color: 'text.secondary' }}>{org.id}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{org.name}</TableCell>
+                        <TableCell>{org.type}</TableCell>
+                        <TableCell>
+                          <SubscriptionChip status={org.subscription?.status} />
+                        </TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }}>
+                          {org.subscription?.membershipEmail || '—'}
+                        </TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }}>
+                          {org.subscription?.billingEmail || '—'}
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEditSubscription(org)}
+                          >
+                            {editingOrgId === org.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+
+                      {/* 인라인 구독 편집 */}
+                      <TableRow>
+                        <TableCell colSpan={7} sx={{ p: 0, border: 0 }}>
+                          <Collapse in={editingOrgId === org.id} unmountOnExit>
+                            <Box
+                              sx={{
+                                p: 2,
+                                backgroundColor: 'action.hover',
+                                borderBottom: '1px solid',
+                                borderColor: 'divider',
+                              }}
+                            >
+                              <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                                {org.name} — 구독 상태 편집
+                              </Typography>
+                              <Grid container spacing={2} alignItems="center">
+                                <Grid item xs={12} sm={3}>
+                                  <TextField
+                                    fullWidth
+                                    select
+                                    size="small"
+                                    label="구독 상태"
+                                    name="subscriptionStatus"
+                                    value={subEditForm.subscriptionStatus}
+                                    onChange={handleSubEditChange}
+                                  >
+                                    {SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
+                                      <MenuItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </MenuItem>
+                                    ))}
+                                  </TextField>
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Membership Email"
+                                    name="membershipEmail"
+                                    value={subEditForm.membershipEmail}
+                                    onChange={handleSubEditChange}
+                                    placeholder="membership@domain.com"
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Billing Email"
+                                    name="billingEmail"
+                                    value={subEditForm.billingEmail}
+                                    onChange={handleSubEditChange}
+                                    placeholder="billing@domain.com"
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={3}>
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <Button
+                                      variant="contained"
+                                      size="small"
+                                      onClick={handleUpdateSubscription}
+                                      disabled={savingSubscription}
+                                      startIcon={
+                                        savingSubscription ? (
+                                          <CircularProgress size={14} color="inherit" />
+                                        ) : null
+                                      }
+                                    >
+                                      저장
+                                    </Button>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      onClick={() => setEditingOrgId(null)}
+                                    >
+                                      취소
+                                    </Button>
+                                  </Box>
+                                </Grid>
+                              </Grid>
+                            </Box>
+                          </Collapse>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
                   ))}
-                </TextField>
+                  {organizations.length === 0 && !loadingOrgs && (
+                    <TableRow>
+                      <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 3 }}>
+                        등록된 조직이 없습니다.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
+
+            {/* 조직 등록 폼 (토글) */}
+            <Collapse in={showCreateForm} unmountOnExit>
+              <Divider sx={{ my: 3 }} />
+              <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                새 조직 등록
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="조직명"
+                    name="name"
+                    value={orgForm.name}
+                    onChange={handleOrgChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="조직 코드 (선택)"
+                    name="code"
+                    value={orgForm.code}
+                    onChange={handleOrgChange}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="조직 유형"
+                    name="type"
+                    value={orgForm.type}
+                    onChange={handleOrgChange}
+                  >
+                    {ORG_TYPES.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="조직 이메일 (선택)"
+                    name="email"
+                    value={orgForm.email}
+                    onChange={handleOrgChange}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="구독 상태"
+                    name="subscriptionStatus"
+                    value={orgForm.subscriptionStatus}
+                    onChange={handleOrgChange}
+                  >
+                    {SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Membership Email"
+                    name="membershipEmail"
+                    value={orgForm.membershipEmail}
+                    onChange={handleOrgChange}
+                    placeholder="membership@domain.com"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="Billing Email"
+                    name="billingEmail"
+                    value={orgForm.billingEmail}
+                    onChange={handleOrgChange}
+                    placeholder="billing@domain.com"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="대표자 (선택)"
+                    name="representative"
+                    value={orgForm.representative}
+                    onChange={handleOrgChange}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="전화번호 (선택)"
+                    name="phone"
+                    value={orgForm.phone}
+                    onChange={handleOrgChange}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    label="주소 (선택)"
+                    name="address"
+                    value={orgForm.address}
+                    onChange={handleOrgChange}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Divider sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      초기 관리자 설정 (선택)
+                    </Typography>
+                  </Divider>
+                </Grid>
+                <Grid item xs={12} sm={8}>
+                  <TextField
+                    fullWidth
+                    label="관리자 이메일 (Google 계정)"
+                    name="initialMemberEmail"
+                    value={orgForm.initialMemberEmail}
+                    onChange={handleOrgChange}
+                    placeholder="admin@gmail.com"
+                    helperText="입력하면 조직 생성과 동시에 해당 이메일에 접근 권한이 부여됩니다."
+                  />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="역할"
+                    name="initialMemberRole"
+                    value={orgForm.initialMemberRole}
+                    onChange={handleOrgChange}
+                  >
+                    {ROLE_OPTIONS.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12}>
+                  <Button
+                    variant="contained"
+                    onClick={handleCreateOrganization}
+                    disabled={savingOrg}
+                    startIcon={savingOrg ? <CircularProgress size={16} color="inherit" /> : null}
+                  >
+                    {savingOrg ? '저장 중...' : '조직 생성'}
+                  </Button>
+                </Grid>
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Organization Email (Optional)"
-                  name="email"
-                  value={orgForm.email}
-                  onChange={handleOrgChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  select
-                  label="Subscription Status"
-                  name="subscriptionStatus"
-                  value={orgForm.subscriptionStatus}
-                  onChange={handleOrgChange}
-                >
-                  {SUBSCRIPTION_STATUS_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Subscription Contact Email"
-                  name="membershipEmail"
-                  value={orgForm.membershipEmail}
-                  onChange={handleOrgChange}
-                  placeholder="subscription@domain.com"
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Billing Email"
-                  name="billingEmail"
-                  value={orgForm.billingEmail}
-                  onChange={handleOrgChange}
-                  placeholder="billing@domain.com"
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Representative (Optional)"
-                  name="representative"
-                  value={orgForm.representative}
-                  onChange={handleOrgChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Address (Optional)"
-                  name="address"
-                  value={orgForm.address}
-                  onChange={handleOrgChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Phone (Optional)"
-                  name="phone"
-                  value={orgForm.phone}
-                  onChange={handleOrgChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Button
-                  variant="contained"
-                  onClick={handleCreateOrganization}
-                  disabled={savingOrg}
-                  startIcon={savingOrg ? <CircularProgress size={16} color="inherit" /> : null}
-                >
-                  {savingOrg ? 'Saving...' : 'Create Organization'}
-                </Button>
-              </Grid>
-            </Grid>
+            </Collapse>
           </Paper>
         </Grid>
 
-        <Grid item xs={12} md={6}>
+        {/* ── 2. 멤버 할당 ── */}
+        <Grid item xs={12}>
           <Paper variant="outlined" sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              2) Access Role Assignment
+              사용자 접근 권한 할당
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
+            <Grid container spacing={2} alignItems="flex-end">
+              <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
                   select
-                  label="Select Organization"
+                  label="조직 선택"
                   name="orgId"
                   value={assignForm.orgId}
                   onChange={handleAssignChange}
@@ -363,58 +665,68 @@ const OrgMembership = () => {
                 >
                   {organizations.map((org) => (
                     <MenuItem key={org.id} value={String(org.id)}>
-                      {org.name} ({org.type})
+                      {org.name}
+                      <Box
+                        component="span"
+                        sx={{ ml: 1, fontSize: '0.75rem', color: 'text.secondary' }}
+                      >
+                        ({org.subscription?.status ?? 'NO SUB'})
+                      </Box>
                     </MenuItem>
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={4}>
                 <TextField
                   fullWidth
-                  label="Member Email"
+                  label="사용자 이메일 (Google 계정)"
                   name="email"
                   value={assignForm.email}
                   onChange={handleAssignChange}
-                  placeholder="example@domain.com"
+                  placeholder="user@gmail.com"
                 />
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={2}>
                 <TextField
                   fullWidth
                   select
-                  label="Role"
+                  label="역할"
                   name="role"
                   value={assignForm.role}
                   onChange={handleAssignChange}
                 >
-                  {ROLE_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
+                  {ROLE_OPTIONS.map((opt) => (
+                    <MenuItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </MenuItem>
                   ))}
                 </TextField>
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={2}>
                 <Button
+                  fullWidth
                   variant="contained"
                   onClick={handleAssignOperator}
                   disabled={assigning || organizations.length === 0}
                   startIcon={assigning ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                  {assigning ? 'Assigning...' : 'Assign Role'}
+                  {assigning ? '할당 중...' : '할당'}
                 </Button>
               </Grid>
             </Grid>
 
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                Assigned Members
+              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                할당된 멤버 —{' '}
+                {organizations.find((o) => String(o.id) === assignForm.orgId)?.name ?? ''}
               </Typography>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Role</TableCell>
+                    <TableCell>이메일</TableCell>
+                    <TableCell>역할</TableCell>
+                    <TableCell>상태</TableCell>
+                    <TableCell>승인일</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -422,12 +734,31 @@ const OrgMembership = () => {
                     <TableRow key={member.id}>
                       <TableCell>{member.email}</TableCell>
                       <TableCell>{member.role}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={member.status}
+                          size="small"
+                          color={
+                            member.status === 'ACTIVE'
+                              ? 'success'
+                              : member.status === 'PENDING'
+                              ? 'warning'
+                              : member.status === 'SUSPENDED'
+                              ? 'error'
+                              : 'default'
+                          }
+                          variant={member.status === 'ACTIVE' ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        {member.approvedAt ? new Date(member.approvedAt).toLocaleDateString('ko-KR') : '—'}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {members.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={2} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        No members assigned.
+                      <TableCell colSpan={4} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                        할당된 멤버가 없습니다.
                       </TableCell>
                     </TableRow>
                   )}
@@ -442,4 +773,3 @@ const OrgMembership = () => {
 };
 
 export default OrgMembership;
-

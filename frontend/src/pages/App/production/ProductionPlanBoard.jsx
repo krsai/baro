@@ -10,7 +10,11 @@ import {
   DialogTitle,
   Divider,
   Drawer,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -228,6 +232,7 @@ const ProductionPlanBoard = () => {
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [completionDialog, setCompletionDialog] = useState(null); // { assignment }
+  const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
   const [finalQuantityDraft, setFinalQuantityDraft] = useState('');
   const [completionSaving, setCompletionSaving] = useState(false);
   const [cards, setCards] = useState([]);
@@ -364,6 +369,11 @@ const ProductionPlanBoard = () => {
   const agreedAssignments = useMemo(
     () => assignmentsForView.filter((assignment) => normalizeCtStatus(assignment?.status) === 'AGREED'),
     [assignmentsForView]
+  );
+
+  const deltaCards = useMemo(
+    () => (Array.isArray(cards) ? cards : []).filter((card) => card?.type === 'DELTA'),
+    [cards]
   );
 
   const selectedAssignment = useMemo(() => {
@@ -766,6 +776,23 @@ const ProductionPlanBoard = () => {
     };
   }, [activeOrgId]);
 
+  // 탭 포커스 복귀 시 lineWorkers 재요청 → capacity 자동 갱신
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      const query = buildQueryString({ orgId: activeOrgId });
+      Promise.all([
+        requestJSON('/line-workers' + query).catch(() => null),
+        requestJSON('/lines' + query).catch(() => null),
+      ]).then(([workerRows, lineRows]) => {
+        if (workerRows) setLineWorkers(Array.isArray(workerRows) ? workerRows : []);
+        if (lineRows) setLines(Array.isArray(lineRows) ? lineRows : []);
+      });
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [activeOrgId]);
+
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
       const query = buildQueryString({ orgId: activeOrgId });
@@ -1007,6 +1034,191 @@ const ProductionPlanBoard = () => {
     }
   };
 
+  // ── Delta card 헬퍼 ──────────────────────────────────────────────
+  const findMatchingAssignmentsForDelta = (deltaCard) =>
+    assignmentsForView.filter((a) => {
+      if (a.isCompleted) return false;
+      const card = cardById.get(String(a.cardId));
+      return (
+        (card?.styleId === deltaCard.styleId || a.label === deltaCard.label) &&
+        (a.colorName || '') === (deltaCard.colorName || '') &&
+        (a.gender || '') === (deltaCard.gender || '') &&
+        (a.customer || '') === (deltaCard.customer || '')
+      );
+    });
+
+  const handleDeltaCardRemove = async (deltaCardId) => {
+    if (!window.confirm('차이 카드를 삭제하시겠습니까?')) return;
+    const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCardId));
+    try {
+      await persistBoardState(assignments, nextCards);
+      showNotification('차이 카드가 삭제되었습니다.', 'success');
+    } catch (error) {
+      showNotification(error?.message || '삭제에 실패했습니다.', 'error');
+    }
+  };
+
+  const handleDeltaAssignOpen = (deltaCard) => {
+    setDeltaDialog({
+      mode: 'ASSIGN',
+      deltaCard,
+      selectedLineId: lines.length > 0 ? String(lines[0].id) : '',
+      startOffset: '0',
+      endOffset: '0',
+    });
+  };
+
+  const handleDeltaAbsorbOpen = (deltaCard) => {
+    const matching = findMatchingAssignmentsForDelta(deltaCard);
+    setDeltaDialog({
+      mode: 'ABSORB',
+      deltaCard,
+      matchingAssignments: matching,
+      selectedAssignmentId: matching.length > 0 ? String(matching[0].id) : '',
+    });
+  };
+
+  const handleDeltaDeductOpen = (deltaCard) => {
+    const matching = findMatchingAssignmentsForDelta(deltaCard);
+    setDeltaDialog({
+      mode: 'DEDUCT',
+      deltaCard,
+      matchingAssignments: matching,
+      selectedAssignmentId: matching.length > 0 ? String(matching[0].id) : '',
+    });
+  };
+
+  const handleDeltaDialogClose = () => setDeltaDialog(null);
+
+  const handleDeltaAssignConfirm = async () => {
+    if (!deltaDialog) return;
+    const { deltaCard, selectedLineId, startOffset, endOffset } = deltaDialog;
+    if (!selectedLineId) {
+      showNotification('라인을 선택해 주세요.', 'error');
+      return;
+    }
+    const startIndex = toNonNegativeInt(Number(startOffset), 0);
+    const endIndex = Math.max(startIndex, toNonNegativeInt(Number(endOffset), startIndex));
+
+    // 차이 카드를 일반 카드로 전환
+    const convertedCard = {
+      id: deltaCard.id,
+      styleId: deltaCard.styleId,
+      label: deltaCard.label,
+      customer: deltaCard.customer,
+      colorName: deltaCard.colorName,
+      gender: deltaCard.gender,
+    };
+    const newAssignment = {
+      id: `assign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      cardId: convertedCard.id,
+      lineId: selectedLineId,
+      startIndex,
+      endIndex,
+      quantity: deltaCard.quantity,
+      ctStatus: 'PENDING',
+      label: deltaCard.label,
+      customer: deltaCard.customer,
+      colorName: deltaCard.colorName,
+      gender: deltaCard.gender,
+    };
+
+    const nextCards = cards.map((c) =>
+      String(c?.id) === String(deltaCard.id) ? convertedCard : c
+    );
+    const nextAssignments = [...assignments, newAssignment];
+    try {
+      await persistBoardState(nextAssignments, nextCards);
+      showNotification('라인 배정이 완료되었습니다.', 'success');
+      setDeltaDialog(null);
+    } catch (error) {
+      showNotification(error?.message || '배정에 실패했습니다.', 'error');
+    }
+  };
+
+  const handleDeltaAbsorbConfirm = async () => {
+    if (!deltaDialog || !deltaDialog.selectedAssignmentId) return;
+    const { deltaCard, selectedAssignmentId } = deltaDialog;
+    const targetAssignment = assignments.find((a) => String(a?.id) === String(selectedAssignmentId));
+    const targetView = assignmentViewById.get(String(selectedAssignmentId)) || null;
+    if (!targetAssignment || !targetView) return;
+
+    const oldQty = Math.max(1, toPositiveInt(targetAssignment.quantity, 1));
+    const newQty = oldQty + deltaCard.quantity;
+
+    const proposalSeconds = resolveSecondsForProposal(targetAssignment);
+    const lineDailyCapacitySeconds = Number(targetView.lineDailyCapacitySeconds || 0);
+    const startIndex = toNonNegativeInt(targetAssignment.startIndex, 0);
+    let newEndIndex = startIndex;
+    if (proposalSeconds > 0 && lineDailyCapacitySeconds > 0) {
+      const perPieceSeconds = proposalSeconds / oldQty;
+      const durationDays = Math.ceil((perPieceSeconds * newQty) / lineDailyCapacitySeconds);
+      newEndIndex = startIndex + Math.max(0, durationDays - 1);
+    } else {
+      newEndIndex = Math.max(startIndex, toNonNegativeInt(targetAssignment.endIndex, startIndex));
+    }
+
+    const nextAssignments = assignments.map((a) =>
+      String(a?.id) === String(selectedAssignmentId) ? { ...a, quantity: newQty, endIndex: newEndIndex } : a
+    );
+    const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCard.id));
+    try {
+      await persistBoardState(nextAssignments, nextCards);
+      showNotification(`수량 ${deltaCard.quantity}개가 기존 배정에 흡수되었습니다.`, 'success');
+      setDeltaDialog(null);
+    } catch (error) {
+      showNotification(error?.message || '수량 흡수에 실패했습니다.', 'error');
+    }
+  };
+
+  const handleDeltaDeductConfirm = async () => {
+    if (!deltaDialog || !deltaDialog.selectedAssignmentId) return;
+    const { deltaCard, selectedAssignmentId } = deltaDialog;
+    const targetAssignment = assignments.find((a) => String(a?.id) === String(selectedAssignmentId));
+    const targetView = assignmentViewById.get(String(selectedAssignmentId)) || null;
+    if (!targetAssignment || !targetView) return;
+
+    const oldQty = Math.max(1, toPositiveInt(targetAssignment.quantity, 1));
+    const newQty = Math.max(0, oldQty - deltaCard.quantity);
+    const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCard.id));
+
+    if (newQty === 0) {
+      // 수량 0 → 배정 전체 삭제
+      const nextAssignments = assignments.filter((a) => String(a?.id) !== String(selectedAssignmentId));
+      try {
+        await persistBoardState(nextAssignments, nextCards);
+        showNotification('수량이 0이 되어 배정이 삭제되었습니다.', 'info');
+        setDeltaDialog(null);
+      } catch (error) {
+        showNotification(error?.message || '처리에 실패했습니다.', 'error');
+      }
+      return;
+    }
+
+    const proposalSeconds = resolveSecondsForProposal(targetAssignment);
+    const lineDailyCapacitySeconds = Number(targetView.lineDailyCapacitySeconds || 0);
+    const startIndex = toNonNegativeInt(targetAssignment.startIndex, 0);
+    let newEndIndex = startIndex;
+    if (proposalSeconds > 0 && lineDailyCapacitySeconds > 0) {
+      const perPieceSeconds = proposalSeconds / oldQty;
+      const durationDays = Math.ceil((perPieceSeconds * newQty) / lineDailyCapacitySeconds);
+      newEndIndex = startIndex + Math.max(0, durationDays - 1);
+    } else {
+      newEndIndex = Math.max(startIndex, toNonNegativeInt(targetAssignment.endIndex, startIndex));
+    }
+
+    const nextAssignments = assignments.map((a) =>
+      String(a?.id) === String(selectedAssignmentId) ? { ...a, quantity: newQty, endIndex: newEndIndex } : a
+    );
+    try {
+      await persistBoardState(nextAssignments, nextCards);
+      showNotification(`수량 ${deltaCard.quantity}개가 차감되었습니다.`, 'success');
+      setDeltaDialog(null);
+    } catch (error) {
+      showNotification(error?.message || '수량 차감에 실패했습니다.', 'error');
+    }
+  };
+
   return (
     <AppPageContainer
       header={
@@ -1219,6 +1431,81 @@ const ProductionPlanBoard = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+              </Paper>
+            )}
+
+            {/* ── 미배정 풀 — 수량 변경 차이 카드 ── */}
+            {deltaCards.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.25,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: 'warning.50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    미배정 풀 — 수량 변경 대기
+                  </Typography>
+                  <Chip size="small" label={`${deltaCards.length}건`} color="warning" variant="outlined" />
+                </Box>
+                <Box sx={{ p: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  {deltaCards.map((card) => (
+                    <Box
+                      key={card.id}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        px: 1.5,
+                        py: 0.75,
+                        bgcolor: card.deltaType === 'PLUS' ? 'success.50' : 'error.50',
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: card.deltaType === 'PLUS' ? 'success.200' : 'error.200',
+                      }}
+                    >
+                      <Chip
+                        size="small"
+                        label={`${card.deltaType === 'PLUS' ? '+' : '-'}${card.quantity}`}
+                        color={card.deltaType === 'PLUS' ? 'success' : 'error'}
+                        sx={{ fontWeight: 700, minWidth: 52 }}
+                      />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {card.customer || '-'} / {card.label || '-'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {card.colorName || '-'} · {card.gender || '-'}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={0.5} flexShrink={0}>
+                        {card.deltaType === 'PLUS' ? (
+                          <>
+                            <Button size="small" variant="outlined" color="success" onClick={() => handleDeltaAssignOpen(card)}>
+                              라인 배정
+                            </Button>
+                            <Button size="small" variant="outlined" onClick={() => handleDeltaAbsorbOpen(card)}>
+                              흡수
+                            </Button>
+                          </>
+                        ) : (
+                          <Button size="small" variant="outlined" color="error" onClick={() => handleDeltaDeductOpen(card)}>
+                            수량 차감
+                          </Button>
+                        )}
+                        <Button size="small" variant="text" color="inherit" onClick={() => handleDeltaCardRemove(card.id)}>
+                          제거
+                        </Button>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Box>
               </Paper>
             )}
 
@@ -1755,6 +2042,131 @@ const ProductionPlanBoard = () => {
       </Box>
 
       {/* 완료 처리 Dialog */}
+      {/* ── 차이 카드 액션 Dialog ── */}
+      <Dialog open={Boolean(deltaDialog)} onClose={handleDeltaDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {deltaDialog?.mode === 'ASSIGN'
+            ? '라인 배정'
+            : deltaDialog?.mode === 'ABSORB'
+            ? '기존 배정에 수량 흡수'
+            : '수량 차감'}
+        </DialogTitle>
+        <DialogContent>
+          {deltaDialog && (
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              <Box>
+                <Typography variant="body2">
+                  <strong>차이 카드:</strong> {deltaDialog.deltaCard.customer} / {deltaDialog.deltaCard.label}
+                  {deltaDialog.deltaCard.colorName ? ` · ${deltaDialog.deltaCard.colorName}` : ''}
+                  {deltaDialog.deltaCard.gender ? ` · ${deltaDialog.deltaCard.gender}` : ''}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  <strong>수량:</strong>{' '}
+                  <Chip
+                    size="small"
+                    label={`${deltaDialog.deltaCard.deltaType === 'PLUS' ? '+' : '-'}${deltaDialog.deltaCard.quantity}`}
+                    color={deltaDialog.deltaCard.deltaType === 'PLUS' ? 'success' : 'error'}
+                  />
+                </Typography>
+              </Box>
+
+              {deltaDialog.mode === 'ASSIGN' && (
+                <>
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>배정 라인</InputLabel>
+                    <Select
+                      value={deltaDialog.selectedLineId || ''}
+                      label="배정 라인"
+                      onChange={(e) => setDeltaDialog((prev) => ({ ...prev, selectedLineId: e.target.value }))}
+                    >
+                      {lines.map((line) => (
+                        <MenuItem key={line.id} value={String(line.id)}>
+                          {line.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Stack direction="row" spacing={1}>
+                    <TextField
+                      size="small"
+                      label="시작일 (오늘로부터 N일)"
+                      type="number"
+                      value={deltaDialog.startOffset ?? '0'}
+                      onChange={(e) => {
+                        const v = String(Math.max(0, Number(e.target.value)) || 0);
+                        setDeltaDialog((prev) => ({ ...prev, startOffset: v }));
+                      }}
+                      inputProps={{ min: 0 }}
+                      sx={{ flex: 1 }}
+                    />
+                    <TextField
+                      size="small"
+                      label="종료일 (오늘로부터 N일)"
+                      type="number"
+                      value={deltaDialog.endOffset ?? '0'}
+                      onChange={(e) => {
+                        const v = String(Math.max(0, Number(e.target.value)) || 0);
+                        setDeltaDialog((prev) => ({ ...prev, endOffset: v }));
+                      }}
+                      inputProps={{ min: 0 }}
+                      sx={{ flex: 1 }}
+                    />
+                  </Stack>
+                </>
+              )}
+
+              {(deltaDialog.mode === 'ABSORB' || deltaDialog.mode === 'DEDUCT') && (
+                deltaDialog.matchingAssignments?.length === 0 ? (
+                  <Alert severity="warning">
+                    동일 스타일/색상/성별의 배정 카드가 없습니다.
+                  </Alert>
+                ) : (
+                  <FormControl size="small" fullWidth>
+                    <InputLabel>대상 배정 선택</InputLabel>
+                    <Select
+                      value={deltaDialog.selectedAssignmentId || ''}
+                      label="대상 배정 선택"
+                      onChange={(e) => setDeltaDialog((prev) => ({ ...prev, selectedAssignmentId: e.target.value }))}
+                    >
+                      {(deltaDialog.matchingAssignments || []).map((a) => (
+                        <MenuItem key={a.id} value={String(a.id)}>
+                          {a.line?.name || `라인 ${a.lineId}`} · {a.quantity}개 · {formatScheduleRange(baseDate, a)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeltaDialogClose}>취소</Button>
+          <Button
+            variant="contained"
+            color={deltaDialog?.mode === 'DEDUCT' ? 'error' : 'primary'}
+            onClick={
+              deltaDialog?.mode === 'ASSIGN'
+                ? handleDeltaAssignConfirm
+                : deltaDialog?.mode === 'ABSORB'
+                ? handleDeltaAbsorbConfirm
+                : handleDeltaDeductConfirm
+            }
+            disabled={
+              deltaDialog?.mode === 'ASSIGN'
+                ? !deltaDialog?.selectedLineId
+                : !deltaDialog?.selectedAssignmentId
+            }
+          >
+            {deltaDialog?.mode === 'ASSIGN'
+              ? '배정'
+              : deltaDialog?.mode === 'ABSORB'
+              ? '수량 흡수'
+              : '수량 차감'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Dialog
         open={Boolean(completionDialog)}
         onClose={handleCloseCompletionDialog}

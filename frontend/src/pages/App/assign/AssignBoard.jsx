@@ -1679,6 +1679,28 @@ const AssignBoard = () => {
         const totalSeconds = getAssignmentTotalSeconds(target, days, lineCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
+          const isMovingEarlier = dayIndex < target.startIndex;
+          if (isMovingEarlier) {
+            const originalNextIndex = getNextStartIndex(target, days, lineCapacityById);
+            const lineItemsSorted = filtered
+              .filter((item) => item.lineId === lineId)
+              .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+            const directFollower =
+              originalNextIndex != null
+                ? lineItemsSorted.find((item) => item.startIndex === originalNextIndex)
+                : null;
+            if (directFollower) {
+              const pushed = tryRebuildLineWithInsert({
+                lineId,
+                insertIndex: dayIndex,
+                insertBeforeId: directFollower.id,
+                insertItem: { ...target, totalSeconds },
+                assignments: filtered,
+              });
+              if (pushed) return pushed;
+            }
+          }
+
           const planned = tryPlanAssignment({
             startIndex: dayIndex,
             totalSeconds,

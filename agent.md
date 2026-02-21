@@ -56,12 +56,17 @@
 - LineAssignment로 인원 변동 이력 관리 (startAt / endAt)
 - 라인 인원이 변경되면 해당 라인의 AssignmentBoard capacity를 재계산 (트리거 방식)
 - headcount 스냅샷은 저장하지 않음 — 변경 시 재계산으로 처리
+- **구현 방식**: `updateLineHeadcounts(lineId, tx)` 백엔드 헬퍼로 LineAssignment 이력 기반 headcount 재계산
+  - LineBoard 프론트엔드: API 응답에서 즉시 상태 업데이트
+  - ProductionPlanBoard: `visibilitychange` 이벤트 시 재조회
 
-### 급여 계산 (아직 미개발)
+### 급여 계산
 - 기준: WorkRecord의 ctSeconds × 수량 × factoryWagePerSecond
-- WorkLog에 factoryWagePerSecond 스냅샷이 이미 저장됨 (Factory 단가 변경에 무관)
-- WorkRecord에 ctSeconds 스냅샷이 이미 저장됨 (Style CT 변경에 무관)
-- 월별 급여 확정(잠금) 기능 필요 → 확정 후에는 소급 변경 불가
+- WorkLog에 factoryWagePerSecond 스냅샷 저장 (Factory 단가 변경에 무관)
+- WorkRecord에 ctSeconds 스냅샷 저장 (Style CT 변경에 무관)
+- **PayrollSnapshot 모델 구현 완료**: orgId, yearMonth(YYYY-MM), data(JSON 스냅샷), isLocked
+  - GET /payroll: WorkRecord × ctSeconds × quantity × factoryWagePerSecond 집계, 직원/월 단위 그룹핑
+  - POST /payroll/lock: 해당 월 잠금(isLocked = true) → 확정 후 소급 변경 불가
 
 ---
 
@@ -79,6 +84,8 @@ Organization (MANUFACTURER | BRAND)
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctOverride, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
        ※ ctOverride: true이면 라인장 거부로 인한 임시 CT 적용 카드 (공식 CT와 다른 값)
   └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 단일 자동저장
+       ※ cards 배열에 일반 카드 외 DELTA 카드(type='DELTA') 포함 가능
+  └─ PayrollSnapshot (orgId, yearMonth, data: JSON, isLocked)
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
        └─ WorkRecord (workerId, ctSeconds snapshot, quantity, assignmentPlanId)
 
@@ -86,6 +93,8 @@ Organization (MANUFACTURER | BRAND)
 - 조직당 단 1개의 레코드 (upsert)
 - 500ms debounce로 자동저장
 - 현재 버전 관리 없음 — 이전 상태 복원 불가
+- cards 배열에 일반 카드(type 없음)와 DELTA 카드(type='DELTA')가 공존함
+  - ProductionPlanBoard에서 type==='DELTA' 필터로 미배정 풀 분리 표시
 
 ### 카드(Card) 개념
 - **(수주 × 스타일 × 색상 × 성별) 조합으로 자동 생성되는 배정 단위**
@@ -94,11 +103,18 @@ Organization (MANUFACTURER | BRAND)
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
 - 카드에 배정된 수량과 수주 수량은 독립적 (수동 관리)
 
-### 수주 수량 변경 시 차이 카드 처리
+### 수주 수량 변경 시 차이 카드 처리 (구현 완료)
 - 수주 수량 변경 시 기존 배정 카드를 직접 수정하지 않음
-- 차이만큼 "차이 카드"를 미배정 풀에 생성
-- +차이 카드: 빈 라인 드롭 → 새 배정 / 기존 카드 위 드롭 → 수량 흡수(병합)
-- -차이 카드: 드래그 시 관련 배정 카드 하이라이트 / 해당 카드 위 드롭 → 수량 차감
+- 수주 저장(handleSave) 시 기존 항목 수량 vs 신규 수량 비교 → delta 자동 감지
+- 차이만큼 **DELTA 카드**를 AssignmentBoardState.cards에 생성, ProductionPlanBoard "미배정 풀" 섹션에 표시
+- **DELTA 카드 구조**: `{ id, type:'DELTA', deltaType:'PLUS'|'MINUS', quantity, workOrderId, orderItemId, styleId, label, customer, colorName, gender, createdAt }`
+- **처리 방식 (버튼 기반, drag-and-drop 아님)**:
+  - **ASSIGN**: DELTA 카드를 일반 배정 카드로 전환 → 라인/시작일 선택 후 새 AssignmentPlan 생성
+  - **ABSORB**: 기존 배정 카드에 수량 흡수(합산), endIndex 재계산
+  - **DEDUCT**: 기존 배정 카드에서 수량 차감, endIndex 재계산 (수량 0이 되면 배정 삭제)
+  - **삭제**: DELTA 카드를 미배정 풀에서 제거
+- **endIndex 재계산 공식**: `perPieceSeconds = proposalSeconds / oldQty`, `newEndIndex = startIndex + max(0, ceil(perPieceSeconds * newQty / lineDailyCapacitySeconds) - 1)`
+- **매칭 기준**: styleId + colorName + gender + customer로 관련 배정 카드 탐색
 - 동일 수주의 분할 카드들은 카드 윤곽선 색상으로 그룹 표시
 
 ---

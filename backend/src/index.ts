@@ -144,7 +144,7 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
-const HARD_CODED_SYSTEM_ADMIN_EMAIL = "system-admin@test.local";
+const HARD_CODED_SYSTEM_ADMIN_EMAIL = "krsailer82@gmail.com";
 const TRIAL_DAYS = 30;
 const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
   ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;
@@ -1741,6 +1741,25 @@ const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | nul
   updatedAt: state?.updatedAt ?? null,
 });
 
+const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, number>> => {
+  if (lineIds.length === 0) return {};
+  const uniqueIds = [...new Set(lineIds)];
+  const result: Record<number, number> = {};
+  await Promise.all(
+    uniqueIds.map(async (lineId) => {
+      const count = await prisma.lineAssignment.count({
+        where: { lineId, endAt: null },
+      });
+      result[lineId] = count;
+      await prisma.line.update({
+        where: { id: lineId },
+        data: { headcount: count },
+      });
+    })
+  );
+  return result;
+};
+
 const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = new Date()) => {
   const activeAssignments = await prisma.lineAssignment.findMany({
     where: { employeeId, endAt: null },
@@ -1854,6 +1873,15 @@ app.get("/auth/context", async (req, res) => {
   const requesterEmail = normalizeEmail(req.query.email) || getRequesterEmail(req);
   if (!requesterEmail || !requesterEmail.includes("@")) {
     return res.status(400).json({ ok: false, error: "email is required" });
+  }
+
+  // Auto-provision system admin on first login
+  if (requesterEmail === HARD_CODED_SYSTEM_ADMIN_EMAIL) {
+    await prisma.systemUser.upsert({
+      where: { email: requesterEmail },
+      update: { systemRole: "SYSTEM_ADMIN" },
+      create: { email: requesterEmail, systemRole: "SYSTEM_ADMIN" },
+    });
   }
 
   const systemUser = await prisma.systemUser.findUnique({
@@ -2952,7 +2980,7 @@ app.post("/line-assignments/assign", async (req, res) => {
   }
 
   const now = new Date();
-  await closeActiveLineAssignments(employee.id, now);
+  const previousLineIds = await closeActiveLineAssignments(employee.id, now);
 
   const assignment = await prisma.lineAssignment.create({
     data: {
@@ -2967,7 +2995,10 @@ app.post("/line-assignments/assign", async (req, res) => {
     data: { lineName: line.name },
   });
 
-  res.status(201).json(assignment);
+  const affectedLineIds = [...new Set([...previousLineIds, line.id])];
+  const lineHeadcounts = await updateLineHeadcounts(affectedLineIds);
+
+  res.status(201).json({ ...assignment, lineHeadcounts });
 });
 
 app.post("/line-assignments/unassign", async (req, res) => {
@@ -2996,9 +3027,10 @@ app.post("/line-assignments/unassign", async (req, res) => {
     return res.status(404).json({ ok: false, error: "worker not found" });
   }
 
-  await closeActiveLineAssignments(employee.id, new Date());
+  const affectedLineIds = await closeActiveLineAssignments(employee.id, new Date());
+  const lineHeadcounts = await updateLineHeadcounts(affectedLineIds);
 
-  res.json({ ok: true });
+  res.json({ ok: true, lineHeadcounts });
 });
 
 app.get("/assignment-plans", async (req, res) => {
