@@ -27,6 +27,7 @@ export const normalizeProcess = (process = {}, index = 0) => {
     quantity: toPositiveInt(safeProcess.quantity, 1),
     pt: toOptionalNumber(safeProcess.pt),
     at: toOptionalNumber(safeProcess.at),
+    ct: toOptionalNumber(safeProcess.ct),
   };
 };
 
@@ -47,11 +48,21 @@ export const resolveProcessActualTime = ({ existingAt = null, workStats = null }
 };
 
 export const calculateProcessLineTotal = (process, key) => {
-  if (!process || (key !== 'pt' && key !== 'at')) return null;
+  if (!process || (key !== 'pt' && key !== 'at' && key !== 'ct')) return null;
   const time = toOptionalNumber(process[key]);
   if (time === null) return null;
   const quantity = toPositiveInt(process.quantity, 1);
   return quantity * time;
+};
+
+// 공식 CT 기준 시간 반환. 우선순위: ct → at → pt
+// ct: 버전 관리되는 공식 CT / at: 실적 기반 참고값 / pt: 초기 계획값
+export const resolveProcessCtBaseSeconds = (process) => {
+  if (!process) return null;
+  if (hasTime(process.ct)) return process.ct;
+  if (hasTime(process.at)) return process.at;
+  if (hasTime(process.pt)) return process.pt;
+  return null;
 };
 
 export const calculateProcessTotal = (processes, key) =>
@@ -62,6 +73,9 @@ export const calculateProcessTotal = (processes, key) =>
 
 export const hasAnyProcessTime = (processes, key) =>
   normalizeProcesses(processes).some((process) => hasTime(process?.[key]));
+
+export const hasAnyCt = (processes) =>
+  normalizeProcesses(processes).some((process) => hasTime(process?.ct));
 
 export const parseOptionalSecondsInput = (value) => {
   const parsed = toOptionalNumber(value);

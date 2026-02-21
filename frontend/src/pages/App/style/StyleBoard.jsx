@@ -34,6 +34,7 @@ import {
   hasAnyProcessTime,
   normalizeProcesses,
 } from '../../../utils/processTime';
+import { Chip } from '@mui/material';
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -140,12 +141,15 @@ const StyleBoard = () => {
         const processes = normalizeProcesses(style.processes);
         const totalPT = calculateProcessTotal(processes, 'pt');
         const totalAT = calculateProcessTotal(processes, 'at');
+        const totalCT = calculateProcessTotal(processes, 'ct');
         return {
           ...style,
           totalPT,
           totalAT,
+          totalCT,
           hasTotalPT: hasAnyProcessTime(processes, 'pt'),
           hasTotalAT: hasAnyProcessTime(processes, 'at'),
+          hasTotalCT: hasAnyProcessTime(processes, 'ct'),
         };
       }),
     [canViewProcessSummary, filteredStyles]
@@ -174,6 +178,7 @@ const StyleBoard = () => {
                 <TableCell>스타일 코드</TableCell>
                 {canViewProcessSummary ? <TableCell>총 PT</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>총 AT</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>총 CT</TableCell> : null}
                 <TableCell>등록일</TableCell>
                 <TableCell align="center">작업</TableCell>
               </TableRow>
@@ -182,7 +187,7 @@ const StyleBoard = () => {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canViewProcessSummary ? 7 : 5}
+                    colSpan={canViewProcessSummary ? 8 : 5}
                     sx={{ textAlign: 'center', color: 'text.secondary' }}
                   >
                     {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
@@ -204,6 +209,21 @@ const StyleBoard = () => {
                   ) : null}
                   {canViewProcessSummary ? (
                     <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
+                  ) : null}
+                  {canViewProcessSummary ? (
+                    <TableCell>
+                      {style.hasTotalCT ? (
+                        <Chip
+                          size="small"
+                          label={formatSeconds(style.totalCT)}
+                          color="primary"
+                          variant="outlined"
+                          sx={{ fontWeight: 700 }}
+                        />
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
                   ) : null}
                   <TableCell>{style.registrationDate || '-'}</TableCell>
                   <TableCell align="center">

@@ -25,6 +25,7 @@ import { useAuth } from './context/AuthContext';
 import Attribute from './pages/App/Attribute';
 import Order from './pages/App/Order.jsx';
 import ProductionPlan from './pages/App/ProductionPlan';
+import CtReview from './pages/App/CtReview';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
 import { canAccessPath } from './utils/accessControl';
 
@@ -155,6 +156,10 @@ const router = createBrowserRouter([
           {
             path: 'production-plan',
             element: <ProductionPlan />,
+          },
+          {
+            path: 'ct-review',
+            element: <CtReview />,
           },
           {
             path: 'work-history/new',

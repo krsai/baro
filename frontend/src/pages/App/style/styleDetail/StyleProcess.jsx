@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
+  Chip,
   IconButton,
   Paper,
   Stack,
@@ -176,8 +177,10 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
   const totalPT = useMemo(() => calculateProcessTotal(safeProcesses, 'pt'), [safeProcesses]);
   const totalAT = useMemo(() => calculateProcessTotal(safeProcesses, 'at'), [safeProcesses]);
+  const totalCT = useMemo(() => calculateProcessTotal(safeProcesses, 'ct'), [safeProcesses]);
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
+  const hasCT = useMemo(() => hasAnyProcessTime(safeProcesses, 'ct'), [safeProcesses]);
 
   const addDisabledIdentitySet = useMemo(() => {
     const set = new Set();
@@ -358,6 +361,9 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   <TableCell align="right" sx={{ width: 120 }}>
                     AT(자동)
                   </TableCell>
+                  <TableCell align="right" sx={{ width: 120 }}>
+                    CT(공식)
+                  </TableCell>
                   <TableCell align="center" sx={{ width: 120 }}>
                     작업
                   </TableCell>
@@ -406,6 +412,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                           />
                         </TableCell>
                         <TableCell align="right">-</TableCell>
+                        <TableCell align="right" sx={{ color: 'text.disabled' }}>-</TableCell>
                         <TableCell align="center">
                           <Stack direction="row" spacing={0.5} justifyContent="center">
                             <Tooltip title="저장">
@@ -425,7 +432,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                     {addError && isAddingRow && (
                       <TableRow sx={{ backgroundColor: '#f8fafc' }}>
-                        <TableCell colSpan={5} sx={{ py: 0.75 }}>
+                        <TableCell colSpan={6} sx={{ py: 0.75 }}>
                           <Typography variant="caption" color="error">
                             {addError}
                           </Typography>
@@ -435,7 +442,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                     {safeProcesses.length === 0 && !isAddingRow ? (
                       <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        <TableCell colSpan={6} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                           등록된 공정이 없습니다. 상단의 행 추가로 바로 입력해보세요.
                         </TableCell>
                       </TableRow>
@@ -527,6 +534,21 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                   </TableCell>
 
                                   <TableCell align="right">{formatSeconds(previewProcess.at)}</TableCell>
+                                  <TableCell align="right">
+                                    {process.ct != null ? (
+                                      <Chip
+                                        size="small"
+                                        label={formatSeconds(process.ct)}
+                                        color="primary"
+                                        variant="outlined"
+                                        sx={{ fontWeight: 700, fontSize: '0.72rem' }}
+                                      />
+                                    ) : (
+                                      <Typography variant="caption" color="text.disabled">
+                                        미설정
+                                      </Typography>
+                                    )}
+                                  </TableCell>
                                   <TableCell align="center">
                                     {isEditing ? (
                                       <Stack direction="row" spacing={0.5} justifyContent="center">
@@ -549,7 +571,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
                                 {isEditing && editError && (
                                   <TableRow>
-                                    <TableCell colSpan={5} sx={{ py: 0.75 }}>
+                                    <TableCell colSpan={6} sx={{ py: 0.75 }}>
                                       <Typography variant="caption" color="error">
                                         {editError}
                                       </Typography>
@@ -577,6 +599,19 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {hasAT ? formatSeconds(totalAT) : '-'}
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
+                    {hasCT ? (
+                      <Chip
+                        size="small"
+                        label={formatSeconds(totalCT)}
+                        color="primary"
+                        variant="outlined"
+                        sx={{ fontWeight: 700 }}
+                      />
+                    ) : (
+                      '-'
+                    )}
                   </TableCell>
                   <TableCell />
                 </TableRow>

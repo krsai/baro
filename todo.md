@@ -145,6 +145,15 @@ headcount 스냅샷 저장 없이 트리거 기반 재계산으로 처리.
 
 ---
 
+## ~~6. CT 버전 관리 구현~~ ✅ 완료
+
+- `processTime.js` — `ct` 필드 추가, `resolveProcessCtBaseSeconds` (ct→at→pt), `hasAnyCt`
+- `ProductionPlanBoard.jsx` — `resolveProcessCtBaseSeconds` ct 우선순위 반영, 조정 요청 시 `ctOverride: true`, 목록에 "CT 임시" Chip 표시
+- `StyleBoard.jsx` + `StyleProcess.jsx` — CT 컬럼 추가 (읽기 전용 Chip), CT 합계 푸터
+- `CtReviewBoard.jsx` — CT 괴리율 컬럼, 스타일별 CT 현황 섹션 (AT vs CT, 재검토 권장 알림)
+
+---
+
 ## 백로그 (우선순위 미정)
 
 - 배정 계획 실수 복구 수단 — 현재 자동저장만 있어서 실수 시 되돌릴 방법 없음. undo/redo 또는 최근 N개 상태 보관 중 어떤 방식이 적합한지 결정 필요.

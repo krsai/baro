@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  Drawer,
   Paper,
   Stack,
   Table,
@@ -79,7 +80,7 @@ const resolveAgreedSeconds = (assignment) => {
 };
 
 const formatCurrencyDong = (value) =>
-  `${formatNumberWithCommas(value, { fallback: '0', maximumFractionDigits: 2 })} 동`;
+  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
 
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -115,6 +116,10 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
 };
 
 const resolveProcessCtBaseSeconds = (process) => {
+  const ct = Number(process?.ct);
+  if (Number.isFinite(ct) && ct > 0) {
+    return { basis: 'CT', seconds: ct };
+  }
   const at = Number(process?.at);
   if (Number.isFinite(at) && at > 0) {
     return { basis: 'AT', seconds: at };
@@ -240,6 +245,8 @@ const ProductionPlanBoard = () => {
     return date;
   });
   const [calendarMonth, setCalendarMonth] = useState(() => toMonthStart(new Date()));
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const drawerContainerRef = useRef(null);
   const todayKey = useMemo(() => buildDateKey(new Date()), []);
 
   const lineById = useMemo(
@@ -282,6 +289,10 @@ const ProductionPlanBoard = () => {
         const lineDailyCapacitySeconds = resolveLineDailyCapacitySeconds(line, headcount);
         const status = normalizeCtStatus(assignment?.ctStatus);
         const proposalSeconds = resolveSecondsForProposal(assignment);
+        const perPieceSeconds =
+          proposalSeconds > 0
+            ? proposalSeconds / Math.max(1, toPositiveInt(assignment?.quantity, 1))
+            : null;
         const agreedSeconds = resolveAgreedSeconds(assignment);
         const wagePerSecond = Number(factory?.wagePerSecond);
         const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
@@ -304,6 +315,7 @@ const ProductionPlanBoard = () => {
           lineDailyCapacitySeconds,
           status,
           proposalSeconds,
+          perPieceSeconds,
           agreedSeconds,
           wagePerSecond: validWage ? wagePerSecond : null,
           expectedCost,
@@ -419,6 +431,58 @@ const ProductionPlanBoard = () => {
     [calendarMonth]
   );
 
+  const weekRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < calendarDays.length; i += 7) {
+      rows.push(calendarDays.slice(i, i + 7));
+    }
+    return rows;
+  }, [calendarDays]);
+
+  const calendarBarData = useMemo(() => {
+    return weekRows.map((weekDays) => {
+      const weekDayKeys = weekDays.map((d) => buildDateKey(d));
+      const weekStartKey = weekDayKeys[0];
+      const weekEndKey = weekDayKeys[6];
+
+      const weekItems = [];
+      actionableAssignments.forEach((assignment) => {
+        const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
+        const endIndex = Math.max(startIndex, toNonNegativeInt(assignment?.endIndex, startIndex));
+        const aStartKey = buildDateKey(toScheduleDate(baseDate, startIndex));
+        const aEndKey = buildDateKey(toScheduleDate(baseDate, endIndex));
+
+        if (aEndKey < weekStartKey || aStartKey > weekEndKey) return;
+
+        const rawStartCol = weekDayKeys.findIndex((k) => k >= aStartKey);
+        const startCol = Math.max(0, rawStartCol === -1 ? 0 : rawStartCol);
+
+        let endCol = 6;
+        for (let i = 6; i >= 0; i -= 1) {
+          if (weekDayKeys[i] <= aEndKey) {
+            endCol = i;
+            break;
+          }
+        }
+
+        weekItems.push({ assignment, startCol, endCol: Math.min(6, endCol) });
+      });
+
+      // Assign lanes to prevent vertical overlap
+      const withLanes = [];
+      const laneEndCols = [];
+      weekItems.forEach((item) => {
+        let lane = laneEndCols.findIndex((ec) => ec < item.startCol);
+        if (lane === -1) lane = laneEndCols.length;
+        laneEndCols[lane] = item.endCol;
+        withLanes.push({ ...item, lane });
+      });
+
+      const maxLane = withLanes.length > 0 ? Math.max(...withLanes.map((x) => x.lane)) : -1;
+      return { weekDays, bars: withLanes, maxLane };
+    });
+  }, [weekRows, actionableAssignments, baseDate]);
+
   useEffect(() => {
     if (actionableAssignments.length === 0) {
       setSelectedAssignmentId('');
@@ -441,6 +505,12 @@ const ProductionPlanBoard = () => {
       isSameMonth(prev, targetMonth) ? prev : targetMonth
     );
   }, [selectedAssignment?.id, selectedAssignment?.startIndex, baseDate]);
+
+  useEffect(() => {
+    if (!selectedAssignment) {
+      setIsPanelOpen(false);
+    }
+  }, [selectedAssignment]);
 
   const selectedDraftByProcess = useMemo(
     () => processProposalDrafts[String(selectedAssignment?.id || '')] || {},
@@ -859,6 +929,7 @@ const ProductionPlanBoard = () => {
       return {
         ...item,
         ctStatus: 'REJECTED',
+        ctOverride: true,
         ctSource: 'LINE_LEADER_PROPOSAL',
         ctAgreedBy: null,
         ctAgreedAt: null,
@@ -954,18 +1025,10 @@ const ProductionPlanBoard = () => {
         </Box>
       }
     >
-      <Box
-        sx={{
-          display: 'grid',
-          gap: 2,
-          gridTemplateColumns: {
-            xs: 'minmax(0, 1fr)',
-            md: 'minmax(0, 1.45fr) minmax(0, 1fr)',
-          },
-          alignItems: 'start',
-        }}
-      >
-        <Box sx={{ minWidth: 0 }}>
+      {/* ── 메인 레이아웃: 좌측 전체 + 우측 슬라이드 패널 ── */}
+      <Box ref={drawerContainerRef} sx={{ position: 'relative', overflow: 'hidden' }}>
+        {/* ── 좌측 컬럼 (목록 + 달력) — 항상 전체 폭 ── */}
+        <Box>
           <Stack spacing={1.5}>
             <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
               <Box
@@ -989,8 +1052,8 @@ const ProductionPlanBoard = () => {
                     <TableCell>라인</TableCell>
                     <TableCell>고객/스타일</TableCell>
                     <TableCell align="right">수량</TableCell>
-                    <TableCell>예상 일정</TableCell>
                     <TableCell align="right">예상 비용</TableCell>
+                    <TableCell>예상 일정</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1008,7 +1071,10 @@ const ProductionPlanBoard = () => {
                           key={assignment.id}
                           hover
                           selected={rowSelected}
-                          onClick={() => setSelectedAssignmentId(String(assignment.id))}
+                          onClick={() => {
+                            setSelectedAssignmentId(String(assignment.id));
+                            setIsPanelOpen(true);
+                          }}
                           sx={{ cursor: 'pointer' }}
                         >
                           <TableCell>
@@ -1028,24 +1094,29 @@ const ProductionPlanBoard = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {assignment.customer || '-'}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {assignment.customer || '-'}
+                              </Typography>
+                              {assignment.ctOverride && (
+                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                              )}
+                            </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
                               {assignment.colorName ? ` · ${assignment.colorName}` : ''}
                             </Typography>
                           </TableCell>
-                          <TableCell align="right">
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>
                             {formatNumberWithCommas(assignment.quantity, {
                               fallback: '-',
                               maximumFractionDigits: 0,
                             })}
                           </TableCell>
-                          <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
-                          <TableCell align="right">
+                          <TableCell align="right" sx={{ fontWeight: 600 }}>
                             {assignment.expectedCost == null ? '-' : formatCurrencyDong(assignment.expectedCost)}
                           </TableCell>
+                          <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
                         </TableRow>
                       );
                     })
@@ -1098,9 +1169,14 @@ const ProductionPlanBoard = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {assignment.customer || '-'}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                {assignment.customer || '-'}
+                              </Typography>
+                              {assignment.ctOverride && (
+                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                              )}
+                            </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
                               {assignment.colorName ? ` · ${assignment.colorName}` : ''}
@@ -1177,95 +1253,188 @@ const ProductionPlanBoard = () => {
 
               <Box
                 sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
                   border: '1px solid',
                   borderColor: 'divider',
                   borderRadius: 1,
                   overflow: 'hidden',
                 }}
               >
-                {CALENDAR_WEEKDAYS.map((weekday, index) => (
-                  <Box
-                    key={`weekday-${weekday}`}
-                    sx={{
-                      px: 0.75,
-                      py: 0.5,
-                      bgcolor: 'grey.100',
-                      borderBottom: '1px solid',
-                      borderRight: index % 7 === 6 ? 'none' : '1px solid',
-                      borderColor: 'divider',
-                    }}
-                  >
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                      {weekday}
-                    </Typography>
-                  </Box>
-                ))}
-
-                {calendarDays.map((date, index) => {
-                  const dateKey = buildDateKey(date);
-                  const dayAssignments = actionableByDateKey.get(dateKey) || [];
-                  const inCurrentMonth = isSameMonth(date, calendarMonth);
-                  const isToday = dateKey === todayKey;
-                  const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
-
-                  return (
+                {/* 요일 헤더 — 일요일은 빨간색 */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+                  {CALENDAR_WEEKDAYS.map((weekday, index) => (
                     <Box
-                      key={dateKey}
+                      key={`weekday-${weekday}`}
                       sx={{
-                        minHeight: 94,
-                        p: 0.75,
-                        borderRight: index % 7 === 6 ? 'none' : '1px solid',
-                        borderBottom: index >= calendarDays.length - 7 ? 'none' : '1px solid',
+                        px: 0.75,
+                        py: 0.5,
+                        bgcolor: 'grey.100',
+                        borderBottom: '1px solid',
+                        borderRight: index < 6 ? '1px solid' : 'none',
                         borderColor: 'divider',
-                        bgcolor: inSelectedRange
-                          ? 'rgba(25, 118, 210, 0.10)'
-                          : inCurrentMonth
-                            ? 'background.paper'
-                            : 'grey.50',
-                        opacity: inCurrentMonth ? 1 : 0.55,
                       }}
                     >
-                      <Box
+                      <Typography
+                        variant="caption"
                         sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          mb: 0.5,
+                          fontWeight: 700,
+                          color: index === 0 ? 'error.main' : 'text.secondary',
                         }}
                       >
-                        <Typography variant="caption" sx={{ fontWeight: isToday || inSelectedRange ? 700 : 500 }}>
-                          {date.getDate()}
-                        </Typography>
-                        {dayAssignments.length > 0 ? (
-                          <Chip size="small" label={`${dayAssignments.length}`} sx={{ height: 18 }} />
-                        ) : null}
+                        {weekday}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+                {/* 주차별 렌더링 — 날짜 행 + 이벤트 바 행 */}
+                {calendarBarData.map(({ weekDays, bars, maxLane }, weekIndex) => {
+                  const isLastWeek = weekIndex === calendarBarData.length - 1;
+                  const barAreaHeight = bars.length > 0 ? (maxLane + 1) * 26 + 10 : 30;
+
+                  return (
+                    <Box key={weekIndex}>
+                      {/* 날짜 숫자 행 */}
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+                        {weekDays.map((date, dayIndex) => {
+                          const dateKey = buildDateKey(date);
+                          const inCurrentMonth = isSameMonth(date, calendarMonth);
+                          const isToday = dateKey === todayKey;
+                          const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
+                          const isSunday = dayIndex === 0;
+
+                          return (
+                            <Box
+                              key={dateKey}
+                              sx={{
+                                px: 0.75,
+                                py: 0.5,
+                                borderRight: dayIndex < 6 ? '1px solid' : 'none',
+                                borderColor: 'divider',
+                                bgcolor: inSelectedRange
+                                  ? 'rgba(25, 118, 210, 0.10)'
+                                  : inCurrentMonth
+                                    ? 'background.paper'
+                                    : 'grey.50',
+                                opacity: inCurrentMonth ? 1 : 0.55,
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: '50%',
+                                  bgcolor: isToday ? 'primary.main' : 'transparent',
+                                }}
+                              >
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontWeight: isToday || inSelectedRange ? 700 : 500,
+                                    color: isToday ? 'white' : isSunday ? 'error.main' : 'inherit',
+                                  }}
+                                >
+                                  {date.getDate()}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          );
+                        })}
                       </Box>
-                      <Stack spacing={0.4}>
-                        {dayAssignments.slice(0, 2).map((assignment) => (
-                          <Box
-                            key={`${dateKey}-${assignment.id}`}
-                            onClick={() => setSelectedAssignmentId(String(assignment.id))}
-                            sx={{
-                              px: 0.5,
-                              py: 0.3,
-                              borderRadius: 0.75,
-                              bgcolor: 'rgba(25, 118, 210, 0.12)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ display: 'block' }} noWrap>
-                              {assignment?.line?.name || `L${assignment?.lineId || '-'}`}
-                            </Typography>
-                          </Box>
-                        ))}
-                        {dayAssignments.length > 2 ? (
-                          <Typography variant="caption" color="text.secondary">
-                            +{dayAssignments.length - 2} more
-                          </Typography>
-                        ) : null}
-                      </Stack>
+
+                      {/* 이벤트 바 행 */}
+                      <Box
+                        sx={{
+                          position: 'relative',
+                          height: barAreaHeight,
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                          borderBottom: !isLastWeek ? '1px solid' : 'none',
+                          borderColor: 'divider',
+                        }}
+                      >
+                        {/* 배경 셀 (테두리 유지) */}
+                        {weekDays.map((date, dayIndex) => {
+                          const dateKey = buildDateKey(date);
+                          const inCurrentMonth = isSameMonth(date, calendarMonth);
+                          const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
+                          return (
+                            <Box
+                              key={dateKey}
+                              sx={{
+                                borderRight: dayIndex < 6 ? '1px solid' : 'none',
+                                borderColor: 'divider',
+                                bgcolor: inSelectedRange
+                                  ? 'rgba(25, 118, 210, 0.05)'
+                                  : inCurrentMonth
+                                    ? 'background.paper'
+                                    : 'grey.50',
+                                opacity: inCurrentMonth ? 1 : 0.55,
+                              }}
+                            />
+                          );
+                        })}
+
+                        {/* 연속 이벤트 바 */}
+                        {bars.map(({ assignment, startCol, endCol, lane }) => {
+                          const isSelected =
+                            String(assignment.id) === String(selectedAssignment?.id);
+                          const labelParts = [
+                            assignment?.line?.name || `L${assignment?.lineId || '-'}`,
+                            assignment.label,
+                            assignment.colorName,
+                            assignment.gender,
+                            assignment.quantity != null
+                              ? `${formatNumberWithCommas(assignment.quantity, { maximumFractionDigits: 0 })}개`
+                              : null,
+                          ].filter(Boolean);
+
+                          return (
+                            <Box
+                              key={assignment.id}
+                              onClick={() => {
+                                setSelectedAssignmentId(String(assignment.id));
+                                setIsPanelOpen(true);
+                              }}
+                              sx={{
+                                position: 'absolute',
+                                top: lane * 26 + 3,
+                                left: `calc(${startCol} / 7 * 100% + 3px)`,
+                                width: `calc(${endCol - startCol + 1} / 7 * 100% - 6px)`,
+                                height: 22,
+                                bgcolor: isSelected ? 'primary.main' : 'rgba(25, 118, 210, 0.15)',
+                                border: '1px solid',
+                                borderColor: isSelected ? 'primary.dark' : 'primary.light',
+                                borderRadius: 0.75,
+                                px: 0.75,
+                                display: 'flex',
+                                alignItems: 'center',
+                                cursor: 'pointer',
+                                overflow: 'hidden',
+                                zIndex: 1,
+                                '&:hover': { opacity: 0.82 },
+                              }}
+                            >
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  fontWeight: 600,
+                                  color: isSelected ? 'white' : 'primary.dark',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  fontSize: '0.65rem',
+                                  lineHeight: 1,
+                                }}
+                              >
+                                {labelParts.join(' · ')}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Box>
                     </Box>
                   );
                 })}
@@ -1274,11 +1443,31 @@ const ProductionPlanBoard = () => {
           </Stack>
         </Box>
 
-        <Box sx={{ minWidth: 0 }}>
-          <Stack spacing={1.5}>
-            {selectedAssignment ? (
-              <>
-                <Paper variant="outlined" sx={{ p: 2 }}>
+        {/* ── 우측 Drawer (선택 시 화면 위로 덮으며 슬라이드인) ── */}
+        <Drawer
+          anchor="right"
+          open={isPanelOpen && Boolean(selectedAssignment)}
+          onClose={() => setIsPanelOpen(false)}
+          PaperProps={{ sx: { position: 'absolute', width: '60%', height: '100%', overflowY: 'auto', p: 2.5 } }}
+          ModalProps={{ container: () => drawerContainerRef.current, disablePortal: true }}
+        >
+          <Box sx={{ width: '100%' }}>
+            {selectedAssignment && (
+              <Stack spacing={1.5}>
+                {/* 패널 헤더 */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    선택된 계획 상세
+                  </Typography>
+                  <Button size="small" color="inherit" onClick={() => setIsPanelOpen(false)}>
+                    닫기 ✕
+                  </Button>
+                </Box>
+
+                {/* 작업 상세 + CT/비용 요약 — 50/50 가로 배치 */}
+                <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                  {/* 작업 상세 */}
+                  <Paper variant="outlined" sx={{ p: 2, flex: 1, minWidth: 0 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
                     작업 상세
                   </Typography>
@@ -1312,29 +1501,10 @@ const ProductionPlanBoard = () => {
                       <strong>예상 일정:</strong> {formatScheduleRange(baseDate, selectedAssignment)}
                     </Typography>
                   </Stack>
-                  <Divider sx={{ my: 1.5 }} />
-                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={() => handleAgree(selectedAssignment.id)}
-                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED'}
-                    >
-                      {selectedAssignment.status === 'AGREED' ? '동의됨' : '동의'}
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="warning"
-                      onClick={() => handleRequestAdjustment(selectedAssignment.id)}
-                      disabled={selectedAssignmentBusy}
-                    >
-                      조정 요청
-                    </Button>
-                  </Stack>
-                </Paper>
+                  </Paper>
 
-                <Paper variant="outlined" sx={{ p: 2 }}>
+                  {/* CT/비용 요약 */}
+                  <Paper variant="outlined" sx={{ p: 2, flex: 1, minWidth: 0 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
                     CT/비용 요약
                   </Typography>
@@ -1452,8 +1622,10 @@ const ProductionPlanBoard = () => {
                       </Typography>
                     </Box>
                   </Stack>
-                </Paper>
+                  </Paper>
+                </Box>
 
+                {/* 공정 CT 상세 / 라인장 제안 — 하단에 동의·조정 버튼 배치 */}
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                     공정 CT 상세 / 라인장 제안
@@ -1475,7 +1647,6 @@ const ProductionPlanBoard = () => {
                             <TableCell align="right">공정수</TableCell>
                             <TableCell align="right">기본 CT(초)</TableCell>
                             <TableCell align="right">제안 CT(초)</TableCell>
-                            <TableCell align="right">한 벌 CT(초)</TableCell>
                             <TableCell align="right">주문 공임</TableCell>
                             <TableCell align="right">기간(일)</TableCell>
                           </TableRow>
@@ -1527,26 +1698,14 @@ const ProductionPlanBoard = () => {
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                {formatNumberWithCommas(row.proposedPerPieceSeconds, {
-                                  fallback: '0',
-                                  maximumFractionDigits: 2,
-                                })}
-                              </TableCell>
-                              <TableCell align="right">
                                 {row.expectedCost == null ? '-' : formatCurrencyDong(row.expectedCost)}
                               </TableCell>
                               <TableCell align="right">{formatDaysLabel(row.expectedDays)}</TableCell>
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={6} align="right" sx={{ fontWeight: 700 }}>
+                            <TableCell colSpan={5} align="right" sx={{ fontWeight: 700 }}>
                               합계
-                            </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {formatNumberWithCommas(selectedCostSummary?.totalProposedPerPieceSeconds, {
-                                fallback: '0',
-                                maximumFractionDigits: 2,
-                              })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {selectedCostSummary?.totalCost == null
@@ -1566,13 +1725,33 @@ const ProductionPlanBoard = () => {
                       ? `직접 제안 입력: ${selectedCostSummary.directProposalCount}개 공정`
                       : '입력값이 없으면 기본 AT/PT 기준으로 운영팀 조정 요청됩니다.'}
                   </Typography>
+
+                  {/* 동의 / 조정 요청 버튼 — 공정 CT 카드 하단 */}
+                  <Divider sx={{ mt: 1.5, mb: 1.5 }} />
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => handleAgree(selectedAssignment.id)}
+                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED'}
+                    >
+                      {selectedAssignment.status === 'AGREED' ? '동의됨' : '동의'}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => handleRequestAdjustment(selectedAssignment.id)}
+                      disabled={selectedAssignmentBusy}
+                    >
+                      조정 요청
+                    </Button>
+                  </Stack>
                 </Paper>
-              </>
-            ) : (
-              <Alert severity="info">왼쪽 목록에서 배정 작업을 선택해 주세요.</Alert>
+              </Stack>
             )}
-          </Stack>
-        </Box>
+          </Box>
+        </Drawer>
       </Box>
 
       {/* 완료 처리 Dialog */}
