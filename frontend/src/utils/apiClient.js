@@ -86,6 +86,16 @@ export const requestJSON = async (path, options = {}) => {
   const { skipGlobalLoading = false, ...requestOptions } = options || {};
   const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
 
+  // When the caller provides an AbortSignal (e.g. from a component's useEffect cleanup),
+  // immediately clear the tracked request so the loading overlay disappears on navigation.
+  if (trackedRequestId !== null && requestOptions.signal) {
+    requestOptions.signal.addEventListener(
+      'abort',
+      () => endTrackedRequest(trackedRequestId),
+      { once: true },
+    );
+  }
+
   try {
     const headers = new Headers(requestOptions.headers || {});
     if (requestContext.userEmail && !headers.has('x-user-email')) {

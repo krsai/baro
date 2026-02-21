@@ -32,22 +32,10 @@ const GlobalLoadingOverlay = ({
 }) => {
   const [now, setNow] = useState(() => Date.now());
   const [visible, setVisible] = useState(open);
-  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setVisible(true);
-      setIsCompleting(false);
-      return undefined;
-    }
-    if (!visible) return undefined;
-    setIsCompleting(true);
-    const finishTimer = setTimeout(() => {
-      setVisible(false);
-      setIsCompleting(false);
-    }, 120);
-    return () => clearTimeout(finishTimer);
-  }, [open, visible]);
+    setVisible(open);
+  }, [open]);
 
   useEffect(() => {
     if (!visible) return undefined;
@@ -64,16 +52,14 @@ const GlobalLoadingOverlay = ({
     return Math.max(0, now - startedAt);
   }, [now, visible, startedAt]);
 
-  const progressValue = useMemo(() => {
-    if (isCompleting) return 100;
-    return estimateProgress(elapsedMs, activeRequestCount);
-  }, [elapsedMs, activeRequestCount, isCompleting]);
+  const progressValue = useMemo(
+    () => estimateProgress(elapsedMs, activeRequestCount),
+    [elapsedMs, activeRequestCount],
+  );
 
   if (!visible) return null;
 
-  const requestStatusText = isCompleting
-    ? '완료 처리 중'
-    : `${activeRequestCount}개 요청 처리 중`;
+  const requestStatusText = `${activeRequestCount}개 요청 처리 중`;
 
   return (
     <Box
