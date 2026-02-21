@@ -128,6 +128,17 @@ const CtReviewBoard = () => {
       });
   }, [styles]);
 
+  // style name → total AT (per piece) for lookup in the review table
+  const styleAtMap = useMemo(() => {
+    const map = new Map();
+    styleCtSummaries.forEach((s) => {
+      if (s.totalAt != null) {
+        map.set(s.name, s.totalAt);
+      }
+    });
+    return map;
+  }, [styleCtSummaries]);
+
   const agreedItems = useMemo(() => {
     return (Array.isArray(assignments) ? assignments : [])
       .filter((a) => String(a?.ctStatus || '').toUpperCase() === 'AGREED')
@@ -317,9 +328,10 @@ const CtReviewBoard = () => {
                   <TableCell>라인 / 공장</TableCell>
                   <TableCell>고객 / 스타일</TableCell>
                   <TableCell align="right">수량</TableCell>
-                  <TableCell align="right">기본 CT (한벌)</TableCell>
-                  <TableCell align="right">제안 CT (한벌)</TableCell>
-                  <TableCell align="right">CT 괴리율</TableCell>
+                  <TableCell align="right">실적 AT (한벌)</TableCell>
+                  <TableCell align="right">공식 CT (한벌)</TableCell>
+                  <TableCell align="right">요청 CT (한벌)</TableCell>
+                  <TableCell align="right">조정 폭</TableCell>
                   <TableCell align="right">예상 비용</TableCell>
                   <TableCell>요청 일시</TableCell>
                   <TableCell align="center">처리</TableCell>
@@ -327,9 +339,9 @@ const CtReviewBoard = () => {
               </TableHead>
               <TableBody>
                 {loading ? (
-                  <TableStatusRow colSpan={9} message="불러오는 중..." sx={{ py: 2 }} />
+                  <TableStatusRow colSpan={10} message="불러오는 중..." sx={{ py: 2 }} />
                 ) : reviewItems.length === 0 ? (
-                  <TableStatusRow colSpan={9} message="검토할 항목이 없습니다." sx={{ py: 2 }} />
+                  <TableStatusRow colSpan={10} message="검토할 항목이 없습니다." sx={{ py: 2 }} />
                 ) : (
                   reviewItems.map((item) => {
                     const busy = actioningId === String(item.id);
@@ -370,6 +382,9 @@ const CtReviewBoard = () => {
                               fallback: '-',
                               maximumFractionDigits: 0,
                             })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                            {formatSeconds(styleAtMap.get(item.label))}
                           </TableCell>
                           <TableCell align="right">
                             {formatSeconds(proposal?.totalBasePerPieceSeconds)}
@@ -436,7 +451,7 @@ const CtReviewBoard = () => {
 
                         {/* 공정 상세 펼치기 */}
                         <TableRow>
-                          <TableCell colSpan={9} sx={{ p: 0, border: 0 }}>
+                          <TableCell colSpan={10} sx={{ p: 0, border: 0 }}>
                             <Collapse in={expanded} unmountOnExit>
                               <Box
                                 sx={{
@@ -477,10 +492,10 @@ const CtReviewBoard = () => {
                                           <TableCell>#</TableCell>
                                           <TableCell>공정</TableCell>
                                           <TableCell align="right">공정수</TableCell>
-                                          <TableCell align="right">기본 CT(초)</TableCell>
-                                          <TableCell align="right">제안 CT(초)</TableCell>
-                                          <TableCell align="right">한 벌 제안 CT(초)</TableCell>
-                                          <TableCell align="center">라인장 제안</TableCell>
+                                          <TableCell align="right">공식 CT(초)</TableCell>
+                                          <TableCell align="right">요청 CT(초)</TableCell>
+                                          <TableCell align="right">한 벌 요청 CT(초)</TableCell>
+                                          <TableCell align="center">라인장 요청</TableCell>
                                         </TableRow>
                                       </TableHead>
                                       <TableBody>
@@ -713,7 +728,7 @@ const CtReviewBoard = () => {
               }}
             >
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                스타일별 CT 현황 (AT vs 공식 CT 괴리율)
+                스타일별 실적 시간 현황 (실적 AT vs 공식 CT 비교)
               </Typography>
               {styleCtSummaries.filter((s) => s.needsReview).length > 0 && (
                 <Chip
@@ -729,9 +744,9 @@ const CtReviewBoard = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>고객 / 스타일</TableCell>
-                    <TableCell align="right">총 CT (한벌)</TableCell>
-                    <TableCell align="right">총 AT (한벌)</TableCell>
-                    <TableCell align="right">AT vs CT 괴리율</TableCell>
+                    <TableCell align="right">공식 CT (한벌)</TableCell>
+                    <TableCell align="right">실적 AT (한벌)</TableCell>
+                    <TableCell align="right">AT vs 공식 CT 차이율</TableCell>
                     <TableCell align="center">상태</TableCell>
                   </TableRow>
                 </TableHead>
@@ -814,9 +829,9 @@ const CtReviewBoard = () => {
                                     <TableHead>
                                       <TableRow>
                                         <TableCell>공정</TableCell>
-                                        <TableCell align="right">CT(초)</TableCell>
-                                        <TableCell align="right">AT(초)</TableCell>
-                                        <TableCell align="right">AT vs CT 괴리율</TableCell>
+                                        <TableCell align="right">공식 CT(초)</TableCell>
+                                        <TableCell align="right">실적 AT(초)</TableCell>
+                                        <TableCell align="right">AT vs CT 차이율</TableCell>
                                       </TableRow>
                                     </TableHead>
                                     <TableBody>
