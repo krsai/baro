@@ -45,8 +45,10 @@ const formatLineShiftLabel = (line) => {
 };
 
 const BASIS_COLORS = {
+  // AT/PT 모두 CT 기준 색으로 통일 (스케줄링 내부 구분은 유지)
+  CT: { color: '#DCE9FF', stripe: '#9FB9F2' },
   PT: { color: '#DCE9FF', stripe: '#9FB9F2' },
-  AT: { color: '#DFF3E5', stripe: '#9ED5B3' },
+  AT: { color: '#DCE9FF', stripe: '#9FB9F2' },
   NONE: { color: '#F7D8E0', stripe: '#E6A8B6' },
 };
 

@@ -120,13 +120,11 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
 };
 
 const resolveProcessCtBaseSeconds = (process) => {
-  const ct = Number(process?.ct);
-  if (Number.isFinite(ct) && ct > 0) {
-    return { basis: 'CT', seconds: ct };
-  }
-  const at = Number(process?.at);
-  if (Number.isFinite(at) && at > 0) {
-    return { basis: 'AT', seconds: at };
+  // CT 제안값 산출: ST(q) = Style.processes[].ct 우선, 없으면 PT 사용
+  // AT는 스케줄링 예측용이며 CT 제안값 산출에는 사용하지 않음
+  const st = Number(process?.ct);
+  if (Number.isFinite(st) && st > 0) {
+    return { basis: 'CT', seconds: st };
   }
   const pt = Number(process?.pt);
   if (Number.isFinite(pt) && pt > 0) {
@@ -2015,7 +2013,7 @@ const ProductionPlanBoard = () => {
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                     {selectedCostSummary?.directProposalCount > 0
                       ? `직접 제안 입력: ${selectedCostSummary.directProposalCount}개 공정`
-                      : '입력값이 없으면 기본 AT/PT 기준으로 운영팀 조정 요청됩니다.'}
+                      : '입력값이 없으면 ST(공식 CT) 기준으로 운영팀 조정 요청됩니다.'}
                   </Typography>
 
                   {/* 동의 / 조정 요청 버튼 — 공정 CT 카드 하단 */}

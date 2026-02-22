@@ -44,11 +44,13 @@
   - `w_day = max(w_mag, w_trend)`
 - 변경폭 제한: `AT_final = clamp(AT_new, AT_old × (1−δ), AT_old × (1+δ))`, δ = 5~15% (정책값)
 
-**ST(q) (Standard Time) — 버전 관리 정책 기준값**
-- AT(q)를 참고해 운영팀/공장장이 결정하는 공식 기준 개당 시간
-- 버전 관리: ST_v1 → ST_v2 … (점진적 조정, 급격한 변화 방지)
+**ST(q) (Standard Time) — 버전 관리 정책 기준값 (충격 완충재)**
+- PT → AT로 기준이 전환될 때 급격한 변화를 막기 위한 완충 구간
+- AT(q)가 나왔다고 ST를 바로 AT로 맞추지 않음 — 현장 충격(파업 등) 방지
+- 운영팀이 AT(q)를 참고해 점진적으로 ST를 조정. 버전 관리: ST_v1 → ST_v2 …
 - AT 데이터 없으면 ST = PT (현재 스타일에 입력된 PT값)
 - **코드상**: `Style.processes[].ct` 필드가 이 역할 수행 (기존 필드명 유지)
+- ST는 "이 스타일 이 공정의 현재 공식 단가"이며, 라인과 협의하는 출발점
 
 **CT (Contracted Time) — 카드 단위 확정 스냅샷**
 - 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
@@ -80,8 +82,8 @@ PENDING (배정 후 초기 상태)
 > "거부"는 운영팀이 라인장의 조정 요청을 기각할 때 사용하는 용어.
 
 #### CT 협의 UI 버튼 규칙 (ProductionPlanBoard)
-- **동의 버튼 활성**: 공정 CT 입력값이 없거나 기본값(AT/PT/CT)과 동일한 경우
-- **조정 요청 버튼 활성**: 최소 1개 공정에서 기본값과 다른 CT를 입력한 경우
+- **동의 버튼 활성**: 공정 CT 입력값이 없거나 ST 제안값과 동일한 경우
+- **조정 요청 버튼 활성**: 최소 1개 공정에서 ST 제안값과 다른 CT를 입력한 경우
 - 두 버튼은 항상 둘 중 하나만 활성화됨 (상호 배타적)
 - 버튼 variant도 활성/비활성에 따라 contained/outlined로 전환
 
@@ -93,12 +95,23 @@ PENDING (배정 후 초기 상태)
   - `AGREED + ctSource='LINE_LEADER_PROPOSAL'` → 운영팀이 라인장 제안 CT 승인 완료
   - `AGREED + ctSource='MANUAL'` → 라인장이 기본 CT 그대로 동의
 
-#### CT 버전 관리 흐름
-1. **스타일 최초 등록**: AT 없으므로 PT를 임시 CT 기준으로 사용
-2. **AT 데이터 축적**: 운영자가 AT를 참고해 CT를 명시적으로 설정 → `Style.processes[].ct` 저장, 버전 증가
-3. **배정 시**: 공식 CT를 라인장에게 제안 → 라인장 동의 시 배정 확정 (ctStatus: AGREED)
-4. **라인장 CT 조정 요청 시**: ctStatus=REJECTED, ctOverride=true. 운영팀 검토 후 승인(AGREED) 또는 거부(배정삭제)
-5. **다음 배정**: 다시 최신 공식 CT 버전 기준으로 시작
+#### 시간의 두 가지 용도 — 반드시 구분
+
+| 용도 | 사용 시간 | 이유 |
+|------|-----------|------|
+| **배정 예상 기간** (endIndex 계산) | atParams 있으면 AT(q), 없으면 PT | 현실에 가까운 일정 예측 |
+| **CT 제안값** (라인장 협의 출발점) | ST(q) (= Style.processes[].ct), 없으면 PT | 공식 단가 기준으로 협의 시작 |
+| **급여 확정값** | CT (contractedSeconds 스냅샷) | 합의된 계약값, 이후 변경 없음 |
+
+#### ST/CT 운영 흐름
+1. **스타일 최초 등록**: atParams = null → ST = PT. 배정 예상 기간도 PT(q) 기준
+2. **AT(q) 산출 시작**: atParams 갱신됨. 배정 예상 기간은 AT(q)로 전환. ST는 아직 PT 기반 유지
+3. **AT(q) vs ST 차이 기준 이상**: "ST 조정 필요" 경고 → 운영팀이 ST 점진 조정 (버전 증가). 단번에 AT로 맞추지 않음
+4. **배정 시 CT 협의**: 시스템이 현재 ST(q)를 제안값으로 표시
+   - 라인장 동의 → CT = ST(q) 그대로 확정 (ctStatus=AGREED, ctSource=MANUAL)
+   - 라인장 조정 요청 → 해당 카드·라인만의 임시 CT로 협의 (ctStatus=REJECTED → 운영팀 검토 → AGREED 또는 배정삭제)
+5. **CT 확정 후**: 해당 카드의 CT는 영구 고정. ST 변경·AT 갱신 무관
+6. **다음 배정**: 최신 ST(q) 버전 기준으로 다시 제안
 
 #### 공임 계산
 `급여 = contractedSeconds(CT) × 수량` — CT 확정 후에는 다른 값 참조 없음
@@ -221,6 +234,7 @@ Organization (MANUFACTURER | BRAND)
   - **DEDUCT**: 기존 배정 카드에서 수량 차감, endIndex 재계산 (수량 0이 되면 배정 삭제)
   - **삭제**: DELTA 카드를 미배정 풀에서 제거
 - **endIndex 재계산 공식**: `perPieceSeconds = proposalSeconds / oldQty`, `newEndIndex = startIndex + max(0, ceil(perPieceSeconds * newQty / lineDailyCapacitySeconds) - 1)`
+  ※ 신규 배정 시 perPieceSeconds 산출: atParams 있으면 AT(q), 없으면 PT 사용 (스케줄링 예측용)
 - **매칭 기준**: styleId + colorName + gender + customer로 관련 배정 카드 탐색
 
 ---

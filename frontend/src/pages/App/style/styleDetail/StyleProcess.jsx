@@ -356,7 +356,14 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   <TableCell sx={{ width: 70 }}>순서</TableCell>
                   <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
-                    PT
+                    <Tooltip
+                      title="PT (Planned Time): 1개 생산에 필요한 순수 작업 예상 시간 (초 단위). 수량과 무관하게 개당 값만 입력하세요. 공정 전환·대기 등 부가 시간은 포함하지 않습니다."
+                      placement="top"
+                    >
+                      <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                        PT
+                      </Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
                     AT(자동)
