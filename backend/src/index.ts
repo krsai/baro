@@ -1917,7 +1917,7 @@ app.get("/auth/context", async (req, res) => {
           email: requesterEmail,
         },
       },
-      include: { organization: true },
+      include: { organization: true, employee: true },
     });
     if (!membership || membership.status !== "ACTIVE" || !membership.organization) {
       return res.status(403).json({
@@ -1934,6 +1934,7 @@ app.get("/auth/context", async (req, res) => {
       orgName: membership.organization.name ?? null,
       orgType: membership.organization.type ?? null,
       orgRole: membership.role,
+      factoryId: membership.employee?.factoryId ?? null,
     });
   }
 
@@ -1942,7 +1943,7 @@ app.get("/auth/context", async (req, res) => {
       email: requesterEmail,
       status: "ACTIVE",
     },
-    include: { organization: true },
+    include: { organization: true, employee: true },
     orderBy: { id: "asc" },
   });
   if (!membership || !membership.organization) {
@@ -1960,6 +1961,7 @@ app.get("/auth/context", async (req, res) => {
     orgName: membership.organization.name ?? null,
     orgType: membership.organization.type ?? null,
     orgRole: membership.role,
+    factoryId: membership.employee?.factoryId ?? null,
   });
 });
 
@@ -2307,9 +2309,15 @@ app.get("/employees", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const factoryId = Number(req.query.factoryId);
-  const where = {
+  const membershipRole = typeof req.query.membershipRole === "string"
+    ? req.query.membershipRole.toUpperCase()
+    : null;
+  const where: any = {
     orgId: organization.id,
     ...(Number.isFinite(factoryId) ? { factoryId } : {}),
+    ...(membershipRole
+      ? { membership: { role: membershipRole as any } }
+      : {}),
   };
   const employees = await prisma.employee.findMany({
     where,

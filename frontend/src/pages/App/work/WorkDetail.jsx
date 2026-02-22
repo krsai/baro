@@ -279,7 +279,7 @@ const reconcileWorkerForFactory = (worker, employees = []) => {
 };
 
 const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => {
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const [workDate, setWorkDate] = useState(dayjs());
   const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(null);
@@ -316,7 +316,18 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           fetchAttributes({ orgId: activeOrgId }).catch(() => null),
         ]);
         if (cancelled) return;
-        setFactories(Array.isArray(factoryRows) ? factoryRows : []);
+        // ADMIN이 아닌 사용자는 소속 공장만 표시
+        const allFactories = Array.isArray(factoryRows) ? factoryRows : [];
+        const isAdmin = activeOrgRole === 'ADMIN';
+        const filteredFactories =
+          !isAdmin && activeFactoryId
+            ? allFactories.filter((f) => f.id === activeFactoryId)
+            : allFactories;
+        setFactories(filteredFactories);
+        // 신규 입력이고 소속 공장이 하나로 특정되는 경우 자동 선택
+        if (!initialLog?.id && filteredFactories.length === 1) {
+          setSelectedFactory(filteredFactories[0]);
+        }
         setCustomers(Array.isArray(customerRows) ? customerRows : []);
         setStyles(Array.isArray(styleRows) ? styleRows : []);
         setColors(Array.isArray(attributeData?.colors) ? attributeData.colors : []);
@@ -329,7 +340,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId]);
+  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id]);
 
   useEffect(() => {
     if (!selectedFactory?.id) {
@@ -410,7 +421,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       }
       try {
         const data = await requestJSON(
-          `/employees${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`
+          `/employees${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId, membershipRole: 'WORKER' })}`
         );
         if (cancelled) return;
         const list = (Array.isArray(data) ? data : []).map((employee) => ({
@@ -775,7 +786,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             value={selectedFactory}
             onChange={(_event, value) => setSelectedFactory(value)}
             autoHighlight
-            disabled={loading}
+            disabled={loading || factories.length === 1}
             sx={{ minWidth: 240 }}
             textFieldProps={{ size: 'small' }}
             isOptionEqualToValue={(option, value) => option?.id === value?.id}

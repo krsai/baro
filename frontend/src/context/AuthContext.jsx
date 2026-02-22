@@ -196,6 +196,9 @@ const normalizeAccessProfile = (profile) => {
     typeof profile.orgName === 'string' && profile.orgName.trim() ? profile.orgName.trim() : null;
   const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole] || orgRole || '';
 
+  const factoryId =
+    typeof profile.factoryId === 'number' && profile.factoryId > 0 ? profile.factoryId : null;
+
   return {
     entryType: 'ORG',
     systemRole: normalizeUpper(profile.systemRole || 'USER'),
@@ -203,6 +206,7 @@ const normalizeAccessProfile = (profile) => {
     orgRole,
     orgId: toPositiveOrgId(profile.orgId),
     orgName,
+    factoryId,
     email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
     label:
       typeof profile.label === 'string' && profile.label.trim()
@@ -378,6 +382,10 @@ export const AuthProvider = ({ children }) => {
   const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
   const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
   const activeOrgRole = normalizeUpper(effectiveProfile?.orgRole);
+  const activeFactoryId =
+    typeof effectiveProfile?.factoryId === 'number' && effectiveProfile.factoryId > 0
+      ? effectiveProfile.factoryId
+      : null;
 
   useEffect(() => {
     const emailFromUser = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
@@ -406,6 +414,7 @@ export const AuthProvider = ({ children }) => {
       activeOrgId,
       activeOrgType,
       activeOrgRole,
+      activeFactoryId,
       activeProfile: effectiveProfile,
       loading: loadingState,
       hasWorkspaceAccess,
@@ -424,6 +433,7 @@ export const AuthProvider = ({ children }) => {
       activeOrgId,
       activeOrgType,
       activeOrgRole,
+      activeFactoryId,
       effectiveProfile,
       loadingState,
       hasWorkspaceAccess,
