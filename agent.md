@@ -11,14 +11,50 @@
 
 ## 핵심 도메인 개념
 
-### CT (Contracted Time) — 가장 중요한 개념
-- **CT = 계약된 시간** (초/개 단위) — Cycle Time이 아님
-- **PT(Planned Time)**: 스타일 등록 시 운영자가 감으로 입력하는 초기 계획 시간. AT 데이터가 없을 때 임시 CT 기준으로 쓰임
-- **AT(Actual Time)**: 실제 WorkRecord 기반으로 자동 산출되는 값. 운영자가 직접 입력하지 않음. CT 결정 시 참고용으로만 사용
-- **CT(Contracted Time)**: 스타일 공정 단위로 관리되는 공식 기준 시간. **버전이 있으며 명시적 검토·승인을 통해서만 변경됨**
-- PT와 AT는 CT 결정을 위한 참고값일 뿐, **CT 확정 이후에는 PT/AT 변경과 완전히 무관**
-- 확정된 CT는 급여 계산의 기준이 됨
-- AssignmentPlan의 contractedSeconds: CT 합의 시 확정된 값 (이후 Style.processes 변경과 무관)
+### 시간 관리 체계
+
+#### 핵심 개념 정의
+
+**PT (Planned Time) — 인간 추정 기준점**
+- 공장장/매니저가 주문 수량을 보고 경험적으로 입력하는 개당 예상 시간
+- 스타일 공정 정보에 직접 입력하며, AT 데이터가 축적되기 전까지 ST(q)의 기준값으로 사용
+- AT 데이터 없는 동안: ST(q) = 현재 스타일에 입력된 PT값
+- **PT가 변경되면 CT 미확정 카드의 ST가 즉시 바뀜** — CT 확정 카드에는 영향 없음 (스냅샷 보호)
+- 실무적으로 매니저는 주문 수량을 감안해 PT를 입력함. 다음 주문 수량이 크게 달라지면 PT를 다시 입력
+
+**AT(q) (Actual Time) — 데이터 기반 실측 평균 (연속 함수)**
+- WorkRecord 누적으로 자동 산출되는 수량 q에 대한 개당 평균 시간 함수. 운영자가 직접 입력하지 않음
+- **순수 작업시간이 아님** — 공정 전환·세팅·소량 비효율·대량 효율 등 현실 손실/이득 전체 포함
+- 공통 비가동(점심·회의·고장 등) 별도 분리 없음 — 낭비시간 포함한 현실값 그대로 사용
+- **함수 형태**: `AT(q) = a + b/q` (a: 대량 수렴 하한, b: 소량일수록 커지는 오버헤드 계수)
+- 파라미터 저장: `Style.processes[].atParams: { a, b }` (초 단위). 데이터 부족 시 null
+- **데이터 단계**:
+  - Stage 0 (데이터 없음): atParams = null → ST = PT 사용
+  - Stage 1 (소량): 단순 가중 평균으로 임시 추정 (함수 피팅 보류)
+  - Stage 2 (충분): a + b/q 파라미터 피팅 + 신뢰도 제공
+- q가 작을수록 AT(q) 높음(전환/세팅 비용 분산 안 됨), q가 클수록 하한 a에 수렴
+
+**AT(q) 갱신 정책 (월 1회, 매월 5일)**
+- `time_spent_total(line, day)` = headcount × 480분 (출퇴근 미입력 기본값). 출퇴근 기록 있으면 실제 합으로 대체
+- `pred_day` = Σ(AT_old(q_job) × q_job) = Σ((a + b/q_job) × q_job)
+- `r_day` = (actual_day − pred_day) / actual_day (부호 포함 잔차)
+- 가중치 = 크기 기반(w_mag) × 방향 연속성(w_trend) 결합
+  - 크기 기반: |r_day| ≤ 10% → 1.0 / 10~20% → 0.5 / 20~35% → 0.2 / >35% → 0.1
+  - 연속성 보정: 최근 N일(≈7~20일) 중 같은 방향으로 일관 이탈(neg_ratio 또는 pos_ratio ≥ 0.7)이면 w_trend = 1.0 (감점 취소)
+  - `w_day = max(w_mag, w_trend)`
+- 변경폭 제한: `AT_final = clamp(AT_new, AT_old × (1−δ), AT_old × (1+δ))`, δ = 5~15% (정책값)
+
+**ST(q) (Standard Time) — 버전 관리 정책 기준값**
+- AT(q)를 참고해 운영팀/공장장이 결정하는 공식 기준 개당 시간
+- 버전 관리: ST_v1 → ST_v2 … (점진적 조정, 급격한 변화 방지)
+- AT 데이터 없으면 ST = PT (현재 스타일에 입력된 PT값)
+- **코드상**: `Style.processes[].ct` 필드가 이 역할 수행 (기존 필드명 유지)
+
+**CT (Contracted Time) — 카드 단위 확정 스냅샷**
+- 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
+- CT는 함수가 아닌 카드(AssignmentPlan) 단위 고정값. **확정 후 ST/PT/AT 변경과 완전히 무관**
+- **급여 = CT × 수량** (단순)
+- AssignmentPlan의 `contractedSeconds`: CT 합의 시 확정된 값
 
 #### CT 협의 상태 흐름 (ctStatus)
 
@@ -64,8 +100,8 @@ PENDING (배정 후 초기 상태)
 4. **라인장 CT 조정 요청 시**: ctStatus=REJECTED, ctOverride=true. 운영팀 검토 후 승인(AGREED) 또는 거부(배정삭제)
 5. **다음 배정**: 다시 최신 공식 CT 버전 기준으로 시작
 
-#### 공임 계산 우선순위
-`contractedSeconds (ctOverride) > 공식 CT > AT > PT`
+#### 공임 계산
+`급여 = contractedSeconds(CT) × 수량` — CT 확정 후에는 다른 값 참조 없음
 
 ---
 
@@ -142,9 +178,10 @@ Organization (MANUFACTURER | BRAND)
        └─ Line
             └─ LineAssignment (직원-라인 배정, startAt/endAt)
   └─ Employee (OrgMembership 1:1)
-  └─ Style (processes: JSON [{code, name, pt, at, ct, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
-       ※ AT는 WorkRecord 기반 산출값
-       ※ CT는 공식 버전 관리 대상. ctVersion은 정수로 증가, ctUpdatedAt은 마지막 CT 변경 시각
+  └─ Style (processes: JSON [{code, name, pt, atParams:{a,b}, ct, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
+       ※ PT: 매니저 직접 입력. AT 없을 때 ST(q) 기준값으로 사용
+       ※ atParams: WorkRecord 기반 자동 산출. AT(q)=a+b/q 파라미터. 데이터 부족 시 null
+       ※ ct: ST(q) 역할. 버전 관리 대상. ctVersion은 정수로 증가, ctUpdatedAt은 마지막 변경 시각
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
   └─ WorkOrder (items: JSON)
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctOverride, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
@@ -190,7 +227,7 @@ Organization (MANUFACTURER | BRAND)
 
 ## 비즈니스 규칙
 
-1. CT(Contracted Time)는 합의 시점에 확정(snapshot)됨 — 이후 PT/AT와 완전히 무관
+1. CT(Contracted Time)는 합의 시점에 확정(snapshot)됨 — 이후 PT/AT/ST 변경과 완전히 무관
 2. WorkLog/WorkRecord는 직원 퇴사 후에도 보존 (workerId nullable)
 3. 작업 배정 계획과 실제 작업 기록은 독립적으로 유지
 4. 수주 수량과 배정 카드 수량은 별도 관리 (카드는 수주를 쪼개서 배정)
@@ -198,8 +235,8 @@ Organization (MANUFACTURER | BRAND)
 6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
 7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
 8. 초과 공정(WorkRecord 누적 > finalQuantity) 시 급여 포함 여부: **미결 (추후 결정)**
-9. **CT는 스타일 공정 단위로 버전 관리됨** — PT/AT는 참고값, CT만 공식 기준
-10. **공식 CT 변경 절차**: 운영자/관리자가 AT를 참고해 CT 조정 제안 → 검토 후 적용. 버전 증가 기록됨
+9. **ST(q) = Style.processes[].ct** — 버전 관리 대상. AT 데이터 없으면 PT가 ST 역할
+10. **ST 변경 절차**: AT(q)와 현재 ST 차이가 기준 이상이면 "ST 조정 필요" 안내 → 운영팀 검토 후 새 버전으로 갱신. 버전 증가 기록됨
 11. **구독 상태 SUSPENDED 조직**: API 호출 403 차단. 로그인 자체는 허용되나 데이터 접근 불가
 
 ---

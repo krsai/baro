@@ -26,7 +26,8 @@ const getCardBasis = (card) => {
 };
 
 const StyleCard = ({ card, onSelect, onSplit }) => {
-  const basis = getCardBasis(card);
+  const isDeltaCard = card.type === 'DELTA';
+  const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
   const isDisabled = basis === 'NONE';
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `card-${card.id}`,
@@ -48,11 +49,12 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
     opacity: isDragging ? 0 : 1,
   };
 
+  const cardStyleName = isDeltaCard ? card.label : card.styleName;
   const previewUrl = card.previewUrl || card.imageUrl || card.thumbnailUrl || '';
   const palette = statusPalette[basis] || statusPalette.NONE;
-  const customerLabel = card.orderNo ? `${card.customer} · ${card.orderNo}` : card.customer;
-  const showCustomerTooltip = customerLabel.length > 14;
-  const showStyleTooltip = card.styleName.length > 16;
+  const customerLabel = isDeltaCard ? card.customer : (card.orderNo ? `${card.customer} · ${card.orderNo}` : card.customer);
+  const showCustomerTooltip = (customerLabel || '').length > 14;
+  const showStyleTooltip = (cardStyleName || '').length > 16;
 
   return (
     <Paper
@@ -139,9 +141,9 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
               }}
             />
           </Box>
-          <Tooltip title={card.styleName} disableHoverListener={!showStyleTooltip}>
+          <Tooltip title={cardStyleName} disableHoverListener={!showStyleTooltip}>
             <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
-              {card.styleName}
+              {cardStyleName}
             </Typography>
           </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
