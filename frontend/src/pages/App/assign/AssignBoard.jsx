@@ -529,7 +529,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     totalSeconds,
     proposalSeconds: totalSeconds,
     contractedSeconds:
-      assignment.contractedSeconds == null ? assignment.contractedSeconds : totalSeconds,
+      assignment.contractedSeconds != null ? assignment.contractedSeconds : totalSeconds,
   };
   const range = recomputeAssignmentRange(next, totalSeconds, days, lineCapacityById);
   return {
