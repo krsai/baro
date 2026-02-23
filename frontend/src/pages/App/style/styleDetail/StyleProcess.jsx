@@ -370,7 +370,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     });
     if (duplicated) return '이미 등록된 공정입니다.';
     if (draft.stManual === true && parseOptionalSecondsInput(draft.st) == null) {
-      return '수동 ST 값을 입력해주세요.';
+      return 'ST 값을 입력해주세요.';
     }
 
     return '';
@@ -629,28 +629,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             alignItems="flex-end"
                             sx={{ minWidth: 110 }}
                           >
-                            <Button
-                              size="small"
-                              variant={addDraft.stManual ? 'contained' : 'outlined'}
-                              onClick={() =>
-                                setAddDraft((prev) => {
-                                  const nextManual = !prev.stManual;
-                                  if (!nextManual) {
-                                    return { ...prev, stManual: false };
-                                  }
-                                  if (String(prev.st || '').trim()) {
-                                    return { ...prev, stManual: true };
-                                  }
-                                  return {
-                                    ...prev,
-                                    stManual: true,
-                                    st: toDraftNumberText(addPreviewStTotalSeconds),
-                                  };
-                                })
-                              }
-                            >
-                              {addDraft.stManual ? '수동 ST' : '자동 ST'}
-                            </Button>
                             <TextField
                               size="small"
                               type="number"
@@ -658,13 +636,15 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                 addDraft,
                                 addPreviewStTotalSeconds
                               )}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                const hasManualValue = String(nextValue).trim() !== '';
                                 setAddDraft((prev) => ({
                                   ...prev,
-                                  stManual: true,
-                                  st: event.target.value,
-                                }))
-                              }
+                                  stManual: hasManualValue,
+                                  st: nextValue,
+                                }));
+                              }}
                               inputProps={{ min: 0 }}
                               placeholder="-"
                               sx={{ width: 86 }}
@@ -816,22 +796,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                         alignItems="flex-end"
                                         sx={{ minWidth: 110 }}
                                       >
-                                        <Button
-                                          size="small"
-                                          variant={editDraft.stManual ? 'contained' : 'outlined'}
-                                          onClick={() =>
-                                            setEditDraft((prev) => ({
-                                              ...prev,
-                                              stManual: !prev.stManual,
-                                              st:
-                                                !prev.stManual && !String(prev.st || '').trim()
-                                                  ? toDraftNumberText(previewStTotalSeconds)
-                                                  : prev.st,
-                                            }))
-                                          }
-                                        >
-                                          {editDraft.stManual ? '수동 ST' : '자동 ST'}
-                                        </Button>
                                         <TextField
                                           size="small"
                                           type="number"
@@ -839,13 +803,16 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                             editDraft,
                                             previewStTotalSeconds
                                           )}
-                                          onChange={(event) =>
+                                          onChange={(event) => {
+                                            const nextValue = event.target.value;
+                                            const hasManualValue =
+                                              String(nextValue).trim() !== '';
                                             setEditDraft((prev) => ({
                                               ...prev,
-                                              stManual: true,
-                                              st: event.target.value,
-                                            }))
-                                          }
+                                              stManual: hasManualValue,
+                                              st: nextValue,
+                                            }));
+                                          }}
                                           inputProps={{ min: 0 }}
                                           placeholder="-"
                                           sx={{ width: 86 }}
