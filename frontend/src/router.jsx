@@ -17,6 +17,7 @@ import StyleDetail from './pages/App/style/StyleDetail';
 import Assign from './pages/App/Assign';
 import AssignDetail from './pages/App/assign/AssignDetail';
 import Work from './pages/App/Work';
+import Attendance from './pages/App/Attendance';
 import WorkEntry from './pages/App/work/WorkEntry';
 import Payroll from './pages/App/Payroll';
 import PayrollEntry from './pages/App/payroll/PayrollEntry';
@@ -26,6 +27,7 @@ import Attribute from './pages/App/Attribute';
 import Order from './pages/App/Order.jsx';
 import ProductionPlan from './pages/App/ProductionPlan';
 import CtReview from './pages/App/CtReview';
+import Overrun from './pages/App/Overrun';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
 import { canAccessPath } from './utils/accessControl';
 
@@ -154,12 +156,20 @@ const router = createBrowserRouter([
             element: <Work />,
           },
           {
+            path: 'attendance',
+            element: <Attendance />,
+          },
+          {
             path: 'production-plan',
             element: <ProductionPlan />,
           },
           {
             path: 'ct-review',
             element: <CtReview />,
+          },
+          {
+            path: 'production-overrun',
+            element: <Overrun />,
           },
           {
             path: 'work-history/new',

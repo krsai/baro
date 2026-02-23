@@ -23,7 +23,10 @@ import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
-import { normalizeProcesses } from '../../../utils/processTime';
+import {
+  normalizeProcesses,
+  resolveProcessAtPerPieceSeconds,
+} from '../../../utils/processTime';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
 const formatCurrencyDong = (value) =>
@@ -61,31 +64,11 @@ const toPositiveInt = (value, fallback = 1) => {
   return parsed;
 };
 
-const toOptionalNonNegativeNumber = (value) => {
-  if (value === '' || value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-};
-
-const resolveAtParams = (process) => {
-  const raw = process?.atParams;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const a = toOptionalNonNegativeNumber(raw.a);
-  const b = toOptionalNonNegativeNumber(raw.b);
-  if (a == null || b == null) return null;
-  return { a, b };
-};
-
 const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
-  const normalizedOrderQuantity = Math.max(1, toPositiveInt(orderQuantity, 1));
-  const atParams = resolveAtParams(process);
-  if (atParams) {
-    return atParams.a * normalizedOrderQuantity + atParams.b;
-  }
-  const at = Number(process?.at);
-  if (Number.isFinite(at) && at > 0) return at;
-  return null;
+  const perPieceSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
+  return Number.isFinite(perPieceSeconds) && perPieceSeconds > 0
+    ? perPieceSeconds
+    : null;
 };
 
 const CtReviewBoard = () => {

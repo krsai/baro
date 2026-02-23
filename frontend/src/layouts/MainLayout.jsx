@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -45,6 +45,7 @@ import TimelineIcon from '@mui/icons-material/Timeline';
 import RateReviewIcon from '@mui/icons-material/RateReview';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
@@ -147,6 +148,7 @@ const MainLayout = () => {
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
           { label: 'CT 조정 검토', icon: <RateReviewIcon />, path: '/ct-review' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
+          { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
         ],
       },
       {
@@ -155,7 +157,10 @@ const MainLayout = () => {
         isParent: true,
         isOpen: accountingOpen,
         setOpen: setAccountingOpen,
-        children: [{ label: '급여 계산', icon: <CalculateIcon />, path: '/payroll' }],
+        children: [
+          { label: '급여 계산', icon: <CalculateIcon />, path: '/payroll' },
+          { label: '초과 생산', icon: <ListAltIcon />, path: '/production-overrun' },
+        ],
       },
       {
         label: '조직 관리',
@@ -502,7 +507,7 @@ const MainLayout = () => {
           <ListItemIcon sx={{ color: '#d32f2f' }}>
             <LogoutIcon />
           </ListItemIcon>
-          <ListItemText primary="로그아웃" sx={{ color: '#d32f2f' }} />
+          <ListItemText primary="濡쒓렇?꾩썐" sx={{ color: '#d32f2f' }} />
         </ListItem>
       </List>
     </Box>
@@ -527,7 +532,7 @@ const MainLayout = () => {
               BARO
             </Button>
           </Box>
-          {/* 탑바 중앙 토스트 */}
+          {/* ?묐컮 以묒븰 ?좎뒪??*/}
           <Fade in={!!notification} timeout={{ enter: 180, exit: 300 }} unmountOnExit>
             <Box
               sx={{

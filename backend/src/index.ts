@@ -79,6 +79,11 @@ const toNumberOrNull = (value: unknown): number | null => {
 };
 const FACTORY_WORK_DAYS_PER_MONTH = 26;
 const FACTORY_WORK_HOURS_PER_DAY = 8;
+const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
+const AT_TRAINING_CUTOFF_DAY = 5;
+// 출퇴근 입력값을 AT 계산에 반영한다.
+// 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
+const USE_ATTENDANCE_INPUT_FOR_AT = true;
 const FACTORY_WORK_SECONDS_PER_MONTH =
   FACTORY_WORK_DAYS_PER_MONTH * FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const roundToScale = (value: number, digits = 2): number => {
@@ -107,6 +112,12 @@ const toPositiveIntOrNull = (value: unknown): number | null => {
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.trunc(parsed);
   return rounded > 0 ? rounded : null;
+};
+const toPositiveInt = (value: unknown, fallback = 1): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.trunc(parsed);
+  return rounded > 0 ? rounded : fallback;
 };
 const resolveOptionalString = (
   value: unknown,
@@ -661,7 +672,7 @@ const toOptionalSeconds = (value: any) => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
-  return parsed < 0 ? 0 : Math.round(parsed);
+  return parsed < 0 ? 0 : roundToScale(parsed, 4);
 };
 
 const normalizeStyleProcess = (process: any) => {
@@ -672,6 +683,25 @@ const normalizeStyleProcess = (process: any) => {
   const next = { ...rest };
   if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
   if ("at" in next) next.at = toOptionalSeconds(next.at);
+  if ("ct" in next) next.ct = toOptionalSeconds(next.ct);
+  next.timeRefQuantity = toPositiveInt(
+    (next as any).timeRefQuantity ?? (next as any).referenceQuantity,
+    1
+  );
+  const hasCt = next.ct !== null && next.ct !== undefined;
+  const hasAt = next.at !== null && next.at !== undefined;
+  const isLikelyAutoCt =
+    hasCt &&
+    hasAt &&
+    Math.abs(Number(next.ct) - Number(next.at)) < 1e-4;
+  next.stManual =
+    typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt;
+  if (next.stManual !== true && next.ct == null && next.at != null) {
+    next.ct = next.at;
+  }
+  if ("referenceQuantity" in next) {
+    delete (next as any).referenceQuantity;
+  }
   return next;
 };
 
@@ -734,9 +764,14 @@ const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
 };
 
 const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
+  const trainingMonthKey = resolveAtTrainingMonthKey(new Date());
   const workLogs = await prisma.workLog.findMany({
-    where: { orgId },
+    where: {
+      orgId,
+      workDate: { startsWith: trainingMonthKey },
+    },
     select: {
+      workDate: true,
       workerCount: true,
       workRecords: {
         where: {
@@ -834,9 +869,68 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
 
   const weightedByKey = new Map<string, { totalSeconds: number; totalQuantity: number }>();
   const matchedStyleUids = new Set<number>();
-  const workSecondsPerWorkerPerDay = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
+  const attendanceSecondsByWorkerDate = new Map<string, number>();
+
+  if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
+    const workDates = Array.from(
+      new Set(
+        workLogs
+          .map((workLog) => normalizeDateKey(workLog.workDate))
+          .filter((value) => value !== "")
+      )
+    );
+    const workerIds = Array.from(
+      new Set(
+        workLogs
+          .flatMap((workLog) => workLog.workRecords)
+          .map((record) => toPositiveIntOrNull(record.workerId))
+          .filter((workerId): workerId is number => workerId !== null)
+      )
+    );
+
+    if (workDates.length > 0 && workerIds.length > 0) {
+      const attendanceRows = await prisma.attendanceEntry.findMany({
+        where: {
+          orgId,
+          workDate: { in: workDates },
+          workerId: { in: workerIds },
+        },
+        select: {
+          workDate: true,
+          workerId: true,
+          workedSeconds: true,
+        },
+      });
+      attendanceRows.forEach((row) => {
+        const workDate = normalizeDateKey(row.workDate);
+        const workerId = toPositiveIntOrNull(row.workerId);
+        const workedSeconds = toNumberOrNull(row.workedSeconds);
+        if (!workDate || workerId === null || workedSeconds === null) return;
+        attendanceSecondsByWorkerDate.set(
+          toAttendanceWorkerDateKey(workDate, workerId),
+          Math.max(0, Math.round(workedSeconds))
+        );
+      });
+    }
+  }
+
+  const resolveWorkerSecondsForDate = (workDate: string, workerId: number | null) => {
+    if (!USE_ATTENDANCE_INPUT_FOR_AT) {
+      return ATTENDANCE_DEFAULT_WORK_SECONDS;
+    }
+    if (workerId === null) {
+      return ATTENDANCE_DEFAULT_WORK_SECONDS;
+    }
+    const key = toAttendanceWorkerDateKey(workDate, workerId);
+    if (!attendanceSecondsByWorkerDate.has(key)) {
+      return ATTENDANCE_DEFAULT_WORK_SECONDS;
+    }
+    return toNonNegativeInt(attendanceSecondsByWorkerDate.get(key), 0);
+  };
 
   workLogs.forEach((workLog) => {
+    const workDate = normalizeDateKey(workLog.workDate);
+    if (!workDate) return;
     const resolvedRows = workLog.workRecords
       .map((record) => {
         const quantity = Number(record.quantity) || 0;
@@ -890,8 +984,13 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
       if (group.totalQuantity <= 0) return;
       matchedStyleUids.add(group.resolvedStyle.uid);
 
-      const workerCountForProcess = group.workerIds.size > 0 ? group.workerIds.size : 1;
-      const workerSecondsForProcess = workerCountForProcess * workSecondsPerWorkerPerDay;
+      const workerSecondsForProcess =
+        group.workerIds.size > 0
+          ? Array.from(group.workerIds.values()).reduce(
+              (sum, workerId) => sum + resolveWorkerSecondsForDate(workDate, workerId),
+              0
+            )
+          : resolveWorkerSecondsForDate(workDate, null);
 
       const current = weightedByKey.get(metricKey) || { totalSeconds: 0, totalQuantity: 0 };
       current.totalSeconds += workerSecondsForProcess;
@@ -933,13 +1032,25 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
 
       const nextAt = toOptionalSeconds(metric.totalSeconds / metric.totalQuantity);
       const currentAt = toOptionalSeconds((process as any).at);
-      if (nextAt === null || currentAt === nextAt) return process;
+      if (nextAt === null) return process;
+
+      const isStManual = (process as any).stManual === true;
+      const currentCt = toOptionalSeconds((process as any).ct);
+      const nextCt =
+        !isStManual && (currentCt === null || currentCt === undefined)
+          ? nextAt
+          : currentCt;
+      const ctChanged =
+        (currentCt ?? null) !== (nextCt ?? null);
+      const atChanged = currentAt !== nextAt;
+      if (!atChanged && !ctChanged) return process;
 
       changed = true;
       updatedProcesses += 1;
       return {
         ...(process as any),
         at: nextAt,
+        ...(ctChanged ? { ct: nextCt } : {}),
       };
     });
 
@@ -1490,6 +1601,11 @@ const normalizeDateKey = (value: any) => {
   const trimmed = value.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
+const normalizeMonthKey = (value: any) => {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : "";
+};
 const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
 const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   const date = input instanceof Date ? input : new Date(input);
@@ -1511,6 +1627,163 @@ const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   }
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
+const parseDateKeyParts = (dateKey: string) => {
+  const normalized = normalizeDateKey(dateKey);
+  if (!normalized) return null;
+  const [yearText, monthText, dayText] = normalized.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return { year, month, day };
+};
+const formatMonthKey = (year: number, month: number) =>
+  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
+const shiftMonthKey = (monthKey: string, offset: number) => {
+  const normalized = normalizeMonthKey(monthKey);
+  if (!normalized) return "";
+  const [yearText, monthText] = normalized.split("-");
+  let year = Number(yearText);
+  let month = Number(monthText);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return "";
+  let remain = Math.trunc(offset);
+  while (remain !== 0) {
+    if (remain > 0) {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+      remain -= 1;
+      continue;
+    }
+    month -= 1;
+    if (month < 1) {
+      month = 12;
+      year -= 1;
+    }
+    remain += 1;
+  }
+  return formatMonthKey(year, month);
+};
+const resolveAtTrainingMonthKey = (now: Date = new Date()) => {
+  const today = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE) || now.toISOString().slice(0, 10);
+  const parts = parseDateKeyParts(today);
+  if (!parts) return normalizeMonthKey(today.slice(0, 7));
+  const currentMonthKey = formatMonthKey(parts.year, parts.month);
+  const monthOffset = parts.day >= AT_TRAINING_CUTOFF_DAY ? -1 : -2;
+  return shiftMonthKey(currentMonthKey, monthOffset) || currentMonthKey;
+};
+const normalizeTimeText = (value: any): string | null => {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (!/^\d{2}:\d{2}$/.test(trimmed)) return null;
+  const [hoursText, minutesText] = trimmed.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+};
+const parseTimeToMinutes = (value: any): number | null => {
+  const normalized = normalizeTimeText(value);
+  if (!normalized) return null;
+  const [hoursText, minutesText] = normalized.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+const calculateWorkedSeconds = (clockIn: any, clockOut: any): number | null => {
+  const inMinutes = parseTimeToMinutes(clockIn);
+  const outMinutes = parseTimeToMinutes(clockOut);
+  if (inMinutes === null || outMinutes === null) return null;
+  const diffMinutes =
+    outMinutes >= inMinutes
+      ? outMinutes - inMinutes
+      : 24 * 60 - inMinutes + outMinutes;
+  return Math.max(0, Math.round(diffMinutes * 60));
+};
+const toAttendanceWorkerDateKey = (workDate: string, workerId: number) =>
+  `${workDate}::${workerId}`;
+const normalizeAttendanceEntryPayloadList = (entries: any) => {
+  const rows: Array<{
+    workerId: number;
+    clockIn: string | null;
+    clockOut: string | null;
+    workedSeconds: number | null;
+    note: string | null;
+  }> = [];
+  const seenWorkerIds = new Set<number>();
+  let invalidWorkerEntryIndex = -1;
+  let invalidClockInEntryIndex = -1;
+  let invalidClockOutEntryIndex = -1;
+  let duplicateWorkerId: number | null = null;
+
+  ensureArray(entries).forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") return;
+
+    const clockInInput = resolveOptionalString(entry.clockIn, null);
+    const clockOutInput = resolveOptionalString(entry.clockOut, null);
+    const note = resolveOptionalString(entry.note, null);
+    const hasAnyInput = clockInInput !== null || clockOutInput !== null || note !== null;
+    if (!hasAnyInput) return;
+
+    const workerId = toPositiveIntOrNull(entry.workerId);
+    if (workerId === null) {
+      if (invalidWorkerEntryIndex < 0) invalidWorkerEntryIndex = index;
+      return;
+    }
+
+    const clockIn = normalizeTimeText(clockInInput);
+    const clockOut = normalizeTimeText(clockOutInput);
+    if (clockInInput !== null && clockIn === null) {
+      if (invalidClockInEntryIndex < 0) invalidClockInEntryIndex = index;
+      return;
+    }
+    if (clockOutInput !== null && clockOut === null) {
+      if (invalidClockOutEntryIndex < 0) invalidClockOutEntryIndex = index;
+      return;
+    }
+
+    if (seenWorkerIds.has(workerId)) {
+      duplicateWorkerId = workerId;
+      return;
+    }
+    seenWorkerIds.add(workerId);
+
+    rows.push({
+      workerId,
+      clockIn,
+      clockOut,
+      workedSeconds: calculateWorkedSeconds(clockIn, clockOut),
+      note,
+    });
+  });
+
+  return {
+    rows,
+    invalidWorkerEntryIndex,
+    invalidClockInEntryIndex,
+    invalidClockOutEntryIndex,
+    duplicateWorkerId,
+  };
+};
+const toAttendanceEntryResponse = (entry: any) => ({
+  id: entry?.id ?? null,
+  orgId: entry?.orgId ?? null,
+  factoryId: entry?.factoryId ?? null,
+  workerId: entry?.workerId ?? null,
+  workDate: entry?.workDate ?? "",
+  clockIn: entry?.clockIn ?? null,
+  clockOut: entry?.clockOut ?? null,
+  workedSeconds:
+    entry?.workedSeconds == null ? null : toNonNegativeInt(entry?.workedSeconds, 0),
+  note: entry?.note ?? null,
+  createdAt: entry?.createdAt ?? null,
+  updatedAt: entry?.updatedAt ?? null,
+});
 const toNonNegativeInt = (value: any, fallback = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -3148,6 +3421,136 @@ app.get("/assignment-plans", async (req, res) => {
   );
 });
 
+const buildAssignmentPlanProgressRows = async (
+  orgId: number,
+  externalIds: string[] = []
+) => {
+  const normalizedExternalIds = Array.from(
+    new Set(
+      ensureArray(externalIds)
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  const plans = await prisma.assignmentPlan.findMany({
+    where: {
+      orgId,
+      ...(normalizedExternalIds.length > 0
+        ? { externalId: { in: normalizedExternalIds } }
+        : {}),
+    },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      orderNo: true,
+      customer: true,
+      label: true,
+      quantity: true,
+      finalQuantity: true,
+    },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+  });
+  if (plans.length === 0) return [];
+
+  const lineIds = Array.from(
+    new Set(
+      plans
+        .map((plan) => Number(plan?.lineId))
+        .filter((lineId) => Number.isSafeInteger(lineId) && lineId > 0)
+    )
+  );
+  const lineRows =
+    lineIds.length > 0
+      ? await prisma.line.findMany({
+          where: { id: { in: lineIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const lineNameById = new Map(
+    lineRows.map((line) => [Number(line.id), resolveOptionalString(line.name, "") || ""])
+  );
+
+  const planIds = plans.map((plan) => Number(plan.id)).filter((id) => Number.isFinite(id));
+  const aggregates =
+    planIds.length > 0
+      ? await prisma.workRecord.groupBy({
+          by: ["assignmentPlanId"],
+          where: {
+            orgId,
+            assignmentPlanId: { in: planIds },
+          },
+          _sum: { quantity: true },
+        })
+      : [];
+  const producedByPlanId = new Map(
+    aggregates.map((row) => [Number(row.assignmentPlanId), Number(row._sum.quantity ?? 0)])
+  );
+
+  return plans.map((plan) => {
+    const planId = Number(plan.id);
+    const producedQuantity = Math.max(0, Math.round(Number(producedByPlanId.get(planId) ?? 0)));
+    const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
+    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
+    const baselineQuantityRaw =
+      finalQuantity != null && finalQuantity > 0
+        ? finalQuantity
+        : plannedQuantity != null && plannedQuantity > 0
+          ? plannedQuantity
+          : null;
+    const overflowQuantity =
+      baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
+    const progressPercent =
+      baselineQuantityRaw == null || baselineQuantityRaw <= 0
+        ? null
+        : (producedQuantity / baselineQuantityRaw) * 100;
+
+    return {
+      id: plan.externalId,
+      dbId: planId,
+      lineId: String(plan.lineId),
+      lineName: lineNameById.get(Number(plan.lineId)) || "",
+      orderNo: resolveOptionalString(plan.orderNo, "") || "",
+      customer: resolveOptionalString(plan.customer, "") || "",
+      label: resolveOptionalString(plan.label, "") || "",
+      plannedQuantity,
+      finalQuantity,
+      baselineQuantity: baselineQuantityRaw,
+      producedQuantity,
+      overflowQuantity,
+      isOverflow: overflowQuantity > 0,
+      progressPercent,
+    };
+  });
+};
+
+app.get("/assignment-plan-progress", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const idsQuery = resolveOptionalString(req.query.ids, "") || "";
+  const externalIds = idsQuery
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
+  res.json(rows);
+});
+
+app.get("/assignment-overruns", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const rows = await buildAssignmentPlanProgressRows(organization.id);
+  res.json(rows.filter((row) => row.isOverflow));
+});
+
 app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -3216,6 +3619,156 @@ app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
   });
 
   res.json({ ok: true, dbId: updatedPlan.id, id: updatedPlan.externalId, isCompleted: false });
+});
+
+app.get("/attendance-entries", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  const factoryId = Number(req.query.factoryId);
+  if (!Number.isSafeInteger(factoryId) || factoryId <= 0) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
+  }
+  const workDate = normalizeDateKey(req.query.workDate);
+  const month = normalizeMonthKey(req.query.month);
+  if (!workDate && !month) {
+    return res.status(400).json({
+      ok: false,
+      error: "workDate or month is required",
+    });
+  }
+
+  const factory = await prisma.factory.findFirst({
+    where: { id: factoryId, orgId: organization.id },
+    select: { id: true },
+  });
+  if (!factory) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const rows = await prisma.attendanceEntry.findMany({
+    where: {
+      orgId: organization.id,
+      factoryId,
+      ...(workDate ? { workDate } : { workDate: { startsWith: month } }),
+    },
+    orderBy: [{ workDate: "asc" }, { workerId: "asc" }, { id: "asc" }],
+  });
+
+  res.json(rows.map(toAttendanceEntryResponse));
+});
+
+app.put("/attendance-entries", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  const factoryId = Number(req.body?.factoryId);
+  if (!Number.isSafeInteger(factoryId) || factoryId <= 0) {
+    return res.status(400).json({ ok: false, error: "factoryId is required" });
+  }
+  const workDate = normalizeDateKey(req.body?.workDate);
+  if (!workDate) {
+    return res.status(400).json({ ok: false, error: "workDate is required (YYYY-MM-DD)" });
+  }
+
+  const factory = await prisma.factory.findFirst({
+    where: { id: factoryId, orgId: organization.id },
+    select: { id: true },
+  });
+  if (!factory) {
+    return res.status(404).json({ ok: false, error: "factory not found" });
+  }
+
+  const normalized = normalizeAttendanceEntryPayloadList(req.body?.entries);
+  if (normalized.invalidWorkerEntryIndex >= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `entries[${normalized.invalidWorkerEntryIndex}].workerId is required`,
+    });
+  }
+  if (normalized.invalidClockInEntryIndex >= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `entries[${normalized.invalidClockInEntryIndex}].clockIn must be HH:mm`,
+    });
+  }
+  if (normalized.invalidClockOutEntryIndex >= 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `entries[${normalized.invalidClockOutEntryIndex}].clockOut must be HH:mm`,
+    });
+  }
+  if (normalized.duplicateWorkerId !== null) {
+    return res.status(409).json({
+      ok: false,
+      error: `duplicate worker entry (${normalized.duplicateWorkerId})`,
+    });
+  }
+
+  const workerIds = Array.from(new Set(normalized.rows.map((row) => row.workerId)));
+  if (workerIds.length > 0) {
+    const workers = await prisma.employee.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        id: { in: workerIds },
+      },
+      select: { id: true },
+    });
+    const validIds = new Set(workers.map((worker) => Number(worker.id)));
+    const invalidWorkerId = workerIds.find((workerId) => !validIds.has(workerId));
+    if (invalidWorkerId !== undefined) {
+      return res.status(400).json({
+        ok: false,
+        error: `entries has invalid workerId (${invalidWorkerId})`,
+      });
+    }
+  }
+
+  const savedRows = await prisma.$transaction(async (tx) => {
+    await tx.attendanceEntry.deleteMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        workDate,
+      },
+    });
+
+    if (normalized.rows.length > 0) {
+      await tx.attendanceEntry.createMany({
+        data: normalized.rows.map((row) => ({
+          orgId: organization.id,
+          factoryId,
+          workerId: row.workerId,
+          workDate,
+          clockIn: row.clockIn,
+          clockOut: row.clockOut,
+          workedSeconds: row.workedSeconds,
+          note: row.note,
+        })),
+      });
+    }
+
+    return tx.attendanceEntry.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId,
+        workDate,
+      },
+      orderBy: [{ workerId: "asc" }, { id: "asc" }],
+    });
+  });
+
+  res.json(savedRows.map(toAttendanceEntryResponse));
+  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
+    console.error("[AT sync] Attendance PUT 후 실패:", err?.message);
+  });
 });
 
 app.get("/work-logs", async (req, res) => {

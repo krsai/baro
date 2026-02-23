@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -12,6 +12,7 @@ import {
   Drawer,
   FormControl,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -32,7 +33,10 @@ import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
-import { normalizeProcesses } from '../../../utils/processTime';
+import {
+  normalizeProcesses,
+  resolveProcessAtPerPieceSeconds,
+} from '../../../utils/processTime';
 import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
@@ -84,7 +88,7 @@ const resolveAgreedSeconds = (assignment) => {
 };
 
 const formatCurrencyDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
+  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 원`;
 
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -99,31 +103,11 @@ const toOptionalPositiveNumber = (value) => {
   return parsed;
 };
 
-const toOptionalNonNegativeNumber = (value) => {
-  if (value === '' || value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-};
-
-const resolveAtParams = (process) => {
-  const raw = process?.atParams;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const a = toOptionalNonNegativeNumber(raw.a);
-  const b = toOptionalNonNegativeNumber(raw.b);
-  if (a == null || b == null) return null;
-  return { a, b };
-};
-
 const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
-  const normalizedOrderQuantity = Math.max(1, toPositiveInt(orderQuantity, 1));
-  const atParams = resolveAtParams(process);
-  if (atParams) {
-    return atParams.a * normalizedOrderQuantity + atParams.b;
-  }
-  const at = Number(process?.at);
-  if (Number.isFinite(at) && at > 0) return at;
-  return null;
+  const perPieceSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
+  return Number.isFinite(perPieceSeconds) && perPieceSeconds > 0
+    ? perPieceSeconds
+    : null;
 };
 
 const calcDivergencePercent = (current, base) => {
@@ -138,13 +122,13 @@ const calcDivergencePercent = (current, base) => {
 const formatSecondsLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })} 초`;
+  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}` + '초';
 };
 
 const formatDaysLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })} 일`;
+  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}` + '일';
 };
 
 const formatPercentLabel = (value, fallback = '-') => {
@@ -154,6 +138,27 @@ const formatPercentLabel = (value, fallback = '-') => {
   return `${sign}${parsed.toFixed(1)}%`;
 };
 
+const buildAssignmentProgressMap = (rows) =>
+  new Map(
+    (Array.isArray(rows) ? rows : [])
+      .filter((row) => String(row?.id || '').trim())
+      .map((row) => [
+        String(row.id),
+        {
+          baselineQuantity:
+            Number.isFinite(Number(row?.baselineQuantity)) && Number(row.baselineQuantity) > 0
+              ? Number(row.baselineQuantity)
+              : null,
+          producedQuantity: Math.max(0, Number(row?.producedQuantity) || 0),
+          overflowQuantity: Math.max(0, Number(row?.overflowQuantity) || 0),
+          progressPercent:
+            Number.isFinite(Number(row?.progressPercent)) && Number(row.progressPercent) >= 0
+              ? Number(row.progressPercent)
+              : null,
+        },
+      ])
+  );
+
 const resolveLineDailyCapacitySeconds = (line, headcount) => {
   const directCapacity = Number(line?.dailyCapacitySeconds);
   if (Number.isFinite(directCapacity) && directCapacity > 0) {
@@ -162,12 +167,19 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
   return Math.max(1, toPositiveInt(headcount, 1)) * 8 * 60 * 60;
 };
 
-const resolveProcessCtBaseSeconds = (process) => {
-  // CT 제안값 산출: ST(q) = Style.processes[].ct 우선, 없으면 PT 사용
-  // AT는 스케줄링 예측용이며 CT 제안값 산출에는 사용하지 않음
+const resolveProcessCtBaseSeconds = (process, orderQuantity = 1) => {
   const st = Number(process?.ct);
+  if (process?.stManual === true && Number.isFinite(st) && st > 0) {
+    return { basis: 'ST', seconds: st };
+  }
+
+  const atPerPiece = resolveProcessAtSeconds(process, orderQuantity);
+  if (atPerPiece != null && atPerPiece > 0) {
+    return { basis: 'AT', seconds: atPerPiece };
+  }
+
   if (Number.isFinite(st) && st > 0) {
-    return { basis: 'CT', seconds: st };
+    return { basis: 'ST', seconds: st };
   }
   const pt = Number(process?.pt);
   if (Number.isFinite(pt) && pt > 0) {
@@ -281,6 +293,7 @@ const ProductionPlanBoard = () => {
   const [lines, setLines] = useState([]);
   const [factories, setFactories] = useState([]);
   const [styles, setStyles] = useState([]);
+  const [assignmentProgressById, setAssignmentProgressById] = useState(() => new Map());
   const [lineWorkers, setLineWorkers] = useState([]);
   const [processProposalDrafts, setProcessProposalDrafts] = useState({});
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
@@ -350,6 +363,7 @@ const ProductionPlanBoard = () => {
           expectedPerPerson == null || workingDays <= 0
             ? null
             : (expectedPerPerson / workingDays) * 26;
+        const progress = assignmentProgressById.get(String(assignment?.id || '')) || null;
 
         return {
           ...assignment,
@@ -369,6 +383,7 @@ const ProductionPlanBoard = () => {
           workingDays,
           expectedPerPerson,
           monthlyPerPerson,
+          progress,
         };
       })
       .sort((a, b) => {
@@ -382,7 +397,17 @@ const ProductionPlanBoard = () => {
         if (startCompare !== 0) return startCompare;
         return String(a?.id || '').localeCompare(String(b?.id || ''), undefined, { numeric: true });
       });
-  }, [assignments, cardById, styleById, lineById, factoryById, lineHeadcountById, baseDate, holidaySet]);
+  }, [
+    assignments,
+    cardById,
+    styleById,
+    lineById,
+    factoryById,
+    lineHeadcountById,
+    baseDate,
+    holidaySet,
+    assignmentProgressById,
+  ]);
 
   const statusSummary = useMemo(
     () =>
@@ -648,9 +673,9 @@ const ProductionPlanBoard = () => {
         const processKey = String(
           process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
         );
-        const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
+        const processName = process?.name || process?.processName || process?.code || `怨듭젙 ${index + 1}`;
         const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
-        const baseInfo = resolveProcessCtBaseSeconds(process);
+        const baseInfo = resolveProcessCtBaseSeconds(process, orderQuantity);
         const baseSeconds = baseInfo.seconds;
         const basePerPieceSeconds = baseSeconds * processQuantity;
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
@@ -704,7 +729,7 @@ const ProductionPlanBoard = () => {
     [buildProcessRows, selectedAssignment]
   );
 
-  // 기본 CT와 다른 값이 입력된 공정이 하나라도 있으면 true
+  // 湲곕낯 CT? ?ㅻⅨ 媛믪씠 ?낅젰??怨듭젙???섎굹?쇰룄 ?덉쑝硫?true
   const hasCtAdjustment = useMemo(
     () =>
       selectedProcessRows.some(
@@ -829,12 +854,31 @@ const ProductionPlanBoard = () => {
 
         const nextCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
         const nextAssignments = Array.isArray(boardState?.assignments) ? boardState.assignments : [];
+        const assignmentIds = Array.from(
+          new Set(
+            nextAssignments
+              .map((item) => String(item?.id || '').trim())
+              .filter(Boolean)
+          )
+        );
+        const progressRows =
+          assignmentIds.length > 0
+            ? await requestJSON(
+                '/assignment-plan-progress' +
+                  buildQueryString({
+                    orgId: activeOrgId,
+                    ids: assignmentIds.join(','),
+                  })
+              ).catch(() => [])
+            : [];
+        const progressMap = buildAssignmentProgressMap(progressRows);
         setCards(nextCards);
         setAssignments(nextAssignments);
         setLines(Array.isArray(lineRows) ? lineRows : []);
         setFactories(Array.isArray(factoryRows) ? factoryRows : []);
         setLineWorkers(Array.isArray(lineWorkerRows) ? lineWorkerRows : []);
         setStyles(Array.isArray(styleRows) ? styleRows : []);
+        setAssignmentProgressById(progressMap);
         setSelectedAssignmentId((prev) => {
           if (!prev) return nextAssignments[0]?.id ? String(nextAssignments[0].id) : '';
           const exists = nextAssignments.some((item) => String(item?.id) === String(prev));
@@ -848,6 +892,7 @@ const ProductionPlanBoard = () => {
           setFactories([]);
           setLineWorkers([]);
           setStyles([]);
+          setAssignmentProgressById(new Map());
           setSelectedAssignmentId('');
         }
       } finally {
@@ -861,7 +906,7 @@ const ProductionPlanBoard = () => {
     };
   }, [activeOrgId]);
 
-  // 탭 포커스 복귀 시 lineWorkers 재요청 → capacity 자동 갱신
+  // ???ъ빱??蹂듦? ??lineWorkers ?ъ슂泥???capacity ?먮룞 媛깆떊
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState !== 'visible') return;
@@ -935,9 +980,9 @@ const ProductionPlanBoard = () => {
         delete next[assignmentKey];
         return next;
       });
-      showNotification('작업 계획이 동의 처리되었습니다.', 'success');
+      showNotification('?묒뾽 怨꾪쉷???숈쓽 泥섎━?섏뿀?듬땲??', 'success');
     } catch (error) {
-      showNotification(error?.message || '작업 계획 동의 처리에 실패했습니다.', 'error');
+      showNotification(error?.message || '?묒뾽 怨꾪쉷 ?숈쓽 泥섎━???ㅽ뙣?덉뒿?덈떎.', 'error');
     } finally {
       setSavingAssignmentId(null);
     }
@@ -1052,7 +1097,7 @@ const ProductionPlanBoard = () => {
             : card
         )
       : cards;
-    const adjustmentSummary = `운영팀 조정 요청 · ${new Date().toISOString()}`;
+    const adjustmentSummary = `?댁쁺? 議곗젙 ?붿껌 쨌 ${new Date().toISOString()}`;
     const nextAssignments = assignments.map((item) => {
       if (String(item?.id) !== String(assignmentId)) return item;
       return {
@@ -1071,12 +1116,12 @@ const ProductionPlanBoard = () => {
       await persistBoardState(nextAssignments, nextCards);
       showNotification(
         directProposalCount > 0
-          ? `조정 요청이 등록되었습니다. 공정 ${directProposalCount}건의 제안 CT가 운영팀 검토로 전달되었습니다.`
-          : '조정 요청이 운영팀 검토 대상으로 등록되었습니다.',
+          ? `議곗젙 ?붿껌???깅줉?섏뿀?듬땲?? 怨듭젙 ${directProposalCount}嫄댁쓽 ?쒖븞 CT媛 ?댁쁺? 寃?좊줈 ?꾨떖?섏뿀?듬땲??`
+          : '議곗젙 ?붿껌???댁쁺? 寃????곸쑝濡??깅줉?섏뿀?듬땲??',
         'info'
       );
     } catch (error) {
-      showNotification(error?.message || '조정 요청 처리에 실패했습니다.', 'error');
+      showNotification(error?.message || '議곗젙 ?붿껌 泥섎━???ㅽ뙣?덉뒿?덈떎.', 'error');
     } finally {
       setSavingAssignmentId(null);
     }
@@ -1098,7 +1143,7 @@ const ProductionPlanBoard = () => {
     const assignment = completionDialog.assignment;
     const finalQty = Number.parseInt(finalQuantityDraft, 10);
     if (!Number.isFinite(finalQty) || finalQty < 0) {
-      showNotification('최종 수량을 올바르게 입력해주세요.', 'error');
+      showNotification('理쒖쥌 ?섎웾???щ컮瑜닿쾶 ?낅젰?댁＜?몄슂.', 'error');
       return;
     }
 
@@ -1111,32 +1156,51 @@ const ProductionPlanBoard = () => {
         body: JSON.stringify({ finalQuantity: finalQty }),
       });
 
-      // 보드 상태도 동기화
+      // 蹂대뱶 ?곹깭???숆린??
       const nextAssignments = assignments.map((item) =>
         String(item?.id) !== String(assignment.id)
           ? item
           : { ...item, isCompleted: true, finalQuantity: finalQty }
       );
       await persistBoardState(nextAssignments);
+      setAssignmentProgressById((prev) => {
+        const next = new Map(prev);
+        const accumulatedQuantity = Math.max(
+          0,
+          Number(result?.accumulatedQuantity) || 0
+        );
+        const baselineQuantity = finalQty > 0 ? finalQty : null;
+        const overflowQuantity =
+          baselineQuantity == null ? 0 : Math.max(0, accumulatedQuantity - baselineQuantity);
+        const progressPercent =
+          baselineQuantity == null ? null : (accumulatedQuantity / baselineQuantity) * 100;
+        next.set(String(assignment.id), {
+          baselineQuantity,
+          producedQuantity: accumulatedQuantity,
+          overflowQuantity,
+          progressPercent,
+        });
+        return next;
+      });
 
       if (result?.isOverflow) {
         showNotification(
-          `완료 처리됨. 누적 작업 수량(${result.accumulatedQuantity}개)이 최종 수량(${finalQty}개)을 초과합니다.`,
+          `?꾨즺 泥섎━?? ?꾩쟻 ?묒뾽 ?섎웾(${result.accumulatedQuantity}媛???理쒖쥌 ?섎웾(${finalQty}媛???珥덇낵?⑸땲??`,
           'warning'
         );
       } else {
-        showNotification(`완료 처리되었습니다. (최종 수량: ${finalQty}개)`, 'success');
+        showNotification(`?꾨즺 泥섎━?섏뿀?듬땲?? (理쒖쥌 ?섎웾: ${finalQty}媛?`, 'success');
       }
       setCompletionDialog(null);
       setFinalQuantityDraft('');
     } catch (error) {
-      showNotification(error?.message || '완료 처리에 실패했습니다.', 'error');
+      showNotification(error?.message || '?꾨즺 泥섎━???ㅽ뙣?덉뒿?덈떎.', 'error');
     } finally {
       setCompletionSaving(false);
     }
   };
 
-  // ── Delta card 헬퍼 ──────────────────────────────────────────────
+  // ?? Delta card ?ы띁 ??????????????????????????????????????????????
   const findMatchingAssignmentsForDelta = (deltaCard) =>
     assignmentsForView.filter((a) => {
       if (a.isCompleted) return false;
@@ -1150,13 +1214,13 @@ const ProductionPlanBoard = () => {
     });
 
   const handleDeltaCardRemove = async (deltaCardId) => {
-    if (!window.confirm('차이 카드를 삭제하시겠습니까?')) return;
+    if (!window.confirm('李⑥씠 移대뱶瑜???젣?섏떆寃좎뒿?덇퉴?')) return;
     const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCardId));
     try {
       await persistBoardState(assignments, nextCards);
-      showNotification('차이 카드가 삭제되었습니다.', 'success');
+      showNotification('李⑥씠 移대뱶媛 ??젣?섏뿀?듬땲??', 'success');
     } catch (error) {
-      showNotification(error?.message || '삭제에 실패했습니다.', 'error');
+      showNotification(error?.message || '??젣???ㅽ뙣?덉뒿?덈떎.', 'error');
     }
   };
 
@@ -1196,13 +1260,13 @@ const ProductionPlanBoard = () => {
     if (!deltaDialog) return;
     const { deltaCard, selectedLineId, startOffset, endOffset } = deltaDialog;
     if (!selectedLineId) {
-      showNotification('라인을 선택해 주세요.', 'error');
+      showNotification('?쇱씤???좏깮??二쇱꽭??', 'error');
       return;
     }
     const startIndex = toNonNegativeInt(Number(startOffset), 0);
     const endIndex = Math.max(startIndex, toNonNegativeInt(Number(endOffset), startIndex));
 
-    // 차이 카드를 일반 카드로 전환
+    // 李⑥씠 移대뱶瑜??쇰컲 移대뱶濡??꾪솚
     const convertedCard = {
       id: deltaCard.id,
       styleId: deltaCard.styleId,
@@ -1231,10 +1295,10 @@ const ProductionPlanBoard = () => {
     const nextAssignments = [...assignments, newAssignment];
     try {
       await persistBoardState(nextAssignments, nextCards);
-      showNotification('라인 배정이 완료되었습니다.', 'success');
+      showNotification('?쇱씤 諛곗젙???꾨즺?섏뿀?듬땲??', 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '배정에 실패했습니다.', 'error');
+      showNotification(error?.message || '諛곗젙???ㅽ뙣?덉뒿?덈떎.', 'error');
     }
   };
 
@@ -1266,10 +1330,10 @@ const ProductionPlanBoard = () => {
     const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCard.id));
     try {
       await persistBoardState(nextAssignments, nextCards);
-      showNotification(`수량 ${deltaCard.quantity}개가 기존 배정에 흡수되었습니다.`, 'success');
+      showNotification(`?섎웾 ${deltaCard.quantity}媛쒓? 湲곗〈 諛곗젙???≪닔?섏뿀?듬땲??`, 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '수량 흡수에 실패했습니다.', 'error');
+      showNotification(error?.message || '?섎웾 ?≪닔???ㅽ뙣?덉뒿?덈떎.', 'error');
     }
   };
 
@@ -1285,14 +1349,14 @@ const ProductionPlanBoard = () => {
     const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCard.id));
 
     if (newQty === 0) {
-      // 수량 0 → 배정 전체 삭제
+      // ?섎웾 0 ??諛곗젙 ?꾩껜 ??젣
       const nextAssignments = assignments.filter((a) => String(a?.id) !== String(selectedAssignmentId));
       try {
         await persistBoardState(nextAssignments, nextCards);
-        showNotification('수량이 0이 되어 배정이 삭제되었습니다.', 'info');
+        showNotification('?섎웾??0???섏뼱 諛곗젙????젣?섏뿀?듬땲??', 'info');
         setDeltaDialog(null);
       } catch (error) {
-        showNotification(error?.message || '처리에 실패했습니다.', 'error');
+        showNotification(error?.message || '泥섎━???ㅽ뙣?덉뒿?덈떎.', 'error');
       }
       return;
     }
@@ -1314,10 +1378,10 @@ const ProductionPlanBoard = () => {
     );
     try {
       await persistBoardState(nextAssignments, nextCards);
-      showNotification(`수량 ${deltaCard.quantity}개가 차감되었습니다.`, 'success');
+      showNotification(`?섎웾 ${deltaCard.quantity}媛쒓? 李④컧?섏뿀?듬땲??`, 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '수량 차감에 실패했습니다.', 'error');
+      showNotification(error?.message || '?섎웾 李④컧???ㅽ뙣?덉뒿?덈떎.', 'error');
     }
   };
 
@@ -1326,22 +1390,22 @@ const ProductionPlanBoard = () => {
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h6">작업 계획 협의</Typography>
+            <Typography variant="h6">?묒뾽 怨꾪쉷 ?묒쓽</Typography>
             <Typography variant="body2" color="text.secondary">
-              라인 배정 작업의 일정/비용을 검토하고 CT 동의 또는 조정 요청을 처리합니다.
+              ?쇱씤 諛곗젙 ?묒뾽???쇱젙/鍮꾩슜??寃?좏븯怨?CT ?숈쓽 ?먮뒗 議곗젙 ?붿껌??泥섎━?⑸땲??
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Chip label={`CT 대기 ${statusSummary.pending}`} />
-            <Chip label={`CT 동의 ${statusSummary.agreed}`} color="success" variant="outlined" />
-            <Chip label={`운영팀 검토 ${statusSummary.rejected}`} color="warning" variant="outlined" />
+            <Chip label={`CT ?湲?${statusSummary.pending}`} />
+            <Chip label={`CT ?숈쓽 ${statusSummary.agreed}`} color="success" variant="outlined" />
+            <Chip label={`?댁쁺? 寃??${statusSummary.rejected}`} color="warning" variant="outlined" />
           </Stack>
         </Box>
       }
     >
-      {/* ── 메인 레이아웃: 좌측 전체 + 우측 슬라이드 패널 ── */}
+      {/* ?? 硫붿씤 ?덉씠?꾩썐: 醫뚯륫 ?꾩껜 + ?곗륫 ?щ씪?대뱶 ?⑤꼸 ?? */}
       <Box ref={drawerContainerRef} sx={{ position: 'relative', overflow: 'hidden' }}>
-        {/* ── 좌측 컬럼 (목록 + 달력) — 항상 전체 폭 ── */}
+        {/* ?? 醫뚯륫 而щ읆 (紐⑸줉 + ?щ젰) ????긽 ?꾩껜 ???? */}
         <Box>
           <Stack spacing={1.5}>
             <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
@@ -1355,26 +1419,26 @@ const ProductionPlanBoard = () => {
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  동의/조정 필요 계획 목록
+                  ?숈쓽/議곗젙 ?꾩슂 怨꾪쉷 紐⑸줉
                 </Typography>
               </Box>
               <TableContainer sx={{ maxHeight: 420 }}>
                 <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>상태</TableCell>
-                    <TableCell>라인</TableCell>
+                    <TableCell>?곹깭</TableCell>
+                    <TableCell>?쇱씤</TableCell>
                     <TableCell>고객/스타일</TableCell>
-                    <TableCell align="right">수량</TableCell>
-                    <TableCell align="right">예상 비용</TableCell>
-                    <TableCell>예상 일정</TableCell>
+                    <TableCell align="right">?섎웾</TableCell>
+                    <TableCell align="right">?덉긽 鍮꾩슜</TableCell>
+                    <TableCell>?덉긽 ?쇱젙</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
-                    <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={6} message="遺덈윭?ㅻ뒗 以?.." sx={{ py: 2 }} />
                   ) : actionableAssignments.length === 0 ? (
-                    <TableStatusRow colSpan={6} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={6} message="寃?좏븷 諛곗젙 ?묒뾽???놁뒿?덈떎." sx={{ py: 2 }} />
                   ) : (
                     actionableAssignments.map((assignment) => {
                       const statusMeta = STATUS_META[assignment.status] || STATUS_META.PENDING;
@@ -1401,7 +1465,7 @@ const ProductionPlanBoard = () => {
                           </TableCell>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {assignment?.line?.name || `라인 ${assignment.lineId}`}
+                              {assignment?.line?.name || ('라인 ' + assignment.lineId)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {assignment?.factory?.name || '-'}
@@ -1413,12 +1477,12 @@ const ProductionPlanBoard = () => {
                                 {assignment.customer || '-'}
                               </Typography>
                               {assignment.ctOverride && (
-                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                <Chip size="small" label="CT ?꾩떆" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                               )}
                             </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
-                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
+                              {assignment.colorName ? ` 쨌 ${assignment.colorName}` : ''}
                             </Typography>
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
@@ -1455,7 +1519,7 @@ const ProductionPlanBoard = () => {
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    CT 동의 완료 — 완료 처리 대상
+                    CT ?숈쓽 ?꾨즺 ???꾨즺 泥섎━ ???
                   </Typography>
                   <Chip size="small" label={`${agreedAssignments.length}건`} color="success" variant="outlined" />
                 </Box>
@@ -1463,12 +1527,13 @@ const ProductionPlanBoard = () => {
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
-                        <TableCell>라인</TableCell>
+                        <TableCell>?쇱씤</TableCell>
                         <TableCell>고객/스타일</TableCell>
-                        <TableCell align="right">배정수량</TableCell>
-                        <TableCell>일정</TableCell>
-                        <TableCell align="center">완료</TableCell>
-                        <TableCell align="center">처리</TableCell>
+                        <TableCell align="right">諛곗젙?섎웾</TableCell>
+                        <TableCell>?쇱젙</TableCell>
+                        <TableCell>진행률</TableCell>
+                        <TableCell align="center">?꾨즺</TableCell>
+                        <TableCell align="center">泥섎━</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1476,7 +1541,7 @@ const ProductionPlanBoard = () => {
                         <TableRow key={assignment.id} hover>
                           <TableCell>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {assignment?.line?.name || `라인 ${assignment.lineId}`}
+                              {assignment?.line?.name || ('라인 ' + assignment.lineId)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               {assignment?.factory?.name || '-'}
@@ -1488,18 +1553,64 @@ const ProductionPlanBoard = () => {
                                 {assignment.customer || '-'}
                               </Typography>
                               {assignment.ctOverride && (
-                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                <Chip size="small" label="CT ?꾩떆" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                               )}
                             </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
-                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
+                              {assignment.colorName ? ` 쨌 ${assignment.colorName}` : ''}
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
                             {formatNumberWithCommas(assignment.quantity, { fallback: '-', maximumFractionDigits: 0 })}
                           </TableCell>
                           <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
+                          <TableCell sx={{ minWidth: 180 }}>
+                            {assignment.progress?.progressPercent == null ? (
+                              <Typography variant="caption" color="text.secondary">
+                                기록 없음
+                              </Typography>
+                            ) : (
+                              <Stack spacing={0.5}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {`${formatNumberWithCommas(
+                                    assignment.progress?.producedQuantity || 0,
+                                    { fallback: '0', maximumFractionDigits: 0 }
+                                  )} / ${
+                                    assignment.progress?.baselineQuantity != null
+                                      ? formatNumberWithCommas(assignment.progress.baselineQuantity, {
+                                          fallback: '0',
+                                          maximumFractionDigits: 0,
+                                        })
+                                      : '-'
+                                  } (${formatPercentLabel(assignment.progress.progressPercent)})`}
+                                </Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={Math.max(
+                                    0,
+                                    Math.min(100, Number(assignment.progress.progressPercent) || 0)
+                                  )}
+                                  color={
+                                    Number(assignment.progress?.overflowQuantity) > 0
+                                      ? 'error'
+                                      : Number(assignment.progress?.progressPercent) >= 100
+                                        ? 'success'
+                                        : 'primary'
+                                  }
+                                  sx={{ height: 8, borderRadius: 8 }}
+                                />
+                                {Number(assignment.progress?.overflowQuantity) > 0 && (
+                                  <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
+                                    {`초과 ${formatNumberWithCommas(
+                                      assignment.progress.overflowQuantity,
+                                      { fallback: '0', maximumFractionDigits: 0 }
+                                    )}개`}
+                                  </Typography>
+                                )}
+                              </Stack>
+                            )}
+                          </TableCell>
                           <TableCell align="center">
                             {assignment.isCompleted ? (
                               <Chip size="small" label={`완료 ${assignment.finalQuantity ?? '-'}개`} color="success" />
@@ -1515,7 +1626,7 @@ const ProductionPlanBoard = () => {
                                 color="inherit"
                                 onClick={() => handleOpenCompletionDialog(assignment)}
                               >
-                                재처리
+                                ?ъ쿂由?
                               </Button>
                             ) : (
                               <Button
@@ -1524,7 +1635,7 @@ const ProductionPlanBoard = () => {
                                 color="success"
                                 onClick={() => handleOpenCompletionDialog(assignment)}
                               >
-                                완료 처리
+                                ?꾨즺 泥섎━
                               </Button>
                             )}
                           </TableCell>
@@ -1536,7 +1647,7 @@ const ProductionPlanBoard = () => {
               </Paper>
             )}
 
-            {/* ── 미배정 풀 — 수량 변경 차이 카드 ── */}
+            {/* ?? 誘몃같??? ???섎웾 蹂寃?李⑥씠 移대뱶 ?? */}
             {deltaCards.length > 0 && (
               <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
                 <Box
@@ -1552,7 +1663,7 @@ const ProductionPlanBoard = () => {
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    미배정 풀 — 수량 변경 대기
+                    誘몃같??? ???섎웾 蹂寃??湲?
                   </Typography>
                   <Chip size="small" label={`${deltaCards.length}건`} color="warning" variant="outlined" />
                 </Box>
@@ -1583,26 +1694,26 @@ const ProductionPlanBoard = () => {
                           {card.customer || '-'} / {card.label || '-'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {card.colorName || '-'} · {card.gender || '-'}
+                          {card.colorName || '-'} 쨌 {card.gender || '-'}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={0.5} flexShrink={0}>
                         {card.deltaType === 'PLUS' ? (
                           <>
                             <Button size="small" variant="outlined" color="success" onClick={() => handleDeltaAssignOpen(card)}>
-                              라인 배정
+                              ?쇱씤 諛곗젙
                             </Button>
                             <Button size="small" variant="outlined" onClick={() => handleDeltaAbsorbOpen(card)}>
-                              흡수
+                              ?≪닔
                             </Button>
                           </>
                         ) : (
                           <Button size="small" variant="outlined" color="error" onClick={() => handleDeltaDeductOpen(card)}>
-                            수량 차감
+                            ?섎웾 李④컧
                           </Button>
                         )}
                         <Button size="small" variant="text" color="inherit" onClick={() => handleDeltaCardRemove(card.id)}>
-                          제거
+                          ?쒓굅
                         </Button>
                       </Stack>
                     </Box>
@@ -1622,11 +1733,11 @@ const ProductionPlanBoard = () => {
                 }}
               >
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  계획 일정 달력 (월)
+                  怨꾪쉷 ?쇱젙 ?щ젰 (??
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="center">
                   <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}>
-                    이전
+                    ?댁쟾
                   </Button>
                   <Typography
                     variant="body2"
@@ -1635,7 +1746,7 @@ const ProductionPlanBoard = () => {
                     {formatMonthLabel(calendarMonth)}
                   </Typography>
                   <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}>
-                    다음
+                    ?ㅼ쓬
                   </Button>
                 </Stack>
               </Box>
@@ -1648,7 +1759,7 @@ const ProductionPlanBoard = () => {
                   overflow: 'hidden',
                 }}
               >
-                {/* 요일 헤더 — 일요일은 빨간색 */}
+                {/* ?붿씪 ?ㅻ뜑 ???쇱슂?쇱? 鍮④컙??*/}
                 <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
                   {CALENDAR_WEEKDAYS.map((weekday, index) => (
                     <Box
@@ -1675,14 +1786,14 @@ const ProductionPlanBoard = () => {
                   ))}
                 </Box>
 
-                {/* 주차별 렌더링 — 날짜 행 + 이벤트 바 행 */}
+                {/* 二쇱감蹂??뚮뜑留????좎쭨 ??+ ?대깽??諛???*/}
                 {calendarBarData.map(({ weekDays, bars, maxLane }, weekIndex) => {
                   const isLastWeek = weekIndex === calendarBarData.length - 1;
                   const barAreaHeight = bars.length > 0 ? (maxLane + 1) * 26 + 10 : 30;
 
                   return (
                     <Box key={weekIndex}>
-                      {/* 날짜 숫자 행 */}
+                      {/* ?좎쭨 ?レ옄 ??*/}
                       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
                         {weekDays.map((date, dayIndex) => {
                           const dateKey = buildDateKey(date);
@@ -1733,7 +1844,7 @@ const ProductionPlanBoard = () => {
                         })}
                       </Box>
 
-                      {/* 이벤트 바 행 */}
+                      {/* ?대깽??諛???*/}
                       <Box
                         sx={{
                           position: 'relative',
@@ -1744,7 +1855,7 @@ const ProductionPlanBoard = () => {
                           borderColor: 'divider',
                         }}
                       >
-                        {/* 배경 셀 (테두리 유지) */}
+                        {/* 諛곌꼍 ? (?뚮몢由??좎?) */}
                         {weekDays.map((date, dayIndex) => {
                           const dateKey = buildDateKey(date);
                           const inCurrentMonth = isSameMonth(date, calendarMonth);
@@ -1766,7 +1877,7 @@ const ProductionPlanBoard = () => {
                           );
                         })}
 
-                        {/* 연속 이벤트 바 */}
+                        {/* ?곗냽 ?대깽??諛?*/}
                         {bars.map(({ assignment, startCol, endCol, lane }) => {
                           const isSelected =
                             String(assignment.id) === String(selectedAssignment?.id);
@@ -1818,7 +1929,7 @@ const ProductionPlanBoard = () => {
                                   lineHeight: 1,
                                 }}
                               >
-                                {labelParts.join(' · ')}
+                                {labelParts.join(' 쨌 ')}
                               </Typography>
                             </Box>
                           );
@@ -1832,7 +1943,7 @@ const ProductionPlanBoard = () => {
           </Stack>
         </Box>
 
-        {/* ── 우측 Drawer (선택 시 화면 위로 덮으며 슬라이드인) ── */}
+        {/* ?? ?곗륫 Drawer (?좏깮 ???붾㈃ ?꾨줈 ??쑝硫??щ씪?대뱶?? ?? */}
         <Drawer
           anchor="right"
           open={isPanelOpen && Boolean(selectedAssignment)}
@@ -1843,64 +1954,64 @@ const ProductionPlanBoard = () => {
           <Box sx={{ width: '100%' }}>
             {selectedAssignment && (
               <Stack spacing={1.5}>
-                {/* 패널 헤더 */}
+                {/* ?⑤꼸 ?ㅻ뜑 */}
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Typography variant="subtitle2" color="text.secondary">
-                    선택된 계획 상세
+                    ?좏깮??怨꾪쉷 ?곸꽭
                   </Typography>
                   <Button size="small" color="inherit" onClick={() => setIsPanelOpen(false)}>
-                    닫기 ✕
+                    ?リ린 ??
                   </Button>
                 </Box>
 
-                {/* 작업 상세 + CT/비용 요약 — 50/50 가로 배치 */}
+                {/* ?묒뾽 ?곸꽭 + CT/鍮꾩슜 ?붿빟 ??50/50 媛濡?諛곗튂 */}
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-                  {/* 작업 상세 */}
+                  {/* ?묒뾽 ?곸꽭 */}
                   <Paper variant="outlined" sx={{ p: 2, flex: 1, minWidth: 0 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                    작업 상세
+                    ?묒뾽 ?곸꽭
                   </Typography>
                   <Stack spacing={0.5}>
                     <Typography variant="body2">
-                      <strong>고객:</strong> {selectedAssignment.customer || '-'}
+                      <strong>怨좉컼:</strong> {selectedAssignment.customer || '-'}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>스타일:</strong> {selectedAssignment.label || '-'}
+                      <strong>?ㅽ???</strong> {selectedAssignment.label || '-'}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>색상/성별:</strong>{' '}
+                      <strong>?됱긽/?깅퀎:</strong>{' '}
                       {selectedAssignment.colorName || '-'}
                       {selectedAssignment.gender ? ` / ${selectedAssignment.gender}` : ''}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>수량:</strong>{' '}
+                      <strong>?섎웾:</strong>{' '}
                       {formatNumberWithCommas(selectedAssignment.quantity, {
                         fallback: '-',
                         maximumFractionDigits: 0,
                       })}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>라인:</strong>{' '}
-                      {selectedAssignment?.line?.name || `라인 ${selectedAssignment.lineId}`}
+                      <strong>?쇱씤:</strong>{' '}
+                      {selectedAssignment?.line?.name || `?쇱씤 ${selectedAssignment.lineId}`}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>공장:</strong> {selectedAssignment?.factory?.name || '-'}
+                      <strong>怨듭옣:</strong> {selectedAssignment?.factory?.name || '-'}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>예상 일정:</strong> {formatScheduleRange(baseDate, selectedAssignment)}
+                      <strong>?덉긽 ?쇱젙:</strong> {formatScheduleRange(baseDate, selectedAssignment)}
                     </Typography>
                   </Stack>
                   </Paper>
 
-                  {/* CT/비용 요약 */}
+                  {/* CT/鍮꾩슜 ?붿빟 */}
                   <Paper variant="outlined" sx={{ p: 2, flex: 1, minWidth: 0 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-                    CT/비용 요약
+                    CT/鍮꾩슜 ?붿빟
                   </Typography>
                   <Stack spacing={0.75}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        공정 CT 합 (기본/한 벌)
+                        怨듭젙 CT ??(湲곕낯/??踰?
                       </Typography>
                       <Typography variant="body2">
                         {formatSecondsLabel(selectedCostSummary?.totalBasePerPieceSeconds)}
@@ -1908,7 +2019,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        공정 CT 합 (제안/한 벌)
+                        怨듭젙 CT ??(?쒖븞/??踰?
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {formatSecondsLabel(selectedCostSummary?.totalProposedPerPieceSeconds)}
@@ -1916,7 +2027,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        AT 예측 합 (한 벌)
+                        AT ?덉륫 ??(??踰?
                       </Typography>
                       <Typography variant="body2">
                         {selectedCostSummary?.totalAtPerPieceSeconds == null
@@ -1926,8 +2037,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        AT vs ST 차이율
-                      </Typography>
+                        AT vs ST 李⑥씠??                      </Typography>
                       <Typography
                         variant="body2"
                         sx={{
@@ -1946,17 +2056,17 @@ const ProductionPlanBoard = () => {
                     {selectedCostSummary?.atCoverageCount > 0 &&
                       selectedCostSummary.atCoverageCount < selectedProcessRows.length && (
                         <Typography variant="caption" color="text.secondary">
-                          AT 데이터 보유 공정: {selectedCostSummary.atCoverageCount}/{selectedProcessRows.length}
+                          AT ?곗씠??蹂댁쑀 怨듭젙: {selectedCostSummary.atCoverageCount}/{selectedProcessRows.length}
                         </Typography>
                       )}
                     {selectedCostSummary?.needsStReview && (
                       <Alert severity="warning">
-                        ST 조정 필요: 현재 AT 예측이 ST 대비 {formatPercentLabel(selectedCostSummary.atVsBasePercent)}
+                        ST 議곗젙 ?꾩슂: ?꾩옱 AT ?덉륫??ST ?鍮?{formatPercentLabel(selectedCostSummary.atVsBasePercent)}
                       </Alert>
                     )}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        한 벌 배정 공임
+                        ??踰?諛곗젙 怨듭엫
                       </Typography>
                       <Typography variant="body2">
                         {selectedCostSummary?.perPieceCost == null
@@ -1966,7 +2076,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        주문 총 배정 공임
+                        二쇰Ц 珥?諛곗젙 怨듭엫
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {selectedCostSummary?.totalCost == null
@@ -1976,7 +2086,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        예상 기간
+                        ?덉긽 湲곌컙
                       </Typography>
                       <Typography variant="body2">
                         {formatDaysLabel(selectedCostSummary?.totalDurationDays)}
@@ -1984,13 +2094,13 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        라인 인원
+                        ?쇱씤 ?몄썝
                       </Typography>
                       <Typography variant="body2">{selectedAssignment.headcount}명</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        1인당 기대 공임
+                        1?몃떦 湲곕? 怨듭엫
                       </Typography>
                       <Typography variant="body2">
                         {selectedCostSummary?.perPersonExpectedCost == null
@@ -2000,7 +2110,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        월 환산 1인 기대 공임
+                        ???섏궛 1??湲곕? 怨듭엫
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {selectedCostSummary?.monthlyPerPersonExpected == null
@@ -2011,25 +2121,25 @@ const ProductionPlanBoard = () => {
                     <Divider />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        CT 제안 시간(현재)
+                        CT ?쒖븞 ?쒓컙(?꾩옱)
                       </Typography>
                       <Typography variant="body2">
-                        {formatSecondsLabel(selectedAssignment.proposalSeconds, '0 초')}
+                        {formatSecondsLabel(selectedAssignment.proposalSeconds, '0초')}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        CT 합의 시간
+                        CT ?⑹쓽 ?쒓컙
                       </Typography>
                       <Typography variant="body2">
-                        {selectedAssignment.status === 'AGREED'
-                          ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0 초')
-                          : '-'}
+                          {selectedAssignment.status === 'AGREED'
+                            ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0초')
+                            : '-'}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        초당 공임
+                        珥덈떦 怨듭엫
                       </Typography>
                       <Typography variant="body2">
                         {selectedAssignment.wagePerSecond == null
@@ -2037,12 +2147,12 @@ const ProductionPlanBoard = () => {
                           : `${formatNumberWithCommas(selectedAssignment.wagePerSecond, {
                               fallback: '0',
                               maximumFractionDigits: 2,
-                            })} 동/초`}
+                            })} 원/초`}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        합의 비용
+                        ?⑹쓽 鍮꾩슜
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {selectedAssignment.status !== 'AGREED' || selectedAssignment.agreedCost == null
@@ -2054,30 +2164,30 @@ const ProductionPlanBoard = () => {
                   </Paper>
                 </Box>
 
-                {/* 공정 CT 상세 / 라인장 제안 — 하단에 동의·조정 버튼 배치 */}
+                {/* 怨듭젙 CT ?곸꽭 / ?쇱씤???쒖븞 ???섎떒???숈쓽쨌議곗젙 踰꾪듉 諛곗튂 */}
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    공정 CT 상세 / 라인장 제안
+                    怨듭젙 CT ?곸꽭 / ?쇱씤???쒖븞
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    제안 CT를 입력한 뒤 조정 요청하면 운영팀 검토 큐로 전달되며 현재 라인 배정은 유지됩니다.
+                    ?쒖븞 CT瑜??낅젰????議곗젙 ?붿껌?섎㈃ ?댁쁺? 寃???먮줈 ?꾨떖?섎ŉ ?꾩옱 ?쇱씤 諛곗젙? ?좎??⑸땲??
                   </Typography>
                   <Divider sx={{ my: 1 }} />
                   {selectedProcessRows.length === 0 ? (
-                    <Alert severity="info">연결된 스타일 공정 정보가 없어 공정별 CT를 표시할 수 없습니다.</Alert>
+                    <Alert severity="info">?곌껐???ㅽ???怨듭젙 ?뺣낫媛 ?놁뼱 怨듭젙蹂?CT瑜??쒖떆?????놁뒿?덈떎.</Alert>
                   ) : (
                     <TableContainer sx={{ maxHeight: 360 }}>
                       <Table size="small" stickyHeader>
                         <TableHead>
                           <TableRow>
                             <TableCell align="right">#</TableCell>
-                            <TableCell>공정</TableCell>
-                            <TableCell align="center">기준</TableCell>
+                            <TableCell>怨듭젙</TableCell>
+                            <TableCell align="center">湲곗?</TableCell>
                             <TableCell align="right">공정수</TableCell>
-                            <TableCell align="right">기본 CT(초)</TableCell>
-                            <TableCell align="right">제안 CT(초)</TableCell>
-                            <TableCell align="right">주문 공임</TableCell>
-                            <TableCell align="right">기간(일)</TableCell>
+                            <TableCell align="right">湲곕낯 CT(珥?</TableCell>
+                            <TableCell align="right">?쒖븞 CT(珥?</TableCell>
+                            <TableCell align="right">二쇰Ц 怨듭엫</TableCell>
+                            <TableCell align="right">湲곌컙(??</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -2134,7 +2244,7 @@ const ProductionPlanBoard = () => {
                           ))}
                           <TableRow>
                             <TableCell colSpan={5} align="right" sx={{ fontWeight: 700 }}>
-                              합계
+                              ?⑷퀎
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {selectedCostSummary?.totalCost == null
@@ -2151,11 +2261,11 @@ const ProductionPlanBoard = () => {
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                     {selectedCostSummary?.directProposalCount > 0
-                      ? `직접 제안 입력: ${selectedCostSummary.directProposalCount}개 공정`
-                      : '입력값이 없으면 ST(공식 CT) 기준으로 운영팀 조정 요청됩니다.'}
+                      ? `吏곸젒 ?쒖븞 ?낅젰: ${selectedCostSummary.directProposalCount}媛?怨듭젙`
+                      : '?낅젰媛믪씠 ?놁쑝硫?ST(怨듭떇 CT) 湲곗??쇰줈 ?댁쁺? 議곗젙 ?붿껌?⑸땲??'}
                   </Typography>
 
-                  {/* 동의 / 조정 요청 버튼 — 공정 CT 카드 하단 */}
+                  {/* ?숈쓽 / 議곗젙 ?붿껌 踰꾪듉 ??怨듭젙 CT 移대뱶 ?섎떒 */}
                   <Divider sx={{ mt: 1.5, mb: 1.5 }} />
                   <Stack direction="row" spacing={1} justifyContent="flex-end">
                     <Button
@@ -2173,7 +2283,7 @@ const ProductionPlanBoard = () => {
                       onClick={() => handleRequestAdjustment(selectedAssignment.id)}
                       disabled={selectedAssignmentBusy || !hasCtAdjustment}
                     >
-                      조정 요청
+                      議곗젙 ?붿껌
                     </Button>
                   </Stack>
                 </Paper>
@@ -2183,27 +2293,27 @@ const ProductionPlanBoard = () => {
         </Drawer>
       </Box>
 
-      {/* 완료 처리 Dialog */}
-      {/* ── 차이 카드 액션 Dialog ── */}
+      {/* ?꾨즺 泥섎━ Dialog */}
+      {/* ?? 李⑥씠 移대뱶 ?≪뀡 Dialog ?? */}
       <Dialog open={Boolean(deltaDialog)} onClose={handleDeltaDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle>
           {deltaDialog?.mode === 'ASSIGN'
-            ? '라인 배정'
+            ? '?쇱씤 諛곗젙'
             : deltaDialog?.mode === 'ABSORB'
-            ? '기존 배정에 수량 흡수'
-            : '수량 차감'}
+            ? '湲곗〈 諛곗젙???섎웾 ?≪닔'
+            : '?섎웾 李④컧'}
         </DialogTitle>
         <DialogContent>
           {deltaDialog && (
             <Stack spacing={2} sx={{ pt: 0.5 }}>
               <Box>
                 <Typography variant="body2">
-                  <strong>차이 카드:</strong> {deltaDialog.deltaCard.customer} / {deltaDialog.deltaCard.label}
-                  {deltaDialog.deltaCard.colorName ? ` · ${deltaDialog.deltaCard.colorName}` : ''}
-                  {deltaDialog.deltaCard.gender ? ` · ${deltaDialog.deltaCard.gender}` : ''}
+                  <strong>李⑥씠 移대뱶:</strong> {deltaDialog.deltaCard.customer} / {deltaDialog.deltaCard.label}
+                  {deltaDialog.deltaCard.colorName ? ` 쨌 ${deltaDialog.deltaCard.colorName}` : ''}
+                  {deltaDialog.deltaCard.gender ? ` 쨌 ${deltaDialog.deltaCard.gender}` : ''}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  <strong>수량:</strong>{' '}
+                  <strong>?섎웾:</strong>{' '}
                   <Chip
                     size="small"
                     label={`${deltaDialog.deltaCard.deltaType === 'PLUS' ? '+' : '-'}${deltaDialog.deltaCard.quantity}`}
@@ -2215,10 +2325,10 @@ const ProductionPlanBoard = () => {
               {deltaDialog.mode === 'ASSIGN' && (
                 <>
                   <FormControl size="small" fullWidth>
-                    <InputLabel>배정 라인</InputLabel>
+                    <InputLabel>諛곗젙 ?쇱씤</InputLabel>
                     <Select
                       value={deltaDialog.selectedLineId || ''}
-                      label="배정 라인"
+                      label="諛곗젙 ?쇱씤"
                       onChange={(e) => setDeltaDialog((prev) => ({ ...prev, selectedLineId: e.target.value }))}
                     >
                       {lines.map((line) => (
@@ -2231,7 +2341,7 @@ const ProductionPlanBoard = () => {
                   <Stack direction="row" spacing={1}>
                     <TextField
                       size="small"
-                      label="시작일 (오늘로부터 N일)"
+                      label="?쒖옉??(?ㅻ뒛濡쒕???N??"
                       type="number"
                       value={deltaDialog.startOffset ?? '0'}
                       onChange={(e) => {
@@ -2243,7 +2353,7 @@ const ProductionPlanBoard = () => {
                     />
                     <TextField
                       size="small"
-                      label="종료일 (오늘로부터 N일)"
+                      label="醫낅즺??(?ㅻ뒛濡쒕???N??"
                       type="number"
                       value={deltaDialog.endOffset ?? '0'}
                       onChange={(e) => {
@@ -2260,19 +2370,19 @@ const ProductionPlanBoard = () => {
               {(deltaDialog.mode === 'ABSORB' || deltaDialog.mode === 'DEDUCT') && (
                 deltaDialog.matchingAssignments?.length === 0 ? (
                   <Alert severity="warning">
-                    동일 스타일/색상/성별의 배정 카드가 없습니다.
+                    ?숈씪 ?ㅽ????됱긽/?깅퀎??諛곗젙 移대뱶媛 ?놁뒿?덈떎.
                   </Alert>
                 ) : (
                   <FormControl size="small" fullWidth>
-                    <InputLabel>대상 배정 선택</InputLabel>
+                    <InputLabel>???諛곗젙 ?좏깮</InputLabel>
                     <Select
                       value={deltaDialog.selectedAssignmentId || ''}
-                      label="대상 배정 선택"
+                      label="???諛곗젙 ?좏깮"
                       onChange={(e) => setDeltaDialog((prev) => ({ ...prev, selectedAssignmentId: e.target.value }))}
                     >
                       {(deltaDialog.matchingAssignments || []).map((a) => (
                         <MenuItem key={a.id} value={String(a.id)}>
-                          {a.line?.name || `라인 ${a.lineId}`} · {a.quantity}개 · {formatScheduleRange(baseDate, a)}
+                          {a.line?.name || `?쇱씤 ${a.lineId}`} 쨌 {a.quantity}媛?쨌 {formatScheduleRange(baseDate, a)}
                         </MenuItem>
                       ))}
                     </Select>
@@ -2283,7 +2393,7 @@ const ProductionPlanBoard = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDeltaDialogClose}>취소</Button>
+          <Button onClick={handleDeltaDialogClose}>痍⑥냼</Button>
           <Button
             variant="contained"
             color={deltaDialog?.mode === 'DEDUCT' ? 'error' : 'primary'}
@@ -2301,10 +2411,10 @@ const ProductionPlanBoard = () => {
             }
           >
             {deltaDialog?.mode === 'ASSIGN'
-              ? '배정'
+              ? '諛곗젙'
               : deltaDialog?.mode === 'ABSORB'
-              ? '수량 흡수'
-              : '수량 차감'}
+              ? '?섎웾 ?≪닔'
+              : '?섎웾 李④컧'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -2315,26 +2425,26 @@ const ProductionPlanBoard = () => {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>카드 완료 처리</DialogTitle>
+        <DialogTitle>移대뱶 ?꾨즺 泥섎━</DialogTitle>
         <DialogContent>
           {completionDialog?.assignment && (
             <Stack spacing={1.5} sx={{ pt: 0.5 }}>
               <Typography variant="body2">
-                <strong>고객:</strong> {completionDialog.assignment.customer || '-'}
+                <strong>怨좉컼:</strong> {completionDialog.assignment.customer || '-'}
               </Typography>
               <Typography variant="body2">
-                <strong>스타일:</strong> {completionDialog.assignment.label || '-'}
-                {completionDialog.assignment.colorName ? ` · ${completionDialog.assignment.colorName}` : ''}
+                <strong>?ㅽ???</strong> {completionDialog.assignment.label || '-'}
+                {completionDialog.assignment.colorName ? ` 쨌 ${completionDialog.assignment.colorName}` : ''}
               </Typography>
               <Typography variant="body2">
-                <strong>배정 수량:</strong>{' '}
+                <strong>諛곗젙 ?섎웾:</strong>{' '}
                 {formatNumberWithCommas(completionDialog.assignment.quantity, {
                   fallback: '-',
                   maximumFractionDigits: 0,
-                })}개
+                })}媛?
               </Typography>
               <TextField
-                label="최종 완성 수량"
+                label="理쒖쥌 ?꾩꽦 ?섎웾"
                 type="number"
                 size="small"
                 value={finalQuantityDraft}
@@ -2349,14 +2459,14 @@ const ProductionPlanBoard = () => {
                 autoFocus
               />
               <Alert severity="info" sx={{ py: 0.5 }}>
-                저장 후 실제 작업 기록(WorkRecord) 누적 수량과 비교하여 초과 여부를 안내합니다.
+                ??????ㅼ젣 ?묒뾽 湲곕줉(WorkRecord) ?꾩쟻 ?섎웾怨?鍮꾧탳?섏뿬 珥덇낵 ?щ?瑜??덈궡?⑸땲??
               </Alert>
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseCompletionDialog} disabled={completionSaving}>
-            취소
+            痍⑥냼
           </Button>
           <Button
             variant="contained"
@@ -2364,7 +2474,7 @@ const ProductionPlanBoard = () => {
             onClick={handleConfirmCompletion}
             disabled={completionSaving || finalQuantityDraft === ''}
           >
-            {completionSaving ? '저장 중...' : '완료 처리'}
+            {completionSaving ? '???以?..' : '?꾨즺 泥섎━'}
           </Button>
         </DialogActions>
       </Dialog>

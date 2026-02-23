@@ -58,6 +58,7 @@ const BASIS_COLORS = {
 const initialCards = [];
 const initialLines = [];
 const initialAssignments = [];
+const MAX_HISTORY_STEPS = 30;
 
 const mergeCardsWithSaved = (baseCards, savedCards) => {
   const merged = [];
@@ -1020,6 +1021,11 @@ const AssignBoard = () => {
   const persistSeqRef = useRef(0);
   const lastSavedSnapshotRef = useRef('');
   const persistErrorShownRef = useRef(false);
+  const historyPastRef = useRef([]);
+  const historyFutureRef = useRef([]);
+  const historySnapshotRef = useRef('');
+  const historyApplyingRef = useRef(false);
+  const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
@@ -1035,6 +1041,49 @@ const AssignBoard = () => {
     });
     return map;
   }, [lines]);
+
+  const syncHistoryStatus = useCallback(() => {
+    setHistoryStatus({
+      undoCount: historyPastRef.current.length,
+      redoCount: historyFutureRef.current.length,
+    });
+  }, []);
+
+  const createBoardSnapshotText = useCallback(
+    (nextCards, nextAssignments) =>
+      JSON.stringify({
+        cards: Array.isArray(nextCards) ? nextCards : [],
+        assignments: Array.isArray(nextAssignments) ? nextAssignments : [],
+      }),
+    []
+  );
+
+  const applyBoardSnapshotText = useCallback((snapshotText) => {
+    try {
+      const parsed = JSON.parse(snapshotText || '{}');
+      const nextCards = Array.isArray(parsed?.cards) ? parsed.cards : [];
+      const nextAssignments = Array.isArray(parsed?.assignments)
+        ? parsed.assignments.map((item) => normalizeAssignmentLayout(item))
+        : [];
+      const maxEndIndex = nextAssignments.reduce(
+        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+        0
+      );
+      setCards(nextCards);
+      setAssignments(nextAssignments);
+      setSelectedCardId((prev) =>
+        nextCards.some((card) => String(card?.id) === String(prev)) ? prev : null
+      );
+      setDays((prev) => {
+        const requiredLength = Math.max(prev.length, maxEndIndex + 10);
+        return requiredLength > prev.length
+          ? buildDays(startDateRef.current, requiredLength, holidaySet)
+          : prev;
+      });
+    } catch (_error) {
+      // Ignore malformed snapshots and keep current state.
+    }
+  }, [holidaySet]);
 
   useEffect(() => {
     const syncHolidays = () => {
@@ -1221,6 +1270,11 @@ const AssignBoard = () => {
           setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
           splitCounterRef.current = maxSplit + 1;
           lastSavedSnapshotRef.current = snapshot;
+          historyPastRef.current = [];
+          historyFutureRef.current = [];
+          historySnapshotRef.current = snapshot;
+          historyApplyingRef.current = false;
+          syncHistoryStatus();
           persistErrorShownRef.current = false;
           setTimeout(() => {
             if (!cancelled) {
@@ -1234,6 +1288,11 @@ const AssignBoard = () => {
           setCards([]);
           setAssignments([]);
           persistReadyRef.current = true;
+          historyPastRef.current = [];
+          historyFutureRef.current = [];
+          historySnapshotRef.current = createBoardSnapshotText([], []);
+          historyApplyingRef.current = false;
+          syncHistoryStatus();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -1244,7 +1303,36 @@ const AssignBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId]);
+  }, [activeOrgId, createBoardSnapshotText, syncHistoryStatus]);
+
+  useEffect(() => {
+    if (!persistReadyRef.current) return;
+
+    const snapshot = createBoardSnapshotText(cards, assignments);
+    if (!historySnapshotRef.current) {
+      historySnapshotRef.current = snapshot;
+      syncHistoryStatus();
+      return;
+    }
+    if (snapshot === historySnapshotRef.current) return;
+
+    if (historyApplyingRef.current) {
+      historySnapshotRef.current = snapshot;
+      historyApplyingRef.current = false;
+      syncHistoryStatus();
+      return;
+    }
+
+    historyPastRef.current.push(historySnapshotRef.current);
+    if (historyPastRef.current.length > MAX_HISTORY_STEPS) {
+      historyPastRef.current = historyPastRef.current.slice(
+        historyPastRef.current.length - MAX_HISTORY_STEPS
+      );
+    }
+    historyFutureRef.current = [];
+    historySnapshotRef.current = snapshot;
+    syncHistoryStatus();
+  }, [assignments, cards, createBoardSnapshotText, syncHistoryStatus]);
 
   useEffect(() => {
     if (!persistReadyRef.current) return;
@@ -1980,6 +2068,38 @@ const AssignBoard = () => {
     setAssignments([]);
   };
 
+  const handleUndo = useCallback(() => {
+    if (historyPastRef.current.length === 0) return;
+    const currentSnapshot = createBoardSnapshotText(cards, assignments);
+    const previousSnapshot = historyPastRef.current.pop();
+    historyFutureRef.current.push(currentSnapshot);
+    historyApplyingRef.current = true;
+    applyBoardSnapshotText(previousSnapshot);
+    syncHistoryStatus();
+  }, [
+    applyBoardSnapshotText,
+    assignments,
+    cards,
+    createBoardSnapshotText,
+    syncHistoryStatus,
+  ]);
+
+  const handleRedo = useCallback(() => {
+    if (historyFutureRef.current.length === 0) return;
+    const currentSnapshot = createBoardSnapshotText(cards, assignments);
+    const nextSnapshot = historyFutureRef.current.pop();
+    historyPastRef.current.push(currentSnapshot);
+    historyApplyingRef.current = true;
+    applyBoardSnapshotText(nextSnapshot);
+    syncHistoryStatus();
+  }, [
+    applyBoardSnapshotText,
+    assignments,
+    cards,
+    createBoardSnapshotText,
+    syncHistoryStatus,
+  ]);
+
   return (
     <AppPageContainer
       header={
@@ -1989,6 +2109,20 @@ const AssignBoard = () => {
             <Typography variant="caption" color="text.secondary">
               {persisting ? '저장 중...' : '자동 저장'}
             </Typography>
+            <Button
+              variant="outlined"
+              onClick={handleUndo}
+              disabled={historyStatus.undoCount === 0}
+            >
+              되돌리기
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleRedo}
+              disabled={historyStatus.redoCount === 0}
+            >
+              다시하기
+            </Button>
             <Button
               variant="outlined"
               onClick={handleResetAssignments}

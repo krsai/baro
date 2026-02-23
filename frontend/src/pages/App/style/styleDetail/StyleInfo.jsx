@@ -12,7 +12,7 @@ import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
 import {
-  calculateProcessTotal,
+  calculateProcessTotalForOrderQuantity,
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
@@ -221,13 +221,21 @@ const StyleInfo = ({
   
   const costData = [];
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
+  const timeRefQuantity = useMemo(() => {
+    if (!Array.isArray(normalizedProcesses) || normalizedProcesses.length === 0) return 1;
+    const first = normalizedProcesses.find((process) =>
+      Number.isFinite(Number(process?.timeRefQuantity))
+    );
+    const parsed = Number.parseInt(first?.timeRefQuantity, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  }, [normalizedProcesses]);
   const totalPT = useMemo(
-    () => calculateProcessTotal(normalizedProcesses, 'pt'),
-    [normalizedProcesses]
+    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'pt', timeRefQuantity),
+    [normalizedProcesses, timeRefQuantity]
   );
   const totalAT = useMemo(
-    () => calculateProcessTotal(normalizedProcesses, 'at'),
-    [normalizedProcesses]
+    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'at', timeRefQuantity),
+    [normalizedProcesses, timeRefQuantity]
   );
   const hasTotalPT = useMemo(
     () => hasAnyProcessTime(normalizedProcesses, 'pt'),
@@ -559,13 +567,17 @@ const StyleInfo = ({
                   </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 PT</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {`총 PT(q=${timeRefQuantity})`}
+                  </Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>
                     {hasTotalPT ? formatSeconds(totalPT) : '-'}
                   </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 AT</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {`총 AT(q=${timeRefQuantity})`}
+                  </Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>
                     {hasTotalAT ? formatSeconds(totalAT) : '-'}
                   </Typography>

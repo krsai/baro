@@ -81,6 +81,7 @@ model Organization {
   assignmentBoardState AssignmentBoardState?
   assignmentPlans AssignmentPlan[]
   payrollSnapshots PayrollSnapshot[]
+  attendanceEntries AttendanceEntry[]
   manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
   brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
 }
@@ -141,6 +142,7 @@ model Factory {
   organization Organization @relation(fields: [orgId], references: [id])
   employees    Employee[]
   lines        Line[]
+  attendanceEntries AttendanceEntry[]
 
   @@index([orgId])
 }
@@ -190,10 +192,34 @@ model Employee {
   role         AttrRole?       @relation(fields: [roleId], references: [id])
   lineAssignments LineAssignment[]
   managedLines   Line[] @relation("LineManager")
+  attendanceEntries AttendanceEntry[]
 
   @@index([orgId])
   @@index([factoryId])
   @@index([roleId])
+}
+
+model AttendanceEntry {
+  id          Int      @id @default(autoincrement())
+  orgId       Int
+  factoryId   Int
+  workerId    Int
+  workDate    String
+  clockIn     String?
+  clockOut    String?
+  workedSeconds Int?
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  factory      Factory      @relation(fields: [factoryId], references: [id])
+  worker       Employee     @relation(fields: [workerId], references: [id])
+
+  @@unique([orgId, factoryId, workerId, workDate])
+  @@index([orgId, workDate])
+  @@index([orgId, factoryId, workDate])
+  @@index([orgId, workerId, workDate])
 }
 
 model LineAssignment {

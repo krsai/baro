@@ -102,7 +102,11 @@
 **학습 실행 정책**
 - **실행 시점**: 매달 5일 00:00 (Asia/Seoul)
 - **학습 대상**: 직전 월 전체 데이터
-- **출퇴근 기록 미입력 폴백**: 매달 5일까지 전월 출퇴근 기록이 입력되지 않은 날은 `T_d = 8 * 3600` (8시간)으로 간주하여 학습을 진행한다. 이 값은 학습에만 사용되며, 실제 급여 계산에는 적용되지 않는다.
+- **출퇴근 기록 폴백 규칙(확정)**:
+  - 매달 5일까지 전월 출퇴근 기록이 입력된 경우: 입력된 실제 근무시간으로 `T_d`를 사용한다.
+  - 매달 5일까지 전월 출퇴근 기록이 입력되지 않은 경우: 해당 라인/작업자는 `T_d = 8 * 3600` (8시간)으로 간주한다.
+  - 위 규칙은 학습(AT 갱신)에만 적용하며, 실제 급여 계산 기준은 별도 정책을 따른다.
+- **구현 상태(반영 완료)**: 출퇴근 입력은 화면 + 서버 저장으로 동작하며, AT 학습 계산은 매월 5일 기준 직전 월 데이터를 반영할 때 출퇴근 입력값을 우선 사용한다. 입력이 없거나 불완전한 경우 8시간 기준으로 폴백한다.
 
 **레거시 평균 AT 제거**
 - 기존의 단순 평균 방식(`AT = 전체 총시간 ÷ 전체 총수량`)은 폐기(deprecated) 처리한다.
@@ -113,7 +117,12 @@
 - AT(q)가 나왔다고 ST를 바로 AT로 맞추지 않음 — 현장 충격(파업 등) 방지
 - 운영팀이 AT(q)를 참고해 점진적으로 ST를 조정. 버전 관리: ST_v1 → ST_v2 …
 - AT 데이터 없으면 ST = PT (현재 스타일에 입력된 PT값)
-- **코드상**: `Style.processes[].ct` 필드가 이 역할 수행 (기존 필드명 유지)
+- 스타일 공정 입력 시 **공통 기준 수량 q(`timeRefQuantity`)를 먼저 지정**하고 PT(q) / ST(q)를 입력한다.
+- ST 수동 미입력(`stManual=false`) 상태에서 AT가 있으면 ST 초기값은 AT(q) 기준으로 자동 반영한다.
+- 수량 변화 시 규칙:
+  - `stManual=true` 공정: ST(q)는 수량 비율로 선형 추종
+  - `stManual=false` 공정: ST(q)는 AT(q) 함수 추종
+- **코드상**: `Style.processes[].ct`(ST 값), `Style.processes[].stManual`(수동 여부), `Style.processes[].timeRefQuantity`(공통 q)로 관리
 - ST는 "이 스타일 이 공정의 현재 공식 단가"이며, 라인과 협의하는 출발점
 
 **CT (Contracted Time) — 카드 단위 확정 스냅샷**
@@ -214,6 +223,7 @@ PENDING (배정 후 초기 상태)
 - 기준: WorkRecord의 ctSeconds × 수량 × factoryWagePerSecond
 - WorkLog에 factoryWagePerSecond 스냅샷 저장 (Factory 단가 변경에 무관)
 - WorkRecord에 ctSeconds 스냅샷 저장 (Style CT 변경에 무관)
+- **공장 초당 급여 단가 정책(확정)**: `factoryWagePerSecond = 월 목표 급여 / (26일 × 8시간 × 3600초)` 고정
 - **PayrollSnapshot 모델 구현 완료**: orgId, yearMonth(YYYY-MM), data(JSON 스냅샷), isLocked
   - GET /payroll: WorkRecord × ctSeconds × quantity × factoryWagePerSecond 집계, 직원/월 단위 그룹핑
   - POST /payroll/lock: 해당 월 잠금(isLocked = true) → 확정 후 소급 변경 불가
@@ -255,7 +265,7 @@ Organization (MANUFACTURER | BRAND)
        └─ Line
             └─ LineAssignment (직원-라인 배정, startAt/endAt)
   └─ Employee (OrgMembership 1:1)
-  └─ Style (processes: JSON [{code, name, pt, atParams:{a,b}, ct, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
+  └─ Style (processes: JSON [{code, name, pt, atParams:{a,b}, ct, stManual, timeRefQuantity, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
        ※ PT: 매니저 직접 입력. AT 없을 때 ST(q) 기준값으로 사용
        ※ atParams: WorkRecord 기반 자동 산출. AT(q)=a+b/q 파라미터. 데이터 부족 시 null
        ※ ct: ST(q) 역할. 버전 관리 대상. ctVersion은 정수로 증가, ctUpdatedAt은 마지막 변경 시각
@@ -287,19 +297,11 @@ Organization (MANUFACTURER | BRAND)
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
 - 카드에 배정된 수량과 수주 수량은 독립적 (수동 관리)
 
-### 수주 수량 변경 시 차이 카드 처리 (구현 완료)
-- 수주 수량 변경 시 기존 배정 카드를 직접 수정하지 않음
-- 수주 저장(handleSave) 시 기존 항목 수량 vs 신규 수량 비교 → delta 자동 감지
-- 차이만큼 **DELTA 카드**를 AssignmentBoardState.cards에 생성, ProductionPlanBoard "미배정 풀" 섹션에 표시
-- **DELTA 카드 구조**: `{ id, type:'DELTA', deltaType:'PLUS'|'MINUS', quantity, workOrderId, orderItemId, styleId, label, customer, colorName, gender, createdAt }`
-- **처리 방식 (버튼 기반, drag-and-drop 아님)**:
-  - **ASSIGN**: DELTA 카드를 일반 배정 카드로 전환 → 라인/시작일 선택 후 새 AssignmentPlan 생성
-  - **ABSORB**: 기존 배정 카드에 수량 흡수(합산), endIndex 재계산
-  - **DEDUCT**: 기존 배정 카드에서 수량 차감, endIndex 재계산 (수량 0이 되면 배정 삭제)
-  - **삭제**: DELTA 카드를 미배정 풀에서 제거
-- **endIndex 재계산 공식**: `perPieceSeconds = proposalSeconds / oldQty`, `newEndIndex = startIndex + max(0, ceil(perPieceSeconds * newQty / lineDailyCapacitySeconds) - 1)`
-  ※ 신규 배정 시 perPieceSeconds 산출: atParams 있으면 AT(q), 없으면 PT 사용 (스케줄링 예측용)
-- **매칭 기준**: styleId + colorName + gender + customer로 관련 배정 카드 탐색
+### 수주 수량 변경 시 배정 처리 (정책 확정)
+- 수주 수량 변경 시 **해당 수주의 기존 배정은 취소**하고, 변경된 수량 기준으로 **미배정 카드로 재생성**한다.
+- 수량이 `0`이면 해당 카드는 제거한다.
+- 즉, 수량 변경 시 기존 배정 카드의 기간을 늘이거나 줄여 유지하지 않는다.
+- 결과적으로 변경분 반영 이후에는 운영자가 다시 배정(라인/시작일 지정)하도록 한다.
 
 ---
 
@@ -312,10 +314,11 @@ Organization (MANUFACTURER | BRAND)
 5. 급여 계산은 WorkRecord의 ctSeconds 기준 — Style.processes 변경 영향 없음
 6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
 7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
-8. 초과 공정(WorkRecord 누적 > finalQuantity) 시 급여 포함 여부: **미결 (추후 결정)**
-9. **ST(q) = Style.processes[].ct** — 버전 관리 대상. AT 데이터 없으면 PT가 ST 역할
-10. **ST 변경 절차**: AT(q)와 현재 ST 차이가 기준 이상이면 "ST 조정 필요" 안내 → 운영팀 검토 후 새 버전으로 갱신. 버전 증가 기록됨
-11. **구독 상태 SUSPENDED 조직**: API 호출 403 차단. 로그인 자체는 허용되나 데이터 접근 불가
+8. 초과 공정(WorkRecord 누적 > finalQuantity)도 **급여 지급 대상에 포함**한다.
+9. 초과 생산분은 운영자/관리자가 확인할 수 있도록 별도 확인 화면(초과 생산 모니터링)을 제공한다.
+10. **ST(q) = Style.processes[].ct (+ stManual + timeRefQuantity)** — 버전 관리 대상. AT 데이터 없으면 PT가 ST 역할
+11. **ST 변경 절차**: AT(q)와 현재 ST 차이가 기준 이상이면 "ST 조정 필요" 안내 → 운영팀 검토 후 새 버전으로 갱신. 버전 증가 기록됨
+12. **구독 상태 SUSPENDED 조직**: API 호출 403 차단. 로그인 자체는 허용되나 데이터 접근 불가
 
 ---
 
@@ -331,3 +334,74 @@ Organization (MANUFACTURER | BRAND)
 - 개발 모드: DEV_BYPASS 플래그로 테스트 프로파일 사용 가능
 - **드래그 연속 카드 밀기**: 배정 카드를 현재보다 앞 날짜로 드래그 시, 직후에 연속으로 붙어있는 카드(getNextStartIndex 기준)가 있으면 `tryRebuildLineWithInsert`로 함께 앞으로 이동. 단독 배치 가능한 경우에도 연속 카드가 있으면 밀기 우선 적용.
 - **CT 협의 버튼 로직**: `hasCtAdjustment = selectedProcessRows.some(row => row.hasDirectProposal && row.proposedSeconds !== row.baseSeconds)` 로 변경 감지
+
+---
+
+## Clause 검토용 구현 반영 현황 (2026-02-23)
+
+이 섹션은 정책 설명이 아니라, 현재 코드에 반영된 구현 기준이다.
+
+### 1) ST/PT/AT(q) 반영 상태
+- 스타일 공정 입력에서 공통 q(`timeRefQuantity`)를 먼저 지정하고 `PT(q) / AT(q, 자동) / ST(q)`를 표시/입력한다.
+  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`
+- 저장 모델은 `Style.processes[].pt/at/ct + stManual + timeRefQuantity`를 사용한다.
+  - `pt`, `ct`는 내부적으로 개당 초(per-piece) 값으로 저장되고, 화면에서는 q 기준 총시간으로 환산해 보여준다.
+  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`, `frontend/src/utils/processTime.js`, `backend/src/index.ts`
+- ST 계산 규칙(코드 기준):
+  - `stManual=true` + `ct` 존재: 수동 ST 우선
+  - 그 외: `AT(q)` 우선, 없으면 `ct`, 없으면 `PT`
+  - 파일: `frontend/src/utils/processTime.js`
+- 중요: 자동 ST 상태였다가도 사용자가 언제든 다시 `수동 ST`로 전환해서 값을 수정/재수정 가능하다.
+  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`
+- 구버전/혼합 데이터 보정:
+  - `stManual`이 비어 있고 `ct≈at`이면 자동 ST로 추정한다(수동 오판 방지).
+  - 파일: `frontend/src/utils/processTime.js`, `backend/src/index.ts`
+
+### 2) 생산계획/CT 협의에 ST 규칙 반영
+- 생산계획 보드의 공정별 기본 CT 기준(`baseBasis`)은 아래 우선순위로 계산한다.
+  - `stManual=true`면 ST(`ct`) 우선
+  - 아니면 `AT(q)` 우선
+  - 그 외 `ST(ct)`, `PT` 순서
+  - 파일: `frontend/src/pages/App/production/ProductionPlanBoard.jsx`
+- CT 검토 보드도 AT 계산을 공통 유틸(`resolveProcessAtPerPieceSeconds`)로 통일했다.
+  - 파일: `frontend/src/pages/App/production/CtReviewBoard.jsx`
+
+### 3) 수량 변경 시 배정 취소/미배정 환원
+- 주문 수량 변경 시, 해당 원본 카드(origin)와 연결된 기존 배정을 취소하고 변경 수량으로 미배정 카드를 재생성한다.
+- 변경 수량이 `0`이면 해당 카드는 제거한다.
+- 동일 주문의 DELTA 카드는 함께 정리하고, 타 주문 DELTA 카드는 유지한다.
+- 파일: `frontend/src/utils/quantityChangeBoard.mjs`, `frontend/src/pages/App/order/OrderList.jsx`
+- 회귀 테스트로 검증 중:
+  - 파일: `scripts/quantity-change-regression.test.mjs`
+
+### 4) 출퇴근 입력 + AT 학습 연동
+- 출퇴근 입력 화면/라우트:
+  - 라우트: `/attendance`
+  - 파일: `frontend/src/router.jsx`, `frontend/src/layouts/MainLayout.jsx`, `frontend/src/pages/App/attendance/AttendanceBoard.jsx`
+- 출퇴근 API:
+  - `GET /attendance-entries` (일자/월 조회)
+  - `PUT /attendance-entries` (해당 일자 데이터 교체 저장)
+  - 파일: `backend/src/index.ts`
+- AT 학습 시 근무시간 규칙(코드 기준):
+  - 입력이 있으면 해당 `workedSeconds` 사용
+  - 입력이 없거나 불완전하면 8시간(`28800`) 폴백
+  - 학습 기준 월은 매월 5일 컷오프로 계산: 5일 이후면 전월, 5일 이전이면 전전월
+  - 파일: `backend/src/index.ts` (`resolveAtTrainingMonthKey`, `syncStyleProcessActualTimesFromWorkRecords`)
+- 출퇴근/작업기록 변경 시 AT 동기화가 백그라운드로 재실행된다.
+  - 파일: `backend/src/index.ts`
+
+### 5) 초과 생산 모니터링
+- 초과 생산 확인용 초기 페이지가 구현되어 있다.
+  - 라우트: `/production-overrun`
+  - 페이지: `frontend/src/pages/App/production/OverrunBoard.jsx`
+- 백엔드 API:
+  - `GET /assignment-plan-progress`
+  - `GET /assignment-overruns`
+  - 파일: `backend/src/index.ts`
+
+### 6) Clause 확인 우선순위(추천)
+1. 주문 수량 변경 시 기존 배정이 실제로 사라지고 미배정 카드로 재생성되는지 (`quantity=0` 포함)
+2. 스타일 공정에서 `수동 ST/자동 ST`를 여러 번 전환해도 저장/재편집이 일관적인지
+3. `stManual=false` 공정이 생산계획 보드에서 AT(q) 기준으로 계산되는지
+4. 출퇴근 입력이 없는 데이터에서 AT 학습이 8시간 폴백으로 동작하는지
+5. 초과 생산 페이지에서 `baseline / produced / overflow` 계산이 API와 동일한지
