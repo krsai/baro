@@ -192,7 +192,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     resolveCommonTimeRefQuantity(safeProcesses)
   );
   const [timeRefQuantityInput, setTimeRefQuantityInput] = useState(() =>
-    String(resolveCommonTimeRefQuantity(safeProcesses))
+    resolveCommonTimeRefQuantity(safeProcesses).toLocaleString('ko-KR')
   );
   const [attributeProcesses, setAttributeProcesses] = useState([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
@@ -331,12 +331,12 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   useEffect(() => {
     if (safeProcesses.length === 0) {
       setTimeRefQuantity(DEFAULT_TIME_REF_QUANTITY);
-      setTimeRefQuantityInput(String(DEFAULT_TIME_REF_QUANTITY));
+      setTimeRefQuantityInput(DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR'));
       return;
     }
     const nextRef = resolveCommonTimeRefQuantity(safeProcesses);
     setTimeRefQuantity((prev) => (prev === nextRef ? prev : nextRef));
-    setTimeRefQuantityInput(String(nextRef));
+    setTimeRefQuantityInput(nextRef.toLocaleString('ko-KR'));
   }, [safeProcesses]);
 
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
@@ -344,11 +344,19 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     setTimeRefQuantityInput(event.target.value);
   };
 
-  // 포커스 벗어날 때: 파싱 후 적용 및 공정 동기화
+  // 포커스 진입 시: 콤마 제거해 깔끔하게 편집
+  const handleTimeRefQuantityFocus = () => {
+    setTimeRefQuantityInput(String(timeRefQuantity));
+  };
+
+  // 포커스 벗어날 때: 파싱 후 천 단위 콤마 포맷으로 표시 및 공정 동기화
   const handleTimeRefQuantityBlur = () => {
-    const nextValue = toPositiveInt(timeRefQuantityInput, DEFAULT_TIME_REF_QUANTITY);
+    const nextValue = toPositiveInt(
+      String(timeRefQuantityInput).replace(/,/g, ''),
+      DEFAULT_TIME_REF_QUANTITY
+    );
     setTimeRefQuantity(nextValue);
-    setTimeRefQuantityInput(String(nextValue));
+    setTimeRefQuantityInput(nextValue.toLocaleString('ko-KR'));
     if (safeProcesses.length === 0) return;
     const needsSync = safeProcesses.some(
       (process) =>
@@ -503,13 +511,13 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           <Tooltip title="기준 수량 q는 기본값 1000이며, PT/ST 시간값은 1개 작업 기준으로 입력합니다.">
             <TextField
               size="small"
-              type="number"
+              type="text"
+              inputMode="numeric"
               label="기준 수량 q"
               value={timeRefQuantityInput}
               onChange={handleTimeRefQuantityChange}
+              onFocus={handleTimeRefQuantityFocus}
               onBlur={handleTimeRefQuantityBlur}
-              onWheel={(e) => e.target.blur()}
-              inputProps={{ min: 1, step: 1 }}
               placeholder="1,000"
               sx={{ width: 140 }}
             />
@@ -831,13 +839,13 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                         />
                                       </Stack>
                                     ) : (
-                                      <Chip
-                                        size="small"
-                                        label={formatSeconds(previewStTotalSeconds)}
-                                        color={process?.stManual ? 'primary' : 'default'}
-                                        variant="outlined"
-                                        sx={{ fontWeight: 700, fontSize: '0.72rem' }}
-                                      />
+                                      <Typography
+                                        variant="body2"
+                                        fontWeight={process?.stManual ? 700 : 400}
+                                        color={process?.stManual ? 'primary.main' : 'text.primary'}
+                                      >
+                                        {formatSeconds(previewStTotalSeconds)}
+                                      </Typography>
                                     )}
                                   </TableCell>
                                   <TableCell align="center">
@@ -882,27 +890,17 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={2} align="right" sx={{ fontWeight: 700 }}>
+                  <TableCell colSpan={2} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     총 시간 합계
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>
+                  <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>
+                  <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {hasAT ? formatSeconds(totalAT) : '-'}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700 }}>
-                    {hasST ? (
-                      <Chip
-                        size="small"
-                        label={formatSeconds(totalST)}
-                        color="primary"
-                        variant="outlined"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    ) : (
-                      '-'
-                    )}
+                  <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
+                    {hasST ? formatSeconds(totalST) : '-'}
                   </TableCell>
                   <TableCell />
                 </TableRow>
