@@ -34,6 +34,7 @@ import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { normalizeProcesses } from '../../../utils/processTime';
 import { loadHolidays } from '../../../utils/localData';
+import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
 const STATUS_META = {
   PENDING: { label: 'CT 대기', color: 'default' },
@@ -41,7 +42,6 @@ const STATUS_META = {
   REJECTED: { label: '운영팀 검토', color: 'warning' },
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
-
 const normalizeCtStatus = (value) => {
   if (value === 'AGREED' || value === 'REJECTED') return value;
   return 'PENDING';
@@ -99,6 +99,42 @@ const toOptionalPositiveNumber = (value) => {
   return parsed;
 };
 
+const toOptionalNonNegativeNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+};
+
+const resolveAtParams = (process) => {
+  const raw = process?.atParams;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const a = toOptionalNonNegativeNumber(raw.a);
+  const b = toOptionalNonNegativeNumber(raw.b);
+  if (a == null || b == null) return null;
+  return { a, b };
+};
+
+const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
+  const normalizedOrderQuantity = Math.max(1, toPositiveInt(orderQuantity, 1));
+  const atParams = resolveAtParams(process);
+  if (atParams) {
+    return atParams.a * normalizedOrderQuantity + atParams.b;
+  }
+  const at = Number(process?.at);
+  if (Number.isFinite(at) && at > 0) return at;
+  return null;
+};
+
+const calcDivergencePercent = (current, base) => {
+  const currentValue = Number(current);
+  const baseValue = Number(base);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(baseValue) || baseValue <= 0) {
+    return null;
+  }
+  return ((currentValue - baseValue) / baseValue) * 100;
+};
+
 const formatSecondsLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -109,6 +145,13 @@ const formatDaysLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })} 일`;
+};
+
+const formatPercentLabel = (value, fallback = '-') => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const sign = parsed > 0 ? '+' : '';
+  return `${sign}${parsed.toFixed(1)}%`;
 };
 
 const resolveLineDailyCapacitySeconds = (line, headcount) => {
@@ -610,6 +653,12 @@ const ProductionPlanBoard = () => {
         const baseInfo = resolveProcessCtBaseSeconds(process);
         const baseSeconds = baseInfo.seconds;
         const basePerPieceSeconds = baseSeconds * processQuantity;
+        const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
+        const atPerPieceSeconds = atSeconds == null ? null : atSeconds * processQuantity;
+        const atVsBasePercent = calcDivergencePercent(atPerPieceSeconds, basePerPieceSeconds);
+        const needsStReview =
+          atVsBasePercent != null &&
+          Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
 
         const directSeconds = toOptionalPositiveNumber(draftByProcess[processKey]);
         const hasDirectProposal = directSeconds != null;
@@ -617,6 +666,7 @@ const ProductionPlanBoard = () => {
         const proposedPerPieceSeconds = proposedSeconds * processQuantity;
 
         const totalBaseSeconds = basePerPieceSeconds * orderQuantity;
+        const totalAtSeconds = atPerPieceSeconds == null ? null : atPerPieceSeconds * orderQuantity;
         const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
         const expectedCost = wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond;
         const expectedDays =
@@ -631,10 +681,15 @@ const ProductionPlanBoard = () => {
           baseBasis: baseInfo.basis,
           baseSeconds,
           basePerPieceSeconds,
+          atSeconds,
+          atPerPieceSeconds,
+          atVsBasePercent,
+          needsStReview,
           proposedSeconds,
           proposedPerPieceSeconds,
           hasDirectProposal,
           totalBaseSeconds,
+          totalAtSeconds,
           totalProposedSeconds,
           expectedCost,
           expectedDays,
@@ -685,6 +740,11 @@ const ProductionPlanBoard = () => {
         totalBasePerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalProposedPerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalBaseSeconds: fallbackTotalSeconds,
+        totalAtPerPieceSeconds: null,
+        totalAtSeconds: null,
+        atVsBasePercent: null,
+        needsStReview: false,
+        atCoverageCount: 0,
         totalProposedSeconds: fallbackTotalSeconds,
         perPieceCost: fallbackPerPieceCost,
         totalCost: fallbackTotalCost,
@@ -708,6 +768,19 @@ const ProductionPlanBoard = () => {
       (sum, row) => sum + row.totalProposedSeconds,
       0
     );
+    const rowsWithAt = selectedProcessRows.filter((row) => row.totalAtSeconds != null);
+    const totalAtPerPieceSeconds =
+      rowsWithAt.length > 0
+        ? rowsWithAt.reduce((sum, row) => sum + row.atPerPieceSeconds, 0)
+        : null;
+    const totalAtSeconds =
+      rowsWithAt.length > 0
+        ? rowsWithAt.reduce((sum, row) => sum + row.totalAtSeconds, 0)
+        : null;
+    const atVsBasePercent = calcDivergencePercent(totalAtPerPieceSeconds, totalBasePerPieceSeconds);
+    const needsStReview =
+      atVsBasePercent != null &&
+      Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
     const directProposalCount = selectedProcessRows.filter((row) => row.hasDirectProposal).length;
     const totalCost = wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond;
     const perPieceCost = totalCost == null ? null : totalCost / orderQuantity;
@@ -723,6 +796,11 @@ const ProductionPlanBoard = () => {
       totalBasePerPieceSeconds,
       totalProposedPerPieceSeconds,
       totalBaseSeconds,
+      totalAtPerPieceSeconds,
+      totalAtSeconds,
+      atVsBasePercent,
+      needsStReview,
+      atCoverageCount: rowsWithAt.length,
       totalProposedSeconds,
       perPieceCost,
       totalCost,
@@ -895,6 +973,19 @@ const ProductionPlanBoard = () => {
       processRows.length > 0
         ? processRows.reduce((sum, row) => sum + row.totalProposedSeconds, 0)
         : resolveSecondsForProposal(target);
+    const rowsWithAt = processRows.filter((row) => row.totalAtSeconds != null);
+    const totalAtPerPieceSeconds =
+      rowsWithAt.length > 0
+        ? rowsWithAt.reduce((sum, row) => sum + row.atPerPieceSeconds, 0)
+        : null;
+    const totalAtSeconds =
+      rowsWithAt.length > 0
+        ? rowsWithAt.reduce((sum, row) => sum + row.totalAtSeconds, 0)
+        : null;
+    const atVsBasePercent = calcDivergencePercent(totalAtPerPieceSeconds, totalBasePerPieceSeconds);
+    const needsStReview =
+      atVsBasePercent != null &&
+      Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
     const totalCostPreview = wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond;
     const perPersonPreview = totalCostPreview == null ? null : totalCostPreview / headcount;
     const monthlyPreview =
@@ -924,6 +1015,10 @@ const ProductionPlanBoard = () => {
       totalBasePerPieceSeconds,
       totalProposedPerPieceSeconds,
       totalBaseSeconds,
+      totalAtPerPieceSeconds,
+      totalAtSeconds,
+      atVsBasePercent,
+      needsStReview,
       totalProposedSeconds,
       totalDurationDays,
       expectedCost: totalCostPreview,
@@ -937,6 +1032,10 @@ const ProductionPlanBoard = () => {
         basis: row.baseBasis,
         baseSeconds: row.baseSeconds,
         basePerPieceSeconds: row.basePerPieceSeconds,
+        atSeconds: row.atSeconds,
+        atPerPieceSeconds: row.atPerPieceSeconds,
+        atVsBasePercent: row.atVsBasePercent,
+        needsStReview: row.needsStReview,
         proposedSeconds: row.proposedSeconds,
         proposedPerPieceSeconds: row.proposedPerPieceSeconds,
         hasLineLeaderProposal: row.hasDirectProposal,
@@ -1815,6 +1914,46 @@ const ProductionPlanBoard = () => {
                         {formatSecondsLabel(selectedCostSummary?.totalProposedPerPieceSeconds)}
                       </Typography>
                     </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        AT 예측 합 (한 벌)
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedCostSummary?.totalAtPerPieceSeconds == null
+                          ? '-'
+                          : formatSecondsLabel(selectedCostSummary.totalAtPerPieceSeconds)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        AT vs ST 차이율
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: selectedCostSummary?.needsStReview ? 700 : 400,
+                          color:
+                            selectedCostSummary?.atVsBasePercent == null
+                              ? 'text.secondary'
+                              : selectedCostSummary.atVsBasePercent > 0
+                                ? 'error.main'
+                                : 'success.main',
+                        }}
+                      >
+                        {formatPercentLabel(selectedCostSummary?.atVsBasePercent)}
+                      </Typography>
+                    </Box>
+                    {selectedCostSummary?.atCoverageCount > 0 &&
+                      selectedCostSummary.atCoverageCount < selectedProcessRows.length && (
+                        <Typography variant="caption" color="text.secondary">
+                          AT 데이터 보유 공정: {selectedCostSummary.atCoverageCount}/{selectedProcessRows.length}
+                        </Typography>
+                      )}
+                    {selectedCostSummary?.needsStReview && (
+                      <Alert severity="warning">
+                        ST 조정 필요: 현재 AT 예측이 ST 대비 {formatPercentLabel(selectedCostSummary.atVsBasePercent)}
+                      </Alert>
+                    )}
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
                         한 벌 배정 공임

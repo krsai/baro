@@ -24,6 +24,7 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { normalizeProcesses } from '../../../utils/processTime';
+import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
 const formatCurrencyDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
@@ -54,6 +55,39 @@ const calcDivergence = (proposed, base) => {
   return ((p - b) / b) * 100;
 };
 
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
+
+const toOptionalNonNegativeNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+};
+
+const resolveAtParams = (process) => {
+  const raw = process?.atParams;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const a = toOptionalNonNegativeNumber(raw.a);
+  const b = toOptionalNonNegativeNumber(raw.b);
+  if (a == null || b == null) return null;
+  return { a, b };
+};
+
+const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
+  const normalizedOrderQuantity = Math.max(1, toPositiveInt(orderQuantity, 1));
+  const atParams = resolveAtParams(process);
+  if (atParams) {
+    return atParams.a * normalizedOrderQuantity + atParams.b;
+  }
+  const at = Number(process?.at);
+  if (Number.isFinite(at) && at > 0) return at;
+  return null;
+};
+
 const CtReviewBoard = () => {
   const { showNotification } = useApp();
   const { activeOrgId } = useAuth();
@@ -82,6 +116,7 @@ const CtReviewBoard = () => {
 
   // 스타일별 CT 현황: CT가 하나라도 설정된 스타일 + AT vs CT 괴리율
   const styleCtSummaries = useMemo(() => {
+    const referenceOrderQuantity = 100;
     return (Array.isArray(styles) ? styles : [])
       .map((style) => {
         const processes = normalizeProcesses(style.processes);
@@ -90,14 +125,30 @@ const CtReviewBoard = () => {
         );
         if (ctProcesses.length === 0) return null;
 
-        const totalCt = ctProcesses.reduce((sum, p) => sum + Number(p.ct), 0);
-        const totalAt = ctProcesses
-          .filter((p) => p.at != null && Number.isFinite(Number(p.at)) && Number(p.at) > 0)
-          .reduce((sum, p) => sum + Number(p.at), 0);
-        const atVsCtDivergence = totalCt > 0 && totalAt > 0
-          ? ((totalAt - totalCt) / totalCt) * 100
-          : null;
-        const needsReview = atVsCtDivergence != null && Math.abs(atVsCtDivergence) >= 10;
+        const processDetails = ctProcesses.map((process) => {
+          const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+          const ct = Number(process.ct) * processQuantity;
+          const atPerProcess = resolveProcessAtSeconds(process, referenceOrderQuantity);
+          const at = atPerProcess == null ? null : atPerProcess * processQuantity;
+          const divergence = at == null ? null : calcDivergence(at, ct);
+          return {
+            name: process.name || process.code || '-',
+            quantity: processQuantity,
+            ct,
+            at,
+            divergence,
+          };
+        });
+        const totalCt = processDetails.reduce((sum, process) => sum + process.ct, 0);
+        const atCovered = processDetails.filter((process) => process.at != null);
+        const totalAt =
+          atCovered.length > 0
+            ? atCovered.reduce((sum, process) => sum + process.at, 0)
+            : null;
+        const atVsCtDivergence = totalAt == null ? null : calcDivergence(totalAt, totalCt);
+        const needsReview =
+          atVsCtDivergence != null &&
+          Math.abs(atVsCtDivergence) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
 
         return {
           id: style.id,
@@ -105,18 +156,12 @@ const CtReviewBoard = () => {
           styleCode: style.styleCode || style.id || '-',
           customer: style.customer || '-',
           totalCt,
-          totalAt: totalAt > 0 ? totalAt : null,
+          totalAt,
           atVsCtDivergence,
           needsReview,
+          atCoverageCount: atCovered.length,
           ctProcessCount: ctProcesses.length,
-          processDetails: ctProcesses.map((p) => ({
-            name: p.name || p.code || '-',
-            ct: Number(p.ct),
-            at: p.at != null ? Number(p.at) : null,
-            divergence: p.at != null && Number(p.ct) > 0
-              ? ((Number(p.at) - Number(p.ct)) / Number(p.ct)) * 100
-              : null,
-          })),
+          processDetails,
         };
       })
       .filter(Boolean)
@@ -133,6 +178,7 @@ const CtReviewBoard = () => {
     const map = new Map();
     styleCtSummaries.forEach((s) => {
       if (s.totalAt != null) {
+        map.set(String(s.id), s.totalAt);
         map.set(s.name, s.totalAt);
       }
     });
@@ -347,6 +393,9 @@ const CtReviewBoard = () => {
                     const busy = actioningId === String(item.id);
                     const expanded = expandedId === String(item.id);
                     const proposal = item.proposal;
+                    const styleAtSeconds =
+                      styleAtMap.get(String(item?.card?.styleId || '')) ??
+                      styleAtMap.get(item.label);
 
                     return (
                       <React.Fragment key={item.id}>
@@ -384,7 +433,7 @@ const CtReviewBoard = () => {
                             })}
                           </TableCell>
                           <TableCell align="right" sx={{ color: 'text.secondary' }}>
-                            {formatSeconds(styleAtMap.get(item.label))}
+                            {formatSeconds(styleAtSeconds)}
                           </TableCell>
                           <TableCell align="right">
                             {formatSeconds(proposal?.totalBasePerPieceSeconds)}
@@ -756,8 +805,8 @@ const CtReviewBoard = () => {
                       summary.atVsCtDivergence == null
                         ? 'text.secondary'
                         : summary.atVsCtDivergence > 0
-                          ? 'success.main'
-                          : 'error.main';
+                          ? 'error.main'
+                          : 'success.main';
                     const expanded = expandedStyleId === String(summary.id);
 
                     return (
@@ -782,7 +831,14 @@ const CtReviewBoard = () => {
                           </TableCell>
                           <TableCell align="right">{formatSeconds(summary.totalCt)}</TableCell>
                           <TableCell align="right">
-                            {summary.totalAt != null ? formatSeconds(summary.totalAt) : '-'}
+                            <Typography variant="body2">
+                              {summary.totalAt != null ? formatSeconds(summary.totalAt) : '-'}
+                            </Typography>
+                            {summary.atCoverageCount < summary.ctProcessCount && (
+                              <Typography variant="caption" color="text.secondary">
+                                {summary.atCoverageCount}/{summary.ctProcessCount}
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell align="right">
                             <Typography variant="body2" sx={{ color: divColor, fontWeight: 700 }}>
@@ -840,8 +896,8 @@ const CtReviewBoard = () => {
                                           proc.divergence == null
                                             ? 'text.secondary'
                                             : proc.divergence > 0
-                                              ? 'success.main'
-                                              : 'error.main';
+                                              ? 'error.main'
+                                              : 'success.main';
                                         return (
                                           <TableRow key={idx}>
                                             <TableCell>{proc.name}</TableCell>
@@ -854,7 +910,14 @@ const CtReviewBoard = () => {
                                             <TableCell align="right">
                                               <Typography
                                                 variant="body2"
-                                                sx={{ color: pColor, fontWeight: proc.divergence != null && Math.abs(proc.divergence) >= 10 ? 700 : 400 }}
+                                                sx={{
+                                                  color: pColor,
+                                                  fontWeight:
+                                                    proc.divergence != null &&
+                                                    Math.abs(proc.divergence) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT
+                                                      ? 700
+                                                      : 400,
+                                                }}
                                               >
                                                 {proc.divergence != null
                                                   ? formatPercent(proc.divergence)

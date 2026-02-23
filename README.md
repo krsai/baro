@@ -18,6 +18,7 @@ npm run setup:env
 VITE_API_BASE_URL=http://localhost:4000
 VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+VITE_ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT=10
 ```
 
 `backend/.env`
@@ -25,12 +26,19 @@ VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 ```dotenv
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DB_NAME?schema=public
 PORT=4000
+BUSINESS_TIME_ZONE=Asia/Seoul
 ```
 
 ## 3. 실행
 
 ```powershell
 npm run dev
+```
+
+## 4. 회귀 테스트
+
+```powershell
+npm run test:regression
 ```
 
 ## 사무실/노트북 공유 권장 방식

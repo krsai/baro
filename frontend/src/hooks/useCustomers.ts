@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { todayDateKey } from '../utils/dateKey.mjs';
 
 export interface Customer {
   id: number;
@@ -34,7 +35,7 @@ export const useCustomers = () => {
 
   const addCustomer = (newCustomer: Omit<Customer, 'id' | 'registeredAt'>) => {
     const id = Math.max(...customers.map((c) => c.id), 0) + 1;
-    const registeredAt = new Date().toISOString().split('T')[0]; // Current date
+    const registeredAt = todayDateKey(); // Current business date
     setCustomers((prev) => [...prev, { ...newCustomer, id, registeredAt }]);
   };
 

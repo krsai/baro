@@ -4,7 +4,10 @@
   "scripts": {
     "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
     "setup:env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-env.ps1",
-    "check:encoding": "node scripts/check-encoding.mjs"
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "test:quantity-change": "node --test scripts/quantity-change-regression.test.mjs",
+    "test:time-date": "node --test scripts/time-date-regression.test.mjs",
+    "test:regression": "npm run test:quantity-change && npm run test:time-date"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

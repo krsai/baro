@@ -1,4 +1,4 @@
-import { formatNumberWithCommas } from './numberFormat';
+﻿import { formatNumberWithCommas } from './numberFormat';
 
 const toOptionalNumber = (value) => {
   if (value === '' || value === null || value === undefined) return null;
@@ -14,6 +14,16 @@ const toPositiveInt = (value, fallback = 1) => {
 };
 
 const hasTime = (value) => typeof value === 'number' && Number.isFinite(value);
+
+const resolveAtParams = (process) => {
+  if (!process || typeof process !== 'object') return null;
+  const raw = process.atParams;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const a = toOptionalNumber(raw.a);
+  const b = toOptionalNumber(raw.b);
+  if (a === null || b === null) return null;
+  return { a, b };
+};
 
 export const normalizeProcess = (process = {}, index = 0) => {
   const { st: _legacySt, ...safeProcess } = process || {};
@@ -36,10 +46,8 @@ export const normalizeProcesses = (processes) => {
   return processes.map((process, index) => normalizeProcess(process, index));
 };
 
-// AT is now calculated via regression analysis from work records.
-// Legacy ST keys are ignored and stripped during normalization.
-// AT represents actual work time including sub-tasks (thread tangles, adjustments, rework).
-// Foundation hook: connect work log regression-based AT here once Work domain is integrated.
+// AT is now calculated via work records. If there is an override payload from
+// analytics, prefer it; otherwise keep the existing AT value.
 export const resolveProcessActualTime = ({ existingAt = null, workStats = null }) => {
   if (workStats && typeof workStats === 'object' && workStats.actualTime != null) {
     return toOptionalNumber(workStats.actualTime);
@@ -55,8 +63,30 @@ export const calculateProcessLineTotal = (process, key) => {
   return quantity * time;
 };
 
-// 공식 CT 기준 시간 반환. 우선순위: ct → at → pt
-// ct: 버전 관리되는 공식 CT / at: 실적 기반 참고값 / pt: 초기 계획값
+// Calculate total seconds for an order quantity.
+// - pt/ct: linear (processTime * process.quantity * orderQuantity)
+// - at: if atParams({a,b}) exists, use a*q + b model; otherwise linear AT fallback
+export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuantity = 1) => {
+  if (key !== 'pt' && key !== 'at' && key !== 'ct') return 0;
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+
+  return normalizeProcesses(processes).reduce((acc, process) => {
+    const processQuantity = toPositiveInt(process?.quantity, 1);
+
+    if (key === 'at') {
+      const atParams = resolveAtParams(process);
+      if (atParams) {
+        return acc + processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
+      }
+    }
+
+    const time = toOptionalNumber(process?.[key]);
+    if (time === null) return acc;
+    return acc + processQuantity * time * resolvedOrderQuantity;
+  }, 0);
+};
+
+// Official CT baseline priority: ct -> at -> pt.
 export const resolveProcessCtBaseSeconds = (process) => {
   if (!process) return null;
   if (hasTime(process.ct)) return process.ct;
@@ -85,5 +115,5 @@ export const parseOptionalSecondsInput = (value) => {
 export const formatSeconds = (value) => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return '-';
-  return `${formatNumberWithCommas(parsed)}초`;
+  return `${formatNumberWithCommas(parsed)}\uCD08`;
 };

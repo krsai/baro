@@ -1,33 +1,56 @@
-# BARO 개발 TODO
+# BARO 미구현 체크리스트 (검증 업데이트)
 
-작업 방식: 하나씩 순서대로. 완료된 항목은 삭제. 항목 시작 전 반드시 사용자에게 확인.
+기준일: 2026-02-23  
+검증 기준: 기존 `todo.md` 항목을 실제 코드/엔드포인트/UI 동작으로 재확인
 
-개발 순서: 완료 (모든 항목 완료)
+## 1) 기존 항목 검증 결과
 
----
+- [x] 서버 날짜 계산이 UTC 기준이던 문제
+  판정: 구현 완료 (`backend/src/index.ts`의 `BUSINESS_TIME_ZONE`, `todayDateKey()` 적용 + `scripts/time-date-regression.test.mjs` 추가)
 
-## 버그 수정 (시간 관련, 우선순위 순)
+- [ ] AT가 수량별 함수가 아닌 단순 평균
+  판정: 미구현 (`backend/src/index.ts`의 `syncStyleProcessActualTimesFromWorkRecords`에서 `at = totalSeconds / totalQuantity`만 계산, `atParams(a,b)` 학습/저장 없음)
 
--🔴 **서버 날짜 계산이 한국 시간 아닌 UTC 기준** — 자정~오전 9시 사이에 작업 기록을 날짜 지정 없이 저장하면 어제 날짜로 기록됨. 서버의 "오늘 날짜" 계산을 한국 시간(UTC+9) 기준으로 수정.
+- [ ] 라인 시프트 시간이 AT 계산에 반영되지 않는 문제
+  판정: 미구현 (`backend/src/index.ts`의 `FACTORY_WORK_HOURS_PER_DAY = 8` 고정 사용, 라인별 시프트 입력/반영 경로 없음)
 
-- 🔴 **AT가 수량별 함수가 아닌 단순 평균** — agent.md 설계(소량일수록 개당 시간이 길어지는 곡선 함수)와 실제 구현(전체 기간 단순 평균)이 불일치. 둘 중 어느 방향으로 확정할지 결정 필요.
+- [ ] 월급 단가 계산의 26일 × 8시간 고정 오차
+  판정: 미구현 (`backend/src/index.ts`에서 `FACTORY_WORK_DAYS_PER_MONTH = 26`, `FACTORY_WORK_HOURS_PER_DAY = 8` 고정 분모 사용)
 
-- 🟡 **라인 시프트 시간이 AT 계산에 반영 안 됨** — 10시간 시프트 라인도 AT 계산은 무조건 8시간 기준. AT가 낮게 나와 해당 라인 배정 일정이 짧게 잡힘.
+- [ ] 수량 변경 후 배정 기간 재계산 시 휴일 미반영
+  판정: 미구현 (`frontend/src/pages/App/production/ProductionPlanBoard.jsx`의 ABSORB/DEDUCT 재계산이 `ceil(perPieceSeconds * qty / lineDailyCapacitySeconds)` 단순식)
 
-- 🟡 **월급 단가 계산의 26일 고정 오차** — 월 목표 급여를 초당 단가로 변환할 때 분모를 항상 26일 × 8시간으로 고정. 실제 근무일에 따라 ±4% 오차 발생.
+- [ ] 공휴일이 로컬 브라우저에만 저장되는 문제
+  판정: 미구현 (`frontend/src/utils/localData.js`의 localStorage 저장만 존재, 백엔드 holiday API/테이블 없음)
 
-- 🟡 **수량 변경 후 배정 기간 재계산이 휴일 무시** — 카드 수량을 수정할 때 끝나는 날짜를 단순 날수로 계산(주말·공휴일 미제외). 정상 배정 시엔 주말을 제대로 빼는데 수량 변경 후 재계산만 빠짐.
+- [x] 소셜 로그인 시 기존 활성 멤버십이 있으면 즉시 로그인
+  판정: 구현 완료 (`backend/src/index.ts`의 `/auth/context` + `frontend/src/context/AuthContext.jsx` 자동 컨텍스트 로딩)
 
-- 🟡 **공휴일이 내 PC 브라우저에만 저장됨** — 다른 PC에서 로그인하면 공휴일 설정이 없는 상태로 보임. capacity 계산 결과가 사용자마다 달라질 수 있음.
+- [ ] 신규 소셜 로그인 사용자 조직 선택/가입 신청 플로우
+  판정: 부분 구현(백엔드만) (`/org-memberships/apply` API는 있으나 `frontend/src/pages/Auth/Signup.jsx`에 조직 선택/가입 신청 UI 없음)
 
----
+- [ ] 배정 계획 실수 복구 수단(undo/redo 또는 상태 복원)
+  판정: 미구현 (자동저장 스냅샷은 있으나 사용자 복구 UI/기능 없음)
 
-## 백로그 (우선순위 미정)
+- [ ] 작업 계획 카드 진행률 바(WorkRecord 기반)
+  판정: 미구현 (`assignmentPlanId` 연결은 되어 있으나 카드 진행률 집계/표시 UI 없음)
 
-- 소셜 로그인 시, 기존에 등록된 조직과 역할이 있는지 확인하고, 정보가 있다면 즉시 로그인 처리.
-- 신규 소셜 로그인 사용자의 경우, 조직 선택 및 가입 신청 프로세스 구현.
-    - 전체 조직 목록 (구독 상태 무관) 제공.
-    - 사용자 기본 정보 입력 필드 제공.
-    - 가입 시 '작업자' 역할을 기본으로 자동 부여 (역할 변경은 관리자가 추후에 수행).
-- 배정 계획 실수 복구 수단 — 현재 자동저장만 있어서 실수 시 되돌릴 방법 없음. undo/redo 또는 최근 N개 상태 보관 중 어떤 방식이 적합한지 결정 필요.
-- 작업 계획 카드 진행률 바 — 일일 WorkRecord 기반으로 카드에 진행률 표시. 5번(assignmentPlanId 연결) 완료 후 구현 가능.
+## 2) 현재 미구현 TODO (우선순위)
+
+### P0 (시간 정확도 필수)
+
+- [ ] `atParams` 기반 AT(q) 학습 파이프라인 구현
+- [ ] AT 산출 시 라인/일자별 실제 근무시간(시프트/연장) 반영
+- [ ] 공임 단가 분모 고정(26일 × 8시간) 제거, 실제 근무 기준으로 전환
+- [ ] DELTA ABSORB/DEDUCT 시 endIndex 재계산에 휴일/비근무일 반영
+- [ ] 공휴일을 서버 저장(조직 공통)으로 전환하고 capacity 계산을 단일 기준으로 통일
+
+### P1 (기능 완성도)
+
+- [ ] 신규 소셜 로그인 온보딩 UI 구현(조직 선택, 기본정보, 가입 신청)
+- [ ] 배정 보드 복구 기능 구현(undo/redo 또는 최근 N개 상태 복원)
+- [ ] WorkRecord 누적 기반 카드 진행률 바 구현
+
+### 정책 결정 필요
+
+- [ ] 초과 공정(WorkRecord 누적 > finalQuantity) 급여 포함 여부 확정 후 반영

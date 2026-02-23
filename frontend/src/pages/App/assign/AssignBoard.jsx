@@ -16,7 +16,10 @@ import {
   STORAGE_KEYS,
   loadHolidays,
 } from '../../../utils/localData';
-import { normalizeProcesses } from '../../../utils/processTime';
+import {
+  calculateProcessTotalForOrderQuantity,
+  normalizeProcesses,
+} from '../../../utils/processTime';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -86,12 +89,6 @@ const mergeCardsWithSaved = (baseCards, savedCards) => {
   return merged;
 };
 
-const toSeconds = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  if (parsed < 0) return 0;
-  return Math.round(parsed);
-};
 const toNonNegativeInt = (value, fallback = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -204,31 +201,8 @@ const mergeFactorySeconds = (first = [], second = []) => {
   return Array.from(map.values());
 };
 
-const getFactoryMappedSeconds = (source, factoryId) => {
-  if (source == null) return null;
-  if (Array.isArray(source)) {
-    const match = source.find((item) => normalizeKey(item?.factoryId) === normalizeKey(factoryId));
-    return toSeconds(match?.seconds);
-  }
-  if (typeof source === 'object') {
-    const byRaw = toSeconds(source[factoryId]);
-    if (byRaw != null) return byRaw;
-    return toSeconds(source[String(factoryId)]);
-  }
-  return null;
-};
-
-const getProcessSeconds = (process, factoryId, field) => {
-  // PT/AT are now factory-common (no per-factory values)
-  return toSeconds(process?.[field]);
-};
-
-const getTotalByFactory = (processes, field, factoryId, quantity) =>
-  processes.reduce((sum, process) => {
-    const perPiece = getProcessSeconds(process, factoryId, field);
-    if (perPiece == null) return sum;
-    return sum + perPiece * quantity;
-  }, 0);
+const getTotalForOrderQuantity = (processes, field, orderQuantity) =>
+  calculateProcessTotalForOrderQuantity(processes, field, orderQuantity);
 
 const createCardId = (orderId, styleId, colorId, gender) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}::${normalizeGenderKey(gender)}`;
@@ -242,12 +216,9 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
 
   styleMap.forEach((style, styleId) => {
     const processes = normalizeProcesses(style?.processes);
-    const unitPtSeconds = getTotalByFactory(processes, 'pt', null, 1);
-    const unitAtSeconds = getTotalByFactory(processes, 'at', null, 1);
     styleProcessSummaryMap.set(styleId, {
       processCount: processes.length,
-      unitPtSeconds,
-      unitAtSeconds,
+      processes,
       previewUrl:
         Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
     });
@@ -300,9 +271,8 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
         const normalizedColor = normalizeColorKey(colorId);
         const normalizedGender = normalizeGenderKey(gender);
         const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
-        // PT/AT are factory-common values (not per-factory)
-        const totalPt = (processSummary?.unitPtSeconds ?? 0) * quantity;
-        const totalAt = (processSummary?.unitAtSeconds ?? 0) * quantity;
+        const totalPt = getTotalForOrderQuantity(processSummary?.processes || [], 'pt', quantity);
+        const totalAt = getTotalForOrderQuantity(processSummary?.processes || [], 'at', quantity);
         const hasAt = totalAt > 0;
         const hasPt = totalPt > 0;
         const status = hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';

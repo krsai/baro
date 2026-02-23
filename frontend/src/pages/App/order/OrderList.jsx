@@ -49,6 +49,11 @@ import {
   updateOrder as updateOrderToApi,
   deleteOrder as deleteOrderToApi,
 } from '../../../utils/orderApi';
+import {
+  calculateProcessTotalForOrderQuantity,
+  normalizeProcesses,
+} from '../../../utils/processTime';
+import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완료'];
@@ -108,6 +113,108 @@ const getStyleGroupKey = (item) => {
 };
 const getStyleIdentity = (item) => item?.styleId || item?.styleName || item?.styleCode || '';
 const normalizeColorCode = (value) => String(value ?? '').trim().toUpperCase();
+const normalizeBoardKey = (value) => String(value ?? '').trim();
+const normalizeBoardGender = (value) => {
+  const code = normalizeGenderCode(value, '').toUpperCase();
+  return GENDER_OPTIONS.includes(code) ? code : 'U';
+};
+const buildAssignmentOriginCardId = (orderId, styleId, colorId, gender) =>
+  `${normalizeBoardKey(orderId)}::${normalizeBoardKey(styleId)}::${normalizeColorCode(colorId)}::${normalizeBoardGender(gender)}`;
+const sumLegacyQuantities = (rows = []) =>
+  rows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
+const resolveLegacyRowColorKeyForBoard = (row) => {
+  const fromCode = normalizeColorCode(row?.colorCode || row?.color || row?.colorName);
+  if (fromCode) return fromCode;
+  const fromId = normalizeColorCode(row?.colorId);
+  if (!fromId || GENDER_OPTIONS.includes(fromId)) return 'UNSPEC';
+  return fromId;
+};
+const resolveOrderItemQuantityForBoard = (item) => {
+  if (Number(item?.totalQuantity) > 0) return Number(item.totalQuantity);
+  if (item?.sizeQuantities && typeof item.sizeQuantities === 'object') {
+    const qty = sumSizeQuantities(item.sizeQuantities);
+    if (qty > 0) return qty;
+  }
+  if (Array.isArray(item?.quantities)) {
+    const qty = sumLegacyQuantities(item.quantities);
+    if (qty > 0) return qty;
+  }
+  return 0;
+};
+const resolveVariantBucketsFromLegacyRowsForBoard = (rows = []) => {
+  const bucket = new Map();
+  rows.forEach((row) => {
+    const quantity = Number(row?.quantity) || 0;
+    if (quantity <= 0) return;
+    const colorId = resolveLegacyRowColorKeyForBoard(row);
+    const gender = normalizeBoardGender(row?.gender || row?.colorId);
+    const bucketKey = `${colorId}::${gender}`;
+    const current = bucket.get(bucketKey);
+    if (!current) {
+      bucket.set(bucketKey, { colorId, gender, quantity });
+      return;
+    }
+    current.quantity += quantity;
+  });
+  return Array.from(bucket.values());
+};
+const resolveOrderItemVariantBucketsForBoard = (item) => {
+  const fromLegacyRows = resolveVariantBucketsFromLegacyRowsForBoard(
+    Array.isArray(item?.quantities) ? item.quantities : []
+  );
+  if (fromLegacyRows.length > 0) return fromLegacyRows;
+
+  const fallbackQuantity = resolveOrderItemQuantityForBoard(item);
+  if (fallbackQuantity <= 0) return [];
+  const fallbackColor = normalizeColorCode(item?.colorCode || item?.colorId || item?.color || 'UNSPEC');
+  const fallbackGender = normalizeBoardGender(item?.gender);
+  return [{ colorId: fallbackColor || 'UNSPEC', gender: fallbackGender, quantity: fallbackQuantity }];
+};
+const buildOrderVariantMapForBoard = ({ orderId, items }) => {
+  const normalizedOrderId = normalizeBoardKey(orderId);
+  if (!normalizedOrderId) return new Map();
+
+  return (Array.isArray(items) ? items : []).reduce((map, item) => {
+    const styleId = normalizeBoardKey(item?.styleId);
+    if (!styleId) return map;
+
+    const styleName = String(item?.styleName || '').trim();
+    const styleCode = String(item?.styleCode || '').trim();
+    const colorName = String(item?.colorName || item?.color || '').trim();
+    const variantBuckets = resolveOrderItemVariantBucketsForBoard(item);
+    variantBuckets.forEach(({ colorId, gender, quantity }) => {
+      const qty = Number(quantity) || 0;
+      if (qty <= 0) return;
+      const normalizedColor = normalizeColorCode(colorId || 'UNSPEC') || 'UNSPEC';
+      const normalizedGender = normalizeBoardGender(gender);
+      const originId = buildAssignmentOriginCardId(
+        normalizedOrderId,
+        styleId,
+        normalizedColor,
+        normalizedGender
+      );
+      const current = map.get(originId);
+      if (!current) {
+        map.set(originId, {
+          originId,
+          styleId,
+          styleName,
+          styleCode,
+          colorId: normalizedColor,
+          colorName,
+          gender: normalizedGender,
+          quantity: qty,
+        });
+        return;
+      }
+      current.quantity += qty;
+      if (!current.styleName && styleName) current.styleName = styleName;
+      if (!current.styleCode && styleCode) current.styleCode = styleCode;
+      if (!current.colorName && colorName) current.colorName = colorName;
+    });
+    return map;
+  }, new Map());
+};
 const getStyleColorGenderKey = (styleIdentity, colorCode, gender) => {
   const normalizedGender = normalizeGenderCode(gender, '');
   const normalizedColorCode = normalizeColorCode(colorCode);
@@ -613,6 +720,20 @@ const OrderList = () => {
       ),
     [normalizedColorOptions]
   );
+  const styleProcessSummaryById = useMemo(() => {
+    return styles.reduce((map, style) => {
+      const styleId = normalizeBoardKey(style?.id);
+      if (!styleId) return map;
+      const processes = normalizeProcesses(style?.processes);
+      map.set(styleId, {
+        processCount: processes.length,
+        processes,
+        previewUrl:
+          Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : '',
+      });
+      return map;
+    }, new Map());
+  }, [styles]);
 
   const buyerValue = useMemo(() => {
     if (formData.buyerOrgId) {
@@ -1080,51 +1201,69 @@ const OrderList = () => {
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
 
-        // 수량 변경 감지 → 차이 카드 생성
-        const oldItemQtyMap = new Map(
-          (existingOrder.items || []).map((item) => [
-            String(item.id),
-            Number.isFinite(Number(item.totalQuantity)) && Number(item.totalQuantity) > 0
-              ? Number(item.totalQuantity)
-              : sumSizeQuantities(item.sizeQuantities || {}),
-          ])
-        );
-        const generatedDeltaCards = [];
-        for (const savedItem of sanitizedItems) {
-          const oldQty = oldItemQtyMap.get(String(savedItem.id));
-          if (oldQty === undefined) continue; // 신규 항목 — 건너뜀
-          const delta = savedItem.totalQuantity - oldQty;
-          if (delta === 0) continue;
-          generatedDeltaCards.push({
-            id: `delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: 'DELTA',
-            deltaType: delta > 0 ? 'PLUS' : 'MINUS',
-            quantity: Math.abs(delta),
-            workOrderId: String(existingOrder.id),
-            orderItemId: String(savedItem.id),
-            styleId: savedItem.styleId || '',
-            label: savedItem.styleName || savedItem.styleCode || '',
-            customer: formData.buyerOrgName || formData.customerName || '',
-            colorName: savedItem.colorName || savedItem.colorCode || '',
-            gender: savedItem.gender || '',
-            createdAt: new Date().toISOString(),
-          });
-        }
-        if (generatedDeltaCards.length > 0) {
+        // 수량 변경 감지 → 기존 배정 취소 후 미배정 카드 재생성
+        const oldVariantMap = buildOrderVariantMapForBoard({
+          orderId: existingOrder.id,
+          items: existingOrder.items || [],
+        });
+        const nextVariantMap = buildOrderVariantMapForBoard({
+          orderId: existingOrder.id,
+          items: sanitizedItems,
+        });
+        const changedVariantIds = Array.from(
+          new Set([...oldVariantMap.keys(), ...nextVariantMap.keys()])
+        ).filter((originId) => {
+          const oldQty = Number(oldVariantMap.get(originId)?.quantity) || 0;
+          const nextQty = Number(nextVariantMap.get(originId)?.quantity) || 0;
+          return oldQty !== nextQty;
+        });
+
+        if (changedVariantIds.length > 0) {
           try {
-            const bsQuery = buildQueryString({ orgId: activeOrgId });
-            const boardState = await requestJSON('/assignment-board-state' + bsQuery).catch(() => ({ cards: [], assignments: [] }));
-            await requestJSON('/assignment-board-state' + bsQuery, {
+            const boardQuery = buildQueryString({ orgId: activeOrgId });
+            const boardState = await requestJSON('/assignment-board-state' + boardQuery).catch(
+              () => ({ cards: [], assignments: [] })
+            );
+            const currentCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+            const currentAssignments = Array.isArray(boardState?.assignments)
+              ? boardState.assignments
+              : [];
+            const customerName =
+              formData.buyerOrgName ||
+              formData.customerName ||
+              existingOrder.buyerOrgName ||
+              existingOrder.customerName ||
+              existingOrder.customer ||
+              '';
+            const nextBoardState = reconcileBoardStateForQuantityChanges({
+              currentCards,
+              currentAssignments,
+              changedVariantIds,
+              nextVariantMap,
+              styleProcessSummaryById,
+              orderId: existingOrder.id,
+              orderNumber: existingOrder.orderNumber,
+              customerName,
+              calculateProcessTotalForOrderQuantity,
+            });
+
+            await requestJSON('/assignment-board-state' + boardQuery, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                cards: [...(Array.isArray(boardState?.cards) ? boardState.cards : []), ...generatedDeltaCards],
-                assignments: Array.isArray(boardState?.assignments) ? boardState.assignments : [],
+                cards: nextBoardState.cards,
+                assignments: nextBoardState.assignments,
               }),
             });
-            showNotification(`수량 변경 ${generatedDeltaCards.length}건이 배정 보드 미배정 풀에 추가되었습니다.`, 'info');
-          } catch (_deltaErr) {
-            // 비중요 오류 — 수주 저장 성공에 영향 없음
+
+            if (nextBoardState.cancelledAssignmentCount > 0) {
+              showNotification(
+                `\uACC4\uC57D \uC218\uB7C9 \uBCC0\uACBD\uC73C\uB85C \uAE30\uC874 \uBC30\uC815 ${nextBoardState.cancelledAssignmentCount}\uAC74\uC774 \uCDE8\uC18C\uB418\uC5B4 \uBBF8\uBC30\uC815 \uCE74\uB4DC\uB85C \uC804\uD658\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`,
+                'info'
+              );
+            }
+          } catch (_boardUpdateErr) {
+            // Keep order save successful even if board sync fails.
           }
         }
       } else {

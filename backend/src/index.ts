@@ -1490,7 +1490,27 @@ const normalizeDateKey = (value: any) => {
   const trimmed = value.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
-const todayDateKey = () => new Date().toISOString().slice(0, 10);
+const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
+const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    if (!year || !month || !day) return "";
+    return `${year}-${month}-${day}`;
+  } catch (_error) {
+    return date.toISOString().slice(0, 10);
+  }
+};
+const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
 const toNonNegativeInt = (value: any, fallback = 0) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -1639,6 +1659,32 @@ const toOptionalDateValue = (value: any, fallback: any = null) => {
 };
 const resolveAssignmentCtStatus = (value: any) =>
   ASSIGNMENT_CT_STATUSES.has(value) ? value : "PENDING";
+const resolveAssignmentPlanExternalIds = (items: any) =>
+  ensureArray(items)
+    .map((item) => resolveOptionalString(item?.id ?? item?.externalId, null))
+    .filter((value): value is string => Boolean(value));
+const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
+  const stateByExternalId = ensureArray(stateAssignments).reduce((map, item) => {
+    if (!item || typeof item !== "object") return map;
+    const externalId = resolveOptionalString(item.id ?? item.externalId, null);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, item);
+    return map;
+  }, new Map<string, any>());
+
+  return ensureArray(plans).map((plan) => {
+    const base = toAssignmentPlanResponse(plan);
+    const stateItem = stateByExternalId.get(base.id);
+    if (!stateItem || typeof stateItem !== "object") return base;
+    return {
+      ...stateItem,
+      ...base,
+      id: base.id,
+      lineId: String(base.lineId),
+      ctOverride: Boolean(stateItem.ctOverride),
+    };
+  });
+};
 const toAssignmentPlanResponse = (plan: any) => ({
   id: plan.externalId,
   lineId: String(plan.lineId),
@@ -1669,6 +1715,9 @@ const toAssignmentPlanResponse = (plan: any) => ({
   startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
   startDayPercent: plan.startDayPercent ?? null,
   endDayPercent: plan.endDayPercent ?? null,
+  isCompleted: plan.isCompleted ?? false,
+  finalQuantity: plan.finalQuantity ?? null,
+  completedAt: plan.completedAt ?? null,
   createdAt: plan.createdAt,
   updatedAt: plan.updatedAt,
 });
@@ -1691,6 +1740,13 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       const ctStatus = resolveAssignmentCtStatus(
         resolveOptionalString(item.ctStatus, "PENDING") ?? "PENDING"
       );
+      const isCompleted = Boolean(item.isCompleted);
+      const finalQuantity = isCompleted
+        ? toOptionalNonNegativeInt(item.finalQuantity, undefined)
+        : null;
+      const completedAt = isCompleted
+        ? toOptionalDateValue(item.completedAt, undefined)
+        : null;
 
       return {
         lineId: lineIdNum,
@@ -1722,6 +1778,9 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
         startDayPercent: toOptionalFloat(item.startDayPercent, null),
         endDayPercent: toOptionalFloat(item.endDayPercent, null),
+        isCompleted,
+        finalQuantity,
+        completedAt,
         updatedAt: new Date(),
       };
     })
@@ -1735,7 +1794,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
 const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | null = null) => ({
   cards: ensureArray(state?.cards),
   assignments: Array.isArray(assignmentPlans) && assignmentPlans.length > 0
-    ? assignmentPlans.map(toAssignmentPlanResponse)
+    ? mergeAssignmentPlanResponsesWithState(assignmentPlans, ensureArray(state?.assignments))
     : ensureArray(state?.assignments),
   createdAt: state?.createdAt ?? null,
   updatedAt: state?.updatedAt ?? null,
@@ -1751,10 +1810,6 @@ const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, n
         where: { lineId, endAt: null },
       });
       result[lineId] = count;
-      await prisma.line.update({
-        where: { id: lineId },
-        data: { headcount: count },
-      });
     })
   );
   return result;
@@ -3052,8 +3107,22 @@ app.get("/assignment-plans", async (req, res) => {
     return res.status(400).json({ ok: false, error: "lineId is required" });
   }
 
+  const boardState = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+    select: { assignments: true },
+  });
+  const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
+  const hasBoardAssignments = Array.isArray(boardState?.assignments);
+  if (hasBoardAssignments && activeExternalIds.length === 0) {
+    return res.json([]);
+  }
+
   const plans = await prisma.assignmentPlan.findMany({
-    where: { orgId: organization.id, lineId },
+    where: {
+      orgId: organization.id,
+      lineId,
+      ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
+    },
     orderBy: [{ startIndex: "asc" }, { id: "asc" }],
   });
 
@@ -3373,15 +3442,21 @@ app.get("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const [state, assignmentPlans] = await Promise.all([
-    prisma.assignmentBoardState.findUnique({
-      where: { orgId: organization.id },
-    }),
-    prisma.assignmentPlan.findMany({
-      where: { orgId: organization.id },
-      orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    }),
-  ]);
+  const state = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+  });
+  const activeExternalIds = resolveAssignmentPlanExternalIds(state?.assignments);
+  const hasBoardAssignments = Array.isArray(state?.assignments);
+  const assignmentPlans =
+    hasBoardAssignments && activeExternalIds.length === 0
+      ? []
+      : await prisma.assignmentPlan.findMany({
+          where: {
+            orgId: organization.id,
+            ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
+          },
+          orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+        });
 
   res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
 });
@@ -3412,25 +3487,96 @@ app.put("/assignment-board-state", async (req, res) => {
       },
     });
 
-    await tx.assignmentPlan.deleteMany({
+    const existingPlans = await tx.assignmentPlan.findMany({
       where: { orgId: organization.id },
+      select: { id: true, externalId: true },
     });
+    const existingByExternalId = new Map(
+      existingPlans.map((plan) => [plan.externalId, plan])
+    );
+    const incomingExternalIdSet = new Set(
+      normalizedPlans.map((item: any) => item.externalId)
+    );
 
-    if (normalizedPlans.length > 0) {
-      await tx.assignmentPlan.createMany({
-        data: normalizedPlans.map((item: any) => ({
+    for (const item of normalizedPlans) {
+      const existing = existingByExternalId.get(item.externalId);
+      if (existing) {
+        await tx.assignmentPlan.update({
+          where: { id: existing.id },
+          data: {
+            lineId: item.lineId,
+            cardId: item.cardId ?? null,
+            orderNo: item.orderNo ?? null,
+            customer: item.customer ?? null,
+            label: item.label ?? null,
+            colorName: item.colorName ?? null,
+            previewUrl: item.previewUrl ?? null,
+            imageUrl: item.imageUrl ?? null,
+            thumbnailUrl: item.thumbnailUrl ?? null,
+            quantity: item.quantity ?? null,
+            originOrderId: item.originOrderId ?? null,
+            basis: item.basis ?? null,
+            proposalBasis: item.proposalBasis ?? null,
+            proposalSeconds: item.proposalSeconds ?? null,
+            contractedSeconds: item.contractedSeconds ?? null,
+            ctStatus: item.ctStatus,
+            ctSource: item.ctSource ?? null,
+            ctAgreedBy: item.ctAgreedBy ?? null,
+            ctAgreedAt: item.ctAgreedAt ?? null,
+            ctNote: item.ctNote ?? null,
+            color: item.color ?? null,
+            stripeColor: item.stripeColor ?? null,
+            totalSeconds: item.totalSeconds ?? null,
+            startIndex: item.startIndex,
+            endIndex: item.endIndex,
+            startDayOffsetPercent: item.startDayOffsetPercent ?? null,
+            startDayPercent: item.startDayPercent ?? null,
+            endDayPercent: item.endDayPercent ?? null,
+            isCompleted: item.isCompleted ?? false,
+            finalQuantity:
+              item.finalQuantity === undefined ? undefined : item.finalQuantity ?? null,
+            completedAt:
+              item.completedAt === undefined ? undefined : item.completedAt ?? null,
+            updatedAt: item.updatedAt ?? new Date(),
+          },
+        });
+        continue;
+      }
+
+      await tx.assignmentPlan.create({
+        data: {
           orgId: organization.id,
           ...item,
-        })),
+        },
+      });
+    }
+
+    const obsoletePlans = existingPlans.filter(
+      (plan) => !incomingExternalIdSet.has(plan.externalId)
+    );
+    for (const obsolete of obsoletePlans) {
+      const linkedWorkRecord = await tx.workRecord.findFirst({
+        where: { assignmentPlanId: obsolete.id },
+        select: { id: true },
+      });
+      if (linkedWorkRecord) continue;
+      await tx.assignmentPlan.delete({
+        where: { id: obsolete.id },
       });
     }
 
     return state;
   }, { timeout: 30000 });
-  const persistedPlans = await prisma.assignmentPlan.findMany({
-    where: { orgId: organization.id },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-  });
+  const persistedPlans =
+    normalizedPlans.length > 0
+      ? await prisma.assignmentPlan.findMany({
+          where: {
+            orgId: organization.id,
+            externalId: { in: normalizedPlans.map((item: any) => item.externalId) },
+          },
+          orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+        })
+      : [];
 
   res.json(toAssignmentBoardStateResponse(updated, persistedPlans));
 });

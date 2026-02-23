@@ -25,6 +25,7 @@ import {
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
+import { todayDateKey } from '../../../utils/dateKey.mjs';
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -51,7 +52,7 @@ const createEmptyStyle = () => ({
 const createStyleId = () => `S-${Date.now().toString(36).slice(-6).toUpperCase()}`;
 
 const buildPayload = (data) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateKey();
   const trimmedName = (data.name || '').trim();
   const trimmedCode = (data.styleCode || '').trim();
   const fallbackCode = trimmedName || (data.id || '').trim();
