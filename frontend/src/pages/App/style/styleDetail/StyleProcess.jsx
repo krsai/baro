@@ -191,6 +191,9 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [timeRefQuantity, setTimeRefQuantity] = useState(() =>
     resolveCommonTimeRefQuantity(safeProcesses)
   );
+  const [timeRefQuantityInput, setTimeRefQuantityInput] = useState(() =>
+    String(resolveCommonTimeRefQuantity(safeProcesses))
+  );
   const [attributeProcesses, setAttributeProcesses] = useState([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
@@ -328,31 +331,33 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   useEffect(() => {
     if (safeProcesses.length === 0) {
       setTimeRefQuantity(DEFAULT_TIME_REF_QUANTITY);
+      setTimeRefQuantityInput(String(DEFAULT_TIME_REF_QUANTITY));
       return;
     }
     const nextRef = resolveCommonTimeRefQuantity(safeProcesses);
     setTimeRefQuantity((prev) => (prev === nextRef ? prev : nextRef));
+    setTimeRefQuantityInput(String(nextRef));
   }, [safeProcesses]);
 
+  // 입력 중: raw 문자열만 저장 (파싱하지 않음)
   const handleTimeRefQuantityChange = (event) => {
-    const nextValue = toPositiveInt(
-      event.target.value,
-      DEFAULT_TIME_REF_QUANTITY
-    );
+    setTimeRefQuantityInput(event.target.value);
+  };
+
+  // 포커스 벗어날 때: 파싱 후 적용 및 공정 동기화
+  const handleTimeRefQuantityBlur = () => {
+    const nextValue = toPositiveInt(timeRefQuantityInput, DEFAULT_TIME_REF_QUANTITY);
     setTimeRefQuantity(nextValue);
+    setTimeRefQuantityInput(String(nextValue));
     if (safeProcesses.length === 0) return;
     const needsSync = safeProcesses.some(
       (process) =>
-        toPositiveInt(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY) !==
-        nextValue
+        toPositiveInt(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY) !== nextValue
     );
     if (!needsSync) return;
     onProcessesChange(
       safeProcesses.map((process) =>
-        normalizeProcess({
-          ...process,
-          timeRefQuantity: nextValue,
-        })
+        normalizeProcess({ ...process, timeRefQuantity: nextValue })
       )
     );
   };
@@ -500,9 +505,12 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
               size="small"
               type="number"
               label="기준 수량 q"
-              value={timeRefQuantity}
+              value={timeRefQuantityInput}
               onChange={handleTimeRefQuantityChange}
+              onBlur={handleTimeRefQuantityBlur}
+              onWheel={(e) => e.target.blur()}
               inputProps={{ min: 1, step: 1 }}
+              placeholder="1,000"
               sx={{ width: 140 }}
             />
           </Tooltip>
@@ -614,6 +622,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             onChange={(event) => {
                               setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
                             }}
+                            onWheel={(e) => e.target.blur()}
                             inputProps={{ min: 0 }}
                             placeholder="-"
                             sx={{ width: 86 }}
@@ -645,6 +654,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                   st: nextValue,
                                 }));
                               }}
+                              onWheel={(e) => e.target.blur()}
                               inputProps={{ min: 0 }}
                               placeholder="-"
                               sx={{ width: 86 }}
@@ -778,6 +788,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                         onChange={(event) =>
                                           setEditDraft((prev) => ({ ...prev, pt: event.target.value }))
                                         }
+                                        onWheel={(e) => e.target.blur()}
                                         inputProps={{ min: 0 }}
                                         placeholder="-"
                                         sx={{ width: 86 }}
@@ -813,6 +824,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                               st: nextValue,
                                             }));
                                           }}
+                                          onWheel={(e) => e.target.blur()}
                                           inputProps={{ min: 0 }}
                                           placeholder="-"
                                           sx={{ width: 86 }}

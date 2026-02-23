@@ -565,7 +565,7 @@ const LineBoard = () => {
                         : workersInLine.length;
 
                     return (
-                      <Grid item xs={12} sm={6} lg={3} key={line.id}>
+                      <Grid item xs={6} key={line.id}>
                         <Paper
                           variant="outlined"
                           sx={{

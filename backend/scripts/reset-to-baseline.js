@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * 테스트 초기화 스크립트 — test-initial-state.md baseline v1.3 기준
+ * 테스트 초기화 스크립트 — test-initial-state.md baseline v1.4 기준
  *
  * 삭제 대상:
  *   WorkLog (→ WorkRecord 자동 cascade)
@@ -41,6 +41,47 @@ const BASELINE_PROCESSES = [
   { code: 'P08', name: '테스트 공정 08' },
   { code: 'P09', name: '테스트 공정 09' },
   { code: 'P10', name: '테스트 공정 10' },
+];
+
+// 샘플 스타일 정의
+// Style A: 공정 6개, q=1000, PT 합계 5,000초
+// Style B: 공정 7개, q=1000, PT 합계 7,000초
+const BASELINE_STYLES = [
+  {
+    styleId: 'S-SAMPLE-A',
+    styleCode: 'SA-001',
+    name: '샘플 스타일 A',
+    registrationDate: '2025-01-01',
+    season: '2025SS',
+    collection: '샘플 컬렉션',
+    processes: [
+      { code: 'P01', name: '테스트 공정 01', pt:  950, timeRefQuantity: 1000 },
+      { code: 'P02', name: '테스트 공정 02', pt:  900, timeRefQuantity: 1000 },
+      { code: 'P03', name: '테스트 공정 03', pt:  850, timeRefQuantity: 1000 },
+      { code: 'P04', name: '테스트 공정 04', pt:  800, timeRefQuantity: 1000 },
+      { code: 'P05', name: '테스트 공정 05', pt:  750, timeRefQuantity: 1000 },
+      { code: 'P06', name: '테스트 공정 06', pt:  750, timeRefQuantity: 1000 },
+      // PT 합계: 5,000초 / q=1,000
+    ],
+  },
+  {
+    styleId: 'S-SAMPLE-B',
+    styleCode: 'SB-001',
+    name: '샘플 스타일 B',
+    registrationDate: '2025-01-01',
+    season: '2025SS',
+    collection: '샘플 컬렉션',
+    processes: [
+      { code: 'P01', name: '테스트 공정 01', pt: 1100, timeRefQuantity: 1000 },
+      { code: 'P02', name: '테스트 공정 02', pt: 1050, timeRefQuantity: 1000 },
+      { code: 'P03', name: '테스트 공정 03', pt: 1000, timeRefQuantity: 1000 },
+      { code: 'P04', name: '테스트 공정 04', pt: 1000, timeRefQuantity: 1000 },
+      { code: 'P05', name: '테스트 공정 05', pt: 1000, timeRefQuantity: 1000 },
+      { code: 'P06', name: '테스트 공정 06', pt:  950, timeRefQuantity: 1000 },
+      { code: 'P07', name: '테스트 공정 07', pt:  900, timeRefQuantity: 1000 },
+      // PT 합계: 7,000초 / q=1,000
+    ],
+  },
 ];
 
 const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
@@ -84,35 +125,35 @@ async function main() {
     where: { orgId: manufacturer.id },
   });
   results.workLog = deletedWorkLogs.count;
-  console.log(`[1/7] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
+  console.log(`[1/8] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
 
   // 2. Style 삭제 (TSMF + TSBR 전체)
   const deletedStyles = await prisma.style.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.style = deletedStyles.count;
-  console.log(`[2/7] Style: ${deletedStyles.count}건 삭제`);
+  console.log(`[2/8] Style: ${deletedStyles.count}건 삭제`);
 
   // 3. WorkOrder 삭제
   const deletedOrders = await prisma.workOrder.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.workOrder = deletedOrders.count;
-  console.log(`[3/7] WorkOrder: ${deletedOrders.count}건 삭제`);
+  console.log(`[3/8] WorkOrder: ${deletedOrders.count}건 삭제`);
 
   // 4. AssignmentPlan 삭제
   const deletedPlans = await prisma.assignmentPlan.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentPlan = deletedPlans.count;
-  console.log(`[4/7] AssignmentPlan: ${deletedPlans.count}건 삭제`);
+  console.log(`[4/8] AssignmentPlan: ${deletedPlans.count}건 삭제`);
 
   // 5. AssignmentBoardState 삭제
   const deletedBoardState = await prisma.assignmentBoardState.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentBoardState = deletedBoardState.count;
-  console.log(`[5/7] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
+  console.log(`[5/8] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
 
   // 6. AttrProcess: 전체 삭제 후 P01~P10 복원
   await prisma.attrProcess.deleteMany({ where: { orgId: manufacturer.id } });
@@ -121,7 +162,7 @@ async function main() {
     skipDuplicates: true,
   });
   results.attrProcess = `P01~P10 복원`;
-  console.log(`[6/7] AttrProcess: P01~P10 복원 완료`);
+  console.log(`[6/8] AttrProcess: P01~P10 복원 완료`);
 
   // 7. 유지 데이터의 영문 레거시 명칭을 한글 기준명으로 정규화
   let normalizedFactories = 0;
@@ -194,8 +235,29 @@ async function main() {
     employee: normalizedEmployees,
   };
   console.log(
-    `[7/7] 유지 데이터 명칭 한글화: Factory ${normalizedFactories}건, Line ${normalizedLines}건, Employee ${normalizedEmployees}건`
+    `[7/8] 유지 데이터 명칭 한글화: Factory ${normalizedFactories}건, Line ${normalizedLines}건, Employee ${normalizedEmployees}건`
   );
+
+  // 8. 샘플 스타일 등록
+  const createdStyles = [];
+  for (const styleDef of BASELINE_STYLES) {
+    const created = await prisma.style.create({
+      data: {
+        orgId: manufacturer.id,
+        styleId: styleDef.styleId,
+        styleCode: styleDef.styleCode,
+        name: styleDef.name,
+        customer: brand.name,
+        registrationDate: styleDef.registrationDate,
+        season: styleDef.season,
+        collection: styleDef.collection,
+        processes: styleDef.processes,
+      },
+    });
+    createdStyles.push(`${created.name} (${created.styleCode})`);
+  }
+  results.styles = createdStyles;
+  console.log(`[8/8] 샘플 스타일 등록: ${createdStyles.join(', ')}`);
 
   // 현재 유지된 데이터 확인
   const remaining = await prisma.$transaction([
