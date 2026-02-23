@@ -21,6 +21,14 @@ const prisma = new PrismaClient();
 
 const MANUFACTURER_CODE = 'TSMF';
 const BRAND_CODE = 'TSBR';
+const BASELINE_FACTORY_NAME = '샘플 공장';
+const BASELINE_LINE_PREFIX = '샘플 라인';
+const BASELINE_EMPLOYEE_NAME_BY_EMAIL = {
+  'manufacturer-worker@test.local': '테스트 작업자',
+  'manufacturer-admin@test.local': '테스트 관리자',
+  'manufacturer-operator@test.local': '테스트 운영자',
+  'manufacturer-accountant@test.local': '테스트 회계담당',
+};
 
 const BASELINE_PROCESSES = [
   { code: 'P01', name: '테스트 공정 01' },
@@ -34,6 +42,20 @@ const BASELINE_PROCESSES = [
   { code: 'P09', name: '테스트 공정 09' },
   { code: 'P10', name: '테스트 공정 10' },
 ];
+
+const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
+
+const resolveBaselineLineName = (name, fallbackIndex = 1) => {
+  const text = String(name ?? '').trim();
+  const legacyMatch = text.match(/^Sample Line(?:\s+(\d+))?$/i);
+  const baselineMatch = text.match(/^샘플 라인(?:\s+(\d+))?$/);
+  const numberText =
+    legacyMatch?.[1] ?? baselineMatch?.[1] ?? String(fallbackIndex);
+  const parsed = Number(numberText);
+  const lineNumber =
+    Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallbackIndex;
+  return `${BASELINE_LINE_PREFIX} ${lineNumber}`;
+};
 
 async function main() {
   const orgs = await prisma.organization.findMany({
@@ -62,35 +84,35 @@ async function main() {
     where: { orgId: manufacturer.id },
   });
   results.workLog = deletedWorkLogs.count;
-  console.log(`[1/6] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
+  console.log(`[1/7] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
 
   // 2. Style 삭제 (TSMF + TSBR 전체)
   const deletedStyles = await prisma.style.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.style = deletedStyles.count;
-  console.log(`[2/6] Style: ${deletedStyles.count}건 삭제`);
+  console.log(`[2/7] Style: ${deletedStyles.count}건 삭제`);
 
   // 3. WorkOrder 삭제
   const deletedOrders = await prisma.workOrder.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.workOrder = deletedOrders.count;
-  console.log(`[3/6] WorkOrder: ${deletedOrders.count}건 삭제`);
+  console.log(`[3/7] WorkOrder: ${deletedOrders.count}건 삭제`);
 
   // 4. AssignmentPlan 삭제
   const deletedPlans = await prisma.assignmentPlan.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentPlan = deletedPlans.count;
-  console.log(`[4/6] AssignmentPlan: ${deletedPlans.count}건 삭제`);
+  console.log(`[4/7] AssignmentPlan: ${deletedPlans.count}건 삭제`);
 
   // 5. AssignmentBoardState 삭제
   const deletedBoardState = await prisma.assignmentBoardState.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentBoardState = deletedBoardState.count;
-  console.log(`[5/6] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
+  console.log(`[5/7] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
 
   // 6. AttrProcess: 전체 삭제 후 P01~P10 복원
   await prisma.attrProcess.deleteMany({ where: { orgId: manufacturer.id } });
@@ -99,7 +121,81 @@ async function main() {
     skipDuplicates: true,
   });
   results.attrProcess = `P01~P10 복원`;
-  console.log(`[6/6] AttrProcess: P01~P10 복원 완료`);
+  console.log(`[6/7] AttrProcess: P01~P10 복원 완료`);
+
+  // 7. 유지 데이터의 영문 레거시 명칭을 한글 기준명으로 정규화
+  let normalizedFactories = 0;
+  let normalizedLines = 0;
+  let normalizedEmployees = 0;
+
+  const factories = await prisma.factory.findMany({
+    where: { orgId: manufacturer.id },
+    select: { id: true, name: true },
+    orderBy: { id: 'asc' },
+  });
+  for (const factory of factories) {
+    const currentName = String(factory.name || '').trim();
+    if (!/^sample factory$/i.test(currentName)) continue;
+    if (currentName === BASELINE_FACTORY_NAME) continue;
+    await prisma.factory.update({
+      where: { id: factory.id },
+      data: { name: BASELINE_FACTORY_NAME },
+    });
+    normalizedFactories += 1;
+  }
+
+  const lines = await prisma.line.findMany({
+    where: { orgId: manufacturer.id },
+    select: { id: true, name: true },
+    orderBy: { id: 'asc' },
+  });
+  for (const [index, line] of lines.entries()) {
+    const currentName = String(line.name || '').trim();
+    const isLegacyLine = /^sample line(?:\s+\d+)?$/i.test(currentName);
+    const isBaselineLine = /^샘플 라인(?:\s+\d+)?$/.test(currentName);
+    if (!isLegacyLine && !isBaselineLine) continue;
+    const nextName = resolveBaselineLineName(currentName, index + 1);
+    if (currentName === nextName) continue;
+    await prisma.line.update({
+      where: { id: line.id },
+      data: { name: nextName },
+    });
+    normalizedLines += 1;
+  }
+
+  const baselineEmails = Object.keys(BASELINE_EMPLOYEE_NAME_BY_EMAIL);
+  const employees = await prisma.employee.findMany({
+    where: {
+      orgId: manufacturer.id,
+      membership: { email: { in: baselineEmails } },
+    },
+    select: {
+      id: true,
+      name: true,
+      membership: { select: { email: true } },
+    },
+  });
+
+  for (const employee of employees) {
+    const emailKey = normalizeEmail(employee.membership?.email);
+    const baselineName = BASELINE_EMPLOYEE_NAME_BY_EMAIL[emailKey];
+    if (!baselineName) continue;
+    if (String(employee.name || '').trim() === baselineName) continue;
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: { name: baselineName },
+    });
+    normalizedEmployees += 1;
+  }
+
+  results.localizedNames = {
+    factory: normalizedFactories,
+    line: normalizedLines,
+    employee: normalizedEmployees,
+  };
+  console.log(
+    `[7/7] 유지 데이터 명칭 한글화: Factory ${normalizedFactories}건, Line ${normalizedLines}건, Employee ${normalizedEmployees}건`
+  );
 
   // 현재 유지된 데이터 확인
   const remaining = await prisma.$transaction([

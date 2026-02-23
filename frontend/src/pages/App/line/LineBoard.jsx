@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Chip,
+  Divider,
   FormControl,
   Grid,
   IconButton,
@@ -15,10 +16,16 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import FactoryOutlinedIcon from '@mui/icons-material/FactoryOutlined';
+import GroupWorkOutlinedIcon from '@mui/icons-material/GroupWorkOutlined';
+import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlined';
+import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
@@ -79,6 +86,18 @@ const LineBoard = () => {
   const selectedFactory = useMemo(
     () => factories.find((f) => String(f.id) === String(selectedFactoryId)) ?? null,
     [factories, selectedFactoryId]
+  );
+  const totalWorkers = workers.length;
+  const assignedWorkers = totalWorkers - lineWorkers.unassigned.length;
+  const managerAssignedLines = useMemo(
+    () =>
+      lines.filter(
+        (line) =>
+          line.managerEmployeeId !== null &&
+          line.managerEmployeeId !== undefined &&
+          line.managerEmployeeId !== ''
+      ).length,
+    [lines]
   );
 
   const fetchFactories = async () => {
@@ -293,229 +312,400 @@ const LineBoard = () => {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           sx={{
-            px: 1.5,
-            py: 0.75,
-            mb: 0.5,
-            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0.75,
+            px: 1.25,
+            py: 0.85,
+            mb: 0.75,
+            borderRadius: 1.5,
             border: '1px solid',
-            borderColor: isManager ? 'primary.main' : 'divider',
-            backgroundColor: snapshot.isDragging ? 'action.hover' : isManager ? 'primary.50' : 'background.paper',
+            borderColor:
+              snapshot.isDragging ? 'primary.main' : isManager ? 'primary.light' : 'divider',
+            background: (theme) =>
+              snapshot.isDragging
+                ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.16)} 0%, ${theme.palette.background.paper} 100%)`
+                : isManager
+                ? alpha(theme.palette.primary.main, 0.09)
+                : theme.palette.background.paper,
             cursor: 'grab',
+            boxShadow: snapshot.isDragging ? 3 : 'none',
+            transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
           }}
         >
-          <Typography variant="body2" fontWeight={isManager ? 600 : 400} noWrap>
-            {isManager ? '★ ' : ''}{buildWorkerLabel(worker)}
+          <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
+          <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
+            {buildWorkerLabel(worker)}
           </Typography>
+          {isManager ? (
+            <Chip size="small" label="라인장" color="primary" variant="filled" />
+          ) : null}
         </Box>
       )}
     </Draggable>
   );
 
   return (
-    <AppPageContainer>
-      {/* 상단 컨트롤 */}
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2.5 }}>
-        <TextField
-          select
-          size="small"
-          label="공장"
-          value={selectedFactoryId}
-          onChange={(e) => setSelectedFactoryId(e.target.value)}
-          sx={{ minWidth: 180 }}
-          disabled={loading}
-        >
-          {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
-          {factories.map((f) => (
-            <MenuItem key={f.id} value={String(f.id)}>
-              {f.name}
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <TextField
-          size="small"
-          label="새 라인 이름"
-          value={newLineName}
-          onChange={(e) => setNewLineName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleAddLine()}
-          sx={{ width: 200 }}
-          disabled={!selectedFactoryId || saving}
-        />
-        <Button
-          variant="contained"
-          size="small"
-          startIcon={<AddIcon />}
-          onClick={handleAddLine}
-          disabled={!selectedFactoryId || saving || !newLineName.trim()}
-        >
-          라인 추가
-        </Button>
-
-        {selectedFactory && (
-          <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-            {selectedFactory.name} · 라인 {lines.length}개
+    <AppPageContainer
+      header={
+        <Stack spacing={0.75}>
+          <Typography variant="h5" fontWeight={800}>
+            라인 관리
           </Typography>
-        )}
-      </Stack>
+          <Typography variant="body2" color="text.secondary">
+            공장별 라인을 구성하고, 작업자를 드래그로 배치하며, 라인장을 지정합니다.
+          </Typography>
+        </Stack>
+      }
+    >
+      <Stack spacing={2.25}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            borderRadius: 2.5,
+            background: (theme) =>
+              `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${theme.palette.background.paper} 72%)`,
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1.25}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+          >
+            <TextField
+              select
+              size="small"
+              label="공장"
+              value={selectedFactoryId}
+              onChange={(e) => setSelectedFactoryId(e.target.value)}
+              sx={{ minWidth: { xs: '100%', md: 210 } }}
+              disabled={loading}
+            >
+              {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
+              {factories.map((f) => (
+                <MenuItem key={f.id} value={String(f.id)}>
+                  {f.name}
+                </MenuItem>
+              ))}
+            </TextField>
 
-      {/* 메인 영역 */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Grid container spacing={2} alignItems="flex-start">
-          {/* 미배정 */}
-          <Grid item xs={12} sm={3} lg={2}>
-            <Paper variant="outlined" sx={{ p: 1.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  미배정
+            <TextField
+              size="small"
+              label="새 라인 이름"
+              value={newLineName}
+              onChange={(e) => setNewLineName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddLine()}
+              sx={{ flex: 1, minWidth: { xs: '100%', md: 220 } }}
+              disabled={!selectedFactoryId || saving}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={handleAddLine}
+              disabled={!selectedFactoryId || saving || !newLineName.trim()}
+              sx={{ minWidth: 120, height: 40 }}
+            >
+              라인 추가
+            </Button>
+          </Stack>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Grid container spacing={1}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper
+                variant="outlined"
+                sx={{ p: 1.25, borderRadius: 2, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <FactoryOutlinedIcon sx={{ color: 'text.secondary', fontSize: 19 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    선택 공장
+                  </Typography>
+                </Stack>
+                <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 0.25 }} noWrap>
+                  {selectedFactory?.name || '미선택'}
                 </Typography>
-                <Chip size="small" label={lineWorkers.unassigned.length} />
-              </Stack>
-              <Droppable droppableId="unassigned">
-                {(provided, snapshot) => (
-                  <Box
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    sx={{
-                      minHeight: 120,
-                      borderRadius: 1,
-                      backgroundColor: snapshot.isDraggingOver ? 'action.selected' : 'transparent',
-                      transition: 'background-color 0.15s',
-                    }}
-                  >
-                    {lineWorkers.unassigned.length === 0 && !snapshot.isDraggingOver && (
-                      <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'center', mt: 2 }}>
-                        없음
-                      </Typography>
-                    )}
-                    {lineWorkers.unassigned.map((worker, index) =>
-                      renderWorkerCard(worker, index)
-                    )}
-                    {provided.placeholder}
-                  </Box>
-                )}
-              </Droppable>
-            </Paper>
+              </Paper>
+            </Grid>
+            <Grid item xs={4} sm={2} md={3}>
+              <Paper
+                variant="outlined"
+                sx={{ p: 1.25, borderRadius: 2, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <GroupWorkOutlinedIcon sx={{ color: 'primary.main', fontSize: 18 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    라인
+                  </Typography>
+                </Stack>
+                <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+                  {lines.length}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={4} sm={2} md={3}>
+              <Paper
+                variant="outlined"
+                sx={{ p: 1.25, borderRadius: 2, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <ManageAccountsOutlinedIcon sx={{ color: 'success.main', fontSize: 18 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    라인장 지정
+                  </Typography>
+                </Stack>
+                <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+                  {managerAssignedLines}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={4} sm={2} md={3}>
+              <Paper
+                variant="outlined"
+                sx={{ p: 1.25, borderRadius: 2, borderColor: 'divider', backgroundColor: 'background.paper' }}
+              >
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <PersonOffOutlinedIcon sx={{ color: 'warning.main', fontSize: 18 }} />
+                  <Typography variant="caption" color="text.secondary">
+                    미배정 / 전체
+                  </Typography>
+                </Stack>
+                <Typography variant="h6" fontWeight={800} lineHeight={1.2}>
+                  {lineWorkers.unassigned.length} / {totalWorkers}
+                </Typography>
+              </Paper>
+            </Grid>
           </Grid>
+        </Paper>
 
-          {/* 라인 카드 목록 */}
-          <Grid item xs={12} sm={9} lg={10}>
-            {loading ? (
-              <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
-            ) : lines.length === 0 && selectedFactory ? (
-              <Typography variant="body2" color="text.secondary">
-                {selectedFactory.name}에 등록된 라인이 없습니다. 상단에서 라인을 추가해 주세요.
-              </Typography>
-            ) : (
-              <Grid container spacing={1.5}>
-                {lines.map((line) => {
-                  const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
-                  const isEditingName = editingLineId === line.id;
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <Box sx={{ display: 'flex', gap: 2.25, alignItems: 'flex-start' }}>
+            {/* 미배정 작업자 - 전체 너비의 1/5 */}
+            <Box sx={{ flex: '0 0 20%', minWidth: 0 }}>
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2.25,
+                  borderRadius: 2.5,
+                  borderColor: 'divider',
+                  backgroundColor: 'background.paper',
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    미배정 작업자
+                  </Typography>
+                  <Chip size="small" color="warning" label={`${lineWorkers.unassigned.length}명`} />
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  라인 카드로 드래그해 배정하세요.
+                </Typography>
+                <Droppable droppableId="unassigned">
+                  {(provided, snapshot) => (
+                    <Box
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      sx={{
+                        minHeight: 400,
+                        overflowY: 'auto',
+                        borderRadius: 1.75,
+                        border: '1px dashed',
+                        borderColor: snapshot.isDraggingOver ? 'warning.main' : 'divider',
+                        backgroundColor: snapshot.isDraggingOver
+                          ? (theme) => alpha(theme.palette.warning.main, 0.08)
+                          : 'transparent',
+                        p: 0.75,
+                        transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                      }}
+                    >
+                      {lineWorkers.unassigned.length === 0 && !snapshot.isDraggingOver && (
+                        <Typography
+                          variant="caption"
+                          color="text.disabled"
+                          sx={{ display: 'block', textAlign: 'center', mt: 4 }}
+                        >
+                          미배정 인원이 없습니다.
+                        </Typography>
+                      )}
+                      {lineWorkers.unassigned.map((worker, index) =>
+                        renderWorkerCard(worker, index)
+                      )}
+                      {provided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+              </Paper>
+            </Box>
 
-                  return (
-                    <Grid item xs={12} sm={6} md={4} lg={3} key={line.id}>
-                      <Paper variant="outlined" sx={{ p: 1.5 }}>
-                        {/* 라인명 + 인원 수 */}
-                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1 }}>
-                          {isEditingName ? (
-                            <>
-                              <TextField
-                                size="small"
-                                value={editingLineName}
-                                onChange={(e) => setEditingLineName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleLineNameSave(line.id);
-                                  if (e.key === 'Escape') handleCancelLineNameEdit();
-                                }}
-                                autoFocus
-                                sx={{ flex: 1, '& .MuiInputBase-input': { py: 0.5, fontSize: 14, fontWeight: 600 } }}
-                              />
-                              <Tooltip title="저장">
-                                <IconButton size="small" onClick={() => handleLineNameSave(line.id)}>
-                                  <CheckIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="취소">
-                                <IconButton size="small" onClick={handleCancelLineNameEdit}>
-                                  <CloseIcon fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          ) : (
-                            <>
-                              <Typography variant="subtitle2" fontWeight={700} noWrap sx={{ flex: 1 }}>
-                                {line.name}
-                              </Typography>
-                              <Chip size="small" label={`${workersInLine.length}명`} color="primary" variant="outlined" />
-                              <Tooltip title="이름 편집">
-                                <IconButton
+            {/* 라인 카드들 - 전체 너비의 4/5, 내부에서 4열 */}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {loading ? (
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    라인 및 작업자 정보를 불러오는 중입니다.
+                  </Typography>
+                </Paper>
+              ) : lines.length === 0 && selectedFactory ? (
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedFactory.name}에 등록된 라인이 없습니다. 상단에서 라인을 추가해 주세요.
+                  </Typography>
+                </Paper>
+              ) : (
+                <Grid container spacing={1.5}>
+                  {lines.map((line) => {
+                    const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
+                    const isEditingName = editingLineId === line.id;
+                    const displayedHeadcount =
+                      Number.isFinite(Number(line.headcount)) && Number(line.headcount) >= 0
+                        ? Number(line.headcount)
+                        : workersInLine.length;
+
+                    return (
+                      <Grid item xs={12} sm={6} lg={3} key={line.id}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            minHeight: 360,
+                            borderRadius: 2.5,
+                            borderColor: 'divider',
+                            background: (theme) =>
+                              `linear-gradient(180deg, ${alpha(theme.palette.info.main, 0.06)} 0%, ${theme.palette.background.paper} 28%)`,
+                          }}
+                        >
+                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1.25 }}>
+                            {isEditingName ? (
+                              <>
+                                <TextField
                                   size="small"
-                                  onClick={() => handleStartLineNameEdit(line)}
-                                  disabled={saving || Boolean(editingLineId)}
-                                  sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}
-                                >
-                                  <EditIcon sx={{ fontSize: 14 }} />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
-                        </Stack>
-
-                        {/* 라인 관리자 */}
-                        <FormControl size="small" fullWidth sx={{ mb: 1 }}>
-                          <InputLabel id={`mgr-${line.id}`}>관리자</InputLabel>
-                          <Select
-                            labelId={`mgr-${line.id}`}
-                            label="관리자"
-                            value={line.managerEmployeeId || ''}
-                            onChange={(e) => handleManagerChange(line.id, e.target.value || null)}
-                            disabled={saving}
-                          >
-                            <MenuItem value="">없음</MenuItem>
-                            {workersInLine.map((w) => (
-                              <MenuItem key={w.id} value={w.id}>
-                                {buildWorkerLabel(w)}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        {/* 드롭 영역 */}
-                        <Droppable droppableId={`line-${line.id}`}>
-                          {(provided, snapshot) => (
-                            <Box
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              sx={{
-                                minHeight: 80,
-                                borderRadius: 1,
-                                border: '1px dashed',
-                                borderColor: snapshot.isDraggingOver ? 'primary.main' : 'divider',
-                                backgroundColor: snapshot.isDraggingOver ? 'primary.50' : 'grey.50',
-                                p: 0.5,
-                                transition: 'background-color 0.15s, border-color 0.15s',
-                              }}
-                            >
-                              {workersInLine.length === 0 && !snapshot.isDraggingOver && (
-                                <Typography variant="caption" color="text.disabled" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
-                                  여기로 드래그
+                                  value={editingLineName}
+                                  onChange={(e) => setEditingLineName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleLineNameSave(line.id);
+                                    if (e.key === 'Escape') handleCancelLineNameEdit();
+                                  }}
+                                  autoFocus
+                                  sx={{
+                                    flex: 1,
+                                    '& .MuiInputBase-input': {
+                                      py: 0.55,
+                                      fontSize: 14,
+                                      fontWeight: 700,
+                                    },
+                                  }}
+                                />
+                                <Tooltip title="저장">
+                                  <IconButton size="small" onClick={() => handleLineNameSave(line.id)}>
+                                    <CheckIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="취소">
+                                  <IconButton size="small" onClick={handleCancelLineNameEdit}>
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            ) : (
+                              <>
+                                <Typography variant="subtitle2" fontWeight={800} noWrap sx={{ flex: 1 }}>
+                                  {line.name}
                                 </Typography>
-                              )}
-                              {workersInLine.map((worker, index) =>
-                                renderWorkerCard(worker, index, worker.id === line.managerEmployeeId)
-                              )}
-                              {provided.placeholder}
-                            </Box>
-                          )}
-                        </Droppable>
-                      </Paper>
-                    </Grid>
-                  );
-                })}
-              </Grid>
-            )}
-          </Grid>
-        </Grid>
-      </DragDropContext>
+                                <Chip
+                                  size="small"
+                                  label={`${workersInLine.length}/${displayedHeadcount}명`}
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                                <Tooltip title="이름 편집">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleStartLineNameEdit(line)}
+                                    disabled={saving || Boolean(editingLineId)}
+                                    sx={{ opacity: 0.45, '&:hover': { opacity: 1 } }}
+                                  >
+                                    <EditIcon sx={{ fontSize: 15 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
+                          </Stack>
+
+                          <FormControl size="small" fullWidth sx={{ mb: 1.15 }}>
+                            <InputLabel id={`mgr-${line.id}`}>라인장</InputLabel>
+                            <Select
+                              labelId={`mgr-${line.id}`}
+                              label="라인장"
+                              value={line.managerEmployeeId || ''}
+                              onChange={(e) => handleManagerChange(line.id, e.target.value || null)}
+                              disabled={saving}
+                            >
+                              <MenuItem value="">없음</MenuItem>
+                              {workersInLine.map((w) => (
+                                <MenuItem key={w.id} value={w.id}>
+                                  {buildWorkerLabel(w)}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+
+                          <Droppable droppableId={`line-${line.id}`}>
+                            {(provided, snapshot) => (
+                              <Box
+                                ref={provided.innerRef}
+                                {...provided.droppableProps}
+                                sx={{
+                                  minHeight: 220,
+                                  borderRadius: 1.75,
+                                  border: '1px dashed',
+                                  borderColor: snapshot.isDraggingOver ? 'primary.main' : 'divider',
+                                  backgroundColor: snapshot.isDraggingOver
+                                    ? (theme) => alpha(theme.palette.primary.main, 0.1)
+                                    : (theme) => alpha(theme.palette.grey[500], 0.05),
+                                  p: 0.75,
+                                  transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                                }}
+                              >
+                                {workersInLine.length === 0 && !snapshot.isDraggingOver && (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.disabled"
+                                    sx={{ display: 'block', textAlign: 'center', mt: 4 }}
+                                  >
+                                    작업자를 여기로 드래그하세요.
+                                  </Typography>
+                                )}
+                                {workersInLine.map((worker, index) =>
+                                  renderWorkerCard(
+                                    worker,
+                                    index,
+                                    worker.id === line.managerEmployeeId
+                                  )
+                                )}
+                                {provided.placeholder}
+                              </Box>
+                            )}
+                          </Droppable>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              )}
+            </Box>
+          </Box>
+        </DragDropContext>
+
+        {selectedFactory ? (
+          <Typography variant="caption" color="text.secondary">
+            {selectedFactory.name} 기준 · 라인 {lines.length}개 · 배정 {assignedWorkers}명 ·
+            미배정 {lineWorkers.unassigned.length}명
+          </Typography>
+        ) : null}
+      </Stack>
     </AppPageContainer>
   );
 };

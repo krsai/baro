@@ -44,21 +44,21 @@ This file is the source-of-truth snapshot for the test reset target.
 
 ## Employees (TSMF only)
 
-- `Test Worker` (membership: `manufacturer-worker@test.local`)
-- `Test Admin` (membership: `manufacturer-admin@test.local`)
-- `Test Operator` (membership: `manufacturer-operator@test.local`)
-- `Test Accountant` (membership: `manufacturer-accountant@test.local`)
+- `테스트 작업자` (membership: `manufacturer-worker@test.local`)
+- `테스트 관리자` (membership: `manufacturer-admin@test.local`)
+- `테스트 운영자` (membership: `manufacturer-operator@test.local`)
+- `테스트 회계담당` (membership: `manufacturer-accountant@test.local`)
 
 All four employees are assigned to the same factory below.
 
 ## Factory and Line
 
-- Factory: `Sample Factory` (org: `TSMF`)
+- Factory: `샘플 공장` (org: `TSMF`)
 - Target monthly wage: `8,000,000 VND`
 - Wage per second (derived): `10.68 VND/sec` (26 days/month, 8 hours/day)
-- Line: `Sample Line` (factory: `Sample Factory`)
-- Line manager: `Test Worker`
-- Active line assignment: `Test Worker` -> `Sample Line`
+- Line: `샘플 라인 1` (factory: `샘플 공장`)
+- Line manager: `테스트 작업자`
+- Active line assignment: `테스트 작업자` -> `샘플 라인 1`
 
 ## Attributes (TSMF only)
 

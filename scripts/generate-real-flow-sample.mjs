@@ -6,12 +6,14 @@ const BRAND_CODE = "TSBR";
 
 const ACTOR_ADMIN_EMAIL = "manufacturer-admin@test.local";
 const ACTOR_OPERATOR_EMAIL = "manufacturer-operator@test.local";
+const BASELINE_FACTORY_NAMES = ["샘플 공장", "Sample Factory"];
+const BASELINE_LINE_NAMES = ["샘플 라인 1", "샘플 라인", "Sample Line 1", "Sample Line"];
 const SEED = Number(process.env.SEED) || Date.now();
 const EXTRA_DAYS = Number(process.env.EXTRA_DAYS ?? 0);
 const WORK_SECONDS_PER_DAY = 8 * 60 * 60;
 
 const TARGET_WORKERS = [
-  { email: "manufacturer-worker@test.local", name: "Test Worker" },
+  { email: "manufacturer-worker@test.local", name: "테스트 작업자" },
   { email: "sample-line-worker-01@test.local", name: "샘플 작업자 01" },
   { email: "sample-line-worker-02@test.local", name: "샘플 작업자 02" },
   { email: "sample-line-worker-03@test.local", name: "샘플 작업자 03" },
@@ -111,7 +113,9 @@ const run = async () => {
   });
   assert(Array.isArray(factories) && factories.length > 0, "no factory found for manufacturer");
   const factory =
-    factories.find((item) => String(item?.name || "").trim() === "Sample Factory") || factories[0];
+    factories.find((item) =>
+      BASELINE_FACTORY_NAMES.includes(String(item?.name || "").trim())
+    ) || factories[0];
 
   const lines = await api(
     `/lines${buildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
@@ -119,7 +123,9 @@ const run = async () => {
   );
   assert(Array.isArray(lines) && lines.length > 0, "no line found for selected factory");
   const line =
-    lines.find((item) => String(item?.name || "").trim() === "Sample Line") || lines[0];
+    lines.find((item) =>
+      BASELINE_LINE_NAMES.includes(String(item?.name || "").trim())
+    ) || lines[0];
 
   const attributes = await api(`/attributes${buildQuery({ orgId: manufacturer.id })}`, {
     userEmail: ACTOR_ADMIN_EMAIL,

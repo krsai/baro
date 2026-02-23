@@ -5,6 +5,9 @@ const requestContext = {
   userEmail: '',
   orgId: null,
 };
+const DEFAULT_GET_CACHE_TTL_MS = 45_000;
+const getResponseCache = new Map();
+const inFlightGetRequests = new Map();
 
 const networkLoadingListeners = new Set();
 const activeNetworkRequestIds = new Set();
@@ -82,56 +85,145 @@ export const createHttpError = (message, status, details = null) => {
   return error;
 };
 
-export const requestJSON = async (path, options = {}) => {
-  const { skipGlobalLoading = false, ...requestOptions } = options || {};
-  const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
+const cloneResponseData = (data) => {
+  if (data === null || data === undefined) return data;
+  if (typeof structuredClone === 'function') return structuredClone(data);
+  return JSON.parse(JSON.stringify(data));
+};
 
-  // When the caller provides an AbortSignal (e.g. from a component's useEffect cleanup),
-  // immediately clear the tracked request so the loading overlay disappears on navigation.
-  if (trackedRequestId !== null && requestOptions.signal) {
-    requestOptions.signal.addEventListener(
-      'abort',
-      () => endTrackedRequest(trackedRequestId),
-      { once: true },
-    );
+const normalizeHeadersKey = (headersInit = {}) => {
+  const headers = new Headers(headersInit || {});
+  const entries = [];
+  headers.forEach((value, key) => {
+    entries.push(`${key.toLowerCase()}:${value}`);
+  });
+  entries.sort();
+  return entries.join('|');
+};
+
+const purgeExpiredGetCache = () => {
+  const now = Date.now();
+  for (const [key, entry] of getResponseCache.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      getResponseCache.delete(key);
+    }
   }
+};
 
-  try {
-    const headers = new Headers(requestOptions.headers || {});
-    if (requestContext.userEmail && !headers.has('x-user-email')) {
-      headers.set('x-user-email', requestContext.userEmail);
-    }
-    if (requestContext.orgId && !headers.has('x-org-id')) {
-      headers.set('x-org-id', String(requestContext.orgId));
-    }
+export const requestJSON = async (path, options = {}) => {
+  const {
+    skipGlobalLoading = false,
+    skipCache = false,
+    forceRefresh = false,
+    cacheTtlMs = DEFAULT_GET_CACHE_TTL_MS,
+    ...requestOptions
+  } = options || {};
+  const method = String(requestOptions.method || 'GET')
+    .trim()
+    .toUpperCase();
+  const shouldUseCache = method === 'GET' && !skipCache;
+  const normalizedCacheTtl = Number(cacheTtlMs);
+  const effectiveCacheTtl =
+    Number.isFinite(normalizedCacheTtl) && normalizedCacheTtl > 0
+      ? normalizedCacheTtl
+      : DEFAULT_GET_CACHE_TTL_MS;
+  const cacheKey = shouldUseCache
+    ? [
+        method,
+        String(path || '').trim(),
+        `org:${requestContext.orgId || ''}`,
+        `user:${requestContext.userEmail || ''}`,
+        `headers:${normalizeHeadersKey(requestOptions.headers)}`,
+      ].join('::')
+    : '';
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...requestOptions,
-      headers,
-    });
-    const raw = await response.text();
-    let data = null;
-
-    if (raw) {
-      try {
-        data = JSON.parse(raw);
-      } catch (_error) {
-        data = raw;
+  if (shouldUseCache) {
+    purgeExpiredGetCache();
+    if (!forceRefresh) {
+      const cached = getResponseCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cloneResponseData(cached.data);
+      }
+      const inFlight = inFlightGetRequests.get(cacheKey);
+      if (inFlight) {
+        const shared = await inFlight;
+        return cloneResponseData(shared);
       }
     }
+  }
 
-    if (!response.ok) {
-      const message =
-        typeof data?.error === 'string'
-          ? data.error
-          : `Request failed (${response.status})`;
-      throw createHttpError(message, response.status, data);
+  const execute = async () => {
+    const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
+
+    // When the caller provides an AbortSignal (e.g. from a component's useEffect cleanup),
+    // immediately clear the tracked request so the loading overlay disappears on navigation.
+    if (trackedRequestId !== null && requestOptions.signal) {
+      requestOptions.signal.addEventListener(
+        'abort',
+        () => endTrackedRequest(trackedRequestId),
+        { once: true },
+      );
     }
 
-    return data;
+    try {
+      const headers = new Headers(requestOptions.headers || {});
+      if (requestContext.userEmail && !headers.has('x-user-email')) {
+        headers.set('x-user-email', requestContext.userEmail);
+      }
+      if (requestContext.orgId && !headers.has('x-org-id')) {
+        headers.set('x-org-id', String(requestContext.orgId));
+      }
+
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...requestOptions,
+        headers,
+      });
+      const raw = await response.text();
+      let data = null;
+
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch (_error) {
+          data = raw;
+        }
+      }
+
+      if (!response.ok) {
+        const message =
+          typeof data?.error === 'string'
+            ? data.error
+            : `Request failed (${response.status})`;
+        throw createHttpError(message, response.status, data);
+      }
+
+      if (method !== 'GET') {
+        // Mutating requests invalidate cached GET responses to keep views consistent.
+        getResponseCache.clear();
+      }
+
+      return data;
+    } finally {
+      if (trackedRequestId !== null) {
+        endTrackedRequest(trackedRequestId);
+      }
+    }
+  };
+
+  if (!shouldUseCache) {
+    return execute();
+  }
+
+  const networkPromise = execute();
+  inFlightGetRequests.set(cacheKey, networkPromise);
+  try {
+    const data = await networkPromise;
+    getResponseCache.set(cacheKey, {
+      data,
+      expiresAt: Date.now() + effectiveCacheTtl,
+    });
+    return cloneResponseData(data);
   } finally {
-    if (trackedRequestId !== null) {
-      endTrackedRequest(trackedRequestId);
-    }
+    inFlightGetRequests.delete(cacheKey);
   }
 };
