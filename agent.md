@@ -108,9 +108,11 @@
   - 위 규칙은 학습(AT 갱신)에만 적용하며, 실제 급여 계산 기준은 별도 정책을 따른다.
 - **구현 상태(반영 완료)**: 출퇴근 입력은 화면 + 서버 저장으로 동작하며, AT 학습 계산은 매월 5일 기준 직전 월 데이터를 반영할 때 출퇴근 입력값을 우선 사용한다. 입력이 없거나 불완전한 경우 8시간 기준으로 폴백한다.
 
-**레거시 평균 AT 제거**
-- 현재 1차 구현은 단순 평균(`AT = 전체 총시간 ÷ 전체 총수량`)을 사용해 `nextAt`를 갱신하고, 동시에 `atParams = { a: nextAt, b: 0, ... }`를 저장한다.
-- 수량 비선형(`b/q`) 및 WLS/Clamp 고도화는 계획 단계이며, 현재 운영 계산은 위 1차 구현을 기준으로 동작한다.
+**AT 추정 구현(현재)**
+- 현재 운영 구현은 **스타일+공정별** 관측점 `(q, totalSeconds)`을 월 단위로 누적해 `t = a*q + b` 형태의 **WLS(Weighted Least Squares)** 회귀로 `a,b`를 추정한다.
+- 추정 결과는 `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`로 저장되며, `at` 필드는 `timeRefQuantity` 기준의 `a + b/q_ref`로 갱신된다.
+- 데이터가 부족하거나 회귀가 불안정한 경우에는 `b=0`(원점 통과 slope) 및 평균 단위시간 fallback을 사용한다.
+- 비례배분 반복학습(수렴 루프), 방향성 가중치(`w_trend`), 월간 변경폭 clamp는 아직 미적용이다.
 
 **ST(q) (Standard Time) — 버전 관리 정책 기준값 (충격 완충재)**
 - PT → AT로 기준이 전환될 때 급격한 변화를 막기 위한 완충 구간
@@ -265,9 +267,9 @@ Organization (MANUFACTURER | BRAND)
        └─ Line
             └─ LineAssignment (직원-라인 배정, startAt/endAt)
   └─ Employee (OrgMembership 1:1)
-  └─ Style (processes: JSON [{code, name, pt, atParams:{a,b}, ct, stManual, timeRefQuantity, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
+  └─ Style (processes: JSON [{code, name, pt, atParams:{a,b,version,updatedAt,trainedPeriod}, at, ct, stManual, timeRefQuantity, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
        ※ PT: 매니저 직접 입력. AT 없을 때 ST(q) 기준값으로 사용
-       ※ atParams: WorkRecord 기반 자동 산출. 현재는 `a=nextAt, b=0`으로 저장(1차), 추후 `AT(q)=a+b/q` 고도화 예정. 데이터 부족 시 null
+       ※ atParams: WorkRecord 기반 자동 산출. 현재는 스타일+공정 단위 관측점으로 WLS 회귀(`t=a*q+b`) 후 `a,b`를 저장. 데이터 부족 시 null 또는 `b=0` fallback
        ※ ct: ST(q) 역할. 버전 관리 대상. ctVersion은 정수로 증가, ctUpdatedAt은 마지막 변경 시각
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
   └─ WorkOrder (items: JSON)
@@ -406,17 +408,43 @@ Organization (MANUFACTURER | BRAND)
 4. 출퇴근 입력이 없는 데이터에서 AT 학습이 8시간 폴백으로 동작하는지
 5. 초과 생산 페이지에서 `baseline / produced / overflow` 계산이 API와 동일한지
 
-## AT 모델 현재 구현 단계 (2026-02-23 추가)
+## AT 모델 현재 구현 단계 (2026-02-23 교정본)
 
-- 현재 백엔드 AT 동기화는 공정별 `nextAt = totalSeconds / totalQuantity`를 기본값으로 산출한다.
-- 동시에 `Style.processes[].atParams`를 아래 형태로 생성/갱신한다.
-  - `{ a: nextAt, b: 0, version, updatedAt, trainedPeriod }`
-- 즉 현재 단계의 `AT(q)`는 사실상 `a*q + 0`(개당 시간 상수) 모델이며, 수량 비선형(`b/q`) 학습은 아직 적용하지 않는다.
-- 프론트 계산 유틸(`frontend/src/utils/processTime.js`)은 `atParams`가 있으면 `a*q+b` 분기를 사용한다.
-- WLS/Clamp 기반 고급 학습은 계획 항목으로 유지한다.
-- 자동 학습 실행은 이벤트 트리거(출퇴근/작업기록 저장) 외에, 백엔드 스케줄러가 매월 5일 이후 해당 학습월에 대해 자동 동기화를 수행한다.
-- 스케줄러는 DB advisory lock과 `SchedulerRunHistory(jobKey, monthKey)` 실행 이력으로 멀티 인스턴스 중복 실행을 방지한다.
-- `stManual=false` 공정은 AT 갱신 시 DB `ct`도 `nextAt`로 동기화한다. (`stManual=true`는 수동 ST 유지)
+이 섹션은 과거의 "`AT = totalSeconds / totalQuantity` 평균만 적용" 기록을 교정한 최신 기준이다.
+
+- 백엔드 학습 함수는 `backend/src/index.ts`의 `fitAtParamsFromObservations`다.
+- 학습 단위는 **스타일+공정 조합**이다.
+  - 키: `style.uid + process.code` 우선, code가 없으면 `style.uid + process.name`
+  - 즉 공정명이 같아도 스타일이 다르면 추정치도 분리된다.
+- 관측점은 월별로 `(quantity, totalSeconds)`를 누적한다.
+  - `quantity`: 해당 일자/스타일/공정 처리 수량 합
+  - `totalSeconds`: 출퇴근 입력 우선, 없으면 8시간 폴백 규칙으로 계산한 근무시간
+- 피팅 방식:
+  - 1차 WLS: 기본 가중치 `sqrt(quantity)`
+  - 2차 WLS: 1차 잔차 크기 기반 재가중(`applyResidualMagnitudeWeights`)
+  - 제약: `a >= 0`, `b >= 0`
+  - 실패/불안정 시 fallback: slope-only(`b=0`) 또는 가중 평균 단위시간
+- 저장/반영:
+  - `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`
+  - `Style.processes[].at = a + b / timeRefQuantity`
+  - `stManual=false` 공정은 `ct`도 `at`로 동기화, `stManual=true`는 수동 ST 유지
+- 아직 미적용(계획 유지):
+  - 비례배분 반복 수렴 루프
+  - 방향성 가중치(`w_trend`)
+  - 월간 변경폭 clamp
+- 실행 경로:
+  - 이벤트 트리거(출퇴근/작업기록 저장)
+  - 매월 5일 이후 자동 스케줄러
+  - 스케줄러는 DB advisory lock + `SchedulerRunHistory(jobKey, monthKey)`로 중복 실행 방지
+
+## 오늘 반영 메모 (2026-02-23)
+
+- 스타일 공정 기준 수량 `q` 기본값은 `1000`이다.
+- `q`는 기준 표시값이며, PT/AT/ST 자체를 `q` 배수로 스케일하지 않는다. (시간값은 1개 작업 기준)
+- 제조사 스타일 저장 API에 공정 중복 방어를 추가했다.
+  - 대상: `POST /styles`, `PUT /styles/:styleId`, `POST /styles/import`
+  - 기준: `code`(trim+upper) 우선, code가 없으면 `name`(trim+lower)
+- 생산관리 용어를 `CT 조정 검토`에서 `배정 결과`로 정리했다. (메뉴/화면 타이틀)
 
 ## 문서 정합성 교정 우선본 (2026-02-23)
 
@@ -436,7 +464,7 @@ Organization (MANUFACTURER | BRAND)
 - DB 영속 상태 판단은 `ctStatus + ctSource + contractedSeconds` 조합을 기준으로 한다.
 
 ### ST/AT 저장 정책 정합성
-- `stManual=false` 공정은 AT 동기화 시 DB `ct`를 `nextAt`로 동기화한다.
+- `stManual=false` 공정은 AT 동기화 시 DB `ct`를 `nextAt(= a + b / timeRefQuantity)`로 동기화한다.
 - `stManual=true` 공정은 수동 ST(`ct`)를 유지한다.
 
 ### AT 학습 실행 정책 정합성

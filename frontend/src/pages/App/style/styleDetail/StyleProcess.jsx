@@ -27,6 +27,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
+  DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
   formatSeconds,
   hasAnyProcessTime,
@@ -37,6 +38,8 @@ import {
   resolveProcessActualTime,
   resolveProcessStTotalSecondsForOrderQuantity,
 } from '../../../../utils/processTime';
+
+const PER_JOB_ORDER_QUANTITY = 1;
 
 const createEmptyDraft = () => ({
   process: null,
@@ -109,44 +112,52 @@ const findMasterProcess = (process, options) => {
   );
 };
 
-const createDraftFromProcess = (process, options, timeRefQuantity = 1) => {
-  const resolvedTimeRefQuantity = toPositiveInt(
-    process?.timeRefQuantity,
-    toPositiveInt(timeRefQuantity, 1)
-  );
+const createDraftFromProcess = (process, options) => {
   const processQuantity = toPositiveInt(process?.quantity, 1);
-  const ptTotalForQ =
+  const ptTotalForDisplay =
     process?.pt == null
       ? null
-      : process.pt * processQuantity * resolvedTimeRefQuantity;
+      : process.pt * processQuantity;
   const stManual = process?.stManual === true;
-  const stTotalForQ =
+  const stTotalForDisplay =
     stManual && process?.ct != null
-      ? process.ct * processQuantity * resolvedTimeRefQuantity
+      ? process.ct * processQuantity
       : null;
 
   return {
     process: findMasterProcess(process, options),
-    pt: toDraftNumberText(ptTotalForQ),
+    pt: toDraftNumberText(ptTotalForDisplay),
     stManual,
-    st: toDraftNumberText(stTotalForQ),
+    st: toDraftNumberText(stTotalForDisplay),
   };
 };
 
-const buildProcessPayload = (draft, existingProcess = null, timeRefQuantity = 1) => {
-  const resolvedTimeRefQuantity = toPositiveInt(timeRefQuantity, 1);
+const resolveDraftStInputValue = (draft, autoStTotalSeconds) => {
+  if (draft?.stManual) return draft.st;
+  return toDraftNumberText(autoStTotalSeconds);
+};
+
+const buildProcessPayload = (
+  draft,
+  existingProcess = null,
+  timeRefQuantity = DEFAULT_TIME_REF_QUANTITY
+) => {
+  const resolvedTimeRefQuantity = toPositiveInt(
+    timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
   const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
-  const ptTotalForQ = parseOptionalSecondsInput(draft.pt);
-  const stTotalForQ = parseOptionalSecondsInput(draft.st);
+  const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
+  const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const stManual = draft.stManual === true;
   const ptPerPiece =
-    ptTotalForQ == null
+    ptTotalForDisplay == null
       ? null
-      : roundToScale(ptTotalForQ / (processQuantity * resolvedTimeRefQuantity), 4);
+      : roundToScale(ptTotalForDisplay / processQuantity, 4);
   const ctPerPiece =
-    !stManual || stTotalForQ == null
+    !stManual || stTotalForDisplay == null
       ? null
-      : roundToScale(stTotalForQ / (processQuantity * resolvedTimeRefQuantity), 4);
+      : roundToScale(stTotalForDisplay / processQuantity, 4);
 
   return normalizeProcess({
     ...(existingProcess || {}),
@@ -170,9 +181,9 @@ const buildProcessPayload = (draft, existingProcess = null, timeRefQuantity = 1)
 };
 
 const resolveCommonTimeRefQuantity = (rows = []) => {
-  if (!Array.isArray(rows) || rows.length === 0) return 1;
+  if (!Array.isArray(rows) || rows.length === 0) return DEFAULT_TIME_REF_QUANTITY;
   const first = rows.find((row) => Number.isFinite(Number(row?.timeRefQuantity)));
-  return toPositiveInt(first?.timeRefQuantity, 1);
+  return toPositiveInt(first?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY);
 };
 
 const StyleProcess = ({ processes = [], onProcessesChange }) => {
@@ -245,20 +256,33 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [editError, setEditError] = useState('');
 
   const totalPT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(safeProcesses, 'pt', timeRefQuantity),
-    [safeProcesses, timeRefQuantity]
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        safeProcesses,
+        'pt',
+        PER_JOB_ORDER_QUANTITY
+      ),
+    [safeProcesses]
   );
   const totalAT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(safeProcesses, 'at', timeRefQuantity),
-    [safeProcesses, timeRefQuantity]
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        safeProcesses,
+        'at',
+        PER_JOB_ORDER_QUANTITY
+      ),
+    [safeProcesses]
   );
   const totalST = useMemo(
     () =>
       safeProcesses.reduce((acc, process) => {
-        const value = resolveProcessStTotalSecondsForOrderQuantity(process, timeRefQuantity);
+        const value = resolveProcessStTotalSecondsForOrderQuantity(
+          process,
+          PER_JOB_ORDER_QUANTITY
+        );
         return value == null ? acc : acc + value;
       }, 0),
-    [safeProcesses, timeRefQuantity]
+    [safeProcesses]
   );
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
@@ -266,9 +290,19 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     () =>
       safeProcesses.some(
         (process) =>
-          resolveProcessStTotalSecondsForOrderQuantity(process, timeRefQuantity) != null
+          resolveProcessStTotalSecondsForOrderQuantity(
+            process,
+            PER_JOB_ORDER_QUANTITY
+          ) != null
       ),
-    [safeProcesses, timeRefQuantity]
+    [safeProcesses]
+  );
+  const timeRefQuantityLabel = useMemo(
+    () =>
+      toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY).toLocaleString(
+        'ko-KR'
+      ),
+    [timeRefQuantity]
   );
 
   const addDisabledIdentitySet = useMemo(() => {
@@ -293,7 +327,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 
   useEffect(() => {
     if (safeProcesses.length === 0) {
-      setTimeRefQuantity(1);
+      setTimeRefQuantity(DEFAULT_TIME_REF_QUANTITY);
       return;
     }
     const nextRef = resolveCommonTimeRefQuantity(safeProcesses);
@@ -301,11 +335,16 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   }, [safeProcesses]);
 
   const handleTimeRefQuantityChange = (event) => {
-    const nextValue = toPositiveInt(event.target.value, 1);
+    const nextValue = toPositiveInt(
+      event.target.value,
+      DEFAULT_TIME_REF_QUANTITY
+    );
     setTimeRefQuantity(nextValue);
     if (safeProcesses.length === 0) return;
     const needsSync = safeProcesses.some(
-      (process) => toPositiveInt(process?.timeRefQuantity, 1) !== nextValue
+      (process) =>
+        toPositiveInt(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY) !==
+        nextValue
     );
     if (!needsSync) return;
     onProcessesChange(
@@ -331,7 +370,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     });
     if (duplicated) return '이미 등록된 공정입니다.';
     if (draft.stManual === true && parseOptionalSecondsInput(draft.st) == null) {
-      return '수동 ST(q) 값을 입력해주세요.';
+      return '수동 ST 값을 입력해주세요.';
     }
 
     return '';
@@ -366,7 +405,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     setAddDraft(createEmptyDraft());
     setAddError('');
     setEditingId(process.instanceId);
-    setEditDraft(createDraftFromProcess(process, processOptions, timeRefQuantity));
+    setEditDraft(createDraftFromProcess(process, processOptions));
     setEditError('');
   };
 
@@ -435,11 +474,17 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
       ? null
-      : resolveProcessAtTotalSecondsForOrderQuantity(addPreviewProcess, timeRefQuantity);
+      : resolveProcessAtTotalSecondsForOrderQuantity(
+          addPreviewProcess,
+          PER_JOB_ORDER_QUANTITY
+        );
   const addPreviewStTotalSeconds =
     addPreviewProcess == null
       ? null
-      : resolveProcessStTotalSecondsForOrderQuantity(addPreviewProcess, timeRefQuantity);
+      : resolveProcessStTotalSecondsForOrderQuantity(
+          addPreviewProcess,
+          PER_JOB_ORDER_QUANTITY
+        );
 
   return (
     <Box>
@@ -450,7 +495,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
       >
         <Stack direction="row" spacing={1.25} alignItems="center">
           <Typography variant="h6">스타일 공정 목록</Typography>
-          <Tooltip title="공통 기준 수량 q를 먼저 지정한 뒤 PT(q) / ST(q)를 입력합니다.">
+          <Tooltip title="기준 수량 q는 기본값 1000이며, PT/ST 시간값은 1개 작업 기준으로 입력합니다.">
             <TextField
               size="small"
               type="number"
@@ -505,19 +550,27 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                   <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
                     <Tooltip
-                      title="PT(q): 기준 수량 q에서의 총 예상 시간(초)입니다."
+                      title={`PT(${timeRefQuantityLabel}): 기준 수량 q 문맥에서 입력한 예상 시간(초)입니다.`}
                       placement="top"
                     >
                       <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                        PT(q)
+                        {`PT(${timeRefQuantityLabel})`}
                       </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
-                    AT(q, 자동)
+                    <Tooltip title={`AT(${timeRefQuantityLabel}): 실제 작업 기록 기반 자동 산출값입니다.`} placement="top">
+                      <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                        {`AT(${timeRefQuantityLabel})`}
+                      </Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
-                    ST(q)
+                    <Tooltip title={`ST(${timeRefQuantityLabel}): 배정 기준으로 사용하는 표준 시간입니다.`} placement="top">
+                      <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                        {`ST(${timeRefQuantityLabel})`}
+                      </Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center" sx={{ width: 120 }}>
                     작업
@@ -598,23 +651,24 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                             >
                               {addDraft.stManual ? '수동 ST' : '자동 ST'}
                             </Button>
-                            {addDraft.stManual ? (
-                              <TextField
-                                size="small"
-                                type="number"
-                                value={addDraft.st}
-                                onChange={(event) =>
-                                  setAddDraft((prev) => ({ ...prev, st: event.target.value }))
-                                }
-                                inputProps={{ min: 0 }}
-                                placeholder="-"
-                                sx={{ width: 86 }}
-                              />
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                {formatSeconds(addPreviewStTotalSeconds)}
-                              </Typography>
-                            )}
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={resolveDraftStInputValue(
+                                addDraft,
+                                addPreviewStTotalSeconds
+                              )}
+                              onChange={(event) =>
+                                setAddDraft((prev) => ({
+                                  ...prev,
+                                  stManual: true,
+                                  st: event.target.value,
+                                }))
+                              }
+                              inputProps={{ min: 0 }}
+                              placeholder="-"
+                              sx={{ width: 86 }}
+                            />
                           </Stack>
                         </TableCell>
                         <TableCell align="center">
@@ -667,17 +721,17 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                               calculateProcessTotalForOrderQuantity(
                                 [previewProcess],
                                 'pt',
-                                timeRefQuantity
+                                PER_JOB_ORDER_QUANTITY
                               ) || null;
                             const previewAtTotalSeconds =
                               resolveProcessAtTotalSecondsForOrderQuantity(
                                 previewProcess,
-                                timeRefQuantity
+                                PER_JOB_ORDER_QUANTITY
                               );
                             const previewStTotalSeconds =
                               resolveProcessStTotalSecondsForOrderQuantity(
                                 previewProcess,
-                                timeRefQuantity
+                                PER_JOB_ORDER_QUANTITY
                               );
 
                             return (
@@ -778,26 +832,24 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                         >
                                           {editDraft.stManual ? '수동 ST' : '자동 ST'}
                                         </Button>
-                                        {editDraft.stManual ? (
-                                          <TextField
-                                            size="small"
-                                            type="number"
-                                            value={editDraft.st}
-                                            onChange={(event) =>
-                                              setEditDraft((prev) => ({
-                                                ...prev,
-                                                st: event.target.value,
-                                              }))
-                                            }
-                                            inputProps={{ min: 0 }}
-                                            placeholder="-"
-                                            sx={{ width: 86 }}
-                                          />
-                                        ) : (
-                                          <Typography variant="caption" color="text.secondary">
-                                            {formatSeconds(previewStTotalSeconds)}
-                                          </Typography>
-                                        )}
+                                        <TextField
+                                          size="small"
+                                          type="number"
+                                          value={resolveDraftStInputValue(
+                                            editDraft,
+                                            previewStTotalSeconds
+                                          )}
+                                          onChange={(event) =>
+                                            setEditDraft((prev) => ({
+                                              ...prev,
+                                              stManual: true,
+                                              st: event.target.value,
+                                            }))
+                                          }
+                                          inputProps={{ min: 0 }}
+                                          placeholder="-"
+                                          sx={{ width: 86 }}
+                                        />
                                       </Stack>
                                     ) : (
                                       <Chip
@@ -852,7 +904,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={2} align="right" sx={{ fontWeight: 700 }}>
-                    {`총 시간 합계 (q=${timeRefQuantity})`}
+                    총 시간 합계
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}

@@ -223,15 +223,46 @@ const resolveFeatureByPath = (pathname) => {
 };
 
 export const canAccessPath = (pathname, authState) => {
-  const featureKey = resolveFeatureByPath(pathname);
-  if (!featureKey) return true;
   const context = buildAccessContext(authState || {});
+  const path = String(pathname || '').trim();
+  // The root route is the empty workspace shell. Allow it for any authenticated context.
+  if (!path || path === '/') return Boolean(context);
+  const featureKey = resolveFeatureByPath(path);
+  if (!featureKey) return true;
   return canAccessFeatureByContext(featureKey, context);
 };
 
 export const canAccessFeature = (featureKey, authState) => {
   const context = buildAccessContext(authState || {});
   return canAccessFeatureByContext(featureKey, context);
+};
+
+const ACCESS_PATH_PRIORITY = [
+  '/system-setting',
+  '/order',
+  '/style',
+  '/assignment',
+  '/production-plan',
+  '/ct-review',
+  '/production-overrun',
+  '/attendance',
+  '/work-history',
+  '/payroll',
+  '/business',
+  '/line',
+  '/employee',
+  '/customer',
+  '/attribute',
+  '/permission',
+  '/holiday',
+  '/',
+];
+
+export const resolveFirstAccessiblePath = (authState) => {
+  for (const path of ACCESS_PATH_PRIORITY) {
+    if (canAccessPath(path, authState)) return path;
+  }
+  return '/login';
 };
 
 export { FEATURE_KEYS, ORG_ROLES, ORG_TYPES };

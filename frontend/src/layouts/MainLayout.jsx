@@ -54,11 +54,19 @@ import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 
 const DRAWER_WIDTH = 260;
+const toPathname = (path) => {
+  const raw = typeof path === 'string' ? path.trim() : '';
+  if (!raw) return '/';
+  const withoutHash = raw.split('#')[0];
+  const pathname = withoutHash.split('?')[0];
+  return pathname || '/';
+};
 
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname || '/';
+  const currentRoutePath = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
   const { signOut, devBypass, devProfile, accessProfile, activeOrgId, isAuthenticated } = useAuth();
   const {
     sidebarOpen,
@@ -146,7 +154,7 @@ const MainLayout = () => {
         children: [
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
-          { label: 'CT 조정 검토', icon: <RateReviewIcon />, path: '/ct-review' },
+          { label: '배정 결과', icon: <RateReviewIcon />, path: '/ct-review' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
           { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
         ],
@@ -228,6 +236,8 @@ const MainLayout = () => {
     systemOpen,
   ]);
   const isEmptyWorkspaceAtRoot = openTabs.length === 0 && currentPath === '/';
+  const shouldHideOutletForEmptyWorkspace =
+    isEmptyWorkspaceAtRoot && isAuthenticated && hasPathAccess('/');
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);
@@ -241,7 +251,10 @@ const MainLayout = () => {
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
     (path, options) => {
-      if (!hasPathAccess(path)) {
+      const nextPath = typeof path === 'string' && path.trim() ? path : '/';
+      const nextPathname = toPathname(nextPath);
+
+      if (!hasPathAccess(nextPathname)) {
         if (currentPath !== '/') {
           navigate('/');
         }
@@ -251,22 +264,22 @@ const MainLayout = () => {
       const openOptions = {};
       const closeTabId =
         typeof options?.closeTabId === 'string' && options.closeTabId.trim()
-          ? options.closeTabId
+          ? toPathname(options.closeTabId)
           : null;
       // For style detail pages, ensure only one is open at a time.
-      if (path.startsWith('/style/') && path !== '/style') {
+      if (nextPathname.startsWith('/style/') && nextPathname !== '/style') {
         openOptions.replacePrefix = '/style/';
       }
       // For order detail pages, ensure only one is open at a time.
-      if (path.startsWith('/order/') && path !== '/order') {
+      if (nextPathname.startsWith('/order/') && nextPathname !== '/order') {
         openOptions.replacePrefix = '/order/';
       }
       // For work history detail pages, ensure only one detail tab is open.
-      if (path.startsWith('/work-history/') && path !== '/work-history') {
+      if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
         openOptions.replacePrefix = '/work-history/';
       }
       // For payroll detail pages, ensure only one detail tab is open.
-      if (path.startsWith('/payroll/') && path !== '/payroll') {
+      if (nextPathname.startsWith('/payroll/') && nextPathname !== '/payroll') {
         openOptions.replacePrefix = '/payroll/';
       }
 
@@ -284,17 +297,17 @@ const MainLayout = () => {
         const flattenedMenuItems = menuItems.flatMap((item) =>
           item.isParent ? item.children : [item]
         );
-        const menuItem = flattenedMenuItems.find((item) => item.path === path);
-        label = menuItem ? menuItem.label : path;
+        const menuItem = flattenedMenuItems.find((item) => item.path === nextPathname);
+        label = menuItem ? menuItem.label : nextPathname;
       }
-      openTab({ id: path, label, path }, openOptions);
+      openTab({ id: nextPathname, label, path: nextPath }, openOptions);
 
-      if (path && currentPath !== path) {
-        pendingNavigationPathRef.current = path;
-        navigate(path);
+      if (nextPath && currentRoutePath !== nextPath) {
+        pendingNavigationPathRef.current = nextPathname;
+        navigate(nextPath);
       }
     },
-    [closeTab, currentPath, hasPathAccess, menuItems, navigate, openTab]
+    [closeTab, currentPath, currentRoutePath, hasPathAccess, menuItems, navigate, openTab]
   );
 
   useEffect(() => {
@@ -323,12 +336,12 @@ const MainLayout = () => {
       flattenedMenuItems.find((item) => item.path === currentPath) ||
       flattenedMenuItems.find((item) => currentPath.startsWith(item.path + '/'));
     const label = matchedMenu?.label || currentPath;
-    openTab({ id: currentPath, label, path: currentPath });
-  }, [currentPath, menuItems, openTab, openTabs]);
+    openTab({ id: currentPath, label, path: currentRoutePath });
+  }, [currentPath, currentRoutePath, menuItems, openTab, openTabs]);
 
   useEffect(() => {
     const blockedTabIds = openTabs
-      .filter((tab) => !hasPathAccess(tab?.path || tab?.id))
+      .filter((tab) => !hasPathAccess(tab?.id))
       .map((tab) => tab.id);
     if (blockedTabIds.length === 0) return;
 
@@ -365,7 +378,8 @@ const MainLayout = () => {
 
   const handleTabChange = (event, newValue) => {
     // User clicks a tab: make URL the only source of truth.
-    handleNavigation(newValue);
+    const selectedTab = openTabs.find((tab) => tab.id === newValue);
+    handleNavigation(selectedTab?.path || newValue);
   };
 
   const handleCloseTab = (e, tabIdToClose) => {
@@ -387,7 +401,7 @@ const MainLayout = () => {
       if (!newActiveTab) {
         navigate('/');
       } else {
-        navigate(newActiveTab.id);
+        navigate(newActiveTab.path || newActiveTab.id);
       }
     }
 
@@ -507,7 +521,7 @@ const MainLayout = () => {
           <ListItemIcon sx={{ color: '#d32f2f' }}>
             <LogoutIcon />
           </ListItemIcon>
-          <ListItemText primary="濡쒓렇?꾩썐" sx={{ color: '#d32f2f' }} />
+          <ListItemText primary="로그아웃" sx={{ color: '#d32f2f' }} />
         </ListItem>
       </List>
     </Box>
@@ -701,7 +715,7 @@ const MainLayout = () => {
             position: 'relative',
           }}
         >
-          {openTabs.length > 0 ? <Outlet /> : null}
+          {shouldHideOutletForEmptyWorkspace ? null : <Outlet />}
           <GlobalLoadingOverlay
             open={networkLoading.isLoading}
             startedAt={networkLoading.startedAt}

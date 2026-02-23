@@ -37,6 +37,12 @@ const ProtectedRoute = () => {
   const { isAuthenticated, loading, devBypass, devProfile, accessProfile } = useAuth();
   const location = useLocation();
   const loadingStartedAtRef = React.useRef(null);
+  const authState = {
+    isAuthenticated,
+    devBypass,
+    devProfile,
+    accessProfile,
+  };
 
   if (loading) {
     if (!loadingStartedAtRef.current) {
@@ -60,16 +66,8 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  const canAccessCurrentPath = canAccessPath(location.pathname, {
-    isAuthenticated,
-    devBypass,
-    devProfile,
-    accessProfile,
-  });
+  const canAccessCurrentPath = canAccessPath(location.pathname, authState);
   if (!canAccessCurrentPath) {
-    if (location.pathname === '/') {
-      return <Navigate to="/login" replace />;
-    }
     return <Navigate to="/" replace />;
   }
 

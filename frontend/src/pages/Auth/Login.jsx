@@ -73,7 +73,8 @@ const Login = () => {
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    if (isAuthenticated && hasWorkspaceAccess) navigate('/');
+    if (!isAuthenticated || !hasWorkspaceAccess) return;
+    navigate('/', { replace: true });
   }, [hasWorkspaceAccess, isAuthenticated, navigate]);
 
   useEffect(() => {
@@ -192,7 +193,7 @@ const Login = () => {
 
   const handleDevBypass = (profile) => {
     enableDevBypass(profile);
-    navigate('/');
+    navigate('/', { replace: true });
   };
 
   const handleSystemAdminBypass = () => {

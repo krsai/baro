@@ -8,4 +8,24 @@ if (!isSupabaseConfigured) {
   console.warn('Supabase env is missing. Check VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY');
 }
 
-export const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null;
+const resolveAuthStorage = () => {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return window.sessionStorage;
+  } catch (_error) {
+    return undefined;
+  }
+};
+
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // Keep auth only for the current browser tab/session.
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storage: resolveAuthStorage(),
+        storageKey: 'baro-auth',
+      },
+    })
+  : null;

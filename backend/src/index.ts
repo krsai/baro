@@ -85,6 +85,7 @@ const FACTORY_WORK_DAYS_PER_MONTH = 26;
 const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
+const DEFAULT_TIME_REF_QUANTITY = 1000;
 // 출퇴근 입력값을 AT 계산에 반영한다.
 // 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
 const USE_ATTENDANCE_INPUT_FOR_AT = true;
@@ -687,6 +688,21 @@ type StyleAtParams = {
   trainedPeriod: string | null;
 };
 
+type AtMetricObservation = {
+  quantity: number;
+  totalSeconds: number;
+};
+
+type WeightedRegressionPoint = {
+  x: number;
+  y: number;
+  weight: number;
+};
+
+const AT_WLS_DETERMINANT_EPSILON = 1e-9;
+const AT_WLS_RESIDUAL_SCALE = 0.35;
+const AT_WLS_MIN_WEIGHT = 1e-4;
+
 const toStyleAtParams = (value: any): StyleAtParams | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const a = toOptionalSeconds((value as any).a);
@@ -731,6 +747,152 @@ const isSameStyleAtParams = (
   );
 };
 
+const toAtRegressionPoints = (
+  observations: AtMetricObservation[]
+): WeightedRegressionPoint[] =>
+  observations
+    .map((observation) => {
+      const quantity = Number(observation?.quantity);
+      const totalSeconds = Number(observation?.totalSeconds);
+      if (
+        !Number.isFinite(quantity) ||
+        !Number.isFinite(totalSeconds) ||
+        quantity <= 0 ||
+        totalSeconds <= 0
+      ) {
+        return null;
+      }
+      return {
+        x: quantity,
+        y: totalSeconds,
+        // Larger quantity rows are usually less noisy, but use sqrt to avoid domination.
+        weight: Math.max(1, Math.sqrt(quantity)),
+      };
+    })
+    .filter((point): point is WeightedRegressionPoint => point !== null);
+
+const weightedMeanSecondsPerUnit = (
+  points: WeightedRegressionPoint[]
+): number | null => {
+  let weightedSum = 0;
+  let totalWeight = 0;
+  points.forEach((point) => {
+    if (point.x <= 0 || point.weight <= 0) return;
+    weightedSum += point.weight * (point.y / point.x);
+    totalWeight += point.weight;
+  });
+  if (!Number.isFinite(weightedSum) || totalWeight <= 0) return null;
+  return weightedSum / totalWeight;
+};
+
+const fitWeightedLinearRegression = (
+  points: WeightedRegressionPoint[]
+): { a: number; b: number } | null => {
+  let sw = 0;
+  let sx = 0;
+  let sy = 0;
+  let sxx = 0;
+  let sxy = 0;
+  points.forEach((point) => {
+    const { x, y, weight } = point;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
+    if (x <= 0 || weight <= 0) return;
+    sw += weight;
+    sx += weight * x;
+    sy += weight * y;
+    sxx += weight * x * x;
+    sxy += weight * x * y;
+  });
+  if (sw <= 0 || sxx <= 0) return null;
+  const determinant = sw * sxx - sx * sx;
+  if (Math.abs(determinant) <= AT_WLS_DETERMINANT_EPSILON) return null;
+
+  const a = (sw * sxy - sx * sy) / determinant;
+  const b = (sxx * sy - sx * sxy) / determinant;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return { a, b };
+};
+
+const fitWeightedSlopeOnly = (points: WeightedRegressionPoint[]): number | null => {
+  let sxx = 0;
+  let sxy = 0;
+  points.forEach((point) => {
+    const { x, y, weight } = point;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
+    if (x <= 0 || weight <= 0) return;
+    sxx += weight * x * x;
+    sxy += weight * x * y;
+  });
+  if (sxx <= AT_WLS_DETERMINANT_EPSILON) return null;
+  const slope = sxy / sxx;
+  return Number.isFinite(slope) ? slope : null;
+};
+
+const applyResidualMagnitudeWeights = (
+  points: WeightedRegressionPoint[],
+  model: { a: number; b: number }
+): WeightedRegressionPoint[] =>
+  points.map((point) => {
+    const predicted = model.a * point.x + model.b;
+    const residualRatio = Math.abs(point.y - predicted) / Math.max(1, point.y);
+    const scaled = residualRatio / AT_WLS_RESIDUAL_SCALE;
+    const magnitudeWeight = 1 / (1 + scaled * scaled);
+    return {
+      ...point,
+      weight: Math.max(AT_WLS_MIN_WEIGHT, point.weight * magnitudeWeight),
+    };
+  });
+
+const fitAtParamsFromObservations = (
+  observations: AtMetricObservation[],
+  fallbackPerPieceSeconds: number | null = null
+): { a: number; b: number } | null => {
+  const points = toAtRegressionPoints(observations);
+  const fallback = toOptionalSeconds(fallbackPerPieceSeconds);
+  if (points.length === 0) {
+    return fallback == null ? null : { a: fallback, b: 0 };
+  }
+
+  const basePerPiece = weightedMeanSecondsPerUnit(points);
+  if (points.length < 2) {
+    const a = toOptionalSeconds(basePerPiece ?? fallback);
+    return a == null ? null : { a, b: 0 };
+  }
+
+  const firstFit = fitWeightedLinearRegression(points);
+  const secondPoints =
+    firstFit == null ? points : applyResidualMagnitudeWeights(points, firstFit);
+  const secondFit = fitWeightedLinearRegression(secondPoints) || firstFit;
+
+  let a: number | null = secondFit?.a ?? basePerPiece ?? fallback;
+  let b: number = secondFit?.b ?? 0;
+
+  if (a == null || !Number.isFinite(a) || a < 0 || !Number.isFinite(b)) {
+    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
+    if (slopeOnly != null && slopeOnly >= 0) {
+      a = slopeOnly;
+      b = 0;
+    } else {
+      a = basePerPiece ?? fallback;
+      b = 0;
+    }
+  }
+
+  if (a == null || !Number.isFinite(a) || a < 0) return null;
+  if (!Number.isFinite(b) || b < 0) {
+    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
+    if (slopeOnly != null && slopeOnly >= 0) {
+      a = slopeOnly;
+    }
+    b = 0;
+  }
+
+  const normalizedA = toOptionalSeconds(a);
+  const normalizedB = toOptionalSeconds(b);
+  if (normalizedA == null) return null;
+  return { a: normalizedA, b: normalizedB ?? 0 };
+};
+
 const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
@@ -748,7 +910,7 @@ const normalizeStyleProcess = (process: any) => {
   }
   next.timeRefQuantity = toPositiveInt(
     (next as any).timeRefQuantity ?? (next as any).referenceQuantity,
-    1
+    DEFAULT_TIME_REF_QUANTITY
   );
   const hasCt = next.ct !== null && next.ct !== undefined;
   const hasAt = next.at !== null && next.at !== undefined;
@@ -769,6 +931,46 @@ const normalizeStyleProcess = (process: any) => {
 
 const normalizeStyleProcesses = (value: any) =>
   ensureArray(value).map((process) => normalizeStyleProcess(process));
+
+type StyleProcessDuplicateIdentity = {
+  identityKey: string;
+  firstIndex: number;
+  duplicateIndex: number;
+};
+
+const getStyleProcessIdentityKey = (process: any): string => {
+  const codeKey = normalizeProcessCodeKey(process?.code);
+  if (codeKey) return `code:${codeKey}`;
+  const nameKey = normalizeProcessNameKey(process?.name);
+  if (nameKey) return `name:${nameKey}`;
+  return "";
+};
+
+const findStyleProcessDuplicateIdentity = (
+  processes: any[]
+): StyleProcessDuplicateIdentity | null => {
+  const firstIndexByIdentity = new Map<string, number>();
+  for (let index = 0; index < processes.length; index += 1) {
+    const identityKey = getStyleProcessIdentityKey(processes[index]);
+    if (!identityKey) continue;
+    const firstIndex = firstIndexByIdentity.get(identityKey);
+    if (firstIndex !== undefined) {
+      return {
+        identityKey,
+        firstIndex,
+        duplicateIndex: index,
+      };
+    }
+    firstIndexByIdentity.set(identityKey, index);
+  }
+  return null;
+};
+
+const createStyleProcessDuplicateError = (
+  duplicate: StyleProcessDuplicateIdentity,
+  scope = "processes"
+) =>
+  `${scope} contains duplicate process entries (${duplicate.identityKey}, first index ${duplicate.firstIndex}, duplicate index ${duplicate.duplicateIndex})`;
 
 const normalizeProcessCodeKey = (value: any) =>
   String(value ?? "")
@@ -946,7 +1148,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
     return resolvedStyle;
   };
 
-  const weightedByKey = new Map<string, { totalSeconds: number; totalQuantity: number }>();
+  const metricObservationsByKey = new Map<string, AtMetricObservation[]>();
   const matchedStyleUids = new Set<number>();
   const attendanceSecondsByWorkerDate = new Map<string, number>();
 
@@ -1059,8 +1261,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
 
     if (resolvedRows.length === 0) return;
 
-    // AT 계산: 공정별로 그룹핑하여 공정별 투입 작업자 수 × 근무시간 / 생산수량
-    // (전체 workerCount를 수량 비율로 배분하면 모든 공정 AT가 동일해지는 버그 발생)
+    // AT 계산: 공정별 관측점(q, totalSeconds)을 누적하고 이후 WLS로 a,b를 추정한다.
     const perProcessGroups = new Map<
       string,
       { resolvedStyle: any; workerIds: Set<number>; totalQuantity: number }
@@ -1094,15 +1295,17 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
             )
           : resolveWorkerSecondsForDate(workDate, null, workLogFactoryId);
 
-      const current = weightedByKey.get(metricKey) || { totalSeconds: 0, totalQuantity: 0 };
-      current.totalSeconds += workerSecondsForProcess;
-      current.totalQuantity += group.totalQuantity;
-      weightedByKey.set(metricKey, current);
+      const current = metricObservationsByKey.get(metricKey) || [];
+      current.push({
+        quantity: group.totalQuantity,
+        totalSeconds: workerSecondsForProcess,
+      });
+      metricObservationsByKey.set(metricKey, current);
     });
   });
 
-  if (weightedByKey.size === 0) {
-    return finish(0, 0, "no_weighted_metrics");
+  if (metricObservationsByKey.size === 0) {
+    return finish(0, 0, "no_metric_observations");
   }
 
   const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
@@ -1119,32 +1322,42 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
 
       const codeKey = normalizeProcessCodeKey((process as any).code);
       const nameKey = normalizeProcessNameKey((process as any).name);
-      const metric =
+      const observations =
         (codeKey
-          ? weightedByKey.get(
+          ? metricObservationsByKey.get(
               toStyleProcessMetricKey(String(style.uid), "code", codeKey)
             )
           : null) ||
         (nameKey
-          ? weightedByKey.get(
+          ? metricObservationsByKey.get(
               toStyleProcessMetricKey(String(style.uid), "name", nameKey)
             )
           : null);
-      if (!metric || metric.totalQuantity <= 0) return process;
+      if (!observations || observations.length === 0) return process;
 
-      const nextAt = toOptionalSeconds(metric.totalSeconds / metric.totalQuantity);
+      const fallbackAt =
+        toOptionalSeconds((process as any).at) ??
+        toOptionalSeconds((process as any).pt);
+      const fitted = fitAtParamsFromObservations(observations, fallbackAt);
+      if (!fitted) return process;
+
+      const referenceQuantity = toPositiveInt(
+        (process as any).timeRefQuantity,
+        DEFAULT_TIME_REF_QUANTITY
+      );
+      const nextAt = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
       const currentAt = toOptionalSeconds((process as any).at);
       if (nextAt === null) return process;
       const currentAtParams = toStyleAtParams((process as any).atParams);
       const shouldRefreshAtParams =
         currentAtParams === null ||
-        currentAtParams.a !== nextAt ||
-        currentAtParams.b !== 0 ||
+        currentAtParams.a !== fitted.a ||
+        currentAtParams.b !== fitted.b ||
         currentAtParams.trainedPeriod !== trainingMonthKey;
       const nextAtParams = shouldRefreshAtParams
         ? {
-            a: nextAt,
-            b: 0,
+            a: fitted.a,
+            b: fitted.b,
             version: (currentAtParams?.version ?? 0) + 1,
             updatedAt: new Date().toISOString(),
             trainedPeriod: trainingMonthKey,
@@ -4814,6 +5027,13 @@ app.post("/styles", async (req, res) => {
   if (!payload.name) {
     return res.status(400).json({ ok: false, error: "name is required" });
   }
+  const duplicateProcess = findStyleProcessDuplicateIdentity(payload.processes);
+  if (duplicateProcess) {
+    return res.status(400).json({
+      ok: false,
+      error: createStyleProcessDuplicateError(duplicateProcess),
+    });
+  }
   const owner = await resolveStyleOwnerForCreateOrThrow({
     organization,
     payload: req.body ?? {},
@@ -4904,6 +5124,15 @@ app.put("/styles/:styleId", async (req, res) => {
   }
   if (!normalized.customer) {
     return res.status(400).json({ ok: false, error: "customer is required" });
+  }
+  const duplicateProcess = includeProcesses
+    ? findStyleProcessDuplicateIdentity(normalized.processes)
+    : null;
+  if (duplicateProcess) {
+    return res.status(400).json({
+      ok: false,
+      error: createStyleProcessDuplicateError(duplicateProcess),
+    });
   }
 
   const conflictMessage = await findStyleConflict({
@@ -5019,7 +5248,8 @@ app.post("/styles/import", async (req, res) => {
   }
 
   const normalizedRows = rows
-    .map((item: any) => ({
+    .map((item: any, rowIndex: number) => ({
+      rowIndex,
       raw: item,
       normalized: normalizeStylePayload(item, null, { includeProcesses }),
     }))
@@ -5036,6 +5266,20 @@ app.post("/styles/import", async (req, res) => {
     return res
       .status(400)
       .json({ ok: false, error: "no valid styles to import" });
+  }
+  for (const item of normalizedRows) {
+    const duplicateProcess = findStyleProcessDuplicateIdentity(
+      item.normalized.processes
+    );
+    if (duplicateProcess) {
+      return res.status(400).json({
+        ok: false,
+        error: createStyleProcessDuplicateError(
+          duplicateProcess,
+          `styles[${item.rowIndex}].processes`
+        ),
+      });
+    }
   }
 
   const rowsWithOwner = await Promise.all(
@@ -5767,7 +6011,7 @@ const runAutoAtSyncWithDbLock = async (
   const result = await prisma.$transaction(
     async (tx) => {
       const lockRows = await tx.$queryRaw<Array<{ acquired: boolean }>>(
-        Prisma.sql`SELECT pg_try_advisory_xact_lock(${AT_AUTO_SYNC_DB_LOCK_NAMESPACE}, ${lockKey}) AS acquired`
+        Prisma.sql`SELECT pg_try_advisory_xact_lock(CAST(${AT_AUTO_SYNC_DB_LOCK_NAMESPACE} AS integer), CAST(${lockKey} AS integer)) AS acquired`
       );
       if (lockRows[0]?.acquired !== true) {
         return {

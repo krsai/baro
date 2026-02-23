@@ -6,6 +6,65 @@ const AuthContext = createContext(null);
 
 const DEV_BYPASS_KEY = 'dev_bypass';
 const DEV_PROFILE_KEY = 'dev_bypass_profile';
+const AUTH_SESSION_TIMEOUT_MS = 10_000;
+const ACCESS_PROFILE_TIMEOUT_MS = 10_000;
+
+const withTimeout = (promise, timeoutMs, timeoutMessage) =>
+  new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+
+const getAuthStorage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage;
+  } catch (_error) {
+    return null;
+  }
+};
+
+const readAuthStorage = (key) => {
+  const storage = getAuthStorage();
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch (_error) {
+    return null;
+  }
+};
+
+const writeAuthStorage = (key, value) => {
+  const storage = getAuthStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(key, value);
+  } catch (_error) {
+    // ignore storage write errors
+  }
+};
+
+const removeAuthStorage = (key) => {
+  const storage = getAuthStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch (_error) {
+    // ignore storage remove errors
+  }
+};
 
 const DEV_PROFILE_LABEL_BY_KEY = {
   SYSTEM_ADMIN: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
@@ -156,7 +215,7 @@ const normalizeDevProfile = (profile) => {
 
 const loadDevProfile = () => {
   try {
-    const raw = localStorage.getItem(DEV_PROFILE_KEY);
+    const raw = readAuthStorage(DEV_PROFILE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return normalizeDevProfile(parsed);
@@ -220,12 +279,12 @@ const normalizeAccessProfile = (profile) => {
 export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
-  const [devBypass, setDevBypass] = useState(() => localStorage.getItem(DEV_BYPASS_KEY) === '1');
+  const [devBypass, setDevBypass] = useState(() => readAuthStorage(DEV_BYPASS_KEY) === '1');
   const [devProfile, setDevProfile] = useState(() => loadDevProfile());
   const [accessProfile, setAccessProfile] = useState(null);
   const [accessLoading, setAccessLoading] = useState(false);
   const [loading, setLoading] = useState(() =>
-    isSupabaseConfigured && localStorage.getItem(DEV_BYPASS_KEY) !== '1'
+    isSupabaseConfigured && readAuthStorage(DEV_BYPASS_KEY) !== '1'
   );
 
   useEffect(() => {
@@ -233,7 +292,7 @@ export const AuthProvider = ({ children }) => {
     if (devProfile) return;
 
     setDevProfile(DEFAULT_DEV_PROFILE);
-    localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(DEFAULT_DEV_PROFILE));
+    writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(DEFAULT_DEV_PROFILE));
   }, [devBypass, devProfile]);
 
   useEffect(() => {
@@ -244,11 +303,12 @@ export const AuthProvider = ({ children }) => {
     if (JSON.stringify(normalized) === JSON.stringify(devProfile)) return;
 
     setDevProfile(normalized);
-    localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(normalized));
+    writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(normalized));
   }, [devBypass, devProfile]);
 
   useEffect(() => {
     let cancelled = false;
+    let accessProfileAbortController = null;
 
     const loadAccessProfile = async () => {
       if (devBypass) {
@@ -269,12 +329,21 @@ export const AuthProvider = ({ children }) => {
       }
 
       setAccessLoading(true);
+      let abortTimeoutId = null;
       try {
+        accessProfileAbortController = new AbortController();
+        abortTimeoutId = setTimeout(() => {
+          accessProfileAbortController?.abort();
+        }, ACCESS_PROFILE_TIMEOUT_MS);
+
         const data = await requestJSON(
           `/auth/context${buildQueryString({
             email,
           })}`,
-          { skipGlobalLoading: true }
+          {
+            skipGlobalLoading: true,
+            signal: accessProfileAbortController.signal,
+          }
         );
         if (cancelled) return;
         setAccessProfile(normalizeAccessProfile(data));
@@ -282,6 +351,9 @@ export const AuthProvider = ({ children }) => {
         if (cancelled) return;
         setAccessProfile(null);
       } finally {
+        if (abortTimeoutId !== null) {
+          clearTimeout(abortTimeoutId);
+        }
         if (!cancelled) {
           setAccessLoading(false);
         }
@@ -291,6 +363,7 @@ export const AuthProvider = ({ children }) => {
     loadAccessProfile();
     return () => {
       cancelled = true;
+      accessProfileAbortController?.abort();
     };
   }, [devBypass, user?.email]);
 
@@ -309,12 +382,31 @@ export const AuthProvider = ({ children }) => {
     let ignore = false;
 
     const loadSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (ignore) return;
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_SESSION_TIMEOUT_MS,
+          'Supabase session request timed out'
+        );
+        if (ignore) return;
 
-      setSession(data.session ?? null);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
+        if (error) {
+          setSession(null);
+          setUser(null);
+          return;
+        }
+
+        setSession(data.session ?? null);
+        setUser(data.session?.user ?? null);
+      } catch (_error) {
+        if (ignore) return;
+        setSession(null);
+        setUser(null);
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
     };
 
     loadSession();
@@ -354,19 +446,26 @@ export const AuthProvider = ({ children }) => {
     setAccessProfile(null);
     setAccessLoading(false);
     setRequestContext({ userEmail: '', orgId: null });
-    localStorage.removeItem(DEV_BYPASS_KEY);
-    localStorage.removeItem(DEV_PROFILE_KEY);
+    removeAuthStorage(DEV_BYPASS_KEY);
+    removeAuthStorage(DEV_PROFILE_KEY);
   };
 
   const signOut = async () => {
+    clearDevBypass();
+    setSession(null);
+    setUser(null);
+    setLoading(false);
+
     if (!supabase) {
       console.warn('Supabase is not configured.');
-      clearDevBypass();
       return;
     }
 
-    await supabase.auth.signOut();
-    clearDevBypass();
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (error) {
+      console.warn('Supabase signOut failed:', error);
+    }
   };
 
   const enableDevBypass = (profile = DEFAULT_DEV_PROFILE) => {
@@ -374,8 +473,8 @@ export const AuthProvider = ({ children }) => {
 
     setDevBypass(true);
     setDevProfile(nextProfile);
-    localStorage.setItem(DEV_BYPASS_KEY, '1');
-    localStorage.setItem(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
+    writeAuthStorage(DEV_BYPASS_KEY, '1');
+    writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
   };
 
   const effectiveProfile = devBypass ? devProfile : accessProfile;

@@ -318,7 +318,7 @@ const CtReviewBoard = () => {
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h6">CT 조정 검토</Typography>
+            <Typography variant="h6">배정 결과</Typography>
             <Typography variant="body2" color="text.secondary">
               라인장이 요청한 CT 조정 제안을 검토하고 승인 또는 거부합니다.
             </Typography>

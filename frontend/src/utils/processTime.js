@@ -1,5 +1,7 @@
 ﻿import { formatNumberWithCommas } from './numberFormat';
 
+export const DEFAULT_TIME_REF_QUANTITY = 1000;
+
 const toOptionalNumber = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -51,7 +53,7 @@ export const normalizeProcess = (process = {}, index = 0) => {
     quantity: toPositiveInt(safeProcess.quantity, 1),
     timeRefQuantity: toPositiveInt(
       safeProcess.timeRefQuantity ?? safeProcess.referenceQuantity,
-      1
+      DEFAULT_TIME_REF_QUANTITY
     ),
     stManual: normalizedStManual,
     pt: toOptionalNumber(safeProcess.pt),

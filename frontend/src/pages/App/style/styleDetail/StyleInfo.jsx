@@ -221,21 +221,24 @@ const StyleInfo = ({
   
   const costData = [];
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
-  const timeRefQuantity = useMemo(() => {
-    if (!Array.isArray(normalizedProcesses) || normalizedProcesses.length === 0) return 1;
-    const first = normalizedProcesses.find((process) =>
-      Number.isFinite(Number(process?.timeRefQuantity))
-    );
-    const parsed = Number.parseInt(first?.timeRefQuantity, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-  }, [normalizedProcesses]);
+  const perJobOrderQuantity = 1;
   const totalPT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'pt', timeRefQuantity),
-    [normalizedProcesses, timeRefQuantity]
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        normalizedProcesses,
+        'pt',
+        perJobOrderQuantity
+      ),
+    [normalizedProcesses]
   );
   const totalAT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'at', timeRefQuantity),
-    [normalizedProcesses, timeRefQuantity]
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        normalizedProcesses,
+        'at',
+        perJobOrderQuantity
+      ),
+    [normalizedProcesses]
   );
   const hasTotalPT = useMemo(
     () => hasAnyProcessTime(normalizedProcesses, 'pt'),
@@ -568,7 +571,7 @@ const StyleInfo = ({
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">
-                    {`총 PT(q=${timeRefQuantity})`}
+                    총 PT
                   </Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>
                     {hasTotalPT ? formatSeconds(totalPT) : '-'}
@@ -576,7 +579,7 @@ const StyleInfo = ({
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="body2" color="text.secondary">
-                    {`총 AT(q=${timeRefQuantity})`}
+                    총 AT
                   </Typography>
                   <Typography variant="body2" sx={{fontWeight: '500'}}>
                     {hasTotalAT ? formatSeconds(totalAT) : '-'}
