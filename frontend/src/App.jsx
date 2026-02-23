@@ -1,13 +1,32 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
-import { CssBaseline } from '@mui/material';
+import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
 import router from './router';
 import theme from './theme';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+
+const RouteLoadingFallback = () => (
+  <Box
+    sx={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'column',
+      gap: 1.5,
+      bgcolor: 'background.default',
+    }}
+  >
+    <CircularProgress size={30} />
+    <Typography variant="body2" color="text.secondary">
+      페이지를 불러오는 중입니다...
+    </Typography>
+  </Box>
+);
 
 const App = () => {
   return (
@@ -16,7 +35,9 @@ const App = () => {
       <AppProvider>
         <DndProvider backend={HTML5Backend}>
           <AuthProvider>
-            <RouterProvider router={router} />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <RouterProvider router={router} />
+            </Suspense>
           </AuthProvider>
         </DndProvider>
       </AppProvider>

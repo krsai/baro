@@ -1181,6 +1181,57 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
   return finish(updatedStyles, updatedProcesses);
 };
 
+type AtSyncEventSource =
+  | "attendance_put"
+  | "worklog_post"
+  | "worklog_put"
+  | "worklog_delete";
+
+const atEventSyncInProgressOrgIds = new Set<number>();
+
+const triggerAtSyncFromEvent = (orgId: number, source: AtSyncEventSource) => {
+  const now = new Date();
+  const todayKey = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE);
+  const todayParts = todayKey ? parseDateKeyParts(todayKey) : null;
+  if (todayParts && todayParts.day < AT_TRAINING_CUTOFF_DAY) {
+    console.log(
+      `[AT sync][event:${source}] orgId=${orgId} skipped=before_cutoff day=${todayParts.day} cutoff=${AT_TRAINING_CUTOFF_DAY}`
+    );
+    return;
+  }
+
+  if (atAutoSyncInProgress) {
+    console.log(
+      `[AT sync][event:${source}] orgId=${orgId} note=scheduler_in_progress`
+    );
+  }
+
+  if (atEventSyncInProgressOrgIds.has(orgId)) {
+    console.log(
+      `[AT sync][event:${source}] orgId=${orgId} skipped=already_in_progress`
+    );
+    return;
+  }
+
+  atEventSyncInProgressOrgIds.add(orgId);
+  const startedAt = Date.now();
+  syncStyleProcessActualTimesFromWorkRecords(orgId)
+    .then((result) => {
+      console.log(
+        `[AT sync][event:${source}] orgId=${orgId} updatedStyles=${Number(result?.updatedStyles || 0)} updatedProcesses=${Number(result?.updatedProcesses || 0)} durationMs=${Date.now() - startedAt}`
+      );
+    })
+    .catch((err: any) => {
+      console.error(
+        `[AT sync][event:${source}] orgId=${orgId} failed:`,
+        err?.message || err
+      );
+    })
+    .finally(() => {
+      atEventSyncInProgressOrgIds.delete(orgId);
+    });
+};
+
 const normalizeStylePayload = (
   payload: any,
   fallbackStyleId: string | null = null,
@@ -3838,9 +3889,7 @@ app.put("/attendance-entries", async (req, res) => {
   });
 
   res.json(savedRows.map(toAttendanceEntryResponse));
-  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
-    console.error("[AT sync] Attendance PUT 후 실패:", err?.message);
-  });
+  triggerAtSyncFromEvent(organization.id, "attendance_put");
 });
 
 app.get("/work-logs", async (req, res) => {
@@ -3952,10 +4001,7 @@ app.post("/work-logs", async (req, res) => {
     },
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
-  // AT는 참고값이므로 응답 후 백그라운드에서 동기화
-  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
-    console.error("[AT sync] WorkLog POST 후 실패:", err?.message);
-  });
+  triggerAtSyncFromEvent(organization.id, "worklog_post");
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -4028,9 +4074,7 @@ app.put("/work-logs/:id", async (req, res) => {
     },
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
-  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
-    console.error("[AT sync] WorkLog PUT 후 실패:", err?.message);
-  });
+  triggerAtSyncFromEvent(organization.id, "worklog_put");
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
@@ -4056,9 +4100,7 @@ app.delete("/work-logs/:id", async (req, res) => {
     where: { id: existing.id },
   });
   res.status(204).send();
-  syncStyleProcessActualTimesFromWorkRecords(organization.id).catch((err) => {
-    console.error("[AT sync] WorkLog DELETE 후 실패:", err?.message);
-  });
+  triggerAtSyncFromEvent(organization.id, "worklog_delete");
 });
 
 app.get("/assignment-board-state", async (req, res) => {
@@ -5636,9 +5678,136 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 const port = process.env.PORT || 4000;
 const AT_AUTO_SYNC_INTERVAL_MS = 60 * 1000;
+const AT_AUTO_SYNC_DB_LOCK_NAMESPACE = 20260223;
+const AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
+const AT_AUTO_SYNC_JOB_KEY = "AT_SYNC";
 let atAutoSyncTimer: NodeJS.Timeout | null = null;
 let atAutoSyncInProgress = false;
 let atAutoSyncLastTrainingMonthKey: string | null = null;
+let atAutoSyncRunHistoryTableReady = false;
+let atAutoSyncRunHistoryTableUnsupported = false;
+
+type AutoAtSyncSummary = {
+  manufacturerCount: number;
+  totalUpdatedStyles: number;
+  totalUpdatedProcesses: number;
+};
+
+type AutoAtSyncExecutionResult = {
+  executed: boolean;
+  reason: "done" | "already_completed" | "locked_by_other_instance";
+  summary: AutoAtSyncSummary;
+};
+
+const ensureAtAutoSyncRunHistoryTable = async () => {
+  if (atAutoSyncRunHistoryTableReady) return true;
+  if (atAutoSyncRunHistoryTableUnsupported) return false;
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "SchedulerRunHistory" (
+        "jobKey" TEXT NOT NULL,
+        "monthKey" TEXT NOT NULL,
+        "completedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY ("jobKey", "monthKey")
+      )
+    `);
+    atAutoSyncRunHistoryTableReady = true;
+    return true;
+  } catch (error: any) {
+    atAutoSyncRunHistoryTableUnsupported = true;
+    console.warn(
+      `[AT sync][scheduler] db run-history disabled: ${error?.message || error}`
+    );
+    return false;
+  }
+};
+
+const toAtAutoSyncLockKey = (trainingMonthKey: string) => {
+  const normalized = String(trainingMonthKey || "").trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) return null;
+  const [yearText, monthText] = normalized.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month)) return null;
+  if (month < 1 || month > 12) return null;
+  return year * 100 + month;
+};
+
+const runAutoAtSyncAcrossManufacturers = async (): Promise<AutoAtSyncSummary> => {
+  const manufacturerRows = await prisma.organization.findMany({
+    where: { type: "MANUFACTURER" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+
+  let totalUpdatedStyles = 0;
+  let totalUpdatedProcesses = 0;
+  for (const row of manufacturerRows) {
+    const result = await syncStyleProcessActualTimesFromWorkRecords(row.id);
+    totalUpdatedStyles += Number(result?.updatedStyles || 0);
+    totalUpdatedProcesses += Number(result?.updatedProcesses || 0);
+  }
+
+  return {
+    manufacturerCount: manufacturerRows.length,
+    totalUpdatedStyles,
+    totalUpdatedProcesses,
+  };
+};
+
+const runAutoAtSyncWithDbLock = async (
+  trainingMonthKey: string
+): Promise<AutoAtSyncExecutionResult> => {
+  const lockKey = toAtAutoSyncLockKey(trainingMonthKey);
+  if (lockKey === null) {
+    const summary = await runAutoAtSyncAcrossManufacturers();
+    return { executed: true, reason: "done", summary };
+  }
+
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const lockRows = await tx.$queryRaw<Array<{ acquired: boolean }>>(
+        Prisma.sql`SELECT pg_try_advisory_xact_lock(${AT_AUTO_SYNC_DB_LOCK_NAMESPACE}, ${lockKey}) AS acquired`
+      );
+      if (lockRows[0]?.acquired !== true) {
+        return {
+          executed: false,
+          reason: "locked_by_other_instance" as const,
+          summary: {
+            manufacturerCount: 0,
+            totalUpdatedStyles: 0,
+            totalUpdatedProcesses: 0,
+          },
+        };
+      }
+
+      const completedRows = await tx.$queryRaw<Array<{ completed: boolean }>>(
+        Prisma.sql`SELECT TRUE AS completed FROM "SchedulerRunHistory" WHERE "jobKey" = ${AT_AUTO_SYNC_JOB_KEY} AND "monthKey" = ${trainingMonthKey} LIMIT 1`
+      );
+      if (completedRows[0]?.completed === true) {
+        return {
+          executed: false,
+          reason: "already_completed" as const,
+          summary: {
+            manufacturerCount: 0,
+            totalUpdatedStyles: 0,
+            totalUpdatedProcesses: 0,
+          },
+        };
+      }
+
+      const summary = await runAutoAtSyncAcrossManufacturers();
+      await tx.$executeRaw(
+        Prisma.sql`INSERT INTO "SchedulerRunHistory" ("jobKey", "monthKey", "completedAt") VALUES (${AT_AUTO_SYNC_JOB_KEY}, ${trainingMonthKey}, NOW()) ON CONFLICT ("jobKey", "monthKey") DO NOTHING`
+      );
+
+      return { executed: true, reason: "done" as const, summary };
+    },
+    { timeout: AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS }
+  );
+
+  return result;
+};
 
 const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
   if (atAutoSyncInProgress) return;
@@ -5659,23 +5828,30 @@ const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
 
   atAutoSyncInProgress = true;
   try {
-    const manufacturerRows = await prisma.organization.findMany({
-      where: { type: "MANUFACTURER" },
-      select: { id: true },
-      orderBy: { id: "asc" },
-    });
+    const canUseDbLock = await ensureAtAutoSyncRunHistoryTable();
+    if (!canUseDbLock) {
+      const summary = await runAutoAtSyncAcrossManufacturers();
+      atAutoSyncLastTrainingMonthKey = trainingMonthKey;
+      console.log(
+        `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} mode=in_memory manufacturers=${summary.manufacturerCount} updatedStyles=${summary.totalUpdatedStyles} updatedProcesses=${summary.totalUpdatedProcesses}`
+      );
+      return;
+    }
 
-    let totalUpdatedStyles = 0;
-    let totalUpdatedProcesses = 0;
-    for (const row of manufacturerRows) {
-      const result = await syncStyleProcessActualTimesFromWorkRecords(row.id);
-      totalUpdatedStyles += Number(result?.updatedStyles || 0);
-      totalUpdatedProcesses += Number(result?.updatedProcesses || 0);
+    const result = await runAutoAtSyncWithDbLock(trainingMonthKey);
+    if (!result.executed) {
+      if (result.reason === "already_completed") {
+        atAutoSyncLastTrainingMonthKey = trainingMonthKey;
+      }
+      console.log(
+        `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} skipped=${result.reason}`
+      );
+      return;
     }
 
     atAutoSyncLastTrainingMonthKey = trainingMonthKey;
     console.log(
-      `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} manufacturers=${manufacturerRows.length} updatedStyles=${totalUpdatedStyles} updatedProcesses=${totalUpdatedProcesses}`
+      `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} mode=db_lock manufacturers=${result.summary.manufacturerCount} updatedStyles=${result.summary.totalUpdatedStyles} updatedProcesses=${result.summary.totalUpdatedProcesses}`
     );
   } catch (err: any) {
     console.error(
@@ -5707,6 +5883,7 @@ const startAutoAtSyncScheduler = () => {
 
 const startServer = async () => {
   await ensureHardcodedSystemAdmin();
+  await ensureAtAutoSyncRunHistoryTable();
   startAutoAtSyncScheduler();
   app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
