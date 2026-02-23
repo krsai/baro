@@ -2,6 +2,10 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import { PrismaClient, Prisma, type OrgUserRole } from "@prisma/client";
+import {
+  parseDateKeyParts,
+  resolveAtTrainingMonthKey,
+} from "./utils/atTrainingMonthKey";
 
 dotenv.config();
 
@@ -675,6 +679,58 @@ const toOptionalSeconds = (value: any) => {
   return parsed < 0 ? 0 : roundToScale(parsed, 4);
 };
 
+type StyleAtParams = {
+  a: number;
+  b: number;
+  version: number;
+  updatedAt: string | null;
+  trainedPeriod: string | null;
+};
+
+const toStyleAtParams = (value: any): StyleAtParams | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const a = toOptionalSeconds((value as any).a);
+  const b = toOptionalSeconds((value as any).b);
+  if (a === null || b === null) return null;
+
+  const versionRaw = Number((value as any).version);
+  const version =
+    Number.isFinite(versionRaw) && versionRaw > 0 ? Math.trunc(versionRaw) : 1;
+
+  const updatedAtRaw = resolveOptionalString((value as any).updatedAt, null);
+  const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
+  const updatedAt =
+    updatedAtDate && !Number.isNaN(updatedAtDate.getTime())
+      ? updatedAtDate.toISOString()
+      : null;
+
+  const trainedPeriodRaw = resolveOptionalString(
+    (value as any).trainedPeriod,
+    null
+  );
+  const trainedPeriod =
+    trainedPeriodRaw && /^\d{4}-\d{2}$/.test(trainedPeriodRaw)
+      ? trainedPeriodRaw
+      : null;
+
+  return { a, b, version, updatedAt, trainedPeriod };
+};
+
+const isSameStyleAtParams = (
+  left: StyleAtParams | null,
+  right: StyleAtParams | null
+) => {
+  if (left === null && right === null) return true;
+  if (left === null || right === null) return false;
+  return (
+    left.a === right.a &&
+    left.b === right.b &&
+    left.version === right.version &&
+    left.updatedAt === right.updatedAt &&
+    left.trainedPeriod === right.trainedPeriod
+  );
+};
+
 const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
@@ -684,6 +740,12 @@ const normalizeStyleProcess = (process: any) => {
   if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
   if ("at" in next) next.at = toOptionalSeconds(next.at);
   if ("ct" in next) next.ct = toOptionalSeconds(next.ct);
+  const normalizedAtParams = toStyleAtParams((next as any).atParams);
+  if (normalizedAtParams) {
+    (next as any).atParams = normalizedAtParams;
+  } else if ("atParams" in next) {
+    delete (next as any).atParams;
+  }
   next.timeRefQuantity = toPositiveInt(
     (next as any).timeRefQuantity ?? (next as any).referenceQuantity,
     1
@@ -764,7 +826,23 @@ const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
 };
 
 const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
-  const trainingMonthKey = resolveAtTrainingMonthKey(new Date());
+  const trainingMonthKey = resolveAtTrainingMonthKey({
+    now: new Date(),
+    timeZone: BUSINESS_TIME_ZONE,
+    cutoffDay: AT_TRAINING_CUTOFF_DAY,
+  });
+  const startedAt = Date.now();
+  const finish = (
+    updatedStyles: number,
+    updatedProcesses: number,
+    reason = "done"
+  ) => {
+    console.log(
+      `[AT sync] orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
+    );
+    return { updatedStyles, updatedProcesses };
+  };
+  console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
   const workLogs = await prisma.workLog.findMany({
     where: {
       orgId,
@@ -772,6 +850,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
     },
     select: {
       workDate: true,
+      factoryId: true,
       workerCount: true,
       workRecords: {
         where: {
@@ -801,7 +880,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
     )
   );
   if (styleIds.length === 0) {
-    return { updatedStyles: 0, updatedProcesses: 0 };
+    return finish(0, 0, "no_style_ids");
   }
 
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
@@ -820,7 +899,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
     },
   });
   if (styleCandidates.length === 0) {
-    return { updatedStyles: 0, updatedProcesses: 0 };
+    return finish(0, 0, "no_style_candidates");
   }
 
   const stylesByStyleId = new Map<string, any[]>();
@@ -879,6 +958,13 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
           .filter((value) => value !== "")
       )
     );
+    const factoryIds = Array.from(
+      new Set(
+        workLogs
+          .map((workLog) => toPositiveIntOrNull((workLog as any).factoryId))
+          .filter((factoryId): factoryId is number => factoryId !== null)
+      )
+    );
     const workerIds = Array.from(
       new Set(
         workLogs
@@ -894,34 +980,48 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
           orgId,
           workDate: { in: workDates },
           workerId: { in: workerIds },
+          ...(factoryIds.length > 0 ? { factoryId: { in: factoryIds } } : {}),
         },
         select: {
           workDate: true,
+          factoryId: true,
           workerId: true,
           workedSeconds: true,
         },
       });
       attendanceRows.forEach((row) => {
         const workDate = normalizeDateKey(row.workDate);
+        const factoryId = toPositiveIntOrNull((row as any).factoryId);
         const workerId = toPositiveIntOrNull(row.workerId);
         const workedSeconds = toNumberOrNull(row.workedSeconds);
-        if (!workDate || workerId === null || workedSeconds === null) return;
+        if (
+          !workDate ||
+          factoryId === null ||
+          workerId === null ||
+          workedSeconds === null
+        ) {
+          return;
+        }
         attendanceSecondsByWorkerDate.set(
-          toAttendanceWorkerDateKey(workDate, workerId),
+          toAttendanceWorkerDateKey(workDate, workerId, factoryId),
           Math.max(0, Math.round(workedSeconds))
         );
       });
     }
   }
 
-  const resolveWorkerSecondsForDate = (workDate: string, workerId: number | null) => {
+  const resolveWorkerSecondsForDate = (
+    workDate: string,
+    workerId: number | null,
+    factoryId: number | null
+  ) => {
     if (!USE_ATTENDANCE_INPUT_FOR_AT) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
-    if (workerId === null) {
+    if (workerId === null || factoryId === null) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
-    const key = toAttendanceWorkerDateKey(workDate, workerId);
+    const key = toAttendanceWorkerDateKey(workDate, workerId, factoryId);
     if (!attendanceSecondsByWorkerDate.has(key)) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
@@ -930,6 +1030,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
 
   workLogs.forEach((workLog) => {
     const workDate = normalizeDateKey(workLog.workDate);
+    const workLogFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
     if (!workDate) return;
     const resolvedRows = workLog.workRecords
       .map((record) => {
@@ -987,10 +1088,11 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
       const workerSecondsForProcess =
         group.workerIds.size > 0
           ? Array.from(group.workerIds.values()).reduce(
-              (sum, workerId) => sum + resolveWorkerSecondsForDate(workDate, workerId),
+              (sum, workerId) =>
+                sum + resolveWorkerSecondsForDate(workDate, workerId, workLogFactoryId),
               0
             )
-          : resolveWorkerSecondsForDate(workDate, null);
+          : resolveWorkerSecondsForDate(workDate, null, workLogFactoryId);
 
       const current = weightedByKey.get(metricKey) || { totalSeconds: 0, totalQuantity: 0 };
       current.totalSeconds += workerSecondsForProcess;
@@ -1000,7 +1102,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
   });
 
   if (weightedByKey.size === 0) {
-    return { updatedStyles: 0, updatedProcesses: 0 };
+    return finish(0, 0, "no_weighted_metrics");
   }
 
   const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
@@ -1033,23 +1135,37 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
       const nextAt = toOptionalSeconds(metric.totalSeconds / metric.totalQuantity);
       const currentAt = toOptionalSeconds((process as any).at);
       if (nextAt === null) return process;
+      const currentAtParams = toStyleAtParams((process as any).atParams);
+      const shouldRefreshAtParams =
+        currentAtParams === null ||
+        currentAtParams.a !== nextAt ||
+        currentAtParams.b !== 0 ||
+        currentAtParams.trainedPeriod !== trainingMonthKey;
+      const nextAtParams = shouldRefreshAtParams
+        ? {
+            a: nextAt,
+            b: 0,
+            version: (currentAtParams?.version ?? 0) + 1,
+            updatedAt: new Date().toISOString(),
+            trainedPeriod: trainingMonthKey,
+          }
+        : currentAtParams;
+      const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);
 
       const isStManual = (process as any).stManual === true;
       const currentCt = toOptionalSeconds((process as any).ct);
-      const nextCt =
-        !isStManual && (currentCt === null || currentCt === undefined)
-          ? nextAt
-          : currentCt;
+      const nextCt = !isStManual ? nextAt : currentCt;
       const ctChanged =
         (currentCt ?? null) !== (nextCt ?? null);
       const atChanged = currentAt !== nextAt;
-      if (!atChanged && !ctChanged) return process;
+      if (!atChanged && !ctChanged && !atParamsChanged) return process;
 
       changed = true;
       updatedProcesses += 1;
       return {
         ...(process as any),
         at: nextAt,
+        ...(atParamsChanged ? { atParams: nextAtParams } : {}),
         ...(ctChanged ? { ct: nextCt } : {}),
       };
     });
@@ -1062,7 +1178,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (orgId: number) => {
     });
   }
 
-  return { updatedStyles, updatedProcesses };
+  return finish(updatedStyles, updatedProcesses);
 };
 
 const normalizeStylePayload = (
@@ -1627,53 +1743,6 @@ const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   }
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
-const parseDateKeyParts = (dateKey: string) => {
-  const normalized = normalizeDateKey(dateKey);
-  if (!normalized) return null;
-  const [yearText, monthText, dayText] = normalized.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  return { year, month, day };
-};
-const formatMonthKey = (year: number, month: number) =>
-  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}`;
-const shiftMonthKey = (monthKey: string, offset: number) => {
-  const normalized = normalizeMonthKey(monthKey);
-  if (!normalized) return "";
-  const [yearText, monthText] = normalized.split("-");
-  let year = Number(yearText);
-  let month = Number(monthText);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return "";
-  let remain = Math.trunc(offset);
-  while (remain !== 0) {
-    if (remain > 0) {
-      month += 1;
-      if (month > 12) {
-        month = 1;
-        year += 1;
-      }
-      remain -= 1;
-      continue;
-    }
-    month -= 1;
-    if (month < 1) {
-      month = 12;
-      year -= 1;
-    }
-    remain += 1;
-  }
-  return formatMonthKey(year, month);
-};
-const resolveAtTrainingMonthKey = (now: Date = new Date()) => {
-  const today = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE) || now.toISOString().slice(0, 10);
-  const parts = parseDateKeyParts(today);
-  if (!parts) return normalizeMonthKey(today.slice(0, 7));
-  const currentMonthKey = formatMonthKey(parts.year, parts.month);
-  const monthOffset = parts.day >= AT_TRAINING_CUTOFF_DAY ? -1 : -2;
-  return shiftMonthKey(currentMonthKey, monthOffset) || currentMonthKey;
-};
 const normalizeTimeText = (value: any): string | null => {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -1705,8 +1774,11 @@ const calculateWorkedSeconds = (clockIn: any, clockOut: any): number | null => {
       : 24 * 60 - inMinutes + outMinutes;
   return Math.max(0, Math.round(diffMinutes * 60));
 };
-const toAttendanceWorkerDateKey = (workDate: string, workerId: number) =>
-  `${workDate}::${workerId}`;
+const toAttendanceWorkerDateKey = (
+  workDate: string,
+  workerId: number,
+  factoryId: number
+) => `${workDate}::${workerId}::${factoryId}`;
 const normalizeAttendanceEntryPayloadList = (entries: any) => {
   const rows: Array<{
     workerId: number;
@@ -5563,9 +5635,79 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const port = process.env.PORT || 4000;
+const AT_AUTO_SYNC_INTERVAL_MS = 60 * 1000;
+let atAutoSyncTimer: NodeJS.Timeout | null = null;
+let atAutoSyncInProgress = false;
+let atAutoSyncLastTrainingMonthKey: string | null = null;
+
+const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
+  if (atAutoSyncInProgress) return;
+
+  const now = new Date();
+  const todayKey = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE);
+  const todayParts = todayKey ? parseDateKeyParts(todayKey) : null;
+  if (!todayParts) return;
+  if (todayParts.day < AT_TRAINING_CUTOFF_DAY) return;
+
+  const trainingMonthKey = resolveAtTrainingMonthKey({
+    now,
+    timeZone: BUSINESS_TIME_ZONE,
+    cutoffDay: AT_TRAINING_CUTOFF_DAY,
+  });
+  if (!trainingMonthKey) return;
+  if (atAutoSyncLastTrainingMonthKey === trainingMonthKey) return;
+
+  atAutoSyncInProgress = true;
+  try {
+    const manufacturerRows = await prisma.organization.findMany({
+      where: { type: "MANUFACTURER" },
+      select: { id: true },
+      orderBy: { id: "asc" },
+    });
+
+    let totalUpdatedStyles = 0;
+    let totalUpdatedProcesses = 0;
+    for (const row of manufacturerRows) {
+      const result = await syncStyleProcessActualTimesFromWorkRecords(row.id);
+      totalUpdatedStyles += Number(result?.updatedStyles || 0);
+      totalUpdatedProcesses += Number(result?.updatedProcesses || 0);
+    }
+
+    atAutoSyncLastTrainingMonthKey = trainingMonthKey;
+    console.log(
+      `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} manufacturers=${manufacturerRows.length} updatedStyles=${totalUpdatedStyles} updatedProcesses=${totalUpdatedProcesses}`
+    );
+  } catch (err: any) {
+    console.error(
+      `[AT sync][scheduler:${trigger}] failed:`,
+      err?.message || err
+    );
+  } finally {
+    atAutoSyncInProgress = false;
+  }
+};
+
+const startAutoAtSyncScheduler = () => {
+  if (atAutoSyncTimer) return;
+  runAutoAtSyncIfDue("startup").catch((err) => {
+    console.error("[AT sync][scheduler:startup] failed:", err?.message || err);
+  });
+  atAutoSyncTimer = setInterval(() => {
+    runAutoAtSyncIfDue("interval").catch((err) => {
+      console.error(
+        "[AT sync][scheduler:interval] failed:",
+        err?.message || err
+      );
+    });
+  }, AT_AUTO_SYNC_INTERVAL_MS);
+  if (typeof atAutoSyncTimer.unref === "function") {
+    atAutoSyncTimer.unref();
+  }
+};
 
 const startServer = async () => {
   await ensureHardcodedSystemAdmin();
+  startAutoAtSyncScheduler();
   app.listen(port, () => {
     console.log(`API running on http://localhost:${port}`);
   });
@@ -5575,3 +5717,4 @@ startServer().catch((error) => {
   console.error("failed to start API server", error);
   process.exit(1);
 });
+

@@ -167,7 +167,7 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
   return Math.max(1, toPositiveInt(headcount, 1)) * 8 * 60 * 60;
 };
 
-const resolveProcessCtBaseSeconds = (process, orderQuantity = 1) => {
+const resolveProcessCtBaseInfo = (process, orderQuantity = 1) => {
   const st = Number(process?.ct);
   if (process?.stManual === true && Number.isFinite(st) && st > 0) {
     return { basis: 'ST', seconds: st };
@@ -675,7 +675,7 @@ const ProductionPlanBoard = () => {
         );
         const processName = process?.name || process?.processName || process?.code || `怨듭젙 ${index + 1}`;
         const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
-        const baseInfo = resolveProcessCtBaseSeconds(process, orderQuantity);
+        const baseInfo = resolveProcessCtBaseInfo(process, orderQuantity);
         const baseSeconds = baseInfo.seconds;
         const basePerPieceSeconds = baseSeconds * processQuantity;
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);

@@ -1,4 +1,4 @@
-# BARO - 봉제 생산관리 시스템 Agent 참조 문서
+﻿# BARO - 봉제 생산관리 시스템 Agent 참조 문서
 
 ## 프로젝트 개요
 
@@ -45,7 +45,7 @@
   ```
 - 데이터가 부족하여 파라미터를 추정할 수 없는 경우 `atParams`는 `null`일 수 있다.
 
-**AT(q) 추정 방식 — 비례배분 + WLS 반복학습**
+**AT(q) 고급 추정(계획안) — 비례배분 + WLS 반복학습**
 - **문제 정의**: 공정별 실제 투입 시간(`t_p`)은 직접 관측할 수 없다. 관측 가능한 데이터는 라인별/일별 총 근무시간(`T_d`)과 공정별 생산 수량(`q_d,p`) 뿐이다.
 - **관측 데이터 (라인 × 일자 `d` 단위)**:
   - `T_d`: 해당 라인의 해당 일자 총 근무시간 (초)
@@ -100,7 +100,7 @@
 - `b_p`는 초기에는 `0`으로 고정하거나, 별도의 안정화 정책에 따라 제한적으로 학습/갱신한다.
 
 **학습 실행 정책**
-- **실행 시점**: 매달 5일 00:00 (Asia/Seoul)
+- **실행 시점**: 매달 5일 00:00 이후(Asia/Seoul) 스케줄러 자동 실행 + 이벤트 트리거 보조
 - **학습 대상**: 직전 월 전체 데이터
 - **출퇴근 기록 폴백 규칙(확정)**:
   - 매달 5일까지 전월 출퇴근 기록이 입력된 경우: 입력된 실제 근무시간으로 `T_d`를 사용한다.
@@ -109,8 +109,8 @@
 - **구현 상태(반영 완료)**: 출퇴근 입력은 화면 + 서버 저장으로 동작하며, AT 학습 계산은 매월 5일 기준 직전 월 데이터를 반영할 때 출퇴근 입력값을 우선 사용한다. 입력이 없거나 불완전한 경우 8시간 기준으로 폴백한다.
 
 **레거시 평균 AT 제거**
-- 기존의 단순 평균 방식(`AT = 전체 총시간 ÷ 전체 총수량`)은 폐기(deprecated) 처리한다.
-- 모든 일정 예측, 공임 계산, 성과 분석은 `atParams` 기반의 `AT(q)` 함수로 통일한다.
+- 현재 1차 구현은 단순 평균(`AT = 전체 총시간 ÷ 전체 총수량`)을 사용해 `nextAt`를 갱신하고, 동시에 `atParams = { a: nextAt, b: 0, ... }`를 저장한다.
+- 수량 비선형(`b/q`) 및 WLS/Clamp 고도화는 계획 단계이며, 현재 운영 계산은 위 1차 구현을 기준으로 동작한다.
 
 **ST(q) (Standard Time) — 버전 관리 정책 기준값 (충격 완충재)**
 - PT → AT로 기준이 전환될 때 급격한 변화를 막기 위한 완충 구간
@@ -140,7 +140,7 @@ PENDING (배정 후 초기 상태)
   │    ctAgreedBy='LINE_LEADER', ctSource=MANUAL
   │
   └─ 라인장 "CT 조정 요청" (제안 CT 입력 후) ──────────── REJECTED
-       ctOverride=true, ctSource='LINE_LEADER_PROPOSAL'
+       ctSource='LINE_LEADER_PROPOSAL' (보드 상태의 ctOverride=true 가능)
        pendingCtProposal에 공정별 제안 CT 저장
          │
          ├─ 운영팀 "승인" ────────────────────────────────── AGREED
@@ -161,10 +161,10 @@ PENDING (배정 후 초기 상태)
 - 버튼 variant도 활성/비활성에 따라 contained/outlined로 전환
 
 #### ctOverride 의미
-- `ctOverride: true` = **이 배정 카드에 적용된 CT가 Style의 공식 CT와 다름**
-- 라인장이 CT 조정 요청 시 설정되며, 운영팀 승인 후에도 true로 유지됨
-- ctStatus와 ctSource 조합으로 현재 상태 구분:
-  - `REJECTED + ctOverride=true` → 라인장 조정 요청, 운영팀 검토 대기 중
+- `ctOverride`는 **AssignmentPlan DB 컬럼이 아니라** `AssignmentBoardState.assignments`의 보드 상태 값이다.
+- DB 영속 상태 판별은 `ctStatus + ctSource (+ contractedSeconds)` 조합을 기준으로 본다.
+- 상태 해석 기준:
+  - `REJECTED + ctSource='LINE_LEADER_PROPOSAL'` → 라인장 조정 요청, 운영팀 검토 대기 중
   - `AGREED + ctSource='LINE_LEADER_PROPOSAL'` → 운영팀이 라인장 제안 CT 승인 완료
   - `AGREED + ctSource='MANUAL'` → 라인장이 기본 CT 그대로 동의
 
@@ -224,9 +224,9 @@ PENDING (배정 후 초기 상태)
 - WorkLog에 factoryWagePerSecond 스냅샷 저장 (Factory 단가 변경에 무관)
 - WorkRecord에 ctSeconds 스냅샷 저장 (Style CT 변경에 무관)
 - **공장 초당 급여 단가 정책(확정)**: `factoryWagePerSecond = 월 목표 급여 / (26일 × 8시간 × 3600초)` 고정
-- **PayrollSnapshot 모델 구현 완료**: orgId, yearMonth(YYYY-MM), data(JSON 스냅샷), isLocked
+- **PayrollSnapshot 모델 구현 완료**: orgId, month(YYYY-MM), data(JSON 스냅샷), lockedAt(DateTime), lockedBy(String)
   - GET /payroll: WorkRecord × ctSeconds × quantity × factoryWagePerSecond 집계, 직원/월 단위 그룹핑
-  - POST /payroll/lock: 해당 월 잠금(isLocked = true) → 확정 후 소급 변경 불가
+  - POST /payroll/lock: 해당 월 잠금(lockedAt/lockedBy 기록) → 확정 후 소급 변경 불가
 
 ---
 
@@ -267,15 +267,15 @@ Organization (MANUFACTURER | BRAND)
   └─ Employee (OrgMembership 1:1)
   └─ Style (processes: JSON [{code, name, pt, atParams:{a,b}, ct, stManual, timeRefQuantity, ctVersion, ctUpdatedAt, quantity}], bom: JSON)
        ※ PT: 매니저 직접 입력. AT 없을 때 ST(q) 기준값으로 사용
-       ※ atParams: WorkRecord 기반 자동 산출. AT(q)=a+b/q 파라미터. 데이터 부족 시 null
+       ※ atParams: WorkRecord 기반 자동 산출. 현재는 `a=nextAt, b=0`으로 저장(1차), 추후 `AT(q)=a+b/q` 고도화 예정. 데이터 부족 시 null
        ※ ct: ST(q) 역할. 버전 관리 대상. ctVersion은 정수로 증가, ctUpdatedAt은 마지막 변경 시각
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
   └─ WorkOrder (items: JSON)
-  └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctOverride, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
+  └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
   └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 단일 자동저장
        ※ assignments: 라인 타임라인에 배정된 카드 배열 (AssignmentPlan의 프론트엔드 표현)
        ※ cards: 미배정 풀 카드 배열 (일반 카드 + DELTA 카드 공존)
-  └─ PayrollSnapshot (orgId, yearMonth, data: JSON, isLocked)
+  └─ PayrollSnapshot (orgId, month, data: JSON, lockedAt, lockedBy)
   └─ SystemUser (email, systemRole)
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
        └─ WorkRecord (workerId, ctSeconds snapshot, quantity, assignmentPlanId)
@@ -405,3 +405,40 @@ Organization (MANUFACTURER | BRAND)
 3. `stManual=false` 공정이 생산계획 보드에서 AT(q) 기준으로 계산되는지
 4. 출퇴근 입력이 없는 데이터에서 AT 학습이 8시간 폴백으로 동작하는지
 5. 초과 생산 페이지에서 `baseline / produced / overflow` 계산이 API와 동일한지
+
+## AT 모델 현재 구현 단계 (2026-02-23 추가)
+
+- 현재 백엔드 AT 동기화는 공정별 `nextAt = totalSeconds / totalQuantity`를 기본값으로 산출한다.
+- 동시에 `Style.processes[].atParams`를 아래 형태로 생성/갱신한다.
+  - `{ a: nextAt, b: 0, version, updatedAt, trainedPeriod }`
+- 즉 현재 단계의 `AT(q)`는 사실상 `a*q + 0`(개당 시간 상수) 모델이며, 수량 비선형(`b/q`) 학습은 아직 적용하지 않는다.
+- 프론트 계산 유틸(`frontend/src/utils/processTime.js`)은 `atParams`가 있으면 `a*q+b` 분기를 사용한다.
+- WLS/Clamp 기반 고급 학습은 계획 항목으로 유지한다.
+- 자동 학습 실행은 이벤트 트리거(출퇴근/작업기록 저장) 외에, 백엔드 스케줄러가 매월 5일 이후 해당 학습월에 대해 1회 자동 동기화를 수행한다.
+- `stManual=false` 공정은 AT 갱신 시 DB `ct`도 `nextAt`로 동기화한다. (`stManual=true`는 수동 ST 유지)
+
+## 문서 정합성 교정 우선본 (2026-02-23)
+
+아래 항목은 기존 본문 서술과 충돌하더라도 **이 섹션을 우선 적용**한다.
+
+### PayrollSnapshot 스키마 정합성
+- 실제 스키마 기준 필드:
+  - `month` (YYYY-MM)
+  - `data` (JSON)
+  - `lockedAt` (DateTime)
+  - `lockedBy` (String)
+- 문서에서 사용된 `yearMonth`, `isLocked` 표현은 레거시 표기로 간주한다.
+
+### AssignmentPlan의 ctOverride 정합성
+- `ctOverride`는 `AssignmentPlan` DB 컬럼이 아니다.
+- 현재 `ctOverride`는 보드 상태 JSON(`AssignmentBoardState.assignments`) 병합 시점의 상태값이다.
+- DB 영속 상태 판단은 `ctStatus + ctSource + contractedSeconds` 조합을 기준으로 한다.
+
+### ST/AT 저장 정책 정합성
+- `stManual=false` 공정은 AT 동기화 시 DB `ct`를 `nextAt`로 동기화한다.
+- `stManual=true` 공정은 수동 ST(`ct`)를 유지한다.
+
+### AT 학습 실행 정책 정합성
+- 이벤트 트리거(출퇴근/작업기록 저장) + 자동 스케줄러 병행으로 동기화한다.
+- 자동 스케줄러는 매월 5일 이후 해당 학습월에 대해 1회 자동 실행을 보장한다.
+
