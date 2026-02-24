@@ -136,39 +136,45 @@
 #### CT 협의 상태 흐름 (ctStatus)
 
 ```
-PENDING (배정 후 초기 상태)
-  │
+PENDING (제안 전)
+  └─ 운영팀 "제안 송부" ────────────────────────────────── SENT
+       ctSource='OPERATOR_PROPOSAL'
+
+SENT (승인 전, 제안 송부 상태)
   ├─ 라인장 "동의" ──────────────────────────────────────── AGREED
-  │    ctAgreedBy='LINE_LEADER', ctSource=MANUAL
-  │
-  └─ 라인장 "CT 조정 요청" (제안 CT 입력 후) ──────────── REJECTED
-       ctSource='LINE_LEADER_PROPOSAL' (보드 상태의 ctOverride=true 가능)
-       pendingCtProposal에 공정별 제안 CT 저장
-         │
-         ├─ 운영팀 "승인" ────────────────────────────────── AGREED
-         │    ctAgreedBy='OPERATOR', ctSource='LINE_LEADER_PROPOSAL'
-         │    contractedSeconds = 라인장 제안 CT
-         │
-         └─ 운영팀 "거부" ────────────────────────────────── 배정 삭제
-              (assignments 배열에서 제거)
+  │    ctAgreedBy='LINE_LEADER' (실사용자명), ctAgreedAt 기록
+  └─ 라인장 "변경 요청" ────────────────────────────────── REJECTED
+       ctSource='LINE_LEADER_PROPOSAL', ctOverride=true
+       pendingCtProposal에 공정별 요청 CT 저장
+
+REJECTED (변경 요청, 운영팀 재검토)
+  ├─ 운영팀 "요청 동의" ────────────────────────────────── AGREED
+  │    ctAgreedBy='OPERATOR', ctSource='LINE_LEADER_PROPOSAL'
+  │    contractedSeconds = 라인장 요청 CT
+  ├─ 운영팀 "다시 제안" ────────────────────────────────── SENT
+  │    (운영팀 수정 제안 CT 재송부)
+  └─ 운영팀 "배정 취소" ────────────────────────────────── 배정 삭제 + 미배정 카드 복귀
 ```
 
-> ⚠️ 용어 주의: **라인장은 "거부"하지 않는다.** 라인장은 "동의" 또는 "CT 조정 요청"만 가능.
-> "거부"는 운영팀이 라인장의 조정 요청을 기각할 때 사용하는 용어.
+> ⚠️ 잠금 규칙: `SENT`/`AGREED` 카드는 작업 배정 보드에서 이동·분할 불가(락) 상태다.
+> `REJECTED`는 재협의를 위해 운영팀 액션(요청 동의/다시 제안/배정 취소)이 열린 상태다.
+> 운영팀이 제안 CT를 수정한 상태에서는 **요청 동의가 비활성화**되며, 다시 제안으로만 진행 가능하다.
 
 #### CT 협의 UI 버튼 규칙 (ProductionPlanBoard)
-- **동의 버튼 활성**: 공정 CT 입력값이 없거나 ST 제안값과 동일한 경우
-- **조정 요청 버튼 활성**: 최소 1개 공정에서 ST 제안값과 다른 CT를 입력한 경우
+- **동의 버튼 활성**: 요청 CT 입력값이 없거나 제안 CT와 동일한 경우
+- **변경 요청 버튼 활성**: 최소 1개 공정에서 요청 CT가 제안 CT와 다른 경우
 - 두 버튼은 항상 둘 중 하나만 활성화됨 (상호 배타적)
 - 버튼 variant도 활성/비활성에 따라 contained/outlined로 전환
+- 액션(동의/변경 요청) 성공 시 우측 확장 패널은 자동으로 닫혀 목록 복귀
 
 #### ctOverride 의미
 - `ctOverride`는 **AssignmentPlan DB 컬럼이 아니라** `AssignmentBoardState.assignments`의 보드 상태 값이다.
 - DB 영속 상태 판별은 `ctStatus + ctSource (+ contractedSeconds)` 조합을 기준으로 본다.
 - 상태 해석 기준:
+  - `SENT + ctSource='OPERATOR_PROPOSAL'` → 운영팀 제안 송부 후 라인장 승인 대기
   - `REJECTED + ctSource='LINE_LEADER_PROPOSAL'` → 라인장 조정 요청, 운영팀 검토 대기 중
-  - `AGREED + ctSource='LINE_LEADER_PROPOSAL'` → 운영팀이 라인장 제안 CT 승인 완료
-  - `AGREED + ctSource='MANUAL'` → 라인장이 기본 CT 그대로 동의
+  - `AGREED + ctSource='LINE_LEADER_PROPOSAL'` → 운영팀이 라인장 요청 CT 동의 완료
+  - `AGREED + ctSource!='LINE_LEADER_PROPOSAL'` → 라인장이 제안 CT를 동의해 확정
 
 #### 시간의 두 가지 용도 — 반드시 구분
 
@@ -274,7 +280,7 @@ Organization (MANUFACTURER | BRAND)
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
   └─ WorkOrder (items: JSON)
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
-  └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 단일 자동저장
+  └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 수동 저장 스냅샷(upsert)
        ※ assignments: 라인 타임라인에 배정된 카드 배열 (AssignmentPlan의 프론트엔드 표현)
        ※ cards: 미배정 풀 카드 배열 (일반 카드 + DELTA 카드 공존)
   └─ PayrollSnapshot (orgId, month, data: JSON, lockedAt, lockedBy)
@@ -285,7 +291,8 @@ Organization (MANUFACTURER | BRAND)
 
 ### AssignmentBoardState 주의사항
 - 조직당 단 1개의 레코드 (upsert)
-- 500ms debounce로 자동저장
+- 작업 배정 보드는 **수동 저장 버튼**으로만 저장 (자동저장 없음)
+- 저장되지 않은 변경이 있으면 라우트 이동/탭 이탈/브라우저 종료 시 경고
 - 현재 버전 관리 없음 — 이전 상태 복원 불가
 - **cards vs assignments 구분**:
   - `cards`: 미배정 풀 (일반 카드 + DELTA 카드). 라인에 아직 배정되지 않은 것.
@@ -445,6 +452,21 @@ Organization (MANUFACTURER | BRAND)
   - 대상: `POST /styles`, `PUT /styles/:styleId`, `POST /styles/import`
   - 기준: `code`(trim+upper) 우선, code가 없으면 `name`(trim+lower)
 - 생산관리 용어를 `CT 조정 검토`에서 `배정 결과`로 정리했다. (메뉴/화면 타이틀)
+
+## 오늘 반영 메모 (2026-02-24)
+
+- 작업 배정 보드는 자동 저장을 제거하고 수동 저장으로 전환했다. 상단에 `저장됨/저장 안됨/저장 중` 상태를 표시한다.
+- 저장되지 않은 변경이 있으면 화면 이탈 시 확인 경고를 띄운다. (`useBlocker`, `useBeforeUnload`)
+- 미배정 카드는 주문 단위로 그룹화해 가로 배치하며, 그룹 헤더에 납기일을 표시하고 납기일 오름차순으로 정렬한다.
+- 라인 목록은 LineAssignment 기준 실제 배정 인원으로 계산하며, 배정 인원 0명 라인은 작업 배정에서 제외한다.
+- 작업 배정 우클릭 메뉴는 `업무 상세`, `수량 분할`로 통일했다.
+- 운영팀의 변경 요청 대응 액션을 `요청 동의 / 다시 제안 / 배정 취소` 3가지로 분리했다.
+- `다시 제안`은 제안 CT가 실제로 수정된 경우에만 활성화되고, 제안 CT를 수정한 상태에서는 `요청 동의`가 비활성화된다.
+- 작업 계획 협의 화면에서 라인장(WORKER)은 본인이 관리하는 라인(`managedOnly`)만 조회한다.
+- 작업 기록은 공장 선택 후 라인 선택이 필수이며, 선택한 작업일 기준으로 해당 라인 소속 작업자만 저장 가능하다.
+- 작업 기록 저장은 CT 동의된 배정 카드 기준으로만 허용하고, 공정 수량은 비정상적으로 큰 값(기준 수량의 과도한 배수)을 제한한다.
+- 탑바 빈 공간 클릭은 무반응이며, 현재 `BARO` 텍스트 버튼도 화면 전환 동작이 없다.
+- 생산관리 비용 표기는 `동(VND)` 기준으로 표기한다.
 
 ## 문서 정합성 교정 우선본 (2026-02-23)
 

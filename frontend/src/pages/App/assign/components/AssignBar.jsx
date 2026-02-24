@@ -88,8 +88,11 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: `1px solid ${ctMeta.border}`,
         outline: 'none',
+        '&:focus': {
+          outline: 'none',
+        },
         '&:focus-visible': {
-          boxShadow: '0 0 0 2px rgba(25,118,210,0.45), 0 2px 6px rgba(0,0,0,0.12)',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         },
         zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}

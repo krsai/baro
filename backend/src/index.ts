@@ -2692,6 +2692,9 @@ const toWorkLogResponse = (workLog: any) => {
   };
 };
 const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "SENT", "AGREED", "REJECTED"]);
+const ASSIGNMENT_SENT_TIMEOUT_HOURS = 48;
+const ASSIGNMENT_SENT_TIMEOUT_MS = ASSIGNMENT_SENT_TIMEOUT_HOURS * 60 * 60 * 1000;
+const ASSIGNMENT_SENT_TIMEOUT_ESCALATION_REASON = "SENT_TIMEOUT_48H";
 const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
@@ -2715,14 +2718,175 @@ const toOptionalDateValue = (value: any, fallback: any = null) => {
 };
 const resolveAssignmentCtStatus = (value: any) =>
   ASSIGNMENT_CT_STATUSES.has(value) ? value : "PENDING";
+const toIsoDateStringOrNull = (value: any): string | null => {
+  const raw = resolveOptionalString(value, null);
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};
+const resolveAssignmentExternalId = (item: any): string | null =>
+  resolveOptionalString(item?.id ?? item?.externalId, null);
+const extractIsoDateFromText = (value: any): string | null => {
+  const raw = resolveOptionalString(value, null);
+  if (!raw) return null;
+  const matched = raw.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/);
+  if (!matched || !matched[0]) return null;
+  const date = new Date(matched[0]);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+};
+const resolveAssignmentSentAtIso = (item: any): string | null => {
+  const direct = toIsoDateStringOrNull(item?.ctSentAt);
+  if (direct) return direct;
+  return extractIsoDateFromText(item?.ctNote);
+};
+const normalizeStateAssignmentItem = (item: any): any => {
+  if (!item || typeof item !== "object") return item;
+  const externalId = resolveAssignmentExternalId(item);
+  const ctStatus = resolveAssignmentCtStatus(
+    resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
+  );
+  const version = toNonNegativeInt(item?.version, 0);
+  const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
+  const ctSentAt = resolveAssignmentSentAtIso(item);
+  const ctEscalatedAt = toIsoDateStringOrNull(item?.ctEscalatedAt);
+  const ctEscalationReason = resolveOptionalString(item?.ctEscalationReason, null);
+  const ctEscalationTargetRole = resolveOptionalString(
+    item?.ctEscalationTargetRole,
+    null
+  );
+  const ctEscalationStatus = resolveOptionalString(item?.ctEscalationStatus, null);
+
+  return {
+    ...item,
+    ...(externalId ? { id: externalId } : {}),
+    ctStatus,
+    version,
+    versionUpdatedAt,
+    ctSentAt: ctStatus === "SENT" ? ctSentAt : null,
+    ctEscalatedAt: ctStatus === "SENT" ? ctEscalatedAt : null,
+    ctEscalationReason: ctStatus === "SENT" ? ctEscalationReason : null,
+    ctEscalationTargetRole: ctStatus === "SENT" ? ctEscalationTargetRole : null,
+    ctEscalationStatus: ctStatus === "SENT" ? ctEscalationStatus : null,
+  };
+};
+const normalizeStateAssignments = (items: any): any[] =>
+  ensureArray(items).map((item) => normalizeStateAssignmentItem(item));
+const buildAssignmentVersionMap = (items: any[]): Map<string, number> =>
+  ensureArray(items).reduce((map, item) => {
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, toNonNegativeInt(item?.version, 0));
+    return map;
+  }, new Map<string, number>());
+const findAssignmentVersionConflicts = (
+  incomingAssignments: any[],
+  currentVersionByExternalId: Map<string, number>
+) => {
+  const seen = new Set<string>();
+  return ensureArray(incomingAssignments).reduce((rows: any[], item) => {
+    if (!item || typeof item !== "object") return rows;
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId || seen.has(externalId)) return rows;
+    seen.add(externalId);
+    const expectedVersion = toNonNegativeInt(item?.version, 0);
+    const currentVersion = currentVersionByExternalId.get(externalId) ?? 0;
+    if (expectedVersion === currentVersion) return rows;
+    rows.push({
+      id: externalId,
+      expectedVersion,
+      currentVersion,
+    });
+    return rows;
+  }, [] as any[]);
+};
+const withIncrementedAssignmentVersions = (
+  incomingAssignments: any[],
+  currentVersionByExternalId: Map<string, number>,
+  nowIso: string
+): any[] =>
+  ensureArray(incomingAssignments).map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId) return item;
+    const currentVersion = currentVersionByExternalId.get(externalId) ?? 0;
+    const nextStatus = resolveAssignmentCtStatus(
+      resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
+    );
+    const nextSentAt =
+      nextStatus === "SENT" ? resolveAssignmentSentAtIso(item) ?? nowIso : null;
+    return normalizeStateAssignmentItem({
+      ...item,
+      id: externalId,
+      ctStatus: nextStatus,
+      ctSentAt: nextSentAt,
+      version: currentVersion + 1,
+      versionUpdatedAt: nowIso,
+      ...(nextStatus !== "SENT"
+        ? {
+            ctEscalatedAt: null,
+            ctEscalationReason: null,
+            ctEscalationTargetRole: null,
+            ctEscalationStatus: null,
+          }
+        : {}),
+    });
+  });
+const applySentTimeoutEscalation = (
+  assignments: any,
+  nowDate: Date = new Date()
+): { assignments: any[]; changed: boolean } => {
+  const nowMs = nowDate.getTime();
+  const normalized = normalizeStateAssignments(assignments);
+  let changed = false;
+  const nextAssignments = normalized.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const ctStatus = resolveAssignmentCtStatus(item?.ctStatus);
+    if (ctStatus !== "SENT") {
+      if (
+        item?.ctEscalatedAt != null ||
+        item?.ctEscalationReason != null ||
+        item?.ctEscalationTargetRole != null ||
+        item?.ctEscalationStatus != null
+      ) {
+        changed = true;
+        return {
+          ...item,
+          ctEscalatedAt: null,
+          ctEscalationReason: null,
+          ctEscalationTargetRole: null,
+          ctEscalationStatus: null,
+        };
+      }
+      return item;
+    }
+    const sentAtIso = resolveAssignmentSentAtIso(item);
+    if (!sentAtIso) return item;
+    const sentAtMs = new Date(sentAtIso).getTime();
+    if (!Number.isFinite(sentAtMs)) return item;
+    if (nowMs - sentAtMs < ASSIGNMENT_SENT_TIMEOUT_MS) return item;
+    if (resolveOptionalString(item?.ctEscalatedAt, null)) return item;
+    changed = true;
+    return {
+      ...item,
+      ctSentAt: sentAtIso,
+      ctEscalatedAt: nowDate.toISOString(),
+      ctEscalationReason: ASSIGNMENT_SENT_TIMEOUT_ESCALATION_REASON,
+      ctEscalationTargetRole: "ADMIN",
+      ctEscalationStatus: "OPEN",
+    };
+  });
+  return { assignments: nextAssignments, changed };
+};
 const resolveAssignmentPlanExternalIds = (items: any) =>
   ensureArray(items)
-    .map((item) => resolveOptionalString(item?.id ?? item?.externalId, null))
+    .map((item) => resolveAssignmentExternalId(item))
     .filter((value): value is string => Boolean(value));
 const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
-  const stateByExternalId = ensureArray(stateAssignments).reduce((map, item) => {
+  const stateByExternalId = normalizeStateAssignments(stateAssignments).reduce((map, item) => {
     if (!item || typeof item !== "object") return map;
-    const externalId = resolveOptionalString(item.id ?? item.externalId, null);
+    const externalId = resolveAssignmentExternalId(item);
     if (!externalId || map.has(externalId)) return map;
     map.set(externalId, item);
     return map;
@@ -2847,14 +3011,20 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       acc.rows.push(item);
       return acc;
     }, { seen: new Set<string>(), rows: [] as any[] }).rows;
-const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | null = null) => ({
-  cards: ensureArray(state?.cards),
-  assignments: Array.isArray(assignmentPlans) && assignmentPlans.length > 0
-    ? mergeAssignmentPlanResponsesWithState(assignmentPlans, ensureArray(state?.assignments))
-    : ensureArray(state?.assignments),
-  createdAt: state?.createdAt ?? null,
-  updatedAt: state?.updatedAt ?? null,
-});
+const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | null = null) => {
+  const stateAssignments = normalizeStateAssignments(state?.assignments);
+  const mergedAssignments =
+    Array.isArray(assignmentPlans) && assignmentPlans.length > 0
+      ? mergeAssignmentPlanResponsesWithState(assignmentPlans, stateAssignments)
+      : stateAssignments;
+  return {
+    cards: ensureArray(state?.cards),
+    assignments: normalizeStateAssignments(mergedAssignments),
+    createdAt: state?.createdAt ?? null,
+    updatedAt: state?.updatedAt ?? null,
+    serverNow: new Date().toISOString(),
+  };
+};
 
 const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, number>> => {
   if (lineIds.length === 0) return {};
@@ -5038,9 +5208,21 @@ app.get("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const state = await prisma.assignmentBoardState.findUnique({
+  let state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
+  if (state) {
+    const {
+      assignments: escalatedAssignments,
+      changed: escalationChanged,
+    } = applySentTimeoutEscalation(state.assignments);
+    if (escalationChanged) {
+      state = await prisma.assignmentBoardState.update({
+        where: { id: state.id },
+        data: { assignments: escalatedAssignments },
+      });
+    }
+  }
   const activeExternalIds = resolveAssignmentPlanExternalIds(state?.assignments);
   const hasBoardAssignments = Array.isArray(state?.assignments);
   const assignmentPlans =
@@ -5064,22 +5246,122 @@ app.put("/assignment-board-state", async (req, res) => {
   }
 
   const cards = ensureArray(req.body?.cards);
-  const assignments = ensureArray(req.body?.assignments);
+  const incomingAssignments = ensureArray(req.body?.assignments);
+  const requesterEmail = getRequesterEmail(req);
+  const [requesterSystemUser, requesterMembership] = requesterEmail
+    ? await Promise.all([
+        prisma.systemUser.findUnique({
+          where: { email: requesterEmail },
+          select: { systemRole: true },
+        }),
+        prisma.orgMembership.findUnique({
+          where: {
+            orgId_email: { orgId: organization.id, email: requesterEmail },
+          },
+          select: { role: true, status: true },
+        }),
+      ])
+    : [null, null];
+  const requesterIsSystemAdmin =
+    requesterSystemUser?.systemRole === "SYSTEM_ADMIN";
+  const requesterIsOrgAdmin =
+    requesterMembership?.status === "ACTIVE" && requesterMembership?.role === "ADMIN";
   const lineRows = await prisma.line.findMany({
     where: { orgId: organization.id },
     select: { id: true },
   });
   const lineIdSet = new Set(lineRows.map((line) => line.id));
-  const normalizedPlans = normalizeAssignmentPlanPayload(assignments, lineIdSet);
+  const normalizedPlans = normalizeAssignmentPlanPayload(incomingAssignments, lineIdSet);
 
   const updated = await prisma.$transaction(async (tx) => {
+    const existingState = await tx.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: { assignments: true },
+    });
+    const {
+      assignments: currentAssignments,
+    } = applySentTimeoutEscalation(existingState?.assignments);
+    const currentVersionByExternalId =
+      buildAssignmentVersionMap(currentAssignments);
+    const versionConflicts = findAssignmentVersionConflicts(
+      incomingAssignments,
+      currentVersionByExternalId
+    );
+    if (versionConflicts.length > 0) {
+      const summary = versionConflicts
+        .slice(0, 5)
+        .map(
+          (row) =>
+            `${row.id} (expected=${row.expectedVersion}, current=${row.currentVersion})`
+        )
+        .join(", ");
+      throw createHttpError(
+        409,
+        `assignment version conflict: ${summary}`
+      );
+    }
+
+    const currentStatusByExternalId = ensureArray(currentAssignments).reduce(
+      (map, item) => {
+        const externalId = resolveAssignmentExternalId(item);
+        if (!externalId || map.has(externalId)) return map;
+        map.set(
+          externalId,
+          resolveAssignmentCtStatus(
+            resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
+          )
+        );
+        return map;
+      },
+      new Map<string, string>()
+    );
+    const nextAssignmentsNormalized = normalizeStateAssignments(incomingAssignments);
+    const nextExternalIdSet = nextAssignmentsNormalized.reduce((set, item) => {
+      const externalId = resolveAssignmentExternalId(item);
+      if (externalId) set.add(externalId);
+      return set;
+    }, new Set<string>());
+    for (const [externalId, previousStatus] of currentStatusByExternalId.entries()) {
+      if (previousStatus !== "AGREED") continue;
+      if (nextExternalIdSet.has(externalId)) continue;
+      if (!requesterIsSystemAdmin && !requesterIsOrgAdmin) {
+        throw createHttpError(
+          403,
+          "only org admins can reopen agreed assignments"
+        );
+      }
+    }
+    for (const item of nextAssignmentsNormalized) {
+      const externalId = resolveAssignmentExternalId(item);
+      if (!externalId) continue;
+      const previousStatus = currentStatusByExternalId.get(externalId) ?? "PENDING";
+      const nextStatus = resolveAssignmentCtStatus(item?.ctStatus);
+      const isReopenFromAgreed = previousStatus === "AGREED" && nextStatus !== "AGREED";
+      if (isReopenFromAgreed && !requesterIsSystemAdmin && !requesterIsOrgAdmin) {
+        throw createHttpError(
+          403,
+          "only org admins can reopen agreed assignments"
+        );
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const versionedAssignments = withIncrementedAssignmentVersions(
+      incomingAssignments,
+      currentVersionByExternalId,
+      nowIso
+    );
+    const {
+      assignments: assignmentsForState,
+    } = applySentTimeoutEscalation(versionedAssignments);
+
     const state = await tx.assignmentBoardState.upsert({
       where: { orgId: organization.id },
-      update: { cards, assignments },
+      update: { cards, assignments: assignmentsForState },
       create: {
         orgId: organization.id,
         cards,
-        assignments,
+        assignments: assignmentsForState,
       },
     });
 

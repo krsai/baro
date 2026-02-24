@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -277,6 +278,19 @@ const normalizeAssignmentLayout = (assignment) => {
   const startDayOffsetPercent = clampPercent(assignment.startDayOffsetPercent, 0, 99.999);
   const startDayPercent = clampPercent(assignment.startDayPercent, 100, 100);
   const endDayPercent = clampPercent(assignment.endDayPercent, startDayPercent, 100);
+  const version = toNonNegativeInt(assignment.version, 0);
+  const versionUpdatedAt =
+    typeof assignment.versionUpdatedAt === 'string' && assignment.versionUpdatedAt.trim()
+      ? assignment.versionUpdatedAt
+      : null;
+  const ctSentAt =
+    typeof assignment.ctSentAt === 'string' && assignment.ctSentAt.trim()
+      ? assignment.ctSentAt
+      : null;
+  const ctEscalatedAt =
+    typeof assignment.ctEscalatedAt === 'string' && assignment.ctEscalatedAt.trim()
+      ? assignment.ctEscalatedAt
+      : null;
 
   return {
     ...assignment,
@@ -286,6 +300,10 @@ const normalizeAssignmentLayout = (assignment) => {
     startDayOffsetPercent,
     startDayPercent,
     endDayPercent,
+    version,
+    versionUpdatedAt,
+    ctSentAt,
+    ctEscalatedAt,
   };
 };
 
@@ -1324,7 +1342,7 @@ const rebuildLineWithReplace = ({
 
 const AssignBoard = () => {
   const { showNotification } = useApp();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
@@ -1356,6 +1374,12 @@ const AssignBoard = () => {
   const lineCapacityById = useMemo(() => {
     return buildLineCapacityMap(lines);
   }, [lines]);
+  const blurActiveElement = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+  }, []);
 
   useEffect(() => {
     linesRef.current = lines;
@@ -1403,6 +1427,34 @@ const AssignBoard = () => {
     [assignments, cards, createPersistSnapshotText]
   );
   const isDirty = persistReady && currentPersistSnapshot !== lastSavedSnapshotRef.current;
+  const resolvePersistedBoardState = useCallback(
+    (payload, fallbackCards, fallbackAssignments) => {
+      const persistedCards = Array.isArray(payload?.cards)
+        ? payload.cards
+        : Array.isArray(fallbackCards)
+          ? fallbackCards
+          : [];
+      const persistedAssignmentsRaw = Array.isArray(payload?.assignments)
+        ? payload.assignments
+        : Array.isArray(fallbackAssignments)
+          ? fallbackAssignments
+          : [];
+      return {
+        persistedCards,
+        persistedAssignments: persistedAssignmentsRaw.map((item) =>
+          normalizeAssignmentLayout(item)
+        ),
+      };
+    },
+    []
+  );
+  const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
+    const raw = String(error?.message || '').trim();
+    if (raw.toLowerCase().includes('assignment version conflict')) {
+      return '다른 사용자가 먼저 수정했습니다. 화면을 새로고침 후 다시 시도해 주세요.';
+    }
+    return raw || fallbackMessage;
+  }, []);
 
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
@@ -1551,11 +1603,43 @@ const AssignBoard = () => {
                 );
               })
           : [];
-        const maxRestoredEndIndex = restoredAssignments.reduce(
+        let normalizedRestoredAssignments = restoredAssignments.map((item) =>
+          normalizeAssignmentLayout(item)
+        );
+        let normalizedRestoreDays = restoreDays;
+        if (normalizedRestoredAssignments.length > 1) {
+          const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
+          let candidateDays = normalizedRestoreDays;
+          let reflowedAssignments = null;
+
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            reflowedAssignments = reflowAssignmentsByLineCapacity({
+              assignments: normalizedRestoredAssignments,
+              totalDays: candidateDays.length,
+              days: candidateDays,
+              lineCapacityById: nextLineCapacityById,
+              sourceLineCapacityById: nextLineCapacityById,
+              reflowStartIndex,
+            });
+            if (reflowedAssignments) break;
+            candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
+          }
+
+          if (reflowedAssignments) {
+            normalizedRestoredAssignments = reflowedAssignments.map((item) =>
+              normalizeAssignmentLayout(item)
+            );
+            normalizedRestoreDays = candidateDays;
+          }
+        }
+        const maxRestoredEndIndex = normalizedRestoredAssignments.reduce(
           (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
           0
         );
-        const nextDayCount = Math.max(restoreDayCount, maxRestoredEndIndex + 10);
+        const nextDayCount = Math.max(
+          normalizedRestoreDays.length,
+          maxRestoredEndIndex + 10
+        );
         const maxSplit = restoredCards.reduce((max, card) => {
           const matched = String(card?.id || '').match(/-S(\d+)$/);
           if (!matched) return max;
@@ -1563,17 +1647,25 @@ const AssignBoard = () => {
           if (!Number.isFinite(value)) return max;
           return Math.max(max, value);
         }, 0);
-        const persistSnapshot = createPersistSnapshotText(restoredCards, restoredAssignments);
-        const boardSnapshot = createBoardSnapshotText(restoredCards, restoredAssignments);
+        const persistSnapshot = createPersistSnapshotText(
+          restoredCards,
+          normalizedRestoredAssignments
+        );
+        const boardSnapshot = createBoardSnapshotText(
+          restoredCards,
+          normalizedRestoredAssignments
+        );
 
         if (!cancelled) {
           const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
           setStyles(Array.isArray(styles) ? styles : []);
           setLines(nextLines);
           setCards(restoredCards);
-          setAssignments(restoredAssignments);
-          if (nextDayCount > days.length) {
+          setAssignments(normalizedRestoredAssignments);
+          if (nextDayCount > normalizedRestoreDays.length) {
             setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
+          } else if (normalizedRestoreDays.length > days.length) {
+            setDays(normalizedRestoreDays);
           }
           setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
           splitCounterRef.current = maxSplit + 1;
@@ -1772,23 +1864,49 @@ const AssignBoard = () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
     const normalizedAssignments = assignments.map((item) => normalizeAssignmentLayout(item));
-    const snapshot = JSON.stringify({ cards, assignments: normalizedAssignments });
     setPersisting(true);
     try {
-      await requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards, assignments: normalizedAssignments }),
-        skipGlobalLoading: true,
-      });
-      lastSavedSnapshotRef.current = snapshot;
+      const response = await requestJSON(
+        '/assignment-board-state' + buildQueryString({ orgId: activeOrgId }),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards, assignments: normalizedAssignments }),
+          skipGlobalLoading: true,
+        }
+      );
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        response,
+        cards,
+        normalizedAssignments
+      );
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      lastSavedSnapshotRef.current = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
+      );
       showNotification('작업 배정을 저장했습니다.', 'success');
-    } catch (_error) {
-      showNotification('작업 배정 저장에 실패했습니다.', 'error');
+    } catch (error) {
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '작업 배정 저장에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setPersisting(false);
     }
-  }, [activeOrgId, assignments, cards, isDirty, persistReady, persisting, showNotification]);
+  }, [
+    activeOrgId,
+    assignments,
+    cards,
+    createPersistSnapshotText,
+    isDirty,
+    persistReady,
+    persisting,
+    resolveBoardSaveErrorMessage,
+    resolvePersistedBoardState,
+    showNotification,
+  ]);
 
   const navigationBlocker = useBlocker(persistReady && isDirty && !persisting);
 
@@ -1901,6 +2019,72 @@ const AssignBoard = () => {
     }
     return result;
   };
+  const reflowLineAssignmentsAfterCtUpdate = useCallback(
+    (nextAssignments, { lineId, reflowStartIndex }) => {
+      const normalizedAssignments = (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) =>
+        normalizeAssignmentLayout(item)
+      );
+      const lineKey = normalizeKey(lineId);
+      if (!lineKey) {
+        return {
+          assignments: normalizedAssignments,
+          daysForAssignments: days,
+          reflowFailed: false,
+        };
+      }
+
+      const targetLineAssignments = normalizedAssignments.filter(
+        (item) => normalizeKey(item?.lineId) === lineKey
+      );
+      if (targetLineAssignments.length <= 1) {
+        return {
+          assignments: normalizedAssignments,
+          daysForAssignments: days,
+          reflowFailed: false,
+        };
+      }
+
+      const safeReflowStartIndex = toNonNegativeInt(reflowStartIndex, 0);
+      let candidateDays = days;
+      let plannedLineAssignments = null;
+
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        plannedLineAssignments = reflowAssignmentsByLineCapacity({
+          assignments: targetLineAssignments,
+          totalDays: candidateDays.length,
+          days: candidateDays,
+          lineCapacityById,
+          sourceLineCapacityById: lineCapacityById,
+          reflowStartIndex: safeReflowStartIndex,
+        });
+        if (plannedLineAssignments) break;
+        candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
+      }
+
+      if (!plannedLineAssignments) {
+        return {
+          assignments: normalizedAssignments,
+          daysForAssignments: days,
+          reflowFailed: true,
+        };
+      }
+
+      const plannedById = new Map(
+        plannedLineAssignments.map((item) => [String(item?.id ?? ''), normalizeAssignmentLayout(item)])
+      );
+      const mergedAssignments = normalizedAssignments.map((item) => {
+        const key = String(item?.id ?? '');
+        return plannedById.get(key) || item;
+      });
+
+      return {
+        assignments: mergedAssignments,
+        daysForAssignments: candidateDays,
+        reflowFailed: false,
+      };
+    },
+    [days, holidaySet, lineCapacityById]
+  );
 
   const assignedCardIds = useMemo(() => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));
@@ -2201,6 +2385,18 @@ const AssignBoard = () => {
     [detailAssignment, isAssignmentLocked]
   );
   const detailCtStatus = normalizeCtStatus(detailAssignment?.ctStatus);
+  const isAdminUser = useMemo(
+    () => String(activeOrgRole || '').trim().toUpperCase() === 'ADMIN',
+    [activeOrgRole]
+  );
+  const detailIsEscalated = Boolean(
+    detailAssignment &&
+      detailCtStatus === 'SENT' &&
+      String(detailAssignment?.ctEscalatedAt || '').trim()
+  );
+  const canReopenAgreedAssignment = Boolean(
+    detailAssignment && detailCtStatus === 'AGREED' && isAdminUser
+  );
   const detailInLineRequestFlow = Boolean(
     detailAssignment &&
       detailCtStatus === 'REJECTED' &&
@@ -2265,8 +2461,9 @@ const AssignBoard = () => {
   }, [contextMenuState]);
   const handleCloseDetail = useCallback(() => {
     if (sendingProposal) return;
+    blurActiveElement();
     setDetailState(null);
-  }, [sendingProposal]);
+  }, [blurActiveElement, sendingProposal]);
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
     if (!CT_INPUT_REGEX.test(value)) return;
@@ -2879,6 +3076,11 @@ const AssignBoard = () => {
           ctSource: 'OPERATOR_PROPOSAL',
           ctAgreedBy: null,
           ctAgreedAt: null,
+          ctSentAt: nowIso,
+          ctEscalatedAt: null,
+          ctEscalationReason: null,
+          ctEscalationTargetRole: null,
+          ctEscalationStatus: null,
           ctNote: `제안 송부 ${nowIso}`,
         };
         const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
@@ -2887,36 +3089,66 @@ const AssignBoard = () => {
           ...range,
         };
       });
-      const normalizedAssignments = nextAssignments.map((item) => normalizeAssignmentLayout(item));
+      const updatedAssignment = nextAssignments.find(
+        (item) => String(item?.id || '') === assignmentId
+      );
+      const {
+        assignments: normalizedAssignments,
+        daysForAssignments,
+        reflowFailed,
+      } = reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
+        lineId: detailAssignment?.lineId,
+        reflowStartIndex:
+          updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
+      });
       const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/assignment-board-state' + query, {
+      const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cards: nextCardsWithProposal, assignments: normalizedAssignments }),
         skipGlobalLoading: true,
       });
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        response,
+        nextCardsWithProposal,
+        normalizedAssignments
+      );
 
-      const maxEndIndex = normalizedAssignments.reduce(
+      let nextDays = daysForAssignments;
+      const maxEndIndex = persistedAssignments.reduce(
         (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
         0
       );
-      if (maxEndIndex + 10 > days.length) {
-        setDays(buildDays(startDateRef.current, maxEndIndex + 10, holidaySet));
+      if (maxEndIndex + 10 > nextDays.length) {
+        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
+      }
+      if (nextDays.length > days.length) {
+        setDays(nextDays);
       }
       setStyles(nextStyles);
-      setCards(nextCardsWithProposal);
-      setAssignments(normalizedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(nextCardsWithProposal, normalizedAssignments);
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      const persistedSnapshot = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
+      );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      if (reflowFailed) {
+        showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
+      }
       showNotification(
         ptUpdatedCount > 0
           ? `제안 송부 완료. PT(q) ${ptUpdatedCount}개 공정을 함께 갱신했습니다.`
           : '제안 송부 완료. 해당 작업은 잠금 처리되었습니다.',
         'success'
       );
-      setDetailState({ targetType: 'assignment', assignmentId });
+      blurActiveElement();
+      setDetailState(null);
     } catch (error) {
-      showNotification(error?.message || '제안 송부 처리에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '제안 송부 처리에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setSendingProposal(false);
     }
@@ -2939,6 +3171,8 @@ const AssignBoard = () => {
     lineCapacityById,
     holidaySet,
     createPersistSnapshotText,
+    reflowLineAssignmentsAfterCtUpdate,
+    blurActiveElement,
   ]);
   const handleAgreeLineRequest = useCallback(async () => {
     if (sendingProposal) return;
@@ -3100,6 +3334,11 @@ const AssignBoard = () => {
           ctSource: 'LINE_LEADER_PROPOSAL',
           ctAgreedBy: 'OPERATOR',
           ctAgreedAt: nowIso,
+          ctSentAt: null,
+          ctEscalatedAt: null,
+          ctEscalationReason: null,
+          ctEscalationTargetRole: null,
+          ctEscalationStatus: null,
           ctNote: `요청 동의 ${nowIso}`,
         };
         const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
@@ -3108,39 +3347,66 @@ const AssignBoard = () => {
           ...range,
         };
       });
-      const normalizedAssignments = nextAssignments.map((item) => normalizeAssignmentLayout(item));
+      const updatedAssignment = nextAssignments.find(
+        (item) => String(item?.id || '') === assignmentId
+      );
+      const {
+        assignments: normalizedAssignments,
+        daysForAssignments,
+        reflowFailed,
+      } = reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
+        lineId: detailAssignment?.lineId,
+        reflowStartIndex:
+          updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
+      });
       const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/assignment-board-state' + query, {
+      const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cards: nextCardsWithAgreement, assignments: normalizedAssignments }),
         skipGlobalLoading: true,
       });
-
-      const maxEndIndex = normalizedAssignments.reduce(
-        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
-        0
-      );
-      if (maxEndIndex + 10 > days.length) {
-        setDays(buildDays(startDateRef.current, maxEndIndex + 10, holidaySet));
-      }
-      setStyles(nextStyles);
-      setCards(nextCardsWithAgreement);
-      setAssignments(normalizedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        response,
         nextCardsWithAgreement,
         normalizedAssignments
       );
+
+      let nextDays = daysForAssignments;
+      const maxEndIndex = persistedAssignments.reduce(
+        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+        0
+      );
+      if (maxEndIndex + 10 > nextDays.length) {
+        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
+      }
+      if (nextDays.length > days.length) {
+        setDays(nextDays);
+      }
+      setStyles(nextStyles);
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      const persistedSnapshot = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
+      );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      if (reflowFailed) {
+        showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
+      }
       showNotification(
         ptUpdatedCount > 0
           ? `요청 동의 완료. PT(q) ${ptUpdatedCount}개 공정을 함께 갱신했습니다.`
           : '요청 동의 완료. 해당 작업은 동의 완료 상태로 잠금 처리되었습니다.',
         'success'
       );
-      setDetailState({ targetType: 'assignment', assignmentId });
+      blurActiveElement();
+      setDetailState(null);
     } catch (error) {
-      showNotification(error?.message || '요청 동의 처리에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '요청 동의 처리에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setSendingProposal(false);
     }
@@ -3166,6 +3432,10 @@ const AssignBoard = () => {
     lineCapacityById,
     holidaySet,
     createPersistSnapshotText,
+    resolvePersistedBoardState,
+    resolveBoardSaveErrorMessage,
+    reflowLineAssignmentsAfterCtUpdate,
+    blurActiveElement,
     showNotification,
   ]);
   const handleCancelAssignmentFromLineRequest = useCallback(async () => {
@@ -3198,20 +3468,32 @@ const AssignBoard = () => {
     try {
       setSendingProposal(true);
       const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/assignment-board-state' + query, {
+      const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
         skipGlobalLoading: true,
       });
-      setCards(nextCards);
-      setAssignments(nextAssignments);
-      const persistedSnapshot = createPersistSnapshotText(nextCards, nextAssignments);
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        response,
+        nextCards,
+        nextAssignments
+      );
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      const persistedSnapshot = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
+      );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      blurActiveElement();
       setDetailState(null);
       showNotification('배정을 취소했습니다. 해당 작업은 미배정으로 전환되었습니다.', 'info');
     } catch (error) {
-      showNotification(error?.message || '배정 취소 처리에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '배정 취소 처리에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setSendingProposal(false);
     }
@@ -3224,6 +3506,125 @@ const AssignBoard = () => {
     cards,
     activeOrgId,
     createPersistSnapshotText,
+    resolvePersistedBoardState,
+    resolveBoardSaveErrorMessage,
+    blurActiveElement,
+    showNotification,
+  ]);
+  const handleReopenAgreedAssignment = useCallback(async () => {
+    if (sendingProposal) return;
+    if (!detailAssignment || !detailCard) return;
+    if (!canReopenAgreedAssignment) {
+      showNotification('재협의 개시는 관리자만 실행할 수 있습니다.', 'warning');
+      return;
+    }
+    const confirmed = window.confirm(
+      '동의 완료된 작업을 재협의 상태로 되돌립니다. 기존 합의 이력을 보관하고 다시 제안 전 상태로 전환할까요?'
+    );
+    if (!confirmed) return;
+
+    const assignmentId = String(detailAssignment.id);
+    const nowIso = new Date().toISOString();
+    const actor =
+      String(
+        activeProfile?.employeeName || activeProfile?.name || activeProfile?.email || activeProfile?.label || ''
+      ).trim() || 'ADMIN';
+
+    const nextAssignments = assignments.map((item) => {
+      if (String(item?.id) !== assignmentId) return item;
+      return normalizeAssignmentLayout({
+        ...item,
+        ctStatus: 'PENDING',
+        ctSource: 'REOPENED_BY_ADMIN',
+        ctAgreedBy: null,
+        ctAgreedAt: null,
+        ctSentAt: null,
+        ctEscalatedAt: null,
+        ctEscalationReason: null,
+        ctEscalationTargetRole: null,
+        ctEscalationStatus: null,
+        ctNote: `재협의 개시 ${nowIso}`,
+      });
+    });
+
+    const historyEntry = {
+      archivedAt: nowIso,
+      archivedBy: actor,
+      reason: 'REOPEN_RENEGOTIATION',
+      assignmentId,
+      previous: {
+        ctStatus: detailAssignment?.ctStatus || 'AGREED',
+        contractedSeconds: detailAssignment?.contractedSeconds ?? null,
+        proposalSeconds: detailAssignment?.proposalSeconds ?? null,
+        ctSource: detailAssignment?.ctSource ?? null,
+        ctAgreedBy: detailAssignment?.ctAgreedBy ?? null,
+        ctAgreedAt: detailAssignment?.ctAgreedAt ?? null,
+        ctNote: detailAssignment?.ctNote ?? null,
+      },
+    };
+
+    const nextCards = detailAssignment?.cardId
+      ? cards.map((card) => {
+          if (String(card?.id) !== String(detailAssignment.cardId)) return card;
+          const previousHistory = Array.isArray(card?.ctAgreementHistory)
+            ? card.ctAgreementHistory
+            : [];
+          return {
+            ...card,
+            pendingCtProposal: null,
+            ctAgreementHistory: [...previousHistory, historyEntry],
+          };
+        })
+      : cards;
+
+    try {
+      setSendingProposal(true);
+      const query = buildQueryString({ orgId: activeOrgId });
+      const response = await requestJSON('/assignment-board-state' + query, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
+        skipGlobalLoading: true,
+      });
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        response,
+        nextCards,
+        nextAssignments
+      );
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      const persistedSnapshot = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
+      );
+      lastSavedSnapshotRef.current = persistedSnapshot;
+      blurActiveElement();
+      setDetailState(null);
+      showNotification('재협의가 시작되었습니다. 해당 작업은 제안 전 상태로 전환되었습니다.', 'info');
+    } catch (error) {
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '재협의 개시 처리에 실패했습니다.'),
+        'error'
+      );
+    } finally {
+      setSendingProposal(false);
+    }
+  }, [
+    sendingProposal,
+    detailAssignment,
+    detailCard,
+    canReopenAgreedAssignment,
+    activeProfile?.employeeName,
+    activeProfile?.name,
+    activeProfile?.email,
+    activeProfile?.label,
+    assignments,
+    cards,
+    activeOrgId,
+    createPersistSnapshotText,
+    resolvePersistedBoardState,
+    resolveBoardSaveErrorMessage,
+    blurActiveElement,
     showNotification,
   ]);
 
@@ -3673,6 +4074,11 @@ const AssignBoard = () => {
                         />
                       </Typography>
                     )}
+                    {detailIsEscalated && (
+                      <Alert severity="warning" sx={{ mt: 0.5 }}>
+                        승인 전 상태가 48시간을 초과해 관리자 검토 대상으로 에스컬레이션되었습니다.
+                      </Alert>
+                    )}
                   </Stack>
                 </Paper>
 
@@ -3818,9 +4224,22 @@ const AssignBoard = () => {
                       ? detailHasProposalChange
                         ? '라인장 변경 요청을 확인했습니다. 요청 동의/다시 제안/배정 취소 중 하나를 선택하세요.'
                         : '라인장 변경 요청을 확인했습니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
+                      : detailCtStatus === 'AGREED' && !isAdminUser
+                        ? '동의 완료 상태의 재협의 개시는 관리자 권한이 필요합니다.'
                       : '제안 CT 미입력 시 ST를 사용하며, 요청 CT는 라인장 변경 요청이 있을 때 표시됩니다.'}
                   </Typography>
                   <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
+                    {detailCtStatus === 'AGREED' && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="warning"
+                        onClick={handleReopenAgreedAssignment}
+                        disabled={sendingProposal || !canReopenAgreedAssignment}
+                      >
+                        재협의 개시
+                      </Button>
+                    )}
                     {detailInLineRequestFlow && (
                       <Button
                         size="small"
