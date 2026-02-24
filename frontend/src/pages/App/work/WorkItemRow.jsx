@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Box, IconButton, TextField, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -28,25 +28,37 @@ const resolveCtSeconds = (process) => {
   );
 };
 
-const buildProcessOptions = (style) => {
-  const rows = Array.isArray(style?.processes) ? style.processes : [];
-  return rows.map((process, index) => ({
-    id: process.instanceId || process.id || `${style?.id || 'style'}-proc-${index}`,
-    code: process.code || '',
-    name: process.name || `공정 ${index + 1}`,
-    pt: process.pt,
-    at: process.at,
-    ctSeconds: resolveCtSeconds(process),
-  }));
-};
-const normalizeKeyPart = (value) => String(value ?? '').trim().toLowerCase();
-const resolveCustomerKey = (customer) => normalizeKeyPart(customer?.id ?? customer?.name);
-const resolveStyleKey = (style) => normalizeKeyPart(style?.id ?? style?.name);
-const resolveColorKey = (color) => normalizeKeyPart(color?.id ?? color?.code ?? color?.name);
-const resolveProcessKey = (process) =>
-  normalizeKeyPart(process?.code ?? process?.name ?? process?.id);
 const isAgreedAssignmentPlan = (plan) =>
   String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
+
+const formatTextFieldValue = (value) => {
+  const text = String(value || '').trim();
+  return text || '-';
+};
+
+const formatProcessLabel = (process) => {
+  if (!process) return '-';
+  const code = String(process?.code || '').trim();
+  const name = String(process?.name || '').trim();
+  if (code && name) return `[${code}] ${name}`;
+  return code || name || '-';
+};
+
+const formatCardOptionLabel = (option) => {
+  const customer = String(option?.customer || '').trim() || '고객사 미지정';
+  const orderNo = String(option?.orderNo || '-').trim() || '-';
+  const styleLabel = String(option?.label || '').trim() || '스타일 미지정';
+  const colorName = String(option?.colorName || '').trim() || '색상 미지정';
+  const quantityText =
+    option?.quantity != null
+      ? ` · 배정 ${formatNumberWithCommas(option.quantity, {
+          fallback: '0',
+          maximumFractionDigits: 0,
+        })}`
+      : '';
+  const statusText = isAgreedAssignmentPlan(option) ? 'CT 동의' : 'CT 미동의';
+  return `${customer} · [${orderNo}] · ${styleLabel} · ${colorName}${quantityText} · ${statusText}`;
+};
 
 const calculateWage = (item, factory) => {
   const quantity = Number(item?.quantity) || 0;
@@ -79,79 +91,25 @@ const WorkItemRow = ({
   onRemoveItem,
   onRequestAddItem,
   onRequestActionFocus,
-  customers,
-  styles,
-  colors = [],
-  allItems = [],
   factory,
   assignmentPlans = [],
 }) => {
-  const customerInputRef = useRef(null);
-  const styleInputRef = useRef(null);
-  const processInputRef = useRef(null);
-  const colorInputRef = useRef(null);
+  const cardInputRef = useRef(null);
   const quantityInputRef = useRef(null);
 
-  const filteredStyles = useMemo(
-    () =>
-      item.customer
-        ? styles.filter((style) => style.customer === item.customer.name)
-        : [],
-    [item.customer, styles]
-  );
-
-  const processOptions = useMemo(() => buildProcessOptions(item.style), [item.style]);
-  const selectedCustomerKey = resolveCustomerKey(item.customer);
-  const selectedStyleKey = resolveStyleKey(item.style);
-  const selectedColorKey = resolveColorKey(item.color);
-  const takenProcessKeySet = useMemo(() => {
-    if (!selectedCustomerKey || !selectedStyleKey || !selectedColorKey) return new Set();
-
-    const taken = new Set();
-    allItems.forEach((entry) => {
-      if (!entry || entry.id === item.id) return;
-      if (resolveCustomerKey(entry.customer) !== selectedCustomerKey) return;
-      if (resolveStyleKey(entry.style) !== selectedStyleKey) return;
-      if (resolveColorKey(entry.color) !== selectedColorKey) return;
-      const processKey = resolveProcessKey(entry.process);
-      if (processKey) taken.add(processKey);
-    });
-    return taken;
-  }, [allItems, item.id, selectedColorKey, selectedCustomerKey, selectedStyleKey]);
-  const isProcessOptionDisabled = (option) => takenProcessKeySet.has(resolveProcessKey(option));
   const wageInfo = calculateWage(item, factory);
   const canMoveToNextItem = !disabled && Boolean(item.process) && Number(item.quantity) > 0;
-  const moveFocusTo = (event, targetRef) => {
-    if (
-      event.key !== 'Tab' ||
-      event.shiftKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey ||
-      event.nativeEvent?.isComposing
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    requestAnimationFrame(() => {
-      targetRef?.current?.focus();
-    });
-  };
 
   useEffect(() => {
     if (!focusRequest?.token || focusRequest.itemId !== item.id) return;
 
     const focusMap = {
-      customer: customerInputRef.current,
-      style: styleInputRef.current,
-      process: processInputRef.current,
-      color: colorInputRef.current,
+      card: cardInputRef.current,
       quantity: quantityInputRef.current,
     };
 
     requestAnimationFrame(() => {
-      const target = focusMap[focusRequest.field] || customerInputRef.current;
+      const target = focusMap[focusRequest.field] || cardInputRef.current;
       target?.focus();
     });
   }, [focusRequest?.token, focusRequest?.itemId, focusRequest?.field, item.id]);
@@ -178,23 +136,26 @@ const WorkItemRow = ({
         </IconButton>
       </Box>
 
-      {assignmentPlans.length > 0 && (
-        <Box sx={{ mb: 1 }}>
-          <SearchableSelect
-            label="배정 카드 (CT 동의)"
-            options={assignmentPlans}
-            value={item.card || null}
-            onChange={(_event, value) => onItemChange('card', value)}
-            disabled={disabled}
-            getOptionLabel={(option) =>
-              `[${option.orderNo || '-'}] ${option.label || ''}${option.colorName ? ` · ${option.colorName}` : ''}${option.quantity != null ? ` · 배정 ${formatNumberWithCommas(option.quantity, { fallback: '0', maximumFractionDigits: 0 })}` : ''}${isAgreedAssignmentPlan(option) ? ' · CT 동의' : ' · CT 미동의'}`
-            }
-            isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
-            getOptionDisabled={(option) => !isAgreedAssignmentPlan(option)}
-            textFieldProps={{ size: 'small', placeholder: 'CT 동의된 카드를 선택하면 스타일/색상이 자동 입력됩니다.' }}
-          />
-        </Box>
-      )}
+      <Box sx={{ mb: 1 }}>
+        <SearchableSelect
+          label="배정 카드 (CT 동의)"
+          options={assignmentPlans}
+          value={item.card || null}
+          onChange={(_event, value) => onItemChange('card', value)}
+          disabled={disabled || assignmentPlans.length === 0}
+          getOptionLabel={formatCardOptionLabel}
+          isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
+          getOptionDisabled={(option) => !isAgreedAssignmentPlan(option)}
+          textFieldProps={{
+            size: 'small',
+            placeholder:
+              assignmentPlans.length === 0
+                ? '선택 가능한 배정 카드가 없습니다.'
+                : 'CT 동의된 카드를 선택하면 고객사/스타일/색상/공정이 자동 입력됩니다.',
+            inputRef: cardInputRef,
+          }}
+        />
+      </Box>
 
       <Box
         sx={{
@@ -206,76 +167,44 @@ const WorkItemRow = ({
           },
         }}
       >
-        <SearchableSelect
+        <TextField
           label="고객사"
-          options={customers}
-          value={item.customer}
-          onChange={(_event, value) => onItemChange('customer', value)}
-          autoHighlight
-          disabled={disabled || hasCard}
-          isOptionEqualToValue={(option, value) => option?.id === value?.id}
-          textFieldProps={{
-            size: 'small',
-            placeholder: hasCard ? '카드에서 자동 입력' : '고객사 선택',
-            inputRef: customerInputRef,
-            onKeyDown: (event) => moveFocusTo(event, styleInputRef),
-          }}
+          size="small"
+          value={formatTextFieldValue(item.customer?.name)}
+          InputProps={{ readOnly: true }}
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          fullWidth
         />
 
-        <SearchableSelect
+        <TextField
           label="스타일"
-          options={filteredStyles}
-          value={item.style}
-          onChange={(_event, value) => onItemChange('style', value)}
-          autoHighlight
-          disabled={disabled || hasCard || !item.customer}
-          getOptionLabel={(option) => option?.name || ''}
-          isOptionEqualToValue={(option, value) => option?.id === value?.id}
-          textFieldProps={{
-            size: 'small',
-            placeholder: hasCard ? '카드에서 자동 입력' : '스타일 선택',
-            inputRef: styleInputRef,
-            onKeyDown: (event) => moveFocusTo(event, colorInputRef),
-          }}
+          size="small"
+          value={formatTextFieldValue(item.style?.name)}
+          InputProps={{ readOnly: true }}
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          fullWidth
         />
 
-        <SearchableSelect
+        <TextField
           label="색상"
-          options={colors}
-          value={item.color}
-          onChange={(_event, value) => onItemChange('color', value)}
-          autoHighlight
-          disabled={disabled || hasCard || !item.style}
-          getOptionLabel={(option) => option?.name || option?.code || ''}
-          isOptionEqualToValue={(option, value) =>
-            option?.id === value?.id ||
-            String(option?.code || '') === String(value?.code || '') ||
-            String(option?.name || '') === String(value?.name || '')
-          }
-          textFieldProps={{
-            size: 'small',
-            placeholder: hasCard ? '카드에서 자동 입력' : '색상 선택',
-            inputRef: colorInputRef,
-            onKeyDown: (event) => moveFocusTo(event, processInputRef),
-          }}
+          size="small"
+          value={formatTextFieldValue(item.color?.name || item.color?.code)}
+          InputProps={{ readOnly: true }}
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          fullWidth
         />
 
-        <SearchableSelect
+        <TextField
           label="공정"
-          options={processOptions}
-          value={item.process}
-          onChange={(_event, value) => onItemChange('process', value)}
-          autoHighlight
-          disabled={disabled || !item.style || !item.color}
-          getOptionLabel={(option) => `[${option?.code || '-'}] ${option?.name || ''}`}
-          isOptionEqualToValue={(option, value) => option?.id === value?.id}
-          getOptionDisabled={isProcessOptionDisabled}
-          textFieldProps={{
-            size: 'small',
-            placeholder: '공정 선택',
-            inputRef: processInputRef,
-            onKeyDown: (event) => moveFocusTo(event, quantityInputRef),
-          }}
+          size="small"
+          value={formatProcessLabel(item.process)}
+          InputProps={{ readOnly: true }}
+          inputProps={{ tabIndex: -1 }}
+          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+          fullWidth
         />
 
         <TextField

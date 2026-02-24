@@ -270,6 +270,46 @@ const resolveCtSeconds = (process) => {
     process.pt
   );
 };
+const toResolvedProcessShape = (process, fallbackId) => {
+  if (!process || typeof process !== 'object') return null;
+  const ctSeconds = resolveCtSeconds(process);
+  return {
+    id: process.instanceId || process.id || fallbackId,
+    code: process.code || '',
+    name: process.name || '공정',
+    pt: process.pt,
+    at: process.at,
+    ctSeconds,
+    contractedSeconds: resolveFirstPositiveSeconds(process.contractedSeconds, ctSeconds),
+  };
+};
+const resolveProcessFromAssignmentCard = ({ card, style, itemId }) => {
+  const styleProcesses = Array.isArray(style?.processes) ? style.processes : [];
+  const firstStyleProcess = styleProcesses[0];
+  const styleProcess = toResolvedProcessShape(
+    firstStyleProcess,
+    `style-process-${style?.id || itemId || 'item'}-0`
+  );
+  if (styleProcess) {
+    if (styleProcess.ctSeconds <= 0) {
+      const fallbackCardCtSeconds = resolveFirstPositiveSeconds(card?.contractedSeconds);
+      if (fallbackCardCtSeconds > 0) {
+        styleProcess.ctSeconds = fallbackCardCtSeconds;
+        styleProcess.contractedSeconds = fallbackCardCtSeconds;
+      }
+    }
+    return styleProcess;
+  }
+
+  const fallbackCardCtSeconds = resolveFirstPositiveSeconds(card?.contractedSeconds);
+  return {
+    id: `virtual-card-process-${card?.dbId || itemId || 'item'}`,
+    code: '',
+    name: '기본 공정',
+    ctSeconds: fallbackCardCtSeconds,
+    contractedSeconds: fallbackCardCtSeconds,
+  };
+};
 
 const toOptionalNumber = (value) => {
   const parsed = Number(value);
@@ -698,7 +738,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         setItemFocusRequest({
           logId,
           itemId: firstItemId,
-          field: 'customer',
+          field: 'card',
           token: buildFocusToken(),
         });
       }
@@ -706,7 +746,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setDuplicateEntryMessage('');
   };
 
-  const handleAddItem = (logId, { focusField = 'customer' } = {}) => {
+  const handleAddItem = (logId, { focusField = 'card' } = {}) => {
     const nextItem = buildEmptyItem();
     setWorkerLogs((prev) =>
       prev.map((log) =>
@@ -747,48 +787,60 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       prev.map((log) => {
         if (log.id !== logId) return log;
         const nextItems = log.items.map((item) => {
-            if (item.id !== itemId) return item;
-            const next = { ...item, [field]: value };
-            if (field === 'card') {
-              if (value) {
-                const matchedStyle = findStyleFromCard({
-                  styles,
-                  customerName: value.customer,
-                  label: value.label,
-                });
-                const fallbackStyleName = stripCardGenderSuffix(value.label) || value.label;
-                next.customer = customers.find((c) => equalsText(c?.name, value.customer))
-                  || (value.customer ? { id: `virtual-c-${value.dbId}`, name: value.customer } : null);
-                next.style = matchedStyle
-                  || (fallbackStyleName
-                    ? { id: `virtual-s-${value.dbId}`, name: fallbackStyleName, customer: value.customer || '', processes: [] }
-                    : null);
-                next.color = colors.find((c) =>
-                  equalsText(c?.name, value.colorName) || equalsText(c?.code, value.colorName)
-                ) || (value.colorName ? { id: `virtual-cl-${value.dbId}`, name: value.colorName, code: value.colorName } : null);
-                next.process = null;
-                next.assignmentPlanId = value.dbId ?? null;
-              } else {
-                next.customer = null;
-                next.style = null;
-                next.color = null;
-                next.process = null;
-                next.assignmentPlanId = null;
-              }
-            }
-            if (field === 'customer') {
-              next.card = null;
-              next.assignmentPlanId = null;
+          if (item.id !== itemId) return item;
+          const next = { ...item, [field]: value };
+          if (field === 'card') {
+            if (value) {
+              const matchedStyle = findStyleFromCard({
+                styles,
+                customerName: value.customer,
+                label: value.label,
+              });
+              const fallbackStyleName = stripCardGenderSuffix(value.label) || value.label;
+              next.customer =
+                customers.find((customer) => equalsText(customer?.name, value.customer)) ||
+                (value.customer
+                  ? { id: `virtual-c-${value.dbId}`, name: value.customer }
+                  : null);
+              next.style =
+                matchedStyle ||
+                (fallbackStyleName
+                  ? {
+                      id: `virtual-s-${value.dbId}`,
+                      name: fallbackStyleName,
+                      customer: value.customer || '',
+                      processes: [],
+                    }
+                  : null);
+              next.color =
+                colors.find(
+                  (color) =>
+                    equalsText(color?.name, value.colorName) ||
+                    equalsText(color?.code, value.colorName)
+                ) ||
+                (value.colorName
+                  ? {
+                      id: `virtual-cl-${value.dbId}`,
+                      name: value.colorName,
+                      code: value.colorName,
+                    }
+                  : null);
+              next.process = resolveProcessFromAssignmentCard({
+                card: value,
+                style: next.style,
+                itemId: item.id,
+              });
+              next.assignmentPlanId = value.dbId ?? null;
+            } else {
+              next.customer = null;
               next.style = null;
-              next.process = null;
               next.color = null;
-            }
-            if (field === 'style') {
               next.process = null;
-              next.color = null;
+              next.assignmentPlanId = null;
             }
-            return next;
-          });
+          }
+          return next;
+        });
 
         if (hasDuplicateProcessCombo(nextItems)) {
           duplicateDetected = true;
@@ -1122,7 +1174,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           다만 배정 카드와 연결된 공정 수량은 비정상적으로 큰 값(기준 수량의 과도한 배수)으로 저장할 수 없습니다.
         </Alert>
         <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-          키보드 사용 팁: 실생산량 칸에서 Tab은 항목 추가 버튼으로 이동, Enter는 새 항목 추가 후 고객사 칸으로 이동합니다.
+          키보드 사용 팁: 실생산량 칸에서 Tab은 항목 추가 버튼으로 이동, Enter는 새 항목 추가 후 배정 카드 칸으로 이동합니다.
         </Alert>
       </Paper>
 
@@ -1181,9 +1233,6 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
               onRemoveItem={handleRemoveItem}
               onItemChange={handleItemChange}
               availableEmployees={employees}
-              customers={customers}
-              styles={styles}
-              colors={colors}
               factory={selectedFactory}
               assignmentPlans={assignmentPlans}
               takenWorkerIds={takenWorkerIds}

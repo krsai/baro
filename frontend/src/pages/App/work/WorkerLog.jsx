@@ -14,9 +14,6 @@ const WorkerLog = ({
   onRemoveItem,
   onItemChange,
   availableEmployees,
-  customers,
-  styles,
-  colors,
   factory,
   assignmentPlans,
   takenWorkerIds,
@@ -100,12 +97,8 @@ const WorkerLog = ({
               focusRequest={focusRequest}
               onItemChange={(field, value) => onItemChange(log.id, item.id, field, value)}
               onRemoveItem={() => onRemoveItem(log.id, item.id)}
-              onRequestAddItem={() => onAddItem(log.id, { focusField: 'customer' })}
+              onRequestAddItem={() => onAddItem(log.id, { focusField: 'card' })}
               onRequestActionFocus={focusAddItemButton}
-              customers={customers}
-              styles={styles}
-              colors={colors}
-              allItems={log.items}
               factory={factory}
               assignmentPlans={assignmentPlans}
             />
@@ -117,7 +110,7 @@ const WorkerLog = ({
         <Button
           size="small"
           startIcon={<AddCircleOutlineIcon />}
-          onClick={() => onAddItem(log.id, { focusField: 'customer' })}
+          onClick={() => onAddItem(log.id, { focusField: 'card' })}
           disabled={!hasWorker}
           ref={addItemButtonRef}
         >

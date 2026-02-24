@@ -2905,6 +2905,336 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
     };
   });
 };
+const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|�/;
+type AssignmentDisplayReferenceMaps = {
+  orderByOrderId: Map<string, any>;
+  orderByOrderNo: Map<string, any>;
+  styleByStyleId: Map<string, any>;
+};
+const normalizeAssignmentDisplayKey = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase();
+const normalizeAssignmentDisplayGender = (value: any): string => {
+  const key = normalizeAssignmentDisplayKey(value);
+  if (key === "M" || key === "W" || key === "U") return key;
+  return "";
+};
+const hasCorruptedAssignmentDisplayText = (value: any): boolean => {
+  const text = resolveOptionalString(value, null);
+  if (!text) return false;
+  return ASSIGNMENT_TEXT_CORRUPTION_REGEX.test(text);
+};
+const shouldRepairAssignmentDisplayField = (current: any, fallback: any): boolean => {
+  const fallbackText = resolveOptionalString(fallback, null);
+  if (!fallbackText) return false;
+  const currentText = resolveOptionalString(current, null);
+  if (!currentText) return true;
+  return hasCorruptedAssignmentDisplayText(currentText);
+};
+const stripAssignmentLabelGenderSuffix = (value: any) =>
+  String(value ?? "")
+    .replace(/\s*\[(M|W|U)\]\s*$/i, "")
+    .trim();
+const parseAssignmentCardIdentity = (
+  value: any
+): { orderId: string; styleId: string; colorKey: string; gender: string } | null => {
+  const raw = resolveOptionalString(value, null);
+  if (!raw) return null;
+  const parts = raw.split("::");
+  if (parts.length < 4) return null;
+  const orderId = resolveOptionalString(parts[0], null);
+  const styleId = resolveOptionalString(parts[1], null);
+  if (!orderId || !styleId) return null;
+  return {
+    orderId,
+    styleId,
+    colorKey: normalizeAssignmentDisplayKey(parts[2]),
+    gender: normalizeAssignmentDisplayGender(parts[3]),
+  };
+};
+const loadAssignmentDisplayReferenceMaps = async (
+  orgId: number
+): Promise<AssignmentDisplayReferenceMaps> => {
+  const [orders, styles] = await Promise.all([
+    prisma.workOrder.findMany({
+      where: { orgId },
+      select: {
+        orderId: true,
+        orderNumber: true,
+        customerName: true,
+        buyerOrgName: true,
+        items: true,
+      },
+    }),
+    prisma.style.findMany({
+      where: { orgId },
+      select: {
+        styleId: true,
+        name: true,
+        customer: true,
+      },
+    }),
+  ]);
+  const orderByOrderId = orders.reduce((map, order) => {
+    const orderId = resolveOptionalString(order?.orderId, null);
+    if (orderId && !map.has(orderId)) {
+      map.set(orderId, order);
+    }
+    return map;
+  }, new Map<string, any>());
+  const orderByOrderNo = orders.reduce((map, order) => {
+    const orderNo = resolveOptionalString(order?.orderNumber, null);
+    if (orderNo && !map.has(orderNo)) {
+      map.set(orderNo, order);
+    }
+    return map;
+  }, new Map<string, any>());
+  const styleByStyleId = styles.reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId, null);
+    if (styleId && !map.has(styleId)) {
+      map.set(styleId, style);
+    }
+    return map;
+  }, new Map<string, any>());
+  return {
+    orderByOrderId,
+    orderByOrderNo,
+    styleByStyleId,
+  };
+};
+const findOrderItemByAssignmentIdentity = (order: any, identity: any): any | null => {
+  if (!order || !identity) return null;
+  const styleId = resolveOptionalString(identity?.styleId, null);
+  if (!styleId) return null;
+  const targetColorKey = normalizeAssignmentDisplayKey(identity?.colorKey);
+  const targetGender = normalizeAssignmentDisplayGender(identity?.gender);
+  const items = ensureArray(order?.items);
+  const exact = items.find((item) => {
+    if (resolveOptionalString(item?.styleId, null) !== styleId) return false;
+    const itemColorKey = normalizeAssignmentDisplayKey(
+      item?.colorCode ?? item?.colorId ?? item?.colorName
+    );
+    const itemGender = normalizeAssignmentDisplayGender(item?.gender);
+    if (targetColorKey && itemColorKey && targetColorKey !== itemColorKey) return false;
+    if (targetGender && itemGender && targetGender !== itemGender) return false;
+    return true;
+  });
+  if (exact) return exact;
+  return (
+    items.find((item) => resolveOptionalString(item?.styleId, null) === styleId) ?? null
+  );
+};
+const resolveAssignmentDisplayFallback = (
+  target: any,
+  refs: AssignmentDisplayReferenceMaps,
+  cardIdentityText: any = null
+) => {
+  const identity = parseAssignmentCardIdentity(cardIdentityText);
+  const targetOrderNo = resolveOptionalString(target?.orderNo, null);
+  const order =
+    (identity?.orderId ? refs.orderByOrderId.get(identity.orderId) : null) ??
+    (targetOrderNo ? refs.orderByOrderNo.get(targetOrderNo) : null) ??
+    null;
+  const orderItem = findOrderItemByAssignmentIdentity(order, identity);
+  const style = identity?.styleId ? refs.styleByStyleId.get(identity.styleId) ?? null : null;
+  const gender =
+    normalizeAssignmentDisplayGender(identity?.gender) ||
+    normalizeAssignmentDisplayGender(orderItem?.gender) ||
+    normalizeAssignmentDisplayGender(target?.gender);
+  const styleName =
+    resolveOptionalString(orderItem?.styleName, null) ??
+    resolveOptionalString(style?.name, null) ??
+    resolveOptionalString(stripAssignmentLabelGenderSuffix(target?.label), null) ??
+    null;
+  return {
+    orderNo: resolveOptionalString(order?.orderNumber, null) ?? targetOrderNo,
+    customer:
+      resolveOptionalString(order?.customerName, null) ??
+      resolveOptionalString(order?.buyerOrgName, null) ??
+      resolveOptionalString(style?.customer, null) ??
+      resolveOptionalString(target?.customer, null),
+    styleName,
+    colorName:
+      resolveOptionalString(orderItem?.colorName, null) ??
+      resolveOptionalString(target?.colorName, null),
+    label: styleName ? `${styleName}${gender ? ` [${gender}]` : ""}` : null,
+    gender: gender || null,
+  };
+};
+const repairAssignmentBoardCardsDisplayText = (
+  cards: any,
+  refs: AssignmentDisplayReferenceMaps
+): { cards: any[]; changed: boolean } => {
+  let changed = false;
+  const nextCards = ensureArray(cards).map((card) => {
+    if (!card || typeof card !== "object") return card;
+    const fallback = resolveAssignmentDisplayFallback(
+      card,
+      refs,
+      card?.id ?? card?.originOrderId ?? null
+    );
+    let itemChanged = false;
+    const next = { ...card };
+    const applyField = (field: string, value: any) => {
+      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
+      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
+      itemChanged = true;
+    };
+    applyField("orderNo", fallback.orderNo);
+    applyField("customer", fallback.customer);
+    applyField("styleName", fallback.styleName);
+    applyField("colorName", fallback.colorName);
+    if (
+      !resolveOptionalString(next?.gender, null) &&
+      resolveOptionalString(fallback?.gender, null)
+    ) {
+      next.gender = fallback.gender;
+      itemChanged = true;
+    }
+    if (itemChanged) changed = true;
+    return next;
+  });
+  return { cards: nextCards, changed };
+};
+const repairAssignmentBoardAssignmentsDisplayText = (
+  assignments: any,
+  refs: AssignmentDisplayReferenceMaps
+): { assignments: any[]; changed: boolean } => {
+  let changed = false;
+  const nextAssignments = ensureArray(assignments).map((assignment) => {
+    if (!assignment || typeof assignment !== "object") return assignment;
+    const fallback = resolveAssignmentDisplayFallback(
+      assignment,
+      refs,
+      assignment?.cardId ?? assignment?.originOrderId ?? assignment?.id ?? null
+    );
+    let itemChanged = false;
+    const next = { ...assignment };
+    const applyField = (field: string, value: any) => {
+      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
+      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
+      itemChanged = true;
+    };
+    applyField("orderNo", fallback.orderNo);
+    applyField("customer", fallback.customer);
+    applyField("label", fallback.label);
+    applyField("colorName", fallback.colorName);
+    if (
+      !resolveOptionalString(next?.gender, null) &&
+      resolveOptionalString(fallback?.gender, null)
+    ) {
+      next.gender = fallback.gender;
+      itemChanged = true;
+    }
+    if (itemChanged) changed = true;
+    return next;
+  });
+  return { assignments: nextAssignments, changed };
+};
+const repairAssignmentBoardDisplayState = async ({
+  orgId,
+  cards,
+  assignments,
+  refs = null,
+}: {
+  orgId: number;
+  cards: any;
+  assignments: any;
+  refs?: AssignmentDisplayReferenceMaps | null;
+}): Promise<{
+  cards: any[];
+  assignments: any[];
+  changed: boolean;
+  refs: AssignmentDisplayReferenceMaps;
+}> => {
+  const resolvedRefs = refs ?? (await loadAssignmentDisplayReferenceMaps(orgId));
+  const repairedCards = repairAssignmentBoardCardsDisplayText(cards, resolvedRefs);
+  const repairedAssignments = repairAssignmentBoardAssignmentsDisplayText(
+    assignments,
+    resolvedRefs
+  );
+  return {
+    cards: repairedCards.cards,
+    assignments: repairedAssignments.assignments,
+    changed: repairedCards.changed || repairedAssignments.changed,
+    refs: resolvedRefs,
+  };
+};
+const toNullableAssignmentText = (value: any): string | null => {
+  const text = resolveOptionalString(value, null);
+  return text && text.length > 0 ? text : null;
+};
+const repairAssignmentPlanDisplayRows = async ({
+  orgId,
+  plans,
+  refs = null,
+}: {
+  orgId: number;
+  plans: any[];
+  refs?: AssignmentDisplayReferenceMaps | null;
+}): Promise<{ plans: any[]; changed: boolean; refs: AssignmentDisplayReferenceMaps }> => {
+  const resolvedRefs = refs ?? (await loadAssignmentDisplayReferenceMaps(orgId));
+  const updates: Array<{
+    id: number;
+    data: {
+      orderNo?: string | null;
+      customer?: string | null;
+      label?: string | null;
+      colorName?: string | null;
+    };
+  }> = [];
+  const repairedPlans = ensureArray(plans).map((plan) => {
+    if (!plan || typeof plan !== "object") return plan;
+    const fallback = resolveAssignmentDisplayFallback(
+      plan,
+      resolvedRefs,
+      plan?.cardId ?? plan?.originOrderId ?? plan?.externalId ?? null
+    );
+    let itemChanged = false;
+    const next = { ...plan };
+    const applyField = (field: "orderNo" | "customer" | "label" | "colorName", value: any) => {
+      if (!shouldRepairAssignmentDisplayField((next as any)[field], value)) return;
+      (next as any)[field] = resolveOptionalString(value, (next as any)[field] ?? "");
+      itemChanged = true;
+    };
+    applyField("orderNo", fallback.orderNo);
+    applyField("customer", fallback.customer);
+    applyField("label", fallback.label);
+    applyField("colorName", fallback.colorName);
+
+    const planId = toPositiveIntOrNull(plan?.id);
+    if (itemChanged && planId) {
+      updates.push({
+        id: planId,
+        data: {
+          orderNo: toNullableAssignmentText(next.orderNo),
+          customer: toNullableAssignmentText(next.customer),
+          label: toNullableAssignmentText(next.label),
+          colorName: toNullableAssignmentText(next.colorName),
+        },
+      });
+    }
+    return next;
+  });
+
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((row) =>
+        prisma.assignmentPlan.update({
+          where: { id: row.id },
+          data: row.data,
+        })
+      )
+    );
+  }
+
+  return {
+    plans: repairedPlans,
+    changed: updates.length > 0,
+    refs: resolvedRefs,
+  };
+};
 const toAssignmentPlanResponse = (plan: any) => ({
   id: plan.externalId,
   lineId: String(plan.lineId),
@@ -4507,17 +4837,42 @@ app.get("/assignment-plans", async (req, res) => {
     return res.status(400).json({ ok: false, error: "lineId is required" });
   }
 
-  const boardState = await prisma.assignmentBoardState.findUnique({
+  let boardState = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
-    select: { assignments: true },
+    select: { id: true, cards: true, assignments: true },
   });
+  let assignmentDisplayRefs: AssignmentDisplayReferenceMaps | null = null;
+  if (boardState) {
+    const repairedBoardState = await repairAssignmentBoardDisplayState({
+      orgId: organization.id,
+      cards: boardState.cards,
+      assignments: boardState.assignments,
+    });
+    assignmentDisplayRefs = repairedBoardState.refs;
+    if (repairedBoardState.changed) {
+      boardState = await prisma.assignmentBoardState.update({
+        where: { id: boardState.id },
+        data: {
+          cards: repairedBoardState.cards,
+          assignments: repairedBoardState.assignments,
+        },
+        select: { id: true, cards: true, assignments: true },
+      });
+    } else {
+      boardState = {
+        ...boardState,
+        cards: repairedBoardState.cards,
+        assignments: repairedBoardState.assignments,
+      };
+    }
+  }
   const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
   const hasBoardAssignments = Array.isArray(boardState?.assignments);
   if (hasBoardAssignments && activeExternalIds.length === 0) {
     return res.json([]);
   }
 
-  const plans = await prisma.assignmentPlan.findMany({
+  let plans = await prisma.assignmentPlan.findMany({
     where: {
       orgId: organization.id,
       lineId,
@@ -4525,6 +4880,14 @@ app.get("/assignment-plans", async (req, res) => {
     },
     orderBy: [{ startIndex: "asc" }, { id: "asc" }],
   });
+  if (plans.length > 0) {
+    const repairedPlans = await repairAssignmentPlanDisplayRows({
+      orgId: organization.id,
+      plans,
+      refs: assignmentDisplayRefs,
+    });
+    plans = repairedPlans.plans;
+  }
 
   res.json(
     plans.map((plan) => ({
@@ -5222,10 +5585,30 @@ app.get("/assignment-board-state", async (req, res) => {
         data: { assignments: escalatedAssignments },
       });
     }
+    const repairedState = await repairAssignmentBoardDisplayState({
+      orgId: organization.id,
+      cards: state.cards,
+      assignments: state.assignments,
+    });
+    if (repairedState.changed) {
+      state = await prisma.assignmentBoardState.update({
+        where: { id: state.id },
+        data: {
+          cards: repairedState.cards,
+          assignments: repairedState.assignments,
+        },
+      });
+    } else {
+      state = {
+        ...state,
+        cards: repairedState.cards,
+        assignments: repairedState.assignments,
+      };
+    }
   }
   const activeExternalIds = resolveAssignmentPlanExternalIds(state?.assignments);
   const hasBoardAssignments = Array.isArray(state?.assignments);
-  const assignmentPlans =
+  let assignmentPlans =
     hasBoardAssignments && activeExternalIds.length === 0
       ? []
       : await prisma.assignmentPlan.findMany({
@@ -5235,6 +5618,13 @@ app.get("/assignment-board-state", async (req, res) => {
           },
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
         });
+  if (assignmentPlans.length > 0) {
+    const repairedPlans = await repairAssignmentPlanDisplayRows({
+      orgId: organization.id,
+      plans: assignmentPlans,
+    });
+    assignmentPlans = repairedPlans.plans;
+  }
 
   res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
 });
@@ -5247,6 +5637,14 @@ app.put("/assignment-board-state", async (req, res) => {
 
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
+  const repairedIncomingPayload = await repairAssignmentBoardDisplayState({
+    orgId: organization.id,
+    cards,
+    assignments: incomingAssignments,
+  });
+  const cardsForSave = repairedIncomingPayload.cards;
+  const incomingAssignmentsForSave = repairedIncomingPayload.assignments;
+  const assignmentDisplayRefs = repairedIncomingPayload.refs;
   const requesterEmail = getRequesterEmail(req);
   const [requesterSystemUser, requesterMembership] = requesterEmail
     ? await Promise.all([
@@ -5271,7 +5669,10 @@ app.put("/assignment-board-state", async (req, res) => {
     select: { id: true },
   });
   const lineIdSet = new Set(lineRows.map((line) => line.id));
-  const normalizedPlans = normalizeAssignmentPlanPayload(incomingAssignments, lineIdSet);
+  const normalizedPlans = normalizeAssignmentPlanPayload(
+    incomingAssignmentsForSave,
+    lineIdSet
+  );
 
   const updated = await prisma.$transaction(async (tx) => {
     const existingState = await tx.assignmentBoardState.findUnique({
@@ -5284,7 +5685,7 @@ app.put("/assignment-board-state", async (req, res) => {
     const currentVersionByExternalId =
       buildAssignmentVersionMap(currentAssignments);
     const versionConflicts = findAssignmentVersionConflicts(
-      incomingAssignments,
+      incomingAssignmentsForSave,
       currentVersionByExternalId
     );
     if (versionConflicts.length > 0) {
@@ -5315,7 +5716,9 @@ app.put("/assignment-board-state", async (req, res) => {
       },
       new Map<string, string>()
     );
-    const nextAssignmentsNormalized = normalizeStateAssignments(incomingAssignments);
+    const nextAssignmentsNormalized = normalizeStateAssignments(
+      incomingAssignmentsForSave
+    );
     const nextExternalIdSet = nextAssignmentsNormalized.reduce((set, item) => {
       const externalId = resolveAssignmentExternalId(item);
       if (externalId) set.add(externalId);
@@ -5347,7 +5750,7 @@ app.put("/assignment-board-state", async (req, res) => {
 
     const nowIso = new Date().toISOString();
     const versionedAssignments = withIncrementedAssignmentVersions(
-      incomingAssignments,
+      incomingAssignmentsForSave,
       currentVersionByExternalId,
       nowIso
     );
@@ -5357,10 +5760,10 @@ app.put("/assignment-board-state", async (req, res) => {
 
     const state = await tx.assignmentBoardState.upsert({
       where: { orgId: organization.id },
-      update: { cards, assignments: assignmentsForState },
+      update: { cards: cardsForSave, assignments: assignmentsForState },
       create: {
         orgId: organization.id,
-        cards,
+        cards: cardsForSave,
         assignments: assignmentsForState,
       },
     });
@@ -5445,7 +5848,7 @@ app.put("/assignment-board-state", async (req, res) => {
 
     return state;
   }, { timeout: 30000 });
-  const persistedPlans =
+  let persistedPlans =
     normalizedPlans.length > 0
       ? await prisma.assignmentPlan.findMany({
           where: {
@@ -5455,6 +5858,14 @@ app.put("/assignment-board-state", async (req, res) => {
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
         })
       : [];
+  if (persistedPlans.length > 0) {
+    const repairedPlans = await repairAssignmentPlanDisplayRows({
+      orgId: organization.id,
+      plans: persistedPlans,
+      refs: assignmentDisplayRefs,
+    });
+    persistedPlans = repairedPlans.plans;
+  }
 
   res.json(toAssignmentBoardStateResponse(updated, persistedPlans));
 });
