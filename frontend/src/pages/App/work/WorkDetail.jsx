@@ -73,6 +73,31 @@ const findDuplicateWorkerLogIndex = (workerLogs = []) =>
   workerLogs.findIndex((log) => hasDuplicateProcessCombo(log?.items));
 const equalsText = (left, right) =>
   String(left || '').trim() === String(right || '').trim();
+const stripCardGenderSuffix = (value) =>
+  String(value || '')
+    .replace(/\s*\[(M|W|U)\]\s*$/i, '')
+    .trim();
+const findStyleFromCard = ({ styles, customerName, label }) => {
+  const rawLabel = String(label || '').trim();
+  const normalizedLabel = stripCardGenderSuffix(rawLabel);
+  const labelCandidates = Array.from(
+    new Set([rawLabel, normalizedLabel].filter(Boolean))
+  );
+  if (labelCandidates.length === 0) return null;
+
+  return (
+    styles.find((style) => {
+      if (customerName && !equalsText(style?.customer, customerName)) return false;
+      return labelCandidates.some(
+        (candidate) =>
+          equalsText(style?.name, candidate) ||
+          equalsText(style?.styleCode, candidate) ||
+          equalsText(style?.styleId, candidate) ||
+          equalsText(style?.id, candidate)
+      );
+    }) || null
+  );
+};
 const findCustomerValue = (customers, customerName, fallbackIndex) => {
   if (!customerName) return null;
   return (
@@ -250,11 +275,78 @@ const toOptionalNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+const ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = 3;
 const toPositiveIdOrNull = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.trunc(parsed);
   return rounded > 0 ? rounded : null;
+};
+const isAgreedAssignmentPlan = (plan) =>
+  String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
+const resolveAssignmentPlanBaselineQuantity = (plan) => {
+  const finalQuantity = Number(plan?.finalQuantity);
+  if (Number.isFinite(finalQuantity) && finalQuantity > 0) {
+    return Math.round(finalQuantity);
+  }
+  const plannedQuantity = Number(plan?.quantity);
+  if (Number.isFinite(plannedQuantity) && plannedQuantity > 0) {
+    return Math.round(plannedQuantity);
+  }
+  return null;
+};
+const formatAssignmentPlanLabel = (plan) => {
+  if (!plan || typeof plan !== 'object') return '배정 카드';
+  const parts = [plan?.orderNo, plan?.label, plan?.colorName]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+  if (parts.length > 0) return parts.join(' · ');
+  if (plan?.dbId) return `배정 카드 #${plan.dbId}`;
+  return '배정 카드';
+};
+const resolveAssignmentProcessMetric = (processCode, processName) => {
+  const normalizedCode = String(processCode || '').trim().toUpperCase();
+  if (normalizedCode) {
+    return {
+      key: `code:${normalizedCode}`,
+      label: String(processCode || '').trim() || String(processName || '').trim() || `CODE:${normalizedCode}`,
+    };
+  }
+  const normalizedName = String(processName || '').trim().toLowerCase();
+  if (normalizedName) {
+    return {
+      key: `name:${normalizedName}`,
+      label: String(processName || '').trim() || String(processCode || '').trim() || `NAME:${normalizedName}`,
+    };
+  }
+  return { key: 'unknown', label: '미지정 공정' };
+};
+const collectAssignmentProcessQuantityRows = (records = []) => {
+  const buckets = new Map();
+  records.forEach((record) => {
+    if (!record || typeof record !== 'object') return;
+    const assignmentPlanId = toPositiveIdOrNull(record.assignmentPlanId);
+    if (!assignmentPlanId) return;
+    const quantity = Math.max(0, Math.round(Number(record.quantity) || 0));
+    if (quantity <= 0) return;
+    const processMetric = resolveAssignmentProcessMetric(
+      record.processCode,
+      record.processName
+    );
+    const bucketKey = `${assignmentPlanId}::${processMetric.key}`;
+    const current = buckets.get(bucketKey);
+    if (current) {
+      current.quantity += quantity;
+      return;
+    }
+    buckets.set(bucketKey, {
+      assignmentPlanId,
+      processMetricKey: processMetric.key,
+      processLabel: processMetric.label,
+      quantity,
+    });
+  });
+  return Array.from(buckets.values());
 };
 const reconcileWorkerForFactory = (worker, employees = []) => {
   if (!worker) return null;
@@ -299,6 +391,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [note, setNote] = useState('');
   const cancelButtonRef = useRef(null);
   const initializedMetaLogIdRef = useRef('');
+  const initializedLineLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
   const isPageMode = mode === 'page';
 
@@ -370,6 +463,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 
   useEffect(() => {
     initializedMetaLogIdRef.current = '';
+    initializedLineLogIdRef.current = '';
     initializedRecordsLogIdRef.current = '';
   }, [initialLog?.id]);
 
@@ -407,21 +501,64 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   }, [factories, initialLog]);
 
   useEffect(() => {
+    if (!initialLog?.id) return;
+    if (initializedLineLogIdRef.current === initialLog.id) return;
+    if (!selectedFactory?.id) return;
+    if (lines.length === 0) return;
+    if (
+      initialLog.factoryId &&
+      String(selectedFactory.id || '') !== String(initialLog.factoryId)
+    ) {
+      return;
+    }
+
+    if (!initialLog.lineId && !initialLog.lineName) {
+      initializedLineLogIdRef.current = initialLog.id;
+      return;
+    }
+
+    const matchedLine =
+      lines.find((line) => String(line?.id || '') === String(initialLog.lineId || '')) ||
+      lines.find((line) => equalsText(line?.name, initialLog.lineName));
+
+    if (matchedLine) {
+      setSelectedLine(matchedLine);
+    } else {
+      setSelectedLine({
+        id: initialLog.lineId || '',
+        name: initialLog.lineName || '',
+      });
+    }
+
+    initializedLineLogIdRef.current = initialLog.id;
+  }, [initialLog, lines, selectedFactory]);
+
+  useEffect(() => {
     let cancelled = false;
     const isPendingInitialHydration =
       Boolean(initialLog?.id) &&
       initializedRecordsLogIdRef.current !== initialLog.id;
+    const workDateKey = workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD');
 
     const loadEmployees = async () => {
-      if (!selectedFactory?.id) {
+      if (!selectedFactory?.id || !selectedLine?.id) {
         setEmployees([]);
-        setWorkerLogs([]);
         setWorkerFocusRequest(null);
+        setItemFocusRequest(null);
+        setDuplicateEntryMessage('');
+        if (!initialLog?.id) {
+          setWorkerLogs([]);
+        }
         return;
       }
       try {
         const data = await requestJSON(
-          `/employees${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId, membershipRole: 'WORKER' })}`
+          `/line-workers${buildQueryString({
+            factoryId: selectedFactory.id,
+            lineId: selectedLine.id,
+            workDate: workDateKey,
+            orgId: activeOrgId,
+          })}`
         );
         if (cancelled) return;
         const list = (Array.isArray(data) ? data : []).map((employee) => ({
@@ -442,8 +579,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
                 return [initialWorkerLog];
               }
 
-              // Preserve current input rows on factory change, but remap worker selection to
-              // employees that actually belong to the selected factory.
+              // Preserve current input rows, but remap worker selection to
+              // workers that belong to the selected line on the selected work date.
               return prev.map((log) => ({
                 ...log,
                 worker: reconcileWorkerForFactory(log.worker, list),
@@ -472,15 +609,22 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, initialLog?.id, selectedFactory?.id]);
+  }, [activeOrgId, initialLog?.id, selectedFactory?.id, selectedLine?.id, workDate]);
 
   useEffect(() => {
     if (!initialLog?.id) return;
     if (initializedRecordsLogIdRef.current === initialLog.id) return;
     if (!selectedFactory?.id) return;
+    if (!selectedLine?.id) return;
     if (
       initialLog.factoryId &&
       String(selectedFactory.id || '') !== String(initialLog.factoryId)
+    ) {
+      return;
+    }
+    if (
+      initialLog.lineId &&
+      String(selectedLine.id || '') !== String(initialLog.lineId)
     ) {
       return;
     }
@@ -504,7 +648,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setItemFocusRequest(null);
     setWorkerFocusRequest(null);
     initializedRecordsLogIdRef.current = initialLog.id;
-  }, [colors, customers, employees, initialLog, selectedFactory, styles]);
+  }, [colors, customers, employees, initialLog, selectedFactory, selectedLine, styles]);
 
   const takenWorkerIds = useMemo(
     () => new Set(workerLogs.map((log) => log.worker?.id).filter(Boolean)),
@@ -521,7 +665,14 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     () => workerLogs.reduce((sum, log) => sum + log.items.length, 0),
     [workerLogs]
   );
-  const canAddWorker = Boolean(selectedFactory) && employees.length > 0;
+  const agreedAssignmentPlans = useMemo(
+    () => assignmentPlans.filter((plan) => isAgreedAssignmentPlan(plan)),
+    [assignmentPlans]
+  );
+  const hasAssignmentPlans = assignmentPlans.length > 0;
+  const hasOnlyUnagreedAssignmentPlans =
+    hasAssignmentPlans && agreedAssignmentPlans.length === 0;
+  const canAddWorker = Boolean(selectedFactory && selectedLine) && employees.length > 0;
 
   const handleAddWorker = () => {
     const nextLog = buildWorkerLog();
@@ -600,12 +751,18 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             const next = { ...item, [field]: value };
             if (field === 'card') {
               if (value) {
+                const matchedStyle = findStyleFromCard({
+                  styles,
+                  customerName: value.customer,
+                  label: value.label,
+                });
+                const fallbackStyleName = stripCardGenderSuffix(value.label) || value.label;
                 next.customer = customers.find((c) => equalsText(c?.name, value.customer))
                   || (value.customer ? { id: `virtual-c-${value.dbId}`, name: value.customer } : null);
-                next.style = styles.find((s) =>
-                  equalsText(s?.customer, value.customer) &&
-                  (equalsText(s?.name, value.label) || equalsText(s?.styleCode, value.label) || equalsText(s?.styleId, value.label))
-                ) || (value.label ? { id: `virtual-s-${value.dbId}`, name: value.label, customer: value.customer || '', processes: [] } : null);
+                next.style = matchedStyle
+                  || (fallbackStyleName
+                    ? { id: `virtual-s-${value.dbId}`, name: fallbackStyleName, customer: value.customer || '', processes: [] }
+                    : null);
                 next.color = colors.find((c) =>
                   equalsText(c?.name, value.colorName) || equalsText(c?.code, value.colorName)
                 ) || (value.colorName ? { id: `virtual-cl-${value.dbId}`, name: value.colorName, code: value.colorName } : null);
@@ -699,7 +856,27 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const handleSave = () => {
     setSaveErrorMessage('');
     if (!selectedFactory) return;
+    if (!selectedLine?.id) {
+      setSaveErrorMessage('라인을 선택해 주세요.');
+      return;
+    }
     if (summary.records.length === 0) return;
+    const eligibleWorkerIdSet = new Set(
+      employees
+        .map((employee) => toPositiveIdOrNull(employee?.id))
+        .filter((workerId) => workerId !== null)
+    );
+    const invalidLineWorkerRecord = summary.records.find((record) => {
+      const workerId = toPositiveIdOrNull(record?.workerId);
+      if (!workerId) return true;
+      return !eligibleWorkerIdSet.has(workerId);
+    });
+    if (invalidLineWorkerRecord) {
+      setSaveErrorMessage(
+        '선택한 작업일/라인에 소속되지 않은 작업자가 포함되어 있습니다. 라인과 작업자를 다시 확인해 주세요.'
+      );
+      return;
+    }
     const invalidWorkerLogIndex = workerLogs.findIndex((log) => {
       const workerId = toPositiveIdOrNull(log.worker?.id);
       if (workerId) return false;
@@ -724,11 +901,82 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       );
       return;
     }
+    if (hasAssignmentPlans) {
+      if (hasOnlyUnagreedAssignmentPlans) {
+        setSaveErrorMessage(
+          '이 라인의 배정 카드는 아직 CT 동의가 완료되지 않았습니다. 라인장 CT 동의 후 작업 기록을 등록해 주세요.'
+        );
+        return;
+      }
+      const agreedAssignmentPlanIdSet = new Set(
+        agreedAssignmentPlans
+          .map((plan) => toPositiveIdOrNull(plan?.dbId))
+          .filter((planId) => planId !== null)
+      );
+      const missingAssignmentRecord = summary.records.find(
+        (record) => toPositiveIdOrNull(record?.assignmentPlanId) === null
+      );
+      if (missingAssignmentRecord) {
+        setSaveErrorMessage(
+          '배정 작업 기록은 CT 동의된 배정 카드 선택이 필수입니다.'
+        );
+        return;
+      }
+      const unagreedAssignmentRecord = summary.records.find((record) => {
+        const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
+        if (assignmentPlanId === null) return true;
+        return !agreedAssignmentPlanIdSet.has(assignmentPlanId);
+      });
+      if (unagreedAssignmentRecord) {
+        setSaveErrorMessage(
+          'CT 동의가 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.'
+        );
+        return;
+      }
+    }
+    const assignmentPlanById = new Map(
+      assignmentPlans
+        .map((plan) => [toPositiveIdOrNull(plan?.dbId), plan])
+        .filter(([planId]) => planId !== null)
+    );
+    const assignmentProcessRows = collectAssignmentProcessQuantityRows(summary.records);
+    const excessiveAssignmentProcess = assignmentProcessRows.find((row) => {
+      const plan = assignmentPlanById.get(row.assignmentPlanId);
+      if (!plan) return false;
+      const baselineQuantity = resolveAssignmentPlanBaselineQuantity(plan);
+      if (!baselineQuantity) return false;
+      const maxAllowedQuantity = Math.max(
+        baselineQuantity,
+        Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
+      );
+      return row.quantity > maxAllowedQuantity;
+    });
+    if (excessiveAssignmentProcess) {
+      const plan = assignmentPlanById.get(excessiveAssignmentProcess.assignmentPlanId);
+      const baselineQuantity = resolveAssignmentPlanBaselineQuantity(plan);
+      const maxAllowedQuantity =
+        baselineQuantity == null
+          ? null
+          : Math.max(
+              baselineQuantity,
+              Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
+            );
+      setSaveErrorMessage(
+        `${formatAssignmentPlanLabel(plan)} / ${excessiveAssignmentProcess.processLabel} 수량 ${
+          excessiveAssignmentProcess.quantity
+        }개가 허용 상한 ${
+          maxAllowedQuantity ?? '-'
+        }개를 초과했습니다. 수량을 확인해 주세요.`
+      );
+      return;
+    }
 
     onSave?.({
       workDate: workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
       factoryId: selectedFactory.id,
       factoryName: selectedFactory.name,
+      lineId: selectedLine.id,
+      lineName: selectedLine.name,
       factoryWagePerSecond: selectedFactoryWagePerSecond,
       ctBasis: 'CT',
       workerCount: summary.workerCount,
@@ -753,7 +1001,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         <Box>
           <Typography variant="h6">작업 기록 입력</Typography>
           <Typography variant="body2" color="text.secondary">
-            공장 선택 후 작업자/항목을 바로 입력할 수 있도록 구성했습니다.
+            작업일 기준 라인 소속 작업자만 입력할 수 있도록 공장-라인 순서로 선택해 주세요.
           </Typography>
         </Box>
         {!isPageMode ? (
@@ -793,7 +1041,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           />
 
           <SearchableSelect
-            label="라인 (선택)"
+            label="라인"
             options={lines}
             value={selectedLine}
             onChange={(_event, value) => setSelectedLine(value)}
@@ -857,8 +1105,24 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             {saveErrorMessage}
           </Alert>
         ) : null}
+        {hasOnlyUnagreedAssignmentPlans ? (
+          <Alert severity="warning" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+            이 라인의 배정 카드는 아직 CT 동의 전입니다. 라인장 동의 후 작업 기록 저장이 가능합니다.
+          </Alert>
+        ) : null}
+        {hasAssignmentPlans ? (
+          <Alert severity="info" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+            배정 작업 기록은 CT 동의된 배정 카드 선택이 필수입니다.
+          </Alert>
+        ) : null}
         <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-          키보드 사용 팁: 수량 칸에서 Tab은 항목 추가 버튼으로 이동, Enter는 새 항목 추가 후 고객사 칸으로 이동합니다.
+          실생산량은 주문/배정 수량과 달라도 됩니다. 초과 생산(+), 손실/폐기(-)를 반영한 실제 완료 수량을 입력해 주세요.
+        </Alert>
+        <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+          다만 배정 카드와 연결된 공정 수량은 비정상적으로 큰 값(기준 수량의 과도한 배수)으로 저장할 수 없습니다.
+        </Alert>
+        <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+          키보드 사용 팁: 실생산량 칸에서 Tab은 항목 추가 버튼으로 이동, Enter는 새 항목 추가 후 고객사 칸으로 이동합니다.
         </Alert>
       </Paper>
 
@@ -874,9 +1138,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="subtitle2" color="text.secondary">
             {selectedFactory
-              ? employees.length > 0
-                ? '작업자를 선택하고 항목을 입력하세요.'
-                : '선택한 공장에 등록된 작업자가 없습니다.'
+              ? selectedLine
+                ? employees.length > 0
+                  ? '작업자를 선택하고 항목을 입력하세요.'
+                  : '선택한 라인/작업일 기준으로 입력 가능한 작업자가 없습니다.'
+                : '라인을 먼저 선택하세요.'
               : '먼저 공장을 선택하세요.'}
           </Typography>
           <Button
@@ -890,12 +1156,18 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         </Box>
 
         {selectedFactory && employees.length === 0 ? (
+          !selectedLine ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              라인을 선택하면 해당 라인 소속 작업자만 불러옵니다.
+            </Alert>
+          ) : (
           <Alert severity="warning" sx={{ mt: 2 }}>
-            이 공장에는 작업자가 없어 작업 기록을 작성할 수 없습니다. 공장/작업자 정보를 먼저 등록하세요.
+            선택한 작업일 기준으로 이 라인에 소속된 작업자가 없어 작업 기록을 작성할 수 없습니다.
           </Alert>
+          )
         ) : workerLogs.length === 0 ? (
           <Typography color="text.secondary" align="center" sx={{ py: 6 }}>
-            공장을 선택하면 기본 입력 행이 자동으로 생성됩니다.
+            라인 선택 후 작업자 행이 자동으로 생성됩니다.
           </Typography>
         ) : (
           workerLogs.map((log, index) => (
@@ -952,7 +1224,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           <Button variant="outlined" onClick={onClose} ref={cancelButtonRef}>
             취소
           </Button>
-          <Button variant="contained" onClick={handleSave} disabled={!selectedFactory || summary.records.length === 0}>
+          <Button
+            variant="contained"
+            onClick={handleSave}
+            disabled={!selectedFactory || !selectedLine || summary.records.length === 0}
+          >
             저장
           </Button>
         </Stack>
@@ -962,4 +1238,3 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 };
 
 export default WorkDetail;
-

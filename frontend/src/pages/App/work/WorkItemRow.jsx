@@ -45,6 +45,8 @@ const resolveStyleKey = (style) => normalizeKeyPart(style?.id ?? style?.name);
 const resolveColorKey = (color) => normalizeKeyPart(color?.id ?? color?.code ?? color?.name);
 const resolveProcessKey = (process) =>
   normalizeKeyPart(process?.code ?? process?.name ?? process?.id);
+const isAgreedAssignmentPlan = (plan) =>
+  String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
 
 const calculateWage = (item, factory) => {
   const quantity = Number(item?.quantity) || 0;
@@ -179,16 +181,17 @@ const WorkItemRow = ({
       {assignmentPlans.length > 0 && (
         <Box sx={{ mb: 1 }}>
           <SearchableSelect
-            label="배정 카드 (선택)"
+            label="배정 카드 (CT 동의)"
             options={assignmentPlans}
             value={item.card || null}
             onChange={(_event, value) => onItemChange('card', value)}
             disabled={disabled}
             getOptionLabel={(option) =>
-              `[${option.orderNo || '-'}] ${option.label || ''}${option.colorName ? ` · ${option.colorName}` : ''}`
+              `[${option.orderNo || '-'}] ${option.label || ''}${option.colorName ? ` · ${option.colorName}` : ''}${option.quantity != null ? ` · 배정 ${formatNumberWithCommas(option.quantity, { fallback: '0', maximumFractionDigits: 0 })}` : ''}${isAgreedAssignmentPlan(option) ? ' · CT 동의' : ' · CT 미동의'}`
             }
             isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
-            textFieldProps={{ size: 'small', placeholder: '카드를 선택하면 스타일/색상이 자동 입력됩니다.' }}
+            getOptionDisabled={(option) => !isAgreedAssignmentPlan(option)}
+            textFieldProps={{ size: 'small', placeholder: 'CT 동의된 카드를 선택하면 스타일/색상이 자동 입력됩니다.' }}
           />
         </Box>
       )}
@@ -276,7 +279,7 @@ const WorkItemRow = ({
         />
 
         <TextField
-          label="수량"
+          label="실생산량"
           type="number"
           size="small"
           value={item.quantity}

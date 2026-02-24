@@ -81,8 +81,8 @@ const WorkEntry = () => {
         await appendWorkLog(payload, { orgId: activeOrgId });
         showNotification('작업 기록이 저장되었습니다.', 'success');
         closeEntry();
-      } catch (_error) {
-        showNotification('작업 기록 저장에 실패했습니다.', 'error');
+      } catch (error) {
+        showNotification(error?.message || '작업 기록 저장에 실패했습니다.', 'error');
       }
     },
     [activeOrgId, closeEntry, isEditMode, showNotification, workLogId]

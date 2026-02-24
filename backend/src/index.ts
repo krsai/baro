@@ -1987,6 +1987,20 @@ const normalizeMonthKey = (value: any) => {
   return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
 const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
+const resolveFiniteEnvNumber = (
+  value: unknown,
+  fallback: number,
+  minimum = Number.NEGATIVE_INFINITY
+) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < minimum) return fallback;
+  return parsed;
+};
+const WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = resolveFiniteEnvNumber(
+  process.env.WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER,
+  3,
+  1
+);
 const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return "";
@@ -2166,6 +2180,426 @@ const normalizeWorkRecordPayloadList = (records: any) => {
 
   return { rows, invalidWorkerRecordIndex };
 };
+const buildWorkDateRange = (workDate: any) => {
+  const normalized = normalizeDateKey(workDate);
+  if (!normalized) return null;
+  const startAt = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(startAt.getTime())) return null;
+  const endAt = new Date(startAt);
+  endAt.setDate(endAt.getDate() + 1);
+  endAt.setMilliseconds(endAt.getMilliseconds() - 1);
+  return { dateKey: normalized, startAt, endAt };
+};
+const resolveWorkLogLineMeta = (
+  value: any
+): { lineId: number | null; lineName: string | null } => {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : Array.isArray(value)
+        ? value.find((item) => item && typeof item === "object")
+        : null;
+
+  const lineId = toPositiveIntOrNull(source?.lineId);
+  const lineName = resolveOptionalString(source?.lineName, null);
+  return { lineId, lineName };
+};
+const collectWorkRecordWorkerIds = (records: any): number[] =>
+  Array.from(
+    new Set(
+      ensureArray(records)
+        .map((record) => toPositiveIntOrNull(record?.workerId))
+        .filter((workerId): workerId is number => workerId !== null)
+    )
+  );
+const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
+  Array.from(
+    new Set(
+      ensureArray(records)
+        .map((record) => toPositiveIntOrNull(record?.assignmentPlanId))
+        .filter((planId): planId is number => planId !== null)
+    )
+  );
+const toAssignmentProcessBucketKey = (
+  assignmentPlanId: number,
+  processMetricKey: string
+) => `${assignmentPlanId}::${processMetricKey}`;
+const resolveWorkRecordProcessMetric = (
+  processCodeInput: any,
+  processNameInput: any
+) => {
+  const processCode = resolveOptionalString(processCodeInput, null);
+  const processName = resolveOptionalString(processNameInput, null);
+  const codeKey = normalizeProcessCodeKey(processCode);
+  if (codeKey) {
+    return {
+      processMetricKey: `code:${codeKey}`,
+      processLabel: processCode || processName || `CODE:${codeKey}`,
+    };
+  }
+  const nameKey = normalizeProcessNameKey(processName);
+  if (nameKey) {
+    return {
+      processMetricKey: `name:${nameKey}`,
+      processLabel: processName || processCode || `NAME:${nameKey}`,
+    };
+  }
+  return {
+    processMetricKey: "unknown",
+    processLabel: processName || processCode || "미지정 공정",
+  };
+};
+type AssignmentProcessQuantityBucket = {
+  assignmentPlanId: number;
+  processMetricKey: string;
+  processLabel: string;
+  quantity: number;
+};
+const collectAssignmentProcessQuantities = (records: any) => {
+  const buckets = new Map<string, AssignmentProcessQuantityBucket>();
+
+  ensureArray(records).forEach((record) => {
+    if (!record || typeof record !== "object") return;
+    const assignmentPlanId = toPositiveIntOrNull(record.assignmentPlanId);
+    if (!assignmentPlanId) return;
+
+    const quantity = toNonNegativeInt(record.quantity, 0);
+    if (quantity <= 0) return;
+
+    const processMetric = resolveWorkRecordProcessMetric(
+      record.processCode,
+      record.processName
+    );
+    const bucketKey = toAssignmentProcessBucketKey(
+      assignmentPlanId,
+      processMetric.processMetricKey
+    );
+    const current = buckets.get(bucketKey);
+    if (current) {
+      current.quantity += quantity;
+      return;
+    }
+
+    buckets.set(bucketKey, {
+      assignmentPlanId,
+      processMetricKey: processMetric.processMetricKey,
+      processLabel: processMetric.processLabel,
+      quantity,
+    });
+  });
+
+  return buckets;
+};
+const resolvePositiveRoundedQuantity = (value: any): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded > 0 ? rounded : null;
+};
+const resolveAssignmentPlanBaselineQuantity = (plan: any): number | null => {
+  const finalQuantity = resolvePositiveRoundedQuantity(plan?.finalQuantity);
+  if (finalQuantity !== null) return finalQuantity;
+  return resolvePositiveRoundedQuantity(plan?.quantity);
+};
+const formatAssignmentPlanLabel = (plan: any) => {
+  const parts = [
+    resolveOptionalString(plan?.orderNo, null),
+    resolveOptionalString(plan?.label, null),
+    resolveOptionalString(plan?.colorName, null),
+  ].filter((part): part is string => Boolean(part));
+  if (parts.length > 0) return parts.join(" · ");
+  return resolveOptionalString(plan?.externalId, null) || `assignmentPlan#${plan?.id ?? "?"}`;
+};
+const validateWorkLogAssignmentPlanCtAgreement = async ({
+  orgId,
+  lineId,
+  records,
+}: {
+  orgId: number;
+  lineId: number | null;
+  records: any;
+}) => {
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(records);
+  if (assignmentPlanIds.length === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId, id: { in: assignmentPlanIds } },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      ctStatus: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+    },
+  });
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+
+  const missingPlanIds = assignmentPlanIds.filter(
+    (planId) => !planById.has(planId)
+  );
+  if (missingPlanIds.length > 0) {
+    return {
+      status: 400,
+      error: `assignment plan not found (${missingPlanIds.join(",")})`,
+    };
+  }
+
+  if (lineId !== null) {
+    const mismatchedPlan = plans.find((plan) => plan.lineId !== lineId);
+    if (mismatchedPlan) {
+      return {
+        status: 400,
+        error: `assignment plan line mismatch (${formatAssignmentPlanLabel(mismatchedPlan)})`,
+      };
+    }
+  }
+
+  const nonAgreedPlans = plans.filter(
+    (plan) => String(plan?.ctStatus || "").toUpperCase() !== "AGREED"
+  );
+  if (nonAgreedPlans.length > 0) {
+    const preview = nonAgreedPlans
+      .slice(0, 3)
+      .map((plan) => formatAssignmentPlanLabel(plan))
+      .join(", ");
+    const extraText =
+      nonAgreedPlans.length > 3 ? ` (+${nonAgreedPlans.length - 3} more)` : "";
+    return {
+      status: 400,
+      error: `ct agreement required before work log (${preview}${extraText})`,
+    };
+  }
+
+  return { status: 200, error: null as string | null };
+};
+const validateWorkLogAssignmentProcessQuantities = async ({
+  orgId,
+  lineId,
+  records,
+  excludedWorkLogId = null,
+}: {
+  orgId: number;
+  lineId: number | null;
+  records: any;
+  excludedWorkLogId?: number | null;
+}) => {
+  const incomingBuckets = collectAssignmentProcessQuantities(records);
+  if (incomingBuckets.size === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const assignmentPlanIds = Array.from(
+    new Set(
+      Array.from(incomingBuckets.values()).map(
+        (bucket) => bucket.assignmentPlanId
+      )
+    )
+  );
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId, id: { in: assignmentPlanIds } },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+      quantity: true,
+      finalQuantity: true,
+    },
+  });
+  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+
+  const missingPlanIds = assignmentPlanIds.filter(
+    (planId) => !planById.has(planId)
+  );
+  if (missingPlanIds.length > 0) {
+    return {
+      status: 400,
+      error: `assignment plan not found (${missingPlanIds.join(",")})`,
+    };
+  }
+
+  if (lineId !== null) {
+    const mismatchedPlan = plans.find((plan) => plan.lineId !== lineId);
+    if (mismatchedPlan) {
+      return {
+        status: 400,
+        error: `assignment plan line mismatch (${formatAssignmentPlanLabel(mismatchedPlan)})`,
+      };
+    }
+  }
+
+  const existingRows = await prisma.workRecord.groupBy({
+    by: ["assignmentPlanId", "processCode", "processName"],
+    where: {
+      orgId,
+      assignmentPlanId: { in: assignmentPlanIds },
+      ...(excludedWorkLogId ? { workLogId: { not: excludedWorkLogId } } : {}),
+    },
+    _sum: { quantity: true },
+  });
+
+  const existingBuckets = new Map<string, number>();
+  existingRows.forEach((row) => {
+    const assignmentPlanId = toPositiveIntOrNull(row.assignmentPlanId);
+    if (!assignmentPlanId) return;
+    const quantity = toNonNegativeInt(row._sum.quantity, 0);
+    if (quantity <= 0) return;
+
+    const processMetric = resolveWorkRecordProcessMetric(
+      row.processCode,
+      row.processName
+    );
+    const bucketKey = toAssignmentProcessBucketKey(
+      assignmentPlanId,
+      processMetric.processMetricKey
+    );
+    existingBuckets.set(bucketKey, (existingBuckets.get(bucketKey) || 0) + quantity);
+  });
+
+  const violations: Array<{
+    planLabel: string;
+    processLabel: string;
+    nextQuantity: number;
+    maxAllowedQuantity: number;
+  }> = [];
+
+  incomingBuckets.forEach((incoming, bucketKey) => {
+    const plan = planById.get(incoming.assignmentPlanId);
+    if (!plan) return;
+    const baselineQuantity = resolveAssignmentPlanBaselineQuantity(plan);
+    if (baselineQuantity === null) return;
+
+    const maxAllowedQuantity = Math.max(
+      baselineQuantity,
+      Math.ceil(
+        baselineQuantity * WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER
+      )
+    );
+    const existingQuantity = existingBuckets.get(bucketKey) || 0;
+    const nextQuantity = existingQuantity + incoming.quantity;
+    if (nextQuantity <= maxAllowedQuantity) return;
+
+    violations.push({
+      planLabel: formatAssignmentPlanLabel(plan),
+      processLabel: incoming.processLabel,
+      nextQuantity,
+      maxAllowedQuantity,
+    });
+  });
+
+  if (violations.length > 0) {
+    const preview = violations
+      .slice(0, 3)
+      .map(
+        (item) =>
+          `${item.planLabel} / ${item.processLabel}: ${item.nextQuantity} > ${item.maxAllowedQuantity}`
+      )
+      .join("; ");
+    const extraText =
+      violations.length > 3 ? ` (+${violations.length - 3} more)` : "";
+    return {
+      status: 400,
+      error:
+        `process quantity exceeds allowed range ` +
+        `(max ${WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER}x baseline): ` +
+        `${preview}${extraText}`,
+    };
+  }
+
+  return { status: 200, error: null as string | null };
+};
+const validateWorkLogLineWorkers = async ({
+  orgId,
+  lineId,
+  factoryId,
+  workDate,
+  workerIds,
+}: {
+  orgId: number;
+  lineId: number | null;
+  factoryId: number | null;
+  workDate: string;
+  workerIds: number[];
+}) => {
+  if (!lineId) {
+    return {
+      status: 400,
+      error: "lineId is required",
+      line: null as { id: number; factoryId: number; name: string } | null,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
+  const line = await prisma.line.findFirst({
+    where: { id: lineId, orgId },
+    select: { id: true, factoryId: true, name: true },
+  });
+  if (!line) {
+    return {
+      status: 404,
+      error: "line not found",
+      line: null as { id: number; factoryId: number; name: string } | null,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
+  if (factoryId !== null && line.factoryId !== factoryId) {
+    return {
+      status: 400,
+      error: "line does not belong to selected factory",
+      line,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
+  const dateRange = buildWorkDateRange(workDate);
+  if (!dateRange) {
+    return {
+      status: 400,
+      error: "invalid workDate",
+      line,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
+  if (workerIds.length === 0) {
+    return {
+      status: 200,
+      error: null as string | null,
+      line,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
+  const matchedAssignments = await prisma.lineAssignment.findMany({
+    where: {
+      lineId: line.id,
+      employeeId: { in: workerIds },
+      startAt: { lte: dateRange.endAt },
+      OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+    },
+    select: { employeeId: true },
+  });
+  const matchedWorkerIdSet = new Set(
+    matchedAssignments.map((assignment) => assignment.employeeId)
+  );
+  const missingWorkerIds = workerIds.filter(
+    (workerId) => !matchedWorkerIdSet.has(workerId)
+  );
+
+  return {
+    status: 200,
+    error: null as string | null,
+    line,
+    missingWorkerIds,
+  };
+};
 const toWorkRecordResponse = (record: any) => ({
   workerId: record?.workerId ?? null,
   workerName: record?.workerName ?? "",
@@ -2185,6 +2619,7 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const workDateInput =
     payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
   const normalizedWorkDate = normalizeDateKey(workDateInput) || todayDateKey();
+  const fallbackLineMeta = resolveWorkLogLineMeta(fallback?.records);
   const normalizedRecords = normalizeWorkRecordPayloadList(
     payload?.records !== undefined ? payload.records : fallback?.records
   );
@@ -2198,6 +2633,13 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     factoryName: resolveOptionalString(
       payload?.factoryName,
       fallback?.factoryName ?? null
+    ),
+    lineId: toPositiveIntOrNull(
+      payload?.lineId !== undefined ? payload?.lineId : fallbackLineMeta.lineId
+    ),
+    lineName: resolveOptionalString(
+      payload?.lineName,
+      fallbackLineMeta.lineName ?? null
     ),
     factoryWagePerSecond: toOptionalFiniteNumber(
       payload?.factoryWagePerSecond,
@@ -2226,24 +2668,29 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
-const toWorkLogResponse = (workLog: any) => ({
-  id: workLog.id,
-  workDate: workLog.workDate,
-  factoryId: workLog.factoryId ?? null,
-  factoryName: workLog.factoryName ?? "",
-  factoryWagePerSecond: workLog.factoryWagePerSecond ?? null,
-  ctBasis: workLog.ctBasis ?? "CT",
-  workerCount: workLog.workerCount ?? 0,
-  itemCount: workLog.itemCount ?? 0,
-  totalContractedSeconds: workLog.totalContractedSeconds ?? 0,
-  note: workLog.note ?? "",
-  records:
-    Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0
-      ? workLog.workRecords.map(toWorkRecordResponse)
-      : ensureArray(workLog.records),
-  createdAt: workLog.createdAt,
-  updatedAt: workLog.updatedAt,
-});
+const toWorkLogResponse = (workLog: any) => {
+  const lineMeta = resolveWorkLogLineMeta(workLog?.records);
+  return {
+    id: workLog.id,
+    workDate: workLog.workDate,
+    factoryId: workLog.factoryId ?? null,
+    factoryName: workLog.factoryName ?? "",
+    lineId: lineMeta.lineId,
+    lineName: lineMeta.lineName ?? "",
+    factoryWagePerSecond: workLog.factoryWagePerSecond ?? null,
+    ctBasis: workLog.ctBasis ?? "CT",
+    workerCount: workLog.workerCount ?? 0,
+    itemCount: workLog.itemCount ?? 0,
+    totalContractedSeconds: workLog.totalContractedSeconds ?? 0,
+    note: workLog.note ?? "",
+    records:
+      Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0
+        ? workLog.workRecords.map(toWorkRecordResponse)
+        : ensureArray(workLog.records),
+    createdAt: workLog.createdAt,
+    updatedAt: workLog.updatedAt,
+  };
+};
 const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "AGREED", "REJECTED"]);
 const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
@@ -3624,6 +4071,22 @@ app.get("/line-workers", async (req, res) => {
 
   const factoryId = Number(req.query.factoryId);
   const hasFactoryFilter = Number.isFinite(factoryId);
+  const lineId = Number(req.query.lineId);
+  const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
+  const workDateInput = resolveOptionalString(req.query.workDate, null);
+  const hasWorkDateFilter = Boolean(workDateInput);
+  const normalizedWorkDate = hasWorkDateFilter
+    ? normalizeDateKey(workDateInput)
+    : null;
+  if (hasWorkDateFilter && !normalizedWorkDate) {
+    return res.status(400).json({ ok: false, error: "invalid workDate" });
+  }
+  if (hasWorkDateFilter && !hasLineFilter) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "lineId is required when workDate is provided" });
+  }
+
   if (hasFactoryFilter) {
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
@@ -3631,6 +4094,72 @@ app.get("/line-workers", async (req, res) => {
     if (!factory) {
       return res.status(404).json({ ok: false, error: "factory not found" });
     }
+  }
+
+  if (hasLineFilter) {
+    const line = await prisma.line.findFirst({
+      where: {
+        id: lineId,
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+      },
+      select: { id: true, factoryId: true },
+    });
+    if (!line) {
+      return res.status(404).json({ ok: false, error: "line not found" });
+    }
+
+    const dateRange = normalizedWorkDate
+      ? buildWorkDateRange(normalizedWorkDate)
+      : null;
+    if (normalizedWorkDate && !dateRange) {
+      return res.status(400).json({ ok: false, error: "invalid workDate" });
+    }
+
+    const assignments = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        ...(dateRange
+          ? {
+              startAt: { lte: dateRange.endAt },
+              OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+            }
+          : { endAt: null }),
+      },
+      select: { employeeId: true, lineId: true },
+      orderBy: [{ employeeId: "asc" }],
+    });
+    const employeeIds = Array.from(
+      new Set(assignments.map((assignment) => assignment.employeeId))
+    );
+    if (employeeIds.length === 0) {
+      return res.json([]);
+    }
+
+    const workers = await prisma.employee.findMany({
+      where: {
+        orgId: organization.id,
+        id: { in: employeeIds },
+        ...(hasFactoryFilter ? { factoryId } : {}),
+      },
+      include: { membership: true },
+      orderBy: [{ factoryId: "asc" }, { id: "asc" }],
+    });
+    const assignmentByEmployee = new Map();
+    assignments.forEach((assignment) => {
+      assignmentByEmployee.set(assignment.employeeId, assignment.lineId);
+    });
+
+    return res.json(
+      workers.map((worker) => ({
+        id: worker.id,
+        orgMembershipId: worker.orgMembershipId,
+        name: worker.name,
+        email: worker.membership?.email ?? "",
+        factoryId: worker.factoryId,
+        currentLineId: assignmentByEmployee.get(worker.id) ?? null,
+      }))
+    );
   }
 
   const [workers, assignments] = await Promise.all([
@@ -4242,16 +4771,63 @@ app.post("/work-logs", async (req, res) => {
       return res.status(404).json({ ok: false, error: "factory not found" });
     }
   }
+  const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const lineValidation = await validateWorkLogLineWorkers({
+    orgId: organization.id,
+    lineId: normalized.lineId,
+    factoryId: normalized.factoryId,
+    workDate: normalized.workDate,
+    workerIds,
+  });
+  if (lineValidation.error) {
+    return res
+      .status(lineValidation.status)
+      .json({ ok: false, error: lineValidation.error });
+  }
+  if (lineValidation.missingWorkerIds.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`,
+    });
+  }
+  const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+  });
+  if (ctAgreementValidation.error) {
+    return res
+      .status(ctAgreementValidation.status)
+      .json({ ok: false, error: ctAgreementValidation.error });
+  }
+  const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+  });
+  if (quantityValidation.error) {
+    return res
+      .status(quantityValidation.status)
+      .json({ ok: false, error: quantityValidation.error });
+  }
 
   const created = await prisma.$transaction(async (tx) => {
-    const { records, invalidWorkerRecordIndex: _invalidWorkerRecordIndex, ...workLogData } =
-      normalized;
+    const {
+      records,
+      invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
+      lineId: _lineId,
+      lineName: _lineName,
+      ...workLogData
+    } = normalized;
     const next = await tx.workLog.create({
       data: {
         orgId: organization.id,
         ...workLogData,
-        // Keep the legacy JSON column empty and persist normalized rows in WorkRecord.
-        records: [],
+        // Keep line metadata in legacy JSON for edit-time context.
+        records: {
+          lineId: lineValidation.line?.id ?? null,
+          lineName: lineValidation.line?.name ?? null,
+        },
       },
     });
 
@@ -4312,15 +4888,63 @@ app.put("/work-logs/:id", async (req, res) => {
       return res.status(404).json({ ok: false, error: "factory not found" });
     }
   }
+  const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const lineValidation = await validateWorkLogLineWorkers({
+    orgId: organization.id,
+    lineId: normalized.lineId,
+    factoryId: normalized.factoryId,
+    workDate: normalized.workDate,
+    workerIds,
+  });
+  if (lineValidation.error) {
+    return res
+      .status(lineValidation.status)
+      .json({ ok: false, error: lineValidation.error });
+  }
+  if (lineValidation.missingWorkerIds.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`,
+    });
+  }
+  const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+  });
+  if (ctAgreementValidation.error) {
+    return res
+      .status(ctAgreementValidation.status)
+      .json({ ok: false, error: ctAgreementValidation.error });
+  }
+  const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+    excludedWorkLogId: existing.id,
+  });
+  if (quantityValidation.error) {
+    return res
+      .status(quantityValidation.status)
+      .json({ ok: false, error: quantityValidation.error });
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
-    const { records, invalidWorkerRecordIndex: _invalidWorkerRecordIndex, ...workLogData } =
-      normalized;
+    const {
+      records,
+      invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
+      lineId: _lineId,
+      lineName: _lineName,
+      ...workLogData
+    } = normalized;
     const next = await tx.workLog.update({
       where: { id: existing.id },
       data: {
         ...workLogData,
-        records: [],
+        records: {
+          lineId: lineValidation.line?.id ?? null,
+          lineName: lineValidation.line?.name ?? null,
+        },
       },
     });
 
@@ -6200,4 +6824,3 @@ startServer().catch((error) => {
   console.error("failed to start API server", error);
   process.exit(1);
 });
-
