@@ -20,19 +20,21 @@ const formatDuration = (daysValue) => {
 
 const CT_STATUS_META = {
   PENDING: { label: 'CT 대기', background: '#F3F4F6', color: '#4B5563' },
+  SENT: { label: '송부 완료', background: '#DBEAFE', color: '#1D4ED8' },
   AGREED: { label: 'CT 확정', background: '#DCFCE7', color: '#166534' },
   REJECTED: { label: 'CT 반려', background: '#FEE2E2', color: '#991B1B' },
 };
 
 const normalizeCtStatus = (value) => {
-  if (value === 'AGREED' || value === 'REJECTED') return value;
+  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
   return 'PENDING';
 };
 
-const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
+const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, isLocked = false }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
+    disabled: isLocked,
   });
 
   const { setNodeRef: setDropRef } = useDroppable({
@@ -82,7 +84,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
         minWidth: 0,
         // Link-to-previous button sits outside the bar on the left edge.
         overflow: 'visible',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: isLocked ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.06)',
         outline: 'none',
@@ -93,16 +95,15 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
       }}
       style={style}
       title={`${assignment.customer} · ${assignment.label}`}
-      onPointerDown={(event) => {
-        if (event.button !== 2) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onSplit?.(assignment.id);
-      }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onSplit?.(assignment.id);
+        onOpenContextMenu?.({
+          targetType: 'assignment',
+          id: assignment.id,
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+        });
       }}
       {...attributes}
       {...listeners}
@@ -210,6 +211,24 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onSplit }) => {
           }}
         >
           {ctLabel}
+        </Box>
+      )}
+      {isLocked && (
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 8,
+            bottom: 8,
+            px: 0.7,
+            py: 0.15,
+            borderRadius: 1,
+            backgroundColor: 'rgba(17, 24, 39, 0.72)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#ffffff',
+          }}
+        >
+          잠금
         </Box>
       )}
       {!hideMetaBadges && (

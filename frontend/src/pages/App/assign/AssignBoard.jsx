@@ -1,5 +1,24 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Grid, Stack, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  Divider,
+  Drawer,
+  Grid,
+  Menu,
+  MenuItem,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -8,7 +27,7 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
-import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
+import { fetchStyles as fetchStylesFromApi, updateStyle as updateStyleById } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchOrders as fetchOrdersFromApi } from '../../../utils/orderApi';
@@ -20,7 +39,9 @@ import {
 import {
   calculateProcessTotalForOrderQuantity,
   normalizeProcesses,
+  resolveProcessAtPerPieceSeconds,
 } from '../../../utils/processTime';
+import { formatNumberWithCommas } from '../../../utils/numberFormat';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -47,6 +68,54 @@ const formatLineShiftLabel = (line) => {
   }
   return `${shiftHours}h`;
 };
+const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
+const toOptionalPositiveNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+const formatCurrencyDong = (value) =>
+  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
+const formatSecondsLabel = (value, fallback = '-') => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}초`;
+};
+const formatDaysLabel = (value, fallback = '-') => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}일`;
+};
+const calcDivergencePercent = (current, base) => {
+  const currentValue = Number(current);
+  const baseValue = Number(base);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(baseValue) || baseValue <= 0) {
+    return null;
+  }
+  return ((currentValue - baseValue) / baseValue) * 100;
+};
+const resolveProcessBaseInfo = (process, orderQuantity = 1) => {
+  const pt = Number(process?.pt);
+  if (Number.isFinite(pt) && pt > 0) {
+    return { basis: 'PT', seconds: pt };
+  }
+  const atPerPiece = resolveProcessAtPerPieceSeconds(process, orderQuantity);
+  if (Number.isFinite(atPerPiece) && atPerPiece > 0) {
+    return { basis: 'AT', seconds: atPerPiece };
+  }
+  const ct = Number(process?.ct);
+  if (Number.isFinite(ct) && ct > 0) {
+    return { basis: 'CT', seconds: ct };
+  }
+  return { basis: 'NONE', seconds: 0 };
+};
+const isAssignmentLockedStatus = (value) => String(value || '').trim().toUpperCase() === 'SENT';
 
 const buildAssignableLines = ({ factories, lines, workers }) => {
   const safeFactories = Array.isArray(factories) ? factories : [];
@@ -1248,6 +1317,7 @@ const AssignBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
+  const [styles, setStyles] = useState([]);
   const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [activeDrag, setActiveDrag] = useState(null);
@@ -1265,6 +1335,10 @@ const AssignBoard = () => {
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
+  const [contextMenuState, setContextMenuState] = useState(null);
+  const [detailState, setDetailState] = useState(null);
+  const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
+  const [sendingProposal, setSendingProposal] = useState(false);
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
   const daysRef = useRef(days);
@@ -1483,6 +1557,7 @@ const AssignBoard = () => {
 
         if (!cancelled) {
           const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
+          setStyles(Array.isArray(styles) ? styles : []);
           setLines(nextLines);
           setCards(restoredCards);
           setAssignments(restoredAssignments);
@@ -1501,6 +1576,7 @@ const AssignBoard = () => {
         }
       } catch (_error) {
         if (!cancelled) {
+          setStyles([]);
           setLines([]);
           setCards([]);
           setAssignments([]);
@@ -1642,13 +1718,11 @@ const AssignBoard = () => {
       if (!document.hidden) runSync();
     };
 
-    const intervalId = window.setInterval(runSync, 30000);
     window.addEventListener('focus', runSync);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', runSync);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -1825,9 +1899,17 @@ const AssignBoard = () => {
     () => new Map(cards.map((card) => [card.id, card])),
     [cards]
   );
+  const styleById = useMemo(
+    () => new Map((Array.isArray(styles) ? styles : []).map((style) => [String(style.id), style])),
+    [styles]
+  );
   const assignmentById = useMemo(
     () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
     [assignments]
+  );
+  const isAssignmentLocked = useCallback(
+    (assignment) => isAssignmentLockedStatus(assignment?.ctStatus),
+    []
   );
 
   const assignmentsForRender = useMemo(() => {
@@ -1901,6 +1983,199 @@ const AssignBoard = () => {
     });
   }, [filteredCards]);
 
+  const lineById = useMemo(
+    () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
+    [lines]
+  );
+  const detailAssignment = useMemo(() => {
+    if (!detailState || detailState.targetType !== 'assignment') return null;
+    return assignmentById.get(String(detailState.assignmentId)) || null;
+  }, [detailState, assignmentById]);
+  const detailCard = useMemo(() => {
+    if (!detailState) return null;
+    if (detailState.targetType === 'card') {
+      return cardById.get(String(detailState.cardId)) || null;
+    }
+    return cardById.get(String(detailAssignment?.cardId || '')) || null;
+  }, [detailState, detailAssignment, cardById]);
+  const detailStyle = useMemo(() => {
+    const styleId = String(detailCard?.styleId || '').trim();
+    if (!styleId) return null;
+    return styleById.get(styleId) || null;
+  }, [detailCard, styleById]);
+  const detailLine = useMemo(() => {
+    if (!detailAssignment) return null;
+    return lineById.get(String(detailAssignment.lineId)) || null;
+  }, [detailAssignment, lineById]);
+  const detailTargetKey = useMemo(() => {
+    if (!detailState) return '';
+    if (detailState.targetType === 'assignment') {
+      return `assignment:${String(detailState.assignmentId || '')}`;
+    }
+    return `card:${String(detailState.cardId || '')}`;
+  }, [detailState]);
+  const detailDraftByProcess = useMemo(
+    () => detailDraftsByTarget[detailTargetKey] || {},
+    [detailDraftsByTarget, detailTargetKey]
+  );
+  const detailProcessRows = useMemo(() => {
+    const orderQuantity = Math.max(
+      1,
+      toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
+    );
+    const processes = normalizeProcesses(detailStyle?.processes);
+    if (processes.length === 0) return [];
+    return processes.map((process, index) => {
+      const processKey = String(
+        process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
+      );
+      const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
+      const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+      const baseInfo = resolveProcessBaseInfo(process, orderQuantity);
+      const baseSeconds = baseInfo.seconds;
+      const requestedDraft = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
+      const requestedSeconds = requestedDraft ?? baseSeconds;
+      return {
+        processKey,
+        processName,
+        processQuantity,
+        basis: baseInfo.basis,
+        baseSeconds,
+        requestedSeconds,
+        basePerPieceSeconds: baseSeconds * processQuantity,
+        requestedPerPieceSeconds: requestedSeconds * processQuantity,
+        totalBaseSeconds: baseSeconds * processQuantity * orderQuantity,
+        totalRequestedSeconds: requestedSeconds * processQuantity * orderQuantity,
+      };
+    });
+  }, [detailAssignment?.quantity, detailCard?.quantity, detailStyle?.processes, detailDraftByProcess]);
+  const detailSummary = useMemo(() => {
+    if (!detailCard) return null;
+    const orderQuantity = Math.max(
+      1,
+      toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
+    );
+    const lineDailyCapacitySeconds = Number(
+      detailAssignment
+        ? getLineCapacitySeconds(detailAssignment.lineId, lineCapacityById)
+        : DAILY_CAPACITY_SECONDS
+    );
+    const totalBasePerPieceSeconds =
+      detailProcessRows.length > 0
+        ? detailProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
+        : Number(detailCard?.totalSeconds || 0) / orderQuantity;
+    const totalRequestedPerPieceSeconds =
+      detailProcessRows.length > 0
+        ? detailProcessRows.reduce((sum, row) => sum + row.requestedPerPieceSeconds, 0)
+        : Number(detailAssignment?.proposalSeconds || detailCard?.totalSeconds || 0) / orderQuantity;
+    const totalRequestedSeconds =
+      detailProcessRows.length > 0
+        ? detailProcessRows.reduce((sum, row) => sum + row.totalRequestedSeconds, 0)
+        : Number(detailAssignment?.proposalSeconds || detailCard?.totalSeconds || 0);
+    const totalBaseSeconds =
+      detailProcessRows.length > 0
+        ? detailProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0)
+        : Number(detailCard?.totalSeconds || 0);
+    const headcount = Math.max(1, Number(detailLine?.headcount || 1));
+    const factoryWagePerSecond = Number(detailLine?.factoryWagePerSecond);
+    const expectedCost =
+      Number.isFinite(factoryWagePerSecond) && factoryWagePerSecond > 0
+        ? totalRequestedSeconds * factoryWagePerSecond
+        : null;
+    const totalDurationDays =
+      Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
+        ? totalRequestedSeconds / lineDailyCapacitySeconds
+        : null;
+    const perPersonExpected = expectedCost == null ? null : expectedCost / headcount;
+    return {
+      orderQuantity,
+      totalBasePerPieceSeconds,
+      totalRequestedPerPieceSeconds,
+      totalBaseSeconds,
+      totalRequestedSeconds,
+      divergencePercent: calcDivergencePercent(totalRequestedPerPieceSeconds, totalBasePerPieceSeconds),
+      expectedCost,
+      totalDurationDays,
+      perPersonExpected,
+    };
+  }, [detailCard, detailAssignment, detailLine, detailProcessRows, lineCapacityById]);
+  const detailIsLocked = useMemo(
+    () => Boolean(detailAssignment && isAssignmentLocked(detailAssignment)),
+    [detailAssignment, isAssignmentLocked]
+  );
+  const canSendProposal = Boolean(detailAssignment && detailProcessRows.length > 0 && !detailIsLocked);
+  const contextMenuTargetAssignment = useMemo(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'assignment') return null;
+    return assignmentById.get(String(contextMenuState.id)) || null;
+  }, [contextMenuState, assignmentById]);
+  const contextMenuTargetCard = useMemo(() => {
+    if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
+    return cardById.get(String(contextMenuState.id)) || null;
+  }, [contextMenuState, cardById]);
+  const contextSplitDisabled = useMemo(() => {
+    if (!contextMenuState) return true;
+    if (contextMenuState.targetType === 'assignment') {
+      if (!contextMenuTargetAssignment) return true;
+      if (isAssignmentLocked(contextMenuTargetAssignment)) return true;
+      return Number(contextMenuTargetAssignment.quantity ?? 0) <= 1;
+    }
+    if (!contextMenuTargetCard) return true;
+    return Number(contextMenuTargetCard.quantity ?? 0) <= 1;
+  }, [
+    contextMenuState,
+    contextMenuTargetAssignment,
+    contextMenuTargetCard,
+    isAssignmentLocked,
+  ]);
+
+  const handleContextMenuOpen = useCallback((payload) => {
+    if (!payload?.targetType || !payload?.id) return;
+    setContextMenuState({
+      targetType: payload.targetType,
+      id: String(payload.id),
+      mouseX: Number(payload.mouseX) || 0,
+      mouseY: Number(payload.mouseY) || 0,
+    });
+  }, []);
+  const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
+  const handleContextOpenDetail = useCallback(() => {
+    if (!contextMenuState) return;
+    if (contextMenuState.targetType === 'assignment') {
+      setDetailState({ targetType: 'assignment', assignmentId: contextMenuState.id });
+    } else {
+      setDetailState({ targetType: 'card', cardId: contextMenuState.id });
+    }
+    setContextMenuState(null);
+  }, [contextMenuState]);
+  const handleCloseDetail = useCallback(() => {
+    if (sendingProposal) return;
+    setDetailState(null);
+  }, [sendingProposal]);
+  const handleDetailDraftInput = useCallback((processKey, value) => {
+    if (!detailTargetKey || !processKey) return;
+    if (!CT_INPUT_REGEX.test(value)) return;
+    setDetailDraftsByTarget((prev) => {
+      const currentForTarget = prev[detailTargetKey] || {};
+      if (value === '') {
+        if (!(processKey in currentForTarget)) return prev;
+        const nextForTarget = { ...currentForTarget };
+        delete nextForTarget[processKey];
+        return {
+          ...prev,
+          [detailTargetKey]: nextForTarget,
+        };
+      }
+      if (currentForTarget[processKey] === value) return prev;
+      return {
+        ...prev,
+        [detailTargetKey]: {
+          ...currentForTarget,
+          [processKey]: value,
+        },
+      };
+    });
+  }, [detailTargetKey]);
+
   const handleDragStart = useCallback((event) => {
     const { active } = event;
     if (!active) return;
@@ -1944,6 +2219,12 @@ const AssignBoard = () => {
     if (!over) {
       if (String(active.id).startsWith('assign-')) {
         const assignmentId = String(active.id).replace('assign-', '');
+        const target = assignmentById.get(assignmentId);
+        if (target && isAssignmentLocked(target)) {
+          showNotification('제안 송부된 작업은 잠금 상태라 삭제할 수 없습니다.', 'warning');
+          setActiveDrag(null);
+          return;
+        }
         setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
       }
       setActiveDrag(null);
@@ -1952,6 +2233,15 @@ const AssignBoard = () => {
 
     const activeId = String(active.id);
     const overId = String(over.id);
+    if (activeId.startsWith('assign-')) {
+      const movingAssignmentId = activeId.replace('assign-', '');
+      const movingAssignment = assignmentById.get(movingAssignmentId);
+      if (movingAssignment && isAssignmentLocked(movingAssignment)) {
+        showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
+        setActiveDrag(null);
+        return;
+      }
+    }
 
     if (overId.startsWith('card-drop-')) {
       const targetCardId = overId.replace('card-drop-', '');
@@ -1986,6 +2276,11 @@ const AssignBoard = () => {
       }
       if (targetAssignment && activeId.startsWith('assign-')) {
         const sourceAssignmentId = activeId.replace('assign-', '');
+        if (isAssignmentLocked(targetAssignment)) {
+          showNotification('제안 송부된 작업에는 합칠 수 없습니다.', 'warning');
+          setActiveDrag(null);
+          return;
+        }
         if (mergeAssignments(targetId, sourceAssignmentId)) {
           setActiveDrag(null);
           return;
@@ -2122,6 +2417,10 @@ const AssignBoard = () => {
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
+        if (isAssignmentLocked(target)) return prev;
+        if (targetOnDay && isAssignmentLocked(targetOnDay) && targetOnDay.id !== assignmentId) {
+          return prev;
+        }
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
@@ -2194,6 +2493,11 @@ const AssignBoard = () => {
   };
 
   const handleLinkPrev = (assignmentId) => {
+    const targetPreview = assignmentById.get(assignmentId);
+    if (targetPreview && isAssignmentLocked(targetPreview)) {
+      showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
+      return;
+    }
     setAssignments((prev) => {
       const target = prev.find((item) => item.id === assignmentId);
       if (!target) return prev;
@@ -2267,6 +2571,10 @@ const AssignBoard = () => {
 
   const handleSplitAssignment = useCallback((assignmentId) => {
     const target = assignmentById.get(assignmentId);
+    if (target && isAssignmentLocked(target)) {
+      showNotification('제안 송부된 작업은 잠금 상태라 수량 분할할 수 없습니다.', 'warning');
+      return;
+    }
     if (!target?.cardId) return;
     const card = cardById.get(target.cardId);
     if (!card) return;
@@ -2308,7 +2616,176 @@ const AssignBoard = () => {
           : item
       )
     );
-  }, [assignmentById, cardById, promptSplitQuantity, buildSplitCard, days, lineCapacityById]);
+  }, [
+    assignmentById,
+    cardById,
+    promptSplitQuantity,
+    buildSplitCard,
+    days,
+    lineCapacityById,
+    isAssignmentLocked,
+    showNotification,
+  ]);
+  const handleContextSplit = useCallback(() => {
+    if (!contextMenuState) return;
+    if (contextMenuState.targetType === 'assignment') {
+      handleSplitAssignment(contextMenuState.id);
+    } else {
+      handleSplitCard(contextMenuState.id);
+    }
+    setContextMenuState(null);
+  }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
+  const recalcCardsForStyleProcesses = useCallback((sourceCards, styleId, processes) => {
+    const normalizedStyleId = String(styleId || '').trim();
+    if (!normalizedStyleId) return sourceCards;
+    return (Array.isArray(sourceCards) ? sourceCards : []).map((card) => {
+      if (String(card?.styleId || '').trim() !== normalizedStyleId) return card;
+      const quantity = Math.max(1, toPositiveInt(card?.quantity, 1));
+      const nextTotalPt = getTotalForOrderQuantity(processes, 'pt', quantity);
+      const nextTotalAt = getTotalForOrderQuantity(processes, 'at', quantity);
+      const nextStatus = resolveCardStatus(card, nextTotalPt, nextTotalAt);
+      const nextTotalSeconds = nextStatus === 'AT' ? nextTotalAt : nextTotalPt;
+      return {
+        ...card,
+        totalPt: nextTotalPt,
+        totalAt: nextTotalAt,
+        status: nextStatus,
+        totalSeconds: nextTotalSeconds,
+      };
+    });
+  }, []);
+  const handleSendProposalToLineLeader = useCallback(async () => {
+    if (sendingProposal) return;
+    if (!detailAssignment) return;
+    if (isAssignmentLocked(detailAssignment)) {
+      showNotification('이미 송부되어 잠금된 작업입니다.', 'warning');
+      return;
+    }
+    if (!detailSummary || !Number.isFinite(detailSummary.totalRequestedSeconds) || detailSummary.totalRequestedSeconds <= 0) {
+      showNotification('송부할 CT 값이 유효하지 않습니다.', 'error');
+      return;
+    }
+
+    const assignmentId = String(detailAssignment.id);
+    const nextTotalSeconds = Math.max(1, Math.round(detailSummary.totalRequestedSeconds));
+    const nowIso = new Date().toISOString();
+    let nextCards = cards;
+    let nextStyles = styles;
+    let ptUpdatedCount = 0;
+
+    try {
+      setSendingProposal(true);
+
+      if (detailStyle && detailProcessRows.length > 0) {
+        const rowByKey = new Map(detailProcessRows.map((row) => [row.processKey, row]));
+        const nextProcesses = normalizeProcesses(detailStyle.processes).map((process, index) => {
+          const processKey = String(
+            process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
+          );
+          const row = rowByKey.get(processKey);
+          if (!row) return process;
+          const nextPt = toOptionalPositiveNumber(row.requestedSeconds);
+          const currentPt = toOptionalPositiveNumber(process?.pt);
+          if (nextPt == null) return process;
+          if (currentPt != null && Math.abs(currentPt - nextPt) < 1e-6) return process;
+          ptUpdatedCount += 1;
+          return {
+            ...process,
+            pt: nextPt,
+            timeRefQuantity: detailSummary.orderQuantity,
+          };
+        });
+        if (ptUpdatedCount > 0) {
+          const updatedStyle = await updateStyleById(
+            detailStyle.id,
+            {
+              ...detailStyle,
+              processes: nextProcesses,
+            },
+            {
+              orgId: activeOrgId,
+              ownerOrgId: detailStyle.ownerOrgId ?? detailStyle.customerOrgId ?? null,
+            }
+          );
+          nextStyles = (Array.isArray(styles) ? styles : []).map((style) =>
+            String(style?.id || '') === String(updatedStyle?.id || '')
+              ? updatedStyle
+              : style
+          );
+          nextCards = recalcCardsForStyleProcesses(cards, updatedStyle.id, updatedStyle.processes);
+        }
+      }
+
+      const nextAssignments = assignments.map((item) => {
+        if (String(item?.id) !== assignmentId) return item;
+        const nextItem = {
+          ...item,
+          proposalSeconds: nextTotalSeconds,
+          totalSeconds: nextTotalSeconds,
+          contractedSeconds: nextTotalSeconds,
+          ctStatus: 'SENT',
+          ctSource: 'OPERATOR_PROPOSAL',
+          ctAgreedBy: null,
+          ctAgreedAt: null,
+          ctNote: `제안 송부 ${nowIso}`,
+        };
+        const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
+        return {
+          ...nextItem,
+          ...range,
+        };
+      });
+      const normalizedAssignments = nextAssignments.map((item) => normalizeAssignmentLayout(item));
+      const query = buildQueryString({ orgId: activeOrgId });
+      await requestJSON('/assignment-board-state' + query, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards: nextCards, assignments: normalizedAssignments }),
+        skipGlobalLoading: true,
+      });
+
+      const maxEndIndex = normalizedAssignments.reduce(
+        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+        0
+      );
+      if (maxEndIndex + 10 > days.length) {
+        setDays(buildDays(startDateRef.current, maxEndIndex + 10, holidaySet));
+      }
+      setStyles(nextStyles);
+      setCards(nextCards);
+      setAssignments(normalizedAssignments);
+      const persistedSnapshot = createPersistSnapshotText(nextCards, normalizedAssignments);
+      lastSavedSnapshotRef.current = persistedSnapshot;
+      showNotification(
+        ptUpdatedCount > 0
+          ? `제안 송부 완료. PT(q) ${ptUpdatedCount}개 공정을 함께 갱신했습니다.`
+          : '제안 송부 완료. 해당 작업은 잠금 처리되었습니다.',
+        'success'
+      );
+      setDetailState({ targetType: 'assignment', assignmentId });
+    } catch (error) {
+      showNotification(error?.message || '제안 송부 처리에 실패했습니다.', 'error');
+    } finally {
+      setSendingProposal(false);
+    }
+  }, [
+    sendingProposal,
+    detailAssignment,
+    detailSummary,
+    detailStyle,
+    detailProcessRows,
+    isAssignmentLocked,
+    showNotification,
+    cards,
+    styles,
+    assignments,
+    activeOrgId,
+    recalcCardsForStyleProcesses,
+    days,
+    lineCapacityById,
+    holidaySet,
+    createPersistSnapshotText,
+  ]);
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
@@ -2354,6 +2831,7 @@ const AssignBoard = () => {
     const target = assignmentById.get(targetAssignmentId);
     const sourceCard = cardById.get(sourceCardId);
     if (!target || !sourceCard) return false;
+    if (isAssignmentLocked(target)) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
     const addedSeconds = resolveCardTotalSeconds(sourceCard);
@@ -2396,6 +2874,7 @@ const AssignBoard = () => {
     const targetCard = cardById.get(targetCardId);
     const sourceAssignment = assignmentById.get(sourceAssignmentId);
     if (!targetCard || !sourceAssignment) return false;
+    if (isAssignmentLocked(sourceAssignment)) return false;
     if (getCardOriginId(targetCard) !== getAssignmentOriginId(sourceAssignment)) return false;
 
     const sourceCard = buildCardFromAssignment(sourceAssignment);
@@ -2414,6 +2893,7 @@ const AssignBoard = () => {
     const target = assignmentById.get(targetAssignmentId);
     const source = assignmentById.get(sourceAssignmentId);
     if (!target || !source) return false;
+    if (isAssignmentLocked(target) || isAssignmentLocked(source)) return false;
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
     const sourceCard = buildCardFromAssignment(source);
@@ -2454,7 +2934,13 @@ const AssignBoard = () => {
   };
 
   const handleResetAssignments = () => {
-    setAssignments([]);
+    setAssignments((prev) => {
+      const locked = prev.filter((item) => isAssignmentLocked(item));
+      if (locked.length > 0) {
+        showNotification('송부된 작업은 잠금되어 초기화 대상에서 제외됩니다.', 'info');
+      }
+      return locked;
+    });
   };
 
   const handleUndo = useCallback(() => {
@@ -2609,7 +3095,7 @@ const AssignBoard = () => {
                           <StyleCard
                             card={card}
                             onSelect={setSelectedCardId}
-                            onSplit={handleSplitCard}
+                            onOpenContextMenu={handleContextMenuOpen}
                           />
                         </Box>
                       ))}
@@ -2637,7 +3123,7 @@ const AssignBoard = () => {
                 days={days}
                 assignments={assignmentsForRender}
                 onLinkPrev={handleLinkPrev}
-                onSplit={handleSplitAssignment}
+                onOpenContextMenu={handleContextMenuOpen}
               />
             </Stack>
           </Grid>
@@ -2675,6 +3161,194 @@ const AssignBoard = () => {
             </Box>
           ) : null}
         </DragOverlay>
+
+        <Menu
+          open={Boolean(contextMenuState)}
+          onClose={handleContextMenuClose}
+          anchorReference="anchorPosition"
+          anchorPosition={
+            contextMenuState
+              ? { top: contextMenuState.mouseY, left: contextMenuState.mouseX }
+              : undefined
+          }
+        >
+          <MenuItem onClick={handleContextOpenDetail}>업무 상세 보기</MenuItem>
+          <Divider />
+          <MenuItem onClick={handleContextSplit} disabled={contextSplitDisabled}>
+            수량 분할
+          </MenuItem>
+        </Menu>
+
+        <Drawer
+          anchor="right"
+          open={Boolean(detailState)}
+          onClose={handleCloseDetail}
+          PaperProps={{ sx: { width: { xs: '100%', md: 560 }, p: 2, overflowY: 'auto' } }}
+        >
+          <Stack spacing={1.5}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                업무 상세
+              </Typography>
+              <Button size="small" color="inherit" onClick={handleCloseDetail} disabled={sendingProposal}>
+                닫기
+              </Button>
+            </Box>
+
+            {!detailCard ? (
+              <Typography variant="body2" color="text.secondary">
+                선택한 카드 정보를 찾을 수 없습니다.
+              </Typography>
+            ) : (
+              <>
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  <Stack spacing={0.5}>
+                    <Typography variant="body2">
+                      <strong>고객:</strong> {detailCard.customer || '-'}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>스타일:</strong> {detailCard.styleName || '-'}
+                      {detailCard.colorName ? ` · ${detailCard.colorName}` : ''}
+                      {detailCard.gender ? ` · ${detailCard.gender}` : ''}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>수량:</strong>{' '}
+                      {formatNumberWithCommas(
+                        detailAssignment?.quantity ?? detailCard.quantity ?? 0,
+                        { fallback: '-', maximumFractionDigits: 0 }
+                      )}개
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>라인:</strong> {detailLine?.name || '-'}
+                    </Typography>
+                    {detailAssignment && (
+                      <Typography variant="body2">
+                        <strong>CT 상태:</strong>{' '}
+                        <Chip
+                          size="small"
+                          label={
+                            detailIsLocked
+                              ? '송부 완료'
+                              : String(detailAssignment.ctStatus || '').toUpperCase() === 'AGREED'
+                                ? 'CT 확정'
+                                : String(detailAssignment.ctStatus || '').toUpperCase() === 'REJECTED'
+                                  ? '조정 요청'
+                                  : '대기'
+                          }
+                          color={detailIsLocked ? 'primary' : 'default'}
+                          variant="outlined"
+                          sx={{ height: 20 }}
+                        />
+                      </Typography>
+                    )}
+                  </Stack>
+                </Paper>
+
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    CT/비용 요약
+                  </Typography>
+                  <Stack spacing={0.6}>
+                    <Typography variant="body2">
+                      <strong>공정 CT 합 (기준/한 벌):</strong>{' '}
+                      {formatSecondsLabel(detailSummary?.totalBasePerPieceSeconds)}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>공정 CT 합 (제안/한 벌):</strong>{' '}
+                      {formatSecondsLabel(detailSummary?.totalRequestedPerPieceSeconds)}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>공정 CT 합 (제안/전체):</strong>{' '}
+                      {formatSecondsLabel(detailSummary?.totalRequestedSeconds)}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>변동률:</strong>{' '}
+                      {detailSummary?.divergencePercent == null
+                        ? '-'
+                        : `${detailSummary.divergencePercent > 0 ? '+' : ''}${detailSummary.divergencePercent.toFixed(1)}%`}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>예상 기간:</strong> {formatDaysLabel(detailSummary?.totalDurationDays)}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>예상 비용:</strong>{' '}
+                      {detailSummary?.expectedCost == null
+                        ? '-'
+                        : formatCurrencyDong(detailSummary.expectedCost)}
+                    </Typography>
+                  </Stack>
+                </Paper>
+
+                <Paper variant="outlined" sx={{ p: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    공정 CT 상세
+                  </Typography>
+                  {detailProcessRows.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      공정 정보가 없어 상세 CT를 표시할 수 없습니다.
+                    </Typography>
+                  ) : (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>#</TableCell>
+                            <TableCell>공정</TableCell>
+                            <TableCell align="right">공정수량</TableCell>
+                            <TableCell align="right">기준 CT(초)</TableCell>
+                            <TableCell align="right">제안 CT(초)</TableCell>
+                            <TableCell align="right">한 벌 제안 CT(초)</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {detailProcessRows.map((row, index) => (
+                            <TableRow key={row.processKey}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>{row.processName}</TableCell>
+                              <TableCell align="right">{row.processQuantity}</TableCell>
+                              <TableCell align="right">{formatSecondsLabel(row.baseSeconds)}</TableCell>
+                              <TableCell align="right">
+                                <TextField
+                                  size="small"
+                                  value={detailDraftByProcess[row.processKey] ?? ''}
+                                  placeholder={String(row.baseSeconds)}
+                                  inputProps={{
+                                    inputMode: 'decimal',
+                                    style: { textAlign: 'right', width: 80 },
+                                  }}
+                                  onChange={(event) =>
+                                    handleDetailDraftInput(row.processKey, event.target.value)
+                                  }
+                                  disabled={sendingProposal || detailIsLocked}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                {formatSecondsLabel(row.requestedPerPieceSeconds)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    값 미입력 시 현재 기준 CT를 사용합니다.
+                  </Typography>
+                  <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={handleSendProposalToLineLeader}
+                      disabled={!canSendProposal || sendingProposal}
+                    >
+                      {sendingProposal ? '송부 중...' : '제안 송부'}
+                    </Button>
+                  </Stack>
+                </Paper>
+              </>
+            )}
+          </Stack>
+        </Drawer>
       </DndContext>
     </AppPageContainer>
   );

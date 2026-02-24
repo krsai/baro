@@ -256,6 +256,14 @@ const MainLayout = () => {
   const shouldHideOutletForEmptyWorkspace =
     isEmptyWorkspaceAtRoot && isAuthenticated && hasPathAccess('/');
   const tabsForRender = useMemo(() => {
+    // During route transition, avoid rendering a transient optimistic tab for
+    // the previous pathname (e.g. dashboard flash while opening another menu).
+    if (
+      pendingNavigationPathRef.current &&
+      pendingNavigationPathRef.current !== currentPath
+    ) {
+      return openTabs;
+    }
     if (openTabs.some((tab) => tab.id === currentPath)) return openTabs;
     if (currentPath === '/login' || currentPath.startsWith('/auth')) return openTabs;
     // Keep the empty workspace behavior when dashboard tab is intentionally closed.
@@ -587,7 +595,7 @@ const MainLayout = () => {
           >
             <MenuIcon />
           </IconButton>
-          <Box sx={{ flexGrow: 1, cursor: 'pointer' }} onClick={() => handleMenuItemClick('/')}>
+          <Box sx={{ flexGrow: 1 }}>
             <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
               BARO
             </Button>

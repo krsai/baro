@@ -74,6 +74,8 @@ const getOrderKey = (assignment) => {
 };
 
 const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
+const isLockedAssignment = (assignment) =>
+  String(assignment?.ctStatus || '').trim().toUpperCase() === 'SENT';
 
 const getNextStartIndex = (assignment, days) => {
   const endPercent = assignment.endDayPercent ?? 100;
@@ -110,7 +112,7 @@ const getWorkingDuration = (assignment, days) => {
   return total;
 };
 
-const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => {
+const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextMenu }) => {
   const assignmentsByLine = useMemo(() => {
     const map = new Map();
     lines.forEach((line) => map.set(line.id, []));
@@ -281,7 +283,8 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onSplit }) => 
                             assignment={assignment}
                             showLinkPrev={linkableIds.has(assignment.id)}
                             onLinkPrev={onLinkPrev}
-                            onSplit={onSplit}
+                            onOpenContextMenu={onOpenContextMenu}
+                            isLocked={isLockedAssignment(assignment)}
                           />
                         );
                       })}

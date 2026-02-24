@@ -2691,7 +2691,7 @@ const toWorkLogResponse = (workLog: any) => {
     updatedAt: workLog.updatedAt,
   };
 };
-const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "AGREED", "REJECTED"]);
+const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "SENT", "AGREED", "REJECTED"]);
 const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
@@ -3812,6 +3812,8 @@ app.get("/lines", async (req, res) => {
 
   const factoryId = Number(req.query.factoryId);
   const hasFactoryFilter = Number.isFinite(factoryId);
+  const managedOnly =
+    req.query.managedOnly === "1" || req.query.managedOnly === "true";
   if (hasFactoryFilter) {
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
@@ -3821,11 +3823,39 @@ app.get("/lines", async (req, res) => {
     }
   }
 
+  let managerEmployeeId: number | null = null;
+  if (managedOnly) {
+    const requesterEmail = getRequesterEmail(req);
+    if (!requesterEmail) {
+      return res.json([]);
+    }
+    const membership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_email: {
+          orgId: organization.id,
+          email: requesterEmail,
+        },
+      },
+      select: {
+        status: true,
+        employee: {
+          select: { id: true },
+        },
+      },
+    });
+    if (!membership || membership.status !== "ACTIVE" || !membership.employee?.id) {
+      return res.json([]);
+    }
+    managerEmployeeId = membership.employee.id;
+  }
+
+  const where: Prisma.LineWhereInput = {
+    orgId: organization.id,
+    ...(hasFactoryFilter ? { factoryId } : {}),
+    ...(managerEmployeeId ? { managerEmployeeId } : {}),
+  };
   const lines = await prisma.line.findMany({
-    where: {
-      orgId: organization.id,
-      ...(hasFactoryFilter ? { factoryId } : {}),
-    },
+    where,
     orderBy: [{ factoryId: "asc" }, { id: "asc" }],
   });
 

@@ -29,7 +29,7 @@ const getCardBasis = (card) => {
   return 'NONE';
 };
 
-const StyleCard = ({ card, onSelect, onSplit }) => {
+const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
   const isDeltaCard = card.type === 'DELTA';
   const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
   const isDisabled = basis === 'NONE';
@@ -65,16 +65,15 @@ const StyleCard = ({ card, onSelect, onSplit }) => {
       ref={setNodeRef}
       variant="outlined"
       onClick={() => onSelect?.(card.id)}
-      onPointerDown={(event) => {
-        if (event.button !== 2) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onSplit?.(card.id);
-      }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onSplit?.(card.id);
+        onOpenContextMenu?.({
+          targetType: 'card',
+          id: card.id,
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+        });
       }}
       sx={{
         p: 2,

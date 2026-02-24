@@ -42,12 +42,13 @@ import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeT
 
 const STATUS_META = {
   PENDING: { label: 'CT 대기', color: 'default' },
+  SENT: { label: '제안 도착', color: 'info' },
   AGREED: { label: 'CT 동의', color: 'success' },
   REJECTED: { label: '운영팀 검토', color: 'warning' },
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
-  if (value === 'AGREED' || value === 'REJECTED') return value;
+  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
   return 'PENDING';
 };
 
@@ -88,7 +89,7 @@ const resolveAgreedSeconds = (assignment) => {
 };
 
 const formatCurrencyDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 원`;
+  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
 
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -281,7 +282,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 
 const ProductionPlanBoard = () => {
   const { showNotification } = useApp();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeOrgRole } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [completionDialog, setCompletionDialog] = useState(null); // { assignment }
@@ -307,9 +308,22 @@ const ProductionPlanBoard = () => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const drawerContainerRef = useRef(null);
   const todayKey = useMemo(() => buildDateKey(new Date()), []);
+  const isLineLeaderView = activeOrgRole === 'WORKER';
+  const lineQuery = useMemo(
+    () =>
+      buildQueryString({
+        orgId: activeOrgId,
+        ...(isLineLeaderView ? { managedOnly: 1 } : {}),
+      }),
+    [activeOrgId, isLineLeaderView]
+  );
 
   const lineById = useMemo(
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
+    [lines]
+  );
+  const visibleLineIdSet = useMemo(
+    () => new Set((Array.isArray(lines) ? lines : []).map((line) => String(line.id))),
     [lines]
   );
   const factoryById = useMemo(
@@ -335,7 +349,14 @@ const ProductionPlanBoard = () => {
   }, [lineWorkers]);
 
   const assignmentsForView = useMemo(() => {
-    return (Array.isArray(assignments) ? assignments : [])
+    const sourceAssignments = (Array.isArray(assignments) ? assignments : []).filter((assignment) => {
+      if (!isLineLeaderView) return true;
+      const lineIdKey = String(assignment?.lineId || '').trim();
+      if (!lineIdKey) return false;
+      return visibleLineIdSet.has(lineIdKey);
+    });
+
+    return sourceAssignments
       .map((assignment) => {
         const card = cardById.get(String(assignment?.cardId || '')) || null;
         const styleId = String(card?.styleId || '');
@@ -399,6 +420,8 @@ const ProductionPlanBoard = () => {
       });
   }, [
     assignments,
+    isLineLeaderView,
+    visibleLineIdSet,
     cardById,
     styleById,
     lineById,
@@ -845,7 +868,7 @@ const ProductionPlanBoard = () => {
         const query = buildQueryString({ orgId: activeOrgId });
         const [boardState, lineRows, factoryRows, lineWorkerRows, styleRows] = await Promise.all([
           requestJSON('/assignment-board-state' + query).catch(() => ({ cards: [], assignments: [] })),
-          requestJSON('/lines' + query).catch(() => []),
+          requestJSON('/lines' + lineQuery).catch(() => []),
           requestJSON('/factories' + query).catch(() => []),
           requestJSON('/line-workers' + query).catch(() => []),
           fetchStylesFromApi({ orgId: activeOrgId }).catch(() => []),
@@ -904,7 +927,7 @@ const ProductionPlanBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId]);
+  }, [activeOrgId, lineQuery]);
 
   // 화면 재진입 시 lineWorkers 재조회로 capacity 자동 갱신
   useEffect(() => {
@@ -913,7 +936,7 @@ const ProductionPlanBoard = () => {
       const query = buildQueryString({ orgId: activeOrgId });
       Promise.all([
         requestJSON('/line-workers' + query).catch(() => null),
-        requestJSON('/lines' + query).catch(() => null),
+        requestJSON('/lines' + lineQuery).catch(() => null),
       ]).then(([workerRows, lineRows]) => {
         if (workerRows) setLineWorkers(Array.isArray(workerRows) ? workerRows : []);
         if (lineRows) setLines(Array.isArray(lineRows) ? lineRows : []);
@@ -921,7 +944,7 @@ const ProductionPlanBoard = () => {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [activeOrgId]);
+  }, [activeOrgId, lineQuery]);
 
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
@@ -1116,7 +1139,7 @@ const ProductionPlanBoard = () => {
       await persistBoardState(nextAssignments, nextCards);
       showNotification(
         directProposalCount > 0
-          ? `조정 요청이 등록되었습니다. 공정 ${directProposalCount}건의 제안 CT가 운영팀 검토로 전달되었습니다.`
+          ? `조정 요청이 등록되었습니다. 공정 ${directProposalCount}건의 요청 CT가 운영팀 검토로 전달되었습니다.`
           : '조정 요청이 운영팀 검토 대상으로 등록되었습니다.',
         'info'
       );
@@ -1397,7 +1420,7 @@ const ProductionPlanBoard = () => {
           </Box>
           <Stack direction="row" spacing={1}>
             <Chip label={`CT 대기 ${statusSummary.pending}`} />
-            <Chip label={`CT ?숈쓽 ${statusSummary.agreed}`} color="success" variant="outlined" />
+            <Chip label={`CT 동의 ${statusSummary.agreed}`} color="success" variant="outlined" />
             <Chip label={`운영팀 검토 ${statusSummary.rejected}`} color="warning" variant="outlined" />
           </Stack>
         </Box>
@@ -1426,8 +1449,8 @@ const ProductionPlanBoard = () => {
                 <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>?곹깭</TableCell>
-                    <TableCell>?쇱씤</TableCell>
+                    <TableCell>상태</TableCell>
+                    <TableCell>라인</TableCell>
                     <TableCell>고객/스타일</TableCell>
                     <TableCell align="right">수량</TableCell>
                     <TableCell align="right">예상 비용</TableCell>
@@ -1477,12 +1500,12 @@ const ProductionPlanBoard = () => {
                                 {assignment.customer || '-'}
                               </Typography>
                               {assignment.ctOverride && (
-                                <Chip size="small" label="CT ?꾩떆" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                               )}
                             </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
-                              {assignment.colorName ? ` 쨌 ${assignment.colorName}` : ''}
+                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
                             </Typography>
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
@@ -1530,7 +1553,7 @@ const ProductionPlanBoard = () => {
                         <TableCell>라인</TableCell>
                         <TableCell>고객/스타일</TableCell>
                         <TableCell align="right">배정수량</TableCell>
-                        <TableCell>?쇱젙</TableCell>
+                        <TableCell>일정</TableCell>
                         <TableCell>진행률</TableCell>
                         <TableCell align="center">완료</TableCell>
                         <TableCell align="center">처리</TableCell>
@@ -1553,12 +1576,12 @@ const ProductionPlanBoard = () => {
                                 {assignment.customer || '-'}
                               </Typography>
                               {assignment.ctOverride && (
-                                <Chip size="small" label="CT ?꾩떆" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                               )}
                             </Box>
                             <Typography variant="caption" color="text.secondary">
                               {assignment.label || '-'}
-                              {assignment.colorName ? ` 쨌 ${assignment.colorName}` : ''}
+                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
@@ -1929,7 +1952,7 @@ const ProductionPlanBoard = () => {
                                   lineHeight: 1,
                                 }}
                               >
-                                {labelParts.join(' 쨌 ')}
+                                {labelParts.join(' · ')}
                               </Typography>
                             </Box>
                           );
@@ -2122,7 +2145,7 @@ const ProductionPlanBoard = () => {
                     <Divider />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        CT 제안 시간(현재)
+                        CT 요청 시간(현재)
                       </Typography>
                       <Typography variant="body2">
                         {formatSecondsLabel(selectedAssignment.proposalSeconds, '0초')}
@@ -2148,7 +2171,7 @@ const ProductionPlanBoard = () => {
                           : `${formatNumberWithCommas(selectedAssignment.wagePerSecond, {
                               fallback: '0',
                               maximumFractionDigits: 2,
-                            })} 원/초`}
+                            })} 동/초`}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2165,13 +2188,13 @@ const ProductionPlanBoard = () => {
                   </Paper>
                 </Box>
 
-                {/* 공정 CT 상세 / 라인장 제안 및 하단 동의/조정 버튼 배치 */}
+                {/* 공정 CT 상세 / 라인장 요청 및 하단 동의/조정 버튼 배치 */}
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                    공정 CT 상세 / 라인장 제안
+                    공정 CT 상세 / 라인장 요청
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    제안 CT를 입력해 조정 요청하면 운영팀 검토 대상이 되며 현재 라인 배정은 유지됩니다.
+                    요청 CT를 입력해 조정 요청하면 운영팀 검토 대상이 되며 현재 라인 배정은 유지됩니다.
                   </Typography>
                   <Divider sx={{ my: 1 }} />
                   {selectedProcessRows.length === 0 ? (
@@ -2186,7 +2209,7 @@ const ProductionPlanBoard = () => {
                             <TableCell align="center">기준</TableCell>
                             <TableCell align="right">공정수</TableCell>
                             <TableCell align="right">기본 CT(초)</TableCell>
-                            <TableCell align="right">제안 CT(초)</TableCell>
+                            <TableCell align="right">요청 CT(초)</TableCell>
                             <TableCell align="right">주문 공임</TableCell>
                             <TableCell align="right">기간(일)</TableCell>
                           </TableRow>
@@ -2262,7 +2285,7 @@ const ProductionPlanBoard = () => {
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                     {selectedCostSummary?.directProposalCount > 0
-                      ? `직접 제안 입력: ${selectedCostSummary.directProposalCount}개 공정`
+                      ? `직접 요청 입력: ${selectedCostSummary.directProposalCount}개 공정`
                       : '입력값이 없으면 ST(공식 CT) 기준으로 운영팀 조정 요청됩니다.'}
                   </Typography>
 
