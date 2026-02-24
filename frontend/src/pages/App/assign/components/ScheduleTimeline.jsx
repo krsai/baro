@@ -75,7 +75,7 @@ const getOrderKey = (assignment) => {
 
 const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
 const isLockedAssignment = (assignment) =>
-  String(assignment?.ctStatus || '').trim().toUpperCase() === 'SENT';
+  ['SENT', 'AGREED'].includes(String(assignment?.ctStatus || '').trim().toUpperCase());
 
 const getNextStartIndex = (assignment, days) => {
   const endPercent = assignment.endDayPercent ?? 100;

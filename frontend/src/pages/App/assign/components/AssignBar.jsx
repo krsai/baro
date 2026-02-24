@@ -19,10 +19,10 @@ const formatDuration = (daysValue) => {
 };
 
 const CT_STATUS_META = {
-  PENDING: { label: 'CT 대기', background: '#F3F4F6', color: '#4B5563' },
-  SENT: { label: '송부 완료', background: '#DBEAFE', color: '#1D4ED8' },
-  AGREED: { label: 'CT 확정', background: '#DCFCE7', color: '#166534' },
-  REJECTED: { label: 'CT 반려', background: '#FEE2E2', color: '#991B1B' },
+  PENDING: { label: '제안 전', background: '#F3F4F6', color: '#4B5563', border: 'rgba(107,114,128,0.5)' },
+  SENT: { label: '승인 전', background: '#DBEAFE', color: '#1D4ED8', border: 'rgba(37,99,235,0.6)' },
+  AGREED: { label: '동의 완료', background: '#DCFCE7', color: '#166534', border: 'rgba(22,163,74,0.65)' },
+  REJECTED: { label: '변경 요청', background: '#FEE2E2', color: '#991B1B', border: 'rgba(220,38,38,0.65)' },
 };
 
 const normalizeCtStatus = (value) => {
@@ -86,7 +86,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
         overflow: 'visible',
         cursor: isLocked ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-        border: '1px solid rgba(0,0,0,0.06)',
+        border: `1px solid ${ctMeta.border}`,
         outline: 'none',
         '&:focus-visible': {
           boxShadow: '0 0 0 2px rgba(25,118,210,0.45), 0 2px 6px rgba(0,0,0,0.12)',

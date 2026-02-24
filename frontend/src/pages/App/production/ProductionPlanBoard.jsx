@@ -41,10 +41,10 @@ import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
 const STATUS_META = {
-  PENDING: { label: 'CT 대기', color: 'default' },
-  SENT: { label: '제안 도착', color: 'info' },
-  AGREED: { label: 'CT 동의', color: 'success' },
-  REJECTED: { label: '운영팀 검토', color: 'warning' },
+  PENDING: { label: '제안 전', color: 'default' },
+  SENT: { label: '승인 전', color: 'info' },
+  AGREED: { label: '동의 완료', color: 'success' },
+  REJECTED: { label: '변경 요청', color: 'warning' },
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
@@ -169,22 +169,17 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
 };
 
 const resolveProcessCtBaseInfo = (process, orderQuantity = 1) => {
-  const st = Number(process?.ct);
-  if (process?.stManual === true && Number.isFinite(st) && st > 0) {
-    return { basis: 'ST', seconds: st };
-  }
-
   const atPerPiece = resolveProcessAtSeconds(process, orderQuantity);
   if (atPerPiece != null && atPerPiece > 0) {
     return { basis: 'AT', seconds: atPerPiece };
   }
-
-  if (Number.isFinite(st) && st > 0) {
-    return { basis: 'ST', seconds: st };
-  }
   const pt = Number(process?.pt);
   if (Number.isFinite(pt) && pt > 0) {
     return { basis: 'PT', seconds: pt };
+  }
+  const st = Number(process?.ct);
+  if (Number.isFinite(st) && st > 0) {
+    return { basis: 'ST', seconds: st };
   }
   return { basis: 'NONE', seconds: 0 };
 };
@@ -282,7 +277,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 
 const ProductionPlanBoard = () => {
   const { showNotification } = useApp();
-  const { activeOrgId, activeOrgRole } = useAuth();
+  const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [completionDialog, setCompletionDialog] = useState(null); // { assignment }
@@ -439,10 +434,11 @@ const ProductionPlanBoard = () => {
           const status = normalizeCtStatus(assignment?.status);
           if (status === 'AGREED') acc.agreed += 1;
           else if (status === 'REJECTED') acc.rejected += 1;
+          else if (status === 'SENT') acc.sent += 1;
           else acc.pending += 1;
           return acc;
         },
-        { pending: 0, agreed: 0, rejected: 0 }
+        { pending: 0, sent: 0, agreed: 0, rejected: 0 }
       ),
     [assignmentsForView]
   );
@@ -450,9 +446,15 @@ const ProductionPlanBoard = () => {
   const actionableAssignments = useMemo(
     () =>
       assignmentsForView.filter(
-        (assignment) => normalizeCtStatus(assignment?.status) !== 'AGREED'
+        (assignment) => {
+          const status = normalizeCtStatus(assignment?.status);
+          if (isLineLeaderView) {
+            return status === 'SENT' || status === 'REJECTED';
+          }
+          return status !== 'AGREED';
+        }
       ),
-    [assignmentsForView]
+    [assignmentsForView, isLineLeaderView]
   );
 
   const agreedAssignments = useMemo(
@@ -629,7 +631,9 @@ const ProductionPlanBoard = () => {
 
       const nextDrafts = proposalProcesses.reduce((acc, item) => {
         const processKey = String(item?.processKey || '').trim();
-        const proposedSeconds = toOptionalPositiveNumber(item?.proposedSeconds);
+        const proposedSeconds = toOptionalPositiveNumber(
+          item?.requestedSeconds ?? item?.proposedSeconds
+        );
         if (!processKey || proposedSeconds == null) return acc;
         if (item?.hasLineLeaderProposal !== true) return acc;
         acc[processKey] = String(proposedSeconds);
@@ -691,6 +695,30 @@ const ProductionPlanBoard = () => {
       const orderQuantity = Math.max(1, toPositiveInt(assignmentView?.quantity, 1));
       const wagePerSecond = toOptionalPositiveNumber(assignmentView?.wagePerSecond);
       const lineDailyCapacitySeconds = Number(assignmentView?.lineDailyCapacitySeconds);
+      const operatorProposalByProcess = (
+        Array.isArray(assignmentView?.card?.operatorCtProposal?.processes)
+          ? assignmentView.card.operatorCtProposal.processes
+          : []
+      ).reduce((map, item) => {
+        const processKey = String(item?.processKey || '').trim();
+        const proposedSeconds = toOptionalPositiveNumber(item?.proposedSeconds);
+        if (!processKey || proposedSeconds == null) return map;
+        map.set(processKey, proposedSeconds);
+        return map;
+      }, new Map());
+      const pendingRequestByProcess = (
+        Array.isArray(assignmentView?.card?.pendingCtProposal?.processes)
+          ? assignmentView.card.pendingCtProposal.processes
+          : []
+      ).reduce((map, item) => {
+        const processKey = String(item?.processKey || '').trim();
+        const requestedSeconds = toOptionalPositiveNumber(
+          item?.requestedSeconds ?? item?.proposedSeconds
+        );
+        if (!processKey || requestedSeconds == null) return map;
+        map.set(processKey, requestedSeconds);
+        return map;
+      }, new Map());
 
       return processes.map((process, index) => {
         const processKey = String(
@@ -709,13 +737,23 @@ const ProductionPlanBoard = () => {
           Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
 
         const directSeconds = toOptionalPositiveNumber(draftByProcess[processKey]);
+        const suggestedSeconds = operatorProposalByProcess.get(processKey) ?? baseSeconds;
+        const pendingRequestedSeconds = pendingRequestByProcess.get(processKey) ?? null;
         const hasDirectProposal = directSeconds != null;
-        const proposedSeconds = hasDirectProposal ? directSeconds : baseSeconds;
+        const proposedSeconds =
+          hasDirectProposal ? directSeconds : pendingRequestedSeconds ?? suggestedSeconds;
+        const hasRequestedAdjustment = Math.abs(proposedSeconds - suggestedSeconds) > 1e-6;
+        const suggestedPerPieceSeconds = suggestedSeconds * processQuantity;
         const proposedPerPieceSeconds = proposedSeconds * processQuantity;
 
         const totalBaseSeconds = basePerPieceSeconds * orderQuantity;
         const totalAtSeconds = atPerPieceSeconds == null ? null : atPerPieceSeconds * orderQuantity;
+        const totalSuggestedSeconds = suggestedPerPieceSeconds * orderQuantity;
         const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
+        const perPieceCost = wagePerSecond == null ? null : proposedPerPieceSeconds * wagePerSecond;
+        const suggestedPerPieceCost =
+          wagePerSecond == null ? null : suggestedPerPieceSeconds * wagePerSecond;
+        const suggestedCost = wagePerSecond == null ? null : totalSuggestedSeconds * wagePerSecond;
         const expectedCost = wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond;
         const expectedDays =
           Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
@@ -733,12 +771,19 @@ const ProductionPlanBoard = () => {
           atPerPieceSeconds,
           atVsBasePercent,
           needsStReview,
+          suggestedSeconds,
+          suggestedPerPieceSeconds,
+          totalSuggestedSeconds,
+          hasRequestedAdjustment,
           proposedSeconds,
           proposedPerPieceSeconds,
           hasDirectProposal,
           totalBaseSeconds,
           totalAtSeconds,
           totalProposedSeconds,
+          suggestedPerPieceCost,
+          suggestedCost,
+          perPieceCost,
           expectedCost,
           expectedDays,
         };
@@ -754,10 +799,7 @@ const ProductionPlanBoard = () => {
 
   // 기본 CT와 다른 값이 입력된 공정이 하나라도 있으면 true
   const hasCtAdjustment = useMemo(
-    () =>
-      selectedProcessRows.some(
-        (row) => row.hasDirectProposal && row.proposedSeconds !== row.baseSeconds
-      ),
+    () => selectedProcessRows.some((row) => row.hasRequestedAdjustment),
     [selectedProcessRows]
   );
 
@@ -786,8 +828,10 @@ const ProductionPlanBoard = () => {
 
       return {
         totalBasePerPieceSeconds: fallbackTotalSeconds / orderQuantity,
+        totalSuggestedPerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalProposedPerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalBaseSeconds: fallbackTotalSeconds,
+        totalSuggestedSeconds: fallbackTotalSeconds,
         totalAtPerPieceSeconds: null,
         totalAtSeconds: null,
         atVsBasePercent: null,
@@ -807,11 +851,19 @@ const ProductionPlanBoard = () => {
       (sum, row) => sum + row.basePerPieceSeconds,
       0
     );
+    const totalSuggestedPerPieceSeconds = selectedProcessRows.reduce(
+      (sum, row) => sum + row.suggestedPerPieceSeconds,
+      0
+    );
     const totalProposedPerPieceSeconds = selectedProcessRows.reduce(
       (sum, row) => sum + row.proposedPerPieceSeconds,
       0
     );
     const totalBaseSeconds = selectedProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0);
+    const totalSuggestedSeconds = selectedProcessRows.reduce(
+      (sum, row) => sum + row.totalSuggestedSeconds,
+      0
+    );
     const totalProposedSeconds = selectedProcessRows.reduce(
       (sum, row) => sum + row.totalProposedSeconds,
       0
@@ -829,7 +881,7 @@ const ProductionPlanBoard = () => {
     const needsStReview =
       atVsBasePercent != null &&
       Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
-    const directProposalCount = selectedProcessRows.filter((row) => row.hasDirectProposal).length;
+    const directProposalCount = selectedProcessRows.filter((row) => row.hasRequestedAdjustment).length;
     const totalCost = wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond;
     const perPieceCost = totalCost == null ? null : totalCost / orderQuantity;
     const totalDurationDays =
@@ -842,8 +894,10 @@ const ProductionPlanBoard = () => {
 
     return {
       totalBasePerPieceSeconds,
+      totalSuggestedPerPieceSeconds,
       totalProposedPerPieceSeconds,
       totalBaseSeconds,
+      totalSuggestedSeconds,
       totalAtPerPieceSeconds,
       totalAtSeconds,
       atVsBasePercent,
@@ -929,23 +983,6 @@ const ProductionPlanBoard = () => {
     };
   }, [activeOrgId, lineQuery]);
 
-  // 화면 재진입 시 lineWorkers 재조회로 capacity 자동 갱신
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState !== 'visible') return;
-      const query = buildQueryString({ orgId: activeOrgId });
-      Promise.all([
-        requestJSON('/line-workers' + query).catch(() => null),
-        requestJSON('/lines' + lineQuery).catch(() => null),
-      ]).then(([workerRows, lineRows]) => {
-        if (workerRows) setLineWorkers(Array.isArray(workerRows) ? workerRows : []);
-        if (lineRows) setLines(Array.isArray(lineRows) ? lineRows : []);
-      });
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [activeOrgId, lineQuery]);
-
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
       const query = buildQueryString({ orgId: activeOrgId });
@@ -967,6 +1004,9 @@ const ProductionPlanBoard = () => {
     if (!target) return;
 
     const now = new Date().toISOString();
+    const agreedBy = String(
+      activeProfile?.employeeName || activeProfile?.email || activeProfile?.label || ''
+    ).trim() || 'LINE_LEADER';
     const nextAssignments = assignments.map((item) => {
       if (String(item?.id) !== String(assignmentId)) return item;
 
@@ -978,7 +1018,7 @@ const ProductionPlanBoard = () => {
             ? toNonNegativeInt(item?.contractedSeconds, 0)
             : Math.max(1, toNonNegativeInt(resolveSecondsForProposal(item), 1)),
         ctSource: item?.ctSource || item?.proposalBasis || item?.basis || 'MANUAL',
-        ctAgreedBy: item?.ctAgreedBy || 'LINE_LEADER',
+        ctAgreedBy: agreedBy,
         ctAgreedAt: now,
       };
     });
@@ -1003,6 +1043,7 @@ const ProductionPlanBoard = () => {
         delete next[assignmentKey];
         return next;
       });
+      setIsPanelOpen(false);
       showNotification('작업 계획이 동의 처리되었습니다.', 'success');
     } catch (error) {
       showNotification(error?.message || '작업 계획 동의 처리에 실패했습니다.', 'error');
@@ -1029,6 +1070,10 @@ const ProductionPlanBoard = () => {
       processRows.length > 0
         ? processRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
         : resolveSecondsForProposal(target) / orderQuantity;
+    const totalSuggestedPerPieceSeconds =
+      processRows.length > 0
+        ? processRows.reduce((sum, row) => sum + row.suggestedPerPieceSeconds, 0)
+        : resolveSecondsForProposal(target) / orderQuantity;
     const totalProposedPerPieceSeconds =
       processRows.length > 0
         ? processRows.reduce((sum, row) => sum + row.proposedPerPieceSeconds, 0)
@@ -1036,6 +1081,10 @@ const ProductionPlanBoard = () => {
     const totalBaseSeconds =
       processRows.length > 0
         ? processRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0)
+        : resolveSecondsForProposal(target);
+    const totalSuggestedSeconds =
+      processRows.length > 0
+        ? processRows.reduce((sum, row) => sum + row.totalSuggestedSeconds, 0)
         : resolveSecondsForProposal(target);
     const totalProposedSeconds =
       processRows.length > 0
@@ -1062,7 +1111,7 @@ const ProductionPlanBoard = () => {
       Number.isFinite(lineDailyCapacitySeconds) && lineDailyCapacitySeconds > 0
         ? totalProposedSeconds / lineDailyCapacitySeconds
         : null;
-    const directProposalCount = processRows.filter((row) => row.hasDirectProposal).length;
+    const directProposalCount = processRows.filter((row) => row.hasRequestedAdjustment).length;
 
     const adjustmentPayload = {
       requestedAt: new Date().toISOString(),
@@ -1081,8 +1130,10 @@ const ProductionPlanBoard = () => {
         endDayPercent: Number(target?.endDayPercent) || 100,
       },
       totalBasePerPieceSeconds,
+      totalSuggestedPerPieceSeconds,
       totalProposedPerPieceSeconds,
       totalBaseSeconds,
+      totalSuggestedSeconds,
       totalAtPerPieceSeconds,
       totalAtSeconds,
       atVsBasePercent,
@@ -1100,13 +1151,16 @@ const ProductionPlanBoard = () => {
         basis: row.baseBasis,
         baseSeconds: row.baseSeconds,
         basePerPieceSeconds: row.basePerPieceSeconds,
+        suggestedSeconds: row.suggestedSeconds,
+        suggestedPerPieceSeconds: row.suggestedPerPieceSeconds,
         atSeconds: row.atSeconds,
         atPerPieceSeconds: row.atPerPieceSeconds,
         atVsBasePercent: row.atVsBasePercent,
         needsStReview: row.needsStReview,
         proposedSeconds: row.proposedSeconds,
+        requestedSeconds: row.proposedSeconds,
         proposedPerPieceSeconds: row.proposedPerPieceSeconds,
-        hasLineLeaderProposal: row.hasDirectProposal,
+        hasLineLeaderProposal: row.hasRequestedAdjustment,
       })),
     };
 
@@ -1120,7 +1174,7 @@ const ProductionPlanBoard = () => {
             : card
         )
       : cards;
-    const adjustmentSummary = `운영팀 조정 요청 · ${new Date().toISOString()}`;
+    const adjustmentSummary = `운영팀 변경 요청 · ${new Date().toISOString()}`;
     const nextAssignments = assignments.map((item) => {
       if (String(item?.id) !== String(assignmentId)) return item;
       return {
@@ -1137,14 +1191,15 @@ const ProductionPlanBoard = () => {
     setSavingAssignmentId(String(assignmentId));
     try {
       await persistBoardState(nextAssignments, nextCards);
+      setIsPanelOpen(false);
       showNotification(
         directProposalCount > 0
-          ? `조정 요청이 등록되었습니다. 공정 ${directProposalCount}건의 요청 CT가 운영팀 검토로 전달되었습니다.`
-          : '조정 요청이 운영팀 검토 대상으로 등록되었습니다.',
+          ? `변경 요청이 등록되었습니다. 공정 ${directProposalCount}건의 요청 CT가 운영팀 검토로 전달되었습니다.`
+          : '변경 요청이 운영팀 검토 대상으로 등록되었습니다.',
         'info'
       );
     } catch (error) {
-      showNotification(error?.message || '조정 요청 처리에 실패했습니다.', 'error');
+      showNotification(error?.message || '변경 요청 처리에 실패했습니다.', 'error');
     } finally {
       setSavingAssignmentId(null);
     }
@@ -1415,13 +1470,14 @@ const ProductionPlanBoard = () => {
           <Box>
             <Typography variant="h6">작업 계획 협의</Typography>
             <Typography variant="body2" color="text.secondary">
-              라인 배정 작업의 일정/비용을 검토하고 CT 동의 또는 조정 요청을 처리합니다.
+              라인 배정 작업의 ST/제안 CT를 확인하고 요청 CT를 등록하거나 동의를 처리합니다.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Chip label={`CT 대기 ${statusSummary.pending}`} />
-            <Chip label={`CT 동의 ${statusSummary.agreed}`} color="success" variant="outlined" />
-            <Chip label={`운영팀 검토 ${statusSummary.rejected}`} color="warning" variant="outlined" />
+            <Chip label={`제안 전 ${statusSummary.pending}`} />
+            <Chip label={`승인 전 ${statusSummary.sent}`} color="info" variant="outlined" />
+            <Chip label={`동의 완료 ${statusSummary.agreed}`} color="success" variant="outlined" />
+            <Chip label={`변경 요청 ${statusSummary.rejected}`} color="warning" variant="outlined" />
           </Stack>
         </Box>
       }
@@ -1442,7 +1498,7 @@ const ProductionPlanBoard = () => {
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  동의/조정 필요 계획 목록
+                  승인 대기/변경 요청 목록
                 </Typography>
               </Box>
               <TableContainer sx={{ maxHeight: 420 }}>
@@ -1483,7 +1539,7 @@ const ProductionPlanBoard = () => {
                               size="small"
                               label={statusMeta.label}
                               color={statusMeta.color}
-                              variant={assignment.status === 'PENDING' ? 'filled' : 'outlined'}
+                              variant={assignment.status === 'SENT' ? 'filled' : 'outlined'}
                             />
                           </TableCell>
                           <TableCell>
@@ -2034,7 +2090,7 @@ const ProductionPlanBoard = () => {
                   <Stack spacing={0.75}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        공정 CT 합 (기본/한 벌)
+                        공정 ST 합 (한 벌)
                       </Typography>
                       <Typography variant="body2">
                         {formatSecondsLabel(selectedCostSummary?.totalBasePerPieceSeconds)}
@@ -2042,7 +2098,15 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        공정 CT 합 (제안/한 벌)
+                        공정 제안 CT 합 (한 벌)
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {formatSecondsLabel(selectedCostSummary?.totalSuggestedPerPieceSeconds)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        공정 요청 CT 합 (한 벌)
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {formatSecondsLabel(selectedCostSummary?.totalProposedPerPieceSeconds)}
@@ -2145,20 +2209,38 @@ const ProductionPlanBoard = () => {
                     <Divider />
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        CT 요청 시간(현재)
+                        제안 CT(전체)
                       </Typography>
                       <Typography variant="body2">
-                        {formatSecondsLabel(selectedAssignment.proposalSeconds, '0초')}
+                        {formatSecondsLabel(selectedCostSummary?.totalSuggestedSeconds, '0초')}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        CT 동의 시간
+                        요청 CT(전체)
+                      </Typography>
+                      <Typography variant="body2">
+                        {formatSecondsLabel(selectedCostSummary?.totalProposedSeconds, '0초')}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        동의 CT(전체)
                       </Typography>
                       <Typography variant="body2">
                           {selectedAssignment.status === 'AGREED'
                             ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0초')
                             : '-'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        동의자
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedAssignment.status === 'AGREED'
+                          ? selectedAssignment.ctAgreedBy || '-'
+                          : '-'}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2194,7 +2276,7 @@ const ProductionPlanBoard = () => {
                     공정 CT 상세 / 라인장 요청
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    요청 CT를 입력해 조정 요청하면 운영팀 검토 대상이 되며 현재 라인 배정은 유지됩니다.
+                    요청 CT를 입력해 변경 요청하면 운영팀 검토 대상으로 전달되며 현재 라인 배정은 유지됩니다.
                   </Typography>
                   <Divider sx={{ my: 1 }} />
                   {selectedProcessRows.length === 0 ? (
@@ -2207,9 +2289,10 @@ const ProductionPlanBoard = () => {
                             <TableCell align="right">#</TableCell>
                             <TableCell>공정</TableCell>
                             <TableCell align="center">기준</TableCell>
-                            <TableCell align="right">공정수</TableCell>
-                            <TableCell align="right">기본 CT(초)</TableCell>
+                            <TableCell align="right">ST(초)</TableCell>
+                            <TableCell align="right">제안 CT(초)</TableCell>
                             <TableCell align="right">요청 CT(초)</TableCell>
+                            <TableCell align="right">개당 공임</TableCell>
                             <TableCell align="right">주문 공임</TableCell>
                             <TableCell align="right">기간(일)</TableCell>
                           </TableRow>
@@ -2224,9 +2307,14 @@ const ProductionPlanBoard = () => {
                                 </Typography>
                               </TableCell>
                               <TableCell align="center">{row.baseBasis === 'NONE' ? '-' : row.baseBasis}</TableCell>
-                              <TableCell align="right">{row.processQuantity}</TableCell>
                               <TableCell align="right">
                                 {formatNumberWithCommas(row.baseSeconds, {
+                                  fallback: '0',
+                                  maximumFractionDigits: 2,
+                                })}
+                              </TableCell>
+                              <TableCell align="right">
+                                {formatNumberWithCommas(row.suggestedSeconds, {
                                   fallback: '0',
                                   maximumFractionDigits: 2,
                                 })}
@@ -2236,9 +2324,9 @@ const ProductionPlanBoard = () => {
                                   size="small"
                                   value={selectedDraftByProcess[row.processKey] ?? ''}
                                   placeholder={
-                                    row.baseSeconds > 0
+                                    row.suggestedSeconds > 0
                                       ? String(
-                                          formatNumberWithCommas(row.baseSeconds, {
+                                          formatNumberWithCommas(row.suggestedSeconds, {
                                             fallback: '0',
                                             maximumFractionDigits: 2,
                                           })
@@ -2261,13 +2349,16 @@ const ProductionPlanBoard = () => {
                                 />
                               </TableCell>
                               <TableCell align="right">
+                                {row.perPieceCost == null ? '-' : formatCurrencyDong(row.perPieceCost)}
+                              </TableCell>
+                              <TableCell align="right">
                                 {row.expectedCost == null ? '-' : formatCurrencyDong(row.expectedCost)}
                               </TableCell>
                               <TableCell align="right">{formatDaysLabel(row.expectedDays)}</TableCell>
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={5} align="right" sx={{ fontWeight: 700 }}>
+                            <TableCell colSpan={7} align="right" sx={{ fontWeight: 700 }}>
                               합계
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
@@ -2285,8 +2376,8 @@ const ProductionPlanBoard = () => {
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                     {selectedCostSummary?.directProposalCount > 0
-                      ? `직접 요청 입력: ${selectedCostSummary.directProposalCount}개 공정`
-                      : '입력값이 없으면 ST(공식 CT) 기준으로 운영팀 조정 요청됩니다.'}
+                      ? `요청 CT 반영 공정: ${selectedCostSummary.directProposalCount}개`
+                      : '요청값이 없으면 제안 CT 기준으로 동의 처리할 수 있습니다.'}
                   </Typography>
 
                   {/* 동의 / 조정 요청 버튼 - 공정 CT 카드 하단 */}
@@ -2307,7 +2398,7 @@ const ProductionPlanBoard = () => {
                       onClick={() => handleRequestAdjustment(selectedAssignment.id)}
                       disabled={selectedAssignmentBusy || !hasCtAdjustment}
                     >
-                      조정 요청
+                      변경 요청
                     </Button>
                   </Stack>
                 </Paper>
