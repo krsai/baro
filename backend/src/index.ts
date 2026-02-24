@@ -3548,6 +3548,68 @@ app.patch("/lines/:id", async (req, res) => {
   res.json(updated);
 });
 
+app.delete("/lines/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+  if (!isManufacturerOrg(organization)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "brand organizations have no lines" });
+  }
+
+  const existing = await prisma.line.findFirst({
+    where: { id, orgId: organization.id },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "line not found" });
+  }
+
+  let movedWorkers = 0;
+
+  await prisma.$transaction(async (tx) => {
+    // 현재 이 라인에 배정된 직원 파악
+    const activeAssignments = await tx.lineAssignment.findMany({
+      where: { lineId: existing.id, endAt: null },
+      select: { employeeId: true },
+    });
+
+    const assignedEmployeeIds = activeAssignments.map((a) => a.employeeId);
+    movedWorkers = assignedEmployeeIds.length;
+
+    // 해당 직원들의 lineName 초기화 (미배정 상태로 전환)
+    if (assignedEmployeeIds.length > 0) {
+      await tx.employee.updateMany({
+        where: { id: { in: assignedEmployeeIds }, orgId: organization.id },
+        data: { lineName: null },
+      });
+    }
+
+    // 이 라인의 LineAssignment 전체 삭제 (활성 + 이력)
+    await tx.lineAssignment.deleteMany({
+      where: { lineId: existing.id },
+    });
+
+    // 이 라인의 AssignmentPlan 삭제
+    await tx.assignmentPlan.deleteMany({
+      where: { lineId: existing.id, orgId: organization.id },
+    });
+
+    // 라인 삭제
+    await tx.line.delete({
+      where: { id: existing.id },
+    });
+  });
+
+  res.json({ ok: true, movedWorkers });
+});
+
 app.get("/line-workers", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {

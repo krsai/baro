@@ -441,8 +441,35 @@ const normalizeOrderForm = (order) => {
   };
 };
 
-const getStyleDisplayNames = (items = []) =>
-  items.map((item) => item.styleName || item.styleCode || '').filter(Boolean);
+const getStyleSummaryKey = (item) => {
+  const styleId = String(item?.styleId || '').trim();
+  if (styleId) return `id:${styleId}`;
+
+  const styleCode = String(item?.styleCode || '').trim().toUpperCase();
+  if (styleCode) return `code:${styleCode}`;
+
+  const styleName = String(item?.styleName || '').trim().toLowerCase();
+  if (styleName) return `name:${styleName}`;
+
+  return '';
+};
+
+const getStyleDisplayNames = (items = []) => {
+  const seen = new Set();
+  const names = [];
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const displayName = String(item?.styleName || item?.styleCode || '').trim();
+    if (!displayName) return;
+
+    const dedupeKey = getStyleSummaryKey(item) || `name:${displayName.toLowerCase()}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    names.push(displayName);
+  });
+
+  return names;
+};
 
 const formatStyleSummary = (items = []) => {
   const names = getStyleDisplayNames(items);

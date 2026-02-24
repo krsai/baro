@@ -117,15 +117,16 @@ const Login = () => {
               );
             }
 
-            const profiles = memberships
+            const sortedProfiles = memberships
               .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
               .filter((membership) => isTestAccountEmail(membership?.email))
               .map((membership) => {
                 const orgRole = normalizeUpper(membership?.role);
                 const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole];
+                const membershipEmail = String(membership?.email || '').trim().toLowerCase();
                 if (!roleLabel) return null;
                 if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
-                if (orgRole === 'WORKER' && !lineManagerEmails.has(membership?.email?.toLowerCase())) return null;
+                if (orgRole === 'WORKER' && !lineManagerEmails.has(membershipEmail)) return null;
 
                 const isLineLeader = orgRole === 'WORKER';
                 const roleLabelWithLineLeader = isLineLeader
@@ -150,6 +151,16 @@ const Login = () => {
               })
               .filter(Boolean)
               .sort((a, b) => sortRoleOrder(a.orgRole) - sortRoleOrder(b.orgRole));
+
+            const profiles = [];
+            let hasLineLeaderProfile = false;
+            sortedProfiles.forEach((profile) => {
+              if (profile.orgRole === 'WORKER') {
+                if (hasLineLeaderProfile) return;
+                hasLineLeaderProfile = true;
+              }
+              profiles.push(profile);
+            });
 
             return { org, orgType, typeLabel, profiles };
           })

@@ -3,12 +3,14 @@ import { Box, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const statusLabel = {
-  CT: 'CT 기준',
+  PT: 'PT 기준',
+  AT: 'AT 기준',
   NONE: '기준 없음',
 };
 
 const statusPalette = {
-  CT: { border: '#9FB9F2', text: '#3E5E9A' },
+  PT: { border: '#9FB9F2', text: '#3E5E9A' },
+  AT: { border: '#9FB9F2', text: '#3E5E9A' },
   NONE: { border: '#E6A8B6', text: '#A34355' },
 };
 
@@ -18,9 +20,13 @@ const hasAt = (card) =>
   Number(card.totalAt) > 0;
 
 const getCardBasis = (card) => {
-  // PT든 AT든 CT가 산출 가능하면 'CT'로 통일
-  if (!hasPt(card) && !hasAt(card)) return 'NONE';
-  return 'CT';
+  if (hasAt(card)) return 'AT';
+  if (hasPt(card)) return 'PT';
+
+  const legacyStatus = String(card?.status || '').trim().toUpperCase();
+  if (legacyStatus === 'AT') return 'AT';
+  if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
+  return 'NONE';
 };
 
 const StyleCard = ({ card, onSelect, onSplit }) => {

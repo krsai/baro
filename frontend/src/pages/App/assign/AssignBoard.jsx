@@ -1,6 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Grid, Stack, Typography } from '@mui/material';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
+import { useBeforeUnload, useBlocker } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
@@ -46,6 +47,93 @@ const formatLineShiftLabel = (line) => {
   }
   return `${shiftHours}h`;
 };
+
+const buildAssignableLines = ({ factories, lines, workers }) => {
+  const safeFactories = Array.isArray(factories) ? factories : [];
+  const safeLines = Array.isArray(lines) ? lines : [];
+  const safeWorkers = Array.isArray(workers) ? workers : [];
+  const factoryById = new Map(
+    safeFactories.map((factory, index) => [normalizeKey(factory?.id), { ...factory, __order: index }])
+  );
+  const lineHeadcountMap = safeWorkers.reduce((map, worker) => {
+    const key = normalizeKey(worker?.currentLineId);
+    if (!key) return map;
+    map.set(key, (map.get(key) || 0) + 1);
+    return map;
+  }, new Map());
+
+  return safeLines
+    .filter((line) => factoryById.has(normalizeKey(line?.factoryId)))
+    .map((line) => {
+      const factory = factoryById.get(normalizeKey(line?.factoryId));
+      const assignedCount = lineHeadcountMap.get(normalizeKey(line?.id)) || 0;
+      if (assignedCount <= 0) return null;
+      const headcount = assignedCount;
+      return {
+        id: String(line.id),
+        name: line.name || `Line ${line.id}`,
+        headcount,
+        shift: line?.shift || formatLineShiftLabel(line),
+        shiftHours: toNonNegativeNumber(line?.shiftHours, 8),
+        overtimeHours: toNonNegativeNumber(line?.overtimeHours, 0),
+        dailyCapacitySeconds: resolveLineDailyCapacitySeconds(line, headcount),
+        factoryId: factory?.id,
+        factoryName: factory?.name || `Factory ${line?.factoryId}`,
+        factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.factoryOrder !== b.factoryOrder) return a.factoryOrder - b.factoryOrder;
+      return normalizeKey(a.id).localeCompare(normalizeKey(b.id), undefined, { numeric: true });
+    })
+    .map(({ factoryOrder, ...line }) => line);
+};
+
+const buildLineCapacityMap = (lines = []) =>
+  new Map(
+    (Array.isArray(lines) ? lines : []).map((line) => {
+      const key = normalizeKey(line?.id);
+      const parsed = Number(line?.dailyCapacitySeconds);
+      const resolved =
+        Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
+      return [key, resolved];
+    })
+  );
+
+const buildLineSyncSignature = (lines = []) =>
+  JSON.stringify(
+    (Array.isArray(lines) ? lines : [])
+      .map((line) => ({
+        id: normalizeKey(line?.id),
+        name: String(line?.name || ''),
+        factoryId: normalizeKey(line?.factoryId),
+        factoryName: String(line?.factoryName || ''),
+        headcount: Number(line?.headcount) || 0,
+        shiftHours: Number(line?.shiftHours) || 0,
+        overtimeHours: Number(line?.overtimeHours) || 0,
+        dailyCapacitySeconds: Number(line?.dailyCapacitySeconds) || 0,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+  );
+
+const buildAssignmentLayoutSignature = (assignments = []) =>
+  JSON.stringify(
+    (Array.isArray(assignments) ? assignments : [])
+      .map((item) => ({
+        id: String(item?.id || ''),
+        lineId: normalizeKey(item?.lineId),
+        cardId: String(item?.cardId || ''),
+        startIndex: toNonNegativeInt(item?.startIndex, 0),
+        endIndex: toNonNegativeInt(item?.endIndex, 0),
+        startDayOffsetPercent: Number(item?.startDayOffsetPercent) || 0,
+        startDayPercent: Number(item?.startDayPercent) || 0,
+        endDayPercent: Number(item?.endDayPercent) || 0,
+        totalSeconds: Number(item?.totalSeconds) || 0,
+        quantity: Number(item?.quantity) || 0,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
+  );
 
 const BASIS_COLORS = {
   // AT/PT 모두 CT 기준 색으로 통일 (스케줄링 내부 구분은 유지)
@@ -247,6 +335,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
       totalPt: mergedTotalPt,
       totalAt: mergedTotalAt,
       status: mergedStatus,
+      dueDate: existing.dueDate || nextCard.dueDate || '',
       processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
     };
     cardMap.set(nextCard.id, merged);
@@ -293,6 +382,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
             normalizedGender
           ),
           orderNo: order?.orderNumber || order?.id || '-',
+          dueDate: order?.dueDate || '',
           customer: order?.customerName || order?.customer || '-',
           styleId,
           styleName: item?.styleName || style?.name || `스타일 ${itemIndex + 1}`,
@@ -516,6 +606,25 @@ const buildDateKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const parseDueDateToTimestamp = (value) => {
+  const text = normalizeKey(value);
+  if (!text) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const [year, month, day] = text.split('-').map((item) => Number(item));
+    const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+    const time = date.getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+
+  const date = new Date(text);
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return null;
+  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0, 0);
+  const normalizedTime = normalized.getTime();
+  return Number.isFinite(normalizedTime) ? normalizedTime : null;
+};
+
 const buildDays = (baseDate, count, holidaySet = new Set()) => {
   return Array.from({ length: count }).map((_, index) => {
     const date = new Date(baseDate);
@@ -530,6 +639,12 @@ const buildDays = (baseDate, count, holidaySet = new Set()) => {
       isHoliday: holidaySet.has(key),
     };
   });
+};
+
+const getTodayDayIndex = (days, targetDate = new Date()) => {
+  const key = buildDateKey(targetDate);
+  const index = (Array.isArray(days) ? days : []).findIndex((day) => day?.key === key);
+  return index >= 0 ? index : 0;
 };
 
 const getUsageSeconds = (assignment, days, lineCapacityById = null) => {
@@ -662,6 +777,33 @@ const getAssignmentTotalSeconds = (assignment, days, lineCapacityById = null) =>
   );
 };
 
+const getUsageSecondsBeforeIndex = (
+  assignment,
+  beforeIndex,
+  days,
+  lineCapacityById = null
+) => {
+  const safeBeforeIndex = toNonNegativeInt(beforeIndex, 0);
+  if (safeBeforeIndex <= 0) return 0;
+  return getUsageSeconds(assignment, days, lineCapacityById).reduce((sum, item) => {
+    if (item.dayIndex >= safeBeforeIndex) return sum;
+    return sum + item.seconds;
+  }, 0);
+};
+
+const resolveAssignmentPlannedSeconds = (assignment, days, lineCapacityById = null) => {
+  const explicitTotal = Number(assignment?.totalSeconds);
+  if (Number.isFinite(explicitTotal) && explicitTotal > 0) return explicitTotal;
+
+  const contractedTotal = Number(assignment?.contractedSeconds);
+  if (Number.isFinite(contractedTotal) && contractedTotal > 0) return contractedTotal;
+
+  const proposalTotal = Number(assignment?.proposalSeconds);
+  if (Number.isFinite(proposalTotal) && proposalTotal > 0) return proposalTotal;
+
+  return getAssignmentTotalSeconds(assignment, days, lineCapacityById);
+};
+
 const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
   if (!assignment) return null;
   const usage = getUsageSeconds(assignment, days, lineCapacityById);
@@ -682,6 +824,103 @@ const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
     nextIndex += 1;
   }
   return nextIndex;
+};
+
+const reflowAssignmentsByLineCapacity = ({
+  assignments,
+  totalDays,
+  days,
+  lineCapacityById,
+  sourceLineCapacityById = null,
+  reflowStartIndex = 0,
+}) => {
+  const capacityForSource = sourceLineCapacityById || lineCapacityById;
+  const safeReflowStartIndex = toNonNegativeInt(reflowStartIndex, 0);
+  const grouped = new Map();
+  (Array.isArray(assignments) ? assignments : []).forEach((item) => {
+    const lineKey = normalizeKey(item?.lineId);
+    if (!lineKey) return;
+    if (!grouped.has(lineKey)) grouped.set(lineKey, []);
+    grouped.get(lineKey).push(item);
+  });
+
+  const nextAssignments = [];
+
+  for (const [lineId, lineItems] of grouped.entries()) {
+    const sorted = lineItems
+      .slice()
+      .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+    if (sorted.length === 0) continue;
+
+    const fixed = sorted
+      .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
+      .map((item) => ({ ...item, lineId }));
+    const queue = sorted.filter(
+      (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
+    );
+
+    const placed = [...fixed];
+    let cursorStart = Math.max(
+      safeReflowStartIndex,
+      toNonNegativeInt(sorted[0]?.startIndex, 0)
+    );
+    if (fixed.length > 0) {
+      const nextFromFixed = getNextStartIndex(
+        fixed[fixed.length - 1],
+        days,
+        lineCapacityById
+      );
+      if (nextFromFixed != null) {
+        cursorStart = Math.max(cursorStart, nextFromFixed);
+      }
+    }
+
+    for (let index = 0; index < queue.length; index += 1) {
+      const item = queue[index];
+      const startIndex = cursorStart;
+      if (startIndex == null || startIndex >= totalDays) return null;
+
+      const totalSeconds = resolveAssignmentPlannedSeconds(
+        item,
+        days,
+        capacityForSource
+      );
+      if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
+      const usedBeforeReflow = getUsageSecondsBeforeIndex(
+        item,
+        safeReflowStartIndex,
+        days,
+        capacityForSource
+      );
+      const remainingSeconds = Math.max(0, totalSeconds - usedBeforeReflow);
+      if (remainingSeconds <= 0) continue;
+
+      const planned = planAssignment({
+        startIndex,
+        totalSeconds: remainingSeconds,
+        lineId,
+        assignments: placed,
+        totalDays,
+        days,
+        lineCapacityById,
+      });
+      if (!planned) return null;
+
+      const nextItem = {
+        ...item,
+        lineId,
+        totalSeconds,
+        ...planned,
+      };
+      placed.push(nextItem);
+
+      cursorStart = getNextStartIndex(nextItem, days, lineCapacityById);
+    }
+
+    nextAssignments.push(...placed);
+  }
+
+  return nextAssignments;
 };
 
 const rebuildLineWithInsert = ({
@@ -1014,13 +1253,10 @@ const AssignBoard = () => {
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
+  const [persistReady, setPersistReady] = useState(false);
   const startDateRef = useRef(new Date());
   const splitCounterRef = useRef(1);
-  const persistReadyRef = useRef(false);
-  const persistTimerRef = useRef(null);
-  const persistSeqRef = useRef(0);
   const lastSavedSnapshotRef = useRef('');
-  const persistErrorShownRef = useRef(false);
   const historyPastRef = useRef([]);
   const historyFutureRef = useRef([]);
   const historySnapshotRef = useRef('');
@@ -1029,18 +1265,24 @@ const AssignBoard = () => {
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
+  const linesRef = useRef(lines);
+  const assignmentsRef = useRef(assignments);
+  const daysRef = useRef(days);
   const lineCapacityById = useMemo(() => {
-    const map = new Map();
-    lines.forEach((line) => {
-      const key = normalizeKey(line?.id);
-      if (!key) return;
-      const parsed = Number(line?.dailyCapacitySeconds);
-      const resolved =
-        Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
-      map.set(key, resolved);
-    });
-    return map;
+    return buildLineCapacityMap(lines);
   }, [lines]);
+
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  useEffect(() => {
+    assignmentsRef.current = assignments;
+  }, [assignments]);
+
+  useEffect(() => {
+    daysRef.current = days;
+  }, [days]);
 
   const syncHistoryStatus = useCallback(() => {
     setHistoryStatus({
@@ -1057,6 +1299,25 @@ const AssignBoard = () => {
       }),
     []
   );
+
+  const createPersistSnapshotText = useCallback(
+    (nextCards, nextAssignments) => {
+      const normalizedAssignments = (Array.isArray(nextAssignments) ? nextAssignments : []).map(
+        (item) => normalizeAssignmentLayout(item)
+      );
+      return JSON.stringify({
+        cards: Array.isArray(nextCards) ? nextCards : [],
+        assignments: normalizedAssignments,
+      });
+    },
+    []
+  );
+
+  const currentPersistSnapshot = useMemo(
+    () => createPersistSnapshotText(cards, assignments),
+    [assignments, cards, createPersistSnapshotText]
+  );
+  const isDirty = persistReady && currentPersistSnapshot !== lastSavedSnapshotRef.current;
 
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
@@ -1112,6 +1373,7 @@ const AssignBoard = () => {
     let cancelled = false;
 
     const loadSourceData = async () => {
+      setPersistReady(false);
       setLoading(true);
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
@@ -1126,61 +1388,23 @@ const AssignBoard = () => {
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];
-        const safeLines = Array.isArray(lines) ? lines : [];
-        const safeWorkers = Array.isArray(workers) ? workers : [];
-        const factoryById = new Map(
-          safeFactories.map((factory, index) => [normalizeKey(factory?.id), { ...factory, __order: index }])
-        );
-        const lineHeadcountMap = safeWorkers.reduce((map, worker) => {
-          const key = normalizeKey(worker?.currentLineId);
-          if (!key) return map;
-          map.set(key, (map.get(key) || 0) + 1);
-          return map;
-        }, new Map());
         const colors = Array.isArray(attributes?.colors) ? attributes.colors : [];
         const colorNameMap = new Map(
           colors.map((item) => [normalizeColorKey(item?.code), item?.name || item?.code || ''])
         );
 
-        const nextLines = safeLines
-          .filter((line) => factoryById.has(normalizeKey(line?.factoryId)))
-          .map((line) => {
-            const factory = factoryById.get(normalizeKey(line?.factoryId));
-            const assignedCount = lineHeadcountMap.get(normalizeKey(line?.id)) || 0;
-            const headcount = Math.max(assignedCount, 1);
-            return {
-              id: String(line.id),
-              name: line.name || `Line ${line.id}`,
-              headcount,
-              shift: line?.shift || formatLineShiftLabel(line),
-              shiftHours: toNonNegativeNumber(line?.shiftHours, 8),
-              overtimeHours: toNonNegativeNumber(line?.overtimeHours, 0),
-              dailyCapacitySeconds: resolveLineDailyCapacitySeconds(line, headcount),
-              factoryId: factory?.id,
-              factoryName: factory?.name || `Factory ${line?.factoryId}`,
-              factoryOrder: factory?.__order ?? Number.MAX_SAFE_INTEGER,
-            };
-          })
-          .sort((a, b) => {
-            if (a.factoryOrder !== b.factoryOrder) return a.factoryOrder - b.factoryOrder;
-            return normalizeKey(a.id).localeCompare(normalizeKey(b.id), undefined, { numeric: true });
-          })
-          .map(({ factoryOrder, ...line }) => line);
+        const nextLines = buildAssignableLines({
+          factories: safeFactories,
+          lines,
+          workers,
+        });
 
         const nextCards = buildCardsFromOrders({
           orders: Array.isArray(orders) ? orders : [],
           styles,
           colorNameMap,
         });
-        const nextLineCapacityById = new Map(
-          nextLines.map((line) => {
-            const key = normalizeKey(line?.id);
-            const parsed = Number(line?.dailyCapacitySeconds);
-            const resolved =
-              Number.isFinite(parsed) && parsed > 0 ? parsed : DAILY_CAPACITY_SECONDS;
-            return [key, resolved];
-          })
-        );
+        const nextLineCapacityById = buildLineCapacityMap(nextLines);
         const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
 
         const hasSavedBoardState =
@@ -1254,10 +1478,8 @@ const AssignBoard = () => {
           if (!Number.isFinite(value)) return max;
           return Math.max(max, value);
         }, 0);
-        const snapshot = JSON.stringify({
-          cards: restoredCards,
-          assignments: restoredAssignments,
-        });
+        const persistSnapshot = createPersistSnapshotText(restoredCards, restoredAssignments);
+        const boardSnapshot = createBoardSnapshotText(restoredCards, restoredAssignments);
 
         if (!cancelled) {
           const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
@@ -1269,25 +1491,21 @@ const AssignBoard = () => {
           }
           setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
           splitCounterRef.current = maxSplit + 1;
-          lastSavedSnapshotRef.current = snapshot;
+          lastSavedSnapshotRef.current = persistSnapshot;
           historyPastRef.current = [];
           historyFutureRef.current = [];
-          historySnapshotRef.current = snapshot;
+          historySnapshotRef.current = boardSnapshot;
           historyApplyingRef.current = false;
           syncHistoryStatus();
-          persistErrorShownRef.current = false;
-          setTimeout(() => {
-            if (!cancelled) {
-              persistReadyRef.current = true;
-            }
-          }, 0);
+          setPersistReady(true);
         }
       } catch (_error) {
         if (!cancelled) {
           setLines([]);
           setCards([]);
           setAssignments([]);
-          persistReadyRef.current = true;
+          lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
+          setPersistReady(true);
           historyPastRef.current = [];
           historyFutureRef.current = [];
           historySnapshotRef.current = createBoardSnapshotText([], []);
@@ -1303,10 +1521,141 @@ const AssignBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, createBoardSnapshotText, syncHistoryStatus]);
+  }, [activeOrgId, createBoardSnapshotText, createPersistSnapshotText, syncHistoryStatus]);
 
   useEffect(() => {
-    if (!persistReadyRef.current) return;
+    if (!activeOrgId) return () => {};
+
+    let cancelled = false;
+    let syncing = false;
+
+    const syncLineWorkforce = async () => {
+      if (cancelled || syncing || !persistReady) return;
+      syncing = true;
+      try {
+        const orgQuery = buildQueryString({ orgId: activeOrgId });
+        const [factories, lineRows, workerRows] = await Promise.all([
+          requestJSON('/factories' + orgQuery),
+          requestJSON('/lines' + orgQuery),
+          requestJSON('/line-workers' + orgQuery),
+        ]);
+        if (cancelled) return;
+
+        const prevLines = linesRef.current;
+        const nextLines = buildAssignableLines({
+          factories: Array.isArray(factories) ? factories : [],
+          lines: Array.isArray(lineRows) ? lineRows : [],
+          workers: Array.isArray(workerRows) ? workerRows : [],
+        });
+        const prevLineSignature = buildLineSyncSignature(prevLines);
+        const nextLineSignature = buildLineSyncSignature(nextLines);
+        if (prevLineSignature === nextLineSignature) return;
+
+        const prevLineById = new Map(
+          prevLines.map((line) => [normalizeKey(line?.id), line])
+        );
+        const prevLineCapacityById = buildLineCapacityMap(prevLines);
+        const nextLineById = new Map(
+          nextLines.map((line) => [normalizeKey(line?.id), line])
+        );
+        const changedCapacityLineIds = [];
+        nextLineById.forEach((nextLine, lineId) => {
+          const prevLine = prevLineById.get(lineId);
+          if (!prevLine) return;
+          const prevHeadcount = Number(prevLine?.headcount) || 0;
+          const nextHeadcount = Number(nextLine?.headcount) || 0;
+          const prevCapacity = Number(prevLine?.dailyCapacitySeconds) || 0;
+          const nextCapacity = Number(nextLine?.dailyCapacitySeconds) || 0;
+          if (prevHeadcount !== nextHeadcount || prevCapacity !== nextCapacity) {
+            changedCapacityLineIds.push(lineId);
+          }
+        });
+
+        const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line?.id)));
+        const previousAssignments = assignmentsRef.current;
+        const lineFilteredAssignments = previousAssignments.filter((item) =>
+          nextLineIdSet.has(normalizeKey(item?.lineId))
+        );
+        const droppedAssignmentCount = previousAssignments.length - lineFilteredAssignments.length;
+
+        let nextAssignments = lineFilteredAssignments;
+        let nextDays = daysRef.current;
+        let reflowFailed = false;
+
+        if (changedCapacityLineIds.length > 0 && lineFilteredAssignments.length > 0) {
+          const nextLineCapacityById = buildLineCapacityMap(nextLines);
+          let plannedAssignments = null;
+          let candidateDays = nextDays;
+
+          for (let attempt = 0; attempt < 6; attempt += 1) {
+            const reflowStartIndex = getTodayDayIndex(candidateDays);
+            plannedAssignments = reflowAssignmentsByLineCapacity({
+              assignments: lineFilteredAssignments,
+              totalDays: candidateDays.length,
+              days: candidateDays,
+              lineCapacityById: nextLineCapacityById,
+              sourceLineCapacityById: prevLineCapacityById,
+              reflowStartIndex,
+            });
+            if (plannedAssignments) break;
+            candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
+          }
+
+          if (plannedAssignments) {
+            nextAssignments = plannedAssignments.map((item) => normalizeAssignmentLayout(item));
+            nextDays = candidateDays;
+          } else {
+            reflowFailed = true;
+          }
+        }
+
+        const previousAssignmentSignature = buildAssignmentLayoutSignature(previousAssignments);
+        const nextAssignmentSignature = buildAssignmentLayoutSignature(nextAssignments);
+
+        setLines(nextLines);
+        if (nextDays.length > daysRef.current.length) {
+          setDays(nextDays);
+        }
+        if (previousAssignmentSignature !== nextAssignmentSignature) {
+          setAssignments(nextAssignments);
+        }
+
+        if (reflowFailed) {
+          showNotification('라인 인원 변경을 감지했지만 배정 일정 재계산에 실패했습니다. 배정을 확인해 주세요.', 'warning');
+        } else if (droppedAssignmentCount > 0) {
+          showNotification(`라인 인원 변경으로 배정 ${droppedAssignmentCount}건이 미배정으로 전환되었습니다.`, 'info');
+        } else if (changedCapacityLineIds.length > 0 && previousAssignmentSignature !== nextAssignmentSignature) {
+          showNotification('라인 인원 변경을 감지해 남은 배정 일정의 총 공수를 재계산했습니다.', 'info');
+        }
+      } catch (_error) {
+        // Ignore sync errors and keep current board state.
+      } finally {
+        syncing = false;
+      }
+    };
+
+    const runSync = () => {
+      void syncLineWorkforce();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) runSync();
+    };
+
+    const intervalId = window.setInterval(runSync, 30000);
+    window.addEventListener('focus', runSync);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', runSync);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeOrgId, holidaySet, persistReady, showNotification]);
+
+  useEffect(() => {
+    if (!persistReady) return;
 
     const snapshot = createBoardSnapshotText(cards, assignments);
     if (!historySnapshotRef.current) {
@@ -1332,54 +1681,54 @@ const AssignBoard = () => {
     historyFutureRef.current = [];
     historySnapshotRef.current = snapshot;
     syncHistoryStatus();
-  }, [assignments, cards, createBoardSnapshotText, syncHistoryStatus]);
+  }, [assignments, cards, createBoardSnapshotText, persistReady, syncHistoryStatus]);
 
-  useEffect(() => {
-    if (!persistReadyRef.current) return;
+  const handleSaveBoard = useCallback(async () => {
+    if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
     const normalizedAssignments = assignments.map((item) => normalizeAssignmentLayout(item));
     const snapshot = JSON.stringify({ cards, assignments: normalizedAssignments });
-    if (snapshot === lastSavedSnapshotRef.current) return;
-
-    if (persistTimerRef.current) {
-      clearTimeout(persistTimerRef.current);
-      persistTimerRef.current = null;
+    setPersisting(true);
+    try {
+      await requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cards, assignments: normalizedAssignments }),
+        skipGlobalLoading: true,
+      });
+      lastSavedSnapshotRef.current = snapshot;
+      showNotification('작업 배정을 저장했습니다.', 'success');
+    } catch (_error) {
+      showNotification('작업 배정 저장에 실패했습니다.', 'error');
+    } finally {
+      setPersisting(false);
     }
+  }, [activeOrgId, assignments, cards, isDirty, persistReady, persisting, showNotification]);
 
-    persistTimerRef.current = setTimeout(async () => {
-      const currentSeq = persistSeqRef.current + 1;
-      persistSeqRef.current = currentSeq;
-      setPersisting(true);
-      try {
-        await requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards, assignments: normalizedAssignments }),
-          skipGlobalLoading: true,
-        });
-        if (persistSeqRef.current === currentSeq) {
-          lastSavedSnapshotRef.current = snapshot;
-          setPersisting(false);
-        }
-        persistErrorShownRef.current = false;
-      } catch (_error) {
-        if (persistSeqRef.current === currentSeq) {
-          setPersisting(false);
-        }
-        if (!persistErrorShownRef.current) {
-          showNotification('작업 배정 저장에 실패했습니다.', 'error');
-          persistErrorShownRef.current = true;
-        }
-      }
-    }, 500);
+  const navigationBlocker = useBlocker(persistReady && isDirty && !persisting);
 
-    return () => {
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
-      }
-    };
-  }, [activeOrgId, assignments, cards, showNotification]);
+  useEffect(() => {
+    if (navigationBlocker.state !== 'blocked') return;
+    const shouldLeave = window.confirm(
+      '저장되지 않은 작업 배정 데이터가 있습니다. 저장하지 않고 이동하시겠습니까?'
+    );
+    if (shouldLeave) {
+      navigationBlocker.proceed();
+      return;
+    }
+    navigationBlocker.reset();
+  }, [navigationBlocker, navigationBlocker.state]);
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (!persistReady || !isDirty || persisting) return;
+        event.preventDefault();
+        event.returnValue = '';
+      },
+      [isDirty, persistReady, persisting]
+    )
+  );
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
@@ -1511,6 +1860,46 @@ const AssignBoard = () => {
         (card.orderNo ? card.orderNo.toLowerCase().includes(lower) : false)
     );
   }, [unassignedCards, searchTerm]);
+
+  const groupedFilteredCards = useMemo(() => {
+    const groups = new Map();
+    filteredCards.forEach((card) => {
+      const orderNo = normalizeKey(card?.orderNo) || '주문번호 없음';
+      const dueDate = normalizeKey(card?.dueDate);
+      const dueDateTimestamp = parseDueDateToTimestamp(dueDate);
+      if (!groups.has(orderNo)) {
+        groups.set(orderNo, {
+          orderNo,
+          dueDate: dueDate || '',
+          dueDateTimestamp,
+          cards: [],
+        });
+      }
+      const group = groups.get(orderNo);
+      group.cards.push(card);
+
+      if (dueDateTimestamp != null) {
+        if (group.dueDateTimestamp == null || dueDateTimestamp < group.dueDateTimestamp) {
+          group.dueDateTimestamp = dueDateTimestamp;
+          group.dueDate = dueDate;
+        }
+      } else if (!group.dueDate && dueDate) {
+        group.dueDate = dueDate;
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.dueDateTimestamp == null && b.dueDateTimestamp == null) {
+        return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
+      }
+      if (a.dueDateTimestamp == null) return 1;
+      if (b.dueDateTimestamp == null) return -1;
+      if (a.dueDateTimestamp !== b.dueDateTimestamp) {
+        return a.dueDateTimestamp - b.dueDateTimestamp;
+      }
+      return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
+    });
+  }, [filteredCards]);
 
   const handleDragStart = useCallback((event) => {
     const { active } = event;
@@ -2107,8 +2496,15 @@ const AssignBoard = () => {
           <Typography variant="h6">작업 배정</Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="caption" color="text.secondary">
-              {persisting ? '저장 중...' : '자동 저장'}
+              {persisting ? '저장 중...' : isDirty ? '저장 안됨' : '저장됨'}
             </Typography>
+            <Button
+              variant="contained"
+              onClick={handleSaveBoard}
+              disabled={persisting || !persistReady || !isDirty}
+            >
+              저장
+            </Button>
             <Button
               variant="outlined"
               onClick={handleUndo}
@@ -2151,26 +2547,80 @@ const AssignBoard = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">미배정 카드</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {loading ? '로딩 중...' : `${filteredCards.length}개`}
+                  {loading
+                    ? '로딩 중...'
+                    : `${filteredCards.length}개 · ${groupedFilteredCards.length}주문`}
                 </Typography>
               </Box>
-              <Stack spacing={1}>
-                {filteredCards.map((card) => (
+              <Stack
+                spacing={1}
+                sx={{
+                  maxHeight: { xs: 360, md: 520 },
+                  overflowY: 'auto',
+                  pr: 0.5,
+                }}
+              >
+                {groupedFilteredCards.map((group) => (
                   <Box
-                    key={card.id}
+                    key={group.orderNo}
                     sx={{
-                      border: card.id === selectedCardId ? '1px solid' : '1px solid transparent',
-                      borderColor: card.id === selectedCardId ? 'primary.main' : 'transparent',
-                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1.5,
+                      p: 1,
+                      backgroundColor: '#FAFAFB',
                     }}
                   >
-                    <StyleCard
-                      card={card}
-                      onSelect={setSelectedCardId}
-                      onSplit={handleSplitCard}
-                    />
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        mb: 1,
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                        주문 {group.orderNo}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {group.dueDate ? `납기 ${group.dueDate}` : '납기 미정'} · {group.cards.length}개
+                      </Typography>
+                    </Box>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        overflowX: 'auto',
+                        pb: 0.5,
+                      }}
+                    >
+                      {group.cards.map((card) => (
+                        <Box
+                          key={card.id}
+                          sx={{
+                            minWidth: { xs: 250, sm: 280 },
+                            maxWidth: 320,
+                            flex: '0 0 auto',
+                            border: card.id === selectedCardId ? '1px solid' : '1px solid transparent',
+                            borderColor: card.id === selectedCardId ? 'primary.main' : 'transparent',
+                            borderRadius: 1,
+                          }}
+                        >
+                          <StyleCard
+                            card={card}
+                            onSelect={setSelectedCardId}
+                            onSplit={handleSplitCard}
+                          />
+                        </Box>
+                      ))}
+                    </Stack>
                   </Box>
                 ))}
+                {!loading && groupedFilteredCards.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    미배정 카드가 없습니다.
+                  </Typography>
+                ) : null}
               </Stack>
             </Stack>
           </Grid>

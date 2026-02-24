@@ -20,6 +20,7 @@ import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import FactoryOutlinedIcon from '@mui/icons-material/FactoryOutlined';
@@ -52,6 +53,7 @@ const LineBoard = () => {
   // 라인명 인라인 편집
   const [editingLineId, setEditingLineId] = useState(null);
   const [editingLineName, setEditingLineName] = useState('');
+  const [deletingLineId, setDeletingLineId] = useState(null);
 
   const buildOrgQuery = (params = {}) =>
     buildQueryString({ ...params, orgId: activeOrgId });
@@ -227,6 +229,35 @@ const LineBoard = () => {
       showNotification(error?.message || '라인 정보 업데이트에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteLine = async (line) => {
+    const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
+    const confirmMsg =
+      workersInLine.length > 0
+        ? `'${line.name}'을(를) 삭제하시겠습니까?\n배정된 작업자 ${workersInLine.length}명은 미배정으로 이동됩니다.`
+        : `'${line.name}'을(를) 삭제하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setDeletingLineId(line.id);
+    try {
+      const result = await requestJSON(`/lines/${line.id}` + buildOrgQuery(), {
+        method: 'DELETE',
+      });
+      setLines((prev) => prev.filter((l) => l.id !== line.id));
+      setWorkers((prev) =>
+        prev.map((w) => (w.currentLineId === line.id ? { ...w, currentLineId: null } : w))
+      );
+      const msg =
+        result?.movedWorkers > 0
+          ? `라인을 삭제했습니다. 작업자 ${result.movedWorkers}명이 미배정으로 이동되었습니다.`
+          : '라인이 삭제되었습니다.';
+      showNotification(msg, 'success');
+    } catch (error) {
+      showNotification(error?.message || '라인 삭제에 실패했습니다.', 'error');
+    } finally {
+      setDeletingLineId(null);
     }
   };
 
@@ -624,10 +655,20 @@ const LineBoard = () => {
                                   <IconButton
                                     size="small"
                                     onClick={() => handleStartLineNameEdit(line)}
-                                    disabled={saving || Boolean(editingLineId)}
+                                    disabled={saving || Boolean(editingLineId) || deletingLineId === line.id}
                                     sx={{ opacity: 0.45, '&:hover': { opacity: 1 } }}
                                   >
                                     <EditIcon sx={{ fontSize: 15 }} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="라인 삭제">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleDeleteLine(line)}
+                                    disabled={saving || Boolean(editingLineId) || Boolean(deletingLineId)}
+                                    sx={{ opacity: 0.45, '&:hover': { opacity: 1, color: 'error.main' } }}
+                                  >
+                                    <DeleteOutlineIcon sx={{ fontSize: 15 }} />
                                   </IconButton>
                                 </Tooltip>
                               </>

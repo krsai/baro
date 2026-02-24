@@ -92,6 +92,7 @@ const MainLayout = () => {
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
+  const recentTabHistoryRef = useRef([]);
   const authState = useMemo(
     () => ({
       isAuthenticated,
@@ -235,9 +236,41 @@ const MainLayout = () => {
     productionOpen,
     systemOpen,
   ]);
+  const flattenedMenuItems = useMemo(
+    () =>
+      menuItems.flatMap((item) =>
+        item.isParent ? item.children : [item]
+      ),
+    [menuItems]
+  );
+  const resolveTabLabel = React.useCallback(
+    (path) => {
+      const matchedMenu =
+        flattenedMenuItems.find((item) => item.path === path) ||
+        flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
+      return matchedMenu?.label || path;
+    },
+    [flattenedMenuItems]
+  );
   const isEmptyWorkspaceAtRoot = openTabs.length === 0 && currentPath === '/';
   const shouldHideOutletForEmptyWorkspace =
     isEmptyWorkspaceAtRoot && isAuthenticated && hasPathAccess('/');
+  const tabsForRender = useMemo(() => {
+    if (openTabs.some((tab) => tab.id === currentPath)) return openTabs;
+    if (currentPath === '/login' || currentPath.startsWith('/auth')) return openTabs;
+    // Keep the empty workspace behavior when dashboard tab is intentionally closed.
+    if (openTabs.length === 0 && currentPath === '/') return openTabs;
+
+    return [
+      ...openTabs,
+      {
+        id: currentPath,
+        label: resolveTabLabel(currentPath),
+        path: currentRoutePath,
+        isOptimistic: true,
+      },
+    ];
+  }, [currentPath, currentRoutePath, openTabs, resolveTabLabel]);
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);
@@ -294,11 +327,7 @@ const MainLayout = () => {
       // so we can call it directly. This removes the dependency on `openTabs`.
       let label = options?.label;
       if (!label) {
-        const flattenedMenuItems = menuItems.flatMap((item) =>
-          item.isParent ? item.children : [item]
-        );
-        const menuItem = flattenedMenuItems.find((item) => item.path === nextPathname);
-        label = menuItem ? menuItem.label : nextPathname;
+        label = resolveTabLabel(nextPathname);
       }
       openTab({ id: nextPathname, label, path: nextPath }, openOptions);
 
@@ -307,7 +336,7 @@ const MainLayout = () => {
         navigate(nextPath);
       }
     },
-    [closeTab, currentPath, currentRoutePath, hasPathAccess, menuItems, navigate, openTab]
+    [closeTab, currentPath, currentRoutePath, hasPathAccess, navigate, openTab, resolveTabLabel]
   );
 
   useEffect(() => {
@@ -329,15 +358,24 @@ const MainLayout = () => {
     if (openTabs.length === 0 && currentPath === '/') return;
     if (openTabs.some((tab) => tab.id === currentPath)) return;
 
-    const flattenedMenuItems = menuItems.flatMap((item) =>
-      item.isParent ? item.children : [item]
-    );
-    const matchedMenu =
-      flattenedMenuItems.find((item) => item.path === currentPath) ||
-      flattenedMenuItems.find((item) => currentPath.startsWith(item.path + '/'));
-    const label = matchedMenu?.label || currentPath;
+    const label = resolveTabLabel(currentPath);
     openTab({ id: currentPath, label, path: currentRoutePath });
-  }, [currentPath, currentRoutePath, menuItems, openTab, openTabs]);
+  }, [currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
+
+  useEffect(() => {
+    if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
+    recentTabHistoryRef.current = [
+      currentPath,
+      ...recentTabHistoryRef.current.filter((tabId) => tabId !== currentPath),
+    ];
+  }, [currentPath]);
+
+  useEffect(() => {
+    const openTabIds = new Set(openTabs.map((tab) => tab.id));
+    recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
+      (tabId) => tabId === currentPath || openTabIds.has(tabId)
+    );
+  }, [currentPath, openTabs]);
 
   useEffect(() => {
     const blockedTabIds = openTabs
@@ -378,7 +416,7 @@ const MainLayout = () => {
 
   const handleTabChange = (event, newValue) => {
     // User clicks a tab: make URL the only source of truth.
-    const selectedTab = openTabs.find((tab) => tab.id === newValue);
+    const selectedTab = tabsForRender.find((tab) => tab.id === newValue);
     handleNavigation(selectedTab?.path || newValue);
   };
 
@@ -386,22 +424,30 @@ const MainLayout = () => {
     e.preventDefault();
     e.stopPropagation();
 
-    const closingTabIndex = openTabs.findIndex((t) => t.id === tabIdToClose);
-    if (closingTabIndex === -1) return;
+    const closingTab = openTabs.find((tab) => tab.id === tabIdToClose);
+    if (!closingTab) return;
 
     const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);
+    recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
+      (tabId) => tabId !== tabIdToClose
+    );
 
-    // If we are closing the currently active tab, route to a fallback first.
+    // If we are closing the currently active tab, route using recent tab history.
     if (currentPath === tabIdToClose) {
-      const fallbackIndex = Math.max(closingTabIndex - 1, 0);
-      const newActiveTab = remainingTabs[fallbackIndex] || null;
+      const remainingTabById = new Map(remainingTabs.map((tab) => [tab.id, tab]));
+      const recentFallbackId = recentTabHistoryRef.current.find((tabId) =>
+        remainingTabById.has(tabId)
+      );
+      const fallbackTab = recentFallbackId
+        ? remainingTabById.get(recentFallbackId)
+        : remainingTabs[remainingTabs.length - 1] || null;
       skipAutoOpenPathRef.current = tabIdToClose;
 
       // If no tab remains, move to empty state.
-      if (!newActiveTab) {
+      if (!fallbackTab) {
         navigate('/');
       } else {
-        navigate(newActiveTab.path || newActiveTab.id);
+        navigate(fallbackTab.path || fallbackTab.id);
       }
     }
 
@@ -639,7 +685,7 @@ const MainLayout = () => {
       >
         <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
           <Tabs
-            value={openTabs.some((tab) => tab.id === currentPath) ? currentPath : false}
+            value={tabsForRender.some((tab) => tab.id === currentPath) ? currentPath : false}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
@@ -651,7 +697,7 @@ const MainLayout = () => {
               },
             }}
           >
-            {openTabs.map((tab) => (
+            {tabsForRender.map((tab) => (
               <Tab
                 key={tab.id}
                 value={tab.id}
@@ -678,25 +724,27 @@ const MainLayout = () => {
                 label={
                   <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                     {tab.label}
-                    <IconButton
-                      component="span"
-                      size="small"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onClick={(e) => handleCloseTab(e, tab.id)}
-                      sx={{
-                        ml: 1,
-                        mr: -1.5,
-                        p: '2px',
-                        '&:hover': {
-                          bgcolor: 'rgba(0, 0, 0, 0.08)',
-                        },
-                      }}
-                    >
-                      <CloseIcon sx={{ fontSize: '1rem' }} />
-                    </IconButton>
+                    {!tab.isOptimistic && (
+                      <IconButton
+                        component="span"
+                        size="small"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => handleCloseTab(e, tab.id)}
+                        sx={{
+                          ml: 1,
+                          mr: -1.5,
+                          p: '2px',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.08)',
+                          },
+                        }}
+                      >
+                        <CloseIcon sx={{ fontSize: '1rem' }} />
+                      </IconButton>
+                    )}
                   </Box>
                 }
               />
