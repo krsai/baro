@@ -34,6 +34,7 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import {
+  DEFAULT_TIME_REF_QUANTITY,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
 } from '../../../utils/processTime';
@@ -110,6 +111,38 @@ const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
     ? perPieceSeconds
     : null;
 };
+const resolveProcessPtInfo = (process, orderQuantity = 1) => {
+  const ptSeconds = toOptionalPositiveNumber(process?.pt);
+  const referenceQuantity = toPositiveInt(
+    process?.timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  return {
+    seconds: ptSeconds,
+    referenceQuantity,
+    hasExactQuantity: ptSeconds != null && referenceQuantity === orderQuantity,
+    isReferenceFallback: ptSeconds != null && referenceQuantity !== orderQuantity,
+  };
+};
+const resolveProcessStSeedSeconds = ({
+  process,
+  orderQuantity = 1,
+  proposalStSeconds = null,
+}) => {
+  const proposal = toOptionalPositiveNumber(proposalStSeconds);
+  if (proposal != null) return { seconds: proposal, source: 'ST' };
+
+  const manualSt = process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
+  if (manualSt != null) return { seconds: manualSt, source: 'ST' };
+
+  const ptInfo = resolveProcessPtInfo(process, orderQuantity);
+  if (ptInfo.seconds != null) return { seconds: ptInfo.seconds, source: 'PT' };
+
+  const atPerPiece = resolveProcessAtSeconds(process, orderQuantity);
+  if (atPerPiece != null) return { seconds: atPerPiece, source: 'AT' };
+
+  return { seconds: 0, source: 'NONE' };
+};
 
 const calcDivergencePercent = (current, base) => {
   const currentValue = Number(current);
@@ -166,22 +199,6 @@ const resolveLineDailyCapacitySeconds = (line, headcount) => {
     return Math.round(directCapacity);
   }
   return Math.max(1, toPositiveInt(headcount, 1)) * 8 * 60 * 60;
-};
-
-const resolveProcessCtBaseInfo = (process, orderQuantity = 1) => {
-  const atPerPiece = resolveProcessAtSeconds(process, orderQuantity);
-  if (atPerPiece != null && atPerPiece > 0) {
-    return { basis: 'AT', seconds: atPerPiece };
-  }
-  const pt = Number(process?.pt);
-  if (Number.isFinite(pt) && pt > 0) {
-    return { basis: 'PT', seconds: pt };
-  }
-  const st = Number(process?.ct);
-  if (Number.isFinite(st) && st > 0) {
-    return { basis: 'ST', seconds: st };
-  }
-  return { basis: 'NONE', seconds: 0 };
 };
 
 const buildDateKey = (date) => {
@@ -478,6 +495,14 @@ const ProductionPlanBoard = () => {
       null
     );
   }, [actionableAssignments, selectedAssignmentId]);
+  const selectedQuantityLabel = useMemo(
+    () =>
+      formatNumberWithCommas(
+        Math.max(1, toPositiveInt(selectedAssignment?.quantity ?? 1, 1)),
+        { fallback: '1', maximumFractionDigits: 0 }
+      ),
+    [selectedAssignment?.quantity]
+  );
   const selectedAssignmentBusy =
     !!selectedAssignment &&
     String(savingAssignmentId || '') === String(selectedAssignment.id);
@@ -695,15 +720,29 @@ const ProductionPlanBoard = () => {
       const orderQuantity = Math.max(1, toPositiveInt(assignmentView?.quantity, 1));
       const wagePerSecond = toOptionalPositiveNumber(assignmentView?.wagePerSecond);
       const lineDailyCapacitySeconds = Number(assignmentView?.lineDailyCapacitySeconds);
+      const operatorProposalPayload = assignmentView?.card?.operatorCtProposal;
+      const operatorProposalQuantity = Math.max(
+        1,
+        toPositiveInt(operatorProposalPayload?.quantity ?? orderQuantity, orderQuantity)
+      );
+      const canReuseOperatorProposal = operatorProposalQuantity === orderQuantity;
       const operatorProposalByProcess = (
-        Array.isArray(assignmentView?.card?.operatorCtProposal?.processes)
-          ? assignmentView.card.operatorCtProposal.processes
+        Array.isArray(operatorProposalPayload?.processes)
+          ? operatorProposalPayload.processes
           : []
       ).reduce((map, item) => {
+        if (!canReuseOperatorProposal) return map;
         const processKey = String(item?.processKey || '').trim();
         const proposedSeconds = toOptionalPositiveNumber(item?.proposedSeconds);
-        if (!processKey || proposedSeconds == null) return map;
-        map.set(processKey, proposedSeconds);
+        const stSeconds = toOptionalPositiveNumber(
+          item?.stSeconds ?? item?.suggestedSeconds ?? item?.baseSeconds
+        );
+        const seedSeconds = stSeconds ?? proposedSeconds;
+        if (!processKey || seedSeconds == null) return map;
+        map.set(processKey, {
+          stSeconds: seedSeconds,
+          proposedSeconds: proposedSeconds ?? seedSeconds,
+        });
         return map;
       }, new Map());
       const pendingRequestByProcess = (
@@ -726,10 +765,16 @@ const ProductionPlanBoard = () => {
         );
         const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
         const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
-        const baseInfo = resolveProcessCtBaseInfo(process, orderQuantity);
-        const baseSeconds = baseInfo.seconds;
-        const basePerPieceSeconds = baseSeconds * processQuantity;
+        const ptInfo = resolveProcessPtInfo(process, orderQuantity);
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
+        const operatorProposal = operatorProposalByProcess.get(processKey) ?? null;
+        const stSeedInfo = resolveProcessStSeedSeconds({
+          process,
+          orderQuantity,
+          proposalStSeconds: operatorProposal?.stSeconds ?? null,
+        });
+        const baseSeconds = stSeedInfo.seconds;
+        const basePerPieceSeconds = baseSeconds * processQuantity;
         const atPerPieceSeconds = atSeconds == null ? null : atSeconds * processQuantity;
         const atVsBasePercent = calcDivergencePercent(atPerPieceSeconds, basePerPieceSeconds);
         const needsStReview =
@@ -737,7 +782,7 @@ const ProductionPlanBoard = () => {
           Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
 
         const directSeconds = toOptionalPositiveNumber(draftByProcess[processKey]);
-        const suggestedSeconds = operatorProposalByProcess.get(processKey) ?? baseSeconds;
+        const suggestedSeconds = operatorProposal?.proposedSeconds ?? baseSeconds;
         const pendingRequestedSeconds = pendingRequestByProcess.get(processKey) ?? null;
         const hasDirectProposal = directSeconds != null;
         const proposedSeconds =
@@ -764,7 +809,10 @@ const ProductionPlanBoard = () => {
           processKey,
           processName,
           processQuantity,
-          baseBasis: baseInfo.basis,
+          baseBasis: stSeedInfo.source,
+          ptSeconds: ptInfo.seconds,
+          ptReferenceQuantity: ptInfo.referenceQuantity,
+          ptIsReferenceFallback: ptInfo.isReferenceFallback,
           baseSeconds,
           basePerPieceSeconds,
           atSeconds,
@@ -2288,13 +2336,11 @@ const ProductionPlanBoard = () => {
                           <TableRow>
                             <TableCell align="right">#</TableCell>
                             <TableCell>공정</TableCell>
-                            <TableCell align="center">기준</TableCell>
-                            <TableCell align="right">ST(초)</TableCell>
-                            <TableCell align="right">제안 CT(초)</TableCell>
-                            <TableCell align="right">요청 CT(초)</TableCell>
-                            <TableCell align="right">개당 공임</TableCell>
-                            <TableCell align="right">주문 공임</TableCell>
-                            <TableCell align="right">기간(일)</TableCell>
+                            <TableCell align="right">{`PT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`AT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`ST(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`제안 CT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`요청 CT(${selectedQuantityLabel})`}</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -2306,7 +2352,42 @@ const ProductionPlanBoard = () => {
                                   {row.processName}
                                 </Typography>
                               </TableCell>
-                              <TableCell align="center">{row.baseBasis === 'NONE' ? '-' : row.baseBasis}</TableCell>
+                              <TableCell align="right">
+                                {row.ptSeconds == null ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    데이터 없음
+                                  </Typography>
+                                ) : (
+                                  <Stack spacing={0.1} alignItems="flex-end">
+                                    <Typography variant="body2">
+                                      {formatNumberWithCommas(row.ptSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </Typography>
+                                    {row.ptIsReferenceFallback && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {`ref q=${formatNumberWithCommas(row.ptReferenceQuantity, {
+                                          fallback: '0',
+                                          maximumFractionDigits: 0,
+                                        })}`}
+                                      </Typography>
+                                    )}
+                                  </Stack>
+                                )}
+                              </TableCell>
+                              <TableCell align="right">
+                                {row.atSeconds == null ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    수집중
+                                  </Typography>
+                                ) : (
+                                  formatNumberWithCommas(row.atSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })
+                                )}
+                              </TableCell>
                               <TableCell align="right">
                                 {formatNumberWithCommas(row.baseSeconds, {
                                   fallback: '0',
@@ -2348,26 +2429,35 @@ const ProductionPlanBoard = () => {
                                   sx={{ width: 90 }}
                                 />
                               </TableCell>
-                              <TableCell align="right">
-                                {row.perPieceCost == null ? '-' : formatCurrencyDong(row.perPieceCost)}
-                              </TableCell>
-                              <TableCell align="right">
-                                {row.expectedCost == null ? '-' : formatCurrencyDong(row.expectedCost)}
-                              </TableCell>
-                              <TableCell align="right">{formatDaysLabel(row.expectedDays)}</TableCell>
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={7} align="right" sx={{ fontWeight: 700 }}>
-                              합계
+                            <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>
+                              공정 합(한 벌)
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {selectedCostSummary?.totalCost == null
+                              {selectedCostSummary?.totalBasePerPieceSeconds == null
                                 ? '-'
-                                : formatCurrencyDong(selectedCostSummary.totalCost)}
+                                : formatNumberWithCommas(selectedCostSummary.totalBasePerPieceSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {formatDaysLabel(selectedCostSummary?.totalDurationDays)}
+                              {selectedCostSummary?.totalSuggestedPerPieceSeconds == null
+                                ? '-'
+                                : formatNumberWithCommas(selectedCostSummary.totalSuggestedPerPieceSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>
+                              {selectedCostSummary?.totalProposedPerPieceSeconds == null
+                                ? '-'
+                                : formatNumberWithCommas(selectedCostSummary.totalProposedPerPieceSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })}
                             </TableCell>
                           </TableRow>
                         </TableBody>

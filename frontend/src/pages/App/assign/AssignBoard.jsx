@@ -38,6 +38,7 @@ import {
   loadHolidays,
 } from '../../../utils/localData';
 import {
+  DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
@@ -111,20 +112,37 @@ const CT_STATUS_LABEL = {
   AGREED: '동의 완료',
   REJECTED: '변경 요청',
 };
-const resolveProcessBaseInfo = (process, orderQuantity = 1) => {
+const resolveProcessPtInfo = (process, orderQuantity = 1) => {
+  const ptSeconds = toOptionalPositiveNumber(process?.pt);
+  const referenceQuantity = toPositiveInt(
+    process?.timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  return {
+    seconds: ptSeconds,
+    referenceQuantity,
+    hasExactQuantity: ptSeconds != null && referenceQuantity === orderQuantity,
+    isReferenceFallback: ptSeconds != null && referenceQuantity !== orderQuantity,
+  };
+};
+const resolveProcessStSeedSeconds = ({
+  process,
+  orderQuantity = 1,
+  proposalStSeconds = null,
+}) => {
+  const proposal = toOptionalPositiveNumber(proposalStSeconds);
+  if (proposal != null) return { seconds: proposal, source: 'ST' };
+
+  const manualSt = process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
+  if (manualSt != null) return { seconds: manualSt, source: 'ST' };
+
+  const ptInfo = resolveProcessPtInfo(process, orderQuantity);
+  if (ptInfo.seconds != null) return { seconds: ptInfo.seconds, source: 'PT' };
+
   const atPerPiece = resolveProcessAtPerPieceSeconds(process, orderQuantity);
-  if (Number.isFinite(atPerPiece) && atPerPiece > 0) {
-    return { basis: 'AT', seconds: atPerPiece };
-  }
-  const pt = Number(process?.pt);
-  if (Number.isFinite(pt) && pt > 0) {
-    return { basis: 'PT', seconds: pt };
-  }
-  const ct = Number(process?.ct);
-  if (Number.isFinite(ct) && ct > 0) {
-    return { basis: 'ST', seconds: ct };
-  }
-  return { basis: 'NONE', seconds: 0 };
+  if (atPerPiece != null && atPerPiece > 0) return { seconds: atPerPiece, source: 'AT' };
+
+  return { seconds: 0, source: 'NONE' };
 };
 const isAssignmentLockedStatus = (value) =>
   ['SENT', 'AGREED'].includes(normalizeCtStatus(value));
@@ -688,7 +706,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     totalSeconds,
     proposalSeconds: totalSeconds,
     contractedSeconds:
-      assignment.contractedSeconds != null ? assignment.contractedSeconds : totalSeconds,
+      assignment.contractedSeconds != null ? assignment.contractedSeconds : null,
   };
   const range = recomputeAssignmentRange(next, totalSeconds, days, lineCapacityById);
   return {
@@ -2215,17 +2233,32 @@ const AssignBoard = () => {
   );
   const detailOperatorProposalByProcess = useMemo(() => {
     const map = new Map();
-    const processes = Array.isArray(detailCard?.operatorCtProposal?.processes)
-      ? detailCard.operatorCtProposal.processes
-      : [];
+    const proposal = detailCard?.operatorCtProposal;
+    const processes = Array.isArray(proposal?.processes) ? proposal.processes : [];
+    const orderQuantity = Math.max(
+      1,
+      toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
+    );
+    const proposalQuantity = Math.max(
+      1,
+      toPositiveInt(proposal?.quantity ?? orderQuantity, orderQuantity)
+    );
+    if (proposalQuantity !== orderQuantity) return map;
     processes.forEach((item) => {
       const processKey = String(item?.processKey || '').trim();
       const proposedSeconds = toOptionalPositiveNumber(item?.proposedSeconds);
-      if (!processKey || proposedSeconds == null) return;
-      map.set(processKey, proposedSeconds);
+      const stSeconds = toOptionalPositiveNumber(
+        item?.stSeconds ?? item?.suggestedSeconds ?? item?.baseSeconds
+      );
+      const seedSeconds = stSeconds ?? proposedSeconds;
+      if (!processKey || seedSeconds == null) return;
+      map.set(processKey, {
+        stSeconds: seedSeconds,
+        proposedSeconds: proposedSeconds ?? seedSeconds,
+      });
     });
     return map;
-  }, [detailCard?.operatorCtProposal]);
+  }, [detailCard?.operatorCtProposal, detailAssignment?.quantity, detailCard?.quantity]);
   const detailLineRequestByProcess = useMemo(() => {
     const map = new Map();
     const proposal = detailCard?.pendingCtProposal;
@@ -2281,9 +2314,16 @@ const AssignBoard = () => {
       );
       const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
       const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
-      const baseInfo = resolveProcessBaseInfo(process, orderQuantity);
-      const baseSeconds = baseInfo.seconds;
-      const proposedSeedSeconds = detailOperatorProposalByProcess.get(processKey) ?? baseSeconds;
+      const ptInfo = resolveProcessPtInfo(process, orderQuantity);
+      const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
+      const operatorProposal = detailOperatorProposalByProcess.get(processKey) ?? null;
+      const stSeedInfo = resolveProcessStSeedSeconds({
+        process,
+        orderQuantity,
+        proposalStSeconds: operatorProposal?.stSeconds ?? null,
+      });
+      const baseSeconds = stSeedInfo.seconds;
+      const proposedSeedSeconds = operatorProposal?.proposedSeconds ?? baseSeconds;
       const proposedDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
       const proposedSeconds = proposedDraftSeconds ?? proposedSeedSeconds;
       const lineRequestedSeconds = detailLineRequestByProcess.get(processKey) ?? null;
@@ -2297,7 +2337,11 @@ const AssignBoard = () => {
         processKey,
         processName,
         processQuantity,
-        basis: baseInfo.basis,
+        basis: stSeedInfo.source,
+        ptSeconds: ptInfo.seconds,
+        ptReferenceQuantity: ptInfo.referenceQuantity,
+        ptIsReferenceFallback: ptInfo.isReferenceFallback,
+        atSeconds,
         baseSeconds,
         proposedSeedSeconds,
         requestedSeconds: proposedSeconds,
@@ -2380,6 +2424,20 @@ const AssignBoard = () => {
       perPersonExpected,
     };
   }, [detailCard, detailAssignment, detailLine, detailProcessRows, lineCapacityById]);
+  const detailQuantityLabel = useMemo(
+    () =>
+      formatNumberWithCommas(
+        Math.max(
+          1,
+          toPositiveInt(
+            detailSummary?.orderQuantity ?? detailAssignment?.quantity ?? detailCard?.quantity ?? 1,
+            1
+          )
+        ),
+        { fallback: '1', maximumFractionDigits: 0 }
+      ),
+    [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]
+  );
   const detailIsLocked = useMemo(
     () => Boolean(detailAssignment && isAssignmentLocked(detailAssignment)),
     [detailAssignment, isAssignmentLocked]
@@ -2661,7 +2719,7 @@ const AssignBoard = () => {
         basis,
         proposalBasis: basis,
         proposalSeconds: totalSeconds,
-        contractedSeconds: totalSeconds,
+        contractedSeconds: null,
         ctStatus: 'PENDING',
         ctSource: basis,
         ctAgreedBy: null,
@@ -2988,7 +3046,7 @@ const AssignBoard = () => {
     const nowIso = new Date().toISOString();
     let nextCards = cards;
     let nextStyles = styles;
-    let ptUpdatedCount = 0;
+    let stUpdatedCount = 0;
 
     try {
       setSendingProposal(true);
@@ -3001,18 +3059,31 @@ const AssignBoard = () => {
           );
           const row = rowByKey.get(processKey);
           if (!row) return process;
-          const nextPt = toOptionalPositiveNumber(row.requestedSeconds);
-          const currentPt = toOptionalPositiveNumber(process?.pt);
-          if (nextPt == null) return process;
-          if (currentPt != null && Math.abs(currentPt - nextPt) < 1e-6) return process;
-          ptUpdatedCount += 1;
+          const nextSt = toOptionalPositiveNumber(row.requestedSeconds);
+          const currentSt =
+            process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
+          const currentRefQuantity = toPositiveInt(
+            process?.timeRefQuantity,
+            DEFAULT_TIME_REF_QUANTITY
+          );
+          if (nextSt == null) return process;
+          if (
+            currentSt != null &&
+            Math.abs(currentSt - nextSt) < 1e-6 &&
+            process?.stManual === true &&
+            currentRefQuantity === detailSummary.orderQuantity
+          ) {
+            return process;
+          }
+          stUpdatedCount += 1;
           return {
             ...process,
-            pt: nextPt,
+            stManual: true,
+            ct: nextSt,
             timeRefQuantity: detailSummary.orderQuantity,
           };
         });
-        if (ptUpdatedCount > 0) {
+        if (stUpdatedCount > 0) {
           const updatedStyle = await updateStyleById(
             detailStyle.id,
             {
@@ -3047,7 +3118,10 @@ const AssignBoard = () => {
           name: row.processName,
           quantity: row.processQuantity,
           basis: row.basis,
-          stSeconds: row.baseSeconds,
+          ptSeconds: row.ptSeconds,
+          ptReferenceQuantity: row.ptReferenceQuantity,
+          atSeconds: row.atSeconds,
+          stSeconds: row.requestedSeconds,
           proposedSeconds: row.requestedSeconds,
           proposedPerPieceSeconds: row.requestedPerPieceSeconds,
         })),
@@ -3070,7 +3144,7 @@ const AssignBoard = () => {
           ...item,
           proposalSeconds: nextTotalSeconds,
           totalSeconds: nextTotalSeconds,
-          contractedSeconds: nextTotalSeconds,
+          contractedSeconds: null,
           ctStatus: 'SENT',
           ctOverride: false,
           ctSource: 'OPERATOR_PROPOSAL',
@@ -3137,8 +3211,8 @@ const AssignBoard = () => {
         showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
       }
       showNotification(
-        ptUpdatedCount > 0
-          ? `제안 송부 완료. PT(q) ${ptUpdatedCount}개 공정을 함께 갱신했습니다.`
+        stUpdatedCount > 0
+          ? `제안 송부 완료. ST(q) ${stUpdatedCount}개 공정을 갱신했습니다.`
           : '제안 송부 완료. 해당 작업은 잠금 처리되었습니다.',
         'success'
       );
@@ -3200,8 +3274,6 @@ const AssignBoard = () => {
       )
     );
     let nextCards = cards;
-    let nextStyles = styles;
-    let ptUpdatedCount = 0;
 
     try {
       setSendingProposal(true);
@@ -3209,7 +3281,7 @@ const AssignBoard = () => {
       const agreedProcessRows = detailProcessRows.map((row) => {
         const agreedSeconds =
           detailLineRequestByProcess.get(row.processKey) ??
-          detailOperatorProposalByProcess.get(row.processKey) ??
+          detailOperatorProposalByProcess.get(row.processKey)?.proposedSeconds ??
           row.baseSeconds;
         const normalizedAgreedSeconds = toOptionalPositiveNumber(agreedSeconds) ?? 0;
         const agreedPerPieceSeconds = normalizedAgreedSeconds * row.processQuantity;
@@ -3239,48 +3311,6 @@ const AssignBoard = () => {
         return;
       }
 
-      if (detailStyle && agreedProcessRows.length > 0) {
-        const rowByKey = new Map(agreedProcessRows.map((row) => [row.processKey, row]));
-        const nextProcesses = normalizeProcesses(detailStyle.processes).map(
-          (process, index) => {
-            const processKey = String(
-              process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
-            );
-            const row = rowByKey.get(processKey);
-            if (!row) return process;
-            const nextPt = toOptionalPositiveNumber(row.agreedSeconds);
-            const currentPt = toOptionalPositiveNumber(process?.pt);
-            if (nextPt == null) return process;
-            if (currentPt != null && Math.abs(currentPt - nextPt) < 1e-6) return process;
-            ptUpdatedCount += 1;
-            return {
-              ...process,
-              pt: nextPt,
-              timeRefQuantity: orderQuantity,
-            };
-          }
-        );
-        if (ptUpdatedCount > 0) {
-          const updatedStyle = await updateStyleById(
-            detailStyle.id,
-            {
-              ...detailStyle,
-              processes: nextProcesses,
-            },
-            {
-              orgId: activeOrgId,
-              ownerOrgId: detailStyle.ownerOrgId ?? detailStyle.customerOrgId ?? null,
-            }
-          );
-          nextStyles = (Array.isArray(styles) ? styles : []).map((style) =>
-            String(style?.id || '') === String(updatedStyle?.id || '')
-              ? updatedStyle
-              : style
-          );
-          nextCards = recalcCardsForStyleProcesses(cards, updatedStyle.id, updatedStyle.processes);
-        }
-      }
-
       const nextTotalSeconds = Math.max(1, Math.round(agreedTotalSeconds));
       const totalStPerPieceSeconds =
         agreedProcessRows.length > 0
@@ -3291,23 +3321,23 @@ const AssignBoard = () => {
           ? agreedProcessRows.reduce((sum, row) => sum + row.agreedPerPieceSeconds, 0)
           : nextTotalSeconds / orderQuantity;
 
-      const operatorProposalPayload = {
-        sentAt: nowIso,
-        sentBy: 'OPERATOR',
+      const agreementSnapshot = {
+        agreedAt: nowIso,
+        agreedBy: 'OPERATOR',
         sourceAssignmentId: assignmentId,
         lineId: detailAssignment?.lineId ?? null,
         quantity: orderQuantity,
         totalStPerPieceSeconds,
-        totalProposedPerPieceSeconds: totalAgreedPerPieceSeconds,
-        totalProposedSeconds: nextTotalSeconds,
+        totalAgreedPerPieceSeconds,
+        totalAgreedSeconds: nextTotalSeconds,
         processes: agreedProcessRows.map((row) => ({
           processKey: row.processKey,
           name: row.processName,
           quantity: row.processQuantity,
           basis: row.basis,
           stSeconds: row.baseSeconds,
-          proposedSeconds: row.agreedSeconds,
-          proposedPerPieceSeconds: row.agreedPerPieceSeconds,
+          agreedSeconds: row.agreedSeconds,
+          agreedPerPieceSeconds: row.agreedPerPieceSeconds,
         })),
       };
       const nextCardsWithAgreement = detailAssignment?.cardId
@@ -3315,7 +3345,7 @@ const AssignBoard = () => {
             String(card?.id) === String(detailAssignment.cardId)
               ? {
                   ...card,
-                  operatorCtProposal: operatorProposalPayload,
+                  ctAgreedSnapshot: agreementSnapshot,
                   pendingCtProposal: null,
                 }
               : card
@@ -3324,9 +3354,13 @@ const AssignBoard = () => {
 
       const nextAssignments = assignments.map((item) => {
         if (String(item?.id) !== assignmentId) return item;
+        const preservedProposalSeconds =
+          toNonNegativeInt(item?.proposalSeconds, 0) > 0
+            ? toNonNegativeInt(item?.proposalSeconds, 0)
+            : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
         const nextItem = {
           ...item,
-          proposalSeconds: nextTotalSeconds,
+          proposalSeconds: preservedProposalSeconds,
           totalSeconds: nextTotalSeconds,
           contractedSeconds: nextTotalSeconds,
           ctStatus: 'AGREED',
@@ -3383,7 +3417,6 @@ const AssignBoard = () => {
       if (nextDays.length > days.length) {
         setDays(nextDays);
       }
-      setStyles(nextStyles);
       setCards(persistedCards);
       setAssignments(persistedAssignments);
       const persistedSnapshot = createPersistSnapshotText(
@@ -3394,12 +3427,7 @@ const AssignBoard = () => {
       if (reflowFailed) {
         showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
       }
-      showNotification(
-        ptUpdatedCount > 0
-          ? `요청 동의 완료. PT(q) ${ptUpdatedCount}개 공정을 함께 갱신했습니다.`
-          : '요청 동의 완료. 해당 작업은 동의 완료 상태로 잠금 처리되었습니다.',
-        'success'
-      );
+      showNotification('요청 동의 완료. 해당 작업은 동의 완료 상태로 잠금 처리되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
     } catch (error) {
@@ -3422,12 +3450,9 @@ const AssignBoard = () => {
     detailProcessRows,
     detailLineRequestByProcess,
     detailOperatorProposalByProcess,
-    detailStyle,
     cards,
-    styles,
     assignments,
     activeOrgId,
-    recalcCardsForStyleProcesses,
     days,
     lineCapacityById,
     holidaySet,
@@ -4132,13 +4157,11 @@ const AssignBoard = () => {
                           <TableRow>
                             <TableCell align="right">#</TableCell>
                             <TableCell>공정</TableCell>
-                            <TableCell align="center">기준</TableCell>
-                            <TableCell align="right">ST(초)</TableCell>
-                            <TableCell align="right">제안 CT(초)</TableCell>
-                            <TableCell align="right">요청 CT(초)</TableCell>
-                            <TableCell align="right">개당 공임</TableCell>
-                            <TableCell align="right">주문 공임</TableCell>
-                            <TableCell align="right">기간(일)</TableCell>
+                            <TableCell align="right">{`PT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`제안 CT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`요청 CT(${detailQuantityLabel})`}</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -4146,7 +4169,42 @@ const AssignBoard = () => {
                             <TableRow key={row.processKey}>
                               <TableCell align="right">{index + 1}</TableCell>
                               <TableCell>{row.processName}</TableCell>
-                              <TableCell align="center">{row.basis === 'NONE' ? '-' : row.basis}</TableCell>
+                              <TableCell align="right">
+                                {row.ptSeconds == null ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    데이터 없음
+                                  </Typography>
+                                ) : (
+                                  <Stack spacing={0.1} alignItems="flex-end">
+                                    <Typography variant="body2">
+                                      {formatNumberWithCommas(row.ptSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </Typography>
+                                    {row.ptIsReferenceFallback && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {`ref q=${formatNumberWithCommas(row.ptReferenceQuantity, {
+                                          fallback: '0',
+                                          maximumFractionDigits: 0,
+                                        })}`}
+                                      </Typography>
+                                    )}
+                                  </Stack>
+                                )}
+                              </TableCell>
+                              <TableCell align="right">
+                                {row.atSeconds == null ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    수집중
+                                  </Typography>
+                                ) : (
+                                  formatNumberWithCommas(row.atSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })
+                                )}
+                              </TableCell>
                               <TableCell align="right">
                                 {formatNumberWithCommas(row.baseSeconds, {
                                   fallback: '0',
@@ -4193,26 +4251,40 @@ const AssignBoard = () => {
                                       maximumFractionDigits: 2,
                                     })}
                               </TableCell>
-                              <TableCell align="right">
-                                {row.perPieceCost == null ? '-' : formatCurrencyDong(row.perPieceCost)}
-                              </TableCell>
-                              <TableCell align="right">
-                                {row.expectedCost == null ? '-' : formatCurrencyDong(row.expectedCost)}
-                              </TableCell>
-                              <TableCell align="right">{formatDaysLabel(row.expectedDays)}</TableCell>
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={7} align="right" sx={{ fontWeight: 700 }}>
-                              합계
+                            <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>
+                              공정 합(한 벌)
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {detailSummary?.expectedCost == null
+                              {detailSummary?.totalBasePerPieceSeconds == null
                                 ? '-'
-                                : formatCurrencyDong(detailSummary.expectedCost)}
+                                : formatNumberWithCommas(detailSummary.totalBasePerPieceSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {formatDaysLabel(detailSummary?.totalDurationDays)}
+                              {detailSummary?.totalRequestedPerPieceSeconds == null
+                                ? '-'
+                                : formatNumberWithCommas(detailSummary.totalRequestedPerPieceSeconds, {
+                                    fallback: '0',
+                                    maximumFractionDigits: 2,
+                                  })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>
+                              {Number.isFinite(
+                                Number(detailPendingLineRequestProposal?.totalProposedPerPieceSeconds)
+                              )
+                                ? formatNumberWithCommas(
+                                    Number(detailPendingLineRequestProposal?.totalProposedPerPieceSeconds),
+                                    {
+                                      fallback: '0',
+                                      maximumFractionDigits: 2,
+                                    }
+                                  )
+                                : '-'}
                             </TableCell>
                           </TableRow>
                         </TableBody>
