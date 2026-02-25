@@ -27,18 +27,51 @@ import {
   fetchStyles as fetchStylesFromApi,
   deleteStyle,
 } from '../../../utils/styleApi';
-import { buildQueryString } from '../../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
+  DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotal,
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
+  resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
-import { Chip } from '@mui/material';
 
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const toOptionalPositiveNumber = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+const resolveFactoryWagePerSecond = (factories = []) => {
+  const sorted = [...(Array.isArray(factories) ? factories : [])].sort(
+    (left, right) => Number(left?.id || 0) - Number(right?.id || 0)
+  );
+  for (const factory of sorted) {
+    const wagePerSecond = toOptionalPositiveNumber(factory?.wagePerSecond);
+    if (wagePerSecond != null) return wagePerSecond;
+  }
+  return null;
+};
+
+const formatCurrencyDong = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return '-';
+  return `${formatNumberWithCommas(Math.round(parsed), {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })} \uB3D9`;
 };
 
 const StyleBoard = () => {
@@ -53,6 +86,7 @@ const StyleBoard = () => {
   const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');
   const [styles, setStyles] = useState([]);
+  const [factoryWagePerSecond, setFactoryWagePerSecond] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
@@ -60,10 +94,17 @@ const StyleBoard = () => {
   const refreshStyles = async () => {
     setLoading(true);
     try {
-      const items = await fetchStylesFromApi({ orgId: activeOrgId });
+      const [items, factories] = await Promise.all([
+        fetchStylesFromApi({ orgId: activeOrgId }),
+        canViewProcessSummary
+          ? requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`)
+          : Promise.resolve([]),
+      ]);
       setStyles(items);
+      setFactoryWagePerSecond(resolveFactoryWagePerSecond(factories));
     } catch (error) {
       setStyles([]);
+      setFactoryWagePerSecond(null);
       showNotification(error?.message || '스타일 목록을 불러오지 못했습니다.', 'error');
     } finally {
       setLoading(false);
@@ -72,7 +113,7 @@ const StyleBoard = () => {
 
   useEffect(() => {
     refreshStyles();
-  }, [activeOrgId]);
+  }, [activeOrgId, canViewProcessSummary]);
 
   const handleRowDoubleClick = (style) => {
     const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
@@ -134,25 +175,45 @@ const StyleBoard = () => {
             ...style,
             totalPT: 0,
             totalAT: 0,
+            totalST: 0,
+            stPerPieceCost: null,
             hasTotalPT: false,
             hasTotalAT: false,
+            hasTotalST: false,
           };
         }
         const processes = normalizeProcesses(style.processes);
         const totalPT = calculateProcessTotal(processes, 'pt');
         const totalAT = calculateProcessTotal(processes, 'at');
-        const totalCT = calculateProcessTotal(processes, 'ct');
+        const totalST = processes.reduce((sum, process) => {
+          const processQuantity = toPositiveInt(process?.quantity, 1);
+          const stPerPieceSeconds = resolveProcessStPerPieceSeconds(
+            process,
+            DEFAULT_TIME_REF_QUANTITY
+          );
+          if (stPerPieceSeconds == null) return sum;
+          return sum + processQuantity * stPerPieceSeconds;
+        }, 0);
+        const hasTotalST = processes.some(
+          (process) =>
+            resolveProcessStPerPieceSeconds(process, DEFAULT_TIME_REF_QUANTITY) != null
+        );
+        const stPerPieceCost =
+          hasTotalST && factoryWagePerSecond != null
+            ? totalST * factoryWagePerSecond
+            : null;
         return {
           ...style,
           totalPT,
           totalAT,
-          totalCT,
+          totalST,
+          stPerPieceCost,
           hasTotalPT: hasAnyProcessTime(processes, 'pt'),
           hasTotalAT: hasAnyProcessTime(processes, 'at'),
-          hasTotalCT: hasAnyProcessTime(processes, 'ct'),
+          hasTotalST,
         };
       }),
-    [canViewProcessSummary, filteredStyles]
+    [canViewProcessSummary, factoryWagePerSecond, filteredStyles]
   );
 
   return (
@@ -176,9 +237,10 @@ const StyleBoard = () => {
                 <TableCell>고객사</TableCell>
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일 코드</TableCell>
-                {canViewProcessSummary ? <TableCell>총 PT</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>총 AT</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>총 CT</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'PT(1,000)'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'AT(1,000)'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'ST(1,000)'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'ST(1,000) 한 벌 가격'}</TableCell> : null}
                 <TableCell>등록일</TableCell>
                 <TableCell align="center">작업</TableCell>
               </TableRow>
@@ -187,7 +249,7 @@ const StyleBoard = () => {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canViewProcessSummary ? 8 : 5}
+                    colSpan={canViewProcessSummary ? 9 : 5}
                     sx={{ textAlign: 'center', color: 'text.secondary' }}
                   >
                     {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
@@ -211,18 +273,11 @@ const StyleBoard = () => {
                     <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
+                    <TableCell>{style.hasTotalST ? formatSeconds(style.totalST) : '-'}</TableCell>
+                  ) : null}
+                  {canViewProcessSummary ? (
                     <TableCell>
-                      {style.hasTotalCT ? (
-                        <Chip
-                          size="small"
-                          label={formatSeconds(style.totalCT)}
-                          color="primary"
-                          variant="outlined"
-                          sx={{ fontWeight: 700 }}
-                        />
-                      ) : (
-                        '-'
-                      )}
+                      {style.stPerPieceCost == null ? '-' : formatCurrencyDong(style.stPerPieceCost)}
                     </TableCell>
                   ) : null}
                   <TableCell>{style.registrationDate || '-'}</TableCell>
@@ -260,3 +315,4 @@ const StyleBoard = () => {
 };
 
 export default StyleBoard;
+

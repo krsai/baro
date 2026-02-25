@@ -3,27 +3,33 @@ import { Box, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
 const statusLabel = {
+  ST: 'ST 기준',
   PT: 'PT 기준',
   AT: 'AT 기준',
   NONE: '기준 없음',
 };
 
 const statusPalette = {
+  ST: { border: '#9FB9F2', text: '#3E5E9A' },
   PT: { border: '#9FB9F2', text: '#3E5E9A' },
   AT: { border: '#9FB9F2', text: '#3E5E9A' },
   NONE: { border: '#E6A8B6', text: '#A34355' },
 };
 
+const hasSt = (card) =>
+  Number(card?.totalSt) > 0;
 const hasPt = (card) =>
   Number(card.totalPt) > 0;
 const hasAt = (card) =>
   Number(card.totalAt) > 0;
 
 const getCardBasis = (card) => {
+  if (hasSt(card)) return 'ST';
   if (hasAt(card)) return 'AT';
   if (hasPt(card)) return 'PT';
 
   const legacyStatus = String(card?.status || '').trim().toUpperCase();
+  if (legacyStatus === 'ST') return 'ST';
   if (legacyStatus === 'AT') return 'AT';
   if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
   return 'NONE';

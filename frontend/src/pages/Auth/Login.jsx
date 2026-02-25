@@ -100,7 +100,7 @@ const Login = () => {
             const orgType = normalizeUpper(org?.type);
             const typeLabel = ORG_TYPE_LABEL_BY_KEY[orgType] || orgType || '\uC870\uC9C1';
 
-            let lineManagerEmails = new Set();
+            let lineManagerLineNamesByEmail = new Map();
             if (orgType === 'MANUFACTURER') {
               const [lineWorkers, lines] = await Promise.all([
                 requestJSON(`/line-workers${buildQueryString({ orgId })}`).catch(() => []),
@@ -109,11 +109,30 @@ const Login = () => {
               const managerEmpIds = new Set(
                 (Array.isArray(lines) ? lines : []).map((l) => l.managerEmployeeId).filter(Boolean)
               );
-              lineManagerEmails = new Set(
-                (Array.isArray(lineWorkers) ? lineWorkers : [])
-                  .filter((w) => managerEmpIds.has(w.id))
-                  .map((w) => String(w.email || '').trim().toLowerCase())
-                  .filter(Boolean)
+              const lineNamesByManagerId = new Map();
+              (Array.isArray(lines) ? lines : []).forEach((line) => {
+                const managerEmployeeId = Number(line?.managerEmployeeId);
+                if (!Number.isFinite(managerEmployeeId) || managerEmployeeId <= 0) return;
+                const lineName = String(line?.name || '').trim();
+                if (!lineName) return;
+                const current = lineNamesByManagerId.get(managerEmployeeId) || [];
+                current.push(lineName);
+                lineNamesByManagerId.set(managerEmployeeId, current);
+              });
+              lineManagerLineNamesByEmail = (Array.isArray(lineWorkers) ? lineWorkers : []).reduce(
+                (map, worker) => {
+                  const workerId = Number(worker?.id);
+                  if (!managerEmpIds.has(workerId)) return map;
+                  const email = String(worker?.email || '').trim().toLowerCase();
+                  if (!email) return map;
+                  const managedLineNames = lineNamesByManagerId.get(workerId) || [];
+                  if (managedLineNames.length === 0) return map;
+                  const existing = map.get(email) || [];
+                  const merged = Array.from(new Set([...existing, ...managedLineNames]));
+                  map.set(email, merged);
+                  return map;
+                },
+                new Map()
               );
             }
 
@@ -124,13 +143,23 @@ const Login = () => {
                 const orgRole = normalizeUpper(membership?.role);
                 const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole];
                 const membershipEmail = String(membership?.email || '').trim().toLowerCase();
+                const managedLineNames =
+                  orgRole === 'WORKER'
+                    ? lineManagerLineNamesByEmail.get(membershipEmail) || []
+                    : [];
                 if (!roleLabel) return null;
                 if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
-                if (orgRole === 'WORKER' && !lineManagerEmails.has(membershipEmail)) return null;
+                if (orgRole === 'WORKER' && managedLineNames.length === 0) return null;
 
                 const isLineLeader = orgRole === 'WORKER';
+                const lineLeaderRoleSuffix =
+                  isLineLeader && managedLineNames.length > 0
+                    ? `(라인장:${managedLineNames.join(', ')})`
+                    : isLineLeader
+                      ? '(라인장)'
+                      : '';
                 const roleLabelWithLineLeader = isLineLeader
-                  ? `${roleLabel}(\uB77C\uC778\uC7A5)`
+                  ? `${roleLabel}${lineLeaderRoleSuffix}`
                   : roleLabel;
                 return {
                   key: `ORG_${orgId}_${membership?.id}`,
@@ -145,6 +174,7 @@ const Login = () => {
                   employeeName: `${org?.name || '\uC870\uC9C1'} ${roleLabel} \uD14C\uC2A4\uD2B8`,
                   email: membership?.email || '',
                   isLineLeader,
+                  managedLineNames,
                   lineLeaderStartAt: isLineLeader ? lineLeaderStartAt : null,
                   lineLeaderEndAt: null,
                 };
@@ -152,15 +182,7 @@ const Login = () => {
               .filter(Boolean)
               .sort((a, b) => sortRoleOrder(a.orgRole) - sortRoleOrder(b.orgRole));
 
-            const profiles = [];
-            let hasLineLeaderProfile = false;
-            sortedProfiles.forEach((profile) => {
-              if (profile.orgRole === 'WORKER') {
-                if (hasLineLeaderProfile) return;
-                hasLineLeaderProfile = true;
-              }
-              profiles.push(profile);
-            });
+            const profiles = sortedProfiles;
 
             return { org, orgType, typeLabel, profiles };
           })

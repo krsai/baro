@@ -48,7 +48,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
-import { buildQueryString, requestJSON } from '../utils/apiClient';
+import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath } from '../utils/accessControl';
 import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
@@ -442,6 +442,7 @@ const MainLayout = () => {
 
     // If we are closing the currently active tab, route using recent tab history.
     if (currentPath === tabIdToClose) {
+      cancelAllTrackedRequests('close_active_tab');
       const remainingTabById = new Map(remainingTabs.map((tab) => [tab.id, tab]));
       const recentFallbackId = recentTabHistoryRef.current.find((tabId) =>
         remainingTabById.has(tabId)

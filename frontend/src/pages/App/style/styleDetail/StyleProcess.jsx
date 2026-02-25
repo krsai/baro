@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -27,19 +27,18 @@ import EditIcon from '@mui/icons-material/Edit';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
+  AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
-  calculateProcessTotalForOrderQuantity,
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcess,
   normalizeProcesses,
   parseOptionalSecondsInput,
-  resolveProcessAtTotalSecondsForOrderQuantity,
   resolveProcessActualTime,
-  resolveProcessStTotalSecondsForOrderQuantity,
+  resolveProcessAtPerPieceSeconds,
+  resolveProcessAtReliability,
+  resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
-
-const PER_JOB_ORDER_QUANTITY = 1;
 
 const createEmptyDraft = () => ({
   process: null,
@@ -61,10 +60,44 @@ const roundToScale = (value, digits = 4) => {
   return Math.round(parsed * factor) / factor;
 };
 
+const toOptionalSeconds = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed < 0 ? 0 : parsed;
+};
+
 const toDraftNumberText = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '';
   return String(roundToScale(parsed, 4));
+};
+
+const AT_RELIABILITY_COLOR = {
+  [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
+  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
+  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
+  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
+  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+};
+
+const AT_RELIABILITY_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': {
+    px: 0.75,
+    fontSize: '0.65rem',
+    lineHeight: 1.1,
+  },
+};
+
+const resolveAtReliabilityColor = (reliability) =>
+  AT_RELIABILITY_COLOR[reliability?.status] ||
+  AT_RELIABILITY_COLOR[AT_RELIABILITY_STATUS.COLLECTING];
+
+const resolveAtReliabilityPercentLabel = (reliability) => {
+  const percent = Number(reliability?.percent);
+  if (!Number.isFinite(percent)) return '0%';
+  return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
 
 const normalizeProcessOption = (item) => {
@@ -257,35 +290,44 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(createEmptyDraft);
   const [editError, setEditError] = useState('');
+  const displayOrderQuantity = useMemo(
+    () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
+    [timeRefQuantity]
+  );
 
   const totalPT = useMemo(
-    () =>
-      calculateProcessTotalForOrderQuantity(
-        safeProcesses,
-        'pt',
-        PER_JOB_ORDER_QUANTITY
-      ),
-    [safeProcesses]
+    () => {
+      return safeProcesses.reduce((acc, process) => {
+        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const ptPerPiece = toOptionalSeconds(process?.pt);
+        if (ptPerPiece == null) return acc;
+        return acc + processQuantity * ptPerPiece;
+      }, 0);
+    },
+    [safeProcesses, displayOrderQuantity]
   );
   const totalAT = useMemo(
-    () =>
-      calculateProcessTotalForOrderQuantity(
-        safeProcesses,
-        'at',
-        PER_JOB_ORDER_QUANTITY
-      ),
-    [safeProcesses]
+    () => {
+      return safeProcesses.reduce((acc, process) => {
+        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const atPerPiece = resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
+        if (atPerPiece == null) return acc;
+        return acc + processQuantity * atPerPiece;
+      }, 0);
+    },
+    [safeProcesses, displayOrderQuantity]
   );
   const totalST = useMemo(
     () =>
       safeProcesses.reduce((acc, process) => {
-        const value = resolveProcessStTotalSecondsForOrderQuantity(
+        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const value = resolveProcessStPerPieceSeconds(
           process,
-          PER_JOB_ORDER_QUANTITY
+          displayOrderQuantity
         );
-        return value == null ? acc : acc + value;
+        return value == null ? acc : acc + processQuantity * value;
       }, 0),
-    [safeProcesses]
+    [safeProcesses, displayOrderQuantity]
   );
   const hasPT = useMemo(() => hasAnyProcessTime(safeProcesses, 'pt'), [safeProcesses]);
   const hasAT = useMemo(() => hasAnyProcessTime(safeProcesses, 'at'), [safeProcesses]);
@@ -293,19 +335,16 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     () =>
       safeProcesses.some(
         (process) =>
-          resolveProcessStTotalSecondsForOrderQuantity(
+          resolveProcessStPerPieceSeconds(
             process,
-            PER_JOB_ORDER_QUANTITY
+            displayOrderQuantity
           ) != null
       ),
-    [safeProcesses]
+    [safeProcesses, displayOrderQuantity]
   );
   const timeRefQuantityLabel = useMemo(
-    () =>
-      toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY).toLocaleString(
-        'ko-KR'
-      ),
-    [timeRefQuantity]
+    () => displayOrderQuantity.toLocaleString('ko-KR'),
+    [displayOrderQuantity]
   );
 
   const addDisabledIdentitySet = useMemo(() => {
@@ -487,16 +526,20 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
       ? null
-      : resolveProcessAtTotalSecondsForOrderQuantity(
+      : resolveProcessAtPerPieceSeconds(
           addPreviewProcess,
-          PER_JOB_ORDER_QUANTITY
+          displayOrderQuantity
         );
+  const addPreviewAtReliability =
+    addPreviewProcess == null
+      ? { status: AT_RELIABILITY_STATUS.COLLECTING }
+      : resolveProcessAtReliability(addPreviewProcess, displayOrderQuantity);
   const addPreviewStTotalSeconds =
     addPreviewProcess == null
       ? null
-      : resolveProcessStTotalSecondsForOrderQuantity(
+      : resolveProcessStPerPieceSeconds(
           addPreviewProcess,
-          PER_JOB_ORDER_QUANTITY
+          displayOrderQuantity
         );
 
   return (
@@ -637,7 +680,18 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                           />
                         </TableCell>
                         <TableCell align="right">
-                          {formatSeconds(addPreviewAtTotalSeconds)}
+                          <Stack spacing={0.25} alignItems="flex-end">
+                            <Typography variant="body2">
+                              {formatSeconds(addPreviewAtTotalSeconds)}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              color={resolveAtReliabilityColor(addPreviewAtReliability)}
+                              label={resolveAtReliabilityPercentLabel(addPreviewAtReliability)}
+                              sx={AT_RELIABILITY_CHIP_SX}
+                            />
+                          </Stack>
                         </TableCell>
                         <TableCell align="right">
                           <Stack
@@ -716,20 +770,20 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                               ? buildProcessPayload(editDraft, process, timeRefQuantity)
                               : process;
                             const previewPtTotalSeconds =
-                              calculateProcessTotalForOrderQuantity(
-                                [previewProcess],
-                                'pt',
-                                PER_JOB_ORDER_QUANTITY
-                              ) || null;
+                              toOptionalSeconds(previewProcess?.pt);
                             const previewAtTotalSeconds =
-                              resolveProcessAtTotalSecondsForOrderQuantity(
+                              resolveProcessAtPerPieceSeconds(
                                 previewProcess,
-                                PER_JOB_ORDER_QUANTITY
+                                displayOrderQuantity
                               );
+                            const previewAtReliability = resolveProcessAtReliability(
+                              previewProcess,
+                              displayOrderQuantity
+                            );
                             const previewStTotalSeconds =
-                              resolveProcessStTotalSecondsForOrderQuantity(
+                              resolveProcessStPerPieceSeconds(
                                 previewProcess,
-                                PER_JOB_ORDER_QUANTITY
+                                displayOrderQuantity
                               );
 
                             return (
@@ -806,7 +860,20 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                     )}
                                   </TableCell>
 
-                                  <TableCell align="right">{formatSeconds(previewAtTotalSeconds)}</TableCell>
+                                  <TableCell align="right">
+                                    <Stack spacing={0.25} alignItems="flex-end">
+                                      <Typography variant="body2">
+                                        {formatSeconds(previewAtTotalSeconds)}
+                                      </Typography>
+                                      <Chip
+                                        size="small"
+                                        variant="outlined"
+                                        color={resolveAtReliabilityColor(previewAtReliability)}
+                                        label={resolveAtReliabilityPercentLabel(previewAtReliability)}
+                                        sx={AT_RELIABILITY_CHIP_SX}
+                                      />
+                                    </Stack>
+                                  </TableCell>
                                   <TableCell align="right">
                                     {isEditing ? (
                                       <Stack
@@ -914,3 +981,4 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
 };
 
 export default StyleProcess;
+

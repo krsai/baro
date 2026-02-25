@@ -11,8 +11,10 @@ const inFlightGetRequests = new Map();
 
 const networkLoadingListeners = new Set();
 const activeNetworkRequestIds = new Set();
+const trackedRequestAbortControllers = new Map();
 let networkRequestSequence = 0;
 let networkLoadingStartedAt = null;
+const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
 
 export const setRequestContext = (next = {}) => {
   const normalizedEmail =
@@ -51,12 +53,31 @@ const beginTrackedRequest = () => {
 };
 
 const endTrackedRequest = (requestId) => {
+  trackedRequestAbortControllers.delete(requestId);
   if (!activeNetworkRequestIds.has(requestId)) return;
   activeNetworkRequestIds.delete(requestId);
   if (activeNetworkRequestIds.size === 0) {
     networkLoadingStartedAt = null;
   }
   emitNetworkLoadingChange();
+};
+
+export const cancelAllTrackedRequests = (reason = 'cancelled') => {
+  trackedRequestAbortControllers.forEach((controller) => {
+    try {
+      if (!controller?.signal?.aborted) {
+        controller.abort(reason);
+      }
+    } catch (_error) {
+      // ignore abort failures
+    }
+  });
+  trackedRequestAbortControllers.clear();
+  if (activeNetworkRequestIds.size > 0) {
+    activeNetworkRequestIds.clear();
+    networkLoadingStartedAt = null;
+    emitNetworkLoadingChange();
+  }
 };
 
 export const subscribeNetworkLoading = (listener) => {
@@ -116,6 +137,7 @@ export const requestJSON = async (path, options = {}) => {
     skipCache = false,
     forceRefresh = false,
     cacheTtlMs = DEFAULT_GET_CACHE_TTL_MS,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     ...requestOptions
   } = options || {};
   const method = String(requestOptions.method || 'GET')
@@ -154,11 +176,42 @@ export const requestJSON = async (path, options = {}) => {
 
   const execute = async () => {
     const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
+    const timeoutMsRaw = Number(requestTimeoutMs);
+    const timeoutMs =
+      Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0
+        ? Math.trunc(timeoutMsRaw)
+        : DEFAULT_REQUEST_TIMEOUT_MS;
+    const mergedAbortController = new AbortController();
+    let timeoutId = null;
+    let onExternalAbort = null;
+
+    if (requestOptions.signal) {
+      if (requestOptions.signal.aborted) {
+        mergedAbortController.abort(requestOptions.signal.reason);
+      } else {
+        onExternalAbort = () => {
+          mergedAbortController.abort(requestOptions.signal.reason);
+        };
+        requestOptions.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
+
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        if (!mergedAbortController.signal.aborted) {
+          mergedAbortController.abort('request_timeout');
+        }
+      }, timeoutMs);
+    }
+
+    if (trackedRequestId !== null) {
+      trackedRequestAbortControllers.set(trackedRequestId, mergedAbortController);
+    }
 
     // When the caller provides an AbortSignal (e.g. from a component's useEffect cleanup),
     // immediately clear the tracked request so the loading overlay disappears on navigation.
-    if (trackedRequestId !== null && requestOptions.signal) {
-      requestOptions.signal.addEventListener(
+    if (trackedRequestId !== null) {
+      mergedAbortController.signal.addEventListener(
         'abort',
         () => endTrackedRequest(trackedRequestId),
         { once: true },
@@ -176,6 +229,7 @@ export const requestJSON = async (path, options = {}) => {
 
       const response = await fetch(`${API_BASE}${path}`, {
         ...requestOptions,
+        signal: mergedAbortController.signal,
         headers,
       });
       const raw = await response.text();
@@ -203,7 +257,20 @@ export const requestJSON = async (path, options = {}) => {
       }
 
       return data;
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw createHttpError('request cancelled', 499, {
+          reason: mergedAbortController.signal?.reason || null,
+        });
+      }
+      throw error;
     } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      if (requestOptions.signal && onExternalAbort) {
+        requestOptions.signal.removeEventListener('abort', onExternalAbort);
+      }
       if (trackedRequestId !== null) {
         endTrackedRequest(trackedRequestId);
       }

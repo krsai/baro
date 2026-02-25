@@ -488,6 +488,8 @@ Organization (MANUFACTURER | BRAND)
 - ST는 CT 합의 결과로 자동 갱신되지 않는다.
 - CT는 카드 단위 스냅샷이므로 `ctVersion`, `ctUpdatedAt` 별도 필드/전용 UI를 두지 않는다.
 - 서버 시작 시 DB 연결 재시도(`STARTUP_DB_MAX_RETRIES`, `STARTUP_DB_RETRY_DELAY_MS`)를 추가했다.
+- ST 관리 정책은 **최신값 유지(덮어쓰기)** 로 확정한다. 제안 송부 시 최신 ST(`Style.processes[].ct`, `stManual=true`)를 갱신하며, ST 변경 이력/버전은 별도 저장하지 않는다.
+- 라인장 작업 계획 협의 화면의 `완료 처리` 기능(UI/클라이언트 로직)은 제거하고, 해당 화면은 CT 협의에만 집중한다.
 
 ## 문서 정합성 교정 우선본 (2026-02-23)
 

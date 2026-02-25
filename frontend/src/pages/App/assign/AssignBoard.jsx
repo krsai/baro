@@ -38,10 +38,12 @@ import {
   loadHolidays,
 } from '../../../utils/localData';
 import {
+  AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
+  resolveProcessAtReliability,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
@@ -100,6 +102,29 @@ const formatDaysLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}일`;
+};
+const AT_RELIABILITY_COLOR = {
+  [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
+  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
+  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
+  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
+  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+};
+const AT_RELIABILITY_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': {
+    px: 0.75,
+    fontSize: '0.65rem',
+    lineHeight: 1.1,
+  },
+};
+const resolveAtReliabilityColor = (reliability) =>
+  AT_RELIABILITY_COLOR[reliability?.status] ||
+  AT_RELIABILITY_COLOR[AT_RELIABILITY_STATUS.COLLECTING];
+const resolveAtReliabilityPercentLabel = (reliability) => {
+  const percent = Number(reliability?.percent);
+  if (!Number.isFinite(percent)) return '0%';
+  return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
 const calcDivergencePercent = (current, base) => {
   const currentValue = Number(current);
@@ -246,6 +271,7 @@ const buildAssignmentLayoutSignature = (assignments = []) =>
 const BASIS_COLORS = {
   // AT/PT 모두 CT 기준 색으로 통일 (스케줄링 내부 구분은 유지)
   CT: { color: '#DCE9FF', stripe: '#9FB9F2' },
+  ST: { color: '#DCE9FF', stripe: '#9FB9F2' },
   PT: { color: '#DCE9FF', stripe: '#9FB9F2' },
   AT: { color: '#DCE9FF', stripe: '#9FB9F2' },
   NONE: { color: '#F7D8E0', stripe: '#E6A8B6' },
@@ -417,6 +443,17 @@ const mergeFactorySeconds = (first = [], second = []) => {
 
 const getTotalForOrderQuantity = (processes, field, orderQuantity) =>
   calculateProcessTotalForOrderQuantity(processes, field, orderQuantity);
+const getTotalStForOrderQuantity = (processes, orderQuantity) =>
+  normalizeProcesses(processes).reduce((sum, process) => {
+    const processQuantity = toPositiveInt(process?.quantity, 1);
+    const stSeed = resolveProcessStSeedSeconds({
+      process,
+      orderQuantity,
+    });
+    const stPerPiece = toOptionalPositiveNumber(stSeed?.seconds);
+    if (stPerPiece == null) return sum;
+    return sum + processQuantity * stPerPiece * orderQuantity;
+  }, 0);
 
 const createCardId = (orderId, styleId, colorId, gender) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}::${normalizeGenderKey(gender)}`;
@@ -449,9 +486,11 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
 
     const mergedTotalPt = (existing.totalPt ?? 0) + (nextCard.totalPt ?? 0);
     const mergedTotalAt = (existing.totalAt ?? 0) + (nextCard.totalAt ?? 0);
-    const mergedHasAt = mergedTotalAt > 0 || existing.status === 'AT' || nextCard.status === 'AT';
+    const mergedTotalSt = (existing.totalSt ?? 0) + (nextCard.totalSt ?? 0);
     const mergedHasPt = mergedTotalPt > 0;
-    const mergedStatus = mergedHasAt ? 'AT' : mergedHasPt ? 'PT' : 'NONE';
+    const mergedHasAt = mergedTotalAt > 0;
+    const mergedHasSt = mergedTotalSt > 0;
+    const mergedStatus = mergedHasSt ? 'ST' : mergedHasAt ? 'AT' : mergedHasPt ? 'PT' : 'NONE';
 
     const merged = {
       ...existing,
@@ -459,6 +498,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
       totalSeconds: (existing.totalSeconds ?? 0) + (nextCard.totalSeconds ?? 0),
       totalPt: mergedTotalPt,
       totalAt: mergedTotalAt,
+      totalSt: mergedTotalSt,
       status: mergedStatus,
       dueDate: existing.dueDate || nextCard.dueDate || '',
       processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
@@ -488,10 +528,12 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
         const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
         const totalPt = getTotalForOrderQuantity(processSummary?.processes || [], 'pt', quantity);
         const totalAt = getTotalForOrderQuantity(processSummary?.processes || [], 'at', quantity);
+        const totalSt = getTotalStForOrderQuantity(processSummary?.processes || [], quantity);
+        const hasSt = totalSt > 0;
         const hasAt = totalAt > 0;
         const hasPt = totalPt > 0;
-        const status = hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';
-        const totalSeconds = hasAt ? totalAt : totalPt;
+        const status = hasSt ? 'ST' : hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';
+        const totalSeconds = hasSt ? totalSt : hasAt ? totalAt : totalPt;
 
         upsertCard({
           id: createCardId(
@@ -521,6 +563,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
           totalSeconds,
           totalPt,
           totalAt,
+          totalSt,
           previewUrl: processSummary?.previewUrl ?? '',
         });
       });
@@ -552,17 +595,22 @@ const getDayCapacitySeconds = (dayIndex, lineId, days, lineCapacityById = null) 
 
 const hasPt = (card) => Number(card.totalPt) > 0;
 const hasAt = (card) => Number(card.totalAt) > 0;
+const hasSt = (card) =>
+  Number(card?.totalSt) > 0 || String(card?.status || '').trim().toUpperCase() === 'ST';
 
 const getCardBasis = (card) => {
+  if (hasSt(card)) return 'ST';
   if (!hasPt(card) && !hasAt(card)) return 'NONE';
   if (hasAt(card)) return 'AT';
   return 'PT';
 };
 
-const resolveCardStatus = (card, nextPt, nextAt) => {
+const resolveCardStatus = (_card, nextPt, nextAt, nextSt = null) => {
+  const stPresent = Number(nextSt) > 0;
   const ptPresent = Number(nextPt) > 0;
   const atPresent = Number(nextAt) > 0;
-  if (!ptPresent && !atPresent) return 'NONE';
+  if (!ptPresent && !atPresent && !stPresent) return 'NONE';
+  if (stPresent) return 'ST';
   return atPresent ? 'AT' : 'PT';
 };
 
@@ -602,13 +650,15 @@ const mergeCardData = (target, source) => {
   const mergedTotalSeconds = (target.totalSeconds ?? 0) + (source.totalSeconds ?? 0);
   const mergedTotalPt = (target.totalPt ?? 0) + (source.totalPt ?? 0);
   const mergedTotalAt = (target.totalAt ?? 0) + (source.totalAt ?? 0);
+  const mergedTotalSt = (target.totalSt ?? 0) + (source.totalSt ?? 0);
   return {
     ...target,
     quantity: mergedQuantity,
     totalSeconds: mergedTotalSeconds,
     totalPt: mergedTotalPt,
     totalAt: mergedTotalAt,
-    status: resolveCardStatus(target, mergedTotalPt, mergedTotalAt),
+    totalSt: mergedTotalSt,
+    status: resolveCardStatus(target, mergedTotalPt, mergedTotalAt, mergedTotalSt),
     originOrderId: getCardOriginId(target),
   };
 };
@@ -685,6 +735,9 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
 const resolveCardTotalSeconds = (card) => {
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
+  if (basis === 'ST') {
+    return card.totalSt ?? card.totalSeconds ?? card.totalAt ?? card.totalPt ?? 0;
+  }
   // PT/AT are factory-common values
   if (basis === 'AT') {
     return card.totalAt ?? card.totalSeconds ?? 0;
@@ -1394,6 +1447,7 @@ const AssignBoard = () => {
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
+  const [detailStDraftsByTarget, setDetailStDraftsByTarget] = useState({});
   const [sendingProposal, setSendingProposal] = useState(false);
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
@@ -2240,6 +2294,10 @@ const AssignBoard = () => {
     () => detailDraftsByTarget[detailTargetKey] || {},
     [detailDraftsByTarget, detailTargetKey]
   );
+  const detailStDraftByProcess = useMemo(
+    () => detailStDraftsByTarget[detailTargetKey] || {},
+    [detailStDraftsByTarget, detailTargetKey]
+  );
   const detailOperatorProposalByProcess = useMemo(() => {
     const map = new Map();
     const proposal = detailCard?.operatorCtProposal;
@@ -2368,13 +2426,18 @@ const AssignBoard = () => {
       const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
       const ptInfo = resolveProcessPtInfo(process, orderQuantity);
       const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
+      const atReliability = resolveProcessAtReliability(process, orderQuantity);
       const operatorProposal = detailOperatorProposalByProcess.get(processKey) ?? null;
-      const stSeedInfo = resolveProcessStSeedSeconds({
+      const baseStSeedInfo = resolveProcessStSeedSeconds({
         process,
         orderQuantity,
         proposalStSeconds: operatorProposal?.stSeconds ?? null,
       });
-      const baseSeconds = stSeedInfo.seconds;
+      const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
+      const baseSeconds = stDraftSeconds ?? baseStSeedInfo.seconds;
+      const hasStDraftChange =
+        stDraftSeconds != null &&
+        Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
       const agreedSnapshotEntry = agreedSnapshotByProcess.get(processKey) ?? null;
       const agreedSnapshotSeconds = agreedSnapshotEntry?.agreedSeconds ?? null;
       const agreedSnapshotRequestedSeconds = agreedSnapshotEntry?.requestedSeconds ?? null;
@@ -2405,12 +2468,14 @@ const AssignBoard = () => {
         processKey,
         processName,
         processQuantity,
-        basis: stSeedInfo.source,
+        basis: stDraftSeconds != null ? 'ST' : baseStSeedInfo.source,
         ptSeconds: ptInfo.seconds,
         ptReferenceQuantity: ptInfo.referenceQuantity,
         ptIsReferenceFallback: ptInfo.isReferenceFallback,
         atSeconds,
+        atReliability,
         baseSeconds,
+        hasStDraftChange,
         proposedSeedSeconds,
         requestedSeconds: proposedSeconds,
         proposedSeconds,
@@ -2441,6 +2506,7 @@ const AssignBoard = () => {
     detailCard?.quantity,
     detailStyle?.processes,
     detailDraftByProcess,
+    detailStDraftByProcess,
     detailOperatorProposalByProcess,
     detailLineRequestByProcess,
     detailCard?.ctAgreedSnapshot,
@@ -2565,7 +2631,9 @@ const AssignBoard = () => {
   const detailHasProposalChange = useMemo(
     () =>
       detailProcessRows.some(
-        (row) => Math.abs(Number(row.proposedSeconds) - Number(row.proposedSeedSeconds)) > 1e-6
+        (row) =>
+          row.hasStDraftChange === true ||
+          Math.abs(Number(row.proposedSeconds) - Number(row.proposedSeedSeconds)) > 1e-6
       ),
     [detailProcessRows]
   );
@@ -2627,6 +2695,51 @@ const AssignBoard = () => {
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
     if (!CT_INPUT_REGEX.test(value)) return;
+    setDetailDraftsByTarget((prev) => {
+      const currentForTarget = prev[detailTargetKey] || {};
+      if (value === '') {
+        if (!(processKey in currentForTarget)) return prev;
+        const nextForTarget = { ...currentForTarget };
+        delete nextForTarget[processKey];
+        return {
+          ...prev,
+          [detailTargetKey]: nextForTarget,
+        };
+      }
+      if (currentForTarget[processKey] === value) return prev;
+      return {
+        ...prev,
+        [detailTargetKey]: {
+          ...currentForTarget,
+          [processKey]: value,
+        },
+      };
+    });
+  }, [detailTargetKey]);
+  const handleDetailStDraftInput = useCallback((processKey, value) => {
+    if (!detailTargetKey || !processKey) return;
+    if (!CT_INPUT_REGEX.test(value)) return;
+    setDetailStDraftsByTarget((prev) => {
+      const currentForTarget = prev[detailTargetKey] || {};
+      if (value === '') {
+        if (!(processKey in currentForTarget)) return prev;
+        const nextForTarget = { ...currentForTarget };
+        delete nextForTarget[processKey];
+        return {
+          ...prev,
+          [detailTargetKey]: nextForTarget,
+        };
+      }
+      if (currentForTarget[processKey] === value) return prev;
+      return {
+        ...prev,
+        [detailTargetKey]: {
+          ...currentForTarget,
+          [processKey]: value,
+        },
+      };
+    });
+    // ST 변경 시 제안 CT 초안도 동일 값으로 맞춰 즉시 오퍼 기준에 반영한다.
     setDetailDraftsByTarget((prev) => {
       const currentForTarget = prev[detailTargetKey] || {};
       if (value === '') {
@@ -3013,6 +3126,7 @@ const AssignBoard = () => {
     const totalSeconds = scaleValue(card.totalSeconds, ratio);
     const totalPt = scaleValue(card.totalPt, ratio);
     const totalAt = scaleValue(card.totalAt, ratio);
+    const totalSt = scaleValue(card.totalSt, ratio);
     const originOrderId = getCardOriginId(card) ?? card.id;
     return {
       ...card,
@@ -3022,7 +3136,8 @@ const AssignBoard = () => {
       totalSeconds,
       totalPt,
       totalAt,
-      status: resolveCardStatus(card, totalPt, totalAt),
+      totalSt,
+      status: resolveCardStatus(card, totalPt, totalAt, totalSt),
     };
   }, []);
 
@@ -3116,12 +3231,15 @@ const AssignBoard = () => {
       const quantity = Math.max(1, toPositiveInt(card?.quantity, 1));
       const nextTotalPt = getTotalForOrderQuantity(processes, 'pt', quantity);
       const nextTotalAt = getTotalForOrderQuantity(processes, 'at', quantity);
-      const nextStatus = resolveCardStatus(card, nextTotalPt, nextTotalAt);
-      const nextTotalSeconds = nextStatus === 'AT' ? nextTotalAt : nextTotalPt;
+      const nextTotalSt = getTotalStForOrderQuantity(processes, quantity);
+      const nextStatus = resolveCardStatus(card, nextTotalPt, nextTotalAt, nextTotalSt);
+      const nextTotalSeconds =
+        nextStatus === 'ST' ? nextTotalSt : nextStatus === 'AT' ? nextTotalAt : nextTotalPt;
       return {
         ...card,
         totalPt: nextTotalPt,
         totalAt: nextTotalAt,
+        totalSt: nextTotalSt,
         status: nextStatus,
         totalSeconds: nextTotalSeconds,
       };
@@ -3148,6 +3266,7 @@ const AssignBoard = () => {
     const nowIso = new Date().toISOString();
     let nextCards = cards;
     let nextStyles = styles;
+    let updatedStyleId = null;
     let stUpdatedCount = 0;
 
     try {
@@ -3161,7 +3280,7 @@ const AssignBoard = () => {
           );
           const row = rowByKey.get(processKey);
           if (!row) return process;
-          const nextSt = toOptionalPositiveNumber(row.requestedSeconds);
+          const nextSt = toOptionalPositiveNumber(row.baseSeconds);
           const currentSt =
             process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
           const currentRefQuantity = toPositiveInt(
@@ -3202,6 +3321,7 @@ const AssignBoard = () => {
               ? updatedStyle
               : style
           );
+          updatedStyleId = String(updatedStyle?.id || '').trim() || null;
           nextCards = recalcCardsForStyleProcesses(cards, updatedStyle.id, updatedStyle.processes);
         }
       }
@@ -3223,7 +3343,7 @@ const AssignBoard = () => {
           ptSeconds: row.ptSeconds,
           ptReferenceQuantity: row.ptReferenceQuantity,
           atSeconds: row.atSeconds,
-          stSeconds: row.requestedSeconds,
+          stSeconds: row.baseSeconds,
           proposedSeconds: row.requestedSeconds,
           proposedPerPieceSeconds: row.requestedPerPieceSeconds,
         })),
@@ -3239,44 +3359,116 @@ const AssignBoard = () => {
               : card
           )
         : nextCards;
+      const nextCardById = new Map(
+        nextCardsWithProposal.map((card) => [String(card?.id || ''), card])
+      );
+      const lineReflowStartByLine = new Map();
+      const registerLineForReflow = (lineId, startIndex) => {
+        const key = normalizeKey(lineId);
+        if (!key) return;
+        const safeStartIndex = toNonNegativeInt(startIndex, 0);
+        if (!lineReflowStartByLine.has(key)) {
+          lineReflowStartByLine.set(key, safeStartIndex);
+          return;
+        }
+        lineReflowStartByLine.set(
+          key,
+          Math.min(lineReflowStartByLine.get(key), safeStartIndex)
+        );
+      };
+      const normalizedUpdatedStyleId = String(updatedStyleId || '').trim();
 
       const nextAssignments = assignments.map((item) => {
-        if (String(item?.id) !== assignmentId) return item;
-        const nextItem = {
-          ...item,
-          proposalSeconds: nextTotalSeconds,
-          totalSeconds: nextTotalSeconds,
-          contractedSeconds: null,
-          ctStatus: 'SENT',
-          ctOverride: false,
-          ctSource: 'OPERATOR_PROPOSAL',
-          ctAgreedBy: null,
-          ctAgreedAt: null,
-          ctSentAt: nowIso,
-          ctEscalatedAt: null,
-          ctEscalationReason: null,
-          ctEscalationTargetRole: null,
-          ctEscalationStatus: null,
-          ctNote: `제안 송부 ${nowIso}`,
-        };
-        const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
-        return {
-          ...nextItem,
-          ...range,
-        };
+        if (String(item?.id) === assignmentId) {
+          const nextItem = {
+            ...item,
+            proposalSeconds: nextTotalSeconds,
+            totalSeconds: nextTotalSeconds,
+            contractedSeconds: null,
+            ctStatus: 'SENT',
+            ctOverride: false,
+            ctSource: 'OPERATOR_PROPOSAL',
+            ctAgreedBy: null,
+            ctAgreedAt: null,
+            ctSentAt: nowIso,
+            ctEscalatedAt: null,
+            ctEscalationReason: null,
+            ctEscalationTargetRole: null,
+            ctEscalationStatus: null,
+            ctNote: `제안 송부 ${nowIso}`,
+          };
+          const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
+          registerLineForReflow(
+            nextItem?.lineId,
+            Math.min(
+              toNonNegativeInt(item?.startIndex, 0),
+              toNonNegativeInt(range?.startIndex, 0)
+            )
+          );
+          return {
+            ...nextItem,
+            ...range,
+          };
+        }
+
+        if (normalizedUpdatedStyleId && !isAssignmentLocked(item)) {
+          const linkedCard = nextCardById.get(String(item?.cardId || ''));
+          const linkedStyleId = String(linkedCard?.styleId || '').trim();
+          if (linkedCard && linkedStyleId === normalizedUpdatedStyleId) {
+            const syncedItem = normalizeAssignmentLayout(
+              syncAssignmentFromCard(item, linkedCard, days, lineCapacityById)
+            );
+            const beforeSeconds = toNonNegativeInt(item?.totalSeconds, 0);
+            const afterSeconds = toNonNegativeInt(syncedItem?.totalSeconds, 0);
+            const beforeProposal = toNonNegativeInt(
+              item?.proposalSeconds ?? beforeSeconds,
+              beforeSeconds
+            );
+            const afterProposal = toNonNegativeInt(
+              syncedItem?.proposalSeconds ?? afterSeconds,
+              afterSeconds
+            );
+            if (
+              beforeSeconds !== afterSeconds ||
+              beforeProposal !== afterProposal ||
+              normalizeKey(item?.proposalBasis || item?.basis) !==
+                normalizeKey(syncedItem?.proposalBasis || syncedItem?.basis)
+            ) {
+              registerLineForReflow(
+                syncedItem?.lineId,
+                Math.min(
+                  toNonNegativeInt(item?.startIndex, 0),
+                  toNonNegativeInt(syncedItem?.startIndex, 0)
+                )
+              );
+            }
+            return syncedItem;
+          }
+        }
+        return item;
       });
-      const updatedAssignment = nextAssignments.find(
-        (item) => String(item?.id || '') === assignmentId
+      let normalizedAssignments = nextAssignments.map((item) =>
+        normalizeAssignmentLayout(item)
       );
-      const {
-        assignments: normalizedAssignments,
-        daysForAssignments,
-        reflowFailed,
-      } = reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
-        lineId: detailAssignment?.lineId,
-        reflowStartIndex:
-          updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
-      });
+      let daysForAssignments = days;
+      let reflowFailed = false;
+      for (const [lineId, reflowStartIndex] of lineReflowStartByLine.entries()) {
+        const reflowResult = reflowLineAssignmentsAfterCtUpdate(normalizedAssignments, {
+          lineId,
+          reflowStartIndex,
+        });
+        normalizedAssignments = reflowResult.assignments.map((item) =>
+          normalizeAssignmentLayout(item)
+        );
+        if (Array.isArray(reflowResult.daysForAssignments)) {
+          if (reflowResult.daysForAssignments.length > daysForAssignments.length) {
+            daysForAssignments = reflowResult.daysForAssignments;
+          }
+        }
+        if (reflowResult.reflowFailed) {
+          reflowFailed = true;
+        }
+      }
       const query = buildQueryString({ orgId: activeOrgId });
       const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
@@ -3496,15 +3688,12 @@ const AssignBoard = () => {
       const updatedAssignment = nextAssignments.find(
         (item) => String(item?.id || '') === assignmentId
       );
-      const {
-        assignments: normalizedAssignments,
-        daysForAssignments,
-        reflowFailed,
-      } = reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
-        lineId: detailAssignment?.lineId,
-        reflowStartIndex:
-          updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
-      });
+      const { assignments: normalizedAssignments, daysForAssignments, reflowFailed } =
+        reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
+          lineId: detailAssignment?.lineId,
+          reflowStartIndex:
+            updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
+        });
       const query = buildQueryString({ orgId: activeOrgId });
       const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
@@ -3784,9 +3973,10 @@ const AssignBoard = () => {
       gender: normalizeGenderKey(assignment.gender),
       quantity: assignment.quantity ?? 0,
       totalSeconds: assignment.totalSeconds ?? 0,
-      totalPt: assignment.totalSeconds ?? 0,
-      totalAt: 0,
-      status: basis === 'AT' ? 'AT' : 'PT',
+      totalPt: basis === 'PT' ? assignment.totalSeconds ?? 0 : 0,
+      totalAt: basis === 'AT' ? assignment.totalSeconds ?? 0 : 0,
+      totalSt: basis === 'ST' ? assignment.totalSeconds ?? 0 : 0,
+      status: basis === 'AT' ? 'AT' : basis === 'ST' ? 'ST' : 'PT',
     };
   };
 
@@ -4308,22 +4498,49 @@ const AssignBoard = () => {
                                 )}
                               </TableCell>
                               <TableCell align="right">
-                                {row.atSeconds == null ? (
-                                  <Typography variant="caption" color="text.secondary">
-                                    수집중
-                                  </Typography>
-                                ) : (
-                                  formatNumberWithCommas(row.atSeconds, {
-                                    fallback: '0',
-                                    maximumFractionDigits: 2,
-                                  })
-                                )}
+                                <Stack spacing={0.25} alignItems="flex-end">
+                                  {row.atSeconds != null && (
+                                    <Typography variant="body2">
+                                      {formatNumberWithCommas(row.atSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </Typography>
+                                  )}
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color={resolveAtReliabilityColor(row.atReliability)}
+                                    label={resolveAtReliabilityPercentLabel(row.atReliability)}
+                                    sx={AT_RELIABILITY_CHIP_SX}
+                                  />
+                                </Stack>
                               </TableCell>
                               <TableCell align="right">
-                                {formatNumberWithCommas(row.baseSeconds, {
-                                  fallback: '0',
-                                  maximumFractionDigits: 2,
-                                })}
+                                <TextField
+                                  size="small"
+                                  value={detailStDraftByProcess[row.processKey] ?? ''}
+                                  placeholder={
+                                    row.baseSeconds > 0
+                                      ? String(
+                                          formatNumberWithCommas(row.baseSeconds, {
+                                            fallback: '0',
+                                            maximumFractionDigits: 2,
+                                          })
+                                        )
+                                      : ''
+                                  }
+                                  inputProps={{
+                                    inputMode: 'decimal',
+                                    pattern: '\\d*(\\.\\d{0,2})?',
+                                    style: { textAlign: 'right', width: 80 },
+                                  }}
+                                  onChange={(event) =>
+                                    handleDetailStDraftInput(row.processKey, event.target.value)
+                                  }
+                                  disabled={sendingProposal || detailIsLocked}
+                                  sx={{ width: 90 }}
+                                />
                               </TableCell>
                               <TableCell align="right">
                                 <TextField

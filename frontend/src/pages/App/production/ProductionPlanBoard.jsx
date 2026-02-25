@@ -34,9 +34,11 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import {
+  AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
+  resolveProcessAtReliability,
 } from '../../../utils/processTime';
 import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
@@ -51,6 +53,21 @@ const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
   if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
   return 'PENDING';
+};
+const isAssignmentVersionConflictError = (error) => {
+  const status = Number(error?.status);
+  const message = String(error?.message || '').toLowerCase();
+  return status === 409 && message.includes('assignment version conflict');
+};
+const resolveBoardSaveErrorMessage = (error, fallbackMessage) => {
+  if (isAssignmentVersionConflictError(error)) {
+    return '다른 사용자가 먼저 수정했습니다. 최신 상태를 반영했어요. 다시 시도해 주세요.';
+  }
+  const raw = String(error?.message || '').trim();
+  if (raw.toLowerCase().includes('assignment version conflict')) {
+    return '다른 사용자가 먼저 수정했습니다. 최신 상태를 반영했어요. 다시 시도해 주세요.';
+  }
+  return raw || fallbackMessage;
 };
 
 const toNonNegativeInt = (value, fallback = 0) => {
@@ -103,6 +120,29 @@ const toOptionalPositiveNumber = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+};
+const AT_RELIABILITY_COLOR = {
+  [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
+  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
+  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
+  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
+  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+};
+const AT_RELIABILITY_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': {
+    px: 0.75,
+    fontSize: '0.65rem',
+    lineHeight: 1.1,
+  },
+};
+const resolveAtReliabilityColor = (reliability) =>
+  AT_RELIABILITY_COLOR[reliability?.status] ||
+  AT_RELIABILITY_COLOR[AT_RELIABILITY_STATUS.COLLECTING];
+const resolveAtReliabilityPercentLabel = (reliability) => {
+  const percent = Number(reliability?.percent);
+  if (!Number.isFinite(percent)) return '0%';
+  return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
 const resolveCtUnitCost = (seconds, wagePerSecond) => {
   const resolvedSeconds = Number(seconds);
@@ -304,10 +344,7 @@ const ProductionPlanBoard = () => {
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
-  const [completionDialog, setCompletionDialog] = useState(null); // { assignment }
   const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
-  const [finalQuantityDraft, setFinalQuantityDraft] = useState('');
-  const [completionSaving, setCompletionSaving] = useState(false);
   const [cards, setCards] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [lines, setLines] = useState([]);
@@ -817,6 +854,7 @@ const ProductionPlanBoard = () => {
         const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
         const ptInfo = resolveProcessPtInfo(process, orderQuantity);
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
+        const atReliability = resolveProcessAtReliability(process, orderQuantity);
         const operatorProposal = operatorProposalByProcess.get(processKey) ?? null;
         const stSeedInfo = resolveProcessStSeedSeconds({
           process,
@@ -882,6 +920,7 @@ const ProductionPlanBoard = () => {
           baseSeconds,
           basePerPieceSeconds,
           atSeconds,
+          atReliability,
           atPerPieceSeconds,
           atVsBasePercent,
           needsStReview,
@@ -1117,18 +1156,75 @@ const ProductionPlanBoard = () => {
     };
   }, [activeOrgId, lineQuery]);
 
+  const refreshBoardState = useCallback(async () => {
+    const query = buildQueryString({ orgId: activeOrgId });
+    const boardState = await requestJSON('/assignment-board-state' + query, {
+      forceRefresh: true,
+    }).catch(() => null);
+    if (!boardState) return false;
+
+    const nextCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+    const nextAssignments = Array.isArray(boardState?.assignments)
+      ? boardState.assignments
+      : [];
+    const assignmentIds = Array.from(
+      new Set(
+        nextAssignments
+          .map((item) => String(item?.id || '').trim())
+          .filter(Boolean)
+      )
+    );
+    const progressRows =
+      assignmentIds.length > 0
+        ? await requestJSON(
+            '/assignment-plan-progress' +
+              buildQueryString({
+                orgId: activeOrgId,
+                ids: assignmentIds.join(','),
+              }),
+            { forceRefresh: true }
+          ).catch(() => [])
+        : [];
+    const progressMap = buildAssignmentProgressMap(progressRows);
+    setCards(nextCards);
+    setAssignments(nextAssignments);
+    setAssignmentProgressById(progressMap);
+    setSelectedAssignmentId((prev) => {
+      if (!prev) return nextAssignments[0]?.id ? String(nextAssignments[0].id) : '';
+      const exists = nextAssignments.some((item) => String(item?.id) === String(prev));
+      return exists ? prev : nextAssignments[0]?.id ? String(nextAssignments[0].id) : '';
+    });
+    return true;
+  }, [activeOrgId]);
+
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
       const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/assignment-board-state' + query, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
-      });
-      setCards(nextCards);
-      setAssignments(nextAssignments);
+      try {
+        const boardState = await requestJSON('/assignment-board-state' + query, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
+        });
+        const persistedCards = Array.isArray(boardState?.cards) ? boardState.cards : nextCards;
+        const persistedAssignments = Array.isArray(boardState?.assignments)
+          ? boardState.assignments
+          : nextAssignments;
+        setCards(persistedCards);
+        setAssignments(persistedAssignments);
+      } catch (error) {
+        if (isAssignmentVersionConflictError(error)) {
+          await refreshBoardState();
+          const conflictError = new Error(
+            '다른 사용자가 먼저 수정했습니다. 최신 상태를 반영했어요. 다시 시도해 주세요.'
+          );
+          conflictError.status = 409;
+          throw conflictError;
+        }
+        throw error;
+      }
     },
-    [activeOrgId, cards]
+    [activeOrgId, cards, refreshBoardState]
   );
 
   const handleAgree = async (assignmentId) => {
@@ -1251,7 +1347,10 @@ const ProductionPlanBoard = () => {
       setIsPanelOpen(false);
       showNotification('작업 계획이 동의 처리되었습니다.', 'success');
     } catch (error) {
-      showNotification(error?.message || '작업 계획 동의 처리에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '작업 계획 동의 처리에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setSavingAssignmentId(null);
     }
@@ -1404,82 +1503,12 @@ const ProductionPlanBoard = () => {
         'info'
       );
     } catch (error) {
-      showNotification(error?.message || '변경 요청 처리에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '변경 요청 처리에 실패했습니다.'),
+        'error'
+      );
     } finally {
       setSavingAssignmentId(null);
-    }
-  };
-
-  const handleOpenCompletionDialog = (assignment) => {
-    setCompletionDialog({ assignment });
-    setFinalQuantityDraft(String(assignment?.quantity ?? ''));
-  };
-
-  const handleCloseCompletionDialog = () => {
-    if (completionSaving) return;
-    setCompletionDialog(null);
-    setFinalQuantityDraft('');
-  };
-
-  const handleConfirmCompletion = async () => {
-    if (!completionDialog?.assignment || completionSaving) return;
-    const assignment = completionDialog.assignment;
-    const finalQty = Number.parseInt(finalQuantityDraft, 10);
-    if (!Number.isFinite(finalQty) || finalQty < 0) {
-      showNotification('최종 수량을 올바르게 입력해주세요.', 'error');
-      return;
-    }
-
-    setCompletionSaving(true);
-    try {
-      const query = buildQueryString({ orgId: activeOrgId });
-      const result = await requestJSON(`/assignment-plans/${encodeURIComponent(String(assignment.id))}/complete${query}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ finalQuantity: finalQty }),
-      });
-
-      // 보드 상태도 동기화
-      const nextAssignments = assignments.map((item) =>
-        String(item?.id) !== String(assignment.id)
-          ? item
-          : { ...item, isCompleted: true, finalQuantity: finalQty }
-      );
-      await persistBoardState(nextAssignments);
-      setAssignmentProgressById((prev) => {
-        const next = new Map(prev);
-        const accumulatedQuantity = Math.max(
-          0,
-          Number(result?.accumulatedQuantity) || 0
-        );
-        const baselineQuantity = finalQty > 0 ? finalQty : null;
-        const overflowQuantity =
-          baselineQuantity == null ? 0 : Math.max(0, accumulatedQuantity - baselineQuantity);
-        const progressPercent =
-          baselineQuantity == null ? null : (accumulatedQuantity / baselineQuantity) * 100;
-        next.set(String(assignment.id), {
-          baselineQuantity,
-          producedQuantity: accumulatedQuantity,
-          overflowQuantity,
-          progressPercent,
-        });
-        return next;
-      });
-
-      if (result?.isOverflow) {
-        showNotification(
-          `완료 처리됨. 누적 작업 수량(${result.accumulatedQuantity}개)이 최종 수량(${finalQty}개)을 초과합니다.`,
-          'warning'
-        );
-      } else {
-        showNotification(`완료 처리되었습니다. (최종 수량: ${finalQty}개)`, 'success');
-      }
-      setCompletionDialog(null);
-      setFinalQuantityDraft('');
-    } catch (error) {
-      showNotification(error?.message || '완료 처리에 실패했습니다.', 'error');
-    } finally {
-      setCompletionSaving(false);
     }
   };
 
@@ -1503,7 +1532,7 @@ const ProductionPlanBoard = () => {
       await persistBoardState(assignments, nextCards);
       showNotification('차이 카드가 삭제되었습니다.', 'success');
     } catch (error) {
-      showNotification(error?.message || '삭제에 실패했습니다.', 'error');
+      showNotification(resolveBoardSaveErrorMessage(error, '삭제에 실패했습니다.'), 'error');
     }
   };
 
@@ -1581,7 +1610,7 @@ const ProductionPlanBoard = () => {
       showNotification('라인 배정이 완료되었습니다.', 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '배정에 실패했습니다.', 'error');
+      showNotification(resolveBoardSaveErrorMessage(error, '배정에 실패했습니다.'), 'error');
     }
   };
 
@@ -1616,7 +1645,10 @@ const ProductionPlanBoard = () => {
       showNotification(`수량 ${deltaCard.quantity}개가 기존 배정에 흡수되었습니다.`, 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '수량 흡수에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '수량 흡수에 실패했습니다.'),
+        'error'
+      );
     }
   };
 
@@ -1639,7 +1671,7 @@ const ProductionPlanBoard = () => {
         showNotification('수량이 0이 되어 배정이 삭제되었습니다.', 'info');
         setDeltaDialog(null);
       } catch (error) {
-        showNotification(error?.message || '처리에 실패했습니다.', 'error');
+        showNotification(resolveBoardSaveErrorMessage(error, '처리에 실패했습니다.'), 'error');
       }
       return;
     }
@@ -1664,7 +1696,10 @@ const ProductionPlanBoard = () => {
       showNotification(`수량 ${deltaCard.quantity}개가 차감되었습니다.`, 'success');
       setDeltaDialog(null);
     } catch (error) {
-      showNotification(error?.message || '수량 차감에 실패했습니다.', 'error');
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '수량 차감에 실패했습니다.'),
+        'error'
+      );
     }
   };
 
@@ -1803,7 +1838,7 @@ const ProductionPlanBoard = () => {
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    CT 동의 완료 - 완료 처리 대상
+                    CT 동의 완료 목록
                   </Typography>
                   <Chip size="small" label={`${agreedAssignments.length}건`} color="success" variant="outlined" />
                 </Box>
@@ -1816,8 +1851,6 @@ const ProductionPlanBoard = () => {
                         <TableCell align="right">배정수량</TableCell>
                         <TableCell>일정</TableCell>
                         <TableCell>진행률</TableCell>
-                        <TableCell align="center">완료</TableCell>
-                        <TableCell align="center">처리</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1893,34 +1926,6 @@ const ProductionPlanBoard = () => {
                                   </Typography>
                                 )}
                               </Stack>
-                            )}
-                          </TableCell>
-                          <TableCell align="center">
-                            {assignment.isCompleted ? (
-                              <Chip size="small" label={`완료 ${assignment.finalQuantity ?? '-'}개`} color="success" />
-                            ) : (
-                              <Chip size="small" label="미완료" variant="outlined" />
-                            )}
-                          </TableCell>
-                          <TableCell align="center">
-                            {assignment.isCompleted ? (
-                              <Button
-                                size="small"
-                                variant="text"
-                                color="inherit"
-                                onClick={() => handleOpenCompletionDialog(assignment)}
-                              >
-                                재처리
-                              </Button>
-                            ) : (
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                color="success"
-                                onClick={() => handleOpenCompletionDialog(assignment)}
-                              >
-                                완료 처리
-                              </Button>
                             )}
                           </TableCell>
                         </TableRow>
@@ -2544,16 +2549,23 @@ const ProductionPlanBoard = () => {
                                 )}
                               </TableCell>
                               <TableCell align="right">
-                                {row.atSeconds == null ? (
-                                  <Typography variant="caption" color="text.secondary">
-                                    수집중
-                                  </Typography>
-                                ) : (
-                                  formatNumberWithCommas(row.atSeconds, {
-                                    fallback: '0',
-                                    maximumFractionDigits: 2,
-                                  })
-                                )}
+                                <Stack spacing={0.25} alignItems="flex-end">
+                                  {row.atSeconds != null && (
+                                    <Typography variant="body2">
+                                      {formatNumberWithCommas(row.atSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </Typography>
+                                  )}
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color={resolveAtReliabilityColor(row.atReliability)}
+                                    label={resolveAtReliabilityPercentLabel(row.atReliability)}
+                                    sx={AT_RELIABILITY_CHIP_SX}
+                                  />
+                                </Stack>
                               </TableCell>
                               <TableCell align="right">
                                 {formatNumberWithCommas(row.baseSeconds, {
@@ -2756,7 +2768,6 @@ const ProductionPlanBoard = () => {
         </Drawer>
       </Box>
 
-      {/* 완료 처리 Dialog */}
       {/* 차이 카드 액션 Dialog */}
       <Dialog open={Boolean(deltaDialog)} onClose={handleDeltaDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle>
@@ -2882,65 +2893,6 @@ const ProductionPlanBoard = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={Boolean(completionDialog)}
-        onClose={handleCloseCompletionDialog}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>카드 완료 처리</DialogTitle>
-        <DialogContent>
-          {completionDialog?.assignment && (
-            <Stack spacing={1.5} sx={{ pt: 0.5 }}>
-              <Typography variant="body2">
-                <strong>고객:</strong> {completionDialog.assignment.customer || '-'}
-              </Typography>
-              <Typography variant="body2">
-                <strong>스타일:</strong> {completionDialog.assignment.label || '-'}
-                {completionDialog.assignment.colorName ? ` · ${completionDialog.assignment.colorName}` : ''}
-              </Typography>
-              <Typography variant="body2">
-                <strong>배정 수량:</strong>{' '}
-                {formatNumberWithCommas(completionDialog.assignment.quantity, {
-                  fallback: '-',
-                  maximumFractionDigits: 0,
-                })}개
-              </Typography>
-              <TextField
-                label="최종 완성 수량"
-                type="number"
-                size="small"
-                value={finalQuantityDraft}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === '' || (/^\d+$/.test(raw) && Number(raw) >= 0)) {
-                    setFinalQuantityDraft(raw);
-                  }
-                }}
-                inputProps={{ min: 0 }}
-                fullWidth
-                autoFocus
-              />
-              <Alert severity="info" sx={{ py: 0.5 }}>
-                저장 후 실제 작업 기록(WorkRecord) 누적 수량과 비교하여 초과 여부를 안내합니다.
-              </Alert>
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCompletionDialog} disabled={completionSaving}>
-            취소
-          </Button>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={handleConfirmCompletion}
-            disabled={completionSaving || finalQuantityDraft === ''}
-          >
-            {completionSaving ? '저장 중...' : '완료 처리'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </AppPageContainer>
   );
 };
