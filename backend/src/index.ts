@@ -6,6 +6,12 @@ import {
   parseDateKeyParts,
   resolveAtTrainingMonthKey,
 } from "./utils/atTrainingMonthKey";
+import {
+  AT_MONTHLY_A_CLAMP_RATIO,
+  fitAtParamsWithProportionalAllocation,
+  type AtTrainingDayBucket,
+  type AtTrainingDayProcessRow,
+} from "./services/atTraining";
 
 dotenv.config();
 
@@ -298,6 +304,24 @@ const createHttpError = (status: number, message: string) => {
   return error;
 };
 
+const toErrorRecord = (error: unknown): Record<string, unknown> | null =>
+  error && typeof error === "object" ? (error as Record<string, unknown>) : null;
+
+const getErrorStatus = (error: unknown): number | null => {
+  const status = Number(toErrorRecord(error)?.status);
+  return Number.isFinite(status) ? status : null;
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  const message = toErrorRecord(error)?.message;
+  return typeof message === "string" && message.trim() ? message : fallback;
+};
+
+const getErrorCode = (error: unknown): string => {
+  const code = toErrorRecord(error)?.code;
+  return typeof code === "string" ? code : "";
+};
+
 const readRequestHeader = (req: Request, name: string): string => {
   const raw = req.header(name);
   return typeof raw === "string" ? raw.trim() : "";
@@ -454,11 +478,8 @@ const requireOrgRole = async (
   try {
     context = await getRequestAccessContext(req, { allowSuspended });
   } catch (error) {
-    const status = Number((error as any)?.status) || 500;
-    const message =
-      typeof (error as any)?.message === "string"
-        ? (error as any).message
-        : "failed to resolve access context";
+    const status = getErrorStatus(error) ?? 500;
+    const message = getErrorMessage(error, "failed to resolve access context");
     res.status(status).json({ ok: false, error: message });
     return null;
   }
@@ -700,74 +721,6 @@ type StyleAtParams = {
   trainedPeriod: string | null;
 };
 
-type AtMetricObservation = {
-  quantity: number;
-  totalSeconds: number;
-};
-
-type AtTrainingDayProcessRow = {
-  metricKey: string;
-  quantity: number;
-};
-
-type AtTrainingDayBucket = {
-  dayKey: string;
-  order: number;
-  totalSeconds: number;
-  processRows: AtTrainingDayProcessRow[];
-};
-
-type AtAllocatedObservation = {
-  dayKey: string;
-  order: number;
-  metricKey: string;
-  quantity: number;
-  totalSeconds: number;
-};
-
-type WeightedRegressionPoint = {
-  x: number;
-  y: number;
-  weight: number;
-};
-
-const AT_WLS_DETERMINANT_EPSILON = 1e-9;
-const AT_WLS_RESIDUAL_SCALE = 0.35;
-const AT_WLS_MIN_WEIGHT = 1e-4;
-const AT_PROPORTIONAL_MAX_ITERATIONS = toPositiveInt(
-  process.env.AT_PROPORTIONAL_MAX_ITERATIONS,
-  8
-);
-const AT_PROPORTIONAL_MIN_ITERATIONS = toPositiveInt(
-  process.env.AT_PROPORTIONAL_MIN_ITERATIONS,
-  2
-);
-const AT_PROPORTIONAL_CONVERGENCE_EPSILON = (() => {
-  const parsed = Number(process.env.AT_PROPORTIONAL_CONVERGENCE_EPSILON);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.01;
-  return parsed;
-})();
-const AT_TREND_BASE_WEIGHT = (() => {
-  const parsed = Number(process.env.AT_TREND_BASE_WEIGHT);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.25;
-  return parsed;
-})();
-const AT_TREND_STREAK_STEP_WEIGHT = (() => {
-  const parsed = Number(process.env.AT_TREND_STREAK_STEP_WEIGHT);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.12;
-  return parsed;
-})();
-const AT_TREND_MAX_WEIGHT = (() => {
-  const parsed = Number(process.env.AT_TREND_MAX_WEIGHT);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
-  return parsed;
-})();
-const AT_MONTHLY_A_CLAMP_RATIO = (() => {
-  const parsed = Number(process.env.AT_MONTHLY_A_CLAMP_RATIO);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0.15;
-  return Math.min(parsed, 1);
-})();
-
 const toStyleAtParams = (value: any): StyleAtParams | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const a = toOptionalSeconds((value as any).a);
@@ -812,437 +765,6 @@ const isSameStyleAtParams = (
   );
 };
 
-const toAtRegressionPoints = (
-  observations: AtMetricObservation[]
-): WeightedRegressionPoint[] =>
-  observations
-    .map((observation) => {
-      const quantity = Number(observation?.quantity);
-      const totalSeconds = Number(observation?.totalSeconds);
-      if (
-        !Number.isFinite(quantity) ||
-        !Number.isFinite(totalSeconds) ||
-        quantity <= 0 ||
-        totalSeconds <= 0
-      ) {
-        return null;
-      }
-      return {
-        x: quantity,
-        y: totalSeconds,
-        // Larger quantity rows are usually less noisy, but use sqrt to avoid domination.
-        weight: Math.max(1, Math.sqrt(quantity)),
-      };
-    })
-    .filter((point): point is WeightedRegressionPoint => point !== null);
-
-const weightedMeanSecondsPerUnit = (
-  points: WeightedRegressionPoint[]
-): number | null => {
-  let weightedSum = 0;
-  let totalWeight = 0;
-  points.forEach((point) => {
-    if (point.x <= 0 || point.weight <= 0) return;
-    weightedSum += point.weight * (point.y / point.x);
-    totalWeight += point.weight;
-  });
-  if (!Number.isFinite(weightedSum) || totalWeight <= 0) return null;
-  return weightedSum / totalWeight;
-};
-
-const fitWeightedLinearRegression = (
-  points: WeightedRegressionPoint[]
-): { a: number; b: number } | null => {
-  let sw = 0;
-  let sx = 0;
-  let sy = 0;
-  let sxx = 0;
-  let sxy = 0;
-  points.forEach((point) => {
-    const { x, y, weight } = point;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
-    if (x <= 0 || weight <= 0) return;
-    sw += weight;
-    sx += weight * x;
-    sy += weight * y;
-    sxx += weight * x * x;
-    sxy += weight * x * y;
-  });
-  if (sw <= 0 || sxx <= 0) return null;
-  const determinant = sw * sxx - sx * sx;
-  if (Math.abs(determinant) <= AT_WLS_DETERMINANT_EPSILON) return null;
-
-  const a = (sw * sxy - sx * sy) / determinant;
-  const b = (sxx * sy - sx * sxy) / determinant;
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return { a, b };
-};
-
-const fitWeightedSlopeOnly = (points: WeightedRegressionPoint[]): number | null => {
-  let sxx = 0;
-  let sxy = 0;
-  points.forEach((point) => {
-    const { x, y, weight } = point;
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(weight)) return;
-    if (x <= 0 || weight <= 0) return;
-    sxx += weight * x * x;
-    sxy += weight * x * y;
-  });
-  if (sxx <= AT_WLS_DETERMINANT_EPSILON) return null;
-  const slope = sxy / sxx;
-  return Number.isFinite(slope) ? slope : null;
-};
-
-const applyResidualMagnitudeWeights = (
-  points: WeightedRegressionPoint[],
-  model: { a: number; b: number }
-): WeightedRegressionPoint[] =>
-  points.map((point) => {
-    const predicted = model.a * point.x + model.b;
-    const residualRatio = Math.abs(point.y - predicted) / Math.max(1, point.y);
-    const scaled = residualRatio / AT_WLS_RESIDUAL_SCALE;
-    const magnitudeWeight = 1 / (1 + scaled * scaled);
-    return {
-      ...point,
-      weight: Math.max(AT_WLS_MIN_WEIGHT, point.weight * magnitudeWeight),
-    };
-  });
-
-const fitAtParamsFromWeightedPoints = (
-  pointsInput: WeightedRegressionPoint[],
-  fallbackPerPieceSeconds: number | null = null
-): { a: number; b: number } | null => {
-  const fallback = toOptionalSeconds(fallbackPerPieceSeconds);
-  const points = ensureArray(pointsInput).filter(
-    (point): point is WeightedRegressionPoint => {
-      if (!point || typeof point !== "object") return false;
-      const x = Number((point as any).x);
-      const y = Number((point as any).y);
-      const weight = Number((point as any).weight);
-      return (
-        Number.isFinite(x) &&
-        Number.isFinite(y) &&
-        Number.isFinite(weight) &&
-        x > 0 &&
-        y > 0 &&
-        weight > 0
-      );
-    }
-  );
-
-  if (points.length === 0) {
-    return fallback == null ? null : { a: fallback, b: 0 };
-  }
-
-  const basePerPiece = weightedMeanSecondsPerUnit(points);
-  if (points.length < 2) {
-    const a = toOptionalSeconds(basePerPiece ?? fallback);
-    return a == null ? null : { a, b: 0 };
-  }
-
-  const firstFit = fitWeightedLinearRegression(points);
-  const secondPoints =
-    firstFit == null ? points : applyResidualMagnitudeWeights(points, firstFit);
-  const secondFit = fitWeightedLinearRegression(secondPoints) || firstFit;
-
-  let a: number | null = secondFit?.a ?? basePerPiece ?? fallback;
-  let b: number = secondFit?.b ?? 0;
-
-  if (a == null || !Number.isFinite(a) || a < 0 || !Number.isFinite(b)) {
-    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
-    if (slopeOnly != null && slopeOnly >= 0) {
-      a = slopeOnly;
-      b = 0;
-    } else {
-      a = basePerPiece ?? fallback;
-      b = 0;
-    }
-  }
-
-  if (a == null || !Number.isFinite(a) || a < 0) return null;
-  if (!Number.isFinite(b) || b < 0) {
-    const slopeOnly = fitWeightedSlopeOnly(secondPoints);
-    if (slopeOnly != null && slopeOnly >= 0) {
-      a = slopeOnly;
-    }
-    b = 0;
-  }
-
-  const normalizedA = toOptionalSeconds(a);
-  const normalizedB = toOptionalSeconds(b);
-  if (normalizedA == null) return null;
-  return { a: normalizedA, b: normalizedB ?? 0 };
-};
-
-const allocateDaySecondsAcrossProcesses = (
-  day: AtTrainingDayBucket,
-  perPieceByMetricKey: Map<string, number>
-): AtAllocatedObservation[] => {
-  const validRows = ensureArray(day?.processRows)
-    .map((row) => {
-      const quantity = Number(row?.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) return null;
-      const metricKey = String(row?.metricKey || "").trim();
-      if (!metricKey) return null;
-      return { metricKey, quantity };
-    })
-    .filter((row): row is { metricKey: string; quantity: number } => Boolean(row));
-
-  if (validRows.length === 0) return [];
-
-  const withWork = validRows.map((row) => {
-    const perPiece =
-      toOptionalSeconds(perPieceByMetricKey.get(row.metricKey)) ?? 1;
-    const safePerPiece = perPiece > 0 ? perPiece : 1;
-    return {
-      ...row,
-      work: row.quantity * safePerPiece,
-    };
-  });
-
-  let totalWork = withWork.reduce((sum, row) => sum + row.work, 0);
-  if (!Number.isFinite(totalWork) || totalWork <= 0) {
-    totalWork = withWork.reduce((sum, row) => sum + row.quantity, 0);
-    if (!Number.isFinite(totalWork) || totalWork <= 0) return [];
-    return withWork.map((row) => ({
-      dayKey: day.dayKey,
-      order: day.order,
-      metricKey: row.metricKey,
-      quantity: row.quantity,
-      totalSeconds: day.totalSeconds * (row.quantity / totalWork),
-    }));
-  }
-
-  return withWork.map((row) => ({
-    dayKey: day.dayKey,
-    order: day.order,
-    metricKey: row.metricKey,
-    quantity: row.quantity,
-    totalSeconds: day.totalSeconds * (row.work / totalWork),
-  }));
-};
-
-const buildAllocatedObservations = (
-  days: AtTrainingDayBucket[],
-  perPieceByMetricKey: Map<string, number>
-): {
-  observations: AtAllocatedObservation[];
-  observationsByMetric: Map<string, AtMetricObservation[]>;
-} => {
-  const observationsByMetric = new Map<string, AtMetricObservation[]>();
-  const observations: AtAllocatedObservation[] = [];
-
-  ensureArray(days).forEach((day) => {
-    const allocated = allocateDaySecondsAcrossProcesses(day, perPieceByMetricKey);
-    allocated.forEach((row) => {
-      observations.push(row);
-      const current = observationsByMetric.get(row.metricKey) || [];
-      current.push({
-        quantity: row.quantity,
-        totalSeconds: row.totalSeconds,
-      });
-      observationsByMetric.set(row.metricKey, current);
-    });
-  });
-
-  return { observations, observationsByMetric };
-};
-
-const buildDayTrendWeights = (
-  days: AtTrainingDayBucket[],
-  provisionalParamsByMetric: Map<string, { a: number; b: number }>,
-  fallbackPerPieceByMetric: Map<string, number | null>
-): Map<string, number> => {
-  const sortedDays = ensureArray(days)
-    .slice()
-    .sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0));
-
-  const dayWeightByKey = new Map<string, number>();
-  let previousSign = 0;
-  let currentStreak = 0;
-
-  sortedDays.forEach((day) => {
-    const totalSeconds = Math.max(1, Number(day?.totalSeconds) || 0);
-    const predictedTotal = ensureArray(day?.processRows).reduce((sum, row) => {
-      const quantity = Number(row?.quantity);
-      if (!Number.isFinite(quantity) || quantity <= 0) return sum;
-      const metricKey = String(row?.metricKey || "").trim();
-      if (!metricKey) return sum;
-      const fitted = provisionalParamsByMetric.get(metricKey);
-      if (fitted) {
-        return sum + fitted.a * quantity + fitted.b;
-      }
-      const fallbackPerPiece =
-        toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ?? 1;
-      return sum + fallbackPerPiece * quantity;
-    }, 0);
-
-    const residualRatio = (totalSeconds - predictedTotal) / totalSeconds;
-    const magnitudeScaled =
-      Math.abs(residualRatio) / Math.max(AT_WLS_RESIDUAL_SCALE, 1e-6);
-    const magnitudeWeight = 1 / (1 + magnitudeScaled * magnitudeScaled);
-    const sign = residualRatio > 1e-6 ? 1 : residualRatio < -1e-6 ? -1 : 0;
-
-    if (sign === 0) {
-      currentStreak = 0;
-    } else if (sign === previousSign) {
-      currentStreak += 1;
-    } else {
-      currentStreak = 1;
-    }
-    if (sign !== 0) {
-      previousSign = sign;
-    }
-
-    const trendWeight =
-      sign === 0
-        ? AT_TREND_BASE_WEIGHT
-        : Math.min(
-            AT_TREND_MAX_WEIGHT,
-            AT_TREND_BASE_WEIGHT +
-              Math.max(0, currentStreak - 1) * AT_TREND_STREAK_STEP_WEIGHT
-          );
-    const dayWeight = Math.max(
-      AT_WLS_MIN_WEIGHT,
-      Math.max(magnitudeWeight, trendWeight)
-    );
-    dayWeightByKey.set(day.dayKey, dayWeight);
-  });
-
-  return dayWeightByKey;
-};
-
-const fitAtParamsWithProportionalAllocation = (
-  days: AtTrainingDayBucket[],
-  fallbackPerPieceByMetric: Map<string, number | null>
-): {
-  paramsByMetric: Map<string, { a: number; b: number }>;
-  iterationCount: number;
-  converged: boolean;
-} => {
-  const metricKeySet = new Set<string>();
-  ensureArray(days).forEach((day) => {
-    ensureArray(day?.processRows).forEach((row) => {
-      const metricKey = String(row?.metricKey || "").trim();
-      if (metricKey) metricKeySet.add(metricKey);
-    });
-  });
-  fallbackPerPieceByMetric.forEach((_value, metricKey) => {
-    const normalizedKey = String(metricKey || "").trim();
-    if (normalizedKey) metricKeySet.add(normalizedKey);
-  });
-  const metricKeys = Array.from(metricKeySet.values());
-
-  let perPieceByMetricKey = new Map<string, number>();
-  metricKeys.forEach((metricKey) => {
-    const fallback = toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey));
-    perPieceByMetricKey.set(metricKey, fallback ?? 1);
-  });
-
-  let iterationCount = 0;
-  let converged = false;
-  let provisionalParamsByMetric = new Map<string, { a: number; b: number }>();
-
-  for (let iteration = 1; iteration <= AT_PROPORTIONAL_MAX_ITERATIONS; iteration += 1) {
-    const { observationsByMetric } = buildAllocatedObservations(
-      days,
-      perPieceByMetricKey
-    );
-    if (observationsByMetric.size === 0) break;
-
-    const nextPerPieceByMetricKey = new Map(perPieceByMetricKey);
-    const nextParamsByMetric = new Map<string, { a: number; b: number }>();
-    let maxRelativeChange = 0;
-
-    metricKeys.forEach((metricKey) => {
-      const observations = observationsByMetric.get(metricKey) || [];
-      const fallback =
-        toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ??
-        toOptionalSeconds(perPieceByMetricKey.get(metricKey));
-      const fitted = fitAtParamsFromObservations(observations, fallback);
-      if (!fitted) return;
-
-      nextParamsByMetric.set(metricKey, fitted);
-      const previousPerPiece =
-        toOptionalSeconds(perPieceByMetricKey.get(metricKey)) ?? 1;
-      const nextPerPiece = Math.max(AT_WLS_MIN_WEIGHT, fitted.a);
-      nextPerPieceByMetricKey.set(metricKey, nextPerPiece);
-      const relativeChange =
-        Math.abs(nextPerPiece - previousPerPiece) /
-        Math.max(AT_WLS_MIN_WEIGHT, Math.abs(previousPerPiece));
-      if (Number.isFinite(relativeChange)) {
-        maxRelativeChange = Math.max(maxRelativeChange, relativeChange);
-      }
-    });
-
-    iterationCount = iteration;
-    if (nextParamsByMetric.size > 0) {
-      provisionalParamsByMetric = nextParamsByMetric;
-    }
-    perPieceByMetricKey = nextPerPieceByMetricKey;
-
-    if (
-      iteration >= AT_PROPORTIONAL_MIN_ITERATIONS &&
-      maxRelativeChange <= AT_PROPORTIONAL_CONVERGENCE_EPSILON
-    ) {
-      converged = true;
-      break;
-    }
-  }
-
-  const { observations } = buildAllocatedObservations(days, perPieceByMetricKey);
-  const dayWeightByKey = buildDayTrendWeights(
-    days,
-    provisionalParamsByMetric,
-    fallbackPerPieceByMetric
-  );
-
-  const weightedPointsByMetric = new Map<string, WeightedRegressionPoint[]>();
-  observations.forEach((observation) => {
-    const dayWeight = dayWeightByKey.get(observation.dayKey) ?? 1;
-    const quantity = Number(observation.quantity);
-    const totalSeconds = Number(observation.totalSeconds);
-    if (
-      !Number.isFinite(dayWeight) ||
-      dayWeight <= 0 ||
-      !Number.isFinite(quantity) ||
-      quantity <= 0 ||
-      !Number.isFinite(totalSeconds) ||
-      totalSeconds <= 0
-    ) {
-      return;
-    }
-    const baseWeight = Math.max(1, Math.sqrt(quantity));
-    const weight = Math.max(AT_WLS_MIN_WEIGHT, baseWeight * dayWeight);
-    const current = weightedPointsByMetric.get(observation.metricKey) || [];
-    current.push({
-      x: quantity,
-      y: totalSeconds,
-      weight,
-    });
-    weightedPointsByMetric.set(observation.metricKey, current);
-  });
-
-  const finalParamsByMetric = new Map<string, { a: number; b: number }>();
-  metricKeys.forEach((metricKey) => {
-    const weightedPoints = weightedPointsByMetric.get(metricKey) || [];
-    const fallback =
-      toOptionalSeconds(fallbackPerPieceByMetric.get(metricKey)) ??
-      toOptionalSeconds(perPieceByMetricKey.get(metricKey));
-    const fitted =
-      fitAtParamsFromWeightedPoints(weightedPoints, fallback) ||
-      provisionalParamsByMetric.get(metricKey);
-    if (!fitted) return;
-    finalParamsByMetric.set(metricKey, fitted);
-  });
-
-  return {
-    paramsByMetric: finalParamsByMetric,
-    iterationCount,
-    converged,
-  };
-};
-
 const clampAtSlopeByMonthlyChange = (
   nextAInput: number,
   currentAtParams: StyleAtParams | null
@@ -1253,14 +775,6 @@ const clampAtSlopeByMonthlyChange = (
   const minA = currentAtParams.a * (1 - AT_MONTHLY_A_CLAMP_RATIO);
   const maxA = currentAtParams.a * (1 + AT_MONTHLY_A_CLAMP_RATIO);
   return roundToScale(Math.min(maxA, Math.max(minA, nextA)), 4);
-};
-
-const fitAtParamsFromObservations = (
-  observations: AtMetricObservation[],
-  fallbackPerPieceSeconds: number | null = null
-): { a: number; b: number } | null => {
-  const points = toAtRegressionPoints(observations);
-  return fitAtParamsFromWeightedPoints(points, fallbackPerPieceSeconds);
 };
 
 const normalizeStyleProcess = (process: any) => {
@@ -1897,10 +1411,10 @@ const triggerAtSyncFromEvent = (orgId: number, source: AtSyncEventSource) => {
         `[AT sync][event:${source}] orgId=${orgId} updatedStyles=${Number(result?.updatedStyles || 0)} updatedProcesses=${Number(result?.updatedProcesses || 0)} durationMs=${Date.now() - startedAt}`
       );
     })
-    .catch((err: any) => {
+    .catch((error: unknown) => {
       console.error(
         `[AT sync][event:${source}] orgId=${orgId} failed:`,
-        err?.message || err
+        getErrorMessage(error, String(error))
       );
     })
     .finally(() => {
@@ -2385,7 +1899,7 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 }
       );
     } catch (error) {
-      const code = String((error as any)?.code || "");
+      const code = getErrorCode(error);
       if (code === "P2034" && attempt < ORDER_CREATE_SERIALIZABLE_RETRIES) {
         continue;
       }
@@ -4059,11 +3573,8 @@ const listOrgMemberships = async (req: Request, res: Response) => {
   try {
     organization = await getOrganizationByQuery(req);
   } catch (error) {
-    const status = Number((error as any)?.status) || 500;
-    const message =
-      typeof (error as any)?.message === "string"
-        ? (error as any).message
-        : "failed to resolve organization";
+    const status = getErrorStatus(error) ?? 500;
+    const message = getErrorMessage(error, "failed to resolve organization");
     return res.status(status).json({ ok: false, error: message });
   }
   if (!organization) {
@@ -7096,7 +6607,7 @@ app.delete("/styles/:styleId", async (req, res) => {
     res.status(204).send();
   } catch (error) {
     // P2025 = Record to delete does not exist.
-    if ((error as any)?.code === "P2025") {
+    if (getErrorCode(error) === "P2025") {
       return res.status(404).json({ ok: false, error: "style not found" });
     }
     res.status(500).json({ ok: false, error: "failed to delete style" });
@@ -7743,8 +7254,13 @@ app.post("/payroll/lock", async (req, res) => {
 // ───────────────────────────────────────────────────────────────────────────
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const prismaErrorCode = String((error as any)?.code || "");
-  const prismaErrorTargetRaw = (error as any)?.meta?.target;
+  const errorRecord = toErrorRecord(error);
+  const prismaErrorCode = getErrorCode(error);
+  const prismaMeta =
+    errorRecord && typeof errorRecord.meta === "object" && errorRecord.meta !== null
+      ? (errorRecord.meta as Record<string, unknown>)
+      : null;
+  const prismaErrorTargetRaw = prismaMeta?.target;
   const prismaErrorTarget = Array.isArray(prismaErrorTargetRaw)
     ? prismaErrorTargetRaw.map((item) => String(item))
     : [String(prismaErrorTargetRaw || "")];
@@ -7781,11 +7297,11 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     });
   }
 
-  const status = Number((error as any)?.status);
-  if (Number.isFinite(status)) {
+  const status = getErrorStatus(error);
+  if (status !== null) {
     return res.status(status).json({
       ok: false,
-      error: (error as any)?.message || "request failed",
+      error: getErrorMessage(error, "request failed"),
     });
   }
   console.error(error);
@@ -7829,10 +7345,10 @@ const ensureAtAutoSyncRunHistoryTable = async () => {
     `);
     atAutoSyncRunHistoryTableReady = true;
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     atAutoSyncRunHistoryTableUnsupported = true;
     console.warn(
-      `[AT sync][scheduler] db run-history disabled: ${error?.message || error}`
+      `[AT sync][scheduler] db run-history disabled: ${getErrorMessage(error, String(error))}`
     );
     return false;
   }
@@ -7969,10 +7485,10 @@ const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
     console.log(
       `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} mode=db_lock manufacturers=${result.summary.manufacturerCount} updatedStyles=${result.summary.totalUpdatedStyles} updatedProcesses=${result.summary.totalUpdatedProcesses}`
     );
-  } catch (err: any) {
+  } catch (error: unknown) {
     console.error(
       `[AT sync][scheduler:${trigger}] failed:`,
-      err?.message || err
+      getErrorMessage(error, String(error))
     );
   } finally {
     atAutoSyncInProgress = false;
@@ -7981,14 +7497,17 @@ const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
 
 const startAutoAtSyncScheduler = () => {
   if (atAutoSyncTimer) return;
-  runAutoAtSyncIfDue("startup").catch((err) => {
-    console.error("[AT sync][scheduler:startup] failed:", err?.message || err);
+  runAutoAtSyncIfDue("startup").catch((error: unknown) => {
+    console.error(
+      "[AT sync][scheduler:startup] failed:",
+      getErrorMessage(error, String(error))
+    );
   });
   atAutoSyncTimer = setInterval(() => {
-    runAutoAtSyncIfDue("interval").catch((err) => {
+    runAutoAtSyncIfDue("interval").catch((error: unknown) => {
       console.error(
         "[AT sync][scheduler:interval] failed:",
-        err?.message || err
+        getErrorMessage(error, String(error))
       );
     });
   }, AT_AUTO_SYNC_INTERVAL_MS);
@@ -8020,8 +7539,7 @@ const ensureDatabaseReady = async () => {
     } catch (error) {
       lastError = error;
       const isLastAttempt = attempt >= STARTUP_DB_MAX_RETRIES;
-      const message =
-        (error as any)?.message || String(error || "unknown startup DB error");
+      const message = getErrorMessage(error, "unknown startup DB error");
       if (isLastAttempt) break;
       console.warn(
         `[startup] DB connect attempt ${attempt}/${STARTUP_DB_MAX_RETRIES} failed (${endpoint}): ${message}. Retrying in ${STARTUP_DB_RETRY_DELAY_MS}ms.`

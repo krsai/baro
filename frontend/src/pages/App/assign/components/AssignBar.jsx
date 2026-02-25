@@ -64,6 +64,16 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
   const ctStatus = normalizeCtStatus(assignment.ctStatus);
   const ctMeta = CT_STATUS_META[ctStatus];
   const ctLabel = ctMeta.label;
+  const openContextMenu = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenContextMenu?.({
+      targetType: 'assignment',
+      id: assignment.id,
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+    });
+  };
 
   return (
     <Box
@@ -84,7 +94,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
         minWidth: 0,
         // Link-to-previous button sits outside the bar on the left edge.
         overflow: 'visible',
-        cursor: isLocked ? 'not-allowed' : isDragging ? 'grabbing' : 'grab',
+        // Locked assignments are not draggable, but context-menu access is still allowed.
+        cursor: isLocked ? 'context-menu' : isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: `1px solid ${ctMeta.border}`,
         outline: 'none',
@@ -98,18 +109,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
       }}
       style={style}
       title={`${assignment.customer} · ${assignment.label}`}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onOpenContextMenu?.({
-          targetType: 'assignment',
-          id: assignment.id,
-          mouseX: event.clientX,
-          mouseY: event.clientY,
-        });
-      }}
       {...attributes}
       {...listeners}
+      onContextMenu={openContextMenu}
     >
       {showLinkPrev && (
         <Box

@@ -104,6 +104,13 @@ const toOptionalPositiveNumber = (value) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
 };
+const resolveCtUnitCost = (seconds, wagePerSecond) => {
+  const resolvedSeconds = Number(seconds);
+  const resolvedWage = Number(wagePerSecond);
+  if (!Number.isFinite(resolvedSeconds) || resolvedSeconds <= 0) return null;
+  if (!Number.isFinite(resolvedWage) || resolvedWage <= 0) return null;
+  return resolvedSeconds * resolvedWage;
+};
 
 const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
   const perPieceSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
@@ -506,6 +513,7 @@ const ProductionPlanBoard = () => {
   const selectedAssignmentBusy =
     !!selectedAssignment &&
     String(savingAssignmentId || '') === String(selectedAssignment.id);
+  const selectedCtStatus = normalizeCtStatus(selectedAssignment?.status ?? selectedAssignment?.ctStatus);
 
   const assignmentViewById = useMemo(
     () => new Map(assignmentsForView.map((item) => [String(item.id), item])),
@@ -758,6 +766,48 @@ const ProductionPlanBoard = () => {
         map.set(processKey, requestedSeconds);
         return map;
       }, new Map());
+      const assignmentStatus = normalizeCtStatus(
+        assignmentView?.status ?? assignmentView?.ctStatus
+      );
+      const isAgreedAssignment = assignmentStatus === 'AGREED';
+      const agreedSnapshot = assignmentView?.card?.ctAgreedSnapshot;
+      const agreedSnapshotQuantity = Math.max(
+        1,
+        toPositiveInt(agreedSnapshot?.quantity ?? orderQuantity, orderQuantity)
+      );
+      const canUseAgreedSnapshot =
+        isAgreedAssignment &&
+        agreedSnapshot &&
+        agreedSnapshotQuantity === orderQuantity &&
+        (!assignmentView?.id ||
+          !agreedSnapshot?.sourceAssignmentId ||
+          String(agreedSnapshot.sourceAssignmentId) === String(assignmentView.id));
+      const agreedSnapshotByProcess = (
+        canUseAgreedSnapshot && Array.isArray(agreedSnapshot?.processes)
+          ? agreedSnapshot.processes
+          : []
+      ).reduce((map, item) => {
+        const processKey = String(item?.processKey || '').trim();
+        if (!processKey) return map;
+        const agreedSeconds = toOptionalPositiveNumber(
+          item?.agreedSeconds ?? item?.requestedSeconds ?? item?.proposedSeconds
+        );
+        const requestedSeconds = toOptionalPositiveNumber(
+          item?.requestedSeconds ??
+            item?.lineRequestedSeconds ??
+            item?.proposedSeconds ??
+            item?.agreedSeconds
+        );
+        const proposedSeconds = toOptionalPositiveNumber(
+          item?.proposedSeconds ?? item?.stSeconds ?? item?.suggestedSeconds
+        );
+        map.set(processKey, {
+          agreedSeconds,
+          requestedSeconds,
+          proposedSeconds,
+        });
+        return map;
+      }, new Map());
 
       return processes.map((process, index) => {
         const processKey = String(
@@ -782,14 +832,30 @@ const ProductionPlanBoard = () => {
           Math.abs(atVsBasePercent) >= ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT;
 
         const directSeconds = toOptionalPositiveNumber(draftByProcess[processKey]);
-        const suggestedSeconds = operatorProposal?.proposedSeconds ?? baseSeconds;
+        const agreedSnapshotEntry = agreedSnapshotByProcess.get(processKey) ?? null;
+        const agreedSnapshotSeconds = agreedSnapshotEntry?.agreedSeconds ?? null;
+        const agreedSnapshotRequestedSeconds = agreedSnapshotEntry?.requestedSeconds ?? null;
+        const agreedSnapshotProposedSeconds = agreedSnapshotEntry?.proposedSeconds ?? null;
+        const suggestedSeconds =
+          operatorProposal?.proposedSeconds ?? agreedSnapshotProposedSeconds ?? baseSeconds;
         const pendingRequestedSeconds = pendingRequestByProcess.get(processKey) ?? null;
+        const requestedSeconds =
+          pendingRequestedSeconds ?? (isAgreedAssignment ? agreedSnapshotRequestedSeconds : null);
         const hasDirectProposal = directSeconds != null;
         const proposedSeconds =
-          hasDirectProposal ? directSeconds : pendingRequestedSeconds ?? suggestedSeconds;
+          hasDirectProposal ? directSeconds : requestedSeconds ?? suggestedSeconds;
+        const confirmedSeconds = isAgreedAssignment
+          ? agreedSnapshotSeconds ??
+            requestedSeconds ??
+            toOptionalPositiveNumber(operatorProposal?.proposedSeconds ?? proposedSeconds) ??
+            toOptionalPositiveNumber(proposedSeconds) ??
+            toOptionalPositiveNumber(suggestedSeconds)
+          : null;
         const hasRequestedAdjustment = Math.abs(proposedSeconds - suggestedSeconds) > 1e-6;
         const suggestedPerPieceSeconds = suggestedSeconds * processQuantity;
         const proposedPerPieceSeconds = proposedSeconds * processQuantity;
+        const confirmedPerPieceSeconds =
+          confirmedSeconds == null ? null : confirmedSeconds * processQuantity;
 
         const totalBaseSeconds = basePerPieceSeconds * orderQuantity;
         const totalAtSeconds = atPerPieceSeconds == null ? null : atPerPieceSeconds * orderQuantity;
@@ -825,10 +891,15 @@ const ProductionPlanBoard = () => {
           hasRequestedAdjustment,
           proposedSeconds,
           proposedPerPieceSeconds,
+          confirmedSeconds,
+          confirmedPerPieceSeconds,
           hasDirectProposal,
           totalBaseSeconds,
           totalAtSeconds,
           totalProposedSeconds,
+          proposedUnitCost: resolveCtUnitCost(suggestedSeconds, wagePerSecond),
+          requestedUnitCost: resolveCtUnitCost(proposedSeconds, wagePerSecond),
+          confirmedUnitCost: resolveCtUnitCost(confirmedSeconds, wagePerSecond),
           suggestedPerPieceCost,
           suggestedCost,
           perPieceCost,
@@ -854,6 +925,8 @@ const ProductionPlanBoard = () => {
   const selectedCostSummary = useMemo(() => {
     if (!selectedAssignment) return null;
 
+    const assignmentStatus = normalizeCtStatus(selectedAssignment?.status);
+    const isAgreedAssignment = assignmentStatus === 'AGREED';
     const orderQuantity = Math.max(1, toPositiveInt(selectedAssignment.quantity, 1));
     const headcount = Math.max(1, toPositiveInt(selectedAssignment.headcount, 1));
     const workingDays = Number(selectedAssignment.workingDays) > 0 ? Number(selectedAssignment.workingDays) : 0;
@@ -873,11 +946,16 @@ const ProductionPlanBoard = () => {
         fallbackPerPersonExpected == null || workingDays <= 0
           ? null
           : (fallbackPerPersonExpected / workingDays) * 26;
+      const fallbackConfirmedPerPieceSeconds =
+        isAgreedAssignment && fallbackTotalSeconds > 0
+          ? fallbackTotalSeconds / orderQuantity
+          : null;
 
       return {
         totalBasePerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalSuggestedPerPieceSeconds: fallbackTotalSeconds / orderQuantity,
         totalProposedPerPieceSeconds: fallbackTotalSeconds / orderQuantity,
+        totalConfirmedPerPieceSeconds: fallbackConfirmedPerPieceSeconds,
         totalBaseSeconds: fallbackTotalSeconds,
         totalSuggestedSeconds: fallbackTotalSeconds,
         totalAtPerPieceSeconds: null,
@@ -907,6 +985,13 @@ const ProductionPlanBoard = () => {
       (sum, row) => sum + row.proposedPerPieceSeconds,
       0
     );
+    const totalConfirmedPerPieceSeconds =
+      isAgreedAssignment
+        ? selectedProcessRows.reduce(
+            (sum, row) => sum + (Number(row?.confirmedPerPieceSeconds) || 0),
+            0
+          )
+        : null;
     const totalBaseSeconds = selectedProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0);
     const totalSuggestedSeconds = selectedProcessRows.reduce(
       (sum, row) => sum + row.totalSuggestedSeconds,
@@ -944,6 +1029,7 @@ const ProductionPlanBoard = () => {
       totalBasePerPieceSeconds,
       totalSuggestedPerPieceSeconds,
       totalProposedPerPieceSeconds,
+      totalConfirmedPerPieceSeconds,
       totalBaseSeconds,
       totalSuggestedSeconds,
       totalAtPerPieceSeconds,
@@ -1050,11 +1136,81 @@ const ProductionPlanBoard = () => {
 
     const target = assignments.find((item) => String(item?.id) === String(assignmentId));
     if (!target) return;
+    const targetView = assignmentViewById.get(String(assignmentId)) || null;
+    const orderQuantity = Math.max(
+      1,
+      toPositiveInt(targetView?.quantity ?? target?.quantity ?? 1, 1)
+    );
+    const agreedProcessRows = buildProcessRows(targetView).map((row) => {
+      const proposedSeconds = toOptionalPositiveNumber(
+        row.suggestedSeconds ?? row.baseSeconds
+      );
+      const requestedSeconds = toOptionalPositiveNumber(
+        row.proposedSeconds ?? row.suggestedSeconds ?? row.baseSeconds
+      );
+      const agreedSeconds = requestedSeconds ?? proposedSeconds ?? toOptionalPositiveNumber(row.baseSeconds);
+      const normalizedAgreedSeconds = agreedSeconds ?? 0;
+      const agreedPerPieceSeconds = normalizedAgreedSeconds * row.processQuantity;
+      return {
+        ...row,
+        proposedSeconds: proposedSeconds ?? row.baseSeconds,
+        requestedSeconds,
+        agreedSeconds: normalizedAgreedSeconds,
+        agreedPerPieceSeconds,
+        agreedTotalSeconds: agreedPerPieceSeconds * orderQuantity,
+      };
+    });
+    let resolvedAgreedSeconds = agreedProcessRows.reduce(
+      (sum, row) => sum + row.agreedTotalSeconds,
+      0
+    );
+    if (!Number.isFinite(resolvedAgreedSeconds) || resolvedAgreedSeconds <= 0) {
+      resolvedAgreedSeconds = Math.max(
+        1,
+        toNonNegativeInt(resolveSecondsForProposal(targetView ?? target), 1)
+      );
+    } else {
+      resolvedAgreedSeconds = Math.max(1, Math.round(resolvedAgreedSeconds));
+    }
+    const totalStPerPieceSeconds =
+      agreedProcessRows.length > 0
+        ? agreedProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
+        : resolvedAgreedSeconds / orderQuantity;
+    const totalRequestedPerPieceSeconds =
+      agreedProcessRows.length > 0
+        ? agreedProcessRows.reduce((sum, row) => sum + row.proposedPerPieceSeconds, 0)
+        : resolvedAgreedSeconds / orderQuantity;
+    const totalAgreedPerPieceSeconds =
+      agreedProcessRows.length > 0
+        ? agreedProcessRows.reduce((sum, row) => sum + row.agreedPerPieceSeconds, 0)
+        : resolvedAgreedSeconds / orderQuantity;
 
     const now = new Date().toISOString();
     const agreedBy = String(
       activeProfile?.employeeName || activeProfile?.email || activeProfile?.label || ''
     ).trim() || 'LINE_LEADER';
+    const agreementSnapshot = {
+      agreedAt: now,
+      agreedBy,
+      sourceAssignmentId: String(assignmentId),
+      lineId: target?.lineId ?? null,
+      quantity: orderQuantity,
+      totalStPerPieceSeconds,
+      totalRequestedPerPieceSeconds,
+      totalAgreedPerPieceSeconds,
+      totalAgreedSeconds: resolvedAgreedSeconds,
+      processes: agreedProcessRows.map((row) => ({
+        processKey: row.processKey,
+        name: row.processName,
+        quantity: row.processQuantity,
+        basis: row.baseBasis,
+        stSeconds: row.baseSeconds,
+        proposedSeconds: row.proposedSeconds,
+        requestedSeconds: row.requestedSeconds,
+        agreedSeconds: row.agreedSeconds,
+        agreedPerPieceSeconds: row.agreedPerPieceSeconds,
+      })),
+    };
     const nextAssignments = assignments.map((item) => {
       if (String(item?.id) !== String(assignmentId)) return item;
 
@@ -1064,7 +1220,7 @@ const ProductionPlanBoard = () => {
         contractedSeconds:
           toNonNegativeInt(item?.contractedSeconds, 0) > 0
             ? toNonNegativeInt(item?.contractedSeconds, 0)
-            : Math.max(1, toNonNegativeInt(resolveSecondsForProposal(item), 1)),
+            : resolvedAgreedSeconds,
         ctSource: item?.ctSource || item?.proposalBasis || item?.basis || 'MANUAL',
         ctAgreedBy: agreedBy,
         ctAgreedAt: now,
@@ -1075,6 +1231,7 @@ const ProductionPlanBoard = () => {
           String(card?.id) === String(target.cardId)
             ? {
                 ...card,
+                ctAgreedSnapshot: agreementSnapshot,
                 pendingCtProposal: null,
               }
             : card
@@ -2075,7 +2232,15 @@ const ProductionPlanBoard = () => {
           anchor="right"
           open={isPanelOpen && Boolean(selectedAssignment)}
           onClose={() => setIsPanelOpen(false)}
-          PaperProps={{ sx: { position: 'absolute', width: '60%', height: '100%', overflowY: 'auto', p: 2.5 } }}
+          PaperProps={{
+            sx: {
+              position: 'absolute',
+              width: { xs: '100%', md: '80%' },
+              height: '100%',
+              overflowY: 'auto',
+              p: 2.5,
+            },
+          }}
           ModalProps={{ container: () => drawerContainerRef.current, disablePortal: true }}
         >
           <Box sx={{ width: '100%' }}>
@@ -2276,7 +2441,7 @@ const ProductionPlanBoard = () => {
                         동의 CT(전체)
                       </Typography>
                       <Typography variant="body2">
-                          {selectedAssignment.status === 'AGREED'
+                          {selectedCtStatus === 'AGREED'
                             ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0초')
                             : '-'}
                       </Typography>
@@ -2286,7 +2451,7 @@ const ProductionPlanBoard = () => {
                         동의자
                       </Typography>
                       <Typography variant="body2">
-                        {selectedAssignment.status === 'AGREED'
+                        {selectedCtStatus === 'AGREED'
                           ? selectedAssignment.ctAgreedBy || '-'
                           : '-'}
                       </Typography>
@@ -2309,7 +2474,7 @@ const ProductionPlanBoard = () => {
                         동의 비용
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {selectedAssignment.status !== 'AGREED' || selectedAssignment.agreedCost == null
+                        {selectedCtStatus !== 'AGREED' || selectedAssignment.agreedCost == null
                           ? '-'
                           : formatCurrencyDong(selectedAssignment.agreedCost)}
                       </Typography>
@@ -2341,6 +2506,8 @@ const ProductionPlanBoard = () => {
                             <TableCell align="right">{`ST(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`제안 CT(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`요청 CT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`확정 CT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">단가(동)</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -2401,33 +2568,78 @@ const ProductionPlanBoard = () => {
                                 })}
                               </TableCell>
                               <TableCell align="right">
-                                <TextField
-                                  size="small"
-                                  value={selectedDraftByProcess[row.processKey] ?? ''}
-                                  placeholder={
-                                    row.suggestedSeconds > 0
-                                      ? String(
-                                          formatNumberWithCommas(row.suggestedSeconds, {
-                                            fallback: '0',
-                                            maximumFractionDigits: 2,
-                                          })
-                                        )
-                                      : ''
-                                  }
-                                  onChange={(event) =>
-                                    handleProcessProposalInputChange(
-                                      selectedAssignment.id,
-                                      row.processKey,
-                                      event.target.value
-                                    )
-                                  }
-                                  inputProps={{
-                                    inputMode: 'decimal',
-                                    pattern: '\\d*(\\.\\d{0,2})?',
-                                    style: { textAlign: 'right' },
-                                  }}
-                                  sx={{ width: 90 }}
-                                />
+                                {selectedCtStatus === 'AGREED' ? (
+                                  row.proposedSeconds == null
+                                    ? '-'
+                                    : formatNumberWithCommas(row.proposedSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })
+                                ) : (
+                                  <TextField
+                                    size="small"
+                                    value={selectedDraftByProcess[row.processKey] ?? ''}
+                                    placeholder={
+                                      row.suggestedSeconds > 0
+                                        ? String(
+                                            formatNumberWithCommas(row.suggestedSeconds, {
+                                              fallback: '0',
+                                              maximumFractionDigits: 2,
+                                            })
+                                          )
+                                        : ''
+                                    }
+                                    onChange={(event) =>
+                                      handleProcessProposalInputChange(
+                                        selectedAssignment.id,
+                                        row.processKey,
+                                        event.target.value
+                                      )
+                                    }
+                                    inputProps={{
+                                      inputMode: 'decimal',
+                                      pattern: '\\d*(\\.\\d{0,2})?',
+                                      style: { textAlign: 'right' },
+                                    }}
+                                    sx={{ width: 90 }}
+                                  />
+                                )}
+                              </TableCell>
+                              <TableCell align="right">
+                                {selectedCtStatus !== 'AGREED' || row.confirmedSeconds == null
+                                  ? '-'
+                                  : formatNumberWithCommas(row.confirmedSeconds, {
+                                      fallback: '0',
+                                      maximumFractionDigits: 2,
+                                    })}
+                              </TableCell>
+                              <TableCell align="right">
+                                {selectedAssignment.wagePerSecond == null ? (
+                                  '-'
+                                ) : selectedCtStatus === 'AGREED' ? (
+                                  row.confirmedUnitCost == null ? (
+                                    '-'
+                                  ) : (
+                                    formatCurrencyDong(row.confirmedUnitCost)
+                                  )
+                                ) : (
+                                  <Stack spacing={0.1} alignItems="flex-end">
+                                    <Typography variant="caption" color="text.secondary">
+                                      {`제안 ${
+                                        row.proposedUnitCost == null
+                                          ? '-'
+                                          : formatCurrencyDong(row.proposedUnitCost)
+                                      }`}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {`요청 ${
+                                        row.requestedUnitCost == null
+                                          ? '-'
+                                          : formatCurrencyDong(row.requestedUnitCost)
+                                      }`}
+                                    </Typography>
+                                  </Stack>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -2459,6 +2671,52 @@ const ProductionPlanBoard = () => {
                                     maximumFractionDigits: 2,
                                   })}
                             </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>
+                              {selectedCtStatus === 'AGREED' &&
+                              selectedCostSummary?.totalConfirmedPerPieceSeconds != null
+                                ? formatNumberWithCommas(
+                                    selectedCostSummary.totalConfirmedPerPieceSeconds,
+                                    {
+                                      fallback: '0',
+                                      maximumFractionDigits: 2,
+                                    }
+                                  )
+                                : '-'}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>
+                              {selectedAssignment.wagePerSecond == null ? (
+                                '-'
+                              ) : selectedCtStatus === 'AGREED' &&
+                                selectedCostSummary?.totalConfirmedPerPieceSeconds != null ? (
+                                formatCurrencyDong(
+                                  selectedCostSummary.totalConfirmedPerPieceSeconds *
+                                    selectedAssignment.wagePerSecond
+                                )
+                              ) : (
+                                <Stack spacing={0.1} alignItems="flex-end">
+                                  <Typography variant="caption" color="text.secondary">
+                                    {`제안 ${
+                                      selectedCostSummary?.totalSuggestedPerPieceSeconds == null
+                                        ? '-'
+                                        : formatCurrencyDong(
+                                            selectedCostSummary.totalSuggestedPerPieceSeconds *
+                                              selectedAssignment.wagePerSecond
+                                          )
+                                    }`}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {`요청 ${
+                                      selectedCostSummary?.totalProposedPerPieceSeconds == null
+                                        ? '-'
+                                        : formatCurrencyDong(
+                                            selectedCostSummary.totalProposedPerPieceSeconds *
+                                              selectedAssignment.wagePerSecond
+                                          )
+                                    }`}
+                                  </Typography>
+                                </Stack>
+                              )}
+                            </TableCell>
                           </TableRow>
                         </TableBody>
                       </Table>
@@ -2477,9 +2735,9 @@ const ProductionPlanBoard = () => {
                       size="small"
                       variant={hasCtAdjustment ? 'outlined' : 'contained'}
                       onClick={() => handleAgree(selectedAssignment.id)}
-                      disabled={selectedAssignmentBusy || selectedAssignment.status === 'AGREED' || hasCtAdjustment}
+                      disabled={selectedAssignmentBusy || selectedCtStatus === 'AGREED' || hasCtAdjustment}
                     >
-                      {selectedAssignment.status === 'AGREED' ? '동의됨' : '동의'}
+                      {selectedCtStatus === 'AGREED' ? '동의됨' : '동의'}
                     </Button>
                     <Button
                       size="small"

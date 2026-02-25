@@ -64,6 +64,8 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
     <Paper
       ref={setNodeRef}
       variant="outlined"
+      {...attributes}
+      {...listeners}
       onClick={() => onSelect?.(card.id)}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -87,8 +89,6 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
         borderColor: isOver ? 'primary.light' : undefined,
       }}
       style={style}
-      {...attributes}
-      {...listeners}
     >
       <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
         {previewUrl ? (
