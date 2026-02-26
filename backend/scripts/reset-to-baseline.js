@@ -17,9 +17,9 @@
  *   LineAssignment: 전체 해제 후 라인 1(작업자 01~20), 라인 2(작업자 01~20) 재배정
  *   Line.managerEmployeeId: 라인 1 → line1-worker01, 라인 2 → line2-worker01
  *
- * 생성 대상:
- *   Style: 샘플 스타일 A (공정 6개, 5,000초), 샘플 스타일 B (공정 7개, 7,000초)
- *   WorkOrder: ORD-2025-SA (1,500개), ORD-2025-SB (1,500개), ORD-2025-MIX (1,200개)
+ * 등록 대상:
+ *   Style: 3개 (레귤러핏 라운드넥 티셔츠 / 슬림핏 카라 폴로 셔츠 / 오버핏 데님 재킷)
+ *
  *
  * 작업자 구성:
  *   라인 1 (20명): line1-worker01~20@baro.local → 라인1 작업자01~20
@@ -81,82 +81,69 @@ const BASELINE_PROCESSES = [
   { code: 'P10', name: '테스트 공정 10' },
 ];
 
-// 사이즈별 수량 분포
-const BASELINE_SIZE_DIST     = { XS: 25, S: 50, M: 100, L: 125, XL: 50, '2XL': 25 };
-const BASELINE_SIZE_DIST_250 = { XS: 15, S: 35, M:  70, L:  85, XL: 30, '2XL': 15 };
-const BASELINE_SIZE_DIST_350 = { XS: 25, S: 45, M:  90, L: 110, XL: 55, '2XL': 25 };
-
-const BASELINE_ORDERS = [
-  {
-    orderId: 'order-baseline-sa',
-    orderNumber: 'ORD-2025-SA',
-    dueDate: '2025-06-30',
-    status: '주문접수',
-    items: [
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'BLK', colorName: 'Black', gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'WHT', colorName: 'White', gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'BLK', colorName: 'Black', gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'WHT', colorName: 'White', gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-    ],
-  },
-  {
-    orderId: 'order-baseline-sb',
-    orderNumber: 'ORD-2025-SB',
-    dueDate: '2025-07-31',
-    status: '주문접수',
-    items: [
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'BLK', colorName: 'Black', gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'RED', colorName: 'Red',   gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'WHT', colorName: 'White', gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'BLU', colorName: 'Blue',  gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST } },
-    ],
-  },
-  {
-    orderId: 'order-baseline-mix',
-    orderNumber: 'ORD-2025-MIX',
-    dueDate: '2025-08-31',
-    status: '주문접수',
-    items: [
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'RED', colorName: 'Red',   gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST_250 } },
-      { styleId: 'S-SAMPLE-A', styleCode: 'SA-001', styleName: '샘플 스타일 A', colorCode: 'BLU', colorName: 'Blue',  gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST_250 } },
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'WHT', colorName: 'White', gender: 'M', sizeQuantities: { ...BASELINE_SIZE_DIST_350 } },
-      { styleId: 'S-SAMPLE-B', styleCode: 'SB-001', styleName: '샘플 스타일 B', colorCode: 'BLK', colorName: 'Black', gender: 'W', sizeQuantities: { ...BASELINE_SIZE_DIST_350 } },
-    ],
-  },
-];
-
+// 스타일 정의 (초기화 후 자동 등록)
 const BASELINE_STYLES = [
   {
-    styleId: 'S-SAMPLE-A',
-    styleCode: 'SA-001',
-    name: '샘플 스타일 A',
-    registrationDate: '2025-01-01',
+    styleId: 'S-2025SS-T001',
+    styleCode: '25SS-T001',
+    name: '레귤러핏 라운드넥 티셔츠',
+    registrationDate: '2025-03-10',
+    designer: '김수진',
     season: '2025SS',
-    collection: '샘플 컬렉션',
+    collection: '베이직 라인',
+    // 8공정, PT 합계 3,500 (q=1,000 기준)
     processes: [
-      { code: 'P01', name: '테스트 공정 01', pt:  950, timeRefQuantity: 1000 },
-      { code: 'P02', name: '테스트 공정 02', pt:  900, timeRefQuantity: 1000 },
-      { code: 'P03', name: '테스트 공정 03', pt:  850, timeRefQuantity: 1000 },
-      { code: 'P04', name: '테스트 공정 04', pt:  800, timeRefQuantity: 1000 },
-      { code: 'P05', name: '테스트 공정 05', pt:  750, timeRefQuantity: 1000 },
-      { code: 'P06', name: '테스트 공정 06', pt:  750, timeRefQuantity: 1000 },
+      { code: 'P01', name: '원단 재단',         pt: 500, timeRefQuantity: 1000 },
+      { code: 'P02', name: '앞판 봉제',          pt: 460, timeRefQuantity: 1000 },
+      { code: 'P03', name: '뒷판 봉제',          pt: 440, timeRefQuantity: 1000 },
+      { code: 'P04', name: '소매 봉제',          pt: 480, timeRefQuantity: 1000 },
+      { code: 'P05', name: '넥밴드 부착',        pt: 420, timeRefQuantity: 1000 },
+      { code: 'P06', name: '옆솔기 봉제',        pt: 400, timeRefQuantity: 1000 },
+      { code: 'P07', name: '밑단 마감',          pt: 400, timeRefQuantity: 1000 },
+      { code: 'P08', name: '검사 및 포장',       pt: 400, timeRefQuantity: 1000 },
     ],
   },
   {
-    styleId: 'S-SAMPLE-B',
-    styleCode: 'SB-001',
-    name: '샘플 스타일 B',
-    registrationDate: '2025-01-01',
+    styleId: 'S-2025SS-P002',
+    styleCode: '25SS-P002',
+    name: '슬림핏 카라 폴로 셔츠',
+    registrationDate: '2025-03-18',
+    designer: '이준혁',
     season: '2025SS',
-    collection: '샘플 컬렉션',
+    collection: '스포츠 캐주얼',
+    // 9공정, PT 합계 4,400 (q=1,000 기준)
     processes: [
-      { code: 'P01', name: '테스트 공정 01', pt: 1100, timeRefQuantity: 1000 },
-      { code: 'P02', name: '테스트 공정 02', pt: 1050, timeRefQuantity: 1000 },
-      { code: 'P03', name: '테스트 공정 03', pt: 1000, timeRefQuantity: 1000 },
-      { code: 'P04', name: '테스트 공정 04', pt: 1000, timeRefQuantity: 1000 },
-      { code: 'P05', name: '테스트 공정 05', pt: 1000, timeRefQuantity: 1000 },
-      { code: 'P06', name: '테스트 공정 06', pt:  950, timeRefQuantity: 1000 },
-      { code: 'P07', name: '테스트 공정 07', pt:  900, timeRefQuantity: 1000 },
+      { code: 'P01', name: '원단 재단',          pt: 550, timeRefQuantity: 1000 },
+      { code: 'P02', name: '앞판 봉제',          pt: 500, timeRefQuantity: 1000 },
+      { code: 'P03', name: '뒷판 봉제',          pt: 500, timeRefQuantity: 1000 },
+      { code: 'P04', name: '소매 봉제',          pt: 480, timeRefQuantity: 1000 },
+      { code: 'P05', name: '카라 제작',          pt: 500, timeRefQuantity: 1000 },
+      { code: 'P06', name: '카라 부착',          pt: 490, timeRefQuantity: 1000 },
+      { code: 'P07', name: '단추 가공',          pt: 480, timeRefQuantity: 1000 },
+      { code: 'P08', name: '밑단 마감',          pt: 450, timeRefQuantity: 1000 },
+      { code: 'P09', name: '검사 및 포장',       pt: 450, timeRefQuantity: 1000 },
+    ],
+  },
+  {
+    styleId: 'S-2025FW-J003',
+    styleCode: '25FW-J003',
+    name: '오버핏 데님 재킷',
+    registrationDate: '2025-04-02',
+    designer: '박지연',
+    season: '2025FW',
+    collection: '어반 프리미엄',
+    // 10공정, PT 합계 6,000 (q=1,000 기준)
+    processes: [
+      { code: 'P01', name: '원단 재단',          pt: 700, timeRefQuantity: 1000 },
+      { code: 'P02', name: '심지 부착',          pt: 650, timeRefQuantity: 1000 },
+      { code: 'P03', name: '앞판 봉제',          pt: 650, timeRefQuantity: 1000 },
+      { code: 'P04', name: '뒷판 봉제',          pt: 600, timeRefQuantity: 1000 },
+      { code: 'P05', name: '소매 봉제',          pt: 600, timeRefQuantity: 1000 },
+      { code: 'P06', name: '칼라 부착',          pt: 600, timeRefQuantity: 1000 },
+      { code: 'P07', name: '지퍼/단추 가공',     pt: 600, timeRefQuantity: 1000 },
+      { code: 'P08', name: '안감 부착',          pt: 550, timeRefQuantity: 1000 },
+      { code: 'P09', name: '다림질 및 형태 정리', pt: 550, timeRefQuantity: 1000 },
+      { code: 'P10', name: '검사 및 포장',       pt: 500, timeRefQuantity: 1000 },
     ],
   },
 ];
@@ -190,35 +177,35 @@ async function main() {
     where: { orgId: manufacturer.id },
   });
   results.workLog = deletedWorkLogs.count;
-  console.log(`[1/10] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
+  console.log(`[1/9] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
 
   // 2. Style 삭제 (TSMF + TSBR 전체)
   const deletedStyles = await prisma.style.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.style = deletedStyles.count;
-  console.log(`[2/10] Style: ${deletedStyles.count}건 삭제`);
+  console.log(`[2/9] Style: ${deletedStyles.count}건 삭제`);
 
   // 3. WorkOrder 삭제
   const deletedOrders = await prisma.workOrder.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.workOrder = deletedOrders.count;
-  console.log(`[3/10] WorkOrder: ${deletedOrders.count}건 삭제`);
+  console.log(`[3/9] WorkOrder: ${deletedOrders.count}건 삭제`);
 
   // 4. AssignmentPlan 삭제
   const deletedPlans = await prisma.assignmentPlan.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentPlan = deletedPlans.count;
-  console.log(`[4/10] AssignmentPlan: ${deletedPlans.count}건 삭제`);
+  console.log(`[4/9] AssignmentPlan: ${deletedPlans.count}건 삭제`);
 
   // 5. AssignmentBoardState 삭제
   const deletedBoardState = await prisma.assignmentBoardState.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentBoardState = deletedBoardState.count;
-  console.log(`[5/10] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
+  console.log(`[5/9] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
 
   // 6. AttrProcess: 전체 삭제 후 P01~P10 복원
   await prisma.attrProcess.deleteMany({ where: { orgId: manufacturer.id } });
@@ -227,7 +214,7 @@ async function main() {
     skipDuplicates: true,
   });
   results.attrProcess = 'P01~P10 복원';
-  console.log('[6/10] AttrProcess: P01~P10 복원 완료');
+  console.log('[6/9] AttrProcess: P01~P10 복원 완료');
 
   // 7. 유지 데이터 이름 정규화 (factory, 비작업자 employee)
   let normalizedEmployees = 0;
@@ -272,60 +259,9 @@ async function main() {
   }
 
   results.normalizedEmployees = normalizedEmployees;
-  console.log(`[7/10] 이름 정규화: Employee ${normalizedEmployees}건`);
+  console.log(`[7/9] 이름 정규화: Employee ${normalizedEmployees}건`);
 
-  // 8. 샘플 스타일 등록
-  const createdStyles = [];
-  for (const styleDef of BASELINE_STYLES) {
-    const created = await prisma.style.create({
-      data: {
-        orgId: manufacturer.id,
-        styleId: styleDef.styleId,
-        styleCode: styleDef.styleCode,
-        name: styleDef.name,
-        customer: brand.name,
-        registrationDate: styleDef.registrationDate,
-        season: styleDef.season,
-        collection: styleDef.collection,
-        processes: styleDef.processes,
-      },
-    });
-    createdStyles.push(`${created.name} (${created.styleCode})`);
-  }
-  results.styles = createdStyles;
-  console.log(`[8/10] 샘플 스타일 등록: ${createdStyles.join(', ')}`);
-
-  // 9. 샘플 주문 등록
-  const createdOrders = [];
-  for (const orderDef of BASELINE_ORDERS) {
-    const itemsWithTotals = orderDef.items.map((item) => {
-      const totalQuantity = Object.values(item.sizeQuantities).reduce((s, v) => s + v, 0);
-      return { ...item, totalQuantity };
-    });
-    const totalQuantity = itemsWithTotals.reduce((s, item) => s + item.totalQuantity, 0);
-    const created = await prisma.workOrder.create({
-      data: {
-        orgId: manufacturer.id,
-        orderId: orderDef.orderId,
-        orderNumber: orderDef.orderNumber,
-        buyerOrgId: brand.id,
-        buyerOrgName: brand.name,
-        sellerOrgId: manufacturer.id,
-        sellerOrgName: manufacturer.name,
-        customerId: brand.id,
-        customerName: brand.name,
-        dueDate: orderDef.dueDate,
-        status: orderDef.status,
-        items: itemsWithTotals,
-        totalQuantity,
-      },
-    });
-    createdOrders.push(`${created.orderNumber} (${totalQuantity}개)`);
-  }
-  results.orders = createdOrders;
-  console.log(`[9/10] 샘플 주문 등록: ${createdOrders.join(', ')}`);
-
-  // 10. 라인 배정 초기화: 전원 해제 → 라인 1 (01~20), 라인 2 (01~20) 재배정 + 라인장 설정
+  // 8. 라인 배정 초기화: 전원 해제 → 라인 1 (01~20), 라인 2 (01~20) 재배정 + 라인장 설정
   const allWorkerEmails = Object.keys(BASELINE_WORKER_NAME_BY_EMAIL);
   const workerMemberships = await prisma.orgMembership.findMany({
     where: { orgId: manufacturer.id, email: { in: allWorkerEmails } },
@@ -401,7 +337,37 @@ async function main() {
   }
 
   results.lineAssignment = { closed: closedAssignments.count, assigned: assignedCount, managersSet };
-  console.log(`[10/10] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정, 라인장 ${managersSet}명 설정`);
+  console.log(`[8/9] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정, 라인장 ${managersSet}명 설정`);
+
+  // 9. 스타일 등록 (BASELINE_STYLES)
+  let createdStyles = 0;
+  let skippedStyles = 0;
+  for (const style of BASELINE_STYLES) {
+    const exists = await prisma.style.findFirst({
+      where: { orgId: manufacturer.id, styleId: style.styleId },
+    });
+    if (exists) {
+      skippedStyles += 1;
+      continue;
+    }
+    await prisma.style.create({
+      data: {
+        orgId: manufacturer.id,
+        styleId: style.styleId,
+        styleCode: style.styleCode,
+        name: style.name,
+        customer: brand.name,
+        registrationDate: style.registrationDate,
+        designer: style.designer,
+        season: style.season,
+        collection: style.collection,
+        processes: style.processes,
+      },
+    });
+    createdStyles += 1;
+  }
+  results.styles = { created: createdStyles, skipped: skippedStyles };
+  console.log(`[9/9] 스타일 등록: ${createdStyles}건 생성, ${skippedStyles}건 이미 존재`);
 
   // 최종 현황
   const remaining = await prisma.$transaction([
@@ -409,15 +375,17 @@ async function main() {
     prisma.line.count({ where: { orgId: manufacturer.id } }),
     prisma.lineAssignment.count({ where: { endAt: null } }),
     prisma.factory.count({ where: { orgId: manufacturer.id } }),
+    prisma.style.count({ where: { orgId: manufacturer.id } }),
   ]);
 
   console.log('\n=== 초기화 완료 ===');
   console.log(JSON.stringify(results, null, 2));
-  console.log('\n유지된 데이터:');
+  console.log('\n현재 데이터:');
   console.log(`  Employee: ${remaining[0]}명`);
   console.log(`  Factory: ${remaining[3]}개`);
   console.log(`  Line: ${remaining[1]}개`);
   console.log(`  LineAssignment (활성): ${remaining[2]}건`);
+  console.log(`  Style: ${remaining[4]}개`);
 }
 
 main()
