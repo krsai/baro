@@ -63,17 +63,17 @@ const BASELINE_WORKER_NAME_BY_EMAIL = {
 
 // 작업자 10~20: 초기화 실행 시 미존재 시 OrgMembership + Employee 생성
 const BASELINE_NEW_WORKERS = [
-  { email: 'test-worker-10@test.local', name: '테스트 작업자 10' },
-  { email: 'test-worker-11@test.local', name: '테스트 작업자 11' },
-  { email: 'test-worker-12@test.local', name: '테스트 작업자 12' },
-  { email: 'test-worker-13@test.local', name: '테스트 작업자 13' },
-  { email: 'test-worker-14@test.local', name: '테스트 작업자 14' },
-  { email: 'test-worker-15@test.local', name: '테스트 작업자 15' },
-  { email: 'test-worker-16@test.local', name: '테스트 작업자 16' },
-  { email: 'test-worker-17@test.local', name: '테스트 작업자 17' },
-  { email: 'test-worker-18@test.local', name: '테스트 작업자 18' },
-  { email: 'test-worker-19@test.local', name: '테스트 작업자 19' },
-  { email: 'test-worker-20@test.local', name: '테스트 작업자 20' },
+  { email: 'test-worker-10@test.local', name: '작업자 10' },
+  { email: 'test-worker-11@test.local', name: '작업자 11' },
+  { email: 'test-worker-12@test.local', name: '작업자 12' },
+  { email: 'test-worker-13@test.local', name: '작업자 13' },
+  { email: 'test-worker-14@test.local', name: '작업자 14' },
+  { email: 'test-worker-15@test.local', name: '작업자 15' },
+  { email: 'test-worker-16@test.local', name: '작업자 16' },
+  { email: 'test-worker-17@test.local', name: '작업자 17' },
+  { email: 'test-worker-18@test.local', name: '작업자 18' },
+  { email: 'test-worker-19@test.local', name: '작업자 19' },
+  { email: 'test-worker-20@test.local', name: '작업자 20' },
 ];
 
 // 라인 배정 기준: 샘플 라인 1 (01~10), 샘플 라인 2 (11~20)

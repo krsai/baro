@@ -204,7 +204,7 @@ const normalizeDevProfile = (profile) => {
     next.email = DEFAULT_DEV_PROFILE.email;
     next.employeeName = DEFAULT_DEV_PROFILE.employeeName;
     next.orgId = null;
-    next.orgName = null;
+    next.orgName = DEFAULT_DEV_PROFILE.orgName;
     next.isLineLeader = false;
     next.lineLeaderStartAt = null;
     next.lineLeaderEndAt = null;
@@ -317,15 +317,12 @@ export const AuthProvider = ({ children }) => {
     let accessProfileAbortController = null;
 
     const loadAccessProfile = async () => {
-      if (devBypass) {
-        if (!cancelled) {
-          setAccessProfile(null);
-          setAccessLoading(false);
-        }
-        return;
-      }
+      // devBypass mode: use devProfile email to fetch real DB profile as background update
+      // Normal mode: use session user email
+      const email = devBypass
+        ? (typeof devProfile?.email === 'string' ? devProfile.email.trim().toLowerCase() : '')
+        : (typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '');
 
-      const email = typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
       if (!email) {
         if (!cancelled) {
           setAccessProfile(null);
@@ -371,7 +368,7 @@ export const AuthProvider = ({ children }) => {
       cancelled = true;
       accessProfileAbortController?.abort();
     };
-  }, [devBypass, user?.email]);
+  }, [devBypass, user?.email, devProfile?.email]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -483,7 +480,8 @@ export const AuthProvider = ({ children }) => {
     writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
   };
 
-  const effectiveProfile = devBypass ? devProfile : accessProfile;
+  // In devBypass mode, prefer DB-fetched accessProfile; fall back to hardcoded devProfile
+  const effectiveProfile = devBypass ? (accessProfile || devProfile) : accessProfile;
   const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
   const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
   const activeOrgRole = normalizeUpper(effectiveProfile?.orgRole);

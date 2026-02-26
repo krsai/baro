@@ -36,6 +36,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import StyleIcon from '@mui/icons-material/Style';
 import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
@@ -235,6 +236,7 @@ const MainLayout = () => {
             badgeCount: pendingEmployeeCount,
           },
           { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
+          { label: '개인 정보', icon: <AccountCircleIcon />, path: '/profile' },
         ],
       },
       {

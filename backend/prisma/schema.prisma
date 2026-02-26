@@ -175,6 +175,7 @@ model Employee {
   factoryId Int?
   roleId    Int?
   name      String?
+  phone     String?
   bankName  String?
   bankAccountNumber String?
   lineName  String?

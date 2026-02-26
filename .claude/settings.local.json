@@ -4,7 +4,9 @@
       "Bash(npx vite build)",
       "Bash(npx tsc:*)",
       "Bash(curl:*)",
-      "Bash(\"c:/Users/krsai/OneDrive/바탕 화면/baro/agent.md\":*)"
+      "Bash(\"c:/Users/krsai/OneDrive/바탕 화면/baro/agent.md\":*)",
+      "Bash(npx prisma migrate deploy)",
+      "Bash(npx prisma generate)"
     ]
   }
 }

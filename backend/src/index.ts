@@ -4031,6 +4031,71 @@ app.patch("/org-memberships/:id", async (req, res) => {
   res.json(updated);
 });
 
+app.get("/employees/me", async (req, res) => {
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    return res.status(401).json({ ok: false, error: "request user email is required" });
+  }
+
+  const membership = await prisma.orgMembership.findFirst({
+    where: { email: requesterEmail, status: "ACTIVE" },
+    include: { employee: true },
+    orderBy: { id: "asc" },
+  });
+
+  if (!membership) {
+    return res.status(404).json({ ok: false, error: "membership not found" });
+  }
+
+  return res.json({
+    email: membership.email,
+    name: membership.employee?.name ?? null,
+    phone: (membership.employee as any)?.phone ?? null,
+    bankName: membership.employee?.bankName ?? null,
+    bankAccountNumber: membership.employee?.bankAccountNumber ?? null,
+    employeeId: membership.employee?.id ?? null,
+  });
+});
+
+app.patch("/employees/me", async (req, res) => {
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    return res.status(401).json({ ok: false, error: "request user email is required" });
+  }
+
+  const membership = await prisma.orgMembership.findFirst({
+    where: { email: requesterEmail, status: "ACTIVE" },
+    include: { employee: { select: { id: true } } },
+    orderBy: { id: "asc" },
+  });
+
+  if (!membership || !membership.employee) {
+    return res.status(404).json({ ok: false, error: "employee record not found" });
+  }
+
+  const { name, phone, bankName, bankAccountNumber } = req.body ?? {};
+  const trim = (v: any) => (typeof v === "string" ? v.trim() || null : null);
+
+  const updated = await (prisma.employee as any).update({
+    where: { id: membership.employee.id },
+    data: {
+      ...(name !== undefined ? { name: trim(name) } : {}),
+      ...(phone !== undefined ? { phone: trim(phone) } : {}),
+      ...(bankName !== undefined ? { bankName: trim(bankName) } : {}),
+      ...(bankAccountNumber !== undefined ? { bankAccountNumber: trim(bankAccountNumber) } : {}),
+    },
+  });
+
+  return res.json({
+    email: membership.email,
+    name: updated.name ?? null,
+    phone: updated.phone ?? null,
+    bankName: updated.bankName ?? null,
+    bankAccountNumber: updated.bankAccountNumber ?? null,
+    employeeId: updated.id,
+  });
+});
+
 app.get("/employees", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -7193,11 +7258,32 @@ app.post("/organizations", async (req, res) => {
 });
 
 app.put("/organizations/:id", async (req, res) => {
-  if (!(await requireSystemAdmin(req, res))) return;
-
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    return res.status(401).json({ ok: false, error: "request user email is required" });
+  }
+
+  const [systemUser, membership] = await Promise.all([
+    prisma.systemUser.findUnique({
+      where: { email: requesterEmail },
+      select: { systemRole: true },
+    }),
+    prisma.orgMembership.findUnique({
+      where: { orgId_email: { orgId: id, email: requesterEmail } },
+      select: { status: true, role: true },
+    }),
+  ]);
+
+  const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
+  const isOrgAdmin = membership?.status === "ACTIVE" && membership?.role === "ADMIN";
+
+  if (!isSystemAdmin && !isOrgAdmin) {
+    return res.status(403).json({ ok: false, error: "admin access required" });
   }
 
   const {
@@ -7211,6 +7297,11 @@ app.put("/organizations/:id", async (req, res) => {
     email,
     type,
   } = req.body ?? {};
+
+  if ((code !== undefined || type !== undefined) && !isSystemAdmin) {
+    return res.status(403).json({ ok: false, error: "system admin access required to change code or type" });
+  }
+
   const normalizedCode = normalizeOrgCode(code);
 
   if (code !== undefined) {
@@ -7240,7 +7331,7 @@ app.put("/organizations/:id", async (req, res) => {
     address,
     phone,
     email,
-    type,
+    ...(isSystemAdmin && type !== undefined ? { type } : {}),
     ...(code !== undefined ? { code: normalizedCode } : {}),
   };
 

@@ -7,7 +7,8 @@
     "check:encoding": "node scripts/check-encoding.mjs",
     "test:quantity-change": "node --test scripts/quantity-change-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
-    "test:regression": "npm run test:quantity-change && npm run test:time-date"
+    "test:regression": "npm run test:quantity-change && npm run test:time-date",
+    "reset:baseline": "npm --prefix backend run seed:test-accounts && node backend/scripts/reset-to-baseline.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

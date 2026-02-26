@@ -29,9 +29,11 @@ const FEATURE_KEYS = {
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
   SYSTEM_SETTING: 'SYSTEM_SETTING',
+  PROFILE: 'PROFILE',
 };
 
 const MANUFACTURER_FEATURES = new Set([
+  FEATURE_KEYS.PROFILE,
   FEATURE_KEYS.DASHBOARD,
   FEATURE_KEYS.ORDER,
   FEATURE_KEYS.STYLE,
@@ -52,6 +54,7 @@ const MANUFACTURER_FEATURES = new Set([
 ]);
 
 const BRAND_FEATURES = new Set([
+  FEATURE_KEYS.PROFILE,
   FEATURE_KEYS.DASHBOARD,
   FEATURE_KEYS.ORDER,
   FEATURE_KEYS.STYLE,
@@ -140,6 +143,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   }
 
   switch (featureKey) {
+    case FEATURE_KEYS.PROFILE:
+      return isOrgMember;
     case FEATURE_KEYS.DASHBOARD:
       return (
         isOrgMember &&
@@ -219,6 +224,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/permission')) return FEATURE_KEYS.PERMISSION;
   if (path.startsWith('/holiday')) return FEATURE_KEYS.HOLIDAY;
   if (path.startsWith('/system-setting')) return FEATURE_KEYS.SYSTEM_SETTING;
+  if (path.startsWith('/profile')) return FEATURE_KEYS.PROFILE;
   return null;
 };
 
