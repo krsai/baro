@@ -32,33 +32,33 @@ const BASELINE_FACTORY_NAME = '샘플 공장';
 const BASELINE_LINE_PREFIX = '샘플 라인';
 // 비작업자 4명 이름 정규화 (admin, operator, accountant)
 const BASELINE_EMPLOYEE_NAME_BY_EMAIL = {
-  'manufacturer-admin@test.local':       '테스트 관리자',
-  'manufacturer-operator@test.local':    '테스트 운영자',
-  'manufacturer-accountant@test.local':  '테스트 회계담당',
+  'manufacturer-admin@test.local':       '관리자',
+  'manufacturer-operator@test.local':    '운영자',
+  'manufacturer-accountant@test.local':  '회계담당',
 };
 
 // 작업자 20명 이름 정규화
 const BASELINE_WORKER_NAME_BY_EMAIL = {
-  'manufacturer-worker@test.local':       '테스트 작업자 01',
-  'sample-line-worker-01@test.local':     '테스트 작업자 02',
-  'sample-line-worker-02@test.local':     '테스트 작업자 03',
-  'sample-line-worker-03@test.local':     '테스트 작업자 04',
-  'sample-line-worker-04@test.local':     '테스트 작업자 05',
-  'sample-line-worker-05@test.local':     '테스트 작업자 06',
-  'sample-line-worker-06@test.local':     '테스트 작업자 07',
-  'sample-line-worker-07@test.local':     '테스트 작업자 08',
-  'sample-line-worker-08@test.local':     '테스트 작업자 09',
-  'test-worker-10@test.local':            '테스트 작업자 10',
-  'test-worker-11@test.local':            '테스트 작업자 11',
-  'test-worker-12@test.local':            '테스트 작업자 12',
-  'test-worker-13@test.local':            '테스트 작업자 13',
-  'test-worker-14@test.local':            '테스트 작업자 14',
-  'test-worker-15@test.local':            '테스트 작업자 15',
-  'test-worker-16@test.local':            '테스트 작업자 16',
-  'test-worker-17@test.local':            '테스트 작업자 17',
-  'test-worker-18@test.local':            '테스트 작업자 18',
-  'test-worker-19@test.local':            '테스트 작업자 19',
-  'test-worker-20@test.local':            '테스트 작업자 20',
+  'manufacturer-worker@test.local':       '작업자',
+  'sample-line-worker-01@test.local':     '작업자 02',
+  'sample-line-worker-02@test.local':     '작업자 03',
+  'sample-line-worker-03@test.local':     '작업자 04',
+  'sample-line-worker-04@test.local':     '작업자 05',
+  'sample-line-worker-05@test.local':     '작업자 06',
+  'sample-line-worker-06@test.local':     '작업자 07',
+  'sample-line-worker-07@test.local':     '작업자 08',
+  'sample-line-worker-08@test.local':     '작업자 09',
+  'test-worker-10@test.local':            '작업자 10',
+  'test-worker-11@test.local':            '작업자 11',
+  'test-worker-12@test.local':            '작업자 12',
+  'test-worker-13@test.local':            '작업자 13',
+  'test-worker-14@test.local':            '작업자 14',
+  'test-worker-15@test.local':            '작업자 15',
+  'test-worker-16@test.local':            '작업자 16',
+  'test-worker-17@test.local':            '작업자 17',
+  'test-worker-18@test.local':            '작업자 18',
+  'test-worker-19@test.local':            '작업자 19',
+  'test-worker-20@test.local':            '작업자 20',
 };
 
 // 작업자 10~20: 초기화 실행 시 미존재 시 OrgMembership + Employee 생성

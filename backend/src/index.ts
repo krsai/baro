@@ -3622,6 +3622,7 @@ app.get("/auth/context", async (req, res) => {
       orgName: null,
       orgType: null,
       orgRole: null,
+      employeeName: null,
     });
   }
 
@@ -3660,6 +3661,7 @@ app.get("/auth/context", async (req, res) => {
       orgType: membership.organization.type ?? null,
       orgRole: membership.role,
       factoryId: membership.employee?.factoryId ?? null,
+      employeeName: membership.employee?.name ?? null,
     });
   }
 
@@ -3687,6 +3689,7 @@ app.get("/auth/context", async (req, res) => {
     orgType: membership.organization.type ?? null,
     orgRole: membership.role,
     factoryId: membership.employee?.factoryId ?? null,
+    employeeName: membership.employee?.name ?? null,
   });
 });
 
@@ -3700,8 +3703,11 @@ app.get("/organizations", async (_req, res) => {
   res.json(withSubscriptions.map(toOrganizationResponse));
 });
 
-app.get("/organizations/primary", async (_req, res) => {
-  const organization = await getPrimaryOrganization({ allowSuspended: true });
+app.get("/organizations/primary", async (req, res) => {
+  const organization = await getOrganizationByQuery(req, { allowSuspended: true });
+  if (!organization) {
+    return res.status(404).json({ error: "organization not found" });
+  }
   res.json(toOrganizationResponse(organization));
 });
 

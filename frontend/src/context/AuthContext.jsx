@@ -102,8 +102,8 @@ const DEFAULT_DEV_PROFILE = {
   orgType: 'MANUFACTURER',
   orgRole: 'ADMIN',
   orgId: null,
-  orgName: null,
-  employeeName: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790 \uAD00\uB9AC\uC790 \uD14C\uC2A4\uD2B8',
+  orgName: '\uD14C\uC2A4\uD2B8 \uC218\uC8FC\uC790',
+  employeeName: '\uAD00\uB9AC\uC790',
   email: 'manufacturer-admin@test.local',
   isLineLeader: false,
   lineLeaderStartAt: null,
@@ -241,6 +241,7 @@ const normalizeAccessProfile = (profile) => {
       orgRole: null,
       orgId: null,
       orgName: null,
+      employeeName: null,
       email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
       label:
         typeof profile.label === 'string' && profile.label.trim()
@@ -253,6 +254,10 @@ const normalizeAccessProfile = (profile) => {
   const orgRole = normalizeUpper(profile.orgRole);
   const orgName =
     typeof profile.orgName === 'string' && profile.orgName.trim() ? profile.orgName.trim() : null;
+  const employeeName =
+    typeof profile.employeeName === 'string' && profile.employeeName.trim()
+      ? profile.employeeName.trim()
+      : null;
   const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole] || orgRole || '';
 
   const factoryId =
@@ -265,6 +270,7 @@ const normalizeAccessProfile = (profile) => {
     orgRole,
     orgId: toPositiveOrgId(profile.orgId),
     orgName,
+    employeeName,
     factoryId,
     email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
     label:

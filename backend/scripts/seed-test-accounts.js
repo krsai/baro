@@ -29,10 +29,10 @@ const TEST_MEMBERSHIPS = [
 ];
 
 const EMPLOYEE_NAME_BY_EMAIL = {
-  "manufacturer-admin@test.local": "테스트 관리자",
-  "manufacturer-operator@test.local": "테스트 운영자",
-  "manufacturer-accountant@test.local": "테스트 회계담당",
-  "manufacturer-worker@test.local": "테스트 작업자 01",
+  "manufacturer-admin@test.local": "관리자",
+  "manufacturer-operator@test.local": "운영자",
+  "manufacturer-accountant@test.local": "회계담당",
+  "manufacturer-worker@test.local": "작업자",
 };
 
 const normalizeEmail = (value) => String(value || "").trim().toLowerCase();

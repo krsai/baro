@@ -62,12 +62,27 @@ const toPathname = (path) => {
   return pathname || '/';
 };
 
+const resolveNameFromEmail = (email) => {
+  const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!normalized || !normalized.includes('@')) return '';
+  return normalized.split('@')[0];
+};
+
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const currentPath = location.pathname || '/';
   const currentRoutePath = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
-  const { signOut, devBypass, devProfile, accessProfile, activeOrgId, isAuthenticated } = useAuth();
+  const {
+    signOut,
+    devBypass,
+    devProfile,
+    accessProfile,
+    activeOrgId,
+    isAuthenticated,
+    user,
+    activeProfile,
+  } = useAuth();
   const {
     sidebarOpen,
     toggleSidebar,
@@ -107,6 +122,39 @@ const MainLayout = () => {
     [authState]
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
+  const activeOrgName = useMemo(() => {
+    const orgName =
+      typeof activeProfile?.orgName === 'string' ? activeProfile.orgName.trim() : '';
+    if (orgName) return orgName;
+    if (activeProfile?.entryType === 'SYSTEM') return 'SYSTEM';
+    return '';
+  }, [activeProfile?.entryType, activeProfile?.orgName]);
+  const activeUserName = useMemo(() => {
+    const nameFromProfile =
+      typeof activeProfile?.employeeName === 'string'
+        ? activeProfile.employeeName.trim()
+        : '';
+    if (nameFromProfile) return nameFromProfile;
+
+    const metadataCandidates = [
+      user?.user_metadata?.name,
+      user?.user_metadata?.full_name,
+      user?.user_metadata?.nickname,
+    ];
+    const metadataName = metadataCandidates.find(
+      (candidate) => typeof candidate === 'string' && candidate.trim()
+    );
+    if (typeof metadataName === 'string' && metadataName.trim()) {
+      return metadataName.trim();
+    }
+
+    const fallbackEmail = activeProfile?.email || user?.email || '';
+    return resolveNameFromEmail(fallbackEmail);
+  }, [activeProfile?.email, activeProfile?.employeeName, user?.email, user?.user_metadata]);
+  const activeUserSummary = useMemo(() => {
+    if (activeOrgName && activeUserName) return `${activeOrgName} | ${activeUserName}`;
+    return activeOrgName || activeUserName || '접속자 정보 없음';
+  }, [activeOrgName, activeUserName]);
 
   const fetchPendingEmployeeCount = React.useCallback(async () => {
     if (!canViewEmployeeMenu) {
@@ -598,7 +646,7 @@ const MainLayout = () => {
           </IconButton>
           <Box sx={{ flexGrow: 1 }}>
             <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
-              BARO
+              {activeOrgName || 'BARO'}
             </Button>
           </Box>
           {/* ?묐컮 以묒븰 ?좎뒪??*/}
@@ -637,21 +685,20 @@ const MainLayout = () => {
             </Box>
           </Fade>
 
-          {devBypass && devProfile?.label ? (
-            <Box
-              sx={{
-                px: 1.2,
-                py: 0.4,
-                borderRadius: 1,
-                bgcolor: '#E7F0FF',
-                color: 'primary.main',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-              }}
-            >
-              {`DEV | ${devProfile.label}`}
-            </Box>
-          ) : null}
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mr: 1.5,
+              maxWidth: { xs: 160, sm: 240, md: 320 },
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {activeUserSummary}
+          </Typography>
+
         </Toolbar>
       </AppBar>
 
