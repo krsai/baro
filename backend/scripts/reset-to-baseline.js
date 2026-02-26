@@ -19,6 +19,8 @@
  *
  * 등록 대상:
  *   Style: 3개 (레귤러핏 라운드넥 티셔츠 / 슬림핏 카라 폴로 셔츠 / 오버핏 데님 재킷)
+ *   WorkOrder: 2개 (ORD-2025SS-001 5,000장 / ORD-2025FW-001 2,500장)
+ *   마감일: 스크립트 실행 시점 기준으로 동적 계산 (순차 처리, 완료 예상월 말일)
  *
  *
  * 작업자 구성:
@@ -66,6 +68,16 @@ const BASELINE_LINE_WORKER_MAP = [
     managerEmail: 'line2-worker01@baro.local',
     emails: Array.from({ length: 20 }, (_, i) => `line2-worker${String(i + 1).padStart(2, '0')}@baro.local`),
   },
+];
+
+const BASELINE_COLORS = [
+  { code: 'WHITE',    name: '화이트' },
+  { code: 'BLACK',    name: '블랙' },
+  { code: 'NAVY',     name: '네이비' },
+  { code: 'GRAY-MEL', name: '그레이멜란지' },
+  { code: 'LT-BLUE',  name: '라이트블루' },
+  { code: 'MID-BLUE', name: '미드블루' },
+  { code: 'INDIGO',   name: '인디고' },
 ];
 
 const BASELINE_PROCESSES = [
@@ -148,6 +160,89 @@ const BASELINE_STYLES = [
   },
 ];
 
+// 주문 정의 (초기화 후 자동 등록)
+// 마감일은 main()에서 실행 시점 기준으로 동적 계산됨 (dueDate 미포함)
+// 생산 능력: 40명 × 8hr = 1,152,000초/일
+//   Order 1 (SS): 티셔츠 3000×3500 + 폴로 2000×4400 = 19,300,000초 → 약 17 working days
+//   Order 2 (FW): 재킷 2500×6000 = 15,000,000초 → 약 14 working days
+const BASELINE_ORDERS = [
+  {
+    orderId:     'ORD-2025SS-001',
+    orderNumber: 'ORD-2025SS-001',
+    status:      '주문접수',
+    items: [
+      // 레귤러핏 라운드넥 티셔츠 (25SS-T001) — 3,000장, 화이트/블랙/네이비, 남600+여400
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      // 슬림핏 카라 폴로 셔츠 (25SS-P002) — 2,000장, 화이트/그레이멜란지, 남650+여350
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: '남성', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: '여성', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: '남성', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: '여성', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
+    ],
+  },
+  {
+    orderId:     'ORD-2025FW-001',
+    orderNumber: 'ORD-2025FW-001',
+    status:      '주문접수',
+    items: [
+      // 오버핏 데님 재킷 (25FW-J003) — 2,500장, 라이트블루/미드블루/인디고
+      // 라이트블루/미드블루 각 850장 (남470+여380), 인디고 800장 (남440+여360)
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: '남성', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: '여성', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: '남성', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: '여성', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: '남성', sizeQuantities: { S: 45, M: 120, L: 155, XL:  90, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: '여성', sizeQuantities: { S: 65, M: 125, L: 115, XL:  55             } },
+    ],
+  },
+];
+
+const sumItemQuantity = (item) =>
+  Object.values(item.sizeQuantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+
+// ── 마감일 동적 계산 헬퍼 ──────────────────────────────────────────────────
+const PROD_SECONDS_PER_DAY = 40 * 8 * 3600; // 40명 × 8시간 = 1,152,000초/일
+
+// date 기준으로 days 영업일 후 날짜 반환
+function addWorkingDays(date, days) {
+  const result = new Date(date);
+  let remaining = days;
+  while (remaining > 0) {
+    result.setDate(result.getDate() + 1);
+    if (result.getDay() !== 0 && result.getDay() !== 6) remaining--;
+  }
+  return result;
+}
+
+// 해당 월의 마지막 날 반환
+function endOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function toYYYYMMDD(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// 주문 아이템 합산 → 총 필요 초 → 영업일 수 계산
+function computeOrderWorkingDays(order, styleMap) {
+  let totalSeconds = 0;
+  for (const item of order.items) {
+    const style = styleMap.get(item.styleId);
+    if (!style) continue;
+    const ptPerPiece = style.processes.reduce((sum, p) => sum + p.pt, 0);
+    totalSeconds += ptPerPiece * sumItemQuantity(item);
+  }
+  return Math.ceil(totalSeconds / PROD_SECONDS_PER_DAY);
+}
+
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 async function main() {
@@ -177,44 +272,50 @@ async function main() {
     where: { orgId: manufacturer.id },
   });
   results.workLog = deletedWorkLogs.count;
-  console.log(`[1/9] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
+  console.log(`[1/10] WorkLog: ${deletedWorkLogs.count}건 삭제 (WorkRecord cascade 포함)`);
 
   // 2. Style 삭제 (TSMF + TSBR 전체)
   const deletedStyles = await prisma.style.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.style = deletedStyles.count;
-  console.log(`[2/9] Style: ${deletedStyles.count}건 삭제`);
+  console.log(`[2/10] Style: ${deletedStyles.count}건 삭제`);
 
   // 3. WorkOrder 삭제
   const deletedOrders = await prisma.workOrder.deleteMany({
     where: { orgId: { in: [manufacturer.id, brand.id] } },
   });
   results.workOrder = deletedOrders.count;
-  console.log(`[3/9] WorkOrder: ${deletedOrders.count}건 삭제`);
+  console.log(`[3/10] WorkOrder: ${deletedOrders.count}건 삭제`);
 
   // 4. AssignmentPlan 삭제
   const deletedPlans = await prisma.assignmentPlan.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentPlan = deletedPlans.count;
-  console.log(`[4/9] AssignmentPlan: ${deletedPlans.count}건 삭제`);
+  console.log(`[4/10] AssignmentPlan: ${deletedPlans.count}건 삭제`);
 
   // 5. AssignmentBoardState 삭제
   const deletedBoardState = await prisma.assignmentBoardState.deleteMany({
     where: { orgId: manufacturer.id },
   });
   results.assignmentBoardState = deletedBoardState.count;
-  console.log(`[5/9] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
+  console.log(`[5/10] AssignmentBoardState: ${deletedBoardState.count}건 삭제`);
 
-  // 6. AttrProcess: 전체 삭제 후 P01~P10 복원
+  // 6. AttrProcess + AttrColor: 전체 삭제 후 복원
   await prisma.attrProcess.deleteMany({ where: { orgId: manufacturer.id } });
   await prisma.attrProcess.createMany({
     data: BASELINE_PROCESSES.map((p) => ({ orgId: manufacturer.id, ...p })),
     skipDuplicates: true,
   });
+  await prisma.attrColor.deleteMany({ where: { orgId: manufacturer.id } });
+  await prisma.attrColor.createMany({
+    data: BASELINE_COLORS.map((c) => ({ orgId: manufacturer.id, ...c })),
+    skipDuplicates: true,
+  });
   results.attrProcess = 'P01~P10 복원';
-  console.log('[6/9] AttrProcess: P01~P10 복원 완료');
+  results.attrColor = `${BASELINE_COLORS.length}색 복원`;
+  console.log(`[6/10] AttrProcess P01~P10 + AttrColor ${BASELINE_COLORS.length}색 복원 완료`);
 
   // 7. 유지 데이터 이름 정규화 (factory, 비작업자 employee)
   let normalizedEmployees = 0;
@@ -259,7 +360,7 @@ async function main() {
   }
 
   results.normalizedEmployees = normalizedEmployees;
-  console.log(`[7/9] 이름 정규화: Employee ${normalizedEmployees}건`);
+  console.log(`[7/10] 이름 정규화: Employee ${normalizedEmployees}건`);
 
   // 8. 라인 배정 초기화: 전원 해제 → 라인 1 (01~20), 라인 2 (01~20) 재배정 + 라인장 설정
   const allWorkerEmails = Object.keys(BASELINE_WORKER_NAME_BY_EMAIL);
@@ -337,7 +438,7 @@ async function main() {
   }
 
   results.lineAssignment = { closed: closedAssignments.count, assigned: assignedCount, managersSet };
-  console.log(`[8/9] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정, 라인장 ${managersSet}명 설정`);
+  console.log(`[8/10] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정, 라인장 ${managersSet}명 설정`);
 
   // 9. 스타일 등록 (BASELINE_STYLES)
   let createdStyles = 0;
@@ -367,7 +468,56 @@ async function main() {
     createdStyles += 1;
   }
   results.styles = { created: createdStyles, skipped: skippedStyles };
-  console.log(`[9/9] 스타일 등록: ${createdStyles}건 생성, ${skippedStyles}건 이미 존재`);
+  console.log(`[9/10] 스타일 등록: ${createdStyles}건 생성, ${skippedStyles}건 이미 존재`);
+
+  // 10. 주문 등록 (BASELINE_ORDERS) — 마감일 실행 시점 기준 동적 계산
+  const styleMap = new Map(BASELINE_STYLES.map((s) => [s.styleId, s]));
+  let prevOrderEnd = new Date(); // 오늘부터 순차 시작
+
+  let createdOrders = 0;
+  let skippedOrders = 0;
+  for (const order of BASELINE_ORDERS) {
+    const items = order.items.map((item) => ({
+      ...item,
+      totalQuantity: sumItemQuantity(item),
+    }));
+    const totalQuantity = items.reduce((s, i) => s + i.totalQuantity, 0);
+
+    // 이전 주문 완료 후 순차 시작 → 완료 예상일의 월말을 마감일로
+    const workingDays = computeOrderWorkingDays(order, styleMap);
+    const productionEnd = addWorkingDays(prevOrderEnd, workingDays);
+    const dueDate = toYYYYMMDD(endOfMonth(productionEnd));
+    prevOrderEnd = productionEnd;
+
+    const exists = await prisma.workOrder.findFirst({
+      where: { buyerOrgId: brand.id, sellerOrgId: manufacturer.id, orderNumber: order.orderNumber },
+    });
+    if (exists) {
+      skippedOrders += 1;
+      continue;
+    }
+    await prisma.workOrder.create({
+      data: {
+        orgId:         brand.id,
+        orderId:       order.orderId,
+        orderNumber:   order.orderNumber,
+        buyerOrgId:    brand.id,
+        buyerOrgName:  brand.name,
+        sellerOrgId:   manufacturer.id,
+        sellerOrgName: manufacturer.name,
+        customerId:    brand.id,
+        customerName:  brand.name,
+        dueDate,
+        status:        order.status,
+        items,
+        totalQuantity,
+      },
+    });
+    createdOrders += 1;
+    console.log(`        ${order.orderNumber}: ${totalQuantity.toLocaleString()}장, ${workingDays}일 생산 → 완료 ${toYYYYMMDD(productionEnd)} → 마감 ${dueDate}`);
+  }
+  results.orders = { created: createdOrders, skipped: skippedOrders };
+  console.log(`[10/10] 주문 등록: ${createdOrders}건 생성, ${skippedOrders}건 이미 존재`);
 
   // 최종 현황
   const remaining = await prisma.$transaction([
@@ -376,6 +526,7 @@ async function main() {
     prisma.lineAssignment.count({ where: { endAt: null } }),
     prisma.factory.count({ where: { orgId: manufacturer.id } }),
     prisma.style.count({ where: { orgId: manufacturer.id } }),
+    prisma.workOrder.count({ where: { OR: [{ buyerOrgId: brand.id }, { sellerOrgId: manufacturer.id }] } }),
   ]);
 
   console.log('\n=== 초기화 완료 ===');
@@ -386,6 +537,7 @@ async function main() {
   console.log(`  Line: ${remaining[1]}개`);
   console.log(`  LineAssignment (활성): ${remaining[2]}건`);
   console.log(`  Style: ${remaining[4]}개`);
+  console.log(`  WorkOrder: ${remaining[5]}건`);
 }
 
 main()
