@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  Typography,
   Box,
-  Button,
   TextField,
   Paper,
-  Grid,
+  Typography,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import CancelIcon from '@mui/icons-material/Cancel';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import { useApp } from '../../../context/AppContext';
@@ -29,9 +25,7 @@ const OrganizationDetail = () => {
   const { showNotification } = useApp();
 
   const [organizationId, setOrganizationId] = useState(null);
-  const [companyInfo, setCompanyInfo] = useState(buildCompanyInfo());
-  const [editMode, setEditMode] = useState(false);
-  const [editData, setEditData] = useState(buildCompanyInfo());
+  const [formData, setFormData] = useState(buildCompanyInfo());
 
   useEffect(() => {
     const fetchOrganization = async () => {
@@ -39,7 +33,7 @@ const OrganizationDetail = () => {
         const data = await requestJSON('/organizations/primary');
         if (!data) return;
         setOrganizationId(data.id ?? null);
-        setCompanyInfo(buildCompanyInfo(data));
+        setFormData(buildCompanyInfo(data));
       } catch (_error) {
         // ignore fetch errors in UI for now
       }
@@ -48,33 +42,21 @@ const OrganizationDetail = () => {
     fetchOrganization();
   }, []);
 
-  const handleEditOpen = () => {
-    setEditData({ ...companyInfo });
-    setEditMode(true);
-  };
-
-  const handleEditClose = () => {
-    setEditMode(false);
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setEditData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
     try {
       const payload = {
-        name: editData.name?.trim(),
-        businessNumber: editData.businessNumber?.trim(),
-        representative: editData.representative?.trim(),
-        industry: editData.industry?.trim(),
-        address: editData.address?.trim(),
-        phone: editData.phone?.trim(),
-        email: editData.email?.trim(),
+        name: formData.name?.trim(),
+        businessNumber: formData.businessNumber?.trim(),
+        representative: formData.representative?.trim(),
+        industry: formData.industry?.trim(),
+        address: formData.address?.trim(),
+        phone: formData.phone?.trim(),
+        email: formData.email?.trim(),
       };
 
       const saved = await requestJSON(
@@ -87,131 +69,49 @@ const OrganizationDetail = () => {
       );
 
       setOrganizationId(saved.id ?? null);
-      setCompanyInfo(buildCompanyInfo(saved));
-      setEditMode(false);
+      setFormData(buildCompanyInfo(saved));
       showNotification('회사 정보가 저장되었습니다.', 'success');
     } catch (error) {
       showNotification(error?.message || '회사 정보 저장 중 오류가 발생했습니다.', 'error');
     }
   };
 
-  const InfoRow = ({ label, value }) => (
-    <Box sx={{ py: 2, borderBottom: '1px solid #eee' }}>
+  const InfoRow = ({ label, value, name }) => (
+    <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
       <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
         {label}
       </Typography>
-      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-        {value || '-'}
-      </Typography>
-    </Box>
-  );
-
-  const editHeader = (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-      <Typography variant="h6">회사 정보</Typography>
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
-          취소
-        </Button>
-        <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
-          저장
-        </Button>
-      </Box>
+      <TextField
+        variant="standard"
+        fullWidth
+        name={name}
+        value={value}
+        onChange={handleInputChange}
+        slotProps={{ input: { disableUnderline: false } }}
+        sx={{ '& .MuiInputBase-input': { fontWeight: 500, fontSize: '1rem', py: 0.25 } }}
+      />
     </Box>
   );
 
   return (
     <AppPageContainer
       header={
-        editMode ? editHeader : (
-          <PageSectionHeader
-            title="회사 정보"
-            actionLabel="수정"
-            actionIcon={<EditIcon />}
-            onAction={handleEditOpen}
-          />
-        )
+        <PageSectionHeader
+          title="회사 정보"
+          actionLabel="저장"
+          actionIcon={<SaveIcon />}
+          onAction={handleSave}
+        />
       }
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        {!editMode ? (
-          <>
-            <InfoRow label="회사명" value={companyInfo.name} />
-            <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
-            <InfoRow label="대표자명" value={companyInfo.representative} />
-            <InfoRow label="업종" value={companyInfo.industry} />
-            <InfoRow label="주소" value={companyInfo.address} />
-            <InfoRow label="연락처" value={companyInfo.phone} />
-            <InfoRow label="이메일" value={companyInfo.email} />
-          </>
-        ) : (
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="회사명"
-                name="name"
-                value={editData.name}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="사업자등록번호"
-                name="businessNumber"
-                value={editData.businessNumber}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="대표자명"
-                name="representative"
-                value={editData.representative}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="업종"
-                name="industry"
-                value={editData.industry}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="주소"
-                name="address"
-                value={editData.address}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="연락처"
-                name="phone"
-                value={editData.phone}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="이메일"
-                name="email"
-                type="email"
-                value={editData.email}
-                onChange={handleInputChange}
-              />
-            </Grid>
-          </Grid>
-        )}
+        <InfoRow label="회사명" name="name" value={formData.name} />
+        <InfoRow label="사업자등록번호" name="businessNumber" value={formData.businessNumber} />
+        <InfoRow label="대표자명" name="representative" value={formData.representative} />
+        <InfoRow label="업종" name="industry" value={formData.industry} />
+        <InfoRow label="주소" name="address" value={formData.address} />
+        <InfoRow label="연락처" name="phone" value={formData.phone} />
+        <InfoRow label="이메일" name="email" value={formData.email} />
       </Paper>
     </AppPageContainer>
   );

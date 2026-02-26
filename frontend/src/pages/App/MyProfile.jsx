@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Box,
-  Button,
   TextField,
   Paper,
-  Grid,
   Typography,
 } from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import CancelIcon from '@mui/icons-material/Cancel';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageSectionHeader from '../../components/PageSectionHeader';
 import { useApp } from '../../context/AppContext';
@@ -25,16 +21,14 @@ const buildProfileInfo = (data = {}) => ({
 
 const MyProfile = () => {
   const { showNotification } = useApp();
-  const [profileInfo, setProfileInfo] = useState(buildProfileInfo());
-  const [editMode, setEditMode] = useState(false);
-  const [editData, setEditData] = useState(buildProfileInfo());
+  const [formData, setFormData] = useState(buildProfileInfo());
 
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const data = await requestJSON('/employees/me');
         if (!data) return;
-        setProfileInfo(buildProfileInfo(data));
+        setFormData(buildProfileInfo(data));
       } catch (_error) {
         // ignore fetch errors
       }
@@ -42,142 +36,76 @@ const MyProfile = () => {
     fetchProfile();
   }, []);
 
-  const handleEditOpen = () => {
-    setEditData({ ...profileInfo });
-    setEditMode(true);
-  };
-
-  const handleEditClose = () => {
-    setEditMode(false);
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setEditData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
     try {
       const payload = {
-        name: editData.name?.trim(),
-        phone: editData.phone?.trim(),
-        bankName: editData.bankName?.trim(),
-        bankAccountNumber: editData.bankAccountNumber?.trim(),
+        name: formData.name?.trim(),
+        phone: formData.phone?.trim(),
+        bankName: formData.bankName?.trim(),
+        bankAccountNumber: formData.bankAccountNumber?.trim(),
       };
       const saved = await requestJSON('/employees/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setProfileInfo(buildProfileInfo(saved));
-      setEditMode(false);
+      setFormData(buildProfileInfo(saved));
       showNotification('개인 정보가 저장되었습니다.', 'success');
     } catch (error) {
       showNotification(error?.message || '저장 중 오류가 발생했습니다.', 'error');
     }
   };
 
-  const InfoRow = ({ label, value, readOnly }) => (
-    <Box sx={{ py: 2, borderBottom: '1px solid #eee' }}>
+  const InfoRow = ({ label, value, name, disabled }) => (
+    <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
       <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
         {label}
-        {readOnly && (
+        {disabled && (
           <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.disabled' }}>
             (수정 불가)
           </Typography>
         )}
       </Typography>
-      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-        {value || '-'}
-      </Typography>
-    </Box>
-  );
-
-  const editHeader = (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-      <Typography variant="h6">개인 정보</Typography>
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
-          취소
-        </Button>
-        <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
-          저장
-        </Button>
-      </Box>
+      {disabled ? (
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {value || '-'}
+        </Typography>
+      ) : (
+        <TextField
+          variant="standard"
+          fullWidth
+          name={name}
+          value={value}
+          onChange={handleInputChange}
+          slotProps={{ input: { disableUnderline: false } }}
+          sx={{ '& .MuiInputBase-input': { fontWeight: 500, fontSize: '1rem', py: 0.25 } }}
+        />
+      )}
     </Box>
   );
 
   return (
     <AppPageContainer
       header={
-        editMode ? editHeader : (
-          <PageSectionHeader
-            title="개인 정보"
-            actionLabel="수정"
-            actionIcon={<EditIcon />}
-            onAction={handleEditOpen}
-          />
-        )
+        <PageSectionHeader
+          title="개인 정보"
+          actionLabel="저장"
+          actionIcon={<SaveIcon />}
+          onAction={handleSave}
+        />
       }
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        {!editMode ? (
-          <>
-            <InfoRow label="이메일" value={profileInfo.email} readOnly />
-            <InfoRow label="이름" value={profileInfo.name} />
-            <InfoRow label="연락처" value={profileInfo.phone} />
-            <InfoRow label="은행" value={profileInfo.bankName} />
-            <InfoRow label="계좌번호" value={profileInfo.bankAccountNumber} />
-          </>
-        ) : (
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="이메일"
-                value={profileInfo.email}
-                disabled
-                helperText="소셜 로그인 이메일은 수정할 수 없습니다."
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="이름"
-                name="name"
-                value={editData.name}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="연락처"
-                name="phone"
-                value={editData.phone}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="은행"
-                name="bankName"
-                value={editData.bankName}
-                onChange={handleInputChange}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="계좌번호"
-                name="bankAccountNumber"
-                value={editData.bankAccountNumber}
-                onChange={handleInputChange}
-              />
-            </Grid>
-          </Grid>
-        )}
+        <InfoRow label="이메일" value={formData.email} disabled />
+        <InfoRow label="이름" name="name" value={formData.name} />
+        <InfoRow label="연락처" name="phone" value={formData.phone} />
+        <InfoRow label="은행" name="bankName" value={formData.bankName} />
+        <InfoRow label="계좌번호" name="bankAccountNumber" value={formData.bankAccountNumber} />
       </Paper>
     </AppPageContainer>
   );
