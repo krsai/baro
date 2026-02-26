@@ -1,14 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   TextField,
   Paper,
   Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Typography,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
@@ -97,28 +93,43 @@ const MyProfile = () => {
     </Box>
   );
 
+  const editHeader = (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Typography variant="h6">개인 정보</Typography>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
+          취소
+        </Button>
+        <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
+          저장
+        </Button>
+      </Box>
+    </Box>
+  );
+
   return (
     <AppPageContainer
       header={
-        <PageSectionHeader
-          title="개인 정보"
-          actionLabel="수정"
-          actionIcon={<EditIcon />}
-          onAction={handleEditOpen}
-        />
+        editMode ? editHeader : (
+          <PageSectionHeader
+            title="개인 정보"
+            actionLabel="수정"
+            actionIcon={<EditIcon />}
+            onAction={handleEditOpen}
+          />
+        )
       }
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        <InfoRow label="이메일" value={profileInfo.email} readOnly />
-        <InfoRow label="이름" value={profileInfo.name} />
-        <InfoRow label="연락처" value={profileInfo.phone} />
-        <InfoRow label="은행" value={profileInfo.bankName} />
-        <InfoRow label="계좌번호" value={profileInfo.bankAccountNumber} />
-      </Paper>
-
-      <Dialog open={editMode} onClose={handleEditClose} maxWidth="sm" fullWidth>
-        <DialogTitle>개인 정보 수정</DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        {!editMode ? (
+          <>
+            <InfoRow label="이메일" value={profileInfo.email} readOnly />
+            <InfoRow label="이름" value={profileInfo.name} />
+            <InfoRow label="연락처" value={profileInfo.phone} />
+            <InfoRow label="은행" value={profileInfo.bankName} />
+            <InfoRow label="계좌번호" value={profileInfo.bankAccountNumber} />
+          </>
+        ) : (
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
@@ -166,16 +177,8 @@ const MyProfile = () => {
               />
             </Grid>
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
-            취소
-          </Button>
-          <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
-            저장
-          </Button>
-        </DialogActions>
-      </Dialog>
+        )}
+      </Paper>
     </AppPageContainer>
   );
 };

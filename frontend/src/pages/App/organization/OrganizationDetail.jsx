@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Typography,
   Box,
@@ -6,10 +6,6 @@ import {
   TextField,
   Paper,
   Grid,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
@@ -110,30 +106,45 @@ const OrganizationDetail = () => {
     </Box>
   );
 
+  const editHeader = (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Typography variant="h6">회사 정보</Typography>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
+          취소
+        </Button>
+        <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
+          저장
+        </Button>
+      </Box>
+    </Box>
+  );
+
   return (
     <AppPageContainer
       header={
-        <PageSectionHeader
-          title="회사 정보"
-          actionLabel="수정"
-          actionIcon={<EditIcon />}
-          onAction={handleEditOpen}
-        />
+        editMode ? editHeader : (
+          <PageSectionHeader
+            title="회사 정보"
+            actionLabel="수정"
+            actionIcon={<EditIcon />}
+            onAction={handleEditOpen}
+          />
+        )
       }
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        <InfoRow label="회사명" value={companyInfo.name} />
-        <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
-        <InfoRow label="대표자명" value={companyInfo.representative} />
-        <InfoRow label="업종" value={companyInfo.industry} />
-        <InfoRow label="주소" value={companyInfo.address} />
-        <InfoRow label="연락처" value={companyInfo.phone} />
-        <InfoRow label="이메일" value={companyInfo.email} />
-      </Paper>
-
-      <Dialog open={editMode} onClose={handleEditClose} maxWidth="sm" fullWidth>
-        <DialogTitle>회사 정보 수정</DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
+        {!editMode ? (
+          <>
+            <InfoRow label="회사명" value={companyInfo.name} />
+            <InfoRow label="사업자등록번호" value={companyInfo.businessNumber} />
+            <InfoRow label="대표자명" value={companyInfo.representative} />
+            <InfoRow label="업종" value={companyInfo.industry} />
+            <InfoRow label="주소" value={companyInfo.address} />
+            <InfoRow label="연락처" value={companyInfo.phone} />
+            <InfoRow label="이메일" value={companyInfo.email} />
+          </>
+        ) : (
           <Grid container spacing={2}>
             <Grid item xs={12}>
               <TextField
@@ -200,16 +211,8 @@ const OrganizationDetail = () => {
               />
             </Grid>
           </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleEditClose} startIcon={<CancelIcon />}>
-            취소
-          </Button>
-          <Button onClick={handleSave} variant="contained" startIcon={<SaveIcon />}>
-            저장
-          </Button>
-        </DialogActions>
-      </Dialog>
+        )}
+      </Paper>
     </AppPageContainer>
   );
 };
