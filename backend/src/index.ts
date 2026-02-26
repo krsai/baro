@@ -14,7 +14,7 @@ import {
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 app.use(cors());
