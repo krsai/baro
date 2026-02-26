@@ -4,6 +4,11 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "prisma:fix-entry": "node scripts/fix-prisma-client-entry.js",
+    "preseed:test-accounts": "npm run prisma:fix-entry",
+    "seed:test-accounts": "node scripts/seed-test-accounts.js",
+    "predev": "npm run prisma:fix-entry",
+    "prestart": "npm run prisma:fix-entry",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",

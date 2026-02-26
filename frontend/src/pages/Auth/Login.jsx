@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
   CircularProgress,
   Container,
   Divider,
-  Link,
   Stack,
   Typography,
 } from '@mui/material';
@@ -26,22 +25,6 @@ const ORG_ROLE_LABEL_BY_KEY = {
   OPERATOR: '\uC6B4\uC601\uC790',
   ACCOUNTANT: '\uD68C\uACC4\uC0AC',
   WORKER: '\uC791\uC5C5\uC790',
-};
-
-const SYSTEM_ADMIN_PROFILE = {
-  key: 'SYSTEM_ADMIN',
-  label: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
-  entryType: 'SYSTEM',
-  systemRole: 'SYSTEM_ADMIN',
-  orgType: null,
-  orgRole: null,
-  orgId: null,
-  orgName: null,
-  email: 'system-admin@test.local',
-  employeeName: '\uC2DC\uC2A4\uD15C \uAD00\uB9AC\uC790',
-  isLineLeader: false,
-  lineLeaderStartAt: null,
-  lineLeaderEndAt: null,
 };
 
 const normalizeUpper = (value) =>
@@ -99,9 +82,18 @@ const Login = () => {
             const memberships = Array.isArray(membershipRows) ? membershipRows : [];
             const orgType = normalizeUpper(org?.type);
             const typeLabel = ORG_TYPE_LABEL_BY_KEY[orgType] || orgType || '\uC870\uC9C1';
+            const activeTestMemberships = memberships
+              .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
+              .filter((membership) => isTestAccountEmail(membership?.email));
 
             let lineManagerLineNamesByEmail = new Map();
-            if (orgType === 'MANUFACTURER') {
+            const hasPotentialLineLeaders =
+              orgType === 'MANUFACTURER' &&
+              activeTestMemberships.some(
+                (membership) => normalizeUpper(membership?.role) === 'WORKER'
+              );
+
+            if (hasPotentialLineLeaders) {
               const [lineWorkers, lines] = await Promise.all([
                 requestJSON(`/line-workers${buildQueryString({ orgId })}`).catch(() => []),
                 requestJSON(`/lines${buildQueryString({ orgId })}`).catch(() => []),
@@ -136,9 +128,7 @@ const Login = () => {
               );
             }
 
-            const sortedProfiles = memberships
-              .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
-              .filter((membership) => isTestAccountEmail(membership?.email))
+            const sortedProfiles = activeTestMemberships
               .map((membership) => {
                 const orgRole = normalizeUpper(membership?.role);
                 const roleLabel = ORG_ROLE_LABEL_BY_KEY[orgRole];
@@ -229,10 +219,6 @@ const Login = () => {
     navigate('/', { replace: true });
   };
 
-  const handleSystemAdminBypass = () => {
-    handleDevBypass(SYSTEM_ADMIN_PROFILE);
-  };
-
   return (
     <Container component="main" maxWidth="xs">
       <Box
@@ -267,16 +253,7 @@ const Login = () => {
           </Button>
 
           <Stack spacing={1.2} sx={{ mb: 2 }}>
-            <Button
-              fullWidth
-              variant="outlined"
-              color="error"
-              onClick={handleSystemAdminBypass}
-            >
-              개발 우회: 시스템 관리자
-            </Button>
-
-            <Divider />
+            {orgRoleProfiles.length > 0 && <Divider />}
 
             {orgRoleProfiles.map(({ org, typeLabel, profiles, orgType }) => (
               <Stack key={org?.id || `${org?.name}-${typeLabel}`} spacing={0.8}>
@@ -318,10 +295,6 @@ const Login = () => {
               `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
             </Typography>
           )}
-
-          <Link component={RouterLink} to="/signup" variant="body2">
-            계정이 없으면 테스트 계정으로 시작하기
-          </Link>
         </Box>
       </Box>
 

@@ -179,7 +179,9 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
-const HARD_CODED_SYSTEM_ADMIN_EMAIL = "krsailer82@gmail.com";
+const HARD_CODED_SYSTEM_ADMIN_EMAIL = normalizeEmail(
+  process.env.SYSTEM_ADMIN_EMAIL || "krsailer82@gmail.com"
+);
 const TRIAL_DAYS = 30;
 const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
   ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;

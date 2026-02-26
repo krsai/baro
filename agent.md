@@ -521,6 +521,14 @@ Organization (MANUFACTURER | BRAND)
 
 ## 개발 환경 설정
 
+### 새 환경에서 최초 셋팅 순서 (AI가 이 순서대로 진행)
+1. `backend/.env` 파일 생성 (아래 내용 그대로)
+2. `frontend/.env` 파일 생성 (아래 내용 그대로)
+3. 의존성 설치: `npm install` (루트에서 실행 — frontend/backend 동시)
+4. Prisma 클라이언트 생성: `cd backend && npx prisma generate`
+5. 실행: 루트에서 `npm run dev`
+   - `predev` 스크립트가 자동으로 `scripts/fix-prisma-client-entry.js` 실행 후 서버 시작
+
 ### 실행
 ```bash
 npm run dev
@@ -528,13 +536,14 @@ npm run dev
 프론트: http://localhost:5173 / 백엔드: http://localhost:4000
 
 ### Supabase 프로젝트
-- 프로젝트 ref: `hizhbjtjtdwuwtqpjqlb`
-- 리전: ap-south-1 (Mumbai)
-- 대시보드: https://supabase.com/dashboard/project/hizhbjtjtdwuwtqpjqlb
+- 프로젝트명: `lineos`
+- 프로젝트 ref: `mqohhiufmjnfuhxpfwkn`
+- 리전: ap-northeast-2 (Seoul)
+- 대시보드: https://supabase.com/dashboard/project/mqohhiufmjnfuhxpfwkn
 
 ### backend/.env
 ```
-DATABASE_URL="postgresql://postgres.hizhbjtjtdwuwtqpjqlb:[PASSWORD]@aws-1-ap-south-1.pooler.supabase.com:6543/postgres"
+DATABASE_URL="postgresql://postgres.mqohhiufmjnfuhxpfwkn:DxAwGN7yXNhV0dqw@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true"
 PORT=4000
 BUSINESS_TIME_ZONE=Asia/Seoul
 WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER=3
@@ -543,15 +552,18 @@ WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER=3
 ### frontend/.env
 ```
 VITE_API_BASE_URL=http://localhost:4000
-VITE_SUPABASE_URL=https://hizhbjtjtdwuwtqpjqlb.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_-CYP4H8_i0dldy3IcLI87g_1HcCp0zO
+VITE_SUPABASE_URL=https://mqohhiufmjnfuhxpfwkn.supabase.co
+VITE_SUPABASE_ANON_KEY=sb_publishable_I5v2Y8rVxnX7VDm6-3Goog_nlViC8KX
 ```
 
-### DB 비밀번호 재설정
+### 코드 수정사항 (이미 적용됨, 새 환경에서 확인)
+- `backend/src/index.ts:17` → `dotenv.config({ override: true });` (dotenv v17 필수)
+
+### DB 비밀번호 재설정이 필요한 경우
 Supabase 대시보드 → Project Settings → Infrastructure → Database password → Reset
-비밀번호 재설정 후 `backend/.env`의 `[PASSWORD]` 부분 교체.
+재설정 후 `backend/.env`의 `DATABASE_URL` 비밀번호 부분과 이 문서의 `backend/.env` 섹션 동시 업데이트.
 
 ### 주의사항
 - Transaction pooler 포트: **6543** (Session pooler: 5432)
-- dotenv v17은 `override: true` 필수 → `backend/src/index.ts:17`에 적용됨
-- 인도 리전 DNS 문제 시: Windows DNS를 Cloudflare(1.1.1.1)로 변경
+- dotenv v17은 `override: true` 필수 (위 코드 수정사항 참고)
+- DB 연결 실패 시 Windows DNS를 Cloudflare(1.1.1.1)로 변경 후 재시도

@@ -237,10 +237,10 @@ const StyleBoard = () => {
                 <TableCell>고객사</TableCell>
                 <TableCell>스타일명</TableCell>
                 <TableCell>스타일 코드</TableCell>
-                {canViewProcessSummary ? <TableCell>{'PT(1,000)'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'AT(1,000)'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'ST(1,000)'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'ST(1,000) 한 벌 가격'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'PT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'ST'}</TableCell> : null}
+                {canViewProcessSummary ? <TableCell>{'단위 공임'}</TableCell> : null}
                 <TableCell>등록일</TableCell>
                 <TableCell align="center">작업</TableCell>
               </TableRow>
