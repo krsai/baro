@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * 테스트 초기화 스크립트 — test-initial-state.md baseline v1.7 기준
+ * 테스트 초기화 스크립트 — baseline v2.0
  *
  * 삭제 대상:
  *   WorkLog (→ WorkRecord 자동 cascade)
@@ -14,11 +14,17 @@
  *   Employee, Factory, Line
  *
  * 재설정 대상:
- *   LineAssignment: 전체 해제 후 라인 1(작업자 01~10), 라인 2(작업자 11~20) 재배정
+ *   LineAssignment: 전체 해제 후 라인 1(작업자 01~20), 라인 2(작업자 01~20) 재배정
+ *   Line.managerEmployeeId: 라인 1 → line1-worker01, 라인 2 → line2-worker01
  *
  * 생성 대상:
  *   Style: 샘플 스타일 A (공정 6개, 5,000초), 샘플 스타일 B (공정 7개, 7,000초)
  *   WorkOrder: ORD-2025-SA (1,500개), ORD-2025-SB (1,500개), ORD-2025-MIX (1,200개)
+ *
+ * 작업자 구성:
+ *   라인 1 (20명): line1-worker01~20@baro.local → 라인1 작업자01~20
+ *   라인 2 (20명): line2-worker01~20@baro.local → 라인2 작업자01~20
+ *   라인장: 라인 1 → line1-worker01, 라인 2 → line2-worker01
  */
 
 require('dotenv').config();
@@ -29,84 +35,36 @@ const prisma = new PrismaClient();
 const MANUFACTURER_CODE = 'TSMF';
 const BRAND_CODE = 'TSBR';
 const BASELINE_FACTORY_NAME = '샘플 공장';
-const BASELINE_LINE_PREFIX = '샘플 라인';
-// 비작업자 4명 이름 정규화 (admin, operator, accountant)
+
+// 비작업자 이름 (admin, operator, accountant)
 const BASELINE_EMPLOYEE_NAME_BY_EMAIL = {
-  'manufacturer-admin@test.local':       '관리자',
-  'manufacturer-operator@test.local':    '운영자',
-  'manufacturer-accountant@test.local':  '회계담당',
+  'manufacturer-admin@test.local':      '관리자',
+  'manufacturer-operator@test.local':   '운영자',
+  'manufacturer-accountant@test.local': '회계담당',
 };
 
-// 작업자 20명 이름 정규화
-const BASELINE_WORKER_NAME_BY_EMAIL = {
-  'manufacturer-worker@test.local':       '작업자',
-  'sample-line-worker-01@test.local':     '작업자 02',
-  'sample-line-worker-02@test.local':     '작업자 03',
-  'sample-line-worker-03@test.local':     '작업자 04',
-  'sample-line-worker-04@test.local':     '작업자 05',
-  'sample-line-worker-05@test.local':     '작업자 06',
-  'sample-line-worker-06@test.local':     '작업자 07',
-  'sample-line-worker-07@test.local':     '작업자 08',
-  'sample-line-worker-08@test.local':     '작업자 09',
-  'test-worker-10@test.local':            '작업자 10',
-  'test-worker-11@test.local':            '작업자 11',
-  'test-worker-12@test.local':            '작업자 12',
-  'test-worker-13@test.local':            '작업자 13',
-  'test-worker-14@test.local':            '작업자 14',
-  'test-worker-15@test.local':            '작업자 15',
-  'test-worker-16@test.local':            '작업자 16',
-  'test-worker-17@test.local':            '작업자 17',
-  'test-worker-18@test.local':            '작업자 18',
-  'test-worker-19@test.local':            '작업자 19',
-  'test-worker-20@test.local':            '작업자 20',
-};
+// 작업자 이름 (라인 1: 20명, 라인 2: 20명)
+const BASELINE_WORKER_NAME_BY_EMAIL = {};
+for (let i = 1; i <= 20; i++) {
+  const n = String(i).padStart(2, '0');
+  BASELINE_WORKER_NAME_BY_EMAIL[`line1-worker${n}@baro.local`] = `라인1 작업자${n}`;
+}
+for (let i = 1; i <= 20; i++) {
+  const n = String(i).padStart(2, '0');
+  BASELINE_WORKER_NAME_BY_EMAIL[`line2-worker${n}@baro.local`] = `라인2 작업자${n}`;
+}
 
-// 작업자 10~20: 초기화 실행 시 미존재 시 OrgMembership + Employee 생성
-const BASELINE_NEW_WORKERS = [
-  { email: 'test-worker-10@test.local', name: '작업자 10' },
-  { email: 'test-worker-11@test.local', name: '작업자 11' },
-  { email: 'test-worker-12@test.local', name: '작업자 12' },
-  { email: 'test-worker-13@test.local', name: '작업자 13' },
-  { email: 'test-worker-14@test.local', name: '작업자 14' },
-  { email: 'test-worker-15@test.local', name: '작업자 15' },
-  { email: 'test-worker-16@test.local', name: '작업자 16' },
-  { email: 'test-worker-17@test.local', name: '작업자 17' },
-  { email: 'test-worker-18@test.local', name: '작업자 18' },
-  { email: 'test-worker-19@test.local', name: '작업자 19' },
-  { email: 'test-worker-20@test.local', name: '작업자 20' },
-];
-
-// 라인 배정 기준: 샘플 라인 1 (01~10), 샘플 라인 2 (11~20)
+// 라인 배정 기준
 const BASELINE_LINE_WORKER_MAP = [
   {
     lineName: '샘플 라인 1',
-    emails: [
-      'manufacturer-worker@test.local',   // 01
-      'sample-line-worker-01@test.local', // 02
-      'sample-line-worker-02@test.local', // 03
-      'sample-line-worker-03@test.local', // 04
-      'sample-line-worker-04@test.local', // 05
-      'sample-line-worker-05@test.local', // 06
-      'sample-line-worker-06@test.local', // 07
-      'sample-line-worker-07@test.local', // 08
-      'sample-line-worker-08@test.local', // 09
-      'test-worker-10@test.local',        // 10
-    ],
+    managerEmail: 'line1-worker01@baro.local',
+    emails: Array.from({ length: 20 }, (_, i) => `line1-worker${String(i + 1).padStart(2, '0')}@baro.local`),
   },
   {
     lineName: '샘플 라인 2',
-    emails: [
-      'test-worker-11@test.local', // 11
-      'test-worker-12@test.local', // 12
-      'test-worker-13@test.local', // 13
-      'test-worker-14@test.local', // 14
-      'test-worker-15@test.local', // 15
-      'test-worker-16@test.local', // 16
-      'test-worker-17@test.local', // 17
-      'test-worker-18@test.local', // 18
-      'test-worker-19@test.local', // 19
-      'test-worker-20@test.local', // 20
-    ],
+    managerEmail: 'line2-worker01@baro.local',
+    emails: Array.from({ length: 20 }, (_, i) => `line2-worker${String(i + 1).padStart(2, '0')}@baro.local`),
   },
 ];
 
@@ -124,17 +82,10 @@ const BASELINE_PROCESSES = [
 ];
 
 // 사이즈별 수량 분포
-// 375개: XS:25 S:50 M:100 L:125 XL:50 2XL:25
-// 250개: XS:15 S:35 M:70  L:85  XL:30 2XL:15
-// 350개: XS:25 S:45 M:90  L:110 XL:55 2XL:25
-const BASELINE_SIZE_DIST      = { XS: 25, S: 50, M: 100, L: 125, XL: 50, '2XL': 25 };
-const BASELINE_SIZE_DIST_250  = { XS: 15, S: 35, M:  70, L:  85, XL: 30, '2XL': 15 };
-const BASELINE_SIZE_DIST_350  = { XS: 25, S: 45, M:  90, L: 110, XL: 55, '2XL': 25 };
+const BASELINE_SIZE_DIST     = { XS: 25, S: 50, M: 100, L: 125, XL: 50, '2XL': 25 };
+const BASELINE_SIZE_DIST_250 = { XS: 15, S: 35, M:  70, L:  85, XL: 30, '2XL': 15 };
+const BASELINE_SIZE_DIST_350 = { XS: 25, S: 45, M:  90, L: 110, XL: 55, '2XL': 25 };
 
-// 샘플 주문 정의
-// ORD-2025-SA : 스타일 A, M×BLK, M×WHT, W×BLK, W×WHT → 각 375개 = 1,500개
-// ORD-2025-SB : 스타일 B, M×BLK, M×RED, W×WHT, W×BLU → 각 375개 = 1,500개
-// ORD-2025-MIX: 스타일 A(M×RED, W×BLU) 각 250개 + 스타일 B(M×WHT, W×BLK) 각 350개 = 1,200개
 const BASELINE_ORDERS = [
   {
     orderId: 'order-baseline-sa',
@@ -174,9 +125,6 @@ const BASELINE_ORDERS = [
   },
 ];
 
-// 샘플 스타일 정의
-// Style A: 공정 6개, q=1000, PT 합계 5,000초
-// Style B: 공정 7개, q=1000, PT 합계 7,000초
 const BASELINE_STYLES = [
   {
     styleId: 'S-SAMPLE-A',
@@ -192,7 +140,6 @@ const BASELINE_STYLES = [
       { code: 'P04', name: '테스트 공정 04', pt:  800, timeRefQuantity: 1000 },
       { code: 'P05', name: '테스트 공정 05', pt:  750, timeRefQuantity: 1000 },
       { code: 'P06', name: '테스트 공정 06', pt:  750, timeRefQuantity: 1000 },
-      // PT 합계: 5,000초 / q=1,000
     ],
   },
   {
@@ -210,24 +157,11 @@ const BASELINE_STYLES = [
       { code: 'P05', name: '테스트 공정 05', pt: 1000, timeRefQuantity: 1000 },
       { code: 'P06', name: '테스트 공정 06', pt:  950, timeRefQuantity: 1000 },
       { code: 'P07', name: '테스트 공정 07', pt:  900, timeRefQuantity: 1000 },
-      // PT 합계: 7,000초 / q=1,000
     ],
   },
 ];
 
-const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
-
-const resolveBaselineLineName = (name, fallbackIndex = 1) => {
-  const text = String(name ?? '').trim();
-  const legacyMatch = text.match(/^Sample Line(?:\s+(\d+))?$/i);
-  const baselineMatch = text.match(/^샘플 라인(?:\s+(\d+))?$/);
-  const numberText =
-    legacyMatch?.[1] ?? baselineMatch?.[1] ?? String(fallbackIndex);
-  const parsed = Number(numberText);
-  const lineNumber =
-    Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallbackIndex;
-  return `${BASELINE_LINE_PREFIX} ${lineNumber}`;
-};
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 async function main() {
   const orgs = await prisma.organization.findMany({
@@ -244,10 +178,10 @@ async function main() {
     );
   }
 
-  console.log(`\n대상 조직:`);
+  console.log('\n대상 조직:');
   console.log(`  TSMF (제조사) orgId: ${manufacturer.id}`);
   console.log(`  TSBR (브랜드) orgId: ${brand.id}`);
-  console.log(`\n초기화 시작...\n`);
+  console.log('\n초기화 시작...\n');
 
   const results = {};
 
@@ -292,147 +226,53 @@ async function main() {
     data: BASELINE_PROCESSES.map((p) => ({ orgId: manufacturer.id, ...p })),
     skipDuplicates: true,
   });
-  results.attrProcess = `P01~P10 복원`;
-  console.log(`[6/10] AttrProcess: P01~P10 복원 완료`);
+  results.attrProcess = 'P01~P10 복원';
+  console.log('[6/10] AttrProcess: P01~P10 복원 완료');
 
-  // 7. 유지 데이터의 영문 레거시 명칭을 한글 기준명으로 정규화
-  let normalizedFactories = 0;
-  let normalizedLines = 0;
+  // 7. 유지 데이터 이름 정규화 (factory, 비작업자 employee)
   let normalizedEmployees = 0;
 
-  const factories = await prisma.factory.findMany({
+  const factory = await prisma.factory.findFirst({
     where: { orgId: manufacturer.id },
     select: { id: true, name: true },
-    orderBy: { id: 'asc' },
   });
-  for (const factory of factories) {
-    const currentName = String(factory.name || '').trim();
-    if (!/^sample factory$/i.test(currentName)) continue;
-    if (currentName === BASELINE_FACTORY_NAME) continue;
+  if (factory && factory.name !== BASELINE_FACTORY_NAME) {
     await prisma.factory.update({
       where: { id: factory.id },
       data: { name: BASELINE_FACTORY_NAME },
     });
-    normalizedFactories += 1;
   }
 
-  const lines = await prisma.line.findMany({
-    where: { orgId: manufacturer.id },
-    select: { id: true, name: true },
-    orderBy: { id: 'asc' },
+  // 비작업자 이름 정규화
+  const staffEmails = Object.keys(BASELINE_EMPLOYEE_NAME_BY_EMAIL);
+  const staffEmployees = await prisma.employee.findMany({
+    where: { orgId: manufacturer.id, membership: { email: { in: staffEmails } } },
+    select: { id: true, name: true, membership: { select: { email: true } } },
   });
-  for (const [index, line] of lines.entries()) {
-    const currentName = String(line.name || '').trim();
-    const isLegacyLine = /^sample line(?:\s+\d+)?$/i.test(currentName);
-    const isBaselineLine = /^샘플 라인(?:\s+\d+)?$/.test(currentName);
-    if (!isLegacyLine && !isBaselineLine) continue;
-    const nextName = resolveBaselineLineName(currentName, index + 1);
-    if (currentName === nextName) continue;
-    await prisma.line.update({
-      where: { id: line.id },
-      data: { name: nextName },
-    });
-    normalizedLines += 1;
-  }
-
-  // 비작업자 이름 정규화 (admin, operator, accountant)
-  const baselineEmails = Object.keys(BASELINE_EMPLOYEE_NAME_BY_EMAIL);
-  const employees = await prisma.employee.findMany({
-    where: {
-      orgId: manufacturer.id,
-      membership: { email: { in: baselineEmails } },
-    },
-    select: {
-      id: true,
-      name: true,
-      membership: { select: { email: true } },
-    },
-  });
-
-  for (const employee of employees) {
-    const emailKey = normalizeEmail(employee.membership?.email);
+  for (const emp of staffEmployees) {
+    const emailKey = normalizeEmail(emp.membership?.email);
     const baselineName = BASELINE_EMPLOYEE_NAME_BY_EMAIL[emailKey];
-    if (!baselineName) continue;
-    if (String(employee.name || '').trim() === baselineName) continue;
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: { name: baselineName },
-    });
+    if (!baselineName || String(emp.name || '').trim() === baselineName) continue;
+    await prisma.employee.update({ where: { id: emp.id }, data: { name: baselineName } });
     normalizedEmployees += 1;
   }
 
-  // 작업자 20명 이름 정규화
+  // 작업자 이름 정규화
   const workerEmailList = Object.keys(BASELINE_WORKER_NAME_BY_EMAIL);
   const workerEmployees = await prisma.employee.findMany({
-    where: {
-      orgId: manufacturer.id,
-      membership: { email: { in: workerEmailList } },
-    },
-    select: {
-      id: true,
-      name: true,
-      membership: { select: { email: true } },
-    },
+    where: { orgId: manufacturer.id, membership: { email: { in: workerEmailList } } },
+    select: { id: true, name: true, membership: { select: { email: true } } },
   });
-
-  for (const employee of workerEmployees) {
-    const emailKey = normalizeEmail(employee.membership?.email);
+  for (const emp of workerEmployees) {
+    const emailKey = normalizeEmail(emp.membership?.email);
     const baselineName = BASELINE_WORKER_NAME_BY_EMAIL[emailKey];
-    if (!baselineName) continue;
-    if (String(employee.name || '').trim() === baselineName) continue;
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: { name: baselineName },
-    });
+    if (!baselineName || String(emp.name || '').trim() === baselineName) continue;
+    await prisma.employee.update({ where: { id: emp.id }, data: { name: baselineName } });
     normalizedEmployees += 1;
   }
 
-  // 작업자 10~20 미존재 시 OrgMembership + Employee 생성 (idempotent)
-  let createdWorkers = 0;
-  const baselineFactory = factories[0]; // 샘플 공장 (최초 factory)
-  if (baselineFactory) {
-    for (const workerDef of BASELINE_NEW_WORKERS) {
-      const membership = await prisma.orgMembership.upsert({
-        where: { orgId_email: { orgId: manufacturer.id, email: workerDef.email } },
-        update: {},
-        create: {
-          orgId: manufacturer.id,
-          email: workerDef.email,
-          role: 'WORKER',
-          status: 'ACTIVE',
-        },
-      });
-      const existing = await prisma.employee.findUnique({
-        where: { orgMembershipId: membership.id },
-      });
-      if (!existing) {
-        await prisma.employee.create({
-          data: {
-            orgId: manufacturer.id,
-            orgMembershipId: membership.id,
-            factoryId: baselineFactory.id,
-            name: workerDef.name,
-          },
-        });
-        createdWorkers += 1;
-      } else if (String(existing.name || '').trim() !== workerDef.name) {
-        await prisma.employee.update({
-          where: { id: existing.id },
-          data: { name: workerDef.name },
-        });
-      }
-    }
-  }
-
-  results.localizedNames = {
-    factory: normalizedFactories,
-    line: normalizedLines,
-    employee: normalizedEmployees,
-    workerCreated: createdWorkers,
-  };
-  console.log(
-    `[7/10] 유지 데이터 명칭 한글화: Factory ${normalizedFactories}건, Line ${normalizedLines}건, Employee ${normalizedEmployees}건, Worker 신규 생성 ${createdWorkers}명`
-  );
+  results.normalizedEmployees = normalizedEmployees;
+  console.log(`[7/10] 이름 정규화: Employee ${normalizedEmployees}건`);
 
   // 8. 샘플 스타일 등록
   const createdStyles = [];
@@ -463,7 +303,6 @@ async function main() {
       return { ...item, totalQuantity };
     });
     const totalQuantity = itemsWithTotals.reduce((s, item) => s + item.totalQuantity, 0);
-
     const created = await prisma.workOrder.create({
       data: {
         orgId: manufacturer.id,
@@ -486,7 +325,7 @@ async function main() {
   results.orders = createdOrders;
   console.log(`[9/10] 샘플 주문 등록: ${createdOrders.join(', ')}`);
 
-  // 10. 라인 배정 초기화: TSMF 작업자 전원 해제 → 라인 1(01~10), 라인 2(11~20) 재배정
+  // 10. 라인 배정 초기화: 전원 해제 → 라인 1 (01~20), 라인 2 (01~20) 재배정 + 라인장 설정
   const allWorkerEmails = Object.keys(BASELINE_WORKER_NAME_BY_EMAIL);
   const workerMemberships = await prisma.orgMembership.findMany({
     where: { orgId: manufacturer.id, email: { in: allWorkerEmails } },
@@ -519,7 +358,7 @@ async function main() {
   });
   const lineNameToId = Object.fromEntries(lineRecords.map((l) => [l.name, l.id]));
 
-  // 신규 배정 생성
+  // 신규 배정 생성 + lineName 업데이트
   let assignedCount = 0;
   for (const { lineName, emails } of BASELINE_LINE_WORKER_MAP) {
     const lineId = lineNameToId[lineName];
@@ -544,24 +383,41 @@ async function main() {
     }
   }
 
-  results.lineAssignment = { closed: closedAssignments.count, assigned: assignedCount };
-  console.log(`[10/10] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정`);
+  // 라인장 재설정
+  let managersSet = 0;
+  for (const { lineName, managerEmail } of BASELINE_LINE_WORKER_MAP) {
+    const lineId = lineNameToId[lineName];
+    if (!lineId) continue;
+    const managerEmployeeId = emailToEmployeeId[normalizeEmail(managerEmail)];
+    if (!managerEmployeeId) {
+      console.warn(`  경고: 라인장 계정 '${managerEmail}'을 찾을 수 없습니다.`);
+      continue;
+    }
+    await prisma.line.update({
+      where: { id: lineId },
+      data: { managerEmployeeId },
+    });
+    managersSet += 1;
+  }
 
-  // 현재 유지된 데이터 확인
+  results.lineAssignment = { closed: closedAssignments.count, assigned: assignedCount, managersSet };
+  console.log(`[10/10] 라인 배정 초기화: ${closedAssignments.count}건 해제, ${assignedCount}건 신규 배정, 라인장 ${managersSet}명 설정`);
+
+  // 최종 현황
   const remaining = await prisma.$transaction([
     prisma.employee.count({ where: { orgId: manufacturer.id } }),
     prisma.line.count({ where: { orgId: manufacturer.id } }),
-    prisma.lineAssignment.count(),
+    prisma.lineAssignment.count({ where: { endAt: null } }),
     prisma.factory.count({ where: { orgId: manufacturer.id } }),
   ]);
 
-  console.log(`\n=== 초기화 완료 ===`);
+  console.log('\n=== 초기화 완료 ===');
   console.log(JSON.stringify(results, null, 2));
-  console.log(`\n유지된 데이터:`);
+  console.log('\n유지된 데이터:');
   console.log(`  Employee: ${remaining[0]}명`);
   console.log(`  Factory: ${remaining[3]}개`);
   console.log(`  Line: ${remaining[1]}개`);
-  console.log(`  LineAssignment: ${remaining[2]}건`);
+  console.log(`  LineAssignment (활성): ${remaining[2]}건`);
 }
 
 main()

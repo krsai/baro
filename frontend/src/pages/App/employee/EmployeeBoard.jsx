@@ -202,11 +202,9 @@ const EmployeeRow = React.memo(
 );
 
 const EmployeeBoard = () => {
-  const { user } = useAuth();
+  const { user, activeOrgId, activeOrgType } = useAuth();
   const { showNotification } = useApp();
 
-  const [organizations, setOrganizations] = useState([]);
-  const [selectedOrgId, setSelectedOrgId] = useState('');
   const [factories, setFactories] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
   const [activeMembers, setActiveMembers] = useState([]);
@@ -222,13 +220,9 @@ const EmployeeBoard = () => {
   const [updatingMembershipIds, setUpdatingMembershipIds] = useState({});
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
 
-  const selectedOrg = useMemo(
-    () => organizations.find((org) => String(org.id) === String(selectedOrgId)) || null,
-    [organizations, selectedOrgId]
-  );
   const roleOptions = useMemo(
-    () => getRoleOptionsByOrgType(selectedOrg?.type),
-    [selectedOrg?.type]
+    () => getRoleOptionsByOrgType(activeOrgType),
+    [activeOrgType]
   );
 
   const employeeByMembership = useMemo(() => {
@@ -249,19 +243,6 @@ const EmployeeBoard = () => {
     setStatusMessage(null);
   }, [showNotification, statusMessage]);
 
-  const fetchOrganizations = async () => {
-    try {
-      const data = await requestJSON('/organizations');
-      const list = Array.isArray(data) ? data : [];
-      setOrganizations(list);
-      if (!selectedOrgId && list.length > 0) {
-        setSelectedOrgId(String(list[0].id));
-      }
-    } catch (_error) {
-      setStatusMessage({ type: 'error', text: '조직 목록을 불러오지 못했습니다.' });
-    }
-  };
-
   const fetchMemberships = useCallback(async (orgId) => {
     try {
       const data = await requestJSON(`/org-memberships${buildQueryString({ orgId })}`);
@@ -275,7 +256,7 @@ const EmployeeBoard = () => {
     }
   }, []);
 
-  const fetchFactories = async (orgId, orgType) => {
+  const fetchFactories = useCallback(async (orgId, orgType) => {
     if (!orgId) return;
     if (orgType === 'BRAND') {
       setFactories([]);
@@ -288,7 +269,7 @@ const EmployeeBoard = () => {
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '공장 정보를 불러오지 못했습니다.' });
     }
-  };
+  }, []);
 
   const fetchEmployees = useCallback(async (orgId) => {
     if (!orgId) return;
@@ -301,15 +282,11 @@ const EmployeeBoard = () => {
   }, []);
 
   useEffect(() => {
-    fetchOrganizations();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedOrgId) return;
-    fetchMemberships(selectedOrgId);
-    fetchEmployees(selectedOrgId);
-    fetchFactories(selectedOrgId, selectedOrg?.type);
-  }, [selectedOrgId, selectedOrg?.type, fetchMemberships, fetchEmployees]);
+    if (!activeOrgId) return;
+    fetchMemberships(activeOrgId);
+    fetchEmployees(activeOrgId);
+    fetchFactories(activeOrgId, activeOrgType);
+  }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories]);
 
   const handleApprove = async (member) => {
     if (approvingId) return;
@@ -321,7 +298,7 @@ const EmployeeBoard = () => {
       pendingRoleOverrides[member.id] || member.role || ''
     ).toUpperCase();
 
-    if (selectedOrg?.type !== 'BRAND' && !factoryId) {
+    if (activeOrgType !== 'BRAND' && !factoryId) {
       setStatusMessage({ type: 'error', text: '승인 전에 공장을 선택해 주세요.' });
       setApprovingId(null);
       return;
@@ -344,8 +321,8 @@ const EmployeeBoard = () => {
         }),
       });
 
-      await fetchMemberships(selectedOrgId);
-      await fetchEmployees(selectedOrgId);
+      await fetchMemberships(activeOrgId);
+      await fetchEmployees(activeOrgId);
       setStatusMessage({ type: 'success', text: '승인을 완료했습니다.' });
     } catch (error) {
       setStatusMessage({ type: 'error', text: error?.message || '승인에 실패했습니다.' });
@@ -366,7 +343,7 @@ const EmployeeBoard = () => {
         body: JSON.stringify({ approvedBy: myEmail }),
       });
 
-      await fetchMemberships(selectedOrgId);
+      await fetchMemberships(activeOrgId);
       setStatusMessage({ type: 'success', text: '반려 처리를 완료했습니다.' });
     } catch (error) {
       setStatusMessage({ type: 'error', text: error?.message || '반려 처리에 실패했습니다.' });
@@ -411,8 +388,8 @@ const EmployeeBoard = () => {
           });
         }
 
-        await fetchEmployees(selectedOrgId);
-        await fetchMemberships(selectedOrgId);
+        await fetchEmployees(activeOrgId);
+        await fetchMemberships(activeOrgId);
         setStatusMessage({ type: 'success', text: '직원 정보가 저장되었습니다.' });
         return true;
       } catch (error) {
@@ -423,7 +400,7 @@ const EmployeeBoard = () => {
         setUpdatingMembershipIds((prev) => ({ ...prev, [member.id]: false }));
       }
     },
-    [fetchEmployees, fetchMemberships, myEmail, selectedOrgId, updatingEmployeeIds, updatingMembershipIds]
+    [activeOrgId, fetchEmployees, fetchMemberships, myEmail, updatingEmployeeIds, updatingMembershipIds]
   );
 
   const factoryOrder = useMemo(() => {
@@ -454,26 +431,6 @@ const EmployeeBoard = () => {
   return (
     <AppPageContainer>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Typography variant="h6">직원 관리</Typography>
-            <TextField
-              select
-              size="small"
-              label="조직 선택"
-              value={selectedOrgId}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              sx={{ minWidth: 220 }}
-            >
-              {organizations.map((org) => (
-                <MenuItem key={org.id} value={String(org.id)}>
-                  {org.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Box>
-        </Paper>
-
         {statusMessage && (
           <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
         )}
@@ -501,7 +458,7 @@ const EmployeeBoard = () => {
                       <TableCell>{member.email}</TableCell>
 
                       <TableCell>
-                        {selectedOrg?.type === 'BRAND' ? (
+                        {activeOrgType === 'BRAND' ? (
                           <Typography variant="body2" color="text.secondary">
                             공장 없음
                           </Typography>
@@ -618,7 +575,7 @@ const EmployeeBoard = () => {
                         employee={employee}
                         factories={factories}
                         roleOptions={roleOptions}
-                        selectedOrgType={selectedOrg?.type}
+                        selectedOrgType={activeOrgType}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}
                       />

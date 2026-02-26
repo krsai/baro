@@ -13,7 +13,7 @@ import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 
-const TEST_ACCOUNT_EMAIL_SUFFIX = '@test.local';
+const TEST_ACCOUNT_EMAIL_SUFFIXES = ['@test.local', '@baro.local'];
 
 const ORG_TYPE_LABEL_BY_KEY = {
   MANUFACTURER: '\uC218\uC8FC\uC790',
@@ -30,8 +30,10 @@ const ORG_ROLE_LABEL_BY_KEY = {
 const normalizeUpper = (value) =>
   typeof value === 'string' ? value.trim().toUpperCase() : '';
 
-const isTestAccountEmail = (value) =>
-  String(value || '').trim().toLowerCase().endsWith(TEST_ACCOUNT_EMAIL_SUFFIX);
+const isTestAccountEmail = (value) => {
+  const email = String(value || '').trim().toLowerCase();
+  return TEST_ACCOUNT_EMAIL_SUFFIXES.some((suffix) => email.endsWith(suffix));
+};
 
 const sortRoleOrder = (role) => {
   const order = ['ADMIN', 'OPERATOR', 'ACCOUNTANT', 'WORKER'];
