@@ -4317,30 +4317,14 @@ const AssignBoard = () => {
                                 </Stack>
                               </TableCell>
                               <TableCell align="right">
-                                <TextField
-                                  size="small"
-                                  value={detailStDraftByProcess[row.processKey] ?? ''}
-                                  placeholder={
-                                    row.baseSeconds > 0
-                                      ? String(
-                                          formatNumberWithCommas(row.baseSeconds, {
-                                            fallback: '0',
-                                            maximumFractionDigits: 2,
-                                          })
-                                        )
-                                      : ''
-                                  }
-                                  inputProps={{
-                                    inputMode: 'decimal',
-                                    pattern: '\\d*(\\.\\d{0,2})?',
-                                    style: { textAlign: 'right', width: 80 },
-                                  }}
-                                  onChange={(event) =>
-                                    handleDetailStDraftInput(row.processKey, event.target.value)
-                                  }
-                                  disabled={sendingProposal || detailIsLocked}
-                                  sx={{ width: 90 }}
-                                />
+                                <Typography variant="body2" color="text.secondary">
+                                  {row.baseSeconds > 0
+                                    ? formatNumberWithCommas(row.baseSeconds, {
+                                        fallback: '0',
+                                        maximumFractionDigits: 2,
+                                      })
+                                    : '-'}
+                                </Typography>
                               </TableCell>
                               <TableCell align="right">
                                 <TextField
