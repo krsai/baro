@@ -741,15 +741,11 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
 };
 
 const resolveCardTotalSeconds = (card) => {
+  // Always prefer ST when available
+  if (Number(card?.totalSt) > 0) return card.totalSt;
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
-  if (basis === 'ST') {
-    return card.totalSt ?? card.totalSeconds ?? card.totalAt ?? card.totalPt ?? 0;
-  }
-  // PT/AT are factory-common values
-  if (basis === 'AT') {
-    return card.totalAt ?? card.totalSeconds ?? 0;
-  }
+  if (basis === 'AT') return card.totalAt ?? card.totalSeconds ?? 0;
   return card.totalPt ?? card.totalSeconds ?? 0;
 };
 
@@ -1039,10 +1035,16 @@ const reflowAssignmentsByLineCapacity = ({
     if (sorted.length === 0) continue;
 
     const fixed = sorted
-      .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
+      .filter(
+        (item) =>
+          toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex ||
+          isAssignmentLockedStatus(item?.ctStatus)
+      )
       .map((item) => ({ ...item, lineId }));
     const queue = sorted.filter(
-      (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
+      (item) =>
+        toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex &&
+        !isAssignmentLockedStatus(item?.ctStatus)
     );
 
     const placed = [...fixed];

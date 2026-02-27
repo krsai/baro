@@ -5842,6 +5842,30 @@ app.get("/assignment-board-state", async (req, res) => {
   res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
 });
 
+app.delete("/assignment-board-state", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: { id: true },
+    });
+    if (existing) {
+      await tx.assignmentBoardState.update({
+        where: { orgId: organization.id },
+        data: { assignments: [], cards: [] },
+      });
+    }
+    await tx.assignmentPlan.deleteMany({ where: { orgId: organization.id } });
+  });
+
+  res.json({ ok: true });
+});
+
 app.put("/assignment-board-state", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
