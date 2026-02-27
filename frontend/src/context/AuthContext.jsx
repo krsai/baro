@@ -415,8 +415,16 @@ export const AuthProvider = ({ children }) => {
     loadSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession ?? null);
-      setUser(nextSession?.user ?? null);
+      setSession((prev) => {
+        const next = nextSession ?? null;
+        if (prev?.access_token === next?.access_token) return prev;
+        return next;
+      });
+      setUser((prev) => {
+        const next = nextSession?.user ?? null;
+        if (prev?.id === next?.id && prev?.email === next?.email) return prev;
+        return next;
+      });
       setLoading(false);
     });
 
