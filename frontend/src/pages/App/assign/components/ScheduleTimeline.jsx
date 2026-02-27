@@ -1,4 +1,4 @@
-﻿import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useRef, useMemo, useState } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
@@ -8,11 +8,12 @@ const ROW_HEIGHT = 90;
 const BAR_HEIGHT = 64;
 const BAR_GAP = 6;
 const MIN_BAR_WIDTH = 56;
+const FIXED_COL_WIDTH = 190; // sticky "라인" 컬럼 너비
 
-const DropCell = memo(({ id, isHoliday, isColumnHighlighted }) => {
+const DropCell = memo(({ id, isHoliday, isHighlighted }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
   const baseColor = isHoliday ? '#FCECEF' : 'transparent';
-  const isHighlighted = isOver || isColumnHighlighted;
+  const highlighted = isOver || isHighlighted;
 
   return (
     <Box
@@ -22,7 +23,7 @@ const DropCell = memo(({ id, isHoliday, isColumnHighlighted }) => {
         height: '100%',
         border: '1px dashed #e2e6ef',
         zIndex: 0,
-        backgroundColor: isHighlighted ? 'rgba(25, 118, 210, 0.18)' : baseColor,
+        backgroundColor: highlighted ? 'rgba(25, 118, 210, 0.18)' : baseColor,
         transition: 'background-color 0.08s ease',
         boxSizing: 'border-box',
       }}
@@ -114,40 +115,80 @@ const getWorkingDuration = (assignment, days) => {
   return total;
 };
 
+// 마우스/터치 이벤트에서 현재 포인터 X 좌표 계산
+const getPointerX = (event) => {
+  const activator = event.activatorEvent;
+  if (!activator) return null;
+  if (typeof activator.clientX === 'number') return activator.clientX + (event.delta?.x ?? 0);
+  const touch = activator.touches?.[0] ?? activator.changedTouches?.[0];
+  if (touch && typeof touch.clientX === 'number') return touch.clientX + (event.delta?.x ?? 0);
+  return null;
+};
+
 const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextMenu }) => {
-  const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
+  // { lineId: string|null, dayIndex: number|null } — 현재 포인터가 위치한 셀
+  const [hoveredTarget, setHoveredTarget] = useState({ lineId: null, dayIndex: null });
+  const gridContainerRef = useRef(null);
+  // getBoundingClientRect()는 레이아웃을 강제 재계산하므로 드래그 시작 시 1번만 캐시
+  const containerRectRef = useRef(null);
+
+  // O(1) 조회를 위한 Map — assignments 배열이 바뀔 때만 재생성
+  const assignmentById = useMemo(() => {
+    const map = new Map();
+    assignments.forEach((a) => map.set(String(a.id), a));
+    return map;
+  }, [assignments]);
 
   useDndMonitor({
     onDragStart() {
-      setHoveredDayIndex(null);
+      setHoveredTarget({ lineId: null, dayIndex: null });
+      // 드래그 시작 시점의 컨테이너 위치를 캐시 (드래그 중 페이지 스크롤은 드문 상황)
+      containerRectRef.current = gridContainerRef.current?.getBoundingClientRect() ?? null;
     },
-    onDragOver(event) {
+    // onDragOver 는 droppable이 바뀔 때만 발동 → AssignBar 내부 이동 시 delta가 고정됨
+    // onDragMove 는 매 포인터 이동마다 발동 → 항상 최신 delta로 정확한 위치 계산
+    onDragMove(event) {
       const overId = String(event.over?.id ?? '');
-      // DropCell id format: "lineId::dayIndex"
-      const cellMatch = overId.match(/::(\d+)$/);
+
+      // Case 1: DropCell  —  "lineId::dayIndex"
+      const cellMatch = overId.match(/^(.+)::(\d+)$/);
       if (cellMatch) {
-        setHoveredDayIndex(Number(cellMatch[1]));
+        setHoveredTarget({ lineId: cellMatch[1], dayIndex: Number(cellMatch[2]) });
         return;
       }
-      // AssignBar droppable id format: "assign-drop-{id}"
+
+      // Case 2: AssignBar droppable  —  "assign-drop-{id}"
       const assignMatch = overId.match(/^assign-drop-(.+)$/);
       if (assignMatch) {
-        const assignId = assignMatch[1];
-        const found = (Array.isArray(assignments) ? assignments : []).find(
-          (a) => String(a.id) === assignId,
-        );
+        const found = assignmentById.get(assignMatch[1]);
         if (found != null) {
-          setHoveredDayIndex(found.startIndex);
+          const pointerX = getPointerX(event);
+          const container = gridContainerRef.current;
+          const rect = containerRectRef.current; // 캐시된 rect 사용 (재계산 없음)
+          if (pointerX != null && container != null && rect != null) {
+            // scrollLeft만 live로 읽음 (레이아웃 재계산 없음)
+            const relX = pointerX - rect.left - FIXED_COL_WIDTH + container.scrollLeft;
+            const computedDayIndex = Math.floor(relX / CELL_WIDTH);
+            if (computedDayIndex >= 0 && computedDayIndex < days.length) {
+              setHoveredTarget({ lineId: String(found.lineId), dayIndex: computedDayIndex });
+              return;
+            }
+          }
+          // fallback: 바의 시작 날짜
+          setHoveredTarget({ lineId: String(found.lineId), dayIndex: found.startIndex });
           return;
         }
       }
-      setHoveredDayIndex(null);
+
+      setHoveredTarget({ lineId: null, dayIndex: null });
     },
     onDragEnd() {
-      setHoveredDayIndex(null);
+      setHoveredTarget({ lineId: null, dayIndex: null });
+      containerRectRef.current = null;
     },
     onDragCancel() {
-      setHoveredDayIndex(null);
+      setHoveredTarget({ lineId: null, dayIndex: null });
+      containerRectRef.current = null;
     },
   });
 
@@ -216,6 +257,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
       <TableContainer
+        ref={gridContainerRef}
         sx={{
           width: '100%',
           maxWidth: '100%',
@@ -271,6 +313,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
               };
               const { placed, laneCount, linkableIds } = layout;
               const rowHeight = Math.max(ROW_HEIGHT, laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP);
+              const lineIdStr = String(line.id);
 
               return (
                 <TableRow key={line.id} hover>
@@ -305,12 +348,16 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                     >
                       {days.map((day, dayIndex) => {
                         const isHoliday = day.isSunday || day.isHoliday;
+                        // 이 셀이 현재 포인터 위치와 정확히 일치할 때만 하이라이트
+                        const isHighlighted =
+                          hoveredTarget.lineId === lineIdStr &&
+                          hoveredTarget.dayIndex === dayIndex;
                         return (
                           <DropCell
                             key={`${line.id}-${day.key}`}
                             id={`${line.id}::${dayIndex}`}
                             isHoliday={isHoliday}
-                            isColumnHighlighted={hoveredDayIndex === dayIndex}
+                            isHighlighted={isHighlighted}
                           />
                         );
                       })}

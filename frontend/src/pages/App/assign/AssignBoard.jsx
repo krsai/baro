@@ -2737,6 +2737,7 @@ const AssignBoard = () => {
     let lineId = null;
     let dayIndex = null;
     let targetOnDay = null;
+    let dropBeforeTarget = false; // true: 타겟 앞에 배치, false: 타겟 뒤에 배치
 
     if (overId.startsWith('assign-drop-')) {
       const targetId = overId.replace('assign-drop-', '');
@@ -2749,7 +2750,26 @@ const AssignBoard = () => {
           const dayDelta = Math.round(event.delta.x / 100);
           dayIndex = Math.max(0, targetOnDay.startIndex + dayDelta);
         } else {
-          dayIndex = targetOnDay.startIndex;
+          // 타겟 바 위에 드롭: 포인터가 바의 앞/뒤 절반 중 어디에 있는지 판단
+          const overRect = event.over?.rect;
+          const activator = event.activatorEvent;
+          const pointerX =
+            activator && typeof activator.clientX === 'number'
+              ? activator.clientX + event.delta.x
+              : null;
+          if (overRect && pointerX != null) {
+            const relPos = (pointerX - overRect.left) / Math.max(overRect.width, 1);
+            dropBeforeTarget = relPos < 0.5;
+            // 포인터가 위치한 실제 날짜 셀 계산
+            const spanDays = Math.max(targetOnDay.endIndex - targetOnDay.startIndex + 1, 1);
+            const dayOffset = Math.floor(relPos * spanDays);
+            dayIndex = Math.max(
+              targetOnDay.startIndex,
+              Math.min(targetOnDay.endIndex, targetOnDay.startIndex + dayOffset)
+            );
+          } else {
+            dayIndex = targetOnDay.startIndex;
+          }
         }
       }
     } else {
@@ -2937,7 +2957,12 @@ const AssignBoard = () => {
         let insertAfterId = null;
         let insertBeforeId = null;
         if (targetOnDay && targetOnDay.id !== assignmentId) {
-          insertAfterId = targetOnDay.id;
+          // 포인터가 타겟 바의 앞 절반 → 타겟 앞에 삽입, 뒤 절반 → 타겟 뒤에 삽입
+          if (dropBeforeTarget) {
+            insertBeforeId = targetOnDay.id;
+          } else {
+            insertAfterId = targetOnDay.id;
+          }
         } else {
           const nextAssignment = getNextAssignmentAfterDay(filtered, lineId, dayIndex, assignmentId);
           if (nextAssignment) insertBeforeId = nextAssignment.id;
