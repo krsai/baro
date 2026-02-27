@@ -1001,17 +1001,21 @@ const reflowAssignmentsByLineCapacity = ({
       .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
     if (sorted.length === 0) continue;
 
+    // REJECTED도 위치 고정: 드래그는 가능하나 리플로우에서 자동 이동하면 안 된다
+    const isPositionFixed = (item) =>
+      isAssignmentLockedStatus(item?.ctStatus) ||
+      normalizeCtStatus(item?.ctStatus) === 'REJECTED';
     const fixed = sorted
       .filter(
         (item) =>
           toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex ||
-          isAssignmentLockedStatus(item?.ctStatus)
+          isPositionFixed(item)
       )
       .map((item) => ({ ...item, lineId }));
     const queue = sorted.filter(
       (item) =>
         toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex &&
-        !isAssignmentLockedStatus(item?.ctStatus)
+        !isPositionFixed(item)
     );
 
     const placed = [...fixed];

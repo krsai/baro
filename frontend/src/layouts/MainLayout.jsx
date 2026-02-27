@@ -302,9 +302,12 @@ const MainLayout = () => {
     },
     [flattenedMenuItems]
   );
-  const isEmptyWorkspaceAtRoot = openTabs.length === 0 && currentPath === '/';
+  // 대시보드 탭이 명시적으로 열려있지 않은 채 currentPath='/'일 때 Outlet을 숨긴다.
+  // openTabs.length === 0 조건만 쓰면, 메뉴 클릭 시 탭이 추가된 직후 라우트 전환 전
+  // 렌더 사이클에서 대시보드가 순간 노출(flash)되는 문제가 발생한다.
+  const hasDashboardTab = openTabs.some((tab) => tab.id === '/');
   const shouldHideOutletForEmptyWorkspace =
-    isEmptyWorkspaceAtRoot && isAuthenticated && hasPathAccess('/');
+    currentPath === '/' && !hasDashboardTab && isAuthenticated && hasPathAccess('/');
   const tabsForRender = useMemo(() => {
     // During route transition, avoid rendering a transient optimistic tab for
     // the previous pathname (e.g. dashboard flash while opening another menu).
@@ -522,7 +525,7 @@ const MainLayout = () => {
             !menu.isParent &&
             menu.path === '/' &&
             currentPath === '/' &&
-            !isEmptyWorkspaceAtRoot;
+            hasDashboardTab;
           const isNonRootMenuSelected =
             !menu.isParent && menu.path !== '/' && currentPath === menu.path;
           const isMenuSelected = isRootMenuSelected || isNonRootMenuSelected;
