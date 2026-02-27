@@ -2493,7 +2493,7 @@ const AssignBoard = () => {
   const canAgreeLineRequest = Boolean(
     detailInLineRequestFlow && !detailIsLocked && !detailHasProposalChange
   );
-  const canSendProposal = Boolean(detailAssignment && detailProcessRows.length > 0 && !detailIsLocked);
+  const canSendProposal = Boolean(detailAssignment && detailProcessRows.length > 0 && detailCtStatus !== 'AGREED');
   const canResendProposal = detailInLineRequestFlow
     ? canSendProposal && detailHasProposalChange
     : canSendProposal;
@@ -2675,7 +2675,7 @@ const AssignBoard = () => {
     if (activeId.startsWith('assign-')) {
       const movingAssignmentId = activeId.replace('assign-', '');
       const movingAssignment = assignmentById.get(movingAssignmentId);
-      if (movingAssignment && isAssignmentLocked(movingAssignment)) {
+      if (movingAssignment && normalizeCtStatus(movingAssignment?.ctStatus) === 'SENT') {
         showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
         setActiveDrag(null);
         return;
@@ -2693,6 +2693,12 @@ const AssignBoard = () => {
       }
       if (activeId.startsWith('assign-')) {
         const assignmentId = activeId.replace('assign-', '');
+        const sourceAssignment = assignmentById.get(assignmentId);
+        if (sourceAssignment && isAssignmentLocked(sourceAssignment)) {
+          showNotification('잠금된 작업은 미배정 영역으로 옮길 수 없습니다.', 'warning');
+          setActiveDrag(null);
+          return;
+        }
         if (mergeAssignmentIntoCardTarget(targetCardId, assignmentId)) {
           setActiveDrag(null);
           return;
@@ -2715,8 +2721,9 @@ const AssignBoard = () => {
       }
       if (targetAssignment && activeId.startsWith('assign-')) {
         const sourceAssignmentId = activeId.replace('assign-', '');
-        if (isAssignmentLocked(targetAssignment)) {
-          showNotification('제안 송부된 작업에는 합칠 수 없습니다.', 'warning');
+        const sourceAssignment = assignmentById.get(sourceAssignmentId);
+        if (isAssignmentLocked(targetAssignment) || (sourceAssignment && isAssignmentLocked(sourceAssignment))) {
+          showNotification('잠금된 작업은 합칠 수 없습니다.', 'warning');
           setActiveDrag(null);
           return;
         }
@@ -2860,11 +2867,23 @@ const AssignBoard = () => {
 
     if (activeId.startsWith('assign-')) {
       const assignmentId = activeId.replace('assign-', '');
+      const movingAssignmentForCheck = assignmentById.get(assignmentId);
+      if (
+        movingAssignmentForCheck &&
+        isAssignmentLocked(movingAssignmentForCheck) &&
+        String(lineId) !== String(movingAssignmentForCheck.lineId)
+      ) {
+        showNotification('동의 완료된 작업은 다른 라인으로 이동할 수 없습니다.', 'warning');
+        setActiveDrag(null);
+        return;
+      }
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
-        if (isAssignmentLocked(target)) return prev;
-        if (targetOnDay && isAssignmentLocked(targetOnDay) && targetOnDay.id !== assignmentId) {
+        const isMovingToSameLine = String(lineId) === String(target.lineId);
+        if (normalizeCtStatus(target?.ctStatus) === 'SENT') return prev;
+        if (isAssignmentLocked(target) && !isMovingToSameLine) return prev;
+        if (targetOnDay && normalizeCtStatus(targetOnDay?.ctStatus) === 'SENT' && targetOnDay.id !== assignmentId) {
           return prev;
         }
 
@@ -2944,7 +2963,7 @@ const AssignBoard = () => {
 
   const handleLinkPrev = (assignmentId) => {
     const targetPreview = assignmentById.get(assignmentId);
-    if (targetPreview && isAssignmentLocked(targetPreview)) {
+    if (targetPreview && normalizeCtStatus(targetPreview?.ctStatus) === 'SENT') {
       showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
       return;
     }
@@ -3112,8 +3131,8 @@ const AssignBoard = () => {
   const handleSendProposalToLineLeader = useCallback(async () => {
     if (sendingProposal) return;
     if (!detailAssignment) return;
-    if (isAssignmentLocked(detailAssignment)) {
-      showNotification('이미 송부되어 잠금된 작업입니다.', 'warning');
+    if (detailCtStatus === 'AGREED') {
+      showNotification('확정 완료된 작업은 재제안할 수 없습니다.', 'warning');
       return;
     }
     if (detailInLineRequestFlow && !detailHasProposalChange) {
@@ -4332,7 +4351,7 @@ const AssignBoard = () => {
                                   onChange={(event) =>
                                     handleDetailDraftInput(row.processKey, event.target.value)
                                   }
-                                  disabled={sendingProposal || detailIsLocked}
+                                  disabled={sendingProposal || detailCtStatus === 'AGREED'}
                                   sx={{ width: 90 }}
                                 />
                               </TableCell>
