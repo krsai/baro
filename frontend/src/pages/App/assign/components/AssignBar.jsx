@@ -30,6 +30,14 @@ const normalizeCtStatus = (value) => {
   return 'PENDING';
 };
 
+const lightenHex = (hex, amount = 0.65) => {
+  if (!hex || !hex.startsWith('#') || hex.length < 7) return hex || '#CDEBD7';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`;
+};
+
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, isLocked = false }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
@@ -52,16 +60,26 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
     opacity: isDragging ? 0.6 : 1,
   };
 
-  const mainColor = assignment.color || '#CDEBD7';
-  const stripe = assignment.stripeColor || '#9ED5B3';
+  const mainColor = lightenHex(assignment.color || '#CDEBD7');
+  const stripe = lightenHex(assignment.stripeColor || '#9ED5B3', 0.5);
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
   const durationValue = assignment.workDays ?? getDurationDays(assignment);
   const durationLabel = formatDuration(durationValue);
   const isNarrow = Number(assignment.widthPx) < 132;
   const hideMetaBadges = Number(assignment.widthPx) < 156;
   const genderDisplay = assignment.gender || '';
-  const fullLabel = `${assignment.customer} · ${assignment.label}${assignment.colorName ? ` · ${assignment.colorName}` : ''}${genderDisplay ? ` · ${genderDisplay}` : ''} · 수량 ${assignment.quantity ?? '-'}`;
-  const compactLabel = `${assignment.label}${genderDisplay ? ` · ${genderDisplay}` : ''}`;
+  // Line 1: 발주자 · 주문번호
+  const line1 = assignment.orderNo
+    ? `${assignment.customer || ''} · ${assignment.orderNo}`
+    : assignment.customer || '';
+  // Line 2: 스타일명 · 색상 · 성별 · 수량
+  const line2Parts = [
+    assignment.label,
+    assignment.colorName,
+    genderDisplay,
+    `수량 ${assignment.quantity ?? '-'}`,
+  ].filter(Boolean);
+  const line2 = line2Parts.join(' · ');
   const ctStatus = normalizeCtStatus(assignment.ctStatus);
   const ctMeta = CT_STATUS_META[ctStatus];
   const ctLabel = ctMeta.label;
@@ -109,7 +127,13 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
         zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}
       style={style}
-      title={`${assignment.customer} · ${assignment.label}`}
+      title={[
+        assignment.customer,
+        assignment.label,
+        assignment.colorName,
+        genderDisplay,
+        assignment.quantity != null ? `수량 ${assignment.quantity}` : null,
+      ].filter(Boolean).join(' · ')}
       {...attributes}
       {...listeners}
       onContextMenu={openContextMenu}
@@ -152,10 +176,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
           alignItems: 'center',
           minWidth: 0,
           overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
           width: '100%',
           justifyContent: 'flex-start',
+          gap: isNarrow ? 0.8 : 1.2,
         }}
       >
         {previewUrl ? (
@@ -169,7 +192,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
               borderRadius: 1,
               objectFit: 'cover',
               border: '1px solid rgba(0,0,0,0.08)',
-              mr: isNarrow ? 0.8 : 1.2,
               flexShrink: 0,
             }}
           />
@@ -179,26 +201,52 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
               width: isNarrow ? 24 : 32,
               height: isNarrow ? 24 : 32,
               borderRadius: 1,
-              backgroundColor: stripe,
-              mr: isNarrow ? 0.8 : 1.2,
+              border: '1px dashed rgba(0,0,0,0.2)',
+              backgroundColor: '#F7F7F8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               flexShrink: 0,
+              color: 'rgba(0,0,0,0.3)',
+              fontSize: isNarrow ? 6 : 7,
+              textAlign: 'center',
+              lineHeight: 1.2,
+              whiteSpace: 'pre',
+              px: 0.2,
             }}
-          />
+          >
+            이미지{'\n'}없음
+          </Box>
         )}
-        <Typography
-          variant="body2"
-          sx={{
-            fontWeight: isNarrow ? 500 : 600,
-            fontSize: isNarrow ? 12 : undefined,
-            minWidth: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            textAlign: 'left',
-          }}
-        >
-          {isNarrow ? compactLabel : fullLabel}
-        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 700,
+              fontSize: isNarrow ? 10 : 11,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              lineHeight: 1.4,
+              color: '#1f2a3a',
+            }}
+          >
+            {isNarrow ? (assignment.customer || '') : line1}
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: isNarrow ? 10 : 11,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              lineHeight: 1.4,
+              color: 'rgba(31,42,58,0.75)',
+            }}
+          >
+            {isNarrow ? (assignment.label || '') : line2}
+          </Typography>
+        </Box>
       </Box>
       {!hideMetaBadges && (
         <Box

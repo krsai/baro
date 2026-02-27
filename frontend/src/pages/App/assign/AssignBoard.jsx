@@ -760,7 +760,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     ...assignment,
     orderNo: card.orderNo ?? assignment.orderNo,
     customer: card.customer ?? assignment.customer,
-    label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
+    label: card.styleName,
     colorName: card.colorName ?? assignment.colorName,
     gender: card.gender ?? assignment.gender,
     previewUrl: card.previewUrl ?? assignment.previewUrl,
@@ -2782,7 +2782,7 @@ const AssignBoard = () => {
       if (card) {
         setActiveDrag({
           type: 'card',
-          label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
+          label: card.styleName,
           orderNo: card.orderNo,
           previewUrl: card.previewUrl,
           imageUrl: card.imageUrl,
@@ -2933,7 +2933,7 @@ const AssignBoard = () => {
         lineId,
         orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
         customer: card.customer,
-        label: `${card.styleName}${card.gender ? ` [${card.gender}]` : ''}`,
+        label: card.styleName,
         colorName: card.colorName,
         gender: card.gender,
         previewUrl: card.previewUrl,

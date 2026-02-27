@@ -1,20 +1,6 @@
 ﻿import React from 'react';
-import { Box, Chip, Paper, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-
-const statusLabel = {
-  ST: 'ST 기준',
-  PT: 'PT 기준',
-  AT: 'AT 기준',
-  NONE: '기준 없음',
-};
-
-const statusPalette = {
-  ST: { border: '#9FB9F2', text: '#3E5E9A' },
-  PT: { border: '#9FB9F2', text: '#3E5E9A' },
-  AT: { border: '#9FB9F2', text: '#3E5E9A' },
-  NONE: { border: '#E6A8B6', text: '#A34355' },
-};
 
 const hasSt = (card) =>
   Number(card?.totalSt) > 0;
@@ -39,6 +25,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
   const isDeltaCard = card.type === 'DELTA';
   const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
   const isDisabled = basis === 'NONE';
+  // palette removed — status chip no longer shown
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `card-${card.id}`,
     data: { cardId: card.id, type: 'card' },
@@ -61,8 +48,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
 
   const cardStyleName = isDeltaCard ? card.label : card.styleName;
   const previewUrl = card.previewUrl || card.imageUrl || card.thumbnailUrl || '';
-  const palette = statusPalette[basis] || statusPalette.NONE;
-  const customerLabel = isDeltaCard ? card.customer : (card.orderNo ? `${card.customer} · ${card.orderNo}` : card.customer);
+  const customerLabel = card.customer || '';
   const showCustomerTooltip = (customerLabel || '').length > 14;
   const showStyleTooltip = (cardStyleName || '').length > 16;
 
@@ -132,24 +118,11 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
         )}
 
         <Stack spacing={0.75} sx={{ minWidth: 0, flex: 1 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Tooltip title={customerLabel} disableHoverListener={!showCustomerTooltip}>
-              <Typography variant="subtitle2" noWrap>
-                {customerLabel}
-              </Typography>
-            </Tooltip>
-            <Chip
-              size="small"
-              label={statusLabel[basis]}
-              variant="outlined"
-              sx={{
-                borderColor: palette.border,
-                color: palette.text,
-                backgroundColor: 'transparent',
-                fontWeight: 600,
-              }}
-            />
-          </Box>
+          <Tooltip title={customerLabel} disableHoverListener={!showCustomerTooltip}>
+            <Typography variant="subtitle2" noWrap>
+              {customerLabel}
+            </Typography>
+          </Tooltip>
           <Tooltip title={cardStyleName} disableHoverListener={!showStyleTooltip}>
             <Typography variant="body1" sx={{ fontWeight: 600 }} noWrap>
               {cardStyleName}

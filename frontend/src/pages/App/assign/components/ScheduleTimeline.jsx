@@ -1,6 +1,6 @@
-﻿import React, { memo, useMemo } from 'react';
+﻿import React, { memo, useMemo, useState } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
-import { useDroppable } from '@dnd-kit/core';
+import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
 
 const CELL_WIDTH = 100;
@@ -9,19 +9,21 @@ const BAR_HEIGHT = 64;
 const BAR_GAP = 6;
 const MIN_BAR_WIDTH = 56;
 
-const DropCell = memo(({ id, isHoliday }) => {
+const DropCell = memo(({ id, isHoliday, isColumnHighlighted }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
   const baseColor = isHoliday ? '#FCECEF' : 'transparent';
+  const isHighlighted = isOver || isColumnHighlighted;
 
   return (
     <Box
       ref={setNodeRef}
       sx={{
         width: CELL_WIDTH,
-        height: ROW_HEIGHT,
+        height: '100%',
         border: '1px dashed #e2e6ef',
         zIndex: 0,
-        backgroundColor: isOver ? 'rgba(25, 118, 210, 0.12)' : baseColor,
+        backgroundColor: isHighlighted ? 'rgba(25, 118, 210, 0.18)' : baseColor,
+        transition: 'background-color 0.08s ease',
         boxSizing: 'border-box',
       }}
     />
@@ -113,6 +115,42 @@ const getWorkingDuration = (assignment, days) => {
 };
 
 const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextMenu }) => {
+  const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
+
+  useDndMonitor({
+    onDragStart() {
+      setHoveredDayIndex(null);
+    },
+    onDragOver(event) {
+      const overId = String(event.over?.id ?? '');
+      // DropCell id format: "lineId::dayIndex"
+      const cellMatch = overId.match(/::(\d+)$/);
+      if (cellMatch) {
+        setHoveredDayIndex(Number(cellMatch[1]));
+        return;
+      }
+      // AssignBar droppable id format: "assign-drop-{id}"
+      const assignMatch = overId.match(/^assign-drop-(.+)$/);
+      if (assignMatch) {
+        const assignId = assignMatch[1];
+        const found = (Array.isArray(assignments) ? assignments : []).find(
+          (a) => String(a.id) === assignId,
+        );
+        if (found != null) {
+          setHoveredDayIndex(found.startIndex);
+          return;
+        }
+      }
+      setHoveredDayIndex(null);
+    },
+    onDragEnd() {
+      setHoveredDayIndex(null);
+    },
+    onDragCancel() {
+      setHoveredDayIndex(null);
+    },
+  });
+
   const assignmentsByLine = useMemo(() => {
     const map = new Map();
     lines.forEach((line) => map.set(line.id, []));
@@ -272,6 +310,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                             key={`${line.id}-${day.key}`}
                             id={`${line.id}::${dayIndex}`}
                             isHoliday={isHoliday}
+                            isColumnHighlighted={hoveredDayIndex === dayIndex}
                           />
                         );
                       })}
