@@ -3189,10 +3189,10 @@ const AssignBoard = () => {
 
       const nextAssignments = assignments.map((item) => {
         if (String(item?.id) === assignmentId) {
-          const nextItem = {
+          // totalSeconds는 ST(q) 기반 배정 기간 — CT 제안값(proposalSeconds)과 무관하게 유지
+          return {
             ...item,
             proposalSeconds: nextTotalSeconds,
-            totalSeconds: nextTotalSeconds,
             contractedSeconds: null,
             ctStatus: 'SENT',
             ctOverride: false,
@@ -3205,18 +3205,6 @@ const AssignBoard = () => {
             ctEscalationTargetRole: null,
             ctEscalationStatus: null,
             ctNote: `제안 송부 ${nowIso}`,
-          };
-          const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
-          registerLineForReflow(
-            nextItem?.lineId,
-            Math.min(
-              toNonNegativeInt(item?.startIndex, 0),
-              toNonNegativeInt(range?.startIndex, 0)
-            )
-          );
-          return {
-            ...nextItem,
-            ...range,
           };
         }
 
@@ -3466,10 +3454,11 @@ const AssignBoard = () => {
           toNonNegativeInt(item?.proposalSeconds, 0) > 0
             ? toNonNegativeInt(item?.proposalSeconds, 0)
             : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
-        const nextItem = {
+        // CT 동의는 임금 협의 결과만 반영한다.
+        // totalSeconds(일정 기간)는 AT(q)/PT(q) 기반이므로 CT 합의로 변경하지 않는다.
+        return {
           ...item,
           proposalSeconds: preservedProposalSeconds,
-          totalSeconds: nextTotalSeconds,
           contractedSeconds: nextTotalSeconds,
           ctStatus: 'AGREED',
           ctOverride: false,
@@ -3483,21 +3472,12 @@ const AssignBoard = () => {
           ctEscalationStatus: null,
           ctNote: `요청 동의 ${nowIso}`,
         };
-        const range = recomputeAssignmentRange(nextItem, nextTotalSeconds, days, lineCapacityById);
-        return {
-          ...nextItem,
-          ...range,
-        };
       });
-      const updatedAssignment = nextAssignments.find(
-        (item) => String(item?.id || '') === assignmentId
+      const normalizedAssignments = nextAssignments.map((item) =>
+        normalizeAssignmentLayout(item)
       );
-      const { assignments: normalizedAssignments, daysForAssignments, reflowFailed } =
-        reflowLineAssignmentsAfterCtUpdate(nextAssignments, {
-          lineId: detailAssignment?.lineId,
-          reflowStartIndex:
-            updatedAssignment?.startIndex ?? detailAssignment?.startIndex ?? 0,
-        });
+      const daysForAssignments = days;
+      const reflowFailed = false;
       const query = buildQueryString({ orgId: activeOrgId });
       const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
