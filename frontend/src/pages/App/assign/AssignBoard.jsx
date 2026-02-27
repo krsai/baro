@@ -2721,12 +2721,6 @@ const AssignBoard = () => {
       }
       if (targetAssignment && activeId.startsWith('assign-')) {
         const sourceAssignmentId = activeId.replace('assign-', '');
-        const sourceAssignment = assignmentById.get(sourceAssignmentId);
-        if (isAssignmentLocked(targetAssignment) || (sourceAssignment && isAssignmentLocked(sourceAssignment))) {
-          showNotification('잠금된 작업은 합칠 수 없습니다.', 'warning');
-          setActiveDrag(null);
-          return;
-        }
         if (mergeAssignments(targetId, sourceAssignmentId)) {
           setActiveDrag(null);
           return;
@@ -2916,28 +2910,9 @@ const AssignBoard = () => {
           if (dayIndex === target.startIndex && String(lineId) === String(target.lineId)) {
             return prev;
           }
-          const isMovingEarlier = dayIndex < target.startIndex;
-          if (isMovingEarlier) {
-            const originalNextIndex = getNextStartIndex(target, days, lineCapacityById);
-            const lineItemsSorted = filtered
-              .filter((item) => item.lineId === lineId)
-              .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
-            const directFollower =
-              originalNextIndex != null
-                ? lineItemsSorted.find((item) => item.startIndex === originalNextIndex)
-                : null;
-            if (directFollower) {
-              const pushed = tryRebuildLineWithInsert({
-                lineId,
-                insertIndex: dayIndex,
-                insertBeforeId: directFollower.id,
-                insertItem: { ...target, totalSeconds },
-                assignments: filtered,
-              });
-              if (pushed) return pushed;
-            }
-          }
 
+          // 빈 공간에 드롭: 정확한 날짜에 배치하고 기존 카드는 원래 위치 유지
+          // (빈칸이 충분하면 간격 보존, 부족하면 아래 insertBeforeId 로직으로 밀어냄)
           const planned = tryPlanAssignment({
             startIndex: dayIndex,
             totalSeconds,
