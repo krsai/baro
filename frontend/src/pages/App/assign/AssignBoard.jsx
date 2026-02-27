@@ -28,7 +28,7 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
-import { fetchStyles as fetchStylesFromApi, updateStyle as updateStyleById } from '../../../utils/styleApi';
+import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchOrders as fetchOrdersFromApi } from '../../../utils/orderApi';
@@ -234,39 +234,6 @@ const buildLineCapacityMap = (lines = []) =>
     })
   );
 
-const buildLineSyncSignature = (lines = []) =>
-  JSON.stringify(
-    (Array.isArray(lines) ? lines : [])
-      .map((line) => ({
-        id: normalizeKey(line?.id),
-        name: String(line?.name || ''),
-        factoryId: normalizeKey(line?.factoryId),
-        factoryName: String(line?.factoryName || ''),
-        headcount: Number(line?.headcount) || 0,
-        shiftHours: Number(line?.shiftHours) || 0,
-        overtimeHours: Number(line?.overtimeHours) || 0,
-        dailyCapacitySeconds: Number(line?.dailyCapacitySeconds) || 0,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
-  );
-
-const buildAssignmentLayoutSignature = (assignments = []) =>
-  JSON.stringify(
-    (Array.isArray(assignments) ? assignments : [])
-      .map((item) => ({
-        id: String(item?.id || ''),
-        lineId: normalizeKey(item?.lineId),
-        cardId: String(item?.cardId || ''),
-        startIndex: toNonNegativeInt(item?.startIndex, 0),
-        endIndex: toNonNegativeInt(item?.endIndex, 0),
-        startDayOffsetPercent: Number(item?.startDayOffsetPercent) || 0,
-        startDayPercent: Number(item?.startDayPercent) || 0,
-        endDayPercent: Number(item?.endDayPercent) || 0,
-        totalSeconds: Number(item?.totalSeconds) || 0,
-        quantity: Number(item?.quantity) || 0,
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
-  );
 
 const BASIS_COLORS = {
   // AT/PT 모두 CT 기준 색으로 통일 (스케줄링 내부 구분은 유지)
@@ -1793,134 +1760,6 @@ const AssignBoard = () => {
     };
   }, [activeOrgId, createBoardSnapshotText, createPersistSnapshotText, syncHistoryStatus]);
 
-  useEffect(() => {
-    if (!activeOrgId) return () => {};
-
-    let cancelled = false;
-    let syncing = false;
-
-    const syncLineWorkforce = async () => {
-      if (cancelled || syncing || !persistReady) return;
-      syncing = true;
-      try {
-        const orgQuery = buildQueryString({ orgId: activeOrgId });
-        const [factories, lineRows, workerRows] = await Promise.all([
-          requestJSON('/factories' + orgQuery),
-          requestJSON('/lines' + orgQuery),
-          requestJSON('/line-workers' + orgQuery),
-        ]);
-        if (cancelled) return;
-
-        const prevLines = linesRef.current;
-        const nextLines = buildAssignableLines({
-          factories: Array.isArray(factories) ? factories : [],
-          lines: Array.isArray(lineRows) ? lineRows : [],
-          workers: Array.isArray(workerRows) ? workerRows : [],
-        });
-        const prevLineSignature = buildLineSyncSignature(prevLines);
-        const nextLineSignature = buildLineSyncSignature(nextLines);
-        if (prevLineSignature === nextLineSignature) return;
-
-        const prevLineById = new Map(
-          prevLines.map((line) => [normalizeKey(line?.id), line])
-        );
-        const prevLineCapacityById = buildLineCapacityMap(prevLines);
-        const nextLineById = new Map(
-          nextLines.map((line) => [normalizeKey(line?.id), line])
-        );
-        const changedCapacityLineIds = [];
-        nextLineById.forEach((nextLine, lineId) => {
-          const prevLine = prevLineById.get(lineId);
-          if (!prevLine) return;
-          const prevHeadcount = Number(prevLine?.headcount) || 0;
-          const nextHeadcount = Number(nextLine?.headcount) || 0;
-          const prevCapacity = Number(prevLine?.dailyCapacitySeconds) || 0;
-          const nextCapacity = Number(nextLine?.dailyCapacitySeconds) || 0;
-          if (prevHeadcount !== nextHeadcount || prevCapacity !== nextCapacity) {
-            changedCapacityLineIds.push(lineId);
-          }
-        });
-
-        const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line?.id)));
-        const previousAssignments = assignmentsRef.current;
-        const lineFilteredAssignments = previousAssignments.filter((item) =>
-          nextLineIdSet.has(normalizeKey(item?.lineId))
-        );
-        const droppedAssignmentCount = previousAssignments.length - lineFilteredAssignments.length;
-
-        let nextAssignments = lineFilteredAssignments;
-        let nextDays = daysRef.current;
-        let reflowFailed = false;
-
-        if (changedCapacityLineIds.length > 0 && lineFilteredAssignments.length > 0) {
-          const nextLineCapacityById = buildLineCapacityMap(nextLines);
-          let plannedAssignments = null;
-          let candidateDays = nextDays;
-
-          for (let attempt = 0; attempt < 6; attempt += 1) {
-            const reflowStartIndex = getTodayDayIndex(candidateDays);
-            plannedAssignments = reflowAssignmentsByLineCapacity({
-              assignments: lineFilteredAssignments,
-              totalDays: candidateDays.length,
-              days: candidateDays,
-              lineCapacityById: nextLineCapacityById,
-              sourceLineCapacityById: prevLineCapacityById,
-              reflowStartIndex,
-            });
-            if (plannedAssignments) break;
-            candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
-          }
-
-          if (plannedAssignments) {
-            nextAssignments = plannedAssignments.map((item) => normalizeAssignmentLayout(item));
-            nextDays = candidateDays;
-          } else {
-            reflowFailed = true;
-          }
-        }
-
-        const previousAssignmentSignature = buildAssignmentLayoutSignature(previousAssignments);
-        const nextAssignmentSignature = buildAssignmentLayoutSignature(nextAssignments);
-
-        setLines(nextLines);
-        if (nextDays.length > daysRef.current.length) {
-          setDays(nextDays);
-        }
-        if (previousAssignmentSignature !== nextAssignmentSignature) {
-          setAssignments(nextAssignments);
-        }
-
-        if (reflowFailed) {
-          showNotification('라인 인원 변경을 감지했지만 배정 일정 재계산에 실패했습니다. 배정을 확인해 주세요.', 'warning');
-        } else if (droppedAssignmentCount > 0) {
-          showNotification(`라인 인원 변경으로 배정 ${droppedAssignmentCount}건이 미배정으로 전환되었습니다.`, 'info');
-        } else if (changedCapacityLineIds.length > 0 && previousAssignmentSignature !== nextAssignmentSignature) {
-          showNotification('라인 인원 변경을 감지해 남은 배정 일정의 총 공수를 재계산했습니다.', 'info');
-        }
-      } catch (_error) {
-        // Ignore sync errors and keep current board state.
-      } finally {
-        syncing = false;
-      }
-    };
-
-    const runSync = () => {
-      void syncLineWorkforce();
-    };
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) runSync();
-    };
-
-    window.addEventListener('focus', runSync);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', runSync);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [activeOrgId, holidaySet, persistReady, showNotification]);
 
   useEffect(() => {
     if (!persistReady) return;
@@ -3023,6 +2862,10 @@ const AssignBoard = () => {
         const totalSeconds = getAssignmentTotalSeconds(target, days, lineCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
+          // Dropped on same day & same line — nothing to change
+          if (dayIndex === target.startIndex && String(lineId) === String(target.lineId)) {
+            return prev;
+          }
           const isMovingEarlier = dayIndex < target.startIndex;
           if (isMovingEarlier) {
             const originalNextIndex = getNextStartIndex(target, days, lineCapacityById);
@@ -3274,67 +3117,12 @@ const AssignBoard = () => {
     const assignmentId = String(detailAssignment.id);
     const nextTotalSeconds = Math.max(1, Math.round(detailSummary.totalRequestedSeconds));
     const nowIso = new Date().toISOString();
-    let nextCards = cards;
-    let nextStyles = styles;
-    let updatedStyleId = null;
-    let stUpdatedCount = 0;
+    const nextCards = cards;
+    const nextStyles = styles;
+    const updatedStyleId = null;
 
     try {
       setSendingProposal(true);
-
-      if (detailStyle && detailProcessRows.length > 0) {
-        const rowByKey = new Map(detailProcessRows.map((row) => [row.processKey, row]));
-        const nextProcesses = normalizeProcesses(detailStyle.processes).map((process, index) => {
-          const processKey = String(
-            process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
-          );
-          const row = rowByKey.get(processKey);
-          if (!row) return process;
-          const nextSt = toOptionalPositiveNumber(row.baseSeconds);
-          const currentSt =
-            process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
-          const currentRefQuantity = toPositiveInt(
-            process?.timeRefQuantity,
-            DEFAULT_TIME_REF_QUANTITY
-          );
-          if (nextSt == null) return process;
-          if (
-            currentSt != null &&
-            Math.abs(currentSt - nextSt) < 1e-6 &&
-            process?.stManual === true &&
-            currentRefQuantity === detailSummary.orderQuantity
-          ) {
-            return process;
-          }
-          stUpdatedCount += 1;
-          return {
-            ...process,
-            stManual: true,
-            ct: nextSt,
-            timeRefQuantity: detailSummary.orderQuantity,
-          };
-        });
-        if (stUpdatedCount > 0) {
-          const updatedStyle = await updateStyleById(
-            detailStyle.id,
-            {
-              ...detailStyle,
-              processes: nextProcesses,
-            },
-            {
-              orgId: activeOrgId,
-              ownerOrgId: detailStyle.ownerOrgId ?? detailStyle.customerOrgId ?? null,
-            }
-          );
-          nextStyles = (Array.isArray(styles) ? styles : []).map((style) =>
-            String(style?.id || '') === String(updatedStyle?.id || '')
-              ? updatedStyle
-              : style
-          );
-          updatedStyleId = String(updatedStyle?.id || '').trim() || null;
-          nextCards = recalcCardsForStyleProcesses(cards, updatedStyle.id, updatedStyle.processes);
-        }
-      }
 
       const operatorProposalPayload = {
         sentAt: nowIso,

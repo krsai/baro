@@ -136,8 +136,13 @@
 - 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
 - CT는 함수가 아닌 카드(AssignmentPlan) 단위 고정값. **확정 후 ST/PT/AT 변경과 완전히 무관**
 - **급여 = CT × 수량** (단순)
-- `proposalSeconds`: 운영팀 제안 CT(초기 오퍼)
-- `contractedSeconds`: 최종 합의 CT(지급 기준). 제안 송부 시점에는 `null` 가능
+- `proposalSeconds`: 운영팀 제안 CT(초기 오퍼). **개당 초(per-piece)**
+- `contractedSeconds`: 최종 합의 CT(지급 기준). 제안 송부 시점에는 `null` 가능. **개당 초(per-piece)**
+- **모든 시간 단위(PT(q)/AT(q)/ST(q)/CT(q))는 개당 초(per-piece)** — 수량별로 개당 시간이 달라지므로 비교는 항상 개당 기준으로 한다
+- `totalSt`, `totalPt`, `totalAt`는 스케줄링 기간 계산용 총 초(`개당값 × 수량`)이며 협의 단가와 구분한다
+- **CT 제안 흐름은 Style의 ST(processes[].ct)를 절대 수정하지 않는다.** CT는 해당 AssignmentPlan의 `proposalSeconds`/`contractedSeconds`에만 저장된다
+- **배정 화면에서 ST(q) 수정 불가** — ST(q)는 스타일 상세 화면에서만 변경한다
+- **라인마다 CT가 다를 수 있다**: 같은 스타일을 여러 라인에 배정하면 각 라인이 협의한 CT가 독립적으로 저장되며 서로 영향을 주지 않는다
 
 #### CT 협의 상태 흐름 (ctStatus)
 
