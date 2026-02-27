@@ -2732,7 +2732,14 @@ const AssignBoard = () => {
       targetOnDay = assignmentById.get(targetId) ?? null;
       if (targetOnDay) {
         lineId = targetOnDay.lineId;
-        dayIndex = targetOnDay.startIndex;
+        // 자신의 droppable 위에 드롭한 경우(배정 바가 DropCell을 덮음):
+        // startIndex 대신 drag delta로 실제 목표 날짜를 추정한다
+        if (activeId.startsWith('assign-') && targetId === activeId.replace('assign-', '')) {
+          const dayDelta = Math.round(event.delta.x / 100);
+          dayIndex = Math.max(0, targetOnDay.startIndex + dayDelta);
+        } else {
+          dayIndex = targetOnDay.startIndex;
+        }
       }
     } else {
       const dropId = overId;
@@ -3302,12 +3309,7 @@ const AssignBoard = () => {
       if (reflowFailed) {
         showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
       }
-      showNotification(
-        stUpdatedCount > 0
-          ? `제안 송부 완료. ST(q) ${stUpdatedCount}개 공정을 갱신했습니다.`
-          : '제안 송부 완료. 해당 작업은 잠금 처리되었습니다.',
-        'success'
-      );
+      showNotification('제안 송부 완료. 해당 작업은 잠금 처리되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
     } catch (error) {
