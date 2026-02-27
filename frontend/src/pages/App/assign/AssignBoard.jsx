@@ -364,7 +364,9 @@ const normalizeKey = (value) => String(value ?? '').trim();
 const normalizeColorKey = (value) => normalizeKey(value).toUpperCase();
 const normalizeGenderKey = (value) => {
   const raw = normalizeKey(value).toUpperCase();
-  if (raw === 'M' || raw === 'W' || raw === 'U') return raw;
+  if (raw === 'M' || raw === 'MEN' || raw === 'MALE' || raw === '남성') return 'M';
+  if (raw === 'W' || raw === 'WOMEN' || raw === 'FEMALE' || raw === '여성') return 'W';
+  if (raw === 'U' || raw === 'UNISEX' || raw === '공용') return 'U';
   return 'U';
 };
 const resolveLegacyRowColorKey = (row) => {
@@ -394,13 +396,17 @@ const resolveItemQuantity = (item) => {
   return 0;
 };
 
-const resolveVariantBucketsFromLegacyRows = (rows = []) => {
+const resolveVariantBucketsFromLegacyRows = (rows = [], itemGender = 'U') => {
   const bucket = new Map();
   rows.forEach((row) => {
     const quantity = Number(row?.quantity) || 0;
     if (quantity <= 0) return;
     const colorId = resolveLegacyRowColorKey(row);
-    const gender = normalizeGenderKey(row?.gender || row?.colorId);
+    const rawGender = normalizeKey(row?.gender ?? '').toUpperCase();
+    const gender =
+      rawGender === 'M' || rawGender === 'W' || rawGender === 'U'
+        ? rawGender
+        : itemGender;
     const bucketKey = `${colorId}::${gender}`;
     const existing = bucket.get(bucketKey);
     if (!existing) {
@@ -413,8 +419,10 @@ const resolveVariantBucketsFromLegacyRows = (rows = []) => {
 };
 
 const resolveItemVariantBuckets = (item) => {
+  const itemGender = normalizeGenderKey(item?.gender);
   const fromLegacyRows = resolveVariantBucketsFromLegacyRows(
-    Array.isArray(item?.quantities) ? item.quantities : []
+    Array.isArray(item?.quantities) ? item.quantities : [],
+    itemGender
   );
   if (fromLegacyRows.length > 0) return fromLegacyRows;
 
@@ -518,7 +526,7 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
       const processSummary = styleProcessSummaryMap.get(styleId);
       const processCount = processSummary?.processCount ?? 0;
       const variantBuckets = resolveItemVariantBuckets(item);
-      if (variantBuckets.length === 0) return;
+if (variantBuckets.length === 0) return;
 
       variantBuckets.forEach(({ colorId, gender, quantity }) => {
         if ((Number(quantity) || 0) <= 0) return;
