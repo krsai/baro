@@ -125,14 +125,22 @@ const getPointerX = (event) => {
   return null;
 };
 
+// lineLayouts Map에서 lineId(문자열/숫자 무관)로 조회
+const getLayoutByLineId = (lineLayouts, lineId) =>
+  lineLayouts.get(lineId) ?? lineLayouts.get(Number(lineId)) ?? lineLayouts.get(String(lineId));
+
 const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextMenu }) => {
-  // { lineId: string|null, dayIndex: number|null } — 현재 포인터가 위치한 셀
+  // 포인터가 위치한 셀 (하이라이트용)
   const [hoveredTarget, setHoveredTarget] = useState({ lineId: null, dayIndex: null });
+  // 카드 밀기 애니메이션 프리뷰
+  // { lineId, insertLeftPx, ghostWidthPx, draggedAssignmentId }
+  const [dragPreview, setDragPreview] = useState(null);
+
   const gridContainerRef = useRef(null);
-  // getBoundingClientRect()는 레이아웃을 강제 재계산하므로 드래그 시작 시 1번만 캐시
+  // getBoundingClientRect()는 레이아웃 재계산을 유발하므로 드래그 시작 시 1번만 캐시
   const containerRectRef = useRef(null);
 
-  // O(1) 조회를 위한 Map — assignments 배열이 바뀔 때만 재생성
+  // O(1) 조회용 Map (배열이 바뀔 때만 재생성)
   const assignmentById = useMemo(() => {
     const map = new Map();
     assignments.forEach((a) => map.set(String(a.id), a));
@@ -142,52 +150,111 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
   useDndMonitor({
     onDragStart() {
       setHoveredTarget({ lineId: null, dayIndex: null });
-      // 드래그 시작 시점의 컨테이너 위치를 캐시 (드래그 중 페이지 스크롤은 드문 상황)
+      setDragPreview(null);
       containerRectRef.current = gridContainerRef.current?.getBoundingClientRect() ?? null;
     },
-    // onDragOver 는 droppable이 바뀔 때만 발동 → AssignBar 내부 이동 시 delta가 고정됨
-    // onDragMove 는 매 포인터 이동마다 발동 → 항상 최신 delta로 정확한 위치 계산
+
     onDragMove(event) {
       const overId = String(event.over?.id ?? '');
+      const activeId = String(event.active?.id ?? '');
+      const activeData = event.active?.data?.current;
 
-      // Case 1: DropCell  —  "lineId::dayIndex"
-      const cellMatch = overId.match(/^(.+)::(\d+)$/);
-      if (cellMatch) {
-        setHoveredTarget({ lineId: cellMatch[1], dayIndex: Number(cellMatch[2]) });
-        return;
+      // 포인터 X 계산 (한 번만)
+      const pointerX = getPointerX(event);
+      const container = gridContainerRef.current;
+      const rect = containerRectRef.current;
+
+      // 그리드 기준 상대 X (스크롤 반영)
+      let pointerRelX = null;
+      if (pointerX != null && container != null && rect != null) {
+        pointerRelX = pointerX - rect.left - FIXED_COL_WIDTH + container.scrollLeft;
       }
 
-      // Case 2: AssignBar droppable  —  "assign-drop-{id}"
-      const assignMatch = overId.match(/^assign-drop-(.+)$/);
-      if (assignMatch) {
-        const found = assignmentById.get(assignMatch[1]);
-        if (found != null) {
-          const pointerX = getPointerX(event);
-          const container = gridContainerRef.current;
-          const rect = containerRectRef.current; // 캐시된 rect 사용 (재계산 없음)
-          if (pointerX != null && container != null && rect != null) {
-            // scrollLeft만 live로 읽음 (레이아웃 재계산 없음)
-            const relX = pointerX - rect.left - FIXED_COL_WIDTH + container.scrollLeft;
-            const computedDayIndex = Math.floor(relX / CELL_WIDTH);
-            if (computedDayIndex >= 0 && computedDayIndex < days.length) {
-              setHoveredTarget({ lineId: String(found.lineId), dayIndex: computedDayIndex });
-              return;
+      // ── Step 1: 커서가 위치한 라인/날짜 파악 ──────────────────────────────
+      let overLineId = null;
+      let overDayIndex = null;
+
+      const cellMatch = overId.match(/^(.+)::(\d+)$/);
+      if (cellMatch) {
+        overLineId = cellMatch[1];
+        overDayIndex = Number(cellMatch[2]);
+      } else {
+        const assignMatch = overId.match(/^assign-drop-(.+)$/);
+        if (assignMatch) {
+          const found = assignmentById.get(assignMatch[1]);
+          if (found != null) {
+            overLineId = String(found.lineId);
+            if (pointerRelX != null) {
+              const computed = Math.floor(pointerRelX / CELL_WIDTH);
+              overDayIndex = Math.max(0, Math.min(days.length - 1, computed));
+            } else {
+              overDayIndex = found.startIndex;
             }
           }
-          // fallback: 바의 시작 날짜
-          setHoveredTarget({ lineId: String(found.lineId), dayIndex: found.startIndex });
-          return;
         }
       }
 
-      setHoveredTarget({ lineId: null, dayIndex: null });
+      // 하이라이트 업데이트
+      setHoveredTarget({ lineId: overLineId, dayIndex: overDayIndex });
+
+      // ── Step 2: 카드 밀기 프리뷰 계산 ────────────────────────────────────
+      if (overLineId == null || overDayIndex == null) {
+        setDragPreview(null);
+        return;
+      }
+
+      const lineLayout = getLayoutByLineId(lineLayouts, overLineId);
+      const placed = lineLayout?.placed ?? [];
+
+      // 드래그 중인 배정 ID (밀기에서 제외)
+      const draggedAssignmentId =
+        activeData?.type === 'assignment' ? String(activeData.assignmentId ?? '') : null;
+
+      // 커서가 위치한 날짜에 겹치는 배정 찾기 (드래그 중인 카드 제외)
+      const targetAtDay = placed.find(
+        (a) =>
+          a.startIndex <= overDayIndex &&
+          overDayIndex <= a.endIndex &&
+          String(a.id) !== draggedAssignmentId
+      );
+
+      // 삽입 위치(insertLeftPx) 계산
+      let insertLeftPx;
+      if (targetAtDay) {
+        // 절반 분할: 포인터가 바의 앞/뒤 절반 중 어디에 있는지
+        const barMidX = targetAtDay.leftPx + targetAtDay.widthPx / 2;
+        const cursorX = pointerRelX ?? overDayIndex * CELL_WIDTH + CELL_WIDTH / 2;
+        insertLeftPx = cursorX < barMidX
+          ? targetAtDay.leftPx
+          : targetAtDay.leftPx + targetAtDay.widthPx;
+      } else {
+        insertLeftPx = overDayIndex * CELL_WIDTH;
+      }
+
+      // 드래그 중인 카드의 너비 계산
+      let ghostWidthPx = CELL_WIDTH; // 기본값: 1일
+      if (draggedAssignmentId) {
+        const draggedAssignment = assignmentById.get(draggedAssignmentId);
+        if (draggedAssignment) {
+          const sourceLayout = getLayoutByLineId(lineLayouts, draggedAssignment.lineId);
+          const draggedPlaced = sourceLayout?.placed?.find(
+            (a) => String(a.id) === draggedAssignmentId
+          );
+          if (draggedPlaced) ghostWidthPx = draggedPlaced.widthPx;
+        }
+      }
+
+      setDragPreview({ lineId: overLineId, insertLeftPx, ghostWidthPx, draggedAssignmentId });
     },
+
     onDragEnd() {
       setHoveredTarget({ lineId: null, dayIndex: null });
+      setDragPreview(null);
       containerRectRef.current = null;
     },
     onDragCancel() {
       setHoveredTarget({ lineId: null, dayIndex: null });
+      setDragPreview(null);
       containerRectRef.current = null;
     },
   });
@@ -315,6 +382,10 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
               const rowHeight = Math.max(ROW_HEIGHT, laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP);
               const lineIdStr = String(line.id);
 
+              // 이 라인에 드래그 프리뷰 적용 여부
+              const linePreview =
+                dragPreview && String(dragPreview.lineId) === lineIdStr ? dragPreview : null;
+
               return (
                 <TableRow key={line.id} hover>
                   <TableCell
@@ -346,9 +417,9 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                         backgroundColor: '#fbfcfe',
                       }}
                     >
+                      {/* 날짜별 드롭 셀 */}
                       {days.map((day, dayIndex) => {
                         const isHoliday = day.isSunday || day.isHoliday;
-                        // 이 셀이 현재 포인터 위치와 정확히 일치할 때만 하이라이트
                         const isHighlighted =
                           hoveredTarget.lineId === lineIdStr &&
                           hoveredTarget.dayIndex === dayIndex;
@@ -362,11 +433,17 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                         );
                       })}
 
+                      {/* 배정 카드 (shiftPx로 밀기 애니메이션 적용) */}
                       {placed.map((assignment) => {
+                        const shouldShift =
+                          linePreview != null &&
+                          String(assignment.id) !== linePreview.draggedAssignmentId &&
+                          assignment.leftPx >= linePreview.insertLeftPx;
                         return (
                           <AssignBar
                             key={assignment.id}
                             assignment={assignment}
+                            shiftPx={shouldShift ? linePreview.ghostWidthPx : 0}
                             showLinkPrev={linkableIds.has(assignment.id)}
                             onLinkPrev={onLinkPrev}
                             onOpenContextMenu={onOpenContextMenu}
@@ -374,6 +451,23 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                           />
                         );
                       })}
+
+                      {/* 삽입 위치 세로선 인디케이터 */}
+                      {linePreview != null && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: linePreview.insertLeftPx - 1,
+                            width: 3,
+                            height: rowHeight,
+                            backgroundColor: 'rgba(25, 118, 210, 0.7)',
+                            borderRadius: 1,
+                            zIndex: 30,
+                            pointerEvents: 'none',
+                          }}
+                        />
+                      )}
                     </Box>
                   </TableCell>
                 </TableRow>

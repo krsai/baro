@@ -38,7 +38,7 @@ const lightenHex = (hex, amount = 0.65) => {
   return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`;
 };
 
-const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, isLocked = false }) => {
+const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, isLocked = false, shiftPx = 0 }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
@@ -56,7 +56,14 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
   };
 
   const style = {
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    // 드래그 중: dnd-kit 변환만 적용 (애니메이션 없음)
+    // 다른 카드 드래그 시: shiftPx만큼 밀리는 CSS 트랜지션
+    transform: transform
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+      : shiftPx !== 0
+        ? `translateX(${shiftPx}px)`
+        : undefined,
+    transition: transform ? undefined : 'transform 0.15s ease',
     opacity: isDragging ? 0.6 : 1,
   };
 
