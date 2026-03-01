@@ -32,7 +32,18 @@ const normalizeCtStatus = (value) => {
   return 'PENDING';
 };
 
+// 잘린 방향에 따른 border-radius: 잘린 쪽은 각짐, 나머지는 둥금
+const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
+  const tl = isClippedLeft  ? 0 : 8;
+  const tr = isClippedRight ? 0 : 8;
+  const br = isClippedRight ? 0 : 8;
+  const bl = isClippedLeft  ? 0 : 8;
+  return `${tl}px ${tr}px ${br}px ${bl}px`;
+};
+
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
+  const isClippedLeft  = Boolean(assignment.isClippedLeft);
+  const isClippedRight = Boolean(assignment.isClippedRight);
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
@@ -105,9 +116,10 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         left: assignment.leftPx,
         height: assignment.heightPx,
         width: assignment.widthPx,
-        borderRadius: 2,
+        borderRadius: getClipBorderRadius(isClippedLeft, isClippedRight),
         px: isNarrow ? 1 : 1.5,
-        pr: isNarrow ? 1 : 6,
+        pl: isClippedLeft ? 2.5 : (isNarrow ? 1 : 1.5),
+        pr: isClippedRight ? 2.5 : (isNarrow ? 1 : 6),
         display: 'flex',
         alignItems: 'center',
         backgroundColor: ctMeta.cardBg,
@@ -117,6 +129,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         cursor: isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.08)',
+        borderLeft:  isClippedLeft  ? '2px dashed rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
+        borderRight: isClippedRight ? '2px dashed rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
         outline: 'none',
         '&:focus': { outline: 'none' },
         '&:focus-visible': { boxShadow: '0 2px 6px rgba(0,0,0,0.12)' },
@@ -156,6 +170,63 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
               transition: 'width 0.5s ease',
             }}
           />
+        </Box>
+      )}
+
+      {/* 뷰 경계 초과 — 오른쪽 계속됨 표시 */}
+      {isClippedRight && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0, right: 0, bottom: 0,
+            width: 20,
+            borderRadius: '0',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            zIndex: 1,
+            background: `repeating-linear-gradient(
+              -45deg,
+              transparent,
+              transparent 3px,
+              rgba(0,0,0,0.10) 3px,
+              rgba(0,0,0,0.10) 5px
+            )`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography sx={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)', lineHeight: 1, userSelect: 'none' }}>
+            ▶
+          </Typography>
+        </Box>
+      )}
+
+      {/* 뷰 경계 초과 — 왼쪽 계속됨 표시 */}
+      {isClippedLeft && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0, left: 0, bottom: 0,
+            width: 20,
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            zIndex: 1,
+            background: `repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 3px,
+              rgba(0,0,0,0.10) 3px,
+              rgba(0,0,0,0.10) 5px
+            )`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography sx={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.35)', lineHeight: 1, userSelect: 'none' }}>
+            ◀
+          </Typography>
         </Box>
       )}
 

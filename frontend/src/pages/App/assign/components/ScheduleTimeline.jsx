@@ -127,7 +127,12 @@ const getPointerX = (event) => {
 const getLayoutByLineId = (lineLayouts, lineId) =>
   lineLayouts.get(lineId) ?? lineLayouts.get(Number(lineId)) ?? lineLayouts.get(String(lineId));
 
-const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextMenu }) => {
+const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOpenContextMenu }) => {
+  // 뷰에 실제 표시할 날짜 범위: dayCount가 있으면 그 수까지만, 없으면 days 전체
+  const viewDays = dayCount != null && dayCount < days.length
+    ? days.slice(0, dayCount)
+    : days;
+
   // 포인터가 위치한 셀 (하이라이트용)
   const [hoveredTarget, setHoveredTarget] = useState({ lineId: null, dayIndex: null });
   // 카드 밀기 애니메이션 프리뷰
@@ -300,16 +305,30 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
       const barsBlockHeight = laneCount * (BAR_HEIGHT + BAR_GAP) + BAR_GAP;
       const rowHeightForLine = Math.max(ROW_HEIGHT, barsBlockHeight);
       const verticalOffset = Math.round((rowHeightForLine - barsBlockHeight) / 2);
+      const viewEnd = viewDays.length; // 뷰 경계 (사용자 설정 날짜 범위)
       const placedWithLayout = placed.map((assignment) => {
         const range = rangeById.get(assignment.id) || buildRange(assignment);
-        const widthCells = Math.max(range.end - range.start, 0);
+        const rawStart = range.start;
+        const rawEnd = range.start + Math.max(range.end - range.start, 0);
+
+        // 뷰 경계 초과 여부 감지
+        const isClippedLeft = rawStart < 0;
+        const isClippedRight = rawEnd > viewEnd;
+
+        // 렌더링 위치/너비를 뷰 범위로 클램핑
+        const clampedStart = Math.max(rawStart, 0);
+        const clampedEnd = Math.min(rawEnd, viewEnd);
+        const clampedWidthCells = Math.max(clampedEnd - clampedStart, 0);
+
         return {
           ...assignment,
-          leftPx: range.start * CELL_WIDTH,
-          widthPx: widthCells * CELL_WIDTH,
+          leftPx: clampedStart * CELL_WIDTH,
+          widthPx: Math.max(clampedWidthCells * CELL_WIDTH, isClippedLeft || isClippedRight ? 20 : 0),
           topPx: verticalOffset + BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
           workDays: getWorkingDuration(assignment, days),
+          isClippedLeft,
+          isClippedRight,
         };
       });
 
@@ -317,7 +336,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
     });
 
     return map;
-  }, [lines, assignmentsByLine, days]);
+  }, [lines, assignmentsByLine, days, viewDays]);
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
@@ -347,7 +366,7 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
               >
                 라인
               </TableCell>
-              {days.map((day) => {
+              {viewDays.map((day) => {
                 const isHoliday = day.isSunday || day.isHoliday;
                 return (
                   <TableCell
@@ -403,20 +422,20 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                       {line.name}({line.headcount}명)
                     </Typography>
                   </TableCell>
-                  <TableCell colSpan={days.length} sx={{ p: 0 }}>
+                  <TableCell colSpan={viewDays.length} sx={{ p: 0 }}>
                     <Box
                       sx={{
                         position: 'relative',
                         zIndex: 1,
                         display: 'grid',
-                        gridTemplateColumns: `repeat(${days.length}, ${CELL_WIDTH}px)`,
-                        width: days.length * CELL_WIDTH,
+                        gridTemplateColumns: `repeat(${viewDays.length}, ${CELL_WIDTH}px)`,
+                        width: viewDays.length * CELL_WIDTH,
                         height: rowHeight,
                         backgroundColor: '#fbfcfe',
                       }}
                     >
                       {/* 날짜별 드롭 셀 */}
-                      {days.map((day, dayIndex) => {
+                      {viewDays.map((day, dayIndex) => {
                         const isHoliday = day.isSunday || day.isHoliday;
                         const isHighlighted =
                           hoveredTarget.lineId === lineIdStr &&

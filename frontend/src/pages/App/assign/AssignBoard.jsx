@@ -4284,6 +4284,7 @@ const AssignBoard = () => {
               <ScheduleTimeline
                 lines={lines}
                 days={days}
+                dayCount={dayCount}
                 assignments={assignmentsForRender}
                 onLinkPrev={handleLinkPrev}
                 onOpenContextMenu={handleContextMenuOpen}
