@@ -2804,17 +2804,20 @@ const AssignBoard = () => {
     let dropBeforeTarget = false; // true: 타겟 앞에 배치, false: 타겟 뒤에 배치
 
     if (overId.startsWith('assign-drop-')) {
-      const targetId = overId.replace('assign-drop-', '');
-      targetOnDay = assignmentById.get(targetId) ?? null;
-      if (targetOnDay) {
-        lineId = targetOnDay.lineId;
-        // 자신의 droppable 위에 드롭한 경우(배정 바가 DropCell을 덮음):
-        // startIndex 대신 drag delta로 실제 목표 날짜를 추정한다
-        if (activeId.startsWith('assign-') && targetId === activeId.replace('assign-', '')) {
+      const detectedId = overId.replace('assign-drop-', '');
+      const detectedAssignment = assignmentById.get(detectedId) ?? null;
+      if (detectedAssignment) {
+        // lineId는 dnd-kit 감지 카드에서 가져옴 (라인 판별은 정확)
+        lineId = detectedAssignment.lineId;
+
+        // 자신의 droppable 위에 드롭한 경우: drag delta로 날짜 추정
+        if (activeId.startsWith('assign-') && detectedId === activeId.replace('assign-', '')) {
           const dayDelta = Math.round(event.delta.x / 100);
-          dayIndex = Math.max(0, targetOnDay.startIndex + dayDelta);
+          dayIndex = Math.max(0, detectedAssignment.startIndex + dayDelta);
+          targetOnDay = null;
         } else {
-          // 타겟 바 위에 드롭: 포인터가 바의 앞/뒤 절반 중 어디에 있는지 판단
+          // 커서 위치 기반 dayIndex 계산
+          // overRect + detectedAssignment.startIndex로 grid 기준 절대 위치 복원
           const overRect = event.over?.rect;
           const activator = event.activatorEvent;
           const pointerX =
@@ -2822,17 +2825,20 @@ const AssignBoard = () => {
               ? activator.clientX + event.delta.x
               : null;
           if (overRect && pointerX != null) {
+            // detected 카드 범위에 클램핑하지 않고 커서의 실제 날짜 계산
+            const spanDays = Math.max(detectedAssignment.endIndex - detectedAssignment.startIndex + 1, 1);
             const relPos = (pointerX - overRect.left) / Math.max(overRect.width, 1);
-            dropBeforeTarget = relPos < 0.5;
-            // 포인터가 위치한 실제 날짜 셀 계산
-            const spanDays = Math.max(targetOnDay.endIndex - targetOnDay.startIndex + 1, 1);
             const dayOffset = Math.floor(relPos * spanDays);
-            dayIndex = Math.max(
-              targetOnDay.startIndex,
-              Math.min(targetOnDay.endIndex, targetOnDay.startIndex + dayOffset)
-            );
+            dayIndex = Math.max(0, detectedAssignment.startIndex + dayOffset);
           } else {
-            dayIndex = targetOnDay.startIndex;
+            dayIndex = detectedAssignment.startIndex;
+          }
+          // 커서 위치 기준으로 실제 타겟 카드 재탐색 (인디케이터와 동일한 로직)
+          targetOnDay = getTargetOnDay(assignments, lineId, dayIndex);
+          if (targetOnDay) {
+            // 타겟 카드 기준 앞/뒤 판단 (day index 중점 비교)
+            const cardMidDay = (targetOnDay.startIndex + targetOnDay.endIndex + 1) / 2;
+            dropBeforeTarget = dayIndex < cardMidDay;
           }
         }
       }
