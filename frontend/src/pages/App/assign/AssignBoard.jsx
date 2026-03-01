@@ -1031,7 +1031,8 @@ const reflowAssignmentsByLineCapacity = ({
 
     for (let index = 0; index < queue.length; index += 1) {
       const item = queue[index];
-      const startIndex = cursorStart;
+      // item.startIndex를 최솟값으로 보장: 앞 배정과 겹치면 밀어내고, 겹치지 않으면 원래 위치 유지
+      const startIndex = Math.max(cursorStart, toNonNegativeInt(item?.startIndex, cursorStart));
       if (startIndex == null || startIndex >= totalDays) return null;
 
       const totalSeconds = resolveAssignmentPlannedSeconds(
@@ -1139,6 +1140,7 @@ const rebuildLineWithInsert = ({
     ...insertItem,
     lineId,
     ...planned,
+    startDateKey: days[planned.startIndex]?.key ?? insertItem.startDateKey,
   });
 
   let cursorStart = getNextStartIndex(
@@ -1169,6 +1171,7 @@ const rebuildLineWithInsert = ({
       ...item,
       lineId,
       ...planned,
+      startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
     });
 
     cursorStart = getNextStartIndex(
@@ -1868,7 +1871,12 @@ const AssignBoard = () => {
     });
     const assignmentsToSave = reflowedAssignments ?? assignments;
 
-    const normalizedAssignments = assignmentsToSave.map((item) => normalizeAssignmentLayout(item));
+    // reflow 후 startIndex가 변경된 경우 startDateKey도 함께 갱신
+    // startDateKey와 startIndex가 불일치하면 뷰 이동 시 날짜가 틀어짐
+    const normalizedAssignments = assignmentsToSave.map((item) => {
+      const newStartDateKey = days[item.startIndex]?.key ?? item.startDateKey;
+      return normalizeAssignmentLayout({ ...item, startDateKey: newStartDateKey });
+    });
     setPersisting(true);
     try {
       const response = await requestJSON(
