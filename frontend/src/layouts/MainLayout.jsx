@@ -55,6 +55,9 @@ import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 
 const DRAWER_WIDTH = 260;
+
+const KEEP_ALIVE_PATHS = new Set(['/assignment']);
+const KeepAliveAssign = React.lazy(() => import('../pages/App/Assign'));
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
   if (!raw) return '/';
@@ -97,6 +100,12 @@ const MainLayout = () => {
     dismissNotification,
   } = useApp();
   const networkLoading = useNetworkLoading();
+
+  const [mountedKeepAlivePaths, setMountedKeepAlivePaths] = useState(() => {
+    const s = new Set();
+    if (KEEP_ALIVE_PATHS.has(currentPath)) s.add(currentPath);
+    return s;
+  });
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
@@ -429,6 +438,17 @@ const MainLayout = () => {
       currentPath,
       ...recentTabHistoryRef.current.filter((tabId) => tabId !== currentPath),
     ];
+  }, [currentPath]);
+
+  useEffect(() => {
+    if (KEEP_ALIVE_PATHS.has(currentPath)) {
+      setMountedKeepAlivePaths((prev) => {
+        if (prev.has(currentPath)) return prev;
+        const next = new Set(prev);
+        next.add(currentPath);
+        return next;
+      });
+    }
   }, [currentPath]);
 
   useEffect(() => {
@@ -824,7 +844,23 @@ const MainLayout = () => {
             position: 'relative',
           }}
         >
-          {shouldHideOutletForEmptyWorkspace ? null : <Outlet />}
+          {/* Keep-alive: /assignment — stays mounted after first visit */}
+          {mountedKeepAlivePaths.has('/assignment') && (
+            <Box
+              sx={{
+                display: currentPath === '/assignment' ? 'flex' : 'none',
+                flexDirection: 'column',
+                minHeight: '100%',
+                minWidth: 0,
+              }}
+            >
+              <React.Suspense fallback={null}>
+                <KeepAliveAssign />
+              </React.Suspense>
+            </Box>
+          )}
+          {/* Regular outlet for all non-keep-alive routes */}
+          {!KEEP_ALIVE_PATHS.has(currentPath) && !shouldHideOutletForEmptyWorkspace && <Outlet />}
           <GlobalLoadingOverlay
             open={networkLoading.isLoading}
             startedAt={networkLoading.startedAt}

@@ -7,6 +7,7 @@ import {
   Divider,
   Drawer,
   Grid,
+  IconButton,
   Menu,
   MenuItem,
   Paper,
@@ -20,9 +21,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -1414,7 +1418,22 @@ const AssignBoard = () => {
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
-  const [days, setDays] = useState(() => buildDays(startDateRef.current, 40, holidaySet));
+  const MAX_RANGE_DAYS = 92;
+  const [viewStart, setViewStart] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [viewEnd, setViewEnd] = useState(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 29);
+    return d;
+  });
+  const dayCount = useMemo(() => {
+    return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
+  }, [viewStart, viewEnd]);
+  const [days, setDays] = useState(() => buildDays(startDateRef.current, 30, holidaySet));
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
@@ -1555,8 +1574,9 @@ const AssignBoard = () => {
   }, []);
 
   useEffect(() => {
-    setDays((prev) => buildDays(startDateRef.current, Math.max(prev.length, 10), holidaySet));
-  }, [holidaySet]);
+    startDateRef.current = new Date(viewStart);
+    setDays(buildDays(startDateRef.current, dayCount, holidaySet));
+  }, [viewStart, dayCount, holidaySet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3931,6 +3951,53 @@ const AssignBoard = () => {
     syncHistoryStatus,
   ]);
 
+  // ── 날짜 범위 네비게이션 헬퍼 ──────────────────────────────────────
+  const toMonthStart = (d) => { const r = new Date(d); r.setDate(1); r.setHours(0,0,0,0); return r; };
+  const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
+
+  const handleViewStartChange = (newStart) => {
+    const s = new Date(newStart); s.setHours(0,0,0,0);
+    const e = new Date(viewEnd);
+    if (s > e) return;
+    const range = Math.round((e - s) / 86400000) + 1;
+    if (range > MAX_RANGE_DAYS) {
+      const cappedEnd = new Date(s); cappedEnd.setDate(cappedEnd.getDate() + MAX_RANGE_DAYS - 1);
+      setViewEnd(cappedEnd);
+    }
+    setViewStart(s);
+  };
+  const handleViewEndChange = (newEnd) => {
+    const e = new Date(newEnd); e.setHours(0,0,0,0);
+    const s = new Date(viewStart);
+    if (e < s) return;
+    const range = Math.round((e - s) / 86400000) + 1;
+    if (range > MAX_RANGE_DAYS) return;
+    setViewEnd(e);
+  };
+  // ◄ : FROM → 전달 1일
+  const handlePrevMonthFrom = () => {
+    const prev = toMonthStart(viewStart); prev.setMonth(prev.getMonth() - 1);
+    handleViewStartChange(prev);
+  };
+  // ► : TO → 다음달 말일
+  const handleNextMonthTo = () => {
+    const nextMonthFirst = new Date(viewEnd.getFullYear(), viewEnd.getMonth() + 1, 1);
+    const nextEnd = toMonthEnd(nextMonthFirst);
+    handleViewEndChange(nextEnd);
+  };
+  // M- : 전달 전체 (from 기준)
+  const handleMonthMinus = () => {
+    const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() - 1);
+    const newEnd   = toMonthEnd(newStart);
+    setViewStart(newStart); setViewEnd(newEnd);
+  };
+  // M+ : 다음달 전체 (from 기준)
+  const handleMonthPlus = () => {
+    const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() + 1);
+    const newEnd   = toMonthEnd(newStart);
+    setViewStart(newStart); setViewEnd(newEnd);
+  };
+
   return (
     <AppPageContainer
       header={
@@ -4070,9 +4137,41 @@ const AssignBoard = () => {
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">라인 타임라인</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  카드를 드래그하여 라인에 배정하세요
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <IconButton size="small" onClick={handlePrevMonthFrom} title="이전 달 1일">
+                    <ChevronLeftIcon fontSize="small" />
+                  </IconButton>
+                  <CustomDatePicker
+                    value={viewStart}
+                    onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
+                    slotProps={{ textField: { size: 'small', sx: { width: 140 } } }}
+                  />
+                  <Typography sx={{ fontSize: 14, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+                  <CustomDatePicker
+                    value={viewEnd}
+                    onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
+                    slotProps={{ textField: { size: 'small', sx: { width: 140 } } }}
+                  />
+                  <IconButton size="small" onClick={handleNextMonthTo} title="다음 달 말일">
+                    <ChevronRightIcon fontSize="small" />
+                  </IconButton>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleMonthPlus}
+                    sx={{ minWidth: 36, px: 0.75, fontSize: 12 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleMonthMinus}
+                    sx={{ minWidth: 36, px: 0.75, fontSize: 12 }}
+                  >
+                    M-
+                  </Button>
+                </Box>
               </Box>
               <ScheduleTimeline
                 lines={lines}
