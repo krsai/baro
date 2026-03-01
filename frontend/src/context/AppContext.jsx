@@ -12,6 +12,14 @@ import { fetchAttributes } from '../utils/attributeApi';
 // Create the App Context
 const AppContext = createContext();
 
+// 타입별 토스트 표시 시간 (ms) — 여기서 전역 관리
+const TOAST_DURATION = {
+  success: 3000,
+  error: 5000,
+  warning: 3500,
+  info: 3000,
+};
+
 // AppProvider component
 export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -60,17 +68,28 @@ export const AppProvider = ({ children }) => {
     setNotification(null);
   }, []);
 
+  const notificationTimerRef = useRef(null);
+
   // Helper to show notifications
-  const showNotification = useCallback((message, type = 'info', duration = 3000) => {
-    setNotification({ message, type, id: Date.now() });
-    if (duration) {
-      setTimeout(() => setNotification(null), duration);
+  const showNotification = useCallback((message, type = 'info') => {
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
     }
+    setNotification({ message, type, id: Date.now() });
+    const duration = TOAST_DURATION[type] ?? TOAST_DURATION.info;
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      notificationTimerRef.current = null;
+    }, duration);
   }, []);
 
 
   // Helper to dismiss notification
   const dismissNotification = useCallback(() => {
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = null;
+    }
     setNotification(null);
   }, []);
 
