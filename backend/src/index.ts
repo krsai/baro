@@ -5842,6 +5842,139 @@ app.get("/assignment-board-state", async (req, res) => {
   res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
 });
 
+// CT 상태 변경 전용 경량 엔드포인트
+// 전체 보드 상태를 전송하지 않고 변경된 assignment/card 필드만 패치
+app.patch("/assignment-board-state/ct", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const assignmentId = resolveOptionalString(req.body?.assignmentId, null);
+  if (!assignmentId) {
+    return res.status(400).json({ ok: false, error: "assignmentId is required" });
+  }
+  const assignmentPatch = req.body?.assignmentPatch;
+  if (!assignmentPatch || typeof assignmentPatch !== "object") {
+    return res.status(400).json({ ok: false, error: "assignmentPatch is required" });
+  }
+  const cardId = resolveOptionalString(req.body?.cardId, null);
+  const cardPatch = (req.body?.cardPatch && typeof req.body.cardPatch === "object")
+    ? req.body.cardPatch
+    : null;
+
+  const existingState = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+    select: { id: true, cards: true, assignments: true },
+  });
+  if (!existingState) {
+    return res.status(404).json({ ok: false, error: "board state not found" });
+  }
+
+  const currentAssignments = normalizeStateAssignments(existingState.assignments);
+  const targetAssignment = currentAssignments.find(
+    (a: any) => String(a?.id) === assignmentId
+  );
+  if (!targetAssignment) {
+    return res.status(404).json({ ok: false, error: "assignment not found" });
+  }
+
+  const nowIso = new Date().toISOString();
+  const currentVersion = Number((targetAssignment as any).version ?? 0);
+  const nextCtStatus = resolveAssignmentCtStatus(
+    resolveOptionalString(assignmentPatch?.ctStatus, "PENDING") ?? "PENDING"
+  );
+  const nextSentAt =
+    nextCtStatus === "SENT"
+      ? resolveAssignmentSentAtIso(assignmentPatch) ?? nowIso
+      : null;
+
+  const patchedAssignment = normalizeStateAssignmentItem({
+    ...targetAssignment,
+    ...assignmentPatch,
+    id: assignmentId,
+    ctStatus: nextCtStatus,
+    ctSentAt: nextSentAt,
+    version: currentVersion + 1,
+    versionUpdatedAt: nowIso,
+    ...(nextCtStatus !== "SENT"
+      ? {
+          ctEscalatedAt: null,
+          ctEscalationReason: null,
+          ctEscalationTargetRole: null,
+          ctEscalationStatus: null,
+        }
+      : {}),
+  });
+
+  const nextAssignments = currentAssignments.map((a: any) =>
+    String(a?.id) === assignmentId ? patchedAssignment : a
+  );
+  const { assignments: assignmentsForState } = applySentTimeoutEscalation(nextAssignments);
+
+  let currentCards = ensureArray(existingState.cards);
+  let patchedCard: any = null;
+  if (cardId && cardPatch) {
+    currentCards = currentCards.map((card: any) => {
+      if (String(card?.id) !== cardId) return card;
+      patchedCard = { ...card, ...cardPatch };
+      return patchedCard;
+    });
+  }
+
+  const updatedState = await prisma.assignmentBoardState.update({
+    where: { id: existingState.id },
+    data: { cards: currentCards, assignments: assignmentsForState },
+    select: { updatedAt: true },
+  });
+
+  // assignment plan 동기화 (변경된 assignment 1건만)
+  const externalId = resolveAssignmentExternalId(patchedAssignment);
+  if (externalId) {
+    const lineIdSet = new Set(
+      (
+        await prisma.line.findMany({
+          where: { orgId: organization.id },
+          select: { id: true },
+        })
+      ).map((line) => line.id)
+    );
+    const normalizedPlanChanges = normalizeAssignmentPlanPayload(
+      [patchedAssignment],
+      lineIdSet
+    );
+    if (normalizedPlanChanges.length > 0) {
+      const planItem = normalizedPlanChanges[0];
+      const existingPlan = await prisma.assignmentPlan.findFirst({
+        where: { orgId: organization.id, externalId },
+        select: { id: true },
+      });
+      if (existingPlan) {
+        await prisma.assignmentPlan.update({
+          where: { id: existingPlan.id },
+          data: toAssignmentPlanWriteData(planItem),
+        });
+      } else {
+        await prisma.assignmentPlan.create({
+          data: {
+            orgId: organization.id,
+            externalId,
+            ...toAssignmentPlanWriteData(planItem),
+          },
+        });
+      }
+    }
+  }
+
+  res.json({
+    ok: true,
+    assignment: patchedAssignment,
+    card: patchedCard,
+    updatedAt: updatedState.updatedAt,
+    serverNow: nowIso,
+  });
+});
+
 app.delete("/assignment-board-state", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -6144,12 +6277,14 @@ app.put("/assignment-board-state", async (req, res) => {
     }
 
     if (updatePlanRows.length > 0) {
-      for (const row of updatePlanRows) {
-        await prisma.assignmentPlan.update({
-          where: { id: row.id },
-          data: toAssignmentPlanWriteData(row.item),
-        });
-      }
+      await Promise.all(
+        updatePlanRows.map((row) =>
+          prisma.assignmentPlan.update({
+            where: { id: row.id },
+            data: toAssignmentPlanWriteData(row.item),
+          })
+        )
+      );
     }
 
     const removedExternalIdSet = new Set(removedExternalIdList);

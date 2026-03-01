@@ -576,3 +576,61 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - Transaction pooler 포트: **6543** (Session pooler: 5432)
 - dotenv v17은 `override: true` 필수 (위 코드 수정사항 참고)
 - DB 연결 실패 시 Windows DNS를 Cloudflare(1.1.1.1)로 변경 후 재시도
+
+---
+
+## 오늘 반영 메모 (2026-03-01)
+
+### 작업 배정 보드 — 핵심 구조 변경
+
+#### startDateKey 절대 날짜 추적
+- 각 assignment는 `startDateKey: "YYYY-MM-DD"` 필드로 절대 날짜를 보관한다.
+- viewStart 네비게이션 시 `oldBase + currentStartIndex`로 절대 날짜를 재계산하고 `newDays`에서 새 인덱스를 탐색한다.
+- 뷰 범위 밖 카드는 음수/초과 인덱스를 가질 수 있으며 `assignmentsForRender` 필터(`0 <= startIndex < days.length`)로 제외된다.
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`
+
+#### 로드 시 손상된 startIndex 복구
+- 이전 버그로 저장된 대형 startIndex(예: 200+) 보정 로직을 `loadSourceData` 내부에 추가했다.
+- 복구 순서: `startDateKey`로 `restoreDays`에서 재매핑 → 실패 시 `[0, rdCount-1]` 클램핑.
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx` (loadSourceData 함수 내 normalizedRestoredAssignments 처리 직후)
+
+#### 드래그 드롭 타겟 감지 통일
+- 인디케이터(`onDragMove`)와 실제 드롭(`onDragEnd`) 모두 **커서 위치 기준**으로 타겟을 탐색한다.
+- 기존: `onDragEnd`는 dnd-kit `event.over` (rect intersection)으로 타겟 결정 → 인디케이터와 불일치 버그.
+- 수정: `assign-drop-{id}` 위에 드롭 시 `detectedAssignment.startIndex + Math.floor(relPos * spanDays)`로 커서의 절대 날짜를 계산 후 `getTargetOnDay`로 실제 타겟 재탐색.
+- `dropBeforeTarget`는 `dayIndex < (targetOnDay.startIndex + targetOnDay.endIndex + 1) / 2`로 판단.
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx` (handleDragEnd, assign-drop 분기)
+
+#### ScheduleTimeline z-index 스택
+| 레이어 | zIndex |
+|---|---|
+| DropCell (배경 셀) | 0 |
+| AssignBar (일반) | 20 |
+| AssignBar (연결 가능, showLinkPrev=true) | appBar+3 = 1103 |
+| 커서 컬럼 하이라이트 오버레이 | 1104 |
+| 삽입 인디케이터 (세로선) | 1200 |
+- 하이라이트와 인디케이터는 카드 위에 표시되어야 하므로 1103 이상의 zIndex가 필요하다.
+- 파일: `frontend/src/pages/App/assign/components/ScheduleTimeline.jsx`
+
+### CT 전송 성능 개선
+
+#### PATCH /assignment-board-state/ct (신규 경량 엔드포인트)
+- 요청: `{ assignmentId, assignmentPatch, cardId?, cardPatch? }` — 변경된 필드만 전송
+- 처리: 기존 상태 읽기 → 해당 항목만 패치 → 전체 상태 쓰기 → 변경 plan 1건만 동기화
+- 응답: `{ ok, assignment, card, updatedAt, serverNow }` — 변경된 항목만 반환
+- 기존 PUT 대비 DB 쿼리 8+ → 5개로 감소, 인증 조회 2건 제거
+- 파일: `backend/src/index.ts`
+
+#### 프론트 CT 액션 경량화
+| 액션 | 이전 | 이후 |
+|---|---|---|
+| 제안 송부 (SENT), reflow 없음 | PUT 전체 payload | PATCH 경량 |
+| 제안 송부 (SENT), reflow 있음 | PUT 전체 payload | PUT fallback 유지 |
+| 요청 동의 (AGREED) | PUT 전체 payload | PATCH 경량 (항상) |
+| 배정 취소 | PUT 전체 payload | PUT 유지 |
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx` (handleSendProposalToLineLeader, handleAgreeCtFromLineRequest)
+
+#### updatePlanRows 병렬화
+- 기존: `for...of` 순차 `await prisma.assignmentPlan.update(...)` → N번 DB 왕복
+- 수정: `Promise.all(updatePlanRows.map(...))` 병렬 실행
+- 파일: `backend/src/index.ts` (PUT /assignment-board-state 핸들러 내부)

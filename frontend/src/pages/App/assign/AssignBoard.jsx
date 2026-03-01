@@ -3351,17 +3351,62 @@ const AssignBoard = () => {
         }
       }
       const query = buildQueryString({ orgId: activeOrgId });
-      const response = await requestJSON('/assignment-board-state' + query, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCardsWithProposal, assignments: normalizedAssignments }),
-        skipGlobalLoading: true,
-      });
-      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
-        response,
-        nextCardsWithProposal,
-        normalizedAssignments
-      );
+      const ctAssignmentPatch = {
+        proposalSeconds: nextTotalSeconds,
+        contractedSeconds: null,
+        ctStatus: 'SENT',
+        ctOverride: false,
+        ctSource: 'OPERATOR_PROPOSAL',
+        ctAgreedBy: null,
+        ctAgreedAt: null,
+        ctSentAt: nowIso,
+        ctEscalatedAt: null,
+        ctEscalationReason: null,
+        ctEscalationTargetRole: null,
+        ctEscalationStatus: null,
+        ctNote: `제안 송부 ${nowIso}`,
+      };
+      let persistedCards;
+      let persistedAssignments;
+      if (lineReflowStartByLine.size === 0) {
+        // 다른 assignment 변경 없음 — 경량 PATCH 사용
+        const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignmentId,
+            assignmentPatch: ctAssignmentPatch,
+            cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
+            cardPatch: detailAssignment?.cardId
+              ? { operatorCtProposal: operatorProposalPayload, pendingCtProposal: null }
+              : null,
+          }),
+          skipGlobalLoading: true,
+        });
+        persistedAssignments = patchResponse?.assignment
+          ? normalizedAssignments.map((a) =>
+              String(a.id) === assignmentId ? { ...a, ...patchResponse.assignment } : a
+            )
+          : normalizedAssignments;
+        persistedCards = patchResponse?.card
+          ? nextCardsWithProposal.map((c) =>
+              String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
+            )
+          : nextCardsWithProposal;
+      } else {
+        // reflow로 다른 assignment도 변경됨 — 전체 payload PUT
+        const putResponse = await requestJSON('/assignment-board-state' + query, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards: nextCardsWithProposal, assignments: normalizedAssignments }),
+          skipGlobalLoading: true,
+        });
+        ({ persistedCards, persistedAssignments } = resolvePersistedBoardState(
+          putResponse,
+          nextCardsWithProposal,
+          normalizedAssignments
+        ));
+      }
 
       let nextDays = daysForAssignments;
       const maxEndIndex = persistedAssignments.reduce(
@@ -3532,60 +3577,57 @@ const AssignBoard = () => {
           )
         : nextCards;
 
-      const nextAssignments = assignments.map((item) => {
-        if (String(item?.id) !== assignmentId) return item;
-        const preservedProposalSeconds =
-          toNonNegativeInt(item?.proposalSeconds, 0) > 0
-            ? toNonNegativeInt(item?.proposalSeconds, 0)
-            : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
-        // CT 동의는 임금 협의 결과만 반영한다.
-        // totalSeconds(일정 기간)는 AT(q)/PT(q) 기반이므로 CT 합의로 변경하지 않는다.
-        return {
-          ...item,
-          proposalSeconds: preservedProposalSeconds,
-          contractedSeconds: nextTotalSeconds,
-          ctStatus: 'AGREED',
-          ctOverride: false,
-          ctSource: 'LINE_LEADER_PROPOSAL',
-          ctAgreedBy: 'OPERATOR',
-          ctAgreedAt: nowIso,
-          ctSentAt: null,
-          ctEscalatedAt: null,
-          ctEscalationReason: null,
-          ctEscalationTargetRole: null,
-          ctEscalationStatus: null,
-          ctNote: `요청 동의 ${nowIso}`,
-        };
-      });
-      const normalizedAssignments = nextAssignments.map((item) =>
-        normalizeAssignmentLayout(item)
-      );
-      const daysForAssignments = days;
-      const reflowFailed = false;
+      const targetAssignmentForAgree = assignments.find((item) => String(item?.id) === assignmentId);
+      const preservedProposalSeconds =
+        toNonNegativeInt(targetAssignmentForAgree?.proposalSeconds, 0) > 0
+          ? toNonNegativeInt(targetAssignmentForAgree?.proposalSeconds, 0)
+          : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
+      const ctAgreePatch = {
+        proposalSeconds: preservedProposalSeconds,
+        contractedSeconds: nextTotalSeconds,
+        ctStatus: 'AGREED',
+        ctOverride: false,
+        ctSource: 'LINE_LEADER_PROPOSAL',
+        ctAgreedBy: 'OPERATOR',
+        ctAgreedAt: nowIso,
+        ctSentAt: null,
+        ctEscalatedAt: null,
+        ctEscalationReason: null,
+        ctEscalationTargetRole: null,
+        ctEscalationStatus: null,
+        ctNote: `요청 동의 ${nowIso}`,
+      };
       const query = buildQueryString({ orgId: activeOrgId });
-      const response = await requestJSON('/assignment-board-state' + query, {
-        method: 'PUT',
+      const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCardsWithAgreement, assignments: normalizedAssignments }),
+        body: JSON.stringify({
+          assignmentId,
+          assignmentPatch: ctAgreePatch,
+          cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
+          cardPatch: detailAssignment?.cardId
+            ? { ctAgreedSnapshot: agreementSnapshot, pendingCtProposal: null }
+            : null,
+        }),
         skipGlobalLoading: true,
       });
-      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
-        response,
-        nextCardsWithAgreement,
-        normalizedAssignments
-      );
+      const persistedAssignments = patchResponse?.assignment
+        ? assignments.map((a) =>
+            String(a.id) === assignmentId
+              ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch, ...patchResponse.assignment })
+              : a
+          )
+        : assignments.map((a) =>
+            String(a.id) === assignmentId
+              ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch })
+              : a
+          );
+      const persistedCards = patchResponse?.card
+        ? nextCardsWithAgreement.map((c) =>
+            String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
+          )
+        : nextCardsWithAgreement;
 
-      let nextDays = daysForAssignments;
-      const maxEndIndex = persistedAssignments.reduce(
-        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
-        0
-      );
-      if (maxEndIndex + 10 > nextDays.length) {
-        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
-      }
-      if (nextDays.length > days.length) {
-        setDays(nextDays);
-      }
       setCards(persistedCards);
       setAssignments(persistedAssignments);
       const persistedSnapshot = createPersistSnapshotText(
@@ -3593,9 +3635,6 @@ const AssignBoard = () => {
         persistedAssignments
       );
       lastSavedSnapshotRef.current = persistedSnapshot;
-      if (reflowFailed) {
-        showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
-      }
       showNotification('요청 동의 완료. 해당 작업이 확정 상태로 전환되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
