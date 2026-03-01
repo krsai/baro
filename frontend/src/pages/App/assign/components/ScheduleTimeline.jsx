@@ -449,7 +449,23 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                         );
                       })}
 
-                      {/* 삽입 위치 세로선 인디케이터 */}
+                      {/* 커서 날짜 컬럼 하이라이트 — 카드 위에 표시 */}
+                      {hoveredTarget.lineId === lineIdStr && hoveredTarget.dayIndex != null && (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: hoveredTarget.dayIndex * CELL_WIDTH,
+                            width: CELL_WIDTH,
+                            height: rowHeight,
+                            backgroundColor: 'rgba(25, 118, 210, 0.15)',
+                            zIndex: 1104,
+                            pointerEvents: 'none',
+                          }}
+                        />
+                      )}
+
+                      {/* 삽입 위치 세로선 인디케이터 — 모든 카드 위에 표시 */}
                       {linePreview != null && (
                         <Box
                           sx={{
@@ -458,9 +474,9 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                             left: linePreview.insertLeftPx - 1,
                             width: 3,
                             height: rowHeight,
-                            backgroundColor: 'rgba(25, 118, 210, 0.7)',
+                            backgroundColor: 'rgba(25, 118, 210, 0.85)',
                             borderRadius: 1,
-                            zIndex: 30,
+                            zIndex: 1200,
                             pointerEvents: 'none',
                           }}
                         />

@@ -1706,6 +1706,24 @@ const AssignBoard = () => {
           normalizeAssignmentLayout(item)
         );
         let normalizedRestoreDays = restoreDays;
+        // 이전 버그로 인해 startIndex가 매우 큰 값(예: 200+)으로 저장된 경우 복구
+        // startDateKey가 있으면 restoreDays에서 재매핑, 없으면 유효 범위로 클램핑
+        {
+          const rdCount = normalizedRestoreDays.length;
+          normalizedRestoredAssignments = normalizedRestoredAssignments.map((a) => {
+            if (a.startDateKey) {
+              const si = normalizedRestoreDays.findIndex((d) => d.key === a.startDateKey);
+              if (si >= 0) {
+                const span = Math.max(0, a.endIndex - a.startIndex);
+                return { ...a, startIndex: si, endIndex: Math.min(si + span, rdCount - 1) };
+              }
+            }
+            // startDateKey 없거나 못 찾으면 clamp
+            const cs = Math.min(Math.max(0, a.startIndex), rdCount - 1);
+            const ce = Math.min(Math.max(cs, a.endIndex), rdCount - 1);
+            return { ...a, startIndex: cs, endIndex: ce };
+          });
+        }
         if (normalizedRestoredAssignments.length > 1) {
           const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
           let candidateDays = normalizedRestoreDays;
