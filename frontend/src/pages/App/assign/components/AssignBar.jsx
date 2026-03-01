@@ -38,11 +38,10 @@ const lightenHex = (hex, amount = 0.65) => {
   return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`;
 };
 
-const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, isLocked = false, shiftPx = 0 }) => {
+const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
-    disabled: isLocked,
   });
 
   const { setNodeRef: setDropRef } = useDroppable({
@@ -121,7 +120,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
         // Link-to-previous button sits outside the bar on the left edge.
         overflow: 'visible',
         // Locked assignments are not draggable, but context-menu access is still allowed.
-        cursor: isLocked ? 'context-menu' : isDragging ? 'grabbing' : 'grab',
+        cursor: isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: `1px solid ${ctMeta.border}`,
         outline: 'none',
@@ -272,24 +271,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, is
           }}
         >
           {ctLabel}
-        </Box>
-      )}
-      {isLocked && (
-        <Box
-          sx={{
-            position: 'absolute',
-            left: 8,
-            bottom: 8,
-            px: 0.7,
-            py: 0.15,
-            borderRadius: 1,
-            backgroundColor: 'rgba(17, 24, 39, 0.72)',
-            fontSize: 10,
-            fontWeight: 700,
-            color: '#ffffff',
-          }}
-        >
-          잠금
         </Box>
       )}
       {!hideMetaBadges && (

@@ -77,8 +77,6 @@ const getOrderKey = (assignment) => {
 };
 
 const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
-const isLockedAssignment = (assignment) =>
-  ['SENT', 'AGREED'].includes(String(assignment?.ctStatus || '').trim().toUpperCase());
 
 const getNextStartIndex = (assignment, days) => {
   const endPercent = assignment.endDayPercent ?? 100;
@@ -447,7 +445,6 @@ const ScheduleTimeline = ({ lines, days, assignments, onLinkPrev, onOpenContextM
                             showLinkPrev={linkableIds.has(assignment.id)}
                             onLinkPrev={onLinkPrev}
                             onOpenContextMenu={onOpenContextMenu}
-                            isLocked={isLockedAssignment(assignment)}
                           />
                         );
                       })}

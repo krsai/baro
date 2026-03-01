@@ -1001,21 +1001,11 @@ const reflowAssignmentsByLineCapacity = ({
       .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
     if (sorted.length === 0) continue;
 
-    // REJECTED도 위치 고정: 드래그는 가능하나 리플로우에서 자동 이동하면 안 된다
-    const isPositionFixed = (item) =>
-      isAssignmentLockedStatus(item?.ctStatus) ||
-      normalizeCtStatus(item?.ctStatus) === 'REJECTED';
     const fixed = sorted
-      .filter(
-        (item) =>
-          toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex ||
-          isPositionFixed(item)
-      )
+      .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
       .map((item) => ({ ...item, lineId }));
     const queue = sorted.filter(
-      (item) =>
-        toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex &&
-        !isPositionFixed(item)
+      (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
     );
 
     const placed = [...fixed];
@@ -1797,7 +1787,17 @@ const AssignBoard = () => {
   const handleSaveBoard = useCallback(async () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
-    const normalizedAssignments = assignments.map((item) => normalizeAssignmentLayout(item));
+    // 저장 전 날짜 중첩 제거: 잠금 카드(SENT/AGREED) 위치 고정, 나머지 재배치
+    const reflowedAssignments = reflowAssignmentsByLineCapacity({
+      assignments,
+      totalDays: days.length,
+      days,
+      lineCapacityById,
+      reflowStartIndex: 0,
+    });
+    const assignmentsToSave = reflowedAssignments ?? assignments;
+
+    const normalizedAssignments = assignmentsToSave.map((item) => normalizeAssignmentLayout(item));
     setPersisting(true);
     try {
       const response = await requestJSON(
@@ -1833,6 +1833,8 @@ const AssignBoard = () => {
     activeOrgId,
     assignments,
     cards,
+    days,
+    lineCapacityById,
     createPersistSnapshotText,
     isDirty,
     persistReady,
@@ -2659,8 +2661,8 @@ const AssignBoard = () => {
       if (String(active.id).startsWith('assign-')) {
         const assignmentId = String(active.id).replace('assign-', '');
         const target = assignmentById.get(assignmentId);
-        if (target && isAssignmentLocked(target)) {
-          showNotification('제안 송부된 작업은 잠금 상태라 삭제할 수 없습니다.', 'warning');
+        if (normalizeCtStatus(target?.ctStatus) === 'AGREED') {
+          showNotification('동의 완료된 작업은 라인에서 제외할 수 없습니다.', 'warning');
           setActiveDrag(null);
           return;
         }
@@ -2675,11 +2677,6 @@ const AssignBoard = () => {
     if (activeId.startsWith('assign-')) {
       const movingAssignmentId = activeId.replace('assign-', '');
       const movingAssignment = assignmentById.get(movingAssignmentId);
-      if (movingAssignment && normalizeCtStatus(movingAssignment?.ctStatus) === 'SENT') {
-        showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
-        setActiveDrag(null);
-        return;
-      }
     }
 
     if (overId.startsWith('card-drop-')) {
@@ -2694,8 +2691,8 @@ const AssignBoard = () => {
       if (activeId.startsWith('assign-')) {
         const assignmentId = activeId.replace('assign-', '');
         const sourceAssignment = assignmentById.get(assignmentId);
-        if (sourceAssignment && isAssignmentLocked(sourceAssignment)) {
-          showNotification('잠금된 작업은 미배정 영역으로 옮길 수 없습니다.', 'warning');
+        if (normalizeCtStatus(sourceAssignment?.ctStatus) === 'AGREED') {
+          showNotification('동의 완료된 작업은 라인에서 제외할 수 없습니다.', 'warning');
           setActiveDrag(null);
           return;
         }
@@ -2883,9 +2880,8 @@ const AssignBoard = () => {
       const assignmentId = activeId.replace('assign-', '');
       const movingAssignmentForCheck = assignmentById.get(assignmentId);
       if (
-        movingAssignmentForCheck &&
-        isAssignmentLocked(movingAssignmentForCheck) &&
-        String(lineId) !== String(movingAssignmentForCheck.lineId)
+        normalizeCtStatus(movingAssignmentForCheck?.ctStatus) === 'AGREED' &&
+        String(lineId) !== String(movingAssignmentForCheck?.lineId)
       ) {
         showNotification('동의 완료된 작업은 다른 라인으로 이동할 수 없습니다.', 'warning');
         setActiveDrag(null);
@@ -2894,12 +2890,6 @@ const AssignBoard = () => {
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
-        const isMovingToSameLine = String(lineId) === String(target.lineId);
-        if (normalizeCtStatus(target?.ctStatus) === 'SENT') return prev;
-        if (isAssignmentLocked(target) && !isMovingToSameLine) return prev;
-        if (targetOnDay && normalizeCtStatus(targetOnDay?.ctStatus) === 'SENT' && targetOnDay.id !== assignmentId) {
-          return prev;
-        }
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
@@ -2962,11 +2952,6 @@ const AssignBoard = () => {
   };
 
   const handleLinkPrev = (assignmentId) => {
-    const targetPreview = assignmentById.get(assignmentId);
-    if (targetPreview && normalizeCtStatus(targetPreview?.ctStatus) === 'SENT') {
-      showNotification('제안 송부된 작업은 잠금 상태라 이동할 수 없습니다.', 'warning');
-      return;
-    }
     setAssignments((prev) => {
       const target = prev.find((item) => item.id === assignmentId);
       if (!target) return prev;
