@@ -22,8 +22,8 @@ const formatDuration = (daysValue) => {
 // 확정(AGREED)만 progressBg(진행 오버레이용 약간 짙은 색) 추가
 const CT_STATUS_META = {
   PENDING:  { label: '대기', cardBg: '#EBEBF0', labelColor: '#888898' },
-  SENT:     { label: '제안', cardBg: '#C8DFF7', labelColor: '#4A88C8' },
-  AGREED:   { label: '확정', cardBg: '#BFEAD0', progressBg: '#88C9A6', labelColor: '#3A9858' },
+  SENT:     { label: '제안', cardBg: '#BFEAD0', labelColor: '#3A9858' },
+  AGREED:   { label: '확정', cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8' },
   REJECTED: { label: '요청', cardBg: '#F7DCC8', labelColor: '#C07838' },
 };
 
