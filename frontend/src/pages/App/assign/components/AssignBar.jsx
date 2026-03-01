@@ -80,7 +80,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const ctMeta = CT_STATUS_META[ctStatus];
   const ctLabel = ctMeta.label;
 
-  // 확정 카드 진행률 (0~100). 데이터 연결 전까지 0
+  // 확정 카드 진행률 (0~100). assignment.progressPercent 데이터 연결 후 자동 반영
   const progressPercent = ctStatus === 'AGREED'
     ? Math.min(100, Math.max(0, assignment.progressPercent ?? 0))
     : 0;
