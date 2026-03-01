@@ -139,10 +139,10 @@ const normalizeCtStatus = (value) => {
   return 'PENDING';
 };
 const CT_STATUS_LABEL = {
-  PENDING: '제안 전',
-  SENT: '승인 전',
-  AGREED: '동의 완료',
-  REJECTED: '변경 요청',
+  PENDING: '대기',
+  SENT: '제안',
+  AGREED: '확정',
+  REJECTED: '요청',
 };
 const resolveProcessPtInfo = (process, orderQuantity = 1) => {
   const ptSeconds = toOptionalPositiveNumber(process?.pt);
@@ -2662,7 +2662,7 @@ const AssignBoard = () => {
         const assignmentId = String(active.id).replace('assign-', '');
         const target = assignmentById.get(assignmentId);
         if (normalizeCtStatus(target?.ctStatus) === 'AGREED') {
-          showNotification('동의 완료된 작업은 라인에서 제외할 수 없습니다.', 'warning');
+          showNotification('확정된 작업은 라인에서 제외할 수 없습니다.', 'warning');
           setActiveDrag(null);
           return;
         }
@@ -2692,7 +2692,7 @@ const AssignBoard = () => {
         const assignmentId = activeId.replace('assign-', '');
         const sourceAssignment = assignmentById.get(assignmentId);
         if (normalizeCtStatus(sourceAssignment?.ctStatus) === 'AGREED') {
-          showNotification('동의 완료된 작업은 라인에서 제외할 수 없습니다.', 'warning');
+          showNotification('확정된 작업은 라인에서 제외할 수 없습니다.', 'warning');
           setActiveDrag(null);
           return;
         }
@@ -2883,7 +2883,7 @@ const AssignBoard = () => {
         normalizeCtStatus(movingAssignmentForCheck?.ctStatus) === 'AGREED' &&
         String(lineId) !== String(movingAssignmentForCheck?.lineId)
       ) {
-        showNotification('동의 완료된 작업은 다른 라인으로 이동할 수 없습니다.', 'warning');
+        showNotification('확정된 작업은 다른 라인으로 이동할 수 없습니다.', 'warning');
         setActiveDrag(null);
         return;
       }
@@ -3345,7 +3345,7 @@ const AssignBoard = () => {
       if (detailHasProposalChange) {
         showNotification('제안 CT를 수정한 상태에서는 요청 동의를 할 수 없습니다.', 'warning');
       } else {
-        showNotification('요청 동의는 변경 요청 상태에서만 가능합니다.', 'warning');
+        showNotification('요청 동의는 요청 상태에서만 가능합니다.', 'warning');
       }
       return;
     }
@@ -3516,7 +3516,7 @@ const AssignBoard = () => {
       if (reflowFailed) {
         showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
       }
-      showNotification('요청 동의 완료. 해당 작업은 동의 완료 상태로 잠금 처리되었습니다.', 'success');
+      showNotification('요청 동의 완료. 해당 작업이 확정 상태로 전환되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
     } catch (error) {
@@ -3556,7 +3556,7 @@ const AssignBoard = () => {
     if (sendingProposal) return;
     if (!detailAssignment || !detailCard) return;
     if (!detailInLineRequestFlow) {
-      showNotification('배정 취소는 변경 요청 검토 단계에서만 가능합니다.', 'warning');
+      showNotification('배정 취소는 요청 검토 단계에서만 가능합니다.', 'warning');
       return;
     }
     const confirmed = window.confirm(
@@ -3633,7 +3633,7 @@ const AssignBoard = () => {
       return;
     }
     const confirmed = window.confirm(
-      '동의 완료된 작업을 재협의 상태로 되돌립니다. 기존 합의 이력을 보관하고 다시 제안 전 상태로 전환할까요?'
+      '확정된 작업을 재협의 상태로 되돌립니다. 기존 합의 이력을 보관하고 대기 상태로 전환할까요?'
     );
     if (!confirmed) return;
 
@@ -3714,7 +3714,7 @@ const AssignBoard = () => {
       lastSavedSnapshotRef.current = persistedSnapshot;
       blurActiveElement();
       setDetailState(null);
-      showNotification('재협의가 시작되었습니다. 해당 작업은 제안 전 상태로 전환되었습니다.', 'info');
+      showNotification('재협의가 시작되었습니다. 해당 작업이 대기 상태로 전환되었습니다.', 'info');
     } catch (error) {
       showNotification(
         resolveBoardSaveErrorMessage(error, '재협의 개시 처리에 실패했습니다.'),
@@ -4191,7 +4191,7 @@ const AssignBoard = () => {
                     )}
                     {detailIsEscalated && (
                       <Alert severity="warning" sx={{ mt: 0.5 }}>
-                        승인 전 상태가 48시간을 초과해 관리자 검토 대상으로 에스컬레이션되었습니다.
+                        제안 상태가 48시간을 초과해 관리자 검토 대상으로 에스컬레이션되었습니다.
                       </Alert>
                     )}
                   </Stack>
@@ -4470,7 +4470,7 @@ const AssignBoard = () => {
                         ? '라인장 변경 요청을 확인했습니다. 요청 동의/다시 제안/배정 취소 중 하나를 선택하세요.'
                         : '라인장 변경 요청을 확인했습니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
                       : detailCtStatus === 'AGREED' && !isAdminUser
-                        ? '동의 완료 상태의 재협의 개시는 관리자 권한이 필요합니다.'
+                        ? '확정 상태의 재협의 개시는 관리자 권한이 필요합니다.'
                       : '제안 CT 미입력 시 ST를 사용하며, 요청 CT는 라인장 변경 요청이 있을 때 표시됩니다.'}
                   </Typography>
                   <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>

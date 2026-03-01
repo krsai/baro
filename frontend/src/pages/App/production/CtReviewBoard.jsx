@@ -20,10 +20,10 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const STATUS_META = {
-  PENDING: { label: '제안 전', color: 'default' },
-  SENT: { label: '승인 전', color: 'info' },
-  REJECTED: { label: '변경 요청', color: 'warning' },
-  AGREED: { label: '동의 완료', color: 'success' },
+  PENDING:  { label: '대기',  color: 'default' },
+  SENT:     { label: '제안',  color: 'info' },
+  REJECTED: { label: '요청',  color: 'warning' },
+  AGREED:   { label: '확정',  color: 'success' },
 };
 
 const STATUS_ORDER = {
@@ -235,10 +235,10 @@ const CtReviewBoard = () => {
           </Box>
           <Stack direction="row" spacing={1}>
             <Chip label={`전체 ${statusSummary.total}`} variant="outlined" />
-            <Chip label={`제안 전 ${statusSummary.PENDING}`} variant="outlined" />
-            <Chip label={`승인 전 ${statusSummary.SENT}`} color="info" variant="outlined" />
-            <Chip label={`변경 요청 ${statusSummary.REJECTED}`} color="warning" variant="outlined" />
-            <Chip label={`동의 완료 ${statusSummary.AGREED}`} color="success" variant="outlined" />
+            <Chip label={`대기 ${statusSummary.PENDING}`} variant="outlined" />
+            <Chip label={`제안 ${statusSummary.SENT}`} color="info" variant="outlined" />
+            <Chip label={`요청 ${statusSummary.REJECTED}`} color="warning" variant="outlined" />
+            <Chip label={`확정 ${statusSummary.AGREED}`} color="success" variant="outlined" />
           </Stack>
         </Box>
       }

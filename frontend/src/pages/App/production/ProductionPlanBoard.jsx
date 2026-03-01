@@ -44,10 +44,10 @@ import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 
 const STATUS_META = {
-  PENDING: { label: '제안 전', color: 'default' },
-  SENT: { label: '승인 전', color: 'info' },
-  AGREED: { label: '동의 완료', color: 'success' },
-  REJECTED: { label: '변경 요청', color: 'warning' },
+  PENDING:  { label: '대기', color: 'default' },
+  SENT:     { label: '제안', color: 'info' },
+  AGREED:   { label: '확정', color: 'success' },
+  REJECTED: { label: '요청', color: 'warning' },
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
@@ -1714,10 +1714,10 @@ const ProductionPlanBoard = () => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Chip label={`제안 전 ${statusSummary.pending}`} />
-            <Chip label={`승인 전 ${statusSummary.sent}`} color="info" variant="outlined" />
-            <Chip label={`동의 완료 ${statusSummary.agreed}`} color="success" variant="outlined" />
-            <Chip label={`변경 요청 ${statusSummary.rejected}`} color="warning" variant="outlined" />
+            <Chip label={`대기 ${statusSummary.pending}`} />
+            <Chip label={`제안 ${statusSummary.sent}`} color="info" variant="outlined" />
+            <Chip label={`확정 ${statusSummary.agreed}`} color="success" variant="outlined" />
+            <Chip label={`요청 ${statusSummary.rejected}`} color="warning" variant="outlined" />
           </Stack>
         </Box>
       }
@@ -1738,7 +1738,7 @@ const ProductionPlanBoard = () => {
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  승인 대기/변경 요청 목록
+                  제안/요청 목록
                 </Typography>
               </Box>
               <TableContainer sx={{ maxHeight: 420 }}>
@@ -1838,7 +1838,7 @@ const ProductionPlanBoard = () => {
                   }}
                 >
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    CT 동의 완료 목록
+                    CT 확정 목록
                   </Typography>
                   <Chip size="small" label={`${agreedAssignments.length}건`} color="success" variant="outlined" />
                 </Box>

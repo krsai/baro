@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
@@ -18,24 +18,18 @@ const formatDuration = (daysValue) => {
   return `${rounded}일`;
 };
 
+// 색상 세트: 밝고 부드러운 파스텔
+// 확정(AGREED)만 progressBg(진행 오버레이용 약간 짙은 색) 추가
 const CT_STATUS_META = {
-  PENDING: { label: '제안 전', background: '#F3F4F6', color: '#4B5563', border: 'rgba(107,114,128,0.5)' },
-  SENT: { label: '승인 전', background: '#DBEAFE', color: '#1D4ED8', border: 'rgba(37,99,235,0.6)' },
-  AGREED: { label: '동의 완료', background: '#DCFCE7', color: '#166534', border: 'rgba(22,163,74,0.65)' },
-  REJECTED: { label: '변경 요청', background: '#FEE2E2', color: '#991B1B', border: 'rgba(220,38,38,0.65)' },
+  PENDING:  { label: '대기', cardBg: '#EBEBF0', labelColor: '#888898' },
+  SENT:     { label: '제안', cardBg: '#C8DFF7', labelColor: '#4A88C8' },
+  AGREED:   { label: '확정', cardBg: '#BFEAD0', progressBg: '#88C9A6', labelColor: '#3A9858' },
+  REJECTED: { label: '요청', cardBg: '#F7DCC8', labelColor: '#C07838' },
 };
 
 const normalizeCtStatus = (value) => {
   if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
   return 'PENDING';
-};
-
-const lightenHex = (hex, amount = 0.65) => {
-  if (!hex || !hex.startsWith('#') || hex.length < 7) return hex || '#CDEBD7';
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgb(${Math.round(r + (255 - r) * amount)}, ${Math.round(g + (255 - g) * amount)}, ${Math.round(b + (255 - b) * amount)})`;
 };
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
@@ -55,8 +49,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   };
 
   const style = {
-    // 드래그 중: dnd-kit 변환만 적용 (애니메이션 없음)
-    // 다른 카드 드래그 시: shiftPx만큼 밀리는 CSS 트랜지션
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
       : shiftPx !== 0
@@ -66,19 +58,16 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     opacity: isDragging ? 0.6 : 1,
   };
 
-  const mainColor = lightenHex(assignment.color || '#CDEBD7');
-  const stripe = lightenHex(assignment.stripeColor || '#9ED5B3', 0.5);
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
   const durationValue = assignment.workDays ?? getDurationDays(assignment);
   const durationLabel = formatDuration(durationValue);
   const isNarrow = Number(assignment.widthPx) < 132;
   const hideMetaBadges = Number(assignment.widthPx) < 156;
   const genderDisplay = assignment.gender || '';
-  // Line 1: 발주자 · 주문번호
+
   const line1 = assignment.orderNo
     ? `${assignment.customer || ''} · ${assignment.orderNo}`
     : assignment.customer || '';
-  // Line 2: 스타일명 · 색상 · 성별 · 수량
   const line2Parts = [
     assignment.label,
     assignment.colorName,
@@ -86,9 +75,16 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     `수량 ${assignment.quantity ?? '-'}`,
   ].filter(Boolean);
   const line2 = line2Parts.join(' · ');
+
   const ctStatus = normalizeCtStatus(assignment.ctStatus);
   const ctMeta = CT_STATUS_META[ctStatus];
   const ctLabel = ctMeta.label;
+
+  // 확정 카드 진행률 (0~100). 데이터 연결 전까지 0
+  const progressPercent = ctStatus === 'AGREED'
+    ? Math.min(100, Math.max(0, assignment.progressPercent ?? 0))
+    : 0;
+
   const openContextMenu = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -108,28 +104,22 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         top: assignment.topPx,
         left: assignment.leftPx,
         height: assignment.heightPx,
+        width: assignment.widthPx,
         borderRadius: 2,
         px: isNarrow ? 1 : 1.5,
         pr: isNarrow ? 1 : 6,
         display: 'flex',
         alignItems: 'center',
-        backgroundColor: mainColor,
+        backgroundColor: ctMeta.cardBg,
         color: '#1f2a3a',
-        width: assignment.widthPx,
         minWidth: 0,
-        // Link-to-previous button sits outside the bar on the left edge.
-        overflow: 'visible',
-        // Locked assignments are not draggable, but context-menu access is still allowed.
+        overflow: 'visible', // link 버튼이 카드 바깥에 위치
         cursor: isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-        border: `1px solid ${ctMeta.border}`,
+        border: '1px solid rgba(0,0,0,0.08)',
         outline: 'none',
-        '&:focus': {
-          outline: 'none',
-        },
-        '&:focus-visible': {
-          boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-        },
+        '&:focus': { outline: 'none' },
+        '&:focus-visible': { boxShadow: '0 2px 6px rgba(0,0,0,0.12)' },
         zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}
       style={style}
@@ -144,6 +134,32 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
       {...listeners}
       onContextMenu={openContextMenu}
     >
+      {/* 확정 카드 진행 오버레이 — overflow:hidden으로 border-radius 안쪽에 클리핑 */}
+      {ctStatus === 'AGREED' && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            borderRadius: 2,
+            overflow: 'hidden',
+            zIndex: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0, left: 0,
+              width: `${progressPercent}%`,
+              height: '100%',
+              backgroundColor: ctMeta.progressBg,
+              transition: 'width 0.5s ease',
+            }}
+          />
+        </Box>
+      )}
+
+      {/* link-to-previous 버튼 */}
       {showLinkPrev && (
         <Box
           onPointerDown={(event) => event.stopPropagation()}
@@ -176,15 +192,19 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           {'<'}
         </Box>
       )}
+
+      {/* 카드 본문 */}
       <Box
         sx={{
+          position: 'relative',
+          zIndex: 1,
           display: 'flex',
           alignItems: 'center',
           minWidth: 0,
           overflow: 'hidden',
           width: '100%',
           justifyContent: 'flex-start',
-          gap: isNarrow ? 0.8 : 1.2,
+          gap: isNarrow ? 1 : 1.5,
         }}
       >
         {previewUrl ? (
@@ -193,8 +213,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             src={previewUrl}
             alt={assignment.label}
             sx={{
-              width: isNarrow ? 24 : 32,
-              height: isNarrow ? 24 : 32,
+              width: isNarrow ? 28 : 40,
+              height: isNarrow ? 28 : 40,
               borderRadius: 1,
               objectFit: 'cover',
               border: '1px solid rgba(0,0,0,0.08)',
@@ -204,8 +224,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         ) : (
           <Box
             sx={{
-              width: isNarrow ? 24 : 32,
-              height: isNarrow ? 24 : 32,
+              width: isNarrow ? 28 : 40,
+              height: isNarrow ? 28 : 40,
               borderRadius: 1,
               border: '1px dashed rgba(0,0,0,0.2)',
               backgroundColor: '#F7F7F8',
@@ -214,7 +234,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
               justifyContent: 'center',
               flexShrink: 0,
               color: 'rgba(0,0,0,0.3)',
-              fontSize: isNarrow ? 6 : 7,
+              fontSize: isNarrow ? 7 : 8,
               textAlign: 'center',
               lineHeight: 1.2,
               whiteSpace: 'pre',
@@ -229,7 +249,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             variant="caption"
             sx={{
               fontWeight: 700,
-              fontSize: isNarrow ? 10 : 11,
+              fontSize: isNarrow ? 11 : 13,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -242,7 +262,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           <Typography
             variant="caption"
             sx={{
-              fontSize: isNarrow ? 10 : 11,
+              fontSize: isNarrow ? 10 : 12,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -254,31 +274,36 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           </Typography>
         </Box>
       </Box>
+
+      {/* 상태 라벨 */}
       {!hideMetaBadges && (
         <Box
           sx={{
             position: 'absolute',
             right: 8,
             bottom: 8,
-            px: 0.7,
-            py: 0.15,
+            zIndex: 1,
+            px: 0.8,
+            py: 0.2,
             borderRadius: 1,
-            backgroundColor: ctMeta.background,
-            border: '1px solid rgba(0,0,0,0.06)',
+            backgroundColor: 'rgba(255,255,255,0.7)',
             fontSize: 10,
             fontWeight: 700,
-            color: ctMeta.color,
+            color: ctMeta.labelColor,
           }}
         >
           {ctLabel}
         </Box>
       )}
+
+      {/* 기간 라벨 */}
       {!hideMetaBadges && (
         <Box
           sx={{
             position: 'absolute',
             right: 8,
             top: 8,
+            zIndex: 1,
             px: 0.8,
             py: 0.2,
             borderRadius: 1,
