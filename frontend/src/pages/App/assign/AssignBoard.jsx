@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Divider,
   Drawer,
   Grid,
@@ -1430,6 +1431,8 @@ const AssignBoard = () => {
     d.setDate(d.getDate() + 29);
     return d;
   });
+  // viewStart 변경 시 assignment 인덱스 재계산을 위한 이전값 추적
+  const prevViewStartRef = useRef(null);
   const dayCount = useMemo(() => {
     return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
   }, [viewStart, viewEnd]);
@@ -1574,8 +1577,32 @@ const AssignBoard = () => {
   }, []);
 
   useEffect(() => {
-    startDateRef.current = new Date(viewStart);
-    setDays(buildDays(startDateRef.current, dayCount, holidaySet));
+    const newStart = new Date(viewStart);
+    newStart.setHours(0, 0, 0, 0);
+    // 이전 base date를 먼저 캡처 (ref 변경 전)
+    const oldBase = prevViewStartRef.current || newStart;
+    prevViewStartRef.current = newStart;
+    startDateRef.current = newStart;
+    const newDays = buildDays(newStart, dayCount, holidaySet);
+    setDays(newDays);
+    // oldBase + startIndex로 절대 날짜를 항상 재계산 — 이동된 배정도 포함하여 정확한 위치 복원
+    setAssignments((prev) =>
+      prev.map((a) => {
+        const d = new Date(oldBase);
+        d.setDate(d.getDate() + a.startIndex);
+        const startDateKey = buildDateKey(d);
+        const span = a.endIndex - a.startIndex;
+        const newStartIndex = newDays.findIndex((day) => day.key === startDateKey);
+        if (newStartIndex >= 0) {
+          return { ...a, startDateKey, startIndex: newStartIndex, endIndex: newStartIndex + span };
+        }
+        // 현재 뷰 범위 밖 — 오프셋 위치로 설정 (양수/음수 모두 가능)
+        const firstDate = new Date(newDays[0].key + 'T00:00:00');
+        const assignDate = new Date(startDateKey + 'T00:00:00');
+        const diff = Math.round((assignDate - firstDate) / 86400000);
+        return { ...a, startDateKey, startIndex: diff, endIndex: diff + span };
+      })
+    );
   }, [viewStart, dayCount, holidaySet]);
 
   useEffect(() => {
@@ -1733,7 +1760,13 @@ const AssignBoard = () => {
           setStyles(Array.isArray(styles) ? styles : []);
           setLines(nextLines);
           setCards(restoredCards);
-          setAssignments(normalizedRestoredAssignments);
+          setAssignments(
+            normalizedRestoredAssignments.map((a) =>
+              a.startDateKey
+                ? a
+                : { ...a, startDateKey: normalizedRestoreDays[a.startIndex]?.key }
+            )
+          );
           if (nextDayCount > normalizedRestoreDays.length) {
             setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
           } else if (normalizedRestoreDays.length > days.length) {
@@ -2064,17 +2097,19 @@ const AssignBoard = () => {
   );
 
   const assignmentsForRender = useMemo(() => {
-    return assignments.map((item) => {
-      if (!item.cardId) return item;
-      const card = cardById.get(item.cardId);
-      if (!card) return item;
-      return {
-        ...item,
-        quantity: item.quantity ?? card.quantity,
-        gender: item.gender ?? card.gender,
-      };
-    });
-  }, [assignments, cardById]);
+    return assignments
+      .filter((item) => item.startIndex >= 0 && item.startIndex < days.length)
+      .map((item) => {
+        if (!item.cardId) return item;
+        const card = cardById.get(item.cardId);
+        if (!card) return item;
+        return {
+          ...item,
+          quantity: item.quantity ?? card.quantity,
+          gender: item.gender ?? card.gender,
+        };
+      });
+  }, [assignments, cardById, days]);
 
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
@@ -2841,6 +2876,7 @@ const AssignBoard = () => {
         color: colors.color,
         stripeColor: colors.stripe,
         totalSeconds,
+        startDateKey: days[dayIndex]?.key,
       };
 
       if (!targetOnDay) {
@@ -4004,9 +4040,12 @@ const AssignBoard = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">작업 배정</Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Typography variant="caption" color="text.secondary">
-              {persisting ? '저장 중...' : isDirty ? '저장 안됨' : '저장됨'}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              {persisting && <CircularProgress size={13} thickness={4.5} />}
+              <Typography variant="caption" color={persisting ? 'primary' : 'text.secondary'}>
+                {persisting ? '저장 중...' : isDirty ? '저장 안됨' : '저장됨'}
+              </Typography>
+            </Box>
             <Button
               variant="contained"
               onClick={handleSaveBoard}
@@ -4138,39 +4177,39 @@ const AssignBoard = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">라인 타임라인</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <IconButton size="small" onClick={handlePrevMonthFrom} title="이전 달 1일">
-                    <ChevronLeftIcon fontSize="small" />
+                  <IconButton size="small" onClick={handlePrevMonthFrom} title="이전 달 1일" sx={{ p: 0.25 }}>
+                    <ChevronLeftIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                   <CustomDatePicker
                     value={viewStart}
                     onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
-                    slotProps={{ textField: { size: 'small', sx: { width: 140 } } }}
                   />
-                  <Typography sx={{ fontSize: 14, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+                  <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
                   <CustomDatePicker
                     value={viewEnd}
                     onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
-                    slotProps={{ textField: { size: 'small', sx: { width: 140 } } }}
                   />
-                  <IconButton size="small" onClick={handleNextMonthTo} title="다음 달 말일">
-                    <ChevronRightIcon fontSize="small" />
+                  <IconButton size="small" onClick={handleNextMonthTo} title="다음 달 말일" sx={{ p: 0.25 }}>
+                    <ChevronRightIcon sx={{ fontSize: 18 }} />
                   </IconButton>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleMonthPlus}
-                    sx={{ minWidth: 36, px: 0.75, fontSize: 12 }}
-                  >
-                    M+
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={handleMonthMinus}
-                    sx={{ minWidth: 36, px: 0.75, fontSize: 12 }}
-                  >
-                    M-
-                  </Button>
+                  <Stack sx={{ gap: '2px' }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleMonthPlus}
+                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                    >
+                      M+
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleMonthMinus}
+                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                    >
+                      M-
+                    </Button>
+                  </Stack>
                 </Box>
               </Box>
               <ScheduleTimeline

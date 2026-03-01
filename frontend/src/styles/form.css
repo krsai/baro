@@ -107,3 +107,20 @@
 .toggle-button.MuiToggleButton-root:hover {
   background-color: var(--color-background-dark); /* Simulate action.hover or a lighter background */
 }
+
+/* ─── Compact Date Picker ────────────────────────────────────────────────── */
+/* .compact-date-picker 클래스는 CustomDatePicker에서 자동으로 적용됨 */
+.compact-date-picker {
+  width: 125px !important;
+}
+.compact-date-picker .MuiInputBase-input {
+  font-size: 0.8125rem !important; /* 13px — Button size="small"과 동일 */
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+.compact-date-picker .MuiInputAdornment-root .MuiIconButton-root {
+  padding: 2px !important;
+}
+.compact-date-picker .MuiSvgIcon-root {
+  font-size: 1.1rem !important;
+}
