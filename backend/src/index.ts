@@ -5975,6 +5975,73 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
   });
 });
 
+// 배정 취소 전용 경량 엔드포인트
+// 전체 보드 상태를 전송하지 않고 해당 assignment만 제거
+app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const assignmentId = resolveOptionalString(req.params.assignmentId, null);
+  if (!assignmentId) {
+    return res.status(400).json({ ok: false, error: "assignmentId is required" });
+  }
+  const cardId = resolveOptionalString(req.body?.cardId, null);
+  const cardPatch = (req.body?.cardPatch && typeof req.body.cardPatch === "object")
+    ? req.body.cardPatch
+    : null;
+
+  const existingState = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+    select: { id: true, cards: true, assignments: true },
+  });
+  if (!existingState) {
+    return res.status(404).json({ ok: false, error: "board state not found" });
+  }
+
+  const currentAssignments = normalizeStateAssignments(existingState.assignments);
+  const targetAssignment = currentAssignments.find(
+    (a: any) => String(a?.id) === assignmentId
+  );
+  if (!targetAssignment) {
+    return res.status(404).json({ ok: false, error: "assignment not found" });
+  }
+
+  const nextAssignments = currentAssignments.filter(
+    (a: any) => String(a?.id) !== assignmentId
+  );
+
+  let currentCards = ensureArray(existingState.cards);
+  let patchedCard: any = null;
+  if (cardId && cardPatch) {
+    currentCards = currentCards.map((card: any) => {
+      if (String(card?.id) !== cardId) return card;
+      patchedCard = { ...card, ...cardPatch };
+      return patchedCard;
+    });
+  }
+
+  await prisma.assignmentBoardState.update({
+    where: { id: existingState.id },
+    data: { cards: currentCards, assignments: nextAssignments },
+  });
+
+  // 해당 assignment의 plan 레코드 제거
+  const externalId = resolveAssignmentExternalId(targetAssignment);
+  if (externalId) {
+    await prisma.assignmentPlan.deleteMany({
+      where: { orgId: organization.id, externalId },
+    });
+  }
+
+  res.json({
+    ok: true,
+    removedAssignmentId: assignmentId,
+    card: patchedCard,
+  });
+});
+
 app.delete("/assignment-board-state", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,

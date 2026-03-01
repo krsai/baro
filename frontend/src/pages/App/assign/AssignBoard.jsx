@@ -3684,41 +3684,40 @@ const AssignBoard = () => {
     if (!confirmed) return;
 
     const assignmentId = String(detailAssignment.id);
-    const nextAssignments = assignments
-      .filter((item) => String(item?.id) !== assignmentId)
-      .map((item) => normalizeAssignmentLayout(item));
-    const nextCards = detailAssignment?.cardId
-      ? cards.map((card) =>
-          String(card?.id) === String(detailAssignment.cardId)
-            ? {
-                ...card,
-                pendingCtProposal: null,
-              }
-            : card
-        )
-      : cards;
+    const cardId = detailAssignment?.cardId ? String(detailAssignment.cardId) : null;
 
     try {
       setSendingProposal(true);
       const query = buildQueryString({ orgId: activeOrgId });
-      const response = await requestJSON('/assignment-board-state' + query, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
-        skipGlobalLoading: true,
-      });
-      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
-        response,
-        nextCards,
-        nextAssignments
+      const response = await requestJSON(
+        `/assignment-board-state/assignment/${assignmentId}${query}`,
+        {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cardId,
+            cardPatch: cardId ? { pendingCtProposal: null } : null,
+          }),
+          skipGlobalLoading: true,
+        }
       );
-      setCards(persistedCards);
-      setAssignments(persistedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(
-        persistedCards,
-        persistedAssignments
-      );
-      lastSavedSnapshotRef.current = persistedSnapshot;
+
+      const nextAssignments = assignments
+        .filter((item) => String(item?.id) !== assignmentId)
+        .map((item) => normalizeAssignmentLayout(item));
+      const nextCards = response?.card && cardId
+        ? cards.map((card) =>
+            String(card?.id) === cardId ? { ...card, ...response.card } : card
+          )
+        : cardId
+        ? cards.map((card) =>
+            String(card?.id) === cardId ? { ...card, pendingCtProposal: null } : card
+          )
+        : cards;
+
+      setCards(nextCards);
+      setAssignments(nextAssignments);
+      lastSavedSnapshotRef.current = createPersistSnapshotText(nextCards, nextAssignments);
       blurActiveElement();
       setDetailState(null);
       showNotification('배정을 취소했습니다. 해당 작업은 미배정으로 전환되었습니다.', 'info');
@@ -3739,7 +3738,6 @@ const AssignBoard = () => {
     cards,
     activeOrgId,
     createPersistSnapshotText,
-    resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
     blurActiveElement,
     showNotification,
