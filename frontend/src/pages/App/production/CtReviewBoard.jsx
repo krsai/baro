@@ -57,6 +57,20 @@ const formatDateTime = (value) => {
   return date.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 };
 
+const parseDateKey = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value.trim() + 'T00:00:00');
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+const toDateKey = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const formatScheduleDate = (baseDate, dayIndex) => {
   const index = toNonNegativeInt(dayIndex, 0);
   const date = new Date(baseDate);
@@ -65,7 +79,33 @@ const formatScheduleDate = (baseDate, dayIndex) => {
   return `${date.getMonth() + 1}/${date.getDate()} (${weekday})`;
 };
 
+const formatScheduleDateValue = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '-';
+  const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+  return `${date.getMonth() + 1}/${date.getDate()} (${weekday})`;
+};
+
 const formatScheduleRange = (baseDate, assignment) => {
+  const startDateFromKey = parseDateKey(assignment?.startDateKey);
+  const endDateFromKey = parseDateKey(assignment?.endDateKey);
+  if (startDateFromKey) {
+    let endDate = endDateFromKey;
+    if (!endDate) {
+      const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
+      const endIndex = Math.max(startIndex, toNonNegativeInt(assignment?.endIndex, startIndex));
+      endDate = new Date(startDateFromKey);
+      endDate.setDate(endDate.getDate() + Math.max(0, endIndex - startIndex));
+    }
+    if (Number.isNaN(endDate.getTime()) || endDate < startDateFromKey) {
+      endDate = new Date(startDateFromKey);
+    }
+    const startLabel = formatScheduleDateValue(startDateFromKey);
+    const endLabel = formatScheduleDateValue(endDate);
+    return toDateKey(startDateFromKey) === toDateKey(endDate)
+      ? startLabel
+      : `${startLabel} ~ ${endLabel}`;
+  }
+
   const hasStart = Number.isFinite(Number(assignment?.startIndex));
   const hasEnd = Number.isFinite(Number(assignment?.endIndex));
   if (!hasStart || !hasEnd) return '-';

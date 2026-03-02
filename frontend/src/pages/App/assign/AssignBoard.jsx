@@ -289,6 +289,11 @@ const toNonNegativeInt = (value, fallback = 0) => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return Math.trunc(parsed);
 };
+const toSignedInt = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.trunc(parsed);
+};
 const clampPercent = (value, fallback = 0, max = 100) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -298,8 +303,8 @@ const clampPercent = (value, fallback = 0, max = 100) => {
 };
 const normalizeAssignmentLayout = (assignment) => {
   if (!assignment || typeof assignment !== 'object') return assignment;
-  const startIndex = toNonNegativeInt(assignment.startIndex, 0);
-  const endIndex = Math.max(startIndex, toNonNegativeInt(assignment.endIndex, startIndex));
+  const startIndex = toSignedInt(assignment.startIndex, 0);
+  const endIndex = Math.max(startIndex, toSignedInt(assignment.endIndex, startIndex));
   const startDayOffsetPercent = clampPercent(assignment.startDayOffsetPercent, 0, 99.999);
   const startDayPercent = clampPercent(assignment.startDayPercent, 100, 100);
   const endDayPercent = clampPercent(assignment.endDayPercent, startDayPercent, 100);
@@ -329,6 +334,83 @@ const normalizeAssignmentLayout = (assignment) => {
     versionUpdatedAt,
     ctSentAt,
     ctEscalatedAt,
+  };
+};
+
+const remapAssignmentToDayWindow = (assignment, days, fallbackBaseDate = null) => {
+  const normalized = normalizeAssignmentLayout(assignment);
+  if (!normalized || !Array.isArray(days) || days.length === 0) {
+    return normalized;
+  }
+
+  let startDateKey =
+    typeof normalized.startDateKey === 'string' && normalized.startDateKey.trim()
+      ? normalized.startDateKey.trim()
+      : null;
+  let endDateKey =
+    typeof normalized.endDateKey === 'string' && normalized.endDateKey.trim()
+      ? normalized.endDateKey.trim()
+      : null;
+
+  if (!startDateKey && fallbackBaseDate instanceof Date && !Number.isNaN(fallbackBaseDate.getTime())) {
+    const absoluteStart = new Date(fallbackBaseDate);
+    absoluteStart.setDate(absoluteStart.getDate() + normalized.startIndex);
+    startDateKey = buildDateKey(absoluteStart);
+  }
+  if (!endDateKey && fallbackBaseDate instanceof Date && !Number.isNaN(fallbackBaseDate.getTime())) {
+    const absoluteEnd = new Date(fallbackBaseDate);
+    absoluteEnd.setDate(absoluteEnd.getDate() + normalized.endIndex);
+    endDateKey = buildDateKey(absoluteEnd);
+  }
+
+  if (!startDateKey) {
+    return normalized;
+  }
+
+  const firstDayKey = days[0]?.key;
+  if (!firstDayKey) {
+    return { ...normalized, startDateKey, endDateKey };
+  }
+  const firstDate = new Date(firstDayKey + 'T00:00:00');
+  const assignDate = new Date(startDateKey + 'T00:00:00');
+  const finishDate = endDateKey ? new Date(endDateKey + 'T00:00:00') : null;
+  if (
+    Number.isNaN(firstDate.getTime()) ||
+    Number.isNaN(assignDate.getTime()) ||
+    (finishDate && Number.isNaN(finishDate.getTime()))
+  ) {
+    return { ...normalized, startDateKey, endDateKey };
+  }
+  const startIndex = Math.round((assignDate - firstDate) / 86400000);
+  const fallbackSpan = Math.max(0, normalized.endIndex - normalized.startIndex);
+  const endIndex = finishDate
+    ? Math.max(startIndex, Math.round((finishDate - firstDate) / 86400000))
+    : startIndex + fallbackSpan;
+  return {
+    ...normalized,
+    startDateKey,
+    endDateKey,
+    startIndex,
+    endIndex,
+  };
+};
+
+const syncAssignmentDateKeys = (assignment, baseDate = null) => {
+  const normalized = normalizeAssignmentLayout(assignment);
+  if (!normalized) return normalized;
+  const resolvedBaseDate =
+    baseDate instanceof Date && !Number.isNaN(baseDate.getTime()) ? baseDate : null;
+  if (!resolvedBaseDate) return normalized;
+
+  const startDate = new Date(resolvedBaseDate);
+  startDate.setDate(startDate.getDate() + normalized.startIndex);
+  const endDate = new Date(resolvedBaseDate);
+  endDate.setDate(endDate.getDate() + normalized.endIndex);
+
+  return {
+    ...normalized,
+    startDateKey: buildDateKey(startDate),
+    endDateKey: buildDateKey(endDate),
   };
 };
 
@@ -1141,6 +1223,7 @@ const rebuildLineWithInsert = ({
     lineId,
     ...planned,
     startDateKey: days[planned.startIndex]?.key ?? insertItem.startDateKey,
+    endDateKey: days[planned.endIndex]?.key ?? insertItem.endDateKey,
   });
 
   let cursorStart = getNextStartIndex(
@@ -1172,6 +1255,7 @@ const rebuildLineWithInsert = ({
       lineId,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
+      endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
     });
 
     cursorStart = getNextStartIndex(
@@ -1279,6 +1363,8 @@ const rebuildLineWithChain = ({
       ...item,
       lineId,
       ...planned,
+      startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
+      endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
     });
 
     cursorStart = getNextStartIndex(
@@ -1308,6 +1394,8 @@ const rebuildLineWithChain = ({
       ...item,
       lineId,
       ...planned,
+      startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
+      endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
     });
 
       cursorStart = getNextStartIndex(
@@ -1360,6 +1448,8 @@ const rebuildLineWithReplace = ({
     ...newItem,
     lineId,
     ...planned,
+    startDateKey: days[planned.startIndex]?.key ?? newItem.startDateKey,
+    endDateKey: days[planned.endIndex]?.key ?? newItem.endDateKey,
   });
 
   let cursorStart = getNextStartIndex(
@@ -1385,6 +1475,8 @@ const rebuildLineWithReplace = ({
       ...item,
       lineId,
       ...nextPlanned,
+      startDateKey: days[nextPlanned.startIndex]?.key ?? item.startDateKey,
+      endDateKey: days[nextPlanned.endIndex]?.key ?? item.endDateKey,
     });
     cursorStart = getNextStartIndex(
       placed[placed.length - 1],
@@ -1523,11 +1615,11 @@ const AssignBoard = () => {
       return {
         persistedCards,
         persistedAssignments: persistedAssignmentsRaw.map((item) =>
-          normalizeAssignmentLayout(item)
+          remapAssignmentToDayWindow(item, days)
         ),
       };
     },
-    []
+    [days]
   );
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
@@ -1586,29 +1678,13 @@ const AssignBoard = () => {
   useEffect(() => {
     const newStart = new Date(viewStart);
     newStart.setHours(0, 0, 0, 0);
-    // 이전 base date를 먼저 캡처 (ref 변경 전)
     const oldBase = prevViewStartRef.current || newStart;
     prevViewStartRef.current = newStart;
     startDateRef.current = newStart;
     const newDays = buildDays(newStart, dayCount, holidaySet);
     setDays(newDays);
-    // oldBase + startIndex로 절대 날짜를 항상 재계산 — 이동된 배정도 포함하여 정확한 위치 복원
     setAssignments((prev) =>
-      prev.map((a) => {
-        const d = new Date(oldBase);
-        d.setDate(d.getDate() + a.startIndex);
-        const startDateKey = buildDateKey(d);
-        const span = a.endIndex - a.startIndex;
-        const newStartIndex = newDays.findIndex((day) => day.key === startDateKey);
-        if (newStartIndex >= 0) {
-          return { ...a, startDateKey, startIndex: newStartIndex, endIndex: newStartIndex + span };
-        }
-        // 현재 뷰 범위 밖 — 오프셋 위치로 설정 (양수/음수 모두 가능)
-        const firstDate = new Date(newDays[0].key + 'T00:00:00');
-        const assignDate = new Date(startDateKey + 'T00:00:00');
-        const diff = Math.round((assignDate - firstDate) / 86400000);
-        return { ...a, startDateKey, startIndex: diff, endIndex: diff + span };
-      })
+      prev.map((assignment) => remapAssignmentToDayWindow(assignment, newDays, oldBase))
     );
   }, [viewStart, dayCount, holidaySet]);
 
@@ -1713,22 +1789,21 @@ const AssignBoard = () => {
           normalizeAssignmentLayout(item)
         );
         let normalizedRestoreDays = restoreDays;
-        // 이전 버그로 인해 startIndex가 매우 큰 값(예: 200+)으로 저장된 경우 복구
-        // startDateKey가 있으면 restoreDays에서 재매핑, 없으면 유효 범위로 클램핑
+        // 저장된 절대 날짜(startDateKey)가 있으면 현재 day window 기준으로 재매핑한다.
+        // 절대 날짜가 없고 손상된 startIndex만 남은 경우에만 유효 범위로 클램핑한다.
         {
           const rdCount = normalizedRestoreDays.length;
           normalizedRestoredAssignments = normalizedRestoredAssignments.map((a) => {
-            if (a.startDateKey) {
-              const si = normalizedRestoreDays.findIndex((d) => d.key === a.startDateKey);
-              if (si >= 0) {
-                const span = Math.max(0, a.endIndex - a.startIndex);
-                return { ...a, startIndex: si, endIndex: Math.min(si + span, rdCount - 1) };
-              }
+            const remapped = remapAssignmentToDayWindow(a, normalizedRestoreDays);
+            if (remapped?.startDateKey) {
+              return remapped;
             }
-            // startDateKey 없거나 못 찾으면 clamp
-            const cs = Math.min(Math.max(0, a.startIndex), rdCount - 1);
-            const ce = Math.min(Math.max(cs, a.endIndex), rdCount - 1);
-            return { ...a, startIndex: cs, endIndex: ce };
+            const cs = Math.min(Math.max(toSignedInt(remapped?.startIndex, 0), 0), rdCount - 1);
+            const ce = Math.min(
+              Math.max(cs, toSignedInt(remapped?.endIndex, cs)),
+              rdCount - 1
+            );
+            return { ...remapped, startIndex: cs, endIndex: ce };
           });
         }
         if (normalizedRestoredAssignments.length > 1) {
@@ -1786,10 +1861,8 @@ const AssignBoard = () => {
           setLines(nextLines);
           setCards(restoredCards);
           setAssignments(
-            normalizedRestoredAssignments.map((a) =>
-              a.startDateKey
-                ? a
-                : { ...a, startDateKey: normalizedRestoreDays[a.startIndex]?.key }
+            normalizedRestoredAssignments.map((assignment) =>
+              syncAssignmentDateKeys(assignment, startDateRef.current)
             )
           );
           if (nextDayCount > normalizedRestoreDays.length) {
@@ -1875,12 +1948,9 @@ const AssignBoard = () => {
     });
     const assignmentsToSave = reflowedAssignments ?? assignments;
 
-    // reflow 후 startIndex가 변경된 경우 startDateKey도 함께 갱신
-    // startDateKey와 startIndex가 불일치하면 뷰 이동 시 날짜가 틀어짐
-    const normalizedAssignments = assignmentsToSave.map((item) => {
-      const newStartDateKey = days[item.startIndex]?.key ?? item.startDateKey;
-      return normalizeAssignmentLayout({ ...item, startDateKey: newStartDateKey });
-    });
+    const normalizedAssignments = assignmentsToSave.map((item) =>
+      syncAssignmentDateKeys(item, startDateRef.current)
+    );
     setPersisting(true);
     try {
       const response = await requestJSON(
@@ -2128,7 +2198,7 @@ const AssignBoard = () => {
 
   const assignmentsForRender = useMemo(() => {
     return assignments
-      .filter((item) => item.startIndex >= 0 && item.startIndex < days.length)
+      .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
         if (!item.cardId) return item;
         const card = cardById.get(item.cardId);
@@ -2139,7 +2209,7 @@ const AssignBoard = () => {
           gender: item.gender ?? card.gender,
         };
       });
-  }, [assignments, cardById, days]);
+  }, [assignments, cardById, dayCount]);
 
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
@@ -2913,6 +2983,7 @@ const AssignBoard = () => {
         stripeColor: colors.stripe,
         totalSeconds,
         startDateKey: days[dayIndex]?.key,
+        endDateKey: days[dayIndex]?.key,
       };
 
       if (!targetOnDay) {
@@ -2926,10 +2997,13 @@ const AssignBoard = () => {
         if (planned) {
           setAssignments((prev) => [
             ...prev,
-            {
-              ...newItem,
-              ...planned,
-            },
+            syncAssignmentDateKeys(
+              {
+                ...newItem,
+                ...planned,
+              },
+              startDateRef.current
+            ),
           ]);
           setActiveDrag(null);
           return;
@@ -3003,11 +3077,16 @@ const AssignBoard = () => {
           });
 
           if (planned) {
-            return filtered.concat({
-              ...target,
-              lineId,
-              ...planned,
-            });
+            return filtered.concat(
+              syncAssignmentDateKeys(
+                {
+                  ...target,
+                  lineId,
+                  ...planned,
+                },
+                startDateRef.current
+              )
+            );
           }
         }
 
@@ -3407,16 +3486,19 @@ const AssignBoard = () => {
           : nextCardsWithProposal;
       } else {
         // reflow로 다른 assignment도 변경됨 — 전체 payload PUT
+        const assignmentsForPut = normalizedAssignments.map((assignment) =>
+          syncAssignmentDateKeys(assignment, startDateRef.current)
+        );
         const putResponse = await requestJSON('/assignment-board-state' + query, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCardsWithProposal, assignments: normalizedAssignments }),
+          body: JSON.stringify({ cards: nextCardsWithProposal, assignments: assignmentsForPut }),
           skipGlobalLoading: true,
         });
         ({ persistedCards, persistedAssignments } = resolvePersistedBoardState(
           putResponse,
           nextCardsWithProposal,
-          normalizedAssignments
+          assignmentsForPut
         ));
       }
 
@@ -3823,16 +3905,19 @@ const AssignBoard = () => {
     try {
       setSendingProposal(true);
       const query = buildQueryString({ orgId: activeOrgId });
+      const nextAssignmentsForPut = nextAssignments.map((assignment) =>
+        syncAssignmentDateKeys(assignment, startDateRef.current)
+      );
       const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
+        body: JSON.stringify({ cards: nextCards, assignments: nextAssignmentsForPut }),
         skipGlobalLoading: true,
       });
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         nextCards,
-        nextAssignments
+        nextAssignmentsForPut
       );
       setCards(persistedCards);
       setAssignments(persistedAssignments);
@@ -4060,6 +4145,36 @@ const AssignBoard = () => {
     syncHistoryStatus,
   ]);
 
+  const confirmViewRangeChange = useCallback(() => {
+    if (!persistReady || !isDirty || persisting) return true;
+    return window.confirm(
+      '저장되지 않은 작업 배정 데이터가 있습니다. 저장하지 않고 기간을 변경하시겠습니까?'
+    );
+  }, [isDirty, persistReady, persisting]);
+
+  const applyViewRange = useCallback(
+    (nextStart, nextEnd) => {
+      const normalizedStart = new Date(nextStart);
+      normalizedStart.setHours(0, 0, 0, 0);
+      const normalizedEnd = new Date(nextEnd);
+      normalizedEnd.setHours(0, 0, 0, 0);
+
+      if (normalizedStart > normalizedEnd) return false;
+      if (
+        normalizedStart.getTime() === viewStart.getTime() &&
+        normalizedEnd.getTime() === viewEnd.getTime()
+      ) {
+        return true;
+      }
+      if (!confirmViewRangeChange()) return false;
+
+      setViewStart(normalizedStart);
+      setViewEnd(normalizedEnd);
+      return true;
+    },
+    [confirmViewRangeChange, viewEnd, viewStart]
+  );
+
   // ── 날짜 범위 네비게이션 헬퍼 ──────────────────────────────────────
   const toMonthStart = (d) => { const r = new Date(d); r.setDate(1); r.setHours(0,0,0,0); return r; };
   const toMonthEnd   = (d) => { const r = new Date(d); r.setDate(1); r.setMonth(r.getMonth()+1); r.setDate(0); r.setHours(0,0,0,0); return r; };
@@ -4071,9 +4186,10 @@ const AssignBoard = () => {
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) {
       const cappedEnd = new Date(s); cappedEnd.setDate(cappedEnd.getDate() + MAX_RANGE_DAYS - 1);
-      setViewEnd(cappedEnd);
+      applyViewRange(s, cappedEnd);
+      return;
     }
-    setViewStart(s);
+    applyViewRange(s, e);
   };
   const handleViewEndChange = (newEnd) => {
     const e = new Date(newEnd); e.setHours(0,0,0,0);
@@ -4081,7 +4197,7 @@ const AssignBoard = () => {
     if (e < s) return;
     const range = Math.round((e - s) / 86400000) + 1;
     if (range > MAX_RANGE_DAYS) return;
-    setViewEnd(e);
+    applyViewRange(s, e);
   };
   // ◄ : FROM → 전달 1일
   const handlePrevMonthFrom = () => {
@@ -4098,13 +4214,13 @@ const AssignBoard = () => {
   const handleMonthMinus = () => {
     const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() - 1);
     const newEnd   = toMonthEnd(newStart);
-    setViewStart(newStart); setViewEnd(newEnd);
+    applyViewRange(newStart, newEnd);
   };
   // M+ : 다음달 전체 (from 기준)
   const handleMonthPlus = () => {
     const newStart = toMonthStart(viewStart); newStart.setMonth(newStart.getMonth() + 1);
     const newEnd   = toMonthEnd(newStart);
-    setViewStart(newStart); setViewEnd(newEnd);
+    applyViewRange(newStart, newEnd);
   };
 
   return (

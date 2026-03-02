@@ -678,7 +678,15 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - `SENT`는 현재 코드상 타임라인 이동과 보드 밖 제거가 가능하다.
 - `초기화` 버튼은 전체 배정을 비우지 않고 `SENT`/`AGREED`만 남긴다.
 - 보드 상단에 `되돌리기 / 다시하기 / 초기화`가 있으며 undo/redo는 로컬 30단계 히스토리다.
+- **REJECTED 카드는 자동 리플로우에서 위치 고정**: 변경 요청 진행 중인 카드(ctStatus='REJECTED')를 리플로우 시 밀어내지 않기 위해 `reflowAssignmentsByLineCapacity`에서 `isPositionFixed` 조건으로 큐에서 제외한다. 드래그는 여전히 가능하다.
 - 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`
+
+### 드래그앤드롭 성능 최적화
+- `PointerSensor`에 `activationConstraint: { distance: 5 }` 설정 — 5px 이상 이동해야 드래그 시작 (불필요한 드래그 이벤트 제거)
+- 드래그 중 하이라이트 + 프리뷰 상태를 `dragState = { hoveredTarget, dragPreview }` 하나로 통합 — 매 프레임 렌더 2회 → 1회
+- 드래그 카드 너비(`ghostWidthPx`)를 `onDragStart`에서 1회만 계산 후 ref에 캐시 (`ghostWidthPxRef`) — onDragMove 내 O(n) 배열 탐색 제거
+- `AssignBar`의 `setNodeRef`를 `useCallback`으로 감싸 드래그 중 불필요한 ref 재등록 방지
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`, `frontend/src/pages/App/assign/components/ScheduleTimeline.jsx`, `frontend/src/pages/App/assign/components/AssignBar.jsx`
 
 ### ProductionPlanBoard DELTA 카드 처리
 - DELTA 카드는 생산계획/작업 계획 협의 보드에서만 처리한다.

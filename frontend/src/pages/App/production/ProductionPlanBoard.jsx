@@ -83,13 +83,74 @@ const formatScheduleDate = (baseDate, dayIndex) => {
   return `${target.getMonth() + 1}/${target.getDate()} (${weekday})`;
 };
 
-const formatScheduleRange = (baseDate, assignment) => {
+const parseDateKey = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = new Date(value.trim() + 'T00:00:00');
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const formatScheduleDateValue = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '-';
+  const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+  return `${date.getMonth() + 1}/${date.getDate()} (${weekday})`;
+};
+
+const resolveAssignmentScheduleBounds = (assignment, baseDate) => {
+  if (!assignment) return null;
+
+  const startDateFromKey = parseDateKey(assignment?.startDateKey);
+  const endDateFromKey = parseDateKey(assignment?.endDateKey);
+  const hasStartIndex = Number.isFinite(Number(assignment?.startIndex));
+  const hasEndIndex = Number.isFinite(Number(assignment?.endIndex));
   const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
   const endIndex = Math.max(startIndex, toNonNegativeInt(assignment?.endIndex, startIndex));
-  if (startIndex === endIndex) {
-    return formatScheduleDate(baseDate, startIndex);
+
+  const startDate = startDateFromKey || (hasStartIndex ? toScheduleDate(baseDate, startIndex) : null);
+  if (!startDate) return null;
+
+  let endDate = endDateFromKey;
+  if (!endDate) {
+    if (startDateFromKey && hasEndIndex) {
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + Math.max(0, endIndex - startIndex));
+    } else if (hasEndIndex) {
+      endDate = toScheduleDate(baseDate, endIndex);
+    } else {
+      endDate = new Date(startDate);
+    }
   }
-  return `${formatScheduleDate(baseDate, startIndex)} ~ ${formatScheduleDate(baseDate, endIndex)}`;
+
+  if (Number.isNaN(endDate.getTime()) || endDate < startDate) {
+    endDate = new Date(startDate);
+  }
+
+  return {
+    startDate,
+    endDate,
+    startKey: buildDateKey(startDate),
+    endKey: buildDateKey(endDate),
+  };
+};
+
+const syncAssignmentScheduleDateKeys = (assignment, baseDate) => {
+  if (!assignment || typeof assignment !== 'object') return assignment;
+  const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+  if (!bounds) return assignment;
+  return {
+    ...assignment,
+    startDateKey: bounds.startKey,
+    endDateKey: bounds.endKey,
+  };
+};
+
+const formatScheduleRange = (baseDate, assignment) => {
+  const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+  if (!bounds) return '-';
+  if (bounds.startKey === bounds.endKey) {
+    return formatScheduleDateValue(bounds.startDate);
+  }
+  return `${formatScheduleDateValue(bounds.startDate)} ~ ${formatScheduleDateValue(bounds.endDate)}`;
 };
 
 const resolveSecondsForProposal = (assignment) => {
@@ -308,28 +369,27 @@ const isNonWorkingDate = (date, holidaySet) => {
 
 const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
   if (!assignment) return 0;
-  const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
-  const endIndex = Math.max(startIndex, toNonNegativeInt(assignment?.endIndex, startIndex));
+  const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+  if (!bounds) return 0;
   const startPercent = Number(assignment?.startDayPercent);
   const endPercent = Number(assignment?.endDayPercent);
   const startRatio = Number.isFinite(startPercent) && startPercent > 0 ? startPercent / 100 : 1;
   const endRatio = Number.isFinite(endPercent) && endPercent > 0 ? endPercent / 100 : 1;
 
   let total = 0;
-  for (let dayIndex = startIndex; dayIndex <= endIndex; dayIndex += 1) {
-    const date = new Date(baseDate);
-    date.setDate(baseDate.getDate() + dayIndex);
+  for (const date = new Date(bounds.startDate); date <= bounds.endDate; date.setDate(date.getDate() + 1)) {
     if (isNonWorkingDate(date, holidaySet)) continue;
 
-    if (startIndex === endIndex) {
+    const currentKey = buildDateKey(date);
+    if (bounds.startKey === bounds.endKey) {
       total += startRatio;
       continue;
     }
-    if (dayIndex === startIndex) {
+    if (currentKey === bounds.startKey) {
       total += startRatio;
       continue;
     }
-    if (dayIndex === endIndex) {
+    if (currentKey === bounds.endKey) {
       total += endRatio;
       continue;
     }
@@ -560,13 +620,10 @@ const ProductionPlanBoard = () => {
   const actionableByDateKey = useMemo(() => {
     const map = new Map();
     actionableAssignments.forEach((assignment) => {
-      const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
-      const endIndex = Math.max(
-        startIndex,
-        toNonNegativeInt(assignment?.endIndex, startIndex)
-      );
-      for (let dayIndex = startIndex; dayIndex <= endIndex; dayIndex += 1) {
-        const key = buildDateKey(toScheduleDate(baseDate, dayIndex));
+      const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+      if (!bounds) return;
+      for (const date = new Date(bounds.startDate); date <= bounds.endDate; date.setDate(date.getDate() + 1)) {
+        const key = buildDateKey(date);
         const current = map.get(key);
         if (current) {
           current.push(assignment);
@@ -581,17 +638,16 @@ const ProductionPlanBoard = () => {
   const selectedAssignmentDateKeys = useMemo(() => {
     const keys = new Set();
     if (!selectedAssignment) return keys;
-    const startIndex = toNonNegativeInt(selectedAssignment?.startIndex, 0);
-    const endIndex = Math.max(
-      startIndex,
-      toNonNegativeInt(selectedAssignment?.endIndex, startIndex)
-    );
-    for (let dayIndex = startIndex; dayIndex <= endIndex; dayIndex += 1) {
-      keys.add(buildDateKey(toScheduleDate(baseDate, dayIndex)));
+    const bounds = resolveAssignmentScheduleBounds(selectedAssignment, baseDate);
+    if (!bounds) return keys;
+    for (const date = new Date(bounds.startDate); date <= bounds.endDate; date.setDate(date.getDate() + 1)) {
+      keys.add(buildDateKey(date));
     }
     return keys;
   }, [
     selectedAssignment?.id,
+    selectedAssignment?.startDateKey,
+    selectedAssignment?.endDateKey,
     selectedAssignment?.startIndex,
     selectedAssignment?.endIndex,
     baseDate,
@@ -618,10 +674,10 @@ const ProductionPlanBoard = () => {
 
       const weekItems = [];
       actionableAssignments.forEach((assignment) => {
-        const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
-        const endIndex = Math.max(startIndex, toNonNegativeInt(assignment?.endIndex, startIndex));
-        const aStartKey = buildDateKey(toScheduleDate(baseDate, startIndex));
-        const aEndKey = buildDateKey(toScheduleDate(baseDate, endIndex));
+        const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+        if (!bounds) return;
+        const aStartKey = bounds.startKey;
+        const aEndKey = bounds.endKey;
 
         if (aEndKey < weekStartKey || aStartKey > weekEndKey) return;
 
@@ -669,13 +725,18 @@ const ProductionPlanBoard = () => {
 
   useEffect(() => {
     if (!selectedAssignment) return;
-    const targetMonth = toMonthStart(
-      toScheduleDate(baseDate, selectedAssignment?.startIndex)
-    );
+    const bounds = resolveAssignmentScheduleBounds(selectedAssignment, baseDate);
+    if (!bounds) return;
+    const targetMonth = toMonthStart(bounds.startDate);
     setCalendarMonth((prev) =>
       isSameMonth(prev, targetMonth) ? prev : targetMonth
     );
-  }, [selectedAssignment?.id, selectedAssignment?.startIndex, baseDate]);
+  }, [
+    selectedAssignment?.id,
+    selectedAssignment?.startDateKey,
+    selectedAssignment?.startIndex,
+    baseDate,
+  ]);
 
   useEffect(() => {
     if (!selectedAssignment) {
@@ -1200,16 +1261,19 @@ const ProductionPlanBoard = () => {
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
       const query = buildQueryString({ orgId: activeOrgId });
+      const assignmentsForSave = (Array.isArray(nextAssignments) ? nextAssignments : []).map((assignment) =>
+        syncAssignmentScheduleDateKeys(assignment, baseDate)
+      );
       try {
         const boardState = await requestJSON('/assignment-board-state' + query, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCards, assignments: nextAssignments }),
+          body: JSON.stringify({ cards: nextCards, assignments: assignmentsForSave }),
         });
         const persistedCards = Array.isArray(boardState?.cards) ? boardState.cards : nextCards;
         const persistedAssignments = Array.isArray(boardState?.assignments)
           ? boardState.assignments
-          : nextAssignments;
+          : assignmentsForSave;
         setCards(persistedCards);
         setAssignments(persistedAssignments);
       } catch (error) {
@@ -1224,7 +1288,7 @@ const ProductionPlanBoard = () => {
         throw error;
       }
     },
-    [activeOrgId, cards, refreshBoardState]
+    [activeOrgId, baseDate, cards, refreshBoardState]
   );
 
   const handleAgree = async (assignmentId) => {
