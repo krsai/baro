@@ -2219,6 +2219,8 @@ const AssignBoard = () => {
         cards,
         assignmentsForPut
       );
+      // 저장 후 서버 응답(version 등 메타데이터 갱신)을 히스토리에 기록하지 않음
+      historyApplyingRef.current = true;
       setCards(persistedCards);
       setAssignments(persistedAssignments);
       lastSavedSnapshotRef.current = createPersistSnapshotText(

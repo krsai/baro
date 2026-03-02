@@ -6,7 +6,8 @@
       "Bash(curl:*)",
       "Bash(\"c:/Users/krsai/OneDrive/바탕 화면/baro/agent.md\":*)",
       "Bash(npx prisma migrate deploy)",
-      "Bash(npx prisma generate)"
+      "Bash(npx prisma generate)",
+      "Bash(grep -v \"^+\\\\s*//\")"
     ]
   }
 }
