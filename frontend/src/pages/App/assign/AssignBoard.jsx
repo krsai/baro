@@ -24,7 +24,7 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import { DndContext, DragOverlay } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
@@ -1400,6 +1400,10 @@ const rebuildLineWithReplace = ({
 };
 
 const AssignBoard = () => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
   const { showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
@@ -4148,6 +4152,7 @@ const AssignBoard = () => {
       }
     >
       <DndContext
+        sensors={sensors}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}

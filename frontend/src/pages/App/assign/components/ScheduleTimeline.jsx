@@ -1,4 +1,4 @@
-import React, { memo, useRef, useMemo, useState } from 'react';
+import React, { memo, useCallback, useRef, useMemo, useState } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
@@ -133,15 +133,17 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
     ? days.slice(0, dayCount)
     : days;
 
-  // 포인터가 위치한 셀 (하이라이트용)
-  const [hoveredTarget, setHoveredTarget] = useState({ lineId: null, dayIndex: null });
-  // 카드 밀기 애니메이션 프리뷰
-  // { lineId, insertLeftPx, ghostWidthPx, draggedAssignmentId }
-  const [dragPreview, setDragPreview] = useState(null);
+  // 드래그 중 UI 상태 (하이라이트 + 밀기 프리뷰를 하나로 묶어 렌더 1회로 처리)
+  const [dragState, setDragState] = useState({
+    hoveredTarget: { lineId: null, dayIndex: null },
+    dragPreview: null,
+  });
 
   const gridContainerRef = useRef(null);
   // getBoundingClientRect()는 레이아웃 재계산을 유발하므로 드래그 시작 시 1번만 캐시
   const containerRectRef = useRef(null);
+  // 드래그 중인 카드 너비 — onDragStart에서 1번만 계산
+  const ghostWidthPxRef = useRef(CELL_WIDTH);
 
   // O(1) 조회용 Map (배열이 바뀔 때만 재생성)
   const assignmentById = useMemo(() => {
@@ -150,16 +152,34 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
     return map;
   }, [assignments]);
 
+  const resetDragState = useCallback(() => {
+    setDragState({ hoveredTarget: { lineId: null, dayIndex: null }, dragPreview: null });
+  }, []);
+
   useDndMonitor({
-    onDragStart() {
-      setHoveredTarget({ lineId: null, dayIndex: null });
-      setDragPreview(null);
+    onDragStart(event) {
+      resetDragState();
       containerRectRef.current = gridContainerRef.current?.getBoundingClientRect() ?? null;
+
+      // 드래그 시작 시 ghostWidthPx 1번만 계산 (onDragMove에서 반복 계산 제거)
+      const activeData = event.active?.data?.current;
+      const draggedAssignmentId =
+        activeData?.type === 'assignment' ? String(activeData.assignmentId ?? '') : null;
+      ghostWidthPxRef.current = CELL_WIDTH;
+      if (draggedAssignmentId) {
+        const draggedAssignment = assignmentById.get(draggedAssignmentId);
+        if (draggedAssignment) {
+          const sourceLayout = getLayoutByLineId(lineLayouts, String(draggedAssignment.lineId));
+          const draggedPlaced = sourceLayout?.placed?.find(
+            (a) => String(a.id) === draggedAssignmentId
+          );
+          if (draggedPlaced) ghostWidthPxRef.current = draggedPlaced.widthPx;
+        }
+      }
     },
 
     onDragMove(event) {
       const overId = String(event.over?.id ?? '');
-      const activeId = String(event.active?.id ?? '');
       const activeData = event.active?.data?.current;
 
       // 포인터 X 계산 (한 번만)
@@ -197,12 +217,9 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
         }
       }
 
-      // 하이라이트 업데이트
-      setHoveredTarget({ lineId: overLineId, dayIndex: overDayIndex });
-
       // ── Step 2: 카드 밀기 프리뷰 계산 ────────────────────────────────────
       if (overLineId == null || overDayIndex == null) {
-        setDragPreview(null);
+        setDragState({ hoveredTarget: { lineId: overLineId, dayIndex: overDayIndex }, dragPreview: null });
         return;
       }
 
@@ -234,32 +251,15 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
         insertLeftPx = overDayIndex * CELL_WIDTH;
       }
 
-      // 드래그 중인 카드의 너비 계산
-      let ghostWidthPx = CELL_WIDTH; // 기본값: 1일
-      if (draggedAssignmentId) {
-        const draggedAssignment = assignmentById.get(draggedAssignmentId);
-        if (draggedAssignment) {
-          const sourceLayout = getLayoutByLineId(lineLayouts, draggedAssignment.lineId);
-          const draggedPlaced = sourceLayout?.placed?.find(
-            (a) => String(a.id) === draggedAssignmentId
-          );
-          if (draggedPlaced) ghostWidthPx = draggedPlaced.widthPx;
-        }
-      }
-
-      setDragPreview({ lineId: overLineId, insertLeftPx, ghostWidthPx, draggedAssignmentId });
+      // 하이라이트 + 프리뷰를 한 번에 업데이트 (렌더 1회)
+      setDragState({
+        hoveredTarget: { lineId: overLineId, dayIndex: overDayIndex },
+        dragPreview: { lineId: overLineId, insertLeftPx, ghostWidthPx: ghostWidthPxRef.current, draggedAssignmentId },
+      });
     },
 
-    onDragEnd() {
-      setHoveredTarget({ lineId: null, dayIndex: null });
-      setDragPreview(null);
-      containerRectRef.current = null;
-    },
-    onDragCancel() {
-      setHoveredTarget({ lineId: null, dayIndex: null });
-      setDragPreview(null);
-      containerRectRef.current = null;
-    },
+    onDragEnd: resetDragState,
+    onDragCancel: resetDragState,
   });
 
   const assignmentsByLine = useMemo(() => {
@@ -337,6 +337,8 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
 
     return map;
   }, [lines, assignmentsByLine, days, viewDays]);
+
+  const { hoveredTarget, dragPreview } = dragState;
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>

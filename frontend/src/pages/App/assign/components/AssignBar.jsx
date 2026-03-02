@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 
@@ -54,10 +54,10 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     data: { assignmentId: assignment.id, type: 'assignment-drop' },
   });
 
-  const setNodeRef = (node) => {
+  const setNodeRef = useCallback((node) => {
     setDragRef(node);
     setDropRef(node);
-  };
+  }, [setDragRef, setDropRef]);
 
   const style = {
     transform: transform
