@@ -169,11 +169,19 @@ REJECTED (변경 요청, 운영팀 재검토)
   ├─ 운영팀 "다시 제안" ────────────────────────────────── SENT
   │    proposalSeconds 갱신, contractedSeconds는 null 유지
   └─ 운영팀 "배정 취소" ────────────────────────────────── 배정 삭제 + 미배정 카드 복귀
+
+AGREED (확정)
+  └─ 관리자 "재협의 개시" ──────────────────────────────── PENDING
+       ctSource='REOPENED_BY_ADMIN'
+       기존 합의값은 card.ctAgreementHistory에 보관
 ```
 
-> ⚠️ 잠금 규칙: `SENT`/`AGREED` 카드는 작업 배정 보드에서 이동·분할 불가(락) 상태다.
-> `REJECTED`는 재협의를 위해 운영팀 액션(요청 동의/다시 제안/배정 취소)이 열린 상태다. 드래그 이동은 가능하지만, reflow(reflowAssignmentsByLineCapacity) 시 위치가 자동 이동되지 않고 현재 위치에 고정된다.
+> ⚠️ 현재 구현의 잠금은 기능별로 다르다.
+> `SENT`/`AGREED`는 `isAssignmentLockedStatus` 대상이라 **수량 분할 / 카드·배정 병합 / 초기화**에서는 제외된다.
+> 다만 드래그 자체는 완전 잠금이 아니다. `AGREED`는 **다른 라인 이동 / 보드 밖 제거**만 막고, 같은 라인 내 날짜 이동은 현재 허용된다. `SENT`는 드래그 이동과 보드 밖 제거가 현재 코드상 가능하다.
+> `REJECTED`는 재협의 상태이며 운영팀 액션(요청 동의/다시 제안/배정 취소)이 열려 있고, 일반 배정처럼 저장/reflow 대상에도 포함된다.
 > 운영팀이 제안 CT를 수정한 상태에서는 **요청 동의가 비활성화**되며, 다시 제안으로만 진행 가능하다.
+> `SENT` 상태가 48시간을 초과하면 읽기/저장 과정에서 자동으로 관리자 검토 대상으로 에스컬레이션된다. (`ctEscalatedAt`, `ctEscalationReason='SENT_TIMEOUT_48H'`)
 
 #### CT 협의 UI 버튼 규칙 (ProductionPlanBoard)
 - **동의 버튼 활성**: 요청 CT 입력값이 없거나 제안 CT와 동일한 경우
@@ -314,10 +322,13 @@ Organization (MANUFACTURER | BRAND)
 - 조직당 단 1개의 레코드 (upsert)
 - 작업 배정 보드는 **수동 저장 버튼**으로만 저장 (자동저장 없음)
 - 저장되지 않은 변경이 있으면 라우트 이동/탭 이탈/브라우저 종료 시 경고
-- 현재 버전 관리 없음 — 이전 상태 복원 불가
+- `assignments`에는 `startDateKey`, `version`, `versionUpdatedAt`, `ctSentAt`, `ctEscalatedAt`, `ctEscalation*` 같은 보드 전용 필드가 포함된다.
+- `PUT /assignment-board-state`와 `PATCH /assignment-board-state/ct`는 assignment 단위 optimistic concurrency를 사용하며, stale version이면 `409 assignment version conflict`를 반환한다.
+- UI는 로컬 undo/redo(최대 30단계)만 제공한다. 서버가 과거 스냅샷을 보관해 복원해 주지는 않는다.
 - **cards vs assignments 구분**:
   - `cards`: 미배정 풀 (일반 카드 + DELTA 카드). 라인에 아직 배정되지 않은 것.
   - `assignments`: 라인 타임라인에 배정된 카드. ctStatus, contractedSeconds 등 협의 정보 포함.
+- `cards`에는 `operatorCtProposal`, `pendingCtProposal`, `ctAgreedSnapshot`, `ctAgreementHistory` 같은 협의 스냅샷/이력 값이 함께 저장될 수 있다.
 - DELTA 카드(type='DELTA')는 cards 배열 안에만 존재, assignments에는 없음
 
 ### 카드(Card) 개념
@@ -325,11 +336,16 @@ Organization (MANUFACTURER | BRAND)
 - 같은 스타일·색상이라도 수주가 다르면 별개의 카드로 인식
 - 미배정(unassigned pool)과 배정(line timeline) 상태로 구분
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
+- 분할 시 새 카드 id가 생겨도 `originOrderId`는 유지한다.
+- 병합은 `originOrderId`가 같은 카드/배정끼리만 허용된다.
+- `SENT`/`AGREED` 배정은 분할/병합 대상에서 제외된다.
 - 카드에 배정된 수량과 수주 수량은 독립적 (수동 관리)
 
 ### 수주 수량 변경 시 배정 처리 (정책 확정)
 - 수주 수량 변경 시 **해당 수주의 기존 배정은 취소**하고, 변경된 수량 기준으로 **미배정 카드로 재생성**한다.
 - 수량이 `0`이면 해당 카드는 제거한다.
+- 동일 주문에 매달린 DELTA 카드는 함께 정리하고, 다른 주문의 DELTA 카드는 유지한다.
+- 이 동기화는 주문 저장 후 프론트(`OrderList.jsx`)에서 현재 보드를 읽어 `reconcileBoardStateForQuantityChanges` 결과를 다시 저장하는 방식이다.
 - 즉, 수량 변경 시 기존 배정 카드의 기간을 늘이거나 줄여 유지하지 않는다.
 - 결과적으로 변경분 반영 이후에는 운영자가 다시 배정(라인/시작일 지정)하도록 한다.
 
@@ -627,10 +643,46 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 | 제안 송부 (SENT), reflow 없음 | PUT 전체 payload | PATCH 경량 |
 | 제안 송부 (SENT), reflow 있음 | PUT 전체 payload | PUT fallback 유지 |
 | 요청 동의 (AGREED) | PUT 전체 payload | PATCH 경량 (항상) |
-| 배정 취소 | PUT 전체 payload | PUT 유지 |
-- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx` (handleSendProposalToLineLeader, handleAgreeCtFromLineRequest)
+| 배정 취소 | PUT 전체 payload | DELETE 경량 (`/assignment-board-state/assignment/:assignmentId`) |
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx` (`handleSendProposalToLineLeader`, `handleAgreeLineRequest`, `handleCancelAssignmentFromLineRequest`)
 
 #### updatePlanRows 병렬화
 - 기존: `for...of` 순차 `await prisma.assignmentPlan.update(...)` → N번 DB 왕복
 - 수정: `Promise.all(updatePlanRows.map(...))` 병렬 실행
 - 파일: `backend/src/index.ts` (PUT /assignment-board-state 핸들러 내부)
+
+## 오늘 반영 메모 (2026-03-02)
+
+### AssignmentBoardState 동시 수정 충돌 방지
+- 보드 assignment는 `version`, `versionUpdatedAt`를 가진다.
+- 전체 저장(`PUT /assignment-board-state`)과 CT 부분 저장(`PATCH /assignment-board-state/ct`) 모두 assignment별 optimistic concurrency를 사용한다.
+- stale payload로 저장하면 서버가 `409 assignment version conflict`를 반환하고, 프론트는 사용자에게 새로고침/최신 상태 반영 메시지를 보여준다.
+- 파일: `backend/src/index.ts`, `frontend/src/pages/App/assign/AssignBoard.jsx`, `frontend/src/pages/App/production/ProductionPlanBoard.jsx`
+
+### SENT 48시간 초과 자동 에스컬레이션
+- `ctStatus='SENT'`이고 `ctSentAt` 기준 48시간이 지나면 서버가 자동으로 `ctEscalatedAt`, `ctEscalationReason='SENT_TIMEOUT_48H'`, `ctEscalationTargetRole='ADMIN'`, `ctEscalationStatus='OPEN'`을 부여한다.
+- 이 처리는 `GET /assignment-board-state`, `PATCH /assignment-board-state/ct`, `PUT /assignment-board-state` 경로에서 공통으로 반영된다.
+- 작업 배정 상세 패널에는 "48시간 초과 관리자 검토" 경고가 표시된다.
+- 파일: `backend/src/index.ts`, `frontend/src/pages/App/assign/AssignBoard.jsx`
+
+### 확정 배정 재협의 개시
+- `AGREED` 상태 배정은 관리자만 `재협의 개시`할 수 있다.
+- 재협의 개시 시 `ctStatus='PENDING'`, `ctSource='REOPENED_BY_ADMIN'`으로 되돌리고, 기존 합의 정보는 카드의 `ctAgreementHistory`에 아카이브한다.
+- 서버 `PUT /assignment-board-state`도 `AGREED -> 비AGREED` 전환을 관리자만 허용한다.
+- 현재 경량 `DELETE /assignment-board-state/assignment/:assignmentId` 경로에는 상태별 권한 검증이 없어, UI는 `REJECTED` 검토 흐름에서만 이 엔드포인트를 사용한다.
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`, `backend/src/index.ts`
+
+### 작업 배정 보드 편집 규칙 보정
+- `SENT`/`AGREED`는 분할/병합/초기화에서는 잠금이지만, 드래그는 완전 잠금이 아니다.
+- `AGREED`는 다른 라인 이동과 보드 밖 제거만 막고, 같은 라인 내 날짜 이동은 현재 허용된다.
+- `SENT`는 현재 코드상 타임라인 이동과 보드 밖 제거가 가능하다.
+- `초기화` 버튼은 전체 배정을 비우지 않고 `SENT`/`AGREED`만 남긴다.
+- 보드 상단에 `되돌리기 / 다시하기 / 초기화`가 있으며 undo/redo는 로컬 30단계 히스토리다.
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`
+
+### ProductionPlanBoard DELTA 카드 처리
+- DELTA 카드는 생산계획/작업 계획 협의 보드에서만 처리한다.
+- `PLUS` DELTA는 새 라인에 직접 배정하거나, 동일 고객사/스타일(or styleId)/색상/성별의 기존 미완료 배정에 흡수할 수 있다.
+- `MINUS` DELTA는 동일 조건의 기존 미완료 배정에서 수량을 차감한다. 차감 결과 수량이 `0`이면 해당 배정은 삭제된다.
+- 수주 수량 변경 후 보드 재구성 시 **같은 주문의 DELTA 카드만** 함께 정리한다.
+- 파일: `frontend/src/pages/App/production/ProductionPlanBoard.jsx`, `frontend/src/utils/quantityChangeBoard.mjs`, `frontend/src/pages/App/order/OrderList.jsx`
