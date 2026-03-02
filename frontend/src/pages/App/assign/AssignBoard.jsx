@@ -25,7 +25,7 @@ import {
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { useBeforeUnload, useBlocker } from 'react-router-dom';
+import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
@@ -395,6 +395,14 @@ const remapAssignmentToDayWindow = (assignment, days, fallbackBaseDate = null) =
   };
 };
 
+const parseDateKey = (value) => {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const date = new Date(value.trim() + 'T00:00:00');
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
 const syncAssignmentDateKeys = (assignment, baseDate = null) => {
   const normalized = normalizeAssignmentLayout(assignment);
   if (!normalized) return normalized;
@@ -411,6 +419,80 @@ const syncAssignmentDateKeys = (assignment, baseDate = null) => {
     ...normalized,
     startDateKey: buildDateKey(startDate),
     endDateKey: buildDateKey(endDate),
+  };
+};
+
+const resolveAssignmentAbsoluteRange = (assignment, baseDate = null) => {
+  const normalized = normalizeAssignmentLayout(assignment);
+  if (!normalized) return null;
+
+  const startDateFromKey = parseDateKey(normalized.startDateKey);
+  const endDateFromKey = parseDateKey(normalized.endDateKey);
+  if (startDateFromKey) {
+    const startDate = new Date(startDateFromKey);
+    const endDate = endDateFromKey
+      ? new Date(endDateFromKey)
+      : new Date(startDateFromKey);
+    if (!endDateFromKey) {
+      endDate.setDate(
+        endDate.getDate() + Math.max(0, normalized.endIndex - normalized.startIndex)
+      );
+    }
+    if (endDate < startDate) {
+      return { startDate, endDate: startDate };
+    }
+    return { startDate, endDate };
+  }
+
+  const resolvedBaseDate =
+    baseDate instanceof Date && !Number.isNaN(baseDate.getTime()) ? baseDate : null;
+  if (!resolvedBaseDate) return null;
+
+  const startDate = new Date(resolvedBaseDate);
+  startDate.setHours(0, 0, 0, 0);
+  startDate.setDate(startDate.getDate() + normalized.startIndex);
+  const endDate = new Date(resolvedBaseDate);
+  endDate.setHours(0, 0, 0, 0);
+  endDate.setDate(endDate.getDate() + normalized.endIndex);
+  return {
+    startDate,
+    endDate: endDate < startDate ? startDate : endDate,
+  };
+};
+
+const buildAssignmentPersistenceWindow = ({
+  assignments,
+  days,
+  baseDate,
+  holidaySet,
+}) => {
+  const fallbackStart =
+    parseDateKey(Array.isArray(days) && days.length > 0 ? days[0]?.key : null) ||
+    (baseDate instanceof Date && !Number.isNaN(baseDate.getTime())
+      ? new Date(baseDate)
+      : new Date());
+  fallbackStart.setHours(0, 0, 0, 0);
+
+  const fallbackEnd =
+    parseDateKey(
+      Array.isArray(days) && days.length > 0 ? days[days.length - 1]?.key : null
+    ) || new Date(fallbackStart);
+  fallbackEnd.setHours(0, 0, 0, 0);
+
+  let minStart = new Date(fallbackStart);
+  let maxEnd = new Date(fallbackEnd);
+  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    const range = resolveAssignmentAbsoluteRange(assignment, baseDate);
+    if (!range) return;
+    if (range.startDate < minStart) minStart = new Date(range.startDate);
+    if (range.endDate > maxEnd) maxEnd = new Date(range.endDate);
+  });
+
+  const spanDays = Math.max(1, Math.round((maxEnd - minStart) / 86400000) + 1);
+  const minLength = Math.max(Array.isArray(days) ? days.length : 0, spanDays + 14);
+  return {
+    baseDate: minStart,
+    days: buildDays(minStart, minLength, holidaySet),
   };
 };
 
@@ -1148,6 +1230,8 @@ const reflowAssignmentsByLineCapacity = ({
         lineId,
         totalSeconds,
         ...planned,
+        startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
+        endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
       };
       placed.push(nextItem);
 
@@ -1498,6 +1582,7 @@ const AssignBoard = () => {
 
   const { showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
@@ -1572,27 +1657,38 @@ const AssignBoard = () => {
       redoCount: historyFutureRef.current.length,
     });
   }, []);
+  const isAssignmentRouteActive = location.pathname === '/assignment';
+
+  const serializeAssignmentsForSnapshot = useCallback((nextAssignments) => {
+    const baseDate = startDateRef.current;
+    return (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) => {
+      const normalized = normalizeAssignmentLayout(syncAssignmentDateKeys(item, baseDate));
+      if (!normalized || typeof normalized !== 'object') return normalized;
+      const {
+        startIndex: _startIndex,
+        endIndex: _endIndex,
+        ...rest
+      } = normalized;
+      return rest;
+    });
+  }, []);
 
   const createBoardSnapshotText = useCallback(
     (nextCards, nextAssignments) =>
       JSON.stringify({
         cards: Array.isArray(nextCards) ? nextCards : [],
-        assignments: Array.isArray(nextAssignments) ? nextAssignments : [],
+        assignments: serializeAssignmentsForSnapshot(nextAssignments),
       }),
-    []
+    [serializeAssignmentsForSnapshot]
   );
 
   const createPersistSnapshotText = useCallback(
-    (nextCards, nextAssignments) => {
-      const normalizedAssignments = (Array.isArray(nextAssignments) ? nextAssignments : []).map(
-        (item) => normalizeAssignmentLayout(item)
-      );
-      return JSON.stringify({
+    (nextCards, nextAssignments) =>
+      JSON.stringify({
         cards: Array.isArray(nextCards) ? nextCards : [],
-        assignments: normalizedAssignments,
-      });
-    },
-    []
+        assignments: serializeAssignmentsForSnapshot(nextAssignments),
+      }),
+    [serializeAssignmentsForSnapshot]
   );
 
   const currentPersistSnapshot = useMemo(
@@ -1632,18 +1728,21 @@ const AssignBoard = () => {
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
       const parsed = JSON.parse(snapshotText || '{}');
-      const nextCards = Array.isArray(parsed?.cards) ? parsed.cards : [];
-      const nextAssignments = Array.isArray(parsed?.assignments)
-        ? parsed.assignments.map((item) => normalizeAssignmentLayout(item))
-        : [];
-      const maxEndIndex = nextAssignments.reduce(
-        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+      const snapshotCards = Array.isArray(parsed?.cards) ? parsed.cards : [];
+      const snapshotAssignments = Array.isArray(parsed?.assignments) ? parsed.assignments : [];
+      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        { cards: snapshotCards, assignments: snapshotAssignments },
+        snapshotCards,
+        snapshotAssignments
+      );
+      const maxEndIndex = persistedAssignments.reduce(
+        (max, item) => Math.max(max, toSignedInt(item?.endIndex, 0)),
         0
       );
-      setCards(nextCards);
-      setAssignments(nextAssignments);
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
       setSelectedCardId((prev) =>
-        nextCards.some((card) => String(card?.id) === String(prev)) ? prev : null
+        persistedCards.some((card) => String(card?.id) === String(prev)) ? prev : null
       );
       setDays((prev) => {
         const requiredLength = Math.max(prev.length, maxEndIndex + 10);
@@ -1651,10 +1750,12 @@ const AssignBoard = () => {
           ? buildDays(startDateRef.current, requiredLength, holidaySet)
           : prev;
       });
+      return true;
     } catch (_error) {
       // Ignore malformed snapshots and keep current state.
+      return false;
     }
-  }, [holidaySet]);
+  }, [holidaySet, resolvePersistedBoardState]);
 
   useEffect(() => {
     const syncHolidays = () => {
@@ -1689,6 +1790,7 @@ const AssignBoard = () => {
   }, [viewStart, dayCount, holidaySet]);
 
   useEffect(() => {
+    if (!isAssignmentRouteActive) return undefined;
     let cancelled = false;
 
     const loadSourceData = async () => {
@@ -1703,7 +1805,7 @@ const AssignBoard = () => {
           requestJSON('/lines' + orgQuery).catch(() => []),
           requestJSON('/line-workers' + orgQuery).catch(() => []),
           fetchAttributes({ orgId: activeOrgId }).catch(() => null),
-          requestJSON('/assignment-board-state' + orgQuery).catch(() => null),
+          requestJSON('/assignment-board-state' + orgQuery, { forceRefresh: true }).catch(() => null),
         ]);
 
         const safeFactories = Array.isArray(factories) ? factories : [];
@@ -1806,7 +1908,10 @@ const AssignBoard = () => {
             return { ...remapped, startIndex: cs, endIndex: ce };
           });
         }
-        if (normalizedRestoredAssignments.length > 1) {
+        const hasAbsoluteScheduleKeys = normalizedRestoredAssignments.some((item) =>
+          Boolean(parseDateKey(item?.startDateKey))
+        );
+        if (!hasAbsoluteScheduleKeys && normalizedRestoredAssignments.length > 1) {
           const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
           let candidateDays = normalizedRestoreDays;
           let reflowedAssignments = null;
@@ -1903,7 +2008,13 @@ const AssignBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, createBoardSnapshotText, createPersistSnapshotText, syncHistoryStatus]);
+  }, [
+    activeOrgId,
+    createBoardSnapshotText,
+    createPersistSnapshotText,
+    isAssignmentRouteActive,
+    syncHistoryStatus,
+  ]);
 
 
   useEffect(() => {
@@ -1938,18 +2049,32 @@ const AssignBoard = () => {
   const handleSaveBoard = useCallback(async () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
+    const { baseDate: persistBaseDate, days: persistDays } = buildAssignmentPersistenceWindow({
+      assignments,
+      days,
+      baseDate: startDateRef.current,
+      holidaySet,
+    });
+    const assignmentsForPersistence = assignments.map((item) =>
+      remapAssignmentToDayWindow(
+        syncAssignmentDateKeys(item, startDateRef.current),
+        persistDays,
+        startDateRef.current
+      )
+    );
+
     // 저장 전 날짜 중첩 제거: 잠금 카드(SENT/AGREED) 위치 고정, 나머지 재배치
     const reflowedAssignments = reflowAssignmentsByLineCapacity({
-      assignments,
-      totalDays: days.length,
-      days,
+      assignments: assignmentsForPersistence,
+      totalDays: persistDays.length,
+      days: persistDays,
       lineCapacityById,
       reflowStartIndex: 0,
     });
-    const assignmentsToSave = reflowedAssignments ?? assignments;
+    const assignmentsToSave = reflowedAssignments ?? assignmentsForPersistence;
 
     const normalizedAssignments = assignmentsToSave.map((item) =>
-      syncAssignmentDateKeys(item, startDateRef.current)
+      syncAssignmentDateKeys(item, persistBaseDate)
     );
     setPersisting(true);
     try {
@@ -1987,6 +2112,7 @@ const AssignBoard = () => {
     assignments,
     cards,
     days,
+    holidaySet,
     lineCapacityById,
     createPersistSnapshotText,
     isDirty,
@@ -4103,15 +4229,19 @@ const AssignBoard = () => {
     return true;
   };
 
-  const handleResetAssignments = () => {
-    setAssignments((prev) => {
-      const locked = prev.filter((item) => isAssignmentLocked(item));
-      if (locked.length > 0) {
-        showNotification('송부된 작업은 잠금되어 초기화 대상에서 제외됩니다.', 'info');
-      }
-      return locked;
-    });
-  };
+  const handleResetAssignments = useCallback(() => {
+    if (!persistReady || !isDirty) return;
+    const confirmed = window.confirm(
+      '저장되지 않은 작업 배정 변경사항을 마지막 저장 상태로 되돌릴까요?'
+    );
+    if (!confirmed) return;
+    const restored = applyBoardSnapshotText(lastSavedSnapshotRef.current);
+    if (!restored) {
+      showNotification('마지막 저장 상태를 복원하지 못했습니다. 화면을 새로고침 후 다시 시도해 주세요.', 'error');
+      return;
+    }
+    showNotification('마지막 저장 상태로 되돌렸습니다.', 'info');
+  }, [applyBoardSnapshotText, isDirty, persistReady, showNotification]);
 
   const handleUndo = useCallback(() => {
     if (historyPastRef.current.length === 0) return;
@@ -4145,13 +4275,6 @@ const AssignBoard = () => {
     syncHistoryStatus,
   ]);
 
-  const confirmViewRangeChange = useCallback(() => {
-    if (!persistReady || !isDirty || persisting) return true;
-    return window.confirm(
-      '저장되지 않은 작업 배정 데이터가 있습니다. 저장하지 않고 기간을 변경하시겠습니까?'
-    );
-  }, [isDirty, persistReady, persisting]);
-
   const applyViewRange = useCallback(
     (nextStart, nextEnd) => {
       const normalizedStart = new Date(nextStart);
@@ -4166,13 +4289,12 @@ const AssignBoard = () => {
       ) {
         return true;
       }
-      if (!confirmViewRangeChange()) return false;
 
       setViewStart(normalizedStart);
       setViewEnd(normalizedEnd);
       return true;
     },
-    [confirmViewRangeChange, viewEnd, viewStart]
+    [viewEnd, viewStart]
   );
 
   // ── 날짜 범위 네비게이션 헬퍼 ──────────────────────────────────────
@@ -4259,7 +4381,7 @@ const AssignBoard = () => {
             <Button
               variant="outlined"
               onClick={handleResetAssignments}
-              disabled={assignments.length === 0}
+              disabled={!persistReady || !isDirty}
             >
               초기화
             </Button>

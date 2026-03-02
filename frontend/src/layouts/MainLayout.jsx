@@ -117,7 +117,22 @@ const MainLayout = () => {
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
+  const pendingCloseTabRef = useRef(null);
+  const currentPathRef = useRef(currentPath);
   const recentTabHistoryRef = useRef([]);
+
+  useEffect(() => {
+    currentPathRef.current = currentPath;
+  }, [currentPath]);
+
+  const schedulePendingNavigationCleanup = React.useCallback((sourcePath, nextPathname) => {
+    window.setTimeout(() => {
+      if (pendingNavigationPathRef.current !== nextPathname) return;
+      if (currentPathRef.current !== sourcePath) return;
+      pendingNavigationPathRef.current = null;
+      pendingCloseTabRef.current = null;
+    }, 0);
+  }, []);
   const authState = useMemo(
     () => ({
       isAuthenticated,
@@ -386,13 +401,6 @@ const MainLayout = () => {
         openOptions.replacePrefix = '/payroll/';
       }
 
-      // If a caller requests closing a tab as part of navigation, block auto re-open
-      // for that path during this transition and close it before route sync.
-      if (closeTabId) {
-        skipAutoOpenPathRef.current = closeTabId;
-        closeTab(closeTabId);
-      }
-      
       // The `openTab` function from context already checks for duplicates,
       // so we can call it directly. This removes the dependency on `openTabs`.
       let label = options?.label;
@@ -402,11 +410,25 @@ const MainLayout = () => {
       openTab({ id: nextPathname, label, path: nextPath }, openOptions);
 
       if (nextPath && currentRoutePath !== nextPath) {
+        pendingCloseTabRef.current = closeTabId;
         pendingNavigationPathRef.current = nextPathname;
         navigate(nextPath);
+        schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
+      } else if (closeTabId && currentPath !== closeTabId) {
+        pendingCloseTabRef.current = null;
+        closeTab(closeTabId);
       }
     },
-    [closeTab, currentPath, currentRoutePath, hasPathAccess, navigate, openTab, resolveTabLabel]
+    [
+      closeTab,
+      currentPath,
+      currentRoutePath,
+      hasPathAccess,
+      navigate,
+      openTab,
+      resolveTabLabel,
+      schedulePendingNavigationCleanup,
+    ]
   );
 
   useEffect(() => {
@@ -415,6 +437,11 @@ const MainLayout = () => {
         return;
       }
       pendingNavigationPathRef.current = null;
+      const pendingCloseTabId = pendingCloseTabRef.current;
+      if (pendingCloseTabId && pendingCloseTabId !== currentPath) {
+        pendingCloseTabRef.current = null;
+        closeTab(pendingCloseTabId);
+      }
     }
 
     if (skipAutoOpenPathRef.current && currentPath !== skipAutoOpenPathRef.current) {
@@ -430,7 +457,7 @@ const MainLayout = () => {
 
     const label = resolveTabLabel(currentPath);
     openTab({ id: currentPath, label, path: currentRoutePath });
-  }, [currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
+  }, [closeTab, currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
 
   useEffect(() => {
     if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
@@ -523,14 +550,31 @@ const MainLayout = () => {
       const fallbackTab = recentFallbackId
         ? remainingTabById.get(recentFallbackId)
         : remainingTabs[remainingTabs.length - 1] || null;
-      skipAutoOpenPathRef.current = tabIdToClose;
-
-      // If no tab remains, move to empty state.
       if (!fallbackTab) {
-        navigate('/');
-      } else {
-        navigate(fallbackTab.path || fallbackTab.id);
+        skipAutoOpenPathRef.current = tabIdToClose;
+        pendingCloseTabRef.current = null;
+        pendingNavigationPathRef.current = null;
+        closeTab(tabIdToClose);
+        if (currentPath !== '/') {
+          navigate('/');
+        }
+        return;
       }
+      const fallbackPath = fallbackTab ? (fallbackTab.path || fallbackTab.id) : '/';
+      const fallbackPathname = toPathname(fallbackPath);
+      if (fallbackPathname === currentPath) {
+        skipAutoOpenPathRef.current = tabIdToClose;
+        pendingCloseTabRef.current = null;
+        pendingNavigationPathRef.current = null;
+        closeTab(tabIdToClose);
+        return;
+      }
+      pendingCloseTabRef.current = tabIdToClose;
+      pendingNavigationPathRef.current = fallbackPathname;
+      navigate(fallbackPath);
+      schedulePendingNavigationCleanup(currentPathRef.current, fallbackPathname);
+
+      return;
     }
 
     // After (potentially) setting the new active tab, remove the closed tab from the list.
