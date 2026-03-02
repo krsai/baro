@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
@@ -113,6 +113,18 @@ const getWorkingDuration = (assignment, days) => {
   return total;
 };
 
+const getAssignmentDisplayDuration = (assignment, lineCapacityById, days) => {
+  const totalSeconds = Number(assignment?.totalSeconds);
+  const lineCapacity = Number(
+    lineCapacityById.get(String(assignment?.lineId)) ??
+    lineCapacityById.get(Number(assignment?.lineId))
+  );
+  if (Number.isFinite(totalSeconds) && totalSeconds > 0 && Number.isFinite(lineCapacity) && lineCapacity > 0) {
+    return totalSeconds / lineCapacity;
+  }
+  return getWorkingDuration(assignment, days);
+};
+
 // 마우스/터치 이벤트에서 현재 포인터 X 좌표 계산
 const getPointerX = (event) => {
   const activator = event.activatorEvent;
@@ -151,6 +163,22 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
     assignments.forEach((a) => map.set(String(a.id), a));
     return map;
   }, [assignments]);
+  const lineCapacityById = useMemo(() => {
+    const map = new Map();
+    lines.forEach((line) => {
+      const lineId = String(line?.id ?? '');
+      const dailyCapacity = Number(line?.dailyCapacitySeconds);
+      if (!lineId || !Number.isFinite(dailyCapacity) || dailyCapacity <= 0) return;
+      map.set(lineId, dailyCapacity);
+    });
+    return map;
+  }, [lines]);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+    container.scrollLeft = 0;
+  }, [viewDays.length, viewDays[0]?.key, viewDays[viewDays.length - 1]?.key]);
 
   const resetDragState = useCallback(() => {
     setDragState({ hoveredTarget: { lineId: null, dayIndex: null }, dragPreview: null });
@@ -326,7 +354,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
           widthPx: Math.max(clampedWidthCells * CELL_WIDTH, isClippedLeft || isClippedRight ? 20 : 0),
           topPx: verticalOffset + BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
-          workDays: getWorkingDuration(assignment, days),
+          workDays: getAssignmentDisplayDuration(assignment, lineCapacityById, days),
           isClippedLeft,
           isClippedRight,
         };
@@ -336,7 +364,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
     });
 
     return map;
-  }, [lines, assignmentsByLine, days, viewDays]);
+  }, [lines, assignmentsByLine, days, viewDays, lineCapacityById]);
 
   const { hoveredTarget, dragPreview } = dragState;
 

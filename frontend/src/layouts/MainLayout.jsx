@@ -479,6 +479,21 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
+    const openTabIds = new Set(openTabs.map((tab) => toPathname(tab?.id || tab?.path || '')));
+    setMountedKeepAlivePaths((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      prev.forEach((path) => {
+        if (path === currentPath) return;
+        if (openTabIds.has(path)) return;
+        next.delete(path);
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [currentPath, openTabs]);
+
+  useEffect(() => {
     const openTabIds = new Set(openTabs.map((tab) => tab.id));
     recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
       (tabId) => tabId === currentPath || openTabIds.has(tabId)

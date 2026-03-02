@@ -337,6 +337,40 @@ const normalizeAssignmentLayout = (assignment) => {
   };
 };
 
+const toStableJsonText = (value) => {
+  if (value === null || value === undefined) return JSON.stringify(value);
+  if (typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => toStableJsonText(item)).join(',')}]`;
+  }
+  const keys = Object.keys(value).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${toStableJsonText(value[key])}`)
+    .join(',')}}`;
+};
+
+const toComparableAssignmentState = (assignment) => {
+  const normalized = normalizeAssignmentLayout(assignment);
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
+    return normalized;
+  }
+  const {
+    startIndex: _startIndex,
+    endIndex: _endIndex,
+    version: _version,
+    versionUpdatedAt: _versionUpdatedAt,
+    dbId: _dbId,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...rest
+  } = normalized;
+  return rest;
+};
+
+const isSameComparableAssignmentState = (left, right) =>
+  toStableJsonText(toComparableAssignmentState(left)) ===
+  toStableJsonText(toComparableAssignmentState(right));
+
 const remapAssignmentToDayWindow = (assignment, days, fallbackBaseDate = null) => {
   const normalized = normalizeAssignmentLayout(assignment);
   if (!normalized || !Array.isArray(days) || days.length === 0) {
@@ -910,6 +944,11 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     contractedSeconds:
       assignment.contractedSeconds != null ? assignment.contractedSeconds : null,
   };
+  const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
+  const currentTotalSeconds = toNonNegativeInt(assignment?.totalSeconds, 0);
+  if (hasAbsoluteScheduleKeys && currentTotalSeconds === Math.round(totalSeconds)) {
+    return next;
+  }
   const range = recomputeAssignmentRange(next, totalSeconds, days, lineCapacityById);
   return {
     ...next,
@@ -923,6 +962,24 @@ const buildDateKey = (date) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+const getMonthStartDate = (value = new Date()) => {
+  const date = new Date(value);
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getMonthEndDate = (value = new Date()) => {
+  const date = getMonthStartDate(value);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(0);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getDateRangeDayCount = (start, end) =>
+  Math.max(1, Math.round((end - start) / 86400000) + 1);
 
 const parseDueDateToTimestamp = (value) => {
   const text = normalizeKey(value);
@@ -1593,7 +1650,7 @@ const AssignBoard = () => {
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
   const [persistReady, setPersistReady] = useState(false);
-  const startDateRef = useRef(new Date());
+  const startDateRef = useRef(getMonthStartDate());
   const splitCounterRef = useRef(1);
   const lastSavedSnapshotRef = useRef('');
   const historyPastRef = useRef([]);
@@ -1604,23 +1661,20 @@ const AssignBoard = () => {
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const MAX_RANGE_DAYS = 92;
-  const [viewStart, setViewStart] = useState(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
-  const [viewEnd, setViewEnd] = useState(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 29);
-    return d;
-  });
+  const [viewStart, setViewStart] = useState(() => getMonthStartDate());
+  const [viewEnd, setViewEnd] = useState(() => getMonthEndDate());
   // viewStart 변경 시 assignment 인덱스 재계산을 위한 이전값 추적
   const prevViewStartRef = useRef(null);
   const dayCount = useMemo(() => {
     return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
   }, [viewStart, viewEnd]);
-  const [days, setDays] = useState(() => buildDays(startDateRef.current, 30, holidaySet));
+  const [days, setDays] = useState(() =>
+    buildDays(
+      startDateRef.current,
+      getDateRangeDayCount(startDateRef.current, getMonthEndDate(startDateRef.current)),
+      holidaySet
+    )
+  );
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
@@ -1717,10 +1771,82 @@ const AssignBoard = () => {
     },
     [days]
   );
+  const parsePersistSnapshotAssignments = useCallback((snapshotText) => {
+    try {
+      const parsed = JSON.parse(snapshotText || '{}');
+      return Array.isArray(parsed?.assignments) ? parsed.assignments : [];
+    } catch (_error) {
+      return [];
+    }
+  }, []);
+  const mergeServerAssignmentVersions = useCallback(
+    (nextAssignments, serverAssignments, savedAssignments) => {
+      const serverById = new Map(
+        (Array.isArray(serverAssignments) ? serverAssignments : [])
+          .map((item) => normalizeAssignmentLayout(item))
+          .filter((item) => item?.id)
+          .map((item) => [String(item.id), item])
+      );
+      const savedById = new Map(
+        (Array.isArray(savedAssignments) ? savedAssignments : [])
+          .map((item) => normalizeAssignmentLayout(item))
+          .filter((item) => item?.id)
+          .map((item) => [String(item.id), item])
+      );
+
+      return (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) => {
+        const normalized = normalizeAssignmentLayout(item);
+        const assignmentId = String(normalized?.id || '').trim();
+        if (!assignmentId) return normalized;
+
+        const serverItem = serverById.get(assignmentId);
+        const savedItem = savedById.get(assignmentId);
+        if (!serverItem || !savedItem) return normalized;
+        if (!isSameComparableAssignmentState(savedItem, serverItem)) {
+          return normalized;
+        }
+
+        return normalizeAssignmentLayout({
+          ...normalized,
+          version: toNonNegativeInt(serverItem?.version, normalized?.version ?? 0),
+          versionUpdatedAt:
+            typeof serverItem?.versionUpdatedAt === 'string' && serverItem.versionUpdatedAt.trim()
+              ? serverItem.versionUpdatedAt
+              : normalized?.versionUpdatedAt ?? null,
+        });
+      });
+    },
+    []
+  );
+  const alignAssignmentsForBoardPut = useCallback(
+    async (nextAssignments) => {
+      if (!activeOrgId) {
+        return Array.isArray(nextAssignments) ? nextAssignments : [];
+      }
+
+      try {
+        const latestBoardState = await requestJSON(
+          '/assignment-board-state' + buildQueryString({ orgId: activeOrgId }),
+          {
+            forceRefresh: true,
+            skipGlobalLoading: true,
+          }
+        );
+        return mergeServerAssignmentVersions(
+          nextAssignments,
+          latestBoardState?.assignments,
+          parsePersistSnapshotAssignments(lastSavedSnapshotRef.current)
+        );
+      } catch (_error) {
+        return Array.isArray(nextAssignments) ? nextAssignments : [];
+      }
+    },
+    [activeOrgId, mergeServerAssignmentVersions, parsePersistSnapshotAssignments]
+  );
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
     if (raw.toLowerCase().includes('assignment version conflict')) {
-      return '다른 사용자가 먼저 수정했습니다. 화면을 새로고침 후 다시 시도해 주세요.';
+      return '서버 최신 상태와 화면 버전이 어긋났습니다. 작업 배정 화면을 다시 불러온 뒤 다시 시도해 주세요.';
     }
     return raw || fallbackMessage;
   }, []);
@@ -2076,6 +2202,7 @@ const AssignBoard = () => {
     const normalizedAssignments = assignmentsToSave.map((item) =>
       syncAssignmentDateKeys(item, persistBaseDate)
     );
+    const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
     setPersisting(true);
     try {
       const response = await requestJSON(
@@ -2083,14 +2210,14 @@ const AssignBoard = () => {
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards, assignments: normalizedAssignments }),
+          body: JSON.stringify({ cards, assignments: assignmentsForPut }),
           skipGlobalLoading: true,
         }
       );
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         cards,
-        normalizedAssignments
+        assignmentsForPut
       );
       setCards(persistedCards);
       setAssignments(persistedAssignments);
@@ -2114,6 +2241,7 @@ const AssignBoard = () => {
     days,
     holidaySet,
     lineCapacityById,
+    alignAssignmentsForBoardPut,
     createPersistSnapshotText,
     isDirty,
     persistReady,
@@ -3612,9 +3740,10 @@ const AssignBoard = () => {
           : nextCardsWithProposal;
       } else {
         // reflow로 다른 assignment도 변경됨 — 전체 payload PUT
-        const assignmentsForPut = normalizedAssignments.map((assignment) =>
+        const preparedAssignmentsForPut = normalizedAssignments.map((assignment) =>
           syncAssignmentDateKeys(assignment, startDateRef.current)
         );
+        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
         const putResponse = await requestJSON('/assignment-board-state' + query, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -3681,6 +3810,7 @@ const AssignBoard = () => {
     holidaySet,
     createPersistSnapshotText,
     reflowLineAssignmentsAfterCtUpdate,
+    alignAssignmentsForBoardPut,
     blurActiveElement,
   ]);
   const handleAgreeLineRequest = useCallback(async () => {
@@ -4031,9 +4161,10 @@ const AssignBoard = () => {
     try {
       setSendingProposal(true);
       const query = buildQueryString({ orgId: activeOrgId });
-      const nextAssignmentsForPut = nextAssignments.map((assignment) =>
+      const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
         syncAssignmentDateKeys(assignment, startDateRef.current)
       );
+      const nextAssignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
       const response = await requestJSON('/assignment-board-state' + query, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -4078,6 +4209,7 @@ const AssignBoard = () => {
     createPersistSnapshotText,
     resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
+    alignAssignmentsForBoardPut,
     blurActiveElement,
     showNotification,
   ]);
@@ -4344,6 +4476,7 @@ const AssignBoard = () => {
     const newEnd   = toMonthEnd(newStart);
     applyViewRange(newStart, newEnd);
   };
+  const controlsDisabled = persisting;
 
   return (
     <AppPageContainer
@@ -4351,37 +4484,32 @@ const AssignBoard = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">작업 배정</Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              {persisting && <CircularProgress size={13} thickness={4.5} />}
-              <Typography variant="caption" color={persisting ? 'primary' : 'text.secondary'}>
-                {persisting ? '저장 중...' : isDirty ? '저장 안됨' : '저장됨'}
-              </Typography>
-            </Box>
             <Button
               variant="contained"
               onClick={handleSaveBoard}
               disabled={persisting || !persistReady || !isDirty}
+              sx={{ minWidth: 72 }}
             >
-              저장
+              {persisting ? <CircularProgress size={18} thickness={4.5} color="inherit" /> : '저장'}
             </Button>
             <Button
               variant="outlined"
               onClick={handleUndo}
-              disabled={historyStatus.undoCount === 0}
+              disabled={controlsDisabled || historyStatus.undoCount === 0}
             >
               되돌리기
             </Button>
             <Button
               variant="outlined"
               onClick={handleRedo}
-              disabled={historyStatus.redoCount === 0}
+              disabled={controlsDisabled || historyStatus.redoCount === 0}
             >
               다시하기
             </Button>
             <Button
               variant="outlined"
               onClick={handleResetAssignments}
-              disabled={!persistReady || !isDirty}
+              disabled={controlsDisabled || !persistReady || !isDirty}
             >
               초기화
             </Button>
@@ -4489,19 +4617,33 @@ const AssignBoard = () => {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">라인 타임라인</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <IconButton size="small" onClick={handlePrevMonthFrom} title="이전 달 1일" sx={{ p: 0.25 }}>
+                  <IconButton
+                    size="small"
+                    onClick={handlePrevMonthFrom}
+                    title="이전 달 1일"
+                    sx={{ p: 0.25 }}
+                    disabled={controlsDisabled}
+                  >
                     <ChevronLeftIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                   <CustomDatePicker
                     value={viewStart}
                     onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
+                    disabled={controlsDisabled}
                   />
                   <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
                   <CustomDatePicker
                     value={viewEnd}
                     onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
+                    disabled={controlsDisabled}
                   />
-                  <IconButton size="small" onClick={handleNextMonthTo} title="다음 달 말일" sx={{ p: 0.25 }}>
+                  <IconButton
+                    size="small"
+                    onClick={handleNextMonthTo}
+                    title="다음 달 말일"
+                    sx={{ p: 0.25 }}
+                    disabled={controlsDisabled}
+                  >
                     <ChevronRightIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                   <Stack sx={{ gap: '2px' }}>
@@ -4509,6 +4651,7 @@ const AssignBoard = () => {
                       size="small"
                       variant="outlined"
                       onClick={handleMonthPlus}
+                      disabled={controlsDisabled}
                       sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                     >
                       M+
@@ -4517,6 +4660,7 @@ const AssignBoard = () => {
                       size="small"
                       variant="outlined"
                       onClick={handleMonthMinus}
+                      disabled={controlsDisabled}
                       sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
                     >
                       M-
@@ -4579,9 +4723,9 @@ const AssignBoard = () => {
               : undefined
           }
         >
-          <MenuItem onClick={handleContextOpenDetail}>업무 상세</MenuItem>
+          <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>업무 상세</MenuItem>
           <Divider />
-          <MenuItem onClick={handleContextSplit} disabled={contextSplitDisabled}>
+          <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             수량 분할
           </MenuItem>
         </Menu>
@@ -4597,7 +4741,12 @@ const AssignBoard = () => {
               <Typography variant="subtitle2" color="text.secondary">
                 업무 상세
               </Typography>
-              <Button size="small" color="inherit" onClick={handleCloseDetail} disabled={sendingProposal}>
+              <Button
+                size="small"
+                color="inherit"
+                onClick={handleCloseDetail}
+                disabled={controlsDisabled || sendingProposal}
+              >
                 닫기
               </Button>
             </Box>
@@ -4931,7 +5080,7 @@ const AssignBoard = () => {
                         variant="outlined"
                         color="warning"
                         onClick={handleReopenAgreedAssignment}
-                        disabled={sendingProposal || !canReopenAgreedAssignment}
+                        disabled={controlsDisabled || sendingProposal || !canReopenAgreedAssignment}
                       >
                         재협의 개시
                       </Button>
@@ -4942,7 +5091,7 @@ const AssignBoard = () => {
                         variant="outlined"
                         color="success"
                         onClick={handleAgreeLineRequest}
-                        disabled={sendingProposal || !canAgreeLineRequest}
+                        disabled={controlsDisabled || sendingProposal || !canAgreeLineRequest}
                       >
                         요청 동의
                       </Button>
@@ -4951,7 +5100,7 @@ const AssignBoard = () => {
                       size="small"
                       variant="contained"
                       onClick={handleSendProposalToLineLeader}
-                      disabled={!canResendProposal || sendingProposal}
+                      disabled={controlsDisabled || !canResendProposal || sendingProposal}
                     >
                       {sendingProposal
                         ? detailInLineRequestFlow
@@ -4967,7 +5116,7 @@ const AssignBoard = () => {
                         variant="outlined"
                         color="error"
                         onClick={handleCancelAssignmentFromLineRequest}
-                        disabled={sendingProposal}
+                        disabled={controlsDisabled || sendingProposal}
                       >
                         배정 취소
                       </Button>
