@@ -1719,9 +1719,77 @@ const normalizeOrderItems = (value: any) =>
       totalQuantity: sumOrderItemQuantity(item),
     }));
 
+const syncOrderItemColorSnapshots = async (items: any) => {
+  const normalizedItems = normalizeOrderItems(items);
+  const colorIds = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => toPositiveIntOrNull(item?.colorId))
+        .filter((value): value is number => value !== null)
+    )
+  );
+
+  if (colorIds.length === 0) {
+    return normalizedItems.map((item) => {
+      const colorCode =
+        resolveOptionalString(item?.colorCode ?? item?.color, null) ?? "";
+      const colorName =
+        resolveOptionalString(item?.colorName ?? item?.color, null) ??
+        colorCode;
+      return {
+        ...item,
+        colorId: toPositiveIntOrNull(item?.colorId),
+        colorCode,
+        colorName,
+      };
+    });
+  }
+
+  const colors = await prisma.attrColor.findMany({
+    where: { id: { in: colorIds } },
+    select: { id: true, code: true, name: true },
+  });
+  const colorById = colors.reduce((map, color) => {
+    map.set(color.id, color);
+    return map;
+  }, new Map<number, { id: number; code: string; name: string }>());
+
+  return normalizedItems.map((item) => {
+    const colorId = toPositiveIntOrNull(item?.colorId);
+    const linkedColor = colorId ? colorById.get(colorId) ?? null : null;
+    const colorCode =
+      resolveOptionalString(linkedColor?.code, null) ??
+      resolveOptionalString(item?.colorCode ?? item?.color, null) ??
+      "";
+    const colorName =
+      resolveOptionalString(linkedColor?.name, null) ??
+      resolveOptionalString(item?.colorName ?? item?.color, null) ??
+      colorCode;
+
+    return {
+      ...item,
+      colorId: linkedColor?.id ?? null,
+      colorCode,
+      colorName,
+    };
+  });
+};
+
 const buildOrderId = () =>
   `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_CREATE_SERIALIZABLE_RETRIES = 2;
+const WORK_ORDER_ITEM_WITH_COLOR_INCLUDE = {
+  orderBy: { sortOrder: "asc" as const },
+  include: {
+    color: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
 
 const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   const fallbackOrderId =
@@ -1935,7 +2003,7 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
           }
           const createdWithItems = await tx.workOrder.findUnique({
             where: { id: created.id },
-            include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
+            include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
           });
           return { order: createdWithItems ?? created, created: true };
         },
@@ -1978,9 +2046,9 @@ const workOrderItemToItemShape = (row: any) => ({
   styleId: row.styleId ?? "",
   styleName: row.styleName ?? "",
   styleCode: row.styleCode ?? "",
-  colorId: row.colorId ?? null,
-  colorCode: row.colorCode ?? "",
-  colorName: row.colorName ?? "",
+  colorId: toPositiveIntOrNull(row?.color?.id ?? row?.colorId),
+  colorCode: row?.color?.code ?? row.colorCode ?? "",
+  colorName: row?.color?.name ?? row.colorName ?? row?.color?.code ?? "",
   gender: row.gender ?? "M",
   sizeQuantities: row.sizeQuantities ?? {},
   totalQuantity: row.totalQuantity ?? 0,
@@ -3491,7 +3559,7 @@ const loadAssignmentDisplayReferenceMaps = async (
         customerName: true,
         buyerOrgName: true,
         items: true,
-        workOrderItems: { orderBy: { sortOrder: "asc" } },
+        workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
       },
     }),
     prisma.style.findMany({
@@ -4018,6 +4086,61 @@ const seedAttributesIfEmpty = async (orgId: number) => {
   ]);
 };
 
+const normalizeManagedAttributeCode = (value: any): string =>
+  String(value ?? "")
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+const buildAutoManagedAttributeCodeBase = (
+  name: any,
+  fallbackPrefix = "ITEM"
+): string => normalizeManagedAttributeCode(name) || fallbackPrefix;
+
+const generateUniqueManagedAttributeCode = ({
+  usedCodes,
+  name,
+  fallbackPrefix = "ITEM",
+}: {
+  usedCodes: Set<string>;
+  name: any;
+  fallbackPrefix?: string;
+}) => {
+  const baseCode = buildAutoManagedAttributeCodeBase(name, fallbackPrefix);
+  let candidate = baseCode;
+  let suffix = 2;
+
+  while (usedCodes.has(candidate)) {
+    candidate = `${baseCode}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+};
+
+const resolveColorAttributeCode = ({
+  code,
+  name,
+  usedCodes,
+}: {
+  code: any;
+  name: any;
+  usedCodes: Set<string>;
+}) => {
+  const explicitCode = normalizeManagedAttributeCode(code);
+  if (explicitCode) return explicitCode;
+  if (!String(name ?? "").trim()) return "";
+  return generateUniqueManagedAttributeCode({
+    usedCodes,
+    name,
+    fallbackPrefix: "COLOR",
+  });
+};
+
 const syncSection = async (model: any, orgId: number, items: any, options: any = {}) => {
   const safeItems = Array.isArray(items) ? items : [];
   const incomingIds = safeItems
@@ -4026,11 +4149,12 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
 
   const existing = await model.findMany({
     where: { orgId },
-    select: { id: true },
+    select: { id: true, code: true },
   });
   const existingIds = existing.map((item: any) => item.id);
   const incomingIdSet = new Set(incomingIds);
   const deleteIds = existingIds.filter((id: any) => !incomingIdSet.has(id));
+  const deleteIdSet = new Set(deleteIds);
   if (deleteIds.length > 0 && typeof options.beforeDeleteIds === "function") {
     await options.beforeDeleteIds(deleteIds);
   }
@@ -4040,24 +4164,70 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
 
   const creates = [];
   const updates = [];
+  const existingCodeById = existing.reduce((map: Map<number, string>, item: any) => {
+    map.set(item.id, String(item.code ?? "").trim());
+    return map;
+  }, new Map<number, string>());
+  const usedCodes = existing.reduce((set: Set<string>, item: any) => {
+    if (deleteIdSet.has(item.id)) return set;
+    const trackedCode =
+      typeof options.trackCode === "function"
+        ? options.trackCode(item.code)
+        : String(item.code ?? "").trim();
+    if (trackedCode) {
+      set.add(trackedCode);
+    }
+    return set;
+  }, new Set<string>());
 
   for (const item of safeItems) {
-    const code = (item.code ?? "").trim();
+    const itemId = isNumericId(item.id) ? toId(item.id) : null;
+    const existingCode = itemId ? existingCodeById.get(itemId) ?? "" : "";
+    const trackedExistingCode =
+      typeof options.trackCode === "function"
+        ? options.trackCode(existingCode)
+        : String(existingCode ?? "").trim();
+    if (trackedExistingCode) {
+      usedCodes.delete(trackedExistingCode);
+    }
+
+    let code = (item.code ?? "").trim();
     const name = (item.name ?? "").trim();
+    if (typeof options.resolveCode === "function") {
+      code = options.resolveCode({
+        code,
+        name,
+        item,
+        itemId,
+        existingCode,
+        usedCodes,
+      });
+    }
 
     if (!code && !name) {
+      if (trackedExistingCode) {
+        usedCodes.add(trackedExistingCode);
+      }
       continue;
     }
 
-    if (isNumericId(item.id)) {
+    if (itemId) {
       updates.push(
         model.updateMany({
-          where: { id: toId(item.id), orgId },
+          where: { id: itemId, orgId },
           data: { code, name },
         })
       );
     } else {
       creates.push({ orgId, code, name });
+    }
+
+    const trackedNextCode =
+      typeof options.trackCode === "function"
+        ? options.trackCode(code)
+        : String(code ?? "").trim();
+    if (trackedNextCode) {
+      usedCodes.add(trackedNextCode);
     }
   }
 
@@ -6329,7 +6499,7 @@ app.get("/assignment-cards", async (req, res) => {
         customerName: true,
         buyerOrgName: true,
         items: true,
-        workOrderItems: { orderBy: { sortOrder: "asc" } },
+        workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
       },
     }),
     prisma.style.findMany({
@@ -7071,7 +7241,7 @@ app.get("/orders", async (req, res) => {
   const orders = await prisma.workOrder.findMany({
     where: { OR: getOrderAccessWhere(organization.id) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
   });
   res.json(orders.map(toOrderResponse));
 });
@@ -7103,6 +7273,11 @@ app.post("/orders", async (req, res) => {
   normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
   normalized.sellerOrgName = seller.name ?? "";
+  normalized.items = await syncOrderItemColorSnapshots(normalized.items);
+  normalized.totalQuantity = normalized.items.reduce(
+    (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
+    0
+  );
 
   const { order, created } = await createOrReuseSharedOrder({ normalized });
   res.status(created ? 201 : 200).json(toOrderResponse(order));
@@ -7150,6 +7325,11 @@ app.put("/orders/:orderId", async (req, res) => {
   normalized.customerName = buyer.name ?? "";
   normalized.sellerOrgId = seller.id;
   normalized.sellerOrgName = seller.name ?? "";
+  normalized.items = await syncOrderItemColorSnapshots(normalized.items);
+  normalized.totalQuantity = normalized.items.reduce(
+    (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
+    0
+  );
 
   const orderNumberConflict = await findSharedOrderConflict({
     buyerOrgId: buyer.id,
@@ -7196,7 +7376,7 @@ app.put("/orders/:orderId", async (req, res) => {
     }
     return tx.workOrder.findUnique({
       where: { id: updatedOrder.id },
-      include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
+      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
     });
   }, { timeout: 30000 });
 
@@ -7982,6 +8162,46 @@ app.get("/attributes", async (req, res) => {
   });
 });
 
+app.post("/attributes/colors", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const name = resolveOptionalString(req.body?.name, null);
+  const code = resolveOptionalString(req.body?.code, null);
+  if (!name) {
+    return res.status(400).json({ ok: false, error: "name is required" });
+  }
+
+  const existingCodes = await prisma.attrColor.findMany({
+    where: { orgId: organization.id },
+    select: { code: true },
+  });
+  const usedCodes = existingCodes.reduce((set: Set<string>, item) => {
+    const trackedCode = normalizeManagedAttributeCode(item.code);
+    if (trackedCode) {
+      set.add(trackedCode);
+    }
+    return set;
+  }, new Set<string>());
+
+  const nextCode = resolveColorAttributeCode({ code, name, usedCodes });
+  const created = await prisma.attrColor.create({
+    data: {
+      orgId: organization.id,
+      code: nextCode,
+      name,
+    },
+  });
+
+  res.status(201).json(created);
+});
+
 app.put("/attributes", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -8004,11 +8224,12 @@ app.put("/attributes", async (req, res) => {
 
   if (payload.colors) {
     tasks.push(
-      syncSection(prisma.attrColor, organization.id, payload.colors).then(
-        (data) => {
-          response.colors = data;
-        }
-      )
+      syncSection(prisma.attrColor, organization.id, payload.colors, {
+        resolveCode: resolveColorAttributeCode,
+        trackCode: normalizeManagedAttributeCode,
+      }).then((data) => {
+        response.colors = data;
+      })
     );
   }
   if (payload.categories) {
@@ -8527,6 +8748,9 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     prismaErrorTarget.includes("buyerOrgId") &&
     prismaErrorTarget.includes("sellerOrgId") &&
     prismaErrorTarget.includes("orderNumber");
+  const hasAttributeCodeTargetFields =
+    prismaErrorTarget.includes("orgId") &&
+    prismaErrorTarget.includes("code");
   const isOrderNumberByPairUniqueError =
     prismaErrorCode === "P2002" &&
     (hasSharedOrderTargetFields ||
@@ -8549,6 +8773,18 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     return res.status(409).json({
       ok: false,
       error: "order number already exists for this customer",
+    });
+  }
+  const isAttributeCodeUniqueError =
+    prismaErrorCode === "P2002" &&
+    (hasAttributeCodeTargetFields ||
+      prismaErrorTarget.some((item) =>
+        /Attr(Color|Category|Role|Process)_orgId_code_key/i.test(item)
+      ));
+  if (isAttributeCodeUniqueError) {
+    return res.status(409).json({
+      ok: false,
+      error: "attribute code already exists in this organization",
     });
   }
 

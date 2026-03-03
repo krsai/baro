@@ -16,6 +16,30 @@ const normalizeAttributeItem = (item = {}) => ({
   name: String(item.name ?? '').trim(),
 });
 
+const mergeAttributeItem = (items = [], nextItem) => {
+  const normalizedNextItem = normalizeAttributeItem(nextItem);
+  const nextId = Number(normalizedNextItem.id);
+  const nextCode = String(normalizedNextItem.code || '').trim();
+  let replaced = false;
+
+  const mergedItems = normalizeArray(items).map((item) => {
+    const normalizedItem = normalizeAttributeItem(item);
+    const itemId = Number(normalizedItem.id);
+    const sameId =
+      Number.isInteger(nextId) &&
+      nextId > 0 &&
+      Number.isInteger(itemId) &&
+      itemId === nextId;
+    const sameCode = Boolean(nextCode) && normalizedItem.code === nextCode;
+    if (!sameId && !sameCode) return normalizedItem;
+    replaced = true;
+    return normalizedNextItem;
+  });
+
+  if (replaced) return mergedItems;
+  return [...mergedItems, normalizedNextItem];
+};
+
 const normalizeAttributes = (data = {}) => ({
   colors: normalizeArray(data?.colors).map(normalizeAttributeItem),
   categories: normalizeArray(data?.categories).map(normalizeAttributeItem),
@@ -140,6 +164,38 @@ export const updateAttributes = async (payload, options = {}) => {
   }
   attributesInFlight.delete(cacheKey);
   return normalizedPartial;
+};
+
+export const createColorAttribute = async (payload, options = {}) => {
+  const orgId = toPositiveOrgId(options?.orgId);
+  const hasOrgFilter = orgId !== null;
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+  const body = {
+    code: String(payload?.code ?? '').trim(),
+    name: String(payload?.name ?? '').trim(),
+  };
+  const data = await requestJSON(
+    `/attributes/colors${buildQueryString({
+      orgId: hasOrgFilter ? orgId : undefined,
+    })}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  );
+  const normalizedColor = normalizeAttributeItem(data);
+  const previous = readFreshAttributesCache(cacheKey);
+  if (previous) {
+    writeAttributesCache(cacheKey, {
+      ...previous,
+      colors: mergeAttributeItem(previous.colors, normalizedColor),
+    });
+  } else {
+    attributesCache.delete(cacheKey);
+  }
+  attributesInFlight.delete(cacheKey);
+  return normalizedColor;
 };
 
 export const fetchProcessAttributes = async (options = {}) => {

@@ -23,11 +23,13 @@ import {
   Autocomplete,
   Stack,
 } from '@mui/material';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import SearchableSelect from '../../../components/SearchableSelect';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -36,7 +38,7 @@ import {
   clearOrderDraft,
 } from '../../../utils/localData';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
-import { fetchAttributes } from '../../../utils/attributeApi';
+import { createColorAttribute, fetchAttributes } from '../../../utils/attributeApi';
 import {
   SIZE_CODES,
   GENDER_CODES,
@@ -62,6 +64,11 @@ const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const GENDER_OPTION_LABELS = {
+  M: '남성',
+  W: '여성',
+  U: '공용',
+};
 const ORDER_LIST_COLUMN_WIDTHS = {
   orderNumber: '12%',
   buyer: '18%',
@@ -113,6 +120,17 @@ const getStyleGroupKey = (item) => {
 };
 const getStyleIdentity = (item) => item?.styleId || item?.styleName || item?.styleCode || '';
 const normalizeColorCode = (value) => String(value ?? '').trim().toUpperCase();
+const normalizeColorNameKey = (value) => String(value ?? '').trim().toLowerCase();
+const toPositiveColorId = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const getItemColorIdentity = (item) => {
+  const colorId = toPositiveColorId(item?.colorId);
+  if (colorId) return `id:${colorId}`;
+  const colorCode = normalizeColorCode(item?.colorCode || item?.colorId || item?.color || '');
+  return colorCode ? `code:${colorCode}` : '';
+};
 const normalizeBoardKey = (value) => String(value ?? '').trim();
 const normalizeBoardGender = (value) => {
   const code = normalizeGenderCode(value, '').toUpperCase();
@@ -215,11 +233,11 @@ const buildOrderVariantMapForBoard = ({ orderId, items }) => {
     return map;
   }, new Map());
 };
-const getStyleColorGenderKey = (styleIdentity, colorCode, gender) => {
+const getStyleColorGenderKey = (styleIdentity, colorIdentity, gender) => {
   const normalizedGender = normalizeGenderCode(gender, '');
-  const normalizedColorCode = normalizeColorCode(colorCode);
-  if (!styleIdentity || !normalizedColorCode || !normalizedGender) return '';
-  return `${styleIdentity}::${normalizedColorCode}::${normalizedGender}`;
+  const normalizedColorIdentity = String(colorIdentity || '').trim();
+  if (!styleIdentity || !normalizedColorIdentity || !normalizedGender) return '';
+  return `${styleIdentity}::${normalizedColorIdentity}::${normalizedGender}`;
 };
 const getItemColorCode = (item) =>
   normalizeColorCode(item?.colorCode || item?.colorId || item?.color || '');
@@ -228,7 +246,7 @@ const hasDuplicateStyleColorGender = (items = []) => {
   for (const item of items) {
     const key = getStyleColorGenderKey(
       getStyleIdentity(item),
-      getItemColorCode(item),
+      getItemColorIdentity(item),
       item?.gender
     );
     if (!key) continue;
@@ -237,7 +255,52 @@ const hasDuplicateStyleColorGender = (items = []) => {
   }
   return false;
 };
+const mergeColorOption = (items = [], nextItem) => {
+  const normalizedNextItem = {
+    id: nextItem?.id ?? null,
+    code: normalizeColorCode(nextItem?.code),
+    name: String(nextItem?.name || nextItem?.code || '').trim(),
+  };
+  if (!normalizedNextItem.code) return items;
+
+  const nextId = toPositiveColorId(normalizedNextItem.id);
+  let replaced = false;
+  const merged = (Array.isArray(items) ? items : []).map((item) => {
+    const normalizedItem = {
+      id: item?.id ?? null,
+      code: normalizeColorCode(item?.code),
+      name: String(item?.name || item?.code || '').trim(),
+    };
+    const sameId = nextId && toPositiveColorId(normalizedItem.id) === nextId;
+    const sameCode = normalizedItem.code && normalizedItem.code === normalizedNextItem.code;
+    if (!sameId && !sameCode) return normalizedItem;
+    replaced = true;
+    return normalizedNextItem;
+  });
+  return replaced ? merged : [...merged, normalizedNextItem];
+};
+const setInputElementInMap = (mapRef, key, node) => {
+  if (!key) return;
+  if (node) {
+    mapRef.current.set(key, node);
+    return;
+  }
+  mapRef.current.delete(key);
+};
+const focusInputElementInMap = (mapRef, key) => {
+  if (!key) return;
+  requestAnimationFrame(() => {
+    const node = mapRef.current.get(key);
+    if (node && typeof node.focus === 'function') {
+      node.focus();
+      if (typeof node.select === 'function') {
+        node.select();
+      }
+    }
+  });
+};
 const normalizeTextKey = (value) => String(value || '').trim().toLowerCase();
+const filterColorOptions = createFilterOptions();
 const hasDuplicateOrderNumberByCustomer = ({
   orders = [],
   currentOrderId = '',
@@ -494,12 +557,16 @@ const OrderList = () => {
   const [currentOrgOption, setCurrentOrgOption] = useState(null);
   const [partyRoleHint, setPartyRoleHint] = useState('');
   const [loadingParties, setLoadingParties] = useState(false);
+  const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
   const detailInitKeyRef = useRef(null);
   const styleAddButtonRef = useRef(null);
+  const colorInputRefs = useRef(new Map());
+  const genderInputRefs = useRef(new Map());
+  const sizeInputRefs = useRef(new Map());
   const fixedSellerOrg = useMemo(() => {
     if (partyRoleHint !== 'MANUFACTURER') return null;
     const currentOrgId = toOrgId(currentOrgOption?.id);
@@ -734,8 +801,20 @@ const OrderList = () => {
           code: normalizeColorCode(item?.code),
           name: String(item?.name || item?.code || '').trim(),
         }))
-        .filter((item) => item.code),
+        .filter((item) => item.code)
+        .sort((a, b) =>
+          String(a.name || a.code).localeCompare(String(b.name || b.code), 'ko')
+        ),
     [colorOptions]
+  );
+  const colorOptionById = useMemo(
+    () =>
+      new Map(
+        normalizedColorOptions
+          .map((item) => [toPositiveColorId(item.id), item])
+          .filter(([id]) => Boolean(id))
+      ),
+    [normalizedColorOptions]
   );
   const colorOptionByCode = useMemo(
     () =>
@@ -747,6 +826,61 @@ const OrderList = () => {
       ),
     [normalizedColorOptions]
   );
+  const colorOptionByNameKey = useMemo(
+    () =>
+      new Map(
+        normalizedColorOptions.map((item) => [
+          normalizeColorNameKey(item.name || item.code),
+          item,
+        ])
+      ),
+    [normalizedColorOptions]
+  );
+  const genderSelectOptions = useMemo(
+    () =>
+      GENDER_OPTIONS.map((code) => ({
+        code,
+        label: GENDER_OPTION_LABELS[code] || code,
+      })),
+    []
+  );
+  const genderOptionByCode = useMemo(
+    () => new Map(genderSelectOptions.map((item) => [item.code, item])),
+    [genderSelectOptions]
+  );
+  const getSelectedColorOption = (item) => {
+    const colorId = toPositiveColorId(item?.colorId);
+    if (colorId) {
+      return colorOptionById.get(colorId) || null;
+    }
+    const colorCode = getItemColorCode(item);
+    return colorOptionByCode.get(colorCode) || null;
+  };
+  const getSelectedGenderOption = (item) =>
+    genderOptionByCode.get(normalizeGenderCode(item?.gender, 'M')) || null;
+  const filterColorAutocompleteOptions = (options, params) => {
+    const filtered = filterColorOptions(options, params);
+    const inputValue = String(params?.inputValue || '').trim();
+    if (!inputValue) return filtered;
+    const normalizedInputName = normalizeColorNameKey(inputValue);
+    const normalizedInputCode = normalizeColorCode(inputValue);
+    if (
+      colorOptionByNameKey.has(normalizedInputName) ||
+      colorOptionByCode.has(normalizedInputCode)
+    ) {
+      return filtered;
+    }
+    return [
+      ...filtered,
+      {
+        id: null,
+        code: '',
+        name: inputValue,
+        inputValue,
+        isCreateOption: true,
+      },
+    ];
+  };
   const styleProcessSummaryById = useMemo(() => {
     return styles.reduce((map, style) => {
       const styleId = normalizeBoardKey(style?.id);
@@ -954,7 +1088,19 @@ const OrderList = () => {
     });
   };
 
-  const handleStyleChange = (itemIdOrIds, style) => {
+  const focusColorInput = (itemId) => {
+    focusInputElementInMap(colorInputRefs, itemId);
+  };
+  const focusGenderInput = (itemId) => {
+    focusInputElementInMap(genderInputRefs, itemId);
+  };
+  const focusFirstSizeInput = (itemId) => {
+    focusInputElementInMap(sizeInputRefs, `${itemId}::${SIZE_COLUMNS[0] || ''}`);
+  };
+  const isTabAutocompleteSelection = (event, reason) =>
+    event?.key === 'Tab' && reason === 'selectOption';
+
+  const handleStyleChange = (itemIdOrIds, style, options = {}) => {
     if (!selectedBuyerName) {
       showNotification('발주자를 먼저 선택해 주세요.', 'warning');
       return;
@@ -999,38 +1145,108 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
+    if (options.focusNext && options.focusItemId) {
+      focusColorInput(options.focusItemId);
+    }
   };
 
-  const handleColorChange = (itemId, value) => {
-    const nextColorCode = normalizeColorCode(value);
-    const selectedColor = colorOptionByCode.get(nextColorCode) || null;
+  const applyColorSelection = (itemId, selectedColor, options = {}) => {
+    const nextColorId = toPositiveColorId(selectedColor?.id);
+    const nextColorCode = normalizeColorCode(selectedColor?.code);
+    const nextColorName = String(selectedColor?.name || selectedColor?.code || '').trim();
     const previewItems = formData.items.map((item) =>
       item.id === itemId
         ? {
             ...item,
-            colorId: selectedColor?.id ?? null,
+            colorId: nextColorId,
             colorCode: nextColorCode,
-            colorName: selectedColor?.name || '',
+            colorName: nextColorName,
           }
         : item
     );
     if (hasDuplicateStyleColorGender(previewItems)) {
       showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
-      return;
+      return false;
     }
     setFormData((prev) => ({
       ...prev,
       items: previewItems,
     }));
+    if (options.focusNext) {
+      focusGenderInput(itemId);
+    }
+    return true;
   };
 
-  const handleGenderChange = (itemId, value) => {
-    if (!GENDER_OPTIONS.includes(value)) return;
+  const handleCreateColorOption = async (itemId, rawName, options = {}) => {
+    const colorName = String(rawName || '').trim();
+    if (!colorName) {
+      return;
+    }
+
+    const existingColor =
+      colorOptionByNameKey.get(normalizeColorNameKey(colorName)) || null;
+    if (existingColor) {
+      applyColorSelection(itemId, existingColor, options);
+      return;
+    }
+
+    if (creatingColorItemId) {
+      return;
+    }
+
+    setCreatingColorItemId(itemId);
+    try {
+      const createdColor = await createColorAttribute(
+        { name: colorName },
+        { orgId: activeOrgId }
+      );
+      const normalizedCreatedColor = {
+        id: createdColor?.id ?? null,
+        code: normalizeColorCode(createdColor?.code),
+        name: String(createdColor?.name || createdColor?.code || '').trim(),
+      };
+      setColorOptions((prev) => mergeColorOption(prev, normalizedCreatedColor));
+      const applied = applyColorSelection(itemId, normalizedCreatedColor, options);
+      if (applied) {
+        showNotification('새 색상을 추가했습니다.', 'success');
+      }
+    } catch (error) {
+      showNotification(error?.message || '색상 추가 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setCreatingColorItemId('');
+    }
+  };
+
+  const handleColorChange = async (itemId, value, options = {}) => {
+    if (!value) {
+      applyColorSelection(itemId, null, options);
+      return;
+    }
+    if (typeof value === 'string') {
+      await handleCreateColorOption(itemId, value, options);
+      return;
+    }
+    if (value?.isCreateOption) {
+      await handleCreateColorOption(
+        itemId,
+        value.inputValue || value.name || '',
+        options
+      );
+      return;
+    }
+    applyColorSelection(itemId, value, options);
+  };
+
+  const handleGenderChange = (itemId, value, options = {}) => {
+    const nextGender =
+      typeof value === 'string' ? value : value?.code || value?.value || '';
+    if (!GENDER_OPTIONS.includes(nextGender)) return;
     const previewItems = formData.items.map((item) =>
       item.id === itemId
         ? {
             ...item,
-            gender: value,
+            gender: nextGender,
           }
         : item
     );
@@ -1045,11 +1261,14 @@ const OrderList = () => {
         item.id === itemId
           ? {
               ...item,
-              gender: value,
+              gender: nextGender,
             }
           : item
       ),
     }));
+    if (options.focusNext) {
+      focusFirstSizeInput(itemId);
+    }
   };
 
   const handleSizeQuantityChange = (itemId, sizeKey, value) => {
@@ -1645,6 +1864,8 @@ const OrderList = () => {
                     const isFirstRow = rowIndex === 0;
                     const rowStyleIdentity = getStyleIdentity(item);
                     const rowColorCode = getItemColorCode(item);
+                    const selectedColorOption = getSelectedColorOption(item);
+                    const selectedGenderOption = getSelectedGenderOption(item);
                     const disabledGenderSet = new Set(
                       formData.items
                         .filter(
@@ -1680,20 +1901,23 @@ const OrderList = () => {
                               backgroundColor: '#f8fafc !important',
                             }}
                           >
-                            <Autocomplete
+                            <SearchableSelect
                               options={availableStyleOptions}
                               value={groupStyleOption}
                               disabled={!selectedBuyerName}
-                              onChange={(_event, newValue) => handleStyleChange(group.rowItemIds, newValue)}
+                              onChange={(event, newValue, reason) =>
+                                handleStyleChange(group.rowItemIds, newValue, {
+                                  focusNext: isTabAutocompleteSelection(event, reason),
+                                  focusItemId: group.rows[0]?.item?.id || '',
+                                })
+                              }
                               getOptionLabel={(option) => option?.name || ''}
                               isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                              renderInput={(params) => (
-                                <TextField
-                                  {...params}
-                                  size="small"
-                                  placeholder="스타일명 검색"
-                                />
-                              )}
+                              autoHighlight
+                              textFieldProps={{
+                                size: 'small',
+                                placeholder: '스타일명 검색',
+                              }}
                               noOptionsText={
                                 selectedBuyerName
                                   ? '등록된 스타일이 없습니다.'
@@ -1724,40 +1948,78 @@ const OrderList = () => {
                         )}
                         <TableCell>
                           <FormControl fullWidth size="small">
-                            <Select
-                              value={rowColorCode}
-                              onChange={(event) => handleColorChange(item.id, event.target.value)}
-                              displayEmpty
-                              disabled={!rowStyleIdentity}
-                            >
-                              <MenuItem value="">
-                                <em>색상 선택</em>
-                              </MenuItem>
-                              {normalizedColorOptions.map((color) => (
-                                <MenuItem key={color.code} value={color.code}>
-                                  {color.name || color.code}
-                                </MenuItem>
-                              ))}
-                            </Select>
+                            <SearchableSelect
+                              options={normalizedColorOptions}
+                              value={selectedColorOption}
+                              disabled={!rowStyleIdentity || creatingColorItemId === item.id}
+                              loading={creatingColorItemId === item.id}
+                              onChange={(event, newValue, reason) => {
+                                void handleColorChange(item.id, newValue, {
+                                  focusNext: isTabAutocompleteSelection(event, reason),
+                                });
+                              }}
+                              filterOptions={filterColorAutocompleteOptions}
+                              getOptionLabel={(option) => {
+                                if (typeof option === 'string') return option;
+                                if (option?.isCreateOption) {
+                                  return option.inputValue || option.name || '';
+                                }
+                                return option?.name || option?.code || '';
+                              }}
+                              isOptionEqualToValue={(option, value) => {
+                                const optionId = toPositiveColorId(option?.id);
+                                const valueId = toPositiveColorId(value?.id);
+                                if (optionId && valueId) {
+                                  return optionId === valueId;
+                                }
+                                return normalizeColorCode(option?.code) === normalizeColorCode(value?.code);
+                              }}
+                              renderOption={(props, option) => (
+                                <li {...props}>
+                                  {option?.isCreateOption
+                                    ? `새 색상 추가: ${option.inputValue || option.name || ''}`
+                                    : option?.name || option?.code || ''}
+                                </li>
+                              )}
+                              autoHighlight
+                              selectOnFocus
+                              clearOnBlur
+                              handleHomeEndKeys
+                              noOptionsText="입력한 이름으로 새 색상을 추가할 수 있습니다."
+                              textFieldProps={{
+                                size: 'small',
+                                placeholder: '색상 검색 또는 추가',
+                                inputRef: (node) =>
+                                  setInputElementInMap(colorInputRefs, item.id, node),
+                              }}
+                            />
                           </FormControl>
                         </TableCell>
                         <TableCell>
                           <FormControl fullWidth size="small">
-                            <Select
-                              value={normalizeGenderCode(item.gender, 'M')}
-                              onChange={(event) => handleGenderChange(item.id, event.target.value)}
+                            <SearchableSelect
+                              options={genderSelectOptions}
+                              value={selectedGenderOption}
+                              onChange={(event, newValue, reason) =>
+                                handleGenderChange(item.id, newValue, {
+                                  focusNext: isTabAutocompleteSelection(event, reason),
+                                })
+                              }
+                              getOptionLabel={(option) => option?.label || option?.code || ''}
+                              isOptionEqualToValue={(option, value) => option?.code === value?.code}
+                              getOptionDisabled={(option) =>
+                                Boolean(rowStyleIdentity) && disabledGenderSet.has(option?.code)
+                              }
+                              autoHighlight
                               disabled={!rowStyleIdentity || !rowColorCode}
-                            >
-                              {GENDER_OPTIONS.map((gender) => (
-                                <MenuItem
-                                  key={gender}
-                                  value={gender}
-                                  disabled={Boolean(rowStyleIdentity) && disabledGenderSet.has(gender)}
-                                >
-                                  {gender}
-                                </MenuItem>
-                              ))}
-                            </Select>
+                              noOptionsText="선택 가능한 성별이 없습니다."
+                              textFieldProps={{
+                                size: 'small',
+                                placeholder: '성별 선택',
+                                inputRef: (node) =>
+                                  setInputElementInMap(genderInputRefs, item.id, node),
+                              }}
+                            />
                           </FormControl>
                         </TableCell>
                         {SIZE_COLUMNS.map((size) => (
@@ -1766,6 +2028,9 @@ const OrderList = () => {
                               value={normalizedSizeQuantities[size]}
                               onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
                               onKeyDown={size === LAST_SIZE_COLUMN ? handleLastSizeInputKeyDown : undefined}
+                              inputRef={(node) =>
+                                setInputElementInMap(sizeInputRefs, `${item.id}::${size}`, node)
+                              }
                               size="small"
                               type="text"
                               placeholder="0"
