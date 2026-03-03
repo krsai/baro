@@ -312,7 +312,8 @@ Organization (MANUFACTURER | BRAND)
        ※ atParams: WorkRecord 기반 자동 산출. 현재는 스타일+공정 단위 관측점으로 WLS 회귀(`t=a*q+b`) 후 `a,b`를 저장. 데이터 부족 시 null 또는 `b=0` fallback
        ※ ct: ST(q) 역할. 운영팀이 수동 ST를 관리할 때 저장되는 기준값
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
-  └─ WorkOrder (items: JSON)
+  └─ WorkOrder
+       └─ WorkOrderItem (styleId, colorId→AttrColor FK, colorCode, colorName, gender, sizeQuantities, sortOrder)
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
   └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 수동 저장 스냅샷(upsert)
        ※ assignments: 라인 타임라인에 배정된 카드 배열 (AssignmentPlan의 프론트엔드 표현)
@@ -698,3 +699,42 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - `MINUS` DELTA는 동일 조건의 기존 미완료 배정에서 수량을 차감한다. 차감 결과 수량이 `0`이면 해당 배정은 삭제된다.
 - 수주 수량 변경 후 보드 재구성 시 **같은 주문의 DELTA 카드만** 함께 정리한다.
 - 파일: `frontend/src/pages/App/production/ProductionPlanBoard.jsx`, `frontend/src/utils/quantityChangeBoard.mjs`, `frontend/src/pages/App/order/OrderList.jsx`
+
+## 오늘 반영 메모 (2026-03-03)
+
+### WorkOrder.items JSON → WorkOrderItem 테이블 분리 (FK 연결)
+
+#### 배경
+- 기존 `WorkOrder.items`는 `Json?` 필드로 색상/스타일/수량 데이터를 저장해 `AttrColor`와 실질적 FK 관계가 없었다.
+- 색상 코드/이름을 수정해도 기존 주문 데이터에 반영되지 않아 일관성 문제 발생.
+- `WorkRecord`도 `colorId`, `processCode`를 단순 값으로 저장해 동일한 문제.
+
+#### 변경 내용
+
+**DB/스키마**
+- `WorkOrderItem` 테이블 신규 생성: `workOrderId` → `WorkOrder` FK (onDelete: Cascade), `colorId` → `AttrColor` FK (onDelete: SetNull)
+- `WorkOrder.items Json?` 컬럼은 하위호환을 위해 유지 (향후 별도 마이그레이션으로 DROP 예정)
+- `WorkRecord`에 `processId Int?` 컬럼 추가: `AttrProcess` FK (onDelete: SetNull)
+- `WorkRecord.colorId` → `AttrColor` FK 추가 (onDelete: SetNull), 고아 colorId는 NULL 처리 후 FK 적용
+- 마이그레이션: `backend/prisma/migrations/20260303000000_work_order_item_fks/migration.sql` (STEP 1-5)
+  - STEP 2: 기존 `WorkOrder.items` JSON → `WorkOrderItem` 행으로 데이터 이전 (PL/pgSQL)
+  - STEP 4: `processCode` → `AttrProcess` 조회해 `processId` 초기값 채우기
+- 마이그레이션은 `prisma migrate` CLI 미사용(DIRECT_URL 미설정) → Node.js `$executeRawUnsafe` 스크립트로 실행
+
+**백엔드 (index.ts)**
+- `workOrderItemToItemShape(row)` 헬퍼: `WorkOrderItem` 행 → 기존 `items` 배열 원소 형태로 변환 (프론트 호환)
+- `toOrderResponse`: `order.workOrderItems`가 있으면 우선 사용, 없으면 `order.items` JSON 폴백
+- `GET /orders`: `include: { workOrderItems: { orderBy: { sortOrder: 'asc' } } }` 추가
+- `POST /orders` (`createOrReuseSharedOrder`): WorkOrder 생성 후 `workOrderItem.createMany()` 병렬 저장
+- `PUT /orders/:orderId`: 트랜잭션 내에서 `workOrderItem.deleteMany()` + `createMany()` 전체 교체
+- `GET /assignment-cards`, `loadAssignmentDisplayReferenceMaps`, `buildAssignmentCardsFromOrders`: `workOrderItems` 우선 사용
+- `DELETE /styles/:styleId`: `WorkOrder.items` JSON 순회 → `WorkOrderItem.findFirst({ where: { styleId } })` 쿼리로 교체
+- `POST/PUT /work-logs`: `processCode` 목록으로 `AttrProcess` 일괄 조회 → `processId` Map 생성 → `WorkRecord.createMany` 시 `processId` 자동 채우기
+
+**속성 관리 (AttrBoard.jsx)**
+- 각 섹션 카드를 `code` 오름차순으로 정렬해 표시
+- `TableContainer` `maxHeight: 374` + `overflow: 'auto'` + `stickyHeader`로 10개 내외 스크롤 뷰 적용
+
+**DEFAULT_ATTRIBUTES 초기화 방지**
+- `backend/src/index.ts`의 `DEFAULT_ATTRIBUTES.colors`를 빈 배열 `[]`로 변경 → `GET /attributes` 시 색상 재시드 방지
+- 기존 하드코딩 BLK/WHT/RED/BLU 4개 색상(orgId=1,2)은 사용되지 않아 DB에서 직접 삭제

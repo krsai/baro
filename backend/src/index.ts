@@ -1914,7 +1914,30 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
               ...normalized,
             },
           });
-          return { order: created, created: true };
+          const itemsToCreate = normalizeOrderItems(normalized.items);
+          if (itemsToCreate.length > 0) {
+            await tx.workOrderItem.createMany({
+              data: itemsToCreate.map((item: any, idx: number) => ({
+                workOrderId: created.id,
+                itemId: item.id || "",
+                styleId: resolveOptionalString(item.styleId, null),
+                styleName: resolveOptionalString(item.styleName, null),
+                styleCode: resolveOptionalString(item.styleCode, null),
+                colorId: toPositiveIntOrNull(item.colorId),
+                colorCode: resolveOptionalString(item.colorCode, null),
+                colorName: resolveOptionalString(item.colorName, null),
+                gender: resolveOptionalString(item.gender, null),
+                sizeQuantities: item.sizeQuantities ?? null,
+                totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
+                sortOrder: idx,
+              })),
+            });
+          }
+          const createdWithItems = await tx.workOrder.findUnique({
+            where: { id: created.id },
+            include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
+          });
+          return { order: createdWithItems ?? created, created: true };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 }
       );
@@ -1950,8 +1973,26 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
   throw createHttpError(409, "failed to create order due to concurrent updates");
 };
 
+const workOrderItemToItemShape = (row: any) => ({
+  id: row.itemId || String(row.id),
+  styleId: row.styleId ?? "",
+  styleName: row.styleName ?? "",
+  styleCode: row.styleCode ?? "",
+  colorId: row.colorId ?? null,
+  colorCode: row.colorCode ?? "",
+  colorName: row.colorName ?? "",
+  gender: row.gender ?? "M",
+  sizeQuantities: row.sizeQuantities ?? {},
+  totalQuantity: row.totalQuantity ?? 0,
+});
+
 const toOrderResponse = (order: any) => {
-  const items = normalizeOrderItems(order?.items);
+  const itemsFromRelation = Array.isArray(order?.workOrderItems)
+    ? [...order.workOrderItems]
+        .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map(workOrderItemToItemShape)
+    : null;
+  const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
   return {
     id: order.orderId,
@@ -3256,7 +3297,12 @@ const buildAssignmentCardsFromOrders = ({
   };
 
   ensureArray(orders).forEach((order, orderIndex) => {
-    const items = normalizeOrderItems(order?.items);
+    const itemsFromRelation = Array.isArray(order?.workOrderItems)
+      ? [...order.workOrderItems]
+          .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+          .map(workOrderItemToItemShape)
+      : null;
+    const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
     items.forEach((item, itemIndex) => {
       const styleId = resolveOptionalString(item?.styleId, "");
       if (!styleId) return;
@@ -3445,6 +3491,7 @@ const loadAssignmentDisplayReferenceMaps = async (
         customerName: true,
         buyerOrgName: true,
         items: true,
+        workOrderItems: { orderBy: { sortOrder: "asc" } },
       },
     }),
     prisma.style.findMany({
@@ -6033,11 +6080,20 @@ app.post("/work-logs", async (req, res) => {
     });
 
     if (records.length > 0) {
+      const processCodeSet = [...new Set(records.map((r: any) => r.processCode).filter(Boolean))];
+      const processRows = processCodeSet.length > 0
+        ? await tx.attrProcess.findMany({
+            where: { orgId: organization.id, code: { in: processCodeSet as string[] } },
+            select: { id: true, code: true },
+          })
+        : [];
+      const processIdByCode = new Map(processRows.map((p) => [p.code, p.id]));
       await tx.workRecord.createMany({
-        data: records.map((record) => ({
+        data: records.map((record: any) => ({
           orgId: organization.id,
           workLogId: next.id,
           ...record,
+          processId: record.processCode ? (processIdByCode.get(record.processCode) ?? null) : null,
         })),
       });
     }
@@ -6154,11 +6210,20 @@ app.put("/work-logs/:id", async (req, res) => {
     });
 
     if (records.length > 0) {
+      const processCodeSet = [...new Set(records.map((r: any) => r.processCode).filter(Boolean))];
+      const processRows = processCodeSet.length > 0
+        ? await tx.attrProcess.findMany({
+            where: { orgId: organization.id, code: { in: processCodeSet as string[] } },
+            select: { id: true, code: true },
+          })
+        : [];
+      const processIdByCode = new Map(processRows.map((p) => [p.code, p.id]));
       await tx.workRecord.createMany({
-        data: records.map((record) => ({
+        data: records.map((record: any) => ({
           orgId: organization.id,
           workLogId: existing.id,
           ...record,
+          processId: record.processCode ? (processIdByCode.get(record.processCode) ?? null) : null,
         })),
       });
     }
@@ -6264,6 +6329,7 @@ app.get("/assignment-cards", async (req, res) => {
         customerName: true,
         buyerOrgName: true,
         items: true,
+        workOrderItems: { orderBy: { sortOrder: "asc" } },
       },
     }),
     prisma.style.findMany({
@@ -7005,6 +7071,7 @@ app.get("/orders", async (req, res) => {
   const orders = await prisma.workOrder.findMany({
     where: { OR: getOrderAccessWhere(organization.id) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
   });
   res.json(orders.map(toOrderResponse));
 });
@@ -7099,13 +7166,39 @@ app.put("/orders/:orderId", async (req, res) => {
   // Route param is source of truth.
   normalized.orderId = existing.orderId;
 
-  const updated = await prisma.workOrder.update({
-    where: { id: existing.id },
-    data: {
-      ...normalized,
-      orgId: buyer.id,
-    },
-  });
+  const itemsToUpsert = normalizeOrderItems(normalized.items);
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedOrder = await tx.workOrder.update({
+      where: { id: existing.id },
+      data: {
+        ...normalized,
+        orgId: buyer.id,
+      },
+    });
+    await tx.workOrderItem.deleteMany({ where: { workOrderId: existing.id } });
+    if (itemsToUpsert.length > 0) {
+      await tx.workOrderItem.createMany({
+        data: itemsToUpsert.map((item: any, idx: number) => ({
+          workOrderId: updatedOrder.id,
+          itemId: item.id || "",
+          styleId: resolveOptionalString(item.styleId, null),
+          styleName: resolveOptionalString(item.styleName, null),
+          styleCode: resolveOptionalString(item.styleCode, null),
+          colorId: toPositiveIntOrNull(item.colorId),
+          colorCode: resolveOptionalString(item.colorCode, null),
+          colorName: resolveOptionalString(item.colorName, null),
+          gender: resolveOptionalString(item.gender, null),
+          sizeQuantities: item.sizeQuantities ?? null,
+          totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
+          sortOrder: idx,
+        })),
+      });
+    }
+    return tx.workOrder.findUnique({
+      where: { id: updatedOrder.id },
+      include: { workOrderItems: { orderBy: { sortOrder: "asc" } } },
+    });
+  }, { timeout: 30000 });
 
   res.json(toOrderResponse(updated));
 });
@@ -7657,19 +7750,19 @@ app.delete("/styles/:styleId", async (req, res) => {
       .json({ ok: false, error: "only owner organization can delete style" });
   }
 
-  const relatedOrders = await prisma.workOrder.findMany({
+  const inUseOrderItem = await prisma.workOrderItem.findFirst({
     where: {
-      OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.orgId }],
+      styleId,
+      workOrder: {
+        OR: [{ orgId: existing.orgId }, { buyerOrgId: existing.orgId }],
+      },
     },
-    select: { orderId: true, orderNumber: true, items: true },
+    select: {
+      workOrder: { select: { orderId: true, orderNumber: true } },
+    },
   });
-  const inUseOrder = relatedOrders.find((order) =>
-    ensureArray(order.items).some(
-      (item) => String(item?.styleId || "").trim() === styleId
-    )
-  );
-  if (inUseOrder) {
-    const orderLabel = inUseOrder.orderNumber || inUseOrder.orderId;
+  if (inUseOrderItem) {
+    const orderLabel = inUseOrderItem.workOrder.orderNumber || inUseOrderItem.workOrder.orderId;
     return res.status(409).json({
       ok: false,
       error: `style is used by order ${orderLabel}`,

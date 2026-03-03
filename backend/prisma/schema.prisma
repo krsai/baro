@@ -265,7 +265,9 @@ model AttrColor {
   code  String
   name  String
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  workOrderItems WorkOrderItem[]
+  workRecords    WorkRecord[]
 
   @@unique([orgId, code])
   @@index([orgId])
@@ -303,6 +305,7 @@ model AttrProcess {
   name  String
 
   organization Organization @relation(fields: [orgId], references: [id])
+  workRecords  WorkRecord[]
 
   @@unique([orgId, code])
   @@index([orgId])
@@ -335,30 +338,55 @@ model Style {
 }
 
 model WorkOrder {
-  id           Int      @id @default(autoincrement())
-  orgId        Int
-  orderId      String
-  orderNumber  String
-  buyerOrgId   Int?
-  buyerOrgName String?
-  sellerOrgId  Int?
+  id            Int      @id @default(autoincrement())
+  orgId         Int
+  orderId       String
+  orderNumber   String
+  buyerOrgId    Int?
+  buyerOrgName  String?
+  sellerOrgId   Int?
   sellerOrgName String?
-  customerId   Int?
-  customerName String?
-  dueDate      String?
-  status       String
-  items        Json?
-  totalQuantity Int     @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  customerId    Int?
+  customerName  String?
+  dueDate       String?
+  status        String
+  items         Json?
+  totalQuantity Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  workOrderItems WorkOrderItem[]
 
   @@unique([orgId, orderId])
   @@unique([orgId, customerId, orderNumber])
   @@unique([buyerOrgId, sellerOrgId, orderNumber])
   @@index([orgId])
   @@index([orgId, orderNumber])
+}
+
+model WorkOrderItem {
+  id             Int      @id @default(autoincrement())
+  workOrderId    Int
+  itemId         String   @default("")
+  styleId        String?
+  styleName      String?
+  styleCode      String?
+  colorId        Int?
+  colorCode      String?
+  colorName      String?
+  gender         String?
+  sizeQuantities Json?
+  totalQuantity  Int      @default(0)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  color     AttrColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  @@index([workOrderId])
+  @@index([colorId])
 }
 
 model AssignmentPlan {
@@ -431,34 +459,39 @@ model WorkLog {
 }
 
 model WorkRecord {
-  id           Int      @id @default(autoincrement())
-  orgId        Int
-  workLogId    Int
-  workerId     Int?
-  workerName   String?
-  customerName String?
-  styleId      String?
-  styleName    String?
-  processCode  String?
-  processName  String?
-  colorId      Int?
-  colorCode    String?
-  colorName    String?
+  id               Int      @id @default(autoincrement())
+  orgId            Int
+  workLogId        Int
+  workerId         Int?
+  workerName       String?
+  customerName     String?
+  styleId          String?
+  styleName        String?
+  processId        Int?
+  processCode      String?
+  processName      String?
+  colorId          Int?
+  colorCode        String?
+  colorName        String?
   assignmentPlanId Int?
-  ctSeconds    Int      @default(0)
-  quantity     Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  ctSeconds        Int      @default(0)
+  quantity         Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
+  color          AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
+  process        AttrProcess?    @relation(fields: [processId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
   @@index([assignmentPlanId])
   @@index([workLogId])
+  @@index([colorId])
+  @@index([processId])
 }
 
 model PayrollSnapshot {
