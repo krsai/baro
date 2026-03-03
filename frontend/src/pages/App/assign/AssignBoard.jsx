@@ -1703,6 +1703,7 @@ const AssignBoard = () => {
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
   const [detailStDraftsByTarget, setDetailStDraftsByTarget] = useState({});
   const [sendingProposal, setSendingProposal] = useState(false);
+  const cardsRef = useRef(cards);
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
   const daysRef = useRef(days);
@@ -1715,6 +1716,13 @@ const AssignBoard = () => {
       activeElement.blur();
     }
   }, []);
+  const preventToolbarButtonFocus = useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    cardsRef.current = cards;
+  }, [cards]);
 
   useEffect(() => {
     linesRef.current = lines;
@@ -1744,6 +1752,11 @@ const AssignBoard = () => {
       const {
         startIndex: _startIndex,
         endIndex: _endIndex,
+        version: _version,
+        versionUpdatedAt: _versionUpdatedAt,
+        dbId: _dbId,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
         ...rest
       } = normalized;
       return rest;
@@ -1757,6 +1770,16 @@ const AssignBoard = () => {
         assignments: serializeAssignmentsForSnapshot(nextAssignments),
       }),
     [serializeAssignmentsForSnapshot]
+  );
+  const resetBoardHistory = useCallback(
+    (nextCards, nextAssignments) => {
+      historyPastRef.current = [];
+      historyFutureRef.current = [];
+      historySnapshotRef.current = createBoardSnapshotText(nextCards, nextAssignments);
+      historyApplyingRef.current = false;
+      syncHistoryStatus();
+    },
+    [createBoardSnapshotText, syncHistoryStatus]
   );
 
   const createPersistSnapshotText = useCallback(
@@ -1873,6 +1896,23 @@ const AssignBoard = () => {
     }
     return raw || fallbackMessage;
   }, []);
+  const isAssignmentNotFoundError = useCallback(
+    (error) => String(error?.message || '').trim().toLowerCase().includes('assignment not found'),
+    []
+  );
+  const hasPersistedAssignmentSnapshot = useCallback(
+    (assignmentId) => {
+      const targetId = String(assignmentId || '').trim();
+      if (!targetId) return false;
+      const savedAssignments = parsePersistSnapshotAssignments(lastSavedSnapshotRef.current);
+      return savedAssignments.some((item) => String(item?.id || '').trim() === targetId);
+    },
+    [parsePersistSnapshotAssignments]
+  );
+  const shouldUseFullBoardPutForCtAction = useCallback(
+    (assignmentId) => isDirty || !hasPersistedAssignmentSnapshot(assignmentId),
+    [hasPersistedAssignmentSnapshot, isDirty]
+  );
 
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
@@ -2132,6 +2172,37 @@ const AssignBoard = () => {
       let appliedSavedBoardState = false;
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
+        let assignmentCardsSettled = false;
+        let assignmentCardsResponseCache = null;
+        const assignmentCardsPromise = requestJSON('/assignment-cards' + orgQuery, {
+          forceRefresh: true,
+        })
+          .then((response) => {
+            assignmentCardsSettled = true;
+            assignmentCardsResponseCache = response;
+            return response;
+          })
+          .catch(() => {
+            assignmentCardsSettled = true;
+            assignmentCardsResponseCache = null;
+            return null;
+          });
+
+        const applyAssignmentCardsResponse = (assignmentCardsResponse, nextLines, boardState) => {
+          const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
+            ? assignmentCardsResponse.styles
+            : [];
+          const nextCards = Array.isArray(assignmentCardsResponse?.cards)
+            ? assignmentCardsResponse.cards
+            : [];
+          applyLoadedBoardData({
+            nextStyles,
+            nextLines,
+            baseCards: nextCards,
+            boardState,
+            markPersistReady: true,
+          });
+        };
 
         const [factories, lines, workers, boardState] = await Promise.all([
           requestJSON('/factories' + orgQuery).catch(() => []),
@@ -2149,33 +2220,33 @@ const AssignBoard = () => {
         });
         const savedCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
 
+        if (assignmentCardsSettled && assignmentCardsResponseCache) {
+          applyAssignmentCardsResponse(assignmentCardsResponseCache, nextLines, boardState);
+          appliedSavedBoardState = true;
+          return;
+        }
+
         applyLoadedBoardData({
           nextStyles: [],
           nextLines,
           baseCards: savedCards,
           boardState,
-          markPersistReady: false,
+          markPersistReady: assignmentCardsSettled,
         });
         appliedSavedBoardState = true;
 
-        const assignmentCardsResponse = await requestJSON('/assignment-cards' + orgQuery, {
-          forceRefresh: true,
-        }).catch(() => null);
-        if (cancelled) return;
+        if (assignmentCardsSettled) {
+          return;
+        }
 
-        const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
-          ? assignmentCardsResponse.styles
-          : [];
-        const nextCards = Array.isArray(assignmentCardsResponse?.cards)
-          ? assignmentCardsResponse.cards
-          : [];
-        applyLoadedBoardData({
-          nextStyles: Array.isArray(nextStyles) ? nextStyles : [],
-          nextLines,
-          baseCards: nextCards,
-          boardState,
-          markPersistReady: true,
-        });
+        const assignmentCardsResponse = await assignmentCardsPromise;
+        if (cancelled) return;
+        if (!assignmentCardsResponse) {
+          setPersistReady(true);
+          return;
+        }
+
+        applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState);
       } catch (_error) {
         if (!cancelled) {
           if (!appliedSavedBoardState) {
@@ -2243,13 +2314,22 @@ const AssignBoard = () => {
   const handleSaveBoard = useCallback(async () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
+    blurActiveElement();
+    setPersisting(true);
+
+    const currentCards = Array.isArray(cardsRef.current) ? cardsRef.current : [];
+    const currentAssignments = Array.isArray(assignmentsRef.current)
+      ? assignmentsRef.current
+      : [];
+    const currentDays = Array.isArray(daysRef.current) ? daysRef.current : [];
+
     const { baseDate: persistBaseDate, days: persistDays } = buildAssignmentPersistenceWindow({
-      assignments,
-      days,
+      assignments: currentAssignments,
+      days: currentDays,
       baseDate: startDateRef.current,
       holidaySet,
     });
-    const assignmentsForPersistence = assignments.map((item) =>
+    const assignmentsForPersistence = currentAssignments.map((item) =>
       remapAssignmentToDayWindow(
         syncAssignmentDateKeys(item, startDateRef.current),
         persistDays,
@@ -2270,21 +2350,20 @@ const AssignBoard = () => {
     const normalizedAssignments = assignmentsToSave.map((item) =>
       syncAssignmentDateKeys(item, persistBaseDate)
     );
-    const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-    setPersisting(true);
     try {
+      const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
       const response = await requestJSON(
         '/assignment-board-state' + buildQueryString({ orgId: activeOrgId }),
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards, assignments: assignmentsForPut }),
+          body: JSON.stringify({ cards: currentCards, assignments: assignmentsForPut }),
           skipGlobalLoading: true,
         }
       );
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
-        cards,
+        currentCards,
         assignmentsForPut
       );
       // 저장 후 서버 응답(version 등 메타데이터 갱신)을 히스토리에 기록하지 않음
@@ -2308,7 +2387,10 @@ const AssignBoard = () => {
     activeOrgId,
     assignments,
     cards,
+    cardsRef,
+    blurActiveElement,
     days,
+    daysRef,
     holidaySet,
     lineCapacityById,
     alignAssignmentsForBoardPut,
@@ -2319,6 +2401,7 @@ const AssignBoard = () => {
     resolveBoardSaveErrorMessage,
     resolvePersistedBoardState,
     showNotification,
+    assignmentsRef,
   ]);
 
   const navigationBlocker = useBlocker(persistReady && isDirty && !persisting);
@@ -2962,6 +3045,7 @@ const AssignBoard = () => {
       detailCtStatus === 'REJECTED' &&
       detailPendingLineRequestProposal
   );
+  const detailNeedsProposalResend = detailCtStatus === 'SENT' || detailInLineRequestFlow;
   const detailHasProposalChange = useMemo(
     () =>
       detailProcessRows.some(
@@ -2975,7 +3059,7 @@ const AssignBoard = () => {
     detailInLineRequestFlow && !detailIsLocked && !detailHasProposalChange
   );
   const canSendProposal = Boolean(detailAssignment && detailProcessRows.length > 0 && detailCtStatus !== 'AGREED');
-  const canResendProposal = detailInLineRequestFlow
+  const canResendProposal = detailNeedsProposalResend
     ? canSendProposal && detailHasProposalChange
     : canSendProposal;
   const contextMenuTargetAssignment = useMemo(() => {
@@ -3621,7 +3705,7 @@ const AssignBoard = () => {
       showNotification('확정 완료된 작업은 재제안할 수 없습니다.', 'warning');
       return;
     }
-    if (detailInLineRequestFlow && !detailHasProposalChange) {
+    if (detailNeedsProposalResend && !detailHasProposalChange) {
       showNotification('다시 제안은 제안 CT를 수정한 뒤에 가능합니다.', 'warning');
       return;
     }
@@ -3793,33 +3877,7 @@ const AssignBoard = () => {
       };
       let persistedCards;
       let persistedAssignments;
-      if (lineReflowStartByLine.size === 0) {
-        // 다른 assignment 변경 없음 — 경량 PATCH 사용
-        const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            assignmentId,
-            assignmentPatch: ctAssignmentPatch,
-            cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
-            cardPatch: detailAssignment?.cardId
-              ? { operatorCtProposal: operatorProposalPayload, pendingCtProposal: null }
-              : null,
-          }),
-          skipGlobalLoading: true,
-        });
-        persistedAssignments = patchResponse?.assignment
-          ? normalizedAssignments.map((a) =>
-              String(a.id) === assignmentId ? { ...a, ...patchResponse.assignment } : a
-            )
-          : normalizedAssignments;
-        persistedCards = patchResponse?.card
-          ? nextCardsWithProposal.map((c) =>
-              String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
-            )
-          : nextCardsWithProposal;
-      } else {
-        // reflow로 다른 assignment도 변경됨 — 전체 payload PUT
+      const persistProposalWithBoardPut = async () => {
         const preparedAssignmentsForPut = normalizedAssignments.map((assignment) =>
           syncAssignmentDateKeys(assignment, startDateRef.current)
         );
@@ -3830,11 +3888,47 @@ const AssignBoard = () => {
           body: JSON.stringify({ cards: nextCardsWithProposal, assignments: assignmentsForPut }),
           skipGlobalLoading: true,
         });
-        ({ persistedCards, persistedAssignments } = resolvePersistedBoardState(
+        return resolvePersistedBoardState(
           putResponse,
           nextCardsWithProposal,
           assignmentsForPut
-        ));
+        );
+      };
+      const shouldUseFullPut =
+        lineReflowStartByLine.size > 0 || shouldUseFullBoardPutForCtAction(assignmentId);
+      if (!shouldUseFullPut) {
+        try {
+          const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              assignmentId,
+              assignmentPatch: ctAssignmentPatch,
+              cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
+              cardPatch: detailAssignment?.cardId
+                ? { operatorCtProposal: operatorProposalPayload, pendingCtProposal: null }
+                : null,
+            }),
+            skipGlobalLoading: true,
+          });
+          persistedAssignments = patchResponse?.assignment
+            ? normalizedAssignments.map((a) =>
+                String(a.id) === assignmentId ? { ...a, ...patchResponse.assignment } : a
+              )
+            : normalizedAssignments;
+          persistedCards = patchResponse?.card
+            ? nextCardsWithProposal.map((c) =>
+                String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
+              )
+            : nextCardsWithProposal;
+        } catch (error) {
+          if (!isAssignmentNotFoundError(error)) {
+            throw error;
+          }
+          ({ persistedCards, persistedAssignments } = await persistProposalWithBoardPut());
+        }
+      } else {
+        ({ persistedCards, persistedAssignments } = await persistProposalWithBoardPut());
       }
 
       let nextDays = daysForAssignments;
@@ -3856,6 +3950,7 @@ const AssignBoard = () => {
         persistedAssignments
       );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      resetBoardHistory(persistedCards, persistedAssignments);
       if (reflowFailed) {
         showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
       }
@@ -3878,6 +3973,7 @@ const AssignBoard = () => {
     detailProcessRows,
     isAssignmentLocked,
     detailInLineRequestFlow,
+    detailNeedsProposalResend,
     detailHasProposalChange,
     showNotification,
     cards,
@@ -3889,8 +3985,14 @@ const AssignBoard = () => {
     lineCapacityById,
     holidaySet,
     createPersistSnapshotText,
+    resetBoardHistory,
+    resolvePersistedBoardState,
+    resolveBoardSaveErrorMessage,
     reflowLineAssignmentsAfterCtUpdate,
     alignAssignmentsForBoardPut,
+    syncAssignmentDateKeys,
+    shouldUseFullBoardPutForCtAction,
+    isAssignmentNotFoundError,
     blurActiveElement,
   ]);
   const handleAgreeLineRequest = useCallback(async () => {
@@ -4030,36 +4132,67 @@ const AssignBoard = () => {
         ctEscalationStatus: null,
         ctNote: `요청 동의 ${nowIso}`,
       };
+      const nextAssignments = assignments.map((a) =>
+        String(a.id) === assignmentId
+          ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch })
+          : normalizeAssignmentLayout(a)
+      );
       const query = buildQueryString({ orgId: activeOrgId });
-      const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignmentId,
-          assignmentPatch: ctAgreePatch,
-          cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
-          cardPatch: detailAssignment?.cardId
-            ? { ctAgreedSnapshot: agreementSnapshot, pendingCtProposal: null }
-            : null,
-        }),
-        skipGlobalLoading: true,
-      });
-      const persistedAssignments = patchResponse?.assignment
-        ? assignments.map((a) =>
-            String(a.id) === assignmentId
-              ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch, ...patchResponse.assignment })
-              : a
-          )
-        : assignments.map((a) =>
-            String(a.id) === assignmentId
-              ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch })
-              : a
-          );
-      const persistedCards = patchResponse?.card
-        ? nextCardsWithAgreement.map((c) =>
-            String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
-          )
-        : nextCardsWithAgreement;
+      const persistAgreementWithBoardPut = async () => {
+        const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
+          syncAssignmentDateKeys(assignment, startDateRef.current)
+        );
+        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
+        const putResponse = await requestJSON('/assignment-board-state' + query, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cards: nextCardsWithAgreement, assignments: assignmentsForPut }),
+          skipGlobalLoading: true,
+        });
+        return resolvePersistedBoardState(
+          putResponse,
+          nextCardsWithAgreement,
+          assignmentsForPut
+        );
+      };
+      let persistedAssignments;
+      let persistedCards;
+      if (!shouldUseFullBoardPutForCtAction(assignmentId)) {
+        try {
+          const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              assignmentId,
+              assignmentPatch: ctAgreePatch,
+              cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
+              cardPatch: detailAssignment?.cardId
+                ? { ctAgreedSnapshot: agreementSnapshot, pendingCtProposal: null }
+                : null,
+            }),
+            skipGlobalLoading: true,
+          });
+          persistedAssignments = patchResponse?.assignment
+            ? nextAssignments.map((a) =>
+                String(a.id) === assignmentId
+                  ? normalizeAssignmentLayout({ ...a, ...patchResponse.assignment })
+                  : a
+              )
+            : nextAssignments;
+          persistedCards = patchResponse?.card
+            ? nextCardsWithAgreement.map((c) =>
+                String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
+              )
+            : nextCardsWithAgreement;
+        } catch (error) {
+          if (!isAssignmentNotFoundError(error)) {
+            throw error;
+          }
+          ({ persistedCards, persistedAssignments } = await persistAgreementWithBoardPut());
+        }
+      } else {
+        ({ persistedCards, persistedAssignments } = await persistAgreementWithBoardPut());
+      }
 
       setCards(persistedCards);
       setAssignments(persistedAssignments);
@@ -4068,6 +4201,7 @@ const AssignBoard = () => {
         persistedAssignments
       );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      resetBoardHistory(persistedCards, persistedAssignments);
       showNotification('요청 동의 완료. 해당 작업이 확정 상태로 전환되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
@@ -4098,9 +4232,13 @@ const AssignBoard = () => {
     lineCapacityById,
     holidaySet,
     createPersistSnapshotText,
+    resetBoardHistory,
     resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
-    reflowLineAssignmentsAfterCtUpdate,
+    alignAssignmentsForBoardPut,
+    syncAssignmentDateKeys,
+    shouldUseFullBoardPutForCtAction,
+    isAssignmentNotFoundError,
     blurActiveElement,
     showNotification,
   ]);
@@ -4119,38 +4257,70 @@ const AssignBoard = () => {
     const assignmentId = String(detailAssignment.id);
     const cardId = detailAssignment?.cardId ? String(detailAssignment.cardId) : null;
 
+    const nextAssignments = assignments
+      .filter((item) => String(item?.id) !== assignmentId)
+      .map((item) => normalizeAssignmentLayout(item));
+    const nextCards = cardId
+      ? cards.map((card) =>
+          String(card?.id) === cardId ? { ...card, pendingCtProposal: null } : card
+        )
+      : cards;
+
     try {
       setSendingProposal(true);
       const query = buildQueryString({ orgId: activeOrgId });
-      const response = await requestJSON(
-        `/assignment-board-state/assignment/${assignmentId}${query}`,
-        {
-          method: 'DELETE',
+      const persistCancelWithBoardPut = async () => {
+        const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
+          syncAssignmentDateKeys(assignment, startDateRef.current)
+        );
+        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
+        const putResponse = await requestJSON('/assignment-board-state' + query, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cardId,
-            cardPatch: cardId ? { pendingCtProposal: null } : null,
-          }),
+          body: JSON.stringify({ cards: nextCards, assignments: assignmentsForPut }),
           skipGlobalLoading: true,
+        });
+        return resolvePersistedBoardState(putResponse, nextCards, assignmentsForPut);
+      };
+      let persistedAssignments;
+      let persistedCards;
+      if (!shouldUseFullBoardPutForCtAction(assignmentId)) {
+        try {
+          const response = await requestJSON(
+            `/assignment-board-state/assignment/${assignmentId}${query}`,
+            {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cardId,
+                cardPatch: cardId ? { pendingCtProposal: null } : null,
+              }),
+              skipGlobalLoading: true,
+            }
+          );
+          persistedAssignments = nextAssignments;
+          persistedCards = response?.card && cardId
+            ? cards.map((card) =>
+                String(card?.id) === cardId ? { ...card, ...response.card } : card
+              )
+            : nextCards;
+        } catch (error) {
+          if (!isAssignmentNotFoundError(error)) {
+            throw error;
+          }
+          ({ persistedCards, persistedAssignments } = await persistCancelWithBoardPut());
         }
+      } else {
+        ({ persistedCards, persistedAssignments } = await persistCancelWithBoardPut());
+      }
+
+      setCards(persistedCards);
+      setAssignments(persistedAssignments);
+      lastSavedSnapshotRef.current = createPersistSnapshotText(
+        persistedCards,
+        persistedAssignments
       );
-
-      const nextAssignments = assignments
-        .filter((item) => String(item?.id) !== assignmentId)
-        .map((item) => normalizeAssignmentLayout(item));
-      const nextCards = response?.card && cardId
-        ? cards.map((card) =>
-            String(card?.id) === cardId ? { ...card, ...response.card } : card
-          )
-        : cardId
-        ? cards.map((card) =>
-            String(card?.id) === cardId ? { ...card, pendingCtProposal: null } : card
-          )
-        : cards;
-
-      setCards(nextCards);
-      setAssignments(nextAssignments);
-      lastSavedSnapshotRef.current = createPersistSnapshotText(nextCards, nextAssignments);
+      resetBoardHistory(persistedCards, persistedAssignments);
       blurActiveElement();
       setDetailState(null);
       showNotification('배정을 취소했습니다. 해당 작업은 미배정으로 전환되었습니다.', 'info');
@@ -4171,7 +4341,13 @@ const AssignBoard = () => {
     cards,
     activeOrgId,
     createPersistSnapshotText,
+    resetBoardHistory,
+    resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
+    alignAssignmentsForBoardPut,
+    syncAssignmentDateKeys,
+    shouldUseFullBoardPutForCtAction,
+    isAssignmentNotFoundError,
     blurActiveElement,
     showNotification,
   ]);
@@ -4266,6 +4442,7 @@ const AssignBoard = () => {
         persistedAssignments
       );
       lastSavedSnapshotRef.current = persistedSnapshot;
+      resetBoardHistory(persistedCards, persistedAssignments);
       blurActiveElement();
       setDetailState(null);
       showNotification('재협의가 시작되었습니다. 해당 작업이 대기 상태로 전환되었습니다.', 'info');
@@ -4290,6 +4467,7 @@ const AssignBoard = () => {
     cards,
     activeOrgId,
     createPersistSnapshotText,
+    resetBoardHistory,
     resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
     alignAssignmentsForBoardPut,
@@ -4569,6 +4747,7 @@ const AssignBoard = () => {
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Button
               variant="contained"
+              onMouseDown={preventToolbarButtonFocus}
               onClick={handleSaveBoard}
               disabled={persisting || !persistReady || !isDirty}
               sx={{ minWidth: 72 }}
@@ -4577,6 +4756,7 @@ const AssignBoard = () => {
             </Button>
             <Button
               variant="outlined"
+              onMouseDown={preventToolbarButtonFocus}
               onClick={handleUndo}
               disabled={controlsDisabled || historyStatus.undoCount === 0}
             >
@@ -4584,6 +4764,7 @@ const AssignBoard = () => {
             </Button>
             <Button
               variant="outlined"
+              onMouseDown={preventToolbarButtonFocus}
               onClick={handleRedo}
               disabled={controlsDisabled || historyStatus.redoCount === 0}
             >
@@ -4591,6 +4772,7 @@ const AssignBoard = () => {
             </Button>
             <Button
               variant="outlined"
+              onMouseDown={preventToolbarButtonFocus}
               onClick={handleResetAssignments}
               disabled={controlsDisabled || !persistReady || !isDirty}
             >
@@ -5152,9 +5334,13 @@ const AssignBoard = () => {
                       ? detailHasProposalChange
                         ? '라인장 변경 요청을 확인했습니다. 요청 동의/다시 제안/배정 취소 중 하나를 선택하세요.'
                         : '라인장 변경 요청을 확인했습니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
+                      : detailCtStatus === 'SENT'
+                        ? detailHasProposalChange
+                          ? '이미 제안된 작업입니다. 변경된 제안 CT로 다시 송부할 수 있습니다.'
+                          : '이미 제안된 작업입니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
                       : detailCtStatus === 'AGREED' && !isAdminUser
                         ? '확정 상태의 재협의 개시는 관리자 권한이 필요합니다.'
-                      : '제안 CT 미입력 시 ST를 사용하며, 요청 CT는 라인장 변경 요청이 있을 때 표시됩니다.'}
+                        : '제안 CT 미입력 시 ST를 사용하며, 요청 CT는 라인장 변경 요청이 있을 때 표시됩니다.'}
                   </Typography>
                   <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
                     {detailCtStatus === 'AGREED' && (
@@ -5186,10 +5372,10 @@ const AssignBoard = () => {
                       disabled={controlsDisabled || !canResendProposal || sendingProposal}
                     >
                       {sendingProposal
-                        ? detailInLineRequestFlow
+                        ? detailNeedsProposalResend
                           ? '처리 중...'
                           : '송부 중...'
-                        : detailInLineRequestFlow
+                        : detailNeedsProposalResend
                           ? '다시 제안'
                           : '제안 송부'}
                     </Button>

@@ -49,6 +49,12 @@ const STATUS_META = {
   AGREED:   { label: '확정', color: 'success' },
   REJECTED: { label: '요청', color: 'warning' },
 };
+const CALENDAR_CT_STATUS_META = {
+  PENDING: { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
+  SENT: { cardBg: '#BFEAD0', labelColor: '#3A9858', borderColor: 'rgba(58, 152, 88, 0.35)' },
+  AGREED: { cardBg: '#C8DFF7', labelColor: '#4A88C8', borderColor: 'rgba(74, 136, 200, 0.4)' },
+  REJECTED: { cardBg: '#F7DCC8', labelColor: '#C07838', borderColor: 'rgba(192, 120, 56, 0.35)' },
+};
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
   if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
@@ -523,6 +529,10 @@ const ProductionPlanBoard = () => {
         const agreedSeconds = resolveAgreedSeconds(assignment);
         const wagePerSecond = Number(factory?.wagePerSecond);
         const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
+        const perPieceCost =
+          validWage && Number.isFinite(perPieceSeconds) && perPieceSeconds > 0
+            ? perPieceSeconds * wagePerSecond
+            : null;
         const expectedCost = validWage ? proposalSeconds * wagePerSecond : null;
         const agreedCost = validWage && status === 'AGREED' ? agreedSeconds * wagePerSecond : null;
         const workingDays = getAssignmentWorkingDays(assignment, baseDate, holidaySet);
@@ -544,6 +554,7 @@ const ProductionPlanBoard = () => {
           status,
           proposalSeconds,
           perPieceSeconds,
+          perPieceCost,
           agreedSeconds,
           wagePerSecond: validWage ? wagePerSecond : null,
           expectedCost,
@@ -620,16 +631,15 @@ const ProductionPlanBoard = () => {
   );
 
   const selectedAssignment = useMemo(() => {
-    if (actionableAssignments.length === 0) return null;
-    if (!selectedAssignmentId) return actionableAssignments[0] || null;
-    return (
-      actionableAssignments.find(
+    if (assignmentsForView.length === 0) return null;
+    if (selectedAssignmentId) {
+      const matched = assignmentsForView.find(
         (item) => String(item.id) === String(selectedAssignmentId)
-      ) ||
-      actionableAssignments[0] ||
-      null
-    );
-  }, [actionableAssignments, selectedAssignmentId]);
+      );
+      if (matched) return matched;
+    }
+    return actionableAssignments[0] || assignmentsForView[0] || null;
+  }, [actionableAssignments, assignmentsForView, selectedAssignmentId]);
   const selectedQuantityLabel = useMemo(
     () =>
       formatNumberWithCommas(
@@ -647,24 +657,6 @@ const ProductionPlanBoard = () => {
     () => new Map(assignmentsForView.map((item) => [String(item.id), item])),
     [assignmentsForView]
   );
-
-  const actionableByDateKey = useMemo(() => {
-    const map = new Map();
-    actionableAssignments.forEach((assignment) => {
-      const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
-      if (!bounds) return;
-      for (const date = new Date(bounds.startDate); date <= bounds.endDate; date.setDate(date.getDate() + 1)) {
-        const key = buildDateKey(date);
-        const current = map.get(key);
-        if (current) {
-          current.push(assignment);
-        } else {
-          map.set(key, [assignment]);
-        }
-      }
-    });
-    return map;
-  }, [actionableAssignments, baseDate]);
 
   const selectedAssignmentDateKeys = useMemo(() => {
     const keys = new Set();
@@ -704,7 +696,7 @@ const ProductionPlanBoard = () => {
       const weekEndKey = weekDayKeys[6];
 
       const weekItems = [];
-      actionableAssignments.forEach((assignment) => {
+      assignmentsForView.forEach((assignment) => {
         const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
         if (!bounds) return;
         const aStartKey = bounds.startKey;
@@ -739,20 +731,21 @@ const ProductionPlanBoard = () => {
       const maxLane = withLanes.length > 0 ? Math.max(...withLanes.map((x) => x.lane)) : -1;
       return { weekDays, bars: withLanes, maxLane };
     });
-  }, [weekRows, actionableAssignments, baseDate]);
+  }, [weekRows, assignmentsForView, baseDate]);
 
   useEffect(() => {
-    if (actionableAssignments.length === 0) {
+    if (assignmentsForView.length === 0) {
       setSelectedAssignmentId('');
       return;
     }
     setSelectedAssignmentId((prev) => {
-      const exists = actionableAssignments.some(
+      const exists = assignmentsForView.some(
         (item) => String(item.id) === String(prev)
       );
-      return exists ? prev : String(actionableAssignments[0].id);
+      if (exists) return prev;
+      return String((actionableAssignments[0] || assignmentsForView[0]).id);
     });
-  }, [actionableAssignments]);
+  }, [actionableAssignments, assignmentsForView]);
 
   useEffect(() => {
     if (!selectedAssignment) return;
@@ -1841,17 +1834,18 @@ const ProductionPlanBoard = () => {
                   <TableRow>
                     <TableCell>상태</TableCell>
                     <TableCell>라인</TableCell>
-                    <TableCell>고객/스타일</TableCell>
+                    <TableCell>고객</TableCell>
+                    <TableCell>스타일</TableCell>
                     <TableCell align="right">수량</TableCell>
-                    <TableCell align="right">예상 비용</TableCell>
+                    <TableCell align="right">예상 비용(한 벌)</TableCell>
                     <TableCell>예상 일정</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
-                    <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={7} message="불러오는 중..." sx={{ py: 2 }} />
                   ) : actionableAssignments.length === 0 ? (
-                    <TableStatusRow colSpan={6} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={7} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
                   ) : (
                     actionableAssignments.map((assignment) => {
                       const statusMeta = STATUS_META[assignment.status] || STATUS_META.PENDING;
@@ -1885,17 +1879,21 @@ const ProductionPlanBoard = () => {
                             </Typography>
                           </TableCell>
                           <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {assignment.customer || '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {assignment.customer || '-'}
+                                {assignment.label || '-'}
                               </Typography>
                               {assignment.ctOverride && (
                                 <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                               )}
                             </Box>
                             <Typography variant="caption" color="text.secondary">
-                              {assignment.label || '-'}
-                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
+                              {assignment.colorName || '-'}
                             </Typography>
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
@@ -1905,7 +1903,7 @@ const ProductionPlanBoard = () => {
                             })}
                           </TableCell>
                           <TableCell align="right" sx={{ fontWeight: 600 }}>
-                            {assignment.expectedCost == null ? '-' : formatCurrencyDong(assignment.expectedCost)}
+                            {assignment.perPieceCost == null ? '-' : formatCurrencyDong(assignment.perPieceCost)}
                           </TableCell>
                           <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
                         </TableRow>
@@ -2264,6 +2262,10 @@ const ProductionPlanBoard = () => {
                         {bars.map(({ assignment, startCol, endCol, lane }) => {
                           const isSelected =
                             String(assignment.id) === String(selectedAssignment?.id);
+                          const statusMeta =
+                            CALENDAR_CT_STATUS_META[
+                              normalizeCtStatus(assignment?.status ?? assignment?.ctStatus)
+                            ] || CALENDAR_CT_STATUS_META.PENDING;
                           const labelParts = [
                             assignment?.line?.name || `L${assignment?.lineId || '-'}`,
                             assignment.label,
@@ -2287,9 +2289,9 @@ const ProductionPlanBoard = () => {
                                 left: `calc(${startCol} / 7 * 100% + 3px)`,
                                 width: `calc(${endCol - startCol + 1} / 7 * 100% - 6px)`,
                                 height: 22,
-                                bgcolor: isSelected ? 'primary.main' : 'rgba(25, 118, 210, 0.15)',
+                                bgcolor: statusMeta.cardBg,
                                 border: '1px solid',
-                                borderColor: isSelected ? 'primary.dark' : 'primary.light',
+                                borderColor: isSelected ? statusMeta.labelColor : statusMeta.borderColor,
                                 borderRadius: 0.75,
                                 px: 0.75,
                                 display: 'flex',
@@ -2297,6 +2299,7 @@ const ProductionPlanBoard = () => {
                                 cursor: 'pointer',
                                 overflow: 'hidden',
                                 zIndex: 1,
+                                boxShadow: isSelected ? `inset 0 0 0 1px ${statusMeta.labelColor}` : 'none',
                                 '&:hover': { opacity: 0.82 },
                               }}
                             >
@@ -2304,7 +2307,7 @@ const ProductionPlanBoard = () => {
                                 variant="caption"
                                 sx={{
                                   fontWeight: 600,
-                                  color: isSelected ? 'white' : 'primary.dark',
+                                  color: statusMeta.labelColor,
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
