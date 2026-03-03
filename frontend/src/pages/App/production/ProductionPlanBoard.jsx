@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -651,6 +652,28 @@ const ProductionPlanBoard = () => {
   const selectedAssignmentBusy =
     !!selectedAssignment &&
     String(savingAssignmentId || '') === String(selectedAssignment.id);
+  const renderActionButtonLabel = (label, busy) => (
+    <Box
+      sx={{
+        position: 'relative',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 44,
+      }}
+    >
+      <Box component="span" sx={{ visibility: busy ? 'hidden' : 'visible' }}>
+        {label}
+      </Box>
+      {busy && (
+        <CircularProgress
+          size={16}
+          color="inherit"
+          sx={{ position: 'absolute' }}
+        />
+      )}
+    </Box>
+  );
   const selectedCtStatus = normalizeCtStatus(selectedAssignment?.status ?? selectedAssignment?.ctStatus);
 
   const assignmentViewById = useMemo(
@@ -2846,7 +2869,10 @@ const ProductionPlanBoard = () => {
                       onClick={() => handleAgree(selectedAssignment.id)}
                       disabled={selectedAssignmentBusy || selectedCtStatus === 'AGREED' || hasCtAdjustment}
                     >
-                      {selectedCtStatus === 'AGREED' ? '동의됨' : '동의'}
+                      {renderActionButtonLabel(
+                        selectedCtStatus === 'AGREED' ? '동의됨' : '동의',
+                        selectedAssignmentBusy
+                      )}
                     </Button>
                     <Button
                       size="small"
@@ -2855,7 +2881,7 @@ const ProductionPlanBoard = () => {
                       onClick={() => handleRequestAdjustment(selectedAssignment.id)}
                       disabled={selectedAssignmentBusy || !hasCtAdjustment}
                     >
-                      변경 요청
+                      {renderActionButtonLabel('변경 요청', selectedAssignmentBusy)}
                     </Button>
                   </Stack>
                 </Paper>

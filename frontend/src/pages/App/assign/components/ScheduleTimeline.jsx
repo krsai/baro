@@ -2,8 +2,9 @@ import React, { memo, useCallback, useEffect, useRef, useMemo, useState } from '
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import AssignBar from './AssignBar';
+import { ASSIGN_TIMELINE_CELL_WIDTH } from '../constants';
 
-const CELL_WIDTH = 100;
+const CELL_WIDTH = ASSIGN_TIMELINE_CELL_WIDTH;
 const ROW_HEIGHT = 90;
 const BAR_HEIGHT = 64;
 const BAR_GAP = 6;

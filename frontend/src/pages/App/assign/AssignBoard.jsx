@@ -33,6 +33,10 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
+import {
+  ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS,
+  ASSIGN_TIMELINE_CELL_WIDTH,
+} from './constants';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import {
   HOLIDAY_UPDATED_EVENT,
@@ -866,7 +870,7 @@ const mergeCardData = (target, source) => {
 
 const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityById = null) => {
   const startDayOffsetPercent = assignment.startDayOffsetPercent ?? 0;
-  const startIndex = assignment.startIndex;
+  const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
   const startCapacity = getDayCapacitySeconds(
     startIndex,
     assignment.lineId,
@@ -892,7 +896,21 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
 
   let endIndex = startIndex;
   let cursor = startIndex + 1;
-  while (remaining > 0) {
+  const fallbackDailyCapacity = Math.max(
+    1,
+    getLineCapacitySeconds(assignment?.lineId, lineCapacityById)
+  );
+  const projectedWorkingDays = Math.max(
+    1,
+    Math.ceil(Math.max(toNonNegativeNumber(totalSeconds, 0), 0) / fallbackDailyCapacity)
+  );
+  const knownLastIndex = Array.isArray(days) && days.length > 0 ? days.length - 1 : startIndex;
+  const maxCursor =
+    Math.max(startIndex, knownLastIndex) +
+    projectedWorkingDays +
+    ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS;
+
+  while (remaining > 0 && cursor <= maxCursor) {
     if (isNonWorkingDay(cursor, days)) {
       endIndex = cursor;
       cursor += 1;
@@ -922,6 +940,10 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
     }
     remaining -= dailyCapacity;
     cursor += 1;
+  }
+
+  if (remaining > 0) {
+    endIndex = maxCursor;
   }
 
   return {
@@ -1086,7 +1108,7 @@ const buildUsageMap = (assignments, lineId, totalDays, days, lineCapacityById = 
   return usage;
 };
 
-const planAssignment = ({
+const planAssignmentDetailed = ({
   startIndex,
   totalSeconds,
   lineId,
@@ -1101,10 +1123,22 @@ const planAssignment = ({
   while (dayIndex < totalDays && isNonWorkingDay(dayIndex, days)) {
     dayIndex += 1;
   }
-  if (dayIndex >= totalDays) return null;
+  if (dayIndex >= totalDays) {
+    return {
+      planned: null,
+      failureCode: 'OUT_OF_RANGE',
+      needsMoreDays: true,
+    };
+  }
 
   const startCapacity = getDayCapacitySeconds(dayIndex, lineId, days, lineCapacityById);
-  if (startCapacity <= 0 || usage[dayIndex] >= startCapacity) return null;
+  if (startCapacity <= 0 || usage[dayIndex] >= startCapacity) {
+    return {
+      planned: null,
+      failureCode: 'START_DAY_UNAVAILABLE',
+      needsMoreDays: false,
+    };
+  }
 
   const startOffsetPercent = (usage[dayIndex] / startCapacity) * 100;
   const startAvailable = startCapacity - usage[dayIndex];
@@ -1114,11 +1148,15 @@ const planAssignment = ({
 
   if (remaining <= 0) {
     return {
-      startIndex: dayIndex,
-      endIndex: dayIndex,
-      startDayOffsetPercent: startOffsetPercent,
-      startDayPercent,
-      endDayPercent: startDayPercent,
+      planned: {
+        startIndex: dayIndex,
+        endIndex: dayIndex,
+        startDayOffsetPercent: startOffsetPercent,
+        startDayPercent,
+        endDayPercent: startDayPercent,
+      },
+      failureCode: null,
+      needsMoreDays: false,
     };
   }
 
@@ -1129,7 +1167,11 @@ const planAssignment = ({
       continue;
     }
     if (usage[cursor] > 0) {
-      return null;
+      return {
+        planned: null,
+        failureCode: 'DAY_CONFLICT',
+        needsMoreDays: false,
+      };
     }
     const dailyCapacity = getDayCapacitySeconds(cursor, lineId, days, lineCapacityById);
     if (dailyCapacity <= 0) {
@@ -1139,19 +1181,29 @@ const planAssignment = ({
     if (remaining <= dailyCapacity) {
       const endDayPercent = (remaining / dailyCapacity) * 100;
       return {
-        startIndex: dayIndex,
-        endIndex: cursor,
-        startDayOffsetPercent: startOffsetPercent,
-        startDayPercent,
-        endDayPercent,
+        planned: {
+          startIndex: dayIndex,
+          endIndex: cursor,
+          startDayOffsetPercent: startOffsetPercent,
+          startDayPercent,
+          endDayPercent,
+        },
+        failureCode: null,
+        needsMoreDays: false,
       };
     }
     remaining -= dailyCapacity;
     cursor += 1;
   }
 
-  return null;
+  return {
+    planned: null,
+    failureCode: 'INSUFFICIENT_DAYS',
+    needsMoreDays: true,
+  };
 };
+
+const planAssignment = (params) => planAssignmentDetailed(params).planned;
 
 const getAssignmentStartKey = (assignment) => {
   const offset = (assignment.startDayOffsetPercent ?? 0) / 100;
@@ -1224,6 +1276,124 @@ const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
   return nextIndex;
 };
 
+const reflowSingleLineAssignmentsByCapacity = ({
+  lineId,
+  lineItems,
+  totalDays,
+  days,
+  lineCapacityById,
+  capacityForSource,
+  safeReflowStartIndex,
+}) => {
+  const sorted = (Array.isArray(lineItems) ? lineItems : [])
+    .slice()
+    .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
+  if (sorted.length === 0) {
+    return {
+      assignments: [],
+      failed: false,
+      needsMoreDays: false,
+    };
+  }
+
+  const fallbackAssignments = sorted.map((item) => ({ ...item, lineId }));
+  const fixed = sorted
+    .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
+    .map((item) => ({ ...item, lineId }));
+  const queue = sorted.filter(
+    (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
+  );
+
+  const placed = [...fixed];
+  let cursorStart = Math.max(
+    safeReflowStartIndex,
+    toNonNegativeInt(sorted[0]?.startIndex, 0)
+  );
+  if (fixed.length > 0) {
+    const nextFromFixed = getNextStartIndex(
+      fixed[fixed.length - 1],
+      days,
+      lineCapacityById
+    );
+    if (nextFromFixed != null) {
+      cursorStart = Math.max(cursorStart, nextFromFixed);
+    }
+  }
+
+  for (let index = 0; index < queue.length; index += 1) {
+    const item = queue[index];
+    const startIndex = Math.max(
+      cursorStart,
+      toNonNegativeInt(item?.startIndex, cursorStart)
+    );
+    if (startIndex >= totalDays) {
+      return {
+        assignments: fallbackAssignments,
+        failed: true,
+        needsMoreDays: true,
+      };
+    }
+
+    const totalSeconds = resolveAssignmentPlannedSeconds(
+      item,
+      days,
+      capacityForSource
+    );
+    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+      return {
+        assignments: fallbackAssignments,
+        failed: true,
+        needsMoreDays: false,
+      };
+    }
+    const usedBeforeReflow = getUsageSecondsBeforeIndex(
+      item,
+      safeReflowStartIndex,
+      days,
+      capacityForSource
+    );
+    const remainingSeconds = Math.max(0, totalSeconds - usedBeforeReflow);
+    if (remainingSeconds <= 0) continue;
+
+    const planResult = planAssignmentDetailed({
+      startIndex,
+      totalSeconds: remainingSeconds,
+      lineId,
+      assignments: placed,
+      totalDays,
+      days,
+      lineCapacityById,
+    });
+    if (!planResult.planned) {
+      return {
+        assignments: fallbackAssignments,
+        failed: true,
+        needsMoreDays: planResult.needsMoreDays,
+      };
+    }
+
+    const planned = planResult.planned;
+    const nextItem = {
+      ...item,
+      lineId,
+      totalSeconds,
+      ...planned,
+      startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
+      endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
+    };
+    placed.push(nextItem);
+
+    const nextCursorStart = getNextStartIndex(nextItem, days, lineCapacityById);
+    cursorStart = nextCursorStart == null ? nextItem.endIndex : nextCursorStart;
+  }
+
+  return {
+    assignments: placed,
+    failed: false,
+    needsMoreDays: false,
+  };
+};
+
 const reflowAssignmentsByLineCapacity = ({
   assignments,
   totalDays,
@@ -1243,85 +1413,33 @@ const reflowAssignmentsByLineCapacity = ({
   });
 
   const nextAssignments = [];
+  const failedLineIds = [];
+  let needsMoreDays = false;
 
   for (const [lineId, lineItems] of grouped.entries()) {
-    const sorted = lineItems
-      .slice()
-      .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
-    if (sorted.length === 0) continue;
-
-    const fixed = sorted
-      .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
-      .map((item) => ({ ...item, lineId }));
-    const queue = sorted.filter(
-      (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
-    );
-
-    const placed = [...fixed];
-    let cursorStart = Math.max(
+    const lineResult = reflowSingleLineAssignmentsByCapacity({
+      lineId,
+      lineItems,
+      totalDays,
+      days,
+      lineCapacityById,
+      capacityForSource,
       safeReflowStartIndex,
-      toNonNegativeInt(sorted[0]?.startIndex, 0)
-    );
-    if (fixed.length > 0) {
-      const nextFromFixed = getNextStartIndex(
-        fixed[fixed.length - 1],
-        days,
-        lineCapacityById
-      );
-      if (nextFromFixed != null) {
-        cursorStart = Math.max(cursorStart, nextFromFixed);
-      }
+    });
+    if (lineResult.failed) {
+      failedLineIds.push(lineId);
     }
-
-    for (let index = 0; index < queue.length; index += 1) {
-      const item = queue[index];
-      // item.startIndex를 최솟값으로 보장: 앞 배정과 겹치면 밀어내고, 겹치지 않으면 원래 위치 유지
-      const startIndex = Math.max(cursorStart, toNonNegativeInt(item?.startIndex, cursorStart));
-      if (startIndex == null || startIndex >= totalDays) return null;
-
-      const totalSeconds = resolveAssignmentPlannedSeconds(
-        item,
-        days,
-        capacityForSource
-      );
-      if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return null;
-      const usedBeforeReflow = getUsageSecondsBeforeIndex(
-        item,
-        safeReflowStartIndex,
-        days,
-        capacityForSource
-      );
-      const remainingSeconds = Math.max(0, totalSeconds - usedBeforeReflow);
-      if (remainingSeconds <= 0) continue;
-
-      const planned = planAssignment({
-        startIndex,
-        totalSeconds: remainingSeconds,
-        lineId,
-        assignments: placed,
-        totalDays,
-        days,
-        lineCapacityById,
-      });
-      if (!planned) return null;
-
-      const nextItem = {
-        ...item,
-        lineId,
-        totalSeconds,
-        ...planned,
-        startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
-        endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
-      };
-      placed.push(nextItem);
-
-      cursorStart = getNextStartIndex(nextItem, days, lineCapacityById);
+    if (lineResult.needsMoreDays) {
+      needsMoreDays = true;
     }
-
-    nextAssignments.push(...placed);
+    nextAssignments.push(...lineResult.assignments);
   }
 
-  return nextAssignments;
+  return {
+    assignments: nextAssignments,
+    failedLineIds,
+    needsMoreDays,
+  };
 };
 
 const rebuildLineWithInsert = ({
@@ -2046,10 +2164,10 @@ const AssignBoard = () => {
       if (!hasAbsoluteScheduleKeys && normalizedRestoredAssignments.length > 1) {
         const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
         let candidateDays = normalizedRestoreDays;
-        let reflowedAssignments = null;
+        let reflowResult = null;
 
         for (let attempt = 0; attempt < 6; attempt += 1) {
-          reflowedAssignments = reflowAssignmentsByLineCapacity({
+          reflowResult = reflowAssignmentsByLineCapacity({
             assignments: normalizedRestoredAssignments,
             totalDays: candidateDays.length,
             days: candidateDays,
@@ -2057,12 +2175,12 @@ const AssignBoard = () => {
             sourceLineCapacityById: nextLineCapacityById,
             reflowStartIndex,
           });
-          if (reflowedAssignments) break;
+          if (!reflowResult?.needsMoreDays) break;
           candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
         }
 
-        if (reflowedAssignments) {
-          normalizedRestoredAssignments = reflowedAssignments.map((item) =>
+        if (Array.isArray(reflowResult?.assignments)) {
+          normalizedRestoredAssignments = reflowResult.assignments.map((item) =>
             normalizeAssignmentLayout(item)
           );
           normalizedRestoreDays = candidateDays;
@@ -2338,14 +2456,26 @@ const AssignBoard = () => {
     );
 
     // 저장 전 날짜 중첩 제거: 잠금 카드(SENT/AGREED) 위치 고정, 나머지 재배치
-    const reflowedAssignments = reflowAssignmentsByLineCapacity({
-      assignments: assignmentsForPersistence,
-      totalDays: persistDays.length,
-      days: persistDays,
-      lineCapacityById,
-      reflowStartIndex: 0,
-    });
-    const assignmentsToSave = reflowedAssignments ?? assignmentsForPersistence;
+    let candidatePersistDays = persistDays;
+    let reflowResult = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      reflowResult = reflowAssignmentsByLineCapacity({
+        assignments: assignmentsForPersistence,
+        totalDays: candidatePersistDays.length,
+        days: candidatePersistDays,
+        lineCapacityById,
+        reflowStartIndex: 0,
+      });
+      if (!reflowResult?.needsMoreDays) break;
+      candidatePersistDays = buildDays(
+        persistBaseDate,
+        candidatePersistDays.length + 20,
+        holidaySet
+      );
+    }
+    const assignmentsToSave = Array.isArray(reflowResult?.assignments)
+      ? reflowResult.assignments
+      : assignmentsForPersistence;
 
     const normalizedAssignments = assignmentsToSave.map((item) =>
       syncAssignmentDateKeys(item, persistBaseDate)
@@ -2515,73 +2645,6 @@ const AssignBoard = () => {
     }
     return result;
   };
-  const reflowLineAssignmentsAfterCtUpdate = useCallback(
-    (nextAssignments, { lineId, reflowStartIndex }) => {
-      const normalizedAssignments = (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) =>
-        normalizeAssignmentLayout(item)
-      );
-      const lineKey = normalizeKey(lineId);
-      if (!lineKey) {
-        return {
-          assignments: normalizedAssignments,
-          daysForAssignments: days,
-          reflowFailed: false,
-        };
-      }
-
-      const targetLineAssignments = normalizedAssignments.filter(
-        (item) => normalizeKey(item?.lineId) === lineKey
-      );
-      if (targetLineAssignments.length <= 1) {
-        return {
-          assignments: normalizedAssignments,
-          daysForAssignments: days,
-          reflowFailed: false,
-        };
-      }
-
-      const safeReflowStartIndex = toNonNegativeInt(reflowStartIndex, 0);
-      let candidateDays = days;
-      let plannedLineAssignments = null;
-
-      for (let attempt = 0; attempt < 6; attempt += 1) {
-        plannedLineAssignments = reflowAssignmentsByLineCapacity({
-          assignments: targetLineAssignments,
-          totalDays: candidateDays.length,
-          days: candidateDays,
-          lineCapacityById,
-          sourceLineCapacityById: lineCapacityById,
-          reflowStartIndex: safeReflowStartIndex,
-        });
-        if (plannedLineAssignments) break;
-        candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
-      }
-
-      if (!plannedLineAssignments) {
-        return {
-          assignments: normalizedAssignments,
-          daysForAssignments: days,
-          reflowFailed: true,
-        };
-      }
-
-      const plannedById = new Map(
-        plannedLineAssignments.map((item) => [String(item?.id ?? ''), normalizeAssignmentLayout(item)])
-      );
-      const mergedAssignments = normalizedAssignments.map((item) => {
-        const key = String(item?.id ?? '');
-        return plannedById.get(key) || item;
-      });
-
-      return {
-        assignments: mergedAssignments,
-        daysForAssignments: candidateDays,
-        reflowFailed: false,
-      };
-    },
-    [days, holidaySet, lineCapacityById]
-  );
-
   const assignedCardIds = useMemo(() => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));
   }, [assignments]);
@@ -3308,7 +3371,7 @@ const AssignBoard = () => {
 
         // 자신의 droppable 위에 드롭한 경우: drag delta로 날짜 추정
         if (activeId.startsWith('assign-') && detectedId === activeId.replace('assign-', '')) {
-          const dayDelta = Math.round(event.delta.x / 100);
+          const dayDelta = Math.round(event.delta.x / ASSIGN_TIMELINE_CELL_WIDTH);
           dayIndex = Math.max(0, detectedAssignment.startIndex + dayDelta);
           targetOnDay = null;
         } else {
@@ -3676,28 +3739,6 @@ const AssignBoard = () => {
     }
     setContextMenuState(null);
   }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
-  const recalcCardsForStyleProcesses = useCallback((sourceCards, styleId, processes) => {
-    const normalizedStyleId = String(styleId || '').trim();
-    if (!normalizedStyleId) return sourceCards;
-    return (Array.isArray(sourceCards) ? sourceCards : []).map((card) => {
-      if (String(card?.styleId || '').trim() !== normalizedStyleId) return card;
-      const quantity = Math.max(1, toPositiveInt(card?.quantity, 1));
-      const nextTotalPt = getTotalForOrderQuantity(processes, 'pt', quantity);
-      const nextTotalAt = getTotalForOrderQuantity(processes, 'at', quantity);
-      const nextTotalSt = getTotalStForOrderQuantity(processes, quantity);
-      const nextStatus = resolveCardStatus(card, nextTotalPt, nextTotalAt, nextTotalSt);
-      const nextTotalSeconds =
-        nextStatus === 'ST' ? nextTotalSt : nextStatus === 'AT' ? nextTotalAt : nextTotalPt;
-      return {
-        ...card,
-        totalPt: nextTotalPt,
-        totalAt: nextTotalAt,
-        totalSt: nextTotalSt,
-        status: nextStatus,
-        totalSeconds: nextTotalSeconds,
-      };
-    });
-  }, []);
   const handleSendProposalToLineLeader = useCallback(async () => {
     if (sendingProposal) return;
     if (!detailAssignment) return;
@@ -3719,8 +3760,6 @@ const AssignBoard = () => {
     const schedulePatch = buildAssignmentSchedulePatch(detailAssignment, startDateRef.current);
     const nowIso = new Date().toISOString();
     const nextCards = cards;
-    const nextStyles = styles;
-    const updatedStyleId = null;
 
     try {
       setSendingProposal(true);
@@ -3759,24 +3798,6 @@ const AssignBoard = () => {
               : card
           )
         : nextCards;
-      const nextCardById = new Map(
-        nextCardsWithProposal.map((card) => [String(card?.id || ''), card])
-      );
-      const lineReflowStartByLine = new Map();
-      const registerLineForReflow = (lineId, startIndex) => {
-        const key = normalizeKey(lineId);
-        if (!key) return;
-        const safeStartIndex = toNonNegativeInt(startIndex, 0);
-        if (!lineReflowStartByLine.has(key)) {
-          lineReflowStartByLine.set(key, safeStartIndex);
-          return;
-        }
-        lineReflowStartByLine.set(
-          key,
-          Math.min(lineReflowStartByLine.get(key), safeStartIndex)
-        );
-      };
-      const normalizedUpdatedStyleId = String(updatedStyleId || '').trim();
 
       const nextAssignments = assignments.map((item) => {
         if (String(item?.id) === assignmentId) {
@@ -3799,65 +3820,11 @@ const AssignBoard = () => {
             ctNote: `제안 송부 ${nowIso}`,
           };
         }
-
-        if (normalizedUpdatedStyleId && !isAssignmentLocked(item)) {
-          const linkedCard = nextCardById.get(String(item?.cardId || ''));
-          const linkedStyleId = String(linkedCard?.styleId || '').trim();
-          if (linkedCard && linkedStyleId === normalizedUpdatedStyleId) {
-            const syncedItem = normalizeAssignmentLayout(
-              syncAssignmentFromCard(item, linkedCard, days, lineCapacityById)
-            );
-            const beforeSeconds = toNonNegativeInt(item?.totalSeconds, 0);
-            const afterSeconds = toNonNegativeInt(syncedItem?.totalSeconds, 0);
-            const beforeProposal = toNonNegativeInt(
-              item?.proposalSeconds ?? beforeSeconds,
-              beforeSeconds
-            );
-            const afterProposal = toNonNegativeInt(
-              syncedItem?.proposalSeconds ?? afterSeconds,
-              afterSeconds
-            );
-            if (
-              beforeSeconds !== afterSeconds ||
-              beforeProposal !== afterProposal ||
-              normalizeKey(item?.proposalBasis || item?.basis) !==
-                normalizeKey(syncedItem?.proposalBasis || syncedItem?.basis)
-            ) {
-              registerLineForReflow(
-                syncedItem?.lineId,
-                Math.min(
-                  toNonNegativeInt(item?.startIndex, 0),
-                  toNonNegativeInt(syncedItem?.startIndex, 0)
-                )
-              );
-            }
-            return syncedItem;
-          }
-        }
         return item;
       });
-      let normalizedAssignments = nextAssignments.map((item) =>
+      const normalizedAssignments = nextAssignments.map((item) =>
         normalizeAssignmentLayout(item)
       );
-      let daysForAssignments = days;
-      let reflowFailed = false;
-      for (const [lineId, reflowStartIndex] of lineReflowStartByLine.entries()) {
-        const reflowResult = reflowLineAssignmentsAfterCtUpdate(normalizedAssignments, {
-          lineId,
-          reflowStartIndex,
-        });
-        normalizedAssignments = reflowResult.assignments.map((item) =>
-          normalizeAssignmentLayout(item)
-        );
-        if (Array.isArray(reflowResult.daysForAssignments)) {
-          if (reflowResult.daysForAssignments.length > daysForAssignments.length) {
-            daysForAssignments = reflowResult.daysForAssignments;
-          }
-        }
-        if (reflowResult.reflowFailed) {
-          reflowFailed = true;
-        }
-      }
       const query = buildQueryString({ orgId: activeOrgId });
       const ctAssignmentPatch = {
         ...(schedulePatch || {}),
@@ -3894,8 +3861,7 @@ const AssignBoard = () => {
           assignmentsForPut
         );
       };
-      const shouldUseFullPut =
-        lineReflowStartByLine.size > 0 || shouldUseFullBoardPutForCtAction(assignmentId);
+      const shouldUseFullPut = shouldUseFullBoardPutForCtAction(assignmentId);
       if (!shouldUseFullPut) {
         try {
           const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
@@ -3931,7 +3897,7 @@ const AssignBoard = () => {
         ({ persistedCards, persistedAssignments } = await persistProposalWithBoardPut());
       }
 
-      let nextDays = daysForAssignments;
+      let nextDays = days;
       const maxEndIndex = persistedAssignments.reduce(
         (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
         0
@@ -3942,7 +3908,6 @@ const AssignBoard = () => {
       if (nextDays.length > days.length) {
         setDays(nextDays);
       }
-      setStyles(nextStyles);
       setCards(persistedCards);
       setAssignments(persistedAssignments);
       const persistedSnapshot = createPersistSnapshotText(
@@ -3951,9 +3916,6 @@ const AssignBoard = () => {
       );
       lastSavedSnapshotRef.current = persistedSnapshot;
       resetBoardHistory(persistedCards, persistedAssignments);
-      if (reflowFailed) {
-        showNotification('CT 반영 후 라인 일정 자동 정렬에 실패해 기존 배치를 유지했습니다.', 'warning');
-      }
       showNotification('제안 송부 완료. 해당 작업은 잠금 처리되었습니다.', 'success');
       blurActiveElement();
       setDetailState(null);
@@ -3969,26 +3931,20 @@ const AssignBoard = () => {
     sendingProposal,
     detailAssignment,
     detailSummary,
-    detailStyle,
     detailProcessRows,
-    isAssignmentLocked,
     detailInLineRequestFlow,
     detailNeedsProposalResend,
     detailHasProposalChange,
     showNotification,
     cards,
-    styles,
     assignments,
     activeOrgId,
-    recalcCardsForStyleProcesses,
     days,
-    lineCapacityById,
     holidaySet,
     createPersistSnapshotText,
     resetBoardHistory,
     resolvePersistedBoardState,
     resolveBoardSaveErrorMessage,
-    reflowLineAssignmentsAfterCtUpdate,
     alignAssignmentsForBoardPut,
     syncAssignmentDateKeys,
     shouldUseFullBoardPutForCtAction,
