@@ -34,12 +34,7 @@ const DEFAULT_ORG = {
 };
 
 const DEFAULT_ATTRIBUTES = {
-  colors: [
-    { code: "BLK", name: "Black" },
-    { code: "WHT", name: "White" },
-    { code: "RED", name: "Red" },
-    { code: "BLU", name: "Blue" },
-  ],
+  colors: [] as { code: string; name: string }[],
   categories: [
     { code: "OUT", name: "Outer" },
     { code: "TOP", name: "Top" },

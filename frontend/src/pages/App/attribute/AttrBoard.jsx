@@ -255,7 +255,7 @@ const AttrBoard = () => {
         </Button>
       </Box>
 
-      <TableContainer sx={{ flexGrow: 1 }}>
+      <TableContainer sx={{ maxHeight: 374, overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
@@ -268,7 +268,7 @@ const AttrBoard = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {formData[config.key].map((row) => (
+            {[...formData[config.key]].sort((a, b) => a.code.localeCompare(b.code)).map((row) => (
               <TableRow key={row.id} hover>
                 {config.columns.map((col) => (
                   <TableCell key={col.field}>
