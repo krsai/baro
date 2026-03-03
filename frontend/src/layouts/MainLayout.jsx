@@ -53,6 +53,7 @@ import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 
 const DRAWER_WIDTH = 260;
+const EMPTY_WORKSPACE_PATH = '/workspace';
 
 const KEEP_ALIVE_PATHS = new Set(['/assignment']);
 const KeepAliveAssign = React.lazy(() => import('../pages/App/Assign'));
@@ -125,7 +126,8 @@ const MainLayout = () => {
   const schedulePendingNavigationCleanup = React.useCallback((sourcePath, nextPathname) => {
     window.setTimeout(() => {
       if (pendingNavigationPathRef.current !== nextPathname) return;
-      if (currentPathRef.current !== sourcePath) return;
+      const browserPath = toPathname(window.location.pathname || '/');
+      if (browserPath !== sourcePath) return;
       pendingNavigationPathRef.current = null;
       pendingCloseTabRef.current = null;
     }, 0);
@@ -329,7 +331,15 @@ const MainLayout = () => {
       return openTabs;
     }
     if (openTabs.some((tab) => tab.id === currentPath)) return openTabs;
-    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+    if (skipAutoOpenPathRef.current === currentPath) {
+      return openTabs;
+    }
+    if (
+      currentPath === '/' ||
+      currentPath === EMPTY_WORKSPACE_PATH ||
+      currentPath === '/login' ||
+      currentPath.startsWith('/auth')
+    ) {
       return openTabs;
     }
 
@@ -441,7 +451,12 @@ const MainLayout = () => {
     }
 
     if (isLoggingOutRef.current) return;
-    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+    if (
+      currentPath === '/' ||
+      currentPath === EMPTY_WORKSPACE_PATH ||
+      currentPath === '/login' ||
+      currentPath.startsWith('/auth')
+    ) {
       return;
     }
     if (skipAutoOpenPathRef.current === currentPath) return;
@@ -452,7 +467,12 @@ const MainLayout = () => {
   }, [closeTab, currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
 
   useEffect(() => {
-    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+    if (
+      currentPath === '/' ||
+      currentPath === EMPTY_WORKSPACE_PATH ||
+      currentPath === '/login' ||
+      currentPath.startsWith('/auth')
+    ) {
       return;
     }
     recentTabHistoryRef.current = [
@@ -513,7 +533,12 @@ const MainLayout = () => {
 
   const handleLogout = async () => {
     isLoggingOutRef.current = true;
-    skipAutoOpenPathRef.current = currentPath;
+    skipAutoOpenPathRef.current = '/login';
+    pendingNavigationPathRef.current = null;
+    pendingCloseTabRef.current = null;
+    recentTabHistoryRef.current = [];
+    setMountedKeepAlivePaths(new Set());
+    cancelAllTrackedRequests('logout');
     resetWorkspace();
 
     try {
@@ -552,6 +577,14 @@ const MainLayout = () => {
     // If we are closing the currently active tab, route using recent tab history.
     if (currentPath === tabIdToClose) {
       cancelAllTrackedRequests('close_active_tab');
+      if (remainingTabs.length === 0) {
+        skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
+        pendingCloseTabRef.current = tabIdToClose;
+        pendingNavigationPathRef.current = EMPTY_WORKSPACE_PATH;
+        navigate(EMPTY_WORKSPACE_PATH, { replace: true });
+        schedulePendingNavigationCleanup(currentPathRef.current, EMPTY_WORKSPACE_PATH);
+        return;
+      }
       const remainingTabById = new Map(remainingTabs.map((tab) => [tab.id, tab]));
       const recentFallbackId = recentTabHistoryRef.current.find((tabId) =>
         remainingTabById.has(tabId)
@@ -811,7 +844,7 @@ const MainLayout = () => {
             aria-label="open pages tabs"
             sx={{
               minHeight: '40px',
-              '& .MuiTabs-indicator': { 
+              '& .MuiTabs-indicator': {
                 height: '2px',
               },
             }}

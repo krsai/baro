@@ -152,7 +152,7 @@ const CtReviewBoard = () => {
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const [boardState, lineRows, factoryRows] = await Promise.all([
-          requestJSON('/assignment-board-state' + query).catch(() => ({ cards: [], assignments: [] })),
+          requestJSON('/assignment-board-view' + query).catch(() => ({ cards: [], assignments: [] })),
           requestJSON('/lines' + query).catch(() => []),
           requestJSON('/factories' + query).catch(() => []),
         ]);

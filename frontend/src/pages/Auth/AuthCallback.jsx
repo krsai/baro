@@ -2,34 +2,23 @@
 import { Container, Typography, Box, CircularProgress } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { resolveFirstAccessiblePath } from '../../utils/accessControl';
+
+const WORKSPACE_PATH = '/workspace';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
-  const { loading, isAuthenticated, hasWorkspaceAccess, devBypass, devProfile, accessProfile } =
-    useAuth();
+  const { loading, isAuthenticated, hasWorkspaceAccess } = useAuth();
 
   useEffect(() => {
     if (loading) return;
 
     if (isAuthenticated && hasWorkspaceAccess) {
-      navigate(
-        resolveFirstAccessiblePath({
-          isAuthenticated,
-          devBypass,
-          devProfile,
-          accessProfile,
-        }),
-        { replace: true }
-      );
+      navigate(WORKSPACE_PATH, { replace: true });
       return;
     }
 
     navigate('/login', { replace: true });
   }, [
-    accessProfile,
-    devBypass,
-    devProfile,
     hasWorkspaceAccess,
     isAuthenticated,
     loading,

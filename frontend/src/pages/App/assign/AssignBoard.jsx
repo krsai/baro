@@ -33,10 +33,7 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
-import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
-import { fetchAttributes } from '../../../utils/attributeApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { fetchOrders as fetchOrdersFromApi } from '../../../utils/orderApi';
 import {
   HOLIDAY_UPDATED_EVENT,
   STORAGE_KEYS,
@@ -453,6 +450,32 @@ const syncAssignmentDateKeys = (assignment, baseDate = null) => {
     ...normalized,
     startDateKey: buildDateKey(startDate),
     endDateKey: buildDateKey(endDate),
+  };
+};
+
+const buildAssignmentSchedulePatch = (assignment, baseDate = null) => {
+  const synced = normalizeAssignmentLayout(syncAssignmentDateKeys(assignment, baseDate));
+  if (!synced || typeof synced !== 'object') return null;
+
+  const startIndex = toSignedInt(synced.startIndex, 0);
+  const endIndex = Math.max(startIndex, toSignedInt(synced.endIndex, startIndex));
+  const startDateKey =
+    typeof synced.startDateKey === 'string' && synced.startDateKey.trim()
+      ? synced.startDateKey.trim()
+      : null;
+  const endDateKey =
+    typeof synced.endDateKey === 'string' && synced.endDateKey.trim()
+      ? synced.endDateKey.trim()
+      : startDateKey;
+
+  return {
+    startIndex,
+    endIndex,
+    startDayOffsetPercent: clampPercent(synced.startDayOffsetPercent, 0, 99.999),
+    startDayPercent: clampPercent(synced.startDayPercent, 100, 100),
+    endDayPercent: clampPercent(synced.endDayPercent, synced.startDayPercent, 100),
+    startDateKey,
+    endDateKey,
   };
 };
 
@@ -1825,8 +1848,8 @@ const AssignBoard = () => {
       }
 
       try {
-        const latestBoardState = await requestJSON(
-          '/assignment-board-state' + buildQueryString({ orgId: activeOrgId }),
+        const latestAssignments = await requestJSON(
+          '/assignment-board-versions' + buildQueryString({ orgId: activeOrgId }),
           {
             forceRefresh: true,
             skipGlobalLoading: true,
@@ -1834,7 +1857,7 @@ const AssignBoard = () => {
         );
         return mergeServerAssignmentVersions(
           nextAssignments,
-          latestBoardState?.assignments,
+          latestAssignments?.assignments,
           parsePersistSnapshotAssignments(lastSavedSnapshotRef.current)
         );
       } catch (_error) {
@@ -1883,6 +1906,190 @@ const AssignBoard = () => {
     }
   }, [holidaySet, resolvePersistedBoardState]);
 
+  const applyLoadedBoardData = useCallback(
+    ({
+      nextStyles = null,
+      nextLines = [],
+      baseCards = [],
+      boardState = null,
+      markPersistReady = false,
+    }) => {
+      const safeBaseCards = Array.isArray(baseCards) ? baseCards : [];
+      const nextLineCapacityById = buildLineCapacityMap(nextLines);
+      const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
+
+      const hasSavedBoardState =
+        Array.isArray(boardState?.cards) || Array.isArray(boardState?.assignments);
+      const savedCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+      const savedAssignments = Array.isArray(boardState?.assignments) ? boardState.assignments : [];
+      const restoredCards = hasSavedBoardState
+        ? mergeCardsWithSaved(safeBaseCards, savedCards)
+        : safeBaseCards;
+      const restoredCardById = new Map(
+        restoredCards
+          .filter((card) => card?.id)
+          .map((card) => [card.id, card])
+      );
+      const restoredCardIdSet = new Set(
+        restoredCards.map((card) => card?.id).filter(Boolean)
+      );
+      const normalizedSavedAssignments = hasSavedBoardState
+        ? savedAssignments
+            .filter((item) => item?.id)
+            .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
+            .filter((item) => restoredCardIdSet.has(item?.cardId))
+            .map((item) =>
+              normalizeAssignmentLayout({
+                ...item,
+                lineId: String(item.lineId),
+              })
+            )
+        : [];
+      const projectedMaxEndIndex = normalizedSavedAssignments.reduce((max, item) => {
+        const linkedCard = restoredCardById.get(item.cardId);
+        const totalSeconds = linkedCard
+          ? resolveCardTotalSeconds(linkedCard)
+          : toNonNegativeInt(item.totalSeconds, 0);
+        const lineCapacity = Math.max(
+          1,
+          getLineCapacitySeconds(item.lineId, nextLineCapacityById)
+        );
+        const estimatedDays = Math.max(1, Math.ceil(totalSeconds / lineCapacity));
+        return Math.max(max, item.endIndex, item.startIndex + estimatedDays + 14);
+      }, days.length - 1);
+      const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
+      const restoreDays =
+        restoreDayCount > days.length
+          ? buildDays(startDateRef.current, restoreDayCount, holidaySet)
+          : days;
+      const restoredAssignments = hasSavedBoardState
+        ? normalizedSavedAssignments.map((item) => {
+            const linkedCard = restoredCardById.get(item.cardId);
+            if (!linkedCard) return item;
+            return normalizeAssignmentLayout(
+              syncAssignmentFromCard(
+                item,
+                linkedCard,
+                restoreDays,
+                nextLineCapacityById
+              )
+            );
+          })
+        : [];
+      let normalizedRestoredAssignments = restoredAssignments.map((item) =>
+        normalizeAssignmentLayout(item)
+      );
+      let normalizedRestoreDays = restoreDays;
+
+      {
+        const restoreDayLength = normalizedRestoreDays.length;
+        normalizedRestoredAssignments = normalizedRestoredAssignments.map((assignment) => {
+          const remapped = remapAssignmentToDayWindow(assignment, normalizedRestoreDays);
+          if (remapped?.startDateKey) {
+            return remapped;
+          }
+          const clampedStart = Math.min(
+            Math.max(toSignedInt(remapped?.startIndex, 0), 0),
+            restoreDayLength - 1
+          );
+          const clampedEnd = Math.min(
+            Math.max(clampedStart, toSignedInt(remapped?.endIndex, clampedStart)),
+            restoreDayLength - 1
+          );
+          return { ...remapped, startIndex: clampedStart, endIndex: clampedEnd };
+        });
+      }
+
+      const hasAbsoluteScheduleKeys = normalizedRestoredAssignments.some((item) =>
+        Boolean(parseDateKey(item?.startDateKey))
+      );
+      if (!hasAbsoluteScheduleKeys && normalizedRestoredAssignments.length > 1) {
+        const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
+        let candidateDays = normalizedRestoreDays;
+        let reflowedAssignments = null;
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          reflowedAssignments = reflowAssignmentsByLineCapacity({
+            assignments: normalizedRestoredAssignments,
+            totalDays: candidateDays.length,
+            days: candidateDays,
+            lineCapacityById: nextLineCapacityById,
+            sourceLineCapacityById: nextLineCapacityById,
+            reflowStartIndex,
+          });
+          if (reflowedAssignments) break;
+          candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
+        }
+
+        if (reflowedAssignments) {
+          normalizedRestoredAssignments = reflowedAssignments.map((item) =>
+            normalizeAssignmentLayout(item)
+          );
+          normalizedRestoreDays = candidateDays;
+        }
+      }
+
+      const maxRestoredEndIndex = normalizedRestoredAssignments.reduce(
+        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+        0
+      );
+      const nextDayCount = Math.max(
+        normalizedRestoreDays.length,
+        maxRestoredEndIndex + 10
+      );
+      const maxSplit = restoredCards.reduce((max, card) => {
+        const matched = String(card?.id || '').match(/-S(\d+)$/);
+        if (!matched) return max;
+        const value = Number(matched[1]);
+        if (!Number.isFinite(value)) return max;
+        return Math.max(max, value);
+      }, 0);
+      const persistSnapshot = createPersistSnapshotText(
+        restoredCards,
+        normalizedRestoredAssignments
+      );
+      const boardSnapshot = createBoardSnapshotText(
+        restoredCards,
+        normalizedRestoredAssignments
+      );
+      const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
+
+      if (Array.isArray(nextStyles)) {
+        setStyles(nextStyles);
+      }
+      setLines(nextLines);
+      setCards(restoredCards);
+      setAssignments(
+        normalizedRestoredAssignments.map((assignment) =>
+          syncAssignmentDateKeys(assignment, startDateRef.current)
+        )
+      );
+      if (nextDayCount > normalizedRestoreDays.length) {
+        setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
+      } else if (normalizedRestoreDays.length > days.length) {
+        setDays(normalizedRestoreDays);
+      }
+      setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
+      splitCounterRef.current = maxSplit + 1;
+      lastSavedSnapshotRef.current = persistSnapshot;
+      historyPastRef.current = [];
+      historyFutureRef.current = [];
+      historySnapshotRef.current = boardSnapshot;
+      historyApplyingRef.current = false;
+      syncHistoryStatus();
+      if (markPersistReady) {
+        setPersistReady(true);
+      }
+    },
+    [
+      createBoardSnapshotText,
+      createPersistSnapshotText,
+      days,
+      holidaySet,
+      syncHistoryStatus,
+    ]
+  );
+
   useEffect(() => {
     const syncHolidays = () => {
       setHolidayKeys(loadHolidays());
@@ -1922,208 +2129,68 @@ const AssignBoard = () => {
     const loadSourceData = async () => {
       setPersistReady(false);
       setLoading(true);
+      let appliedSavedBoardState = false;
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
-        const [styles, orders, factories, lines, workers, attributes, boardState] = await Promise.all([
-          fetchStylesFromApi({ compact: true, orgId: activeOrgId }).catch(() => []),
-          fetchOrdersFromApi({ orgId: activeOrgId }).catch(() => []),
+
+        const [factories, lines, workers, boardState] = await Promise.all([
           requestJSON('/factories' + orgQuery).catch(() => []),
           requestJSON('/lines' + orgQuery).catch(() => []),
           requestJSON('/line-workers' + orgQuery).catch(() => []),
-          fetchAttributes({ orgId: activeOrgId }).catch(() => null),
-          requestJSON('/assignment-board-state' + orgQuery, { forceRefresh: true }).catch(() => null),
+          requestJSON('/assignment-board-view' + orgQuery, { forceRefresh: true }).catch(() => null),
         ]);
+        if (cancelled) return;
 
         const safeFactories = Array.isArray(factories) ? factories : [];
-        const colors = Array.isArray(attributes?.colors) ? attributes.colors : [];
-        const colorNameMap = new Map(
-          colors.map((item) => [normalizeColorKey(item?.code), item?.name || item?.code || ''])
-        );
-
         const nextLines = buildAssignableLines({
           factories: safeFactories,
           lines,
           workers,
         });
-
-        const nextCards = buildCardsFromOrders({
-          orders: Array.isArray(orders) ? orders : [],
-          styles,
-          colorNameMap,
-        });
-        const nextLineCapacityById = buildLineCapacityMap(nextLines);
-        const nextLineIdSet = new Set(nextLines.map((line) => normalizeKey(line.id)));
-
-        const hasSavedBoardState =
-          Array.isArray(boardState?.cards) || Array.isArray(boardState?.assignments);
         const savedCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
-        const savedAssignments = Array.isArray(boardState?.assignments) ? boardState.assignments : [];
-        const restoredCards = hasSavedBoardState
-          ? mergeCardsWithSaved(nextCards, savedCards)
-          : nextCards;
-        const restoredCardById = new Map(
-          restoredCards
-            .filter((card) => card?.id)
-            .map((card) => [card.id, card])
-        );
-        const restoredCardIdSet = new Set(
-          restoredCards.map((card) => card?.id).filter(Boolean)
-        );
-        const normalizedSavedAssignments = hasSavedBoardState
-          ? savedAssignments
-              .filter((item) => item?.id)
-              .filter((item) => nextLineIdSet.has(normalizeKey(item?.lineId)))
-              .filter((item) => restoredCardIdSet.has(item?.cardId))
-              .map((item) =>
-                normalizeAssignmentLayout({
-                  ...item,
-                  lineId: String(item.lineId),
-                })
-              )
+
+        applyLoadedBoardData({
+          nextStyles: [],
+          nextLines,
+          baseCards: savedCards,
+          boardState,
+          markPersistReady: false,
+        });
+        appliedSavedBoardState = true;
+
+        const assignmentCardsResponse = await requestJSON('/assignment-cards' + orgQuery, {
+          forceRefresh: true,
+        }).catch(() => null);
+        if (cancelled) return;
+
+        const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
+          ? assignmentCardsResponse.styles
           : [];
-        const projectedMaxEndIndex = normalizedSavedAssignments.reduce((max, item) => {
-          const linkedCard = restoredCardById.get(item.cardId);
-          const totalSeconds = linkedCard
-            ? resolveCardTotalSeconds(linkedCard)
-            : toNonNegativeInt(item.totalSeconds, 0);
-          const lineCapacity = Math.max(
-            1,
-            getLineCapacitySeconds(item.lineId, nextLineCapacityById)
-          );
-          const estimatedDays = Math.max(1, Math.ceil(totalSeconds / lineCapacity));
-          return Math.max(max, item.endIndex, item.startIndex + estimatedDays + 14);
-        }, days.length - 1);
-        const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
-        const restoreDays =
-          restoreDayCount > days.length
-            ? buildDays(startDateRef.current, restoreDayCount, holidaySet)
-            : days;
-        const restoredAssignments = hasSavedBoardState
-          ? normalizedSavedAssignments
-              .map((item) => {
-                const linkedCard = restoredCardById.get(item.cardId);
-                if (!linkedCard) return item;
-                return normalizeAssignmentLayout(
-                  syncAssignmentFromCard(
-                    item,
-                    linkedCard,
-                    restoreDays,
-                    nextLineCapacityById
-                  )
-                );
-              })
+        const nextCards = Array.isArray(assignmentCardsResponse?.cards)
+          ? assignmentCardsResponse.cards
           : [];
-        let normalizedRestoredAssignments = restoredAssignments.map((item) =>
-          normalizeAssignmentLayout(item)
-        );
-        let normalizedRestoreDays = restoreDays;
-        // 저장된 절대 날짜(startDateKey)가 있으면 현재 day window 기준으로 재매핑한다.
-        // 절대 날짜가 없고 손상된 startIndex만 남은 경우에만 유효 범위로 클램핑한다.
-        {
-          const rdCount = normalizedRestoreDays.length;
-          normalizedRestoredAssignments = normalizedRestoredAssignments.map((a) => {
-            const remapped = remapAssignmentToDayWindow(a, normalizedRestoreDays);
-            if (remapped?.startDateKey) {
-              return remapped;
-            }
-            const cs = Math.min(Math.max(toSignedInt(remapped?.startIndex, 0), 0), rdCount - 1);
-            const ce = Math.min(
-              Math.max(cs, toSignedInt(remapped?.endIndex, cs)),
-              rdCount - 1
-            );
-            return { ...remapped, startIndex: cs, endIndex: ce };
-          });
-        }
-        const hasAbsoluteScheduleKeys = normalizedRestoredAssignments.some((item) =>
-          Boolean(parseDateKey(item?.startDateKey))
-        );
-        if (!hasAbsoluteScheduleKeys && normalizedRestoredAssignments.length > 1) {
-          const reflowStartIndex = getTodayDayIndex(normalizedRestoreDays);
-          let candidateDays = normalizedRestoreDays;
-          let reflowedAssignments = null;
-
-          for (let attempt = 0; attempt < 6; attempt += 1) {
-            reflowedAssignments = reflowAssignmentsByLineCapacity({
-              assignments: normalizedRestoredAssignments,
-              totalDays: candidateDays.length,
-              days: candidateDays,
-              lineCapacityById: nextLineCapacityById,
-              sourceLineCapacityById: nextLineCapacityById,
-              reflowStartIndex,
-            });
-            if (reflowedAssignments) break;
-            candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
-          }
-
-          if (reflowedAssignments) {
-            normalizedRestoredAssignments = reflowedAssignments.map((item) =>
-              normalizeAssignmentLayout(item)
-            );
-            normalizedRestoreDays = candidateDays;
-          }
-        }
-        const maxRestoredEndIndex = normalizedRestoredAssignments.reduce(
-          (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
-          0
-        );
-        const nextDayCount = Math.max(
-          normalizedRestoreDays.length,
-          maxRestoredEndIndex + 10
-        );
-        const maxSplit = restoredCards.reduce((max, card) => {
-          const matched = String(card?.id || '').match(/-S(\d+)$/);
-          if (!matched) return max;
-          const value = Number(matched[1]);
-          if (!Number.isFinite(value)) return max;
-          return Math.max(max, value);
-        }, 0);
-        const persistSnapshot = createPersistSnapshotText(
-          restoredCards,
-          normalizedRestoredAssignments
-        );
-        const boardSnapshot = createBoardSnapshotText(
-          restoredCards,
-          normalizedRestoredAssignments
-        );
-
-        if (!cancelled) {
-          const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
-          setStyles(Array.isArray(styles) ? styles : []);
-          setLines(nextLines);
-          setCards(restoredCards);
-          setAssignments(
-            normalizedRestoredAssignments.map((assignment) =>
-              syncAssignmentDateKeys(assignment, startDateRef.current)
-            )
-          );
-          if (nextDayCount > normalizedRestoreDays.length) {
-            setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
-          } else if (normalizedRestoreDays.length > days.length) {
-            setDays(normalizedRestoreDays);
-          }
-          setSelectedCardId((prev) => (nextCardIdSet.has(prev) ? prev : null));
-          splitCounterRef.current = maxSplit + 1;
-          lastSavedSnapshotRef.current = persistSnapshot;
-          historyPastRef.current = [];
-          historyFutureRef.current = [];
-          historySnapshotRef.current = boardSnapshot;
-          historyApplyingRef.current = false;
-          syncHistoryStatus();
-          setPersistReady(true);
-        }
+        applyLoadedBoardData({
+          nextStyles: Array.isArray(nextStyles) ? nextStyles : [],
+          nextLines,
+          baseCards: nextCards,
+          boardState,
+          markPersistReady: true,
+        });
       } catch (_error) {
         if (!cancelled) {
-          setStyles([]);
-          setLines([]);
-          setCards([]);
-          setAssignments([]);
-          lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
+          if (!appliedSavedBoardState) {
+            setStyles([]);
+            setLines([]);
+            setCards([]);
+            setAssignments([]);
+            lastSavedSnapshotRef.current = createPersistSnapshotText([], []);
+            historyPastRef.current = [];
+            historyFutureRef.current = [];
+            historySnapshotRef.current = createBoardSnapshotText([], []);
+            historyApplyingRef.current = false;
+            syncHistoryStatus();
+          }
           setPersistReady(true);
-          historyPastRef.current = [];
-          historyFutureRef.current = [];
-          historySnapshotRef.current = createBoardSnapshotText([], []);
-          historyApplyingRef.current = false;
-          syncHistoryStatus();
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -2136,6 +2203,7 @@ const AssignBoard = () => {
     };
   }, [
     activeOrgId,
+    applyLoadedBoardData,
     createBoardSnapshotText,
     createPersistSnapshotText,
     isAssignmentRouteActive,
@@ -2935,6 +3003,7 @@ const AssignBoard = () => {
   ]);
 
   const handleContextMenuOpen = useCallback((payload) => {
+    if (!persistReady || loading) return;
     if (!payload?.targetType || !payload?.id) return;
     setContextMenuState({
       targetType: payload.targetType,
@@ -2942,7 +3011,7 @@ const AssignBoard = () => {
       mouseX: Number(payload.mouseX) || 0,
       mouseY: Number(payload.mouseY) || 0,
     });
-  }, []);
+  }, [loading, persistReady]);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
   const handleContextOpenDetail = useCallback(() => {
     if (!contextMenuState) return;
@@ -3029,6 +3098,7 @@ const AssignBoard = () => {
   }, [detailTargetKey]);
 
   const handleDragStart = useCallback((event) => {
+    if (!persistReady || loading) return;
     const { active } = event;
     if (!active) return;
     const id = String(active.id);
@@ -3060,13 +3130,17 @@ const AssignBoard = () => {
         });
       }
     }
-  }, [cardById, assignmentById]);
+  }, [assignmentById, cardById, loading, persistReady]);
 
   const handleDragCancel = useCallback(() => {
     setActiveDrag(null);
   }, []);
 
   const handleDragEnd = (event) => {
+    if (!persistReady || loading) {
+      setActiveDrag(null);
+      return;
+    }
     const { active, over } = event;
     if (!over) {
       if (String(active.id).startsWith('assign-')) {
@@ -3558,6 +3632,7 @@ const AssignBoard = () => {
 
     const assignmentId = String(detailAssignment.id);
     const nextTotalSeconds = Math.max(1, Math.round(detailSummary.totalRequestedSeconds));
+    const schedulePatch = buildAssignmentSchedulePatch(detailAssignment, startDateRef.current);
     const nowIso = new Date().toISOString();
     const nextCards = cards;
     const nextStyles = styles;
@@ -3571,6 +3646,7 @@ const AssignBoard = () => {
         sentBy: 'OPERATOR',
         sourceAssignmentId: assignmentId,
         lineId: detailAssignment?.lineId ?? null,
+        schedule: schedulePatch,
         quantity: detailSummary.orderQuantity,
         totalStPerPieceSeconds: detailSummary.totalBasePerPieceSeconds,
         totalProposedPerPieceSeconds: detailSummary.totalRequestedPerPieceSeconds,
@@ -3623,6 +3699,7 @@ const AssignBoard = () => {
           // totalSeconds는 ST(q) 기반 배정 기간 — CT 제안값(proposalSeconds)과 무관하게 유지
           return {
             ...item,
+            ...(schedulePatch || {}),
             proposalSeconds: nextTotalSeconds,
             contractedSeconds: null,
             ctStatus: 'SENT',
@@ -3699,6 +3776,7 @@ const AssignBoard = () => {
       }
       const query = buildQueryString({ orgId: activeOrgId });
       const ctAssignmentPatch = {
+        ...(schedulePatch || {}),
         proposalSeconds: nextTotalSeconds,
         contractedSeconds: null,
         ctStatus: 'SENT',
@@ -3828,6 +3906,7 @@ const AssignBoard = () => {
     }
 
     const assignmentId = String(detailAssignment.id);
+    const schedulePatch = buildAssignmentSchedulePatch(detailAssignment, startDateRef.current);
     const nowIso = new Date().toISOString();
     const orderQuantity = Math.max(
       1,
@@ -3901,6 +3980,7 @@ const AssignBoard = () => {
         agreedBy: 'OPERATOR',
         sourceAssignmentId: assignmentId,
         lineId: detailAssignment?.lineId ?? null,
+        schedule: schedulePatch,
         quantity: orderQuantity,
         totalStPerPieceSeconds,
         totalAgreedPerPieceSeconds,
@@ -3935,6 +4015,7 @@ const AssignBoard = () => {
           ? toNonNegativeInt(targetAssignmentForAgree?.proposalSeconds, 0)
           : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
       const ctAgreePatch = {
+        ...(schedulePatch || {}),
         proposalSeconds: preservedProposalSeconds,
         contractedSeconds: nextTotalSeconds,
         ctStatus: 'AGREED',
@@ -4478,7 +4559,7 @@ const AssignBoard = () => {
     const newEnd   = toMonthEnd(newStart);
     applyViewRange(newStart, newEnd);
   };
-  const controlsDisabled = persisting;
+  const controlsDisabled = persisting || loading;
 
   return (
     <AppPageContainer
@@ -4538,7 +4619,7 @@ const AssignBoard = () => {
                 <Typography variant="subtitle2">미배정 카드</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {loading
-                    ? '로딩 중...'
+                    ? '카드 동기화 중...'
                     : `${filteredCards.length}개 · ${groupedFilteredCards.length}주문`}
                 </Typography>
               </Box>

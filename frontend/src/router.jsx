@@ -31,18 +31,15 @@ const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
 const CtReview = React.lazy(() => import('./pages/App/CtReview'));
 const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
+const WorkspaceShell = () => null;
+const WORKSPACE_PATH = '/workspace';
 
 const RootRedirect = () => {
-  const { isAuthenticated, devBypass, devProfile, accessProfile } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   return (
     <Navigate
-      to={resolveFirstAccessiblePath({
-        isAuthenticated,
-        devBypass,
-        devProfile,
-        accessProfile,
-      })}
+      to={isAuthenticated ? WORKSPACE_PATH : '/login'}
       replace
     />
   );
@@ -113,6 +110,10 @@ const router = createBrowserRouter([
           {
             index: true,
             element: <RootRedirect />,
+          },
+          {
+            path: 'workspace',
+            element: <WorkspaceShell />,
           },
           {
             path: 'business',

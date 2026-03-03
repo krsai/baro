@@ -2141,6 +2141,11 @@ const toNonNegativeInt = (value: any, fallback = 0) => {
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.round(parsed));
 };
+const toSignedInt = (value: any, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(parsed);
+};
 const toOptionalFiniteNumber = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
@@ -2946,13 +2951,47 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
     const base = toAssignmentPlanResponse(plan);
     const stateItem = stateByExternalId.get(base.id);
     if (!stateItem || typeof stateItem !== "object") return base;
-    return {
+    const merged = {
       ...stateItem,
       ...base,
       id: base.id,
       lineId: String(base.lineId),
       ctOverride: Boolean(stateItem.ctOverride),
     };
+    const stateStartIndex = toNumberOrNull(stateItem?.startIndex);
+    const stateEndIndex = toNumberOrNull(stateItem?.endIndex);
+    const stateStartDayOffsetPercent = toOptionalFloat(
+      stateItem?.startDayOffsetPercent,
+      undefined
+    );
+    const stateStartDayPercent = toOptionalFloat(
+      stateItem?.startDayPercent,
+      undefined
+    );
+    const stateEndDayPercent = toOptionalFloat(
+      stateItem?.endDayPercent,
+      undefined
+    );
+    if (stateStartIndex !== null) {
+      merged.startIndex = Math.trunc(stateStartIndex);
+    }
+    if (stateEndIndex !== null) {
+      const fallbackStartIndex =
+        stateStartIndex !== null
+          ? Math.trunc(stateStartIndex)
+          : toSignedInt(merged.startIndex, 0);
+      merged.endIndex = Math.max(fallbackStartIndex, Math.trunc(stateEndIndex));
+    }
+    if (stateStartDayOffsetPercent !== undefined) {
+      merged.startDayOffsetPercent = stateStartDayOffsetPercent;
+    }
+    if (stateStartDayPercent !== undefined) {
+      merged.startDayPercent = stateStartDayPercent;
+    }
+    if (stateEndDayPercent !== undefined) {
+      merged.endDayPercent = stateEndDayPercent;
+    }
+    return merged;
   });
 };
 const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|�/;
@@ -2969,6 +3008,374 @@ const normalizeAssignmentDisplayGender = (value: any): string => {
   const key = normalizeAssignmentDisplayKey(value);
   if (key === "M" || key === "W" || key === "U") return key;
   return "";
+};
+const normalizeAssignmentCardColorKey = (value: any): string =>
+  normalizeAssignmentDisplayKey(value);
+const normalizeAssignmentCardGender = (value: any): string => {
+  const key = normalizeAssignmentDisplayKey(value);
+  if (key === "M" || key === "MEN" || key === "MALE" || key === "남성") return "M";
+  if (key === "W" || key === "WOMEN" || key === "FEMALE" || key === "여성") return "W";
+  if (key === "U" || key === "UNISEX" || key === "공용") return "U";
+  return "U";
+};
+const resolveAssignmentCardLegacyColorKey = (row: any): string => {
+  const fromCode = normalizeAssignmentCardColorKey(
+    row?.colorCode ?? row?.color ?? row?.colorName
+  );
+  if (fromCode) return fromCode;
+  const fromId = normalizeAssignmentCardColorKey(row?.colorId);
+  if (!fromId || fromId === "M" || fromId === "W" || fromId === "U") return "UNSPEC";
+  return fromId;
+};
+const resolveAssignmentCardVariantBucketsFromLegacyRows = (
+  rows: any[] = [],
+  itemGender = "U"
+) => {
+  const bucket = new Map<string, { colorId: string; gender: string; quantity: number }>();
+  ensureArray(rows).forEach((row) => {
+    const quantity = Number(row?.quantity) || 0;
+    if (quantity <= 0) return;
+    const colorId = resolveAssignmentCardLegacyColorKey(row);
+    const rawGender = normalizeAssignmentDisplayKey(row?.gender ?? "");
+    const gender =
+      rawGender === "M" || rawGender === "W" || rawGender === "U"
+        ? rawGender
+        : itemGender;
+    const bucketKey = `${colorId}::${gender}`;
+    const existing = bucket.get(bucketKey);
+    if (!existing) {
+      bucket.set(bucketKey, { colorId, gender, quantity });
+      return;
+    }
+    existing.quantity += quantity;
+  });
+  return Array.from(bucket.values());
+};
+const resolveAssignmentCardVariantBuckets = (item: any) => {
+  const itemGender = normalizeAssignmentCardGender(item?.gender);
+  const fromLegacyRows = resolveAssignmentCardVariantBucketsFromLegacyRows(
+    ensureArray(item?.quantities),
+    itemGender
+  );
+  if (fromLegacyRows.length > 0) return fromLegacyRows;
+
+  const fallbackQuantity = sumOrderItemQuantity(item);
+  if (fallbackQuantity <= 0) return [];
+
+  const fallbackColor = normalizeAssignmentCardColorKey(
+    item?.colorCode ?? item?.colorId ?? item?.color ?? "UNSPEC"
+  );
+  return [
+    {
+      colorId: fallbackColor || "UNSPEC",
+      gender: normalizeAssignmentCardGender(item?.gender),
+      quantity: fallbackQuantity,
+    },
+  ];
+};
+const resolveAssignmentCardAtTotalSecondsForOrderQuantity = (
+  process: any,
+  orderQuantity = 1
+) => {
+  const normalized = normalizeStyleProcess(process);
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const processQuantity = toPositiveInt(normalized?.quantity, 1);
+  const atParams = toStyleAtParams((normalized as any)?.atParams);
+  if (atParams) {
+    return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
+  }
+  const at = toOptionalSeconds(normalized?.at);
+  if (at == null) return null;
+  return processQuantity * at * resolvedOrderQuantity;
+};
+const resolveAssignmentCardAtPerPieceSeconds = (process: any, orderQuantity = 1) => {
+  const normalized = normalizeStyleProcess(process);
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const processQuantity = toPositiveInt(normalized?.quantity, 1);
+  const totalAt = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
+    normalized,
+    resolvedOrderQuantity
+  );
+  if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
+  return totalAt / (processQuantity * resolvedOrderQuantity);
+};
+const resolveAssignmentCardStSeedSeconds = ({
+  process,
+  orderQuantity = 1,
+}: {
+  process: any;
+  orderQuantity?: number;
+}) => {
+  const normalized = normalizeStyleProcess(process);
+  const manualSt =
+    normalized?.stManual === true ? toOptionalSeconds(normalized?.ct) : null;
+  if (manualSt != null) return manualSt;
+
+  const pt = toOptionalSeconds(normalized?.pt);
+  if (pt != null) return pt;
+
+  const atPerPiece = resolveAssignmentCardAtPerPieceSeconds(normalized, orderQuantity);
+  if (atPerPiece != null && atPerPiece > 0) return atPerPiece;
+  return null;
+};
+const calculateAssignmentCardTotalForOrderQuantity = (
+  processes: any,
+  key: "pt" | "at",
+  orderQuantity = 1
+) =>
+  normalizeStyleProcesses(processes).reduce((acc, process) => {
+    const processQuantity = toPositiveInt((process as any)?.quantity, 1);
+    const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+    if (key === "at") {
+      const atTotal = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
+        process,
+        resolvedOrderQuantity
+      );
+      return atTotal == null ? acc : acc + atTotal;
+    }
+    const time = toOptionalSeconds((process as any)?.pt);
+    if (time == null) return acc;
+    return acc + processQuantity * time * resolvedOrderQuantity;
+  }, 0);
+const calculateAssignmentCardStTotalForOrderQuantity = (
+  processes: any,
+  orderQuantity = 1
+) =>
+  normalizeStyleProcesses(processes).reduce((acc, process) => {
+    const processQuantity = toPositiveInt((process as any)?.quantity, 1);
+    const stPerPiece = resolveAssignmentCardStSeedSeconds({
+      process,
+      orderQuantity,
+    });
+    if (stPerPiece == null) return acc;
+    return acc + processQuantity * stPerPiece * toPositiveInt(orderQuantity, 1);
+  }, 0);
+const resolveAssignmentCardStatus = ({
+  totalPt,
+  totalAt,
+  totalSt,
+}: {
+  totalPt: number;
+  totalAt: number;
+  totalSt: number;
+}) => {
+  if (Number(totalSt) > 0) return "ST";
+  if (Number(totalAt) > 0) return "AT";
+  if (Number(totalPt) > 0) return "PT";
+  return "NONE";
+};
+const createAssignmentCardId = (
+  orderId: any,
+  styleId: any,
+  colorId: any,
+  gender: any
+) =>
+  `${String(orderId ?? "").trim()}::${String(styleId ?? "").trim()}::${normalizeAssignmentCardColorKey(
+    colorId
+  )}::${normalizeAssignmentCardGender(gender)}`;
+const resolveStyleCandidateForAssignmentCard = ({
+  order,
+  item,
+  styleCandidatesById,
+}: {
+  order: any;
+  item: any;
+  styleCandidatesById: Map<string, any[]>;
+}) => {
+  const styleId = resolveOptionalString(item?.styleId, null);
+  if (!styleId) return null;
+  const candidates = styleCandidatesById.get(styleId) || [];
+  if (candidates.length <= 1) return candidates[0] ?? null;
+
+  const orderCustomerKey = normalizeComparableText(
+    order?.customerName ?? order?.buyerOrgName ?? order?.customer
+  );
+  const itemStyleNameKey = normalizeComparableText(item?.styleName);
+
+  const sameCustomerCandidates = orderCustomerKey
+    ? candidates.filter(
+        (candidate) => normalizeComparableText(candidate?.customer) === orderCustomerKey
+      )
+    : candidates;
+  const sameNameCandidates = itemStyleNameKey
+    ? sameCustomerCandidates.filter(
+        (candidate) => normalizeComparableText(candidate?.name) === itemStyleNameKey
+      )
+    : sameCustomerCandidates;
+
+  return sameNameCandidates[0] ?? sameCustomerCandidates[0] ?? candidates[0] ?? null;
+};
+const buildAssignmentCardsFromOrders = ({
+  orders,
+  styles,
+  colorNameByCode,
+}: {
+  orders: any[];
+  styles: any[];
+  colorNameByCode: Map<string, string>;
+}) => {
+  const cards: any[] = [];
+  const cardById = new Map<string, any>();
+  const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId, null);
+    if (!styleId) return map;
+    const current = map.get(styleId) || [];
+    current.push(style);
+    map.set(styleId, current);
+    return map;
+  }, new Map<string, any[]>());
+
+  const upsertCard = (nextCard: any) => {
+    const existing = cardById.get(nextCard.id);
+    if (!existing) {
+      cardById.set(nextCard.id, nextCard);
+      cards.push(nextCard);
+      return;
+    }
+    const mergedTotalPt = Number(existing.totalPt || 0) + Number(nextCard.totalPt || 0);
+    const mergedTotalAt = Number(existing.totalAt || 0) + Number(nextCard.totalAt || 0);
+    const mergedTotalSt = Number(existing.totalSt || 0) + Number(nextCard.totalSt || 0);
+    const merged = {
+      ...existing,
+      quantity: Number(existing.quantity || 0) + Number(nextCard.quantity || 0),
+      totalSeconds: Number(existing.totalSeconds || 0) + Number(nextCard.totalSeconds || 0),
+      totalPt: mergedTotalPt,
+      totalAt: mergedTotalAt,
+      totalSt: mergedTotalSt,
+      status: resolveAssignmentCardStatus({
+        totalPt: mergedTotalPt,
+        totalAt: mergedTotalAt,
+        totalSt: mergedTotalSt,
+      }),
+      dueDate: existing.dueDate || nextCard.dueDate || "",
+      processCount: Math.max(
+        toNonNegativeInt(existing.processCount, 0),
+        toNonNegativeInt(nextCard.processCount, 0)
+      ),
+    };
+    cardById.set(nextCard.id, merged);
+    const index = cards.findIndex((item) => item.id === nextCard.id);
+    if (index >= 0) {
+      cards[index] = merged;
+    }
+  };
+
+  ensureArray(orders).forEach((order, orderIndex) => {
+    const items = normalizeOrderItems(order?.items);
+    items.forEach((item, itemIndex) => {
+      const styleId = resolveOptionalString(item?.styleId, "");
+      if (!styleId) return;
+
+      const style = resolveStyleCandidateForAssignmentCard({
+        order,
+        item,
+        styleCandidatesById,
+      });
+      const processes = normalizeStyleProcesses(style?.processes);
+      const processCount = processes.length;
+      const previewUrl =
+        ensureArray(style?.imageUrls).length > 0 ? style.imageUrls[0] : "";
+      const variantBuckets = resolveAssignmentCardVariantBuckets(item);
+      if (variantBuckets.length === 0) return;
+
+      variantBuckets.forEach(({ colorId, gender, quantity }) => {
+        if ((Number(quantity) || 0) <= 0) return;
+
+        const normalizedColor = normalizeAssignmentCardColorKey(colorId);
+        const normalizedGender = normalizeAssignmentCardGender(gender);
+        const colorName =
+          colorNameByCode.get(normalizedColor) ||
+          resolveOptionalString(item?.colorName, null) ||
+          normalizedColor ||
+          "색상 없음";
+        const totalPt = calculateAssignmentCardTotalForOrderQuantity(
+          processes,
+          "pt",
+          quantity
+        );
+        const totalAt = calculateAssignmentCardTotalForOrderQuantity(
+          processes,
+          "at",
+          quantity
+        );
+        const totalSt = calculateAssignmentCardStTotalForOrderQuantity(processes, quantity);
+        const status = resolveAssignmentCardStatus({ totalPt, totalAt, totalSt });
+        const totalSeconds =
+          status === "ST" ? totalSt : status === "AT" ? totalAt : totalPt;
+
+        const resolvedOrderId =
+          resolveOptionalString(order?.orderId ?? order?.id, null) ??
+          `order-${orderIndex}`;
+        const cardId = createAssignmentCardId(
+          resolvedOrderId,
+          styleId,
+          normalizedColor,
+          normalizedGender
+        );
+
+        upsertCard({
+          id: cardId,
+          originOrderId: cardId,
+          orderNo: resolveOptionalString(order?.orderNumber, null) || resolvedOrderId || "-",
+          dueDate: resolveOptionalString(order?.dueDate, null) || "",
+          customer:
+            resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
+          styleId,
+          styleName:
+            resolveOptionalString(item?.styleName, null) ||
+            resolveOptionalString(style?.name, null) ||
+            `스타일 ${itemIndex + 1}`,
+          styleCode:
+            resolveOptionalString(item?.styleCode, null) ||
+            resolveOptionalString(style?.styleCode, null) ||
+            "",
+          colorId: normalizedColor,
+          colorName,
+          gender: normalizedGender,
+          quantity,
+          processCount,
+          status,
+          totalSeconds,
+          totalPt,
+          totalAt,
+          totalSt,
+          previewUrl,
+        });
+      });
+    });
+  });
+
+  return cards;
+};
+const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
+  const merged: any[] = [];
+  const indexById = new Map<string, number>();
+
+  ensureArray(baseCards).forEach((card) => {
+    if (!card?.id) return;
+    indexById.set(String(card.id), merged.length);
+    merged.push(card);
+  });
+
+  ensureArray(savedCards).forEach((card) => {
+    if (!card?.id) return;
+    const key = String(card.id);
+    const existingIndex = indexById.get(key);
+    if (existingIndex == null) {
+      indexById.set(key, merged.length);
+      merged.push(card);
+      return;
+    }
+    const baseCard = merged[existingIndex];
+    merged[existingIndex] = {
+      ...card,
+      ...baseCard,
+      id: baseCard.id,
+      originOrderId: baseCard.originOrderId || card.originOrderId || baseCard.id,
+    };
+  });
+
+  return merged;
 };
 const hasCorruptedAssignmentDisplayText = (value: any): boolean => {
   const text = resolveOptionalString(value, null);
@@ -3363,8 +3770,8 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       if (!externalId || !lineIdNum) return null;
       if (lineIdSet && !lineIdSet.has(lineIdNum)) return null;
 
-      const startIndex = toNonNegativeInt(item.startIndex, 0);
-      const endIndex = Math.max(startIndex, toNonNegativeInt(item.endIndex, startIndex));
+      const startIndex = toSignedInt(item.startIndex, 0);
+      const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
       const ctStatus = resolveAssignmentCtStatus(
         resolveOptionalString(item.ctStatus, "PENDING") ?? "PENDING"
       );
@@ -3468,6 +3875,39 @@ const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | nul
     updatedAt: state?.updatedAt ?? null,
     serverNow: new Date().toISOString(),
   };
+};
+const loadAssignmentPlansForBoardState = async (
+  orgId: number,
+  rawAssignments: any
+) => {
+  const activeExternalIds = resolveAssignmentPlanExternalIds(rawAssignments);
+  const hasBoardAssignments = Array.isArray(rawAssignments);
+  if (hasBoardAssignments && activeExternalIds.length === 0) {
+    return [];
+  }
+  return prisma.assignmentPlan.findMany({
+    where: {
+      orgId,
+      ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
+    },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+  });
+};
+const buildReadOnlyAssignmentBoardStateResponse = async (orgId: number, state: any) => {
+  const escalatedAssignments = state
+    ? applySentTimeoutEscalation(state.assignments).assignments
+    : [];
+  const nextState = state
+    ? {
+        ...state,
+        assignments: escalatedAssignments,
+      }
+    : null;
+  const assignmentPlans = await loadAssignmentPlansForBoardState(
+    orgId,
+    nextState?.assignments
+  );
+  return toAssignmentBoardStateResponse(nextState, assignmentPlans);
 };
 
 const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, number>> => {
@@ -5766,6 +6206,120 @@ app.delete("/work-logs/:id", async (req, res) => {
   });
   res.status(204).send();
   triggerAtSyncFromEvent(organization.id, "worklog_delete");
+});
+
+app.get("/assignment-board-view", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const state = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+  });
+  const response = await buildReadOnlyAssignmentBoardStateResponse(
+    organization.id,
+    state
+  );
+  res.json(response);
+});
+
+app.get("/assignment-board-versions", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const state = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+    select: {
+      assignments: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  const response = await buildReadOnlyAssignmentBoardStateResponse(
+    organization.id,
+    state
+  );
+
+  res.json({
+    assignments: response.assignments,
+    createdAt: response.createdAt ?? null,
+    updatedAt: response.updatedAt ?? null,
+    serverNow: response.serverNow ?? new Date().toISOString(),
+  });
+});
+
+app.get("/assignment-cards", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  const [orders, styles, colors, state] = await Promise.all([
+    prisma.workOrder.findMany({
+      where: { OR: getOrderAccessWhere(organization.id) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        orderId: true,
+        orderNumber: true,
+        dueDate: true,
+        customerName: true,
+        buyerOrgName: true,
+        items: true,
+      },
+    }),
+    prisma.style.findMany({
+      where: { orgId: { in: accessibleOwnerOrgIds } },
+      orderBy: { uid: "asc" },
+      select: {
+        orgId: true,
+        styleId: true,
+        styleCode: true,
+        name: true,
+        customer: true,
+        imageUrls: true,
+        processes: true,
+      },
+    }),
+    prisma.attrColor.findMany({
+      where: { orgId: organization.id },
+      select: { code: true, name: true },
+      orderBy: { id: "asc" },
+    }),
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId: organization.id },
+      select: { cards: true, updatedAt: true },
+    }),
+  ]);
+
+  const colorNameByCode = colors.reduce((map, row) => {
+    const key = normalizeAssignmentCardColorKey(row?.code);
+    if (!key || map.has(key)) return map;
+    map.set(key, resolveOptionalString(row?.name, null) || key);
+    return map;
+  }, new Map<string, string>());
+
+  const baseCards = buildAssignmentCardsFromOrders({
+    orders,
+    styles,
+    colorNameByCode,
+  });
+  const mergedCards = mergeAssignmentCardsWithSaved(baseCards, state?.cards);
+  const includeProcesses = isManufacturerOrg(organization);
+
+  res.json({
+    cards: mergedCards,
+    styles: styles.map((style) =>
+      toStyleResponse(style, {
+        includeProcesses,
+      })
+    ),
+    updatedAt: state?.updatedAt ?? null,
+    serverNow: new Date().toISOString(),
+  });
 });
 
 app.get("/assignment-board-state", async (req, res) => {

@@ -1248,7 +1248,7 @@ const OrderList = () => {
         if (changedVariantIds.length > 0) {
           try {
             const boardQuery = buildQueryString({ orgId: activeOrgId });
-            const boardState = await requestJSON('/assignment-board-state' + boardQuery).catch(
+            const boardState = await requestJSON('/assignment-board-view' + boardQuery).catch(
               () => ({ cards: [], assignments: [] })
             );
             const currentCards = Array.isArray(boardState?.cards) ? boardState.cards : [];

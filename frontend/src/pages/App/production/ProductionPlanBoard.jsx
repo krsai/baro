@@ -75,6 +75,11 @@ const toNonNegativeInt = (value, fallback = 0) => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return Math.trunc(parsed);
 };
+const toSignedInt = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.trunc(parsed);
+};
 
 const formatScheduleDate = (baseDate, dayIndex) => {
   const target = new Date(baseDate);
@@ -141,6 +146,32 @@ const syncAssignmentScheduleDateKeys = (assignment, baseDate) => {
     ...assignment,
     startDateKey: bounds.startKey,
     endDateKey: bounds.endKey,
+  };
+};
+
+const buildAssignmentSchedulePatch = (assignment, baseDate) => {
+  const synced = syncAssignmentScheduleDateKeys(assignment, baseDate);
+  if (!synced || typeof synced !== 'object') return null;
+
+  const startIndex = toSignedInt(synced?.startIndex, 0);
+  const endIndex = Math.max(startIndex, toSignedInt(synced?.endIndex, startIndex));
+  const startDateKey =
+    typeof synced?.startDateKey === 'string' && synced.startDateKey.trim()
+      ? synced.startDateKey.trim()
+      : null;
+  const endDateKey =
+    typeof synced?.endDateKey === 'string' && synced.endDateKey.trim()
+      ? synced.endDateKey.trim()
+      : startDateKey;
+
+  return {
+    startIndex,
+    endIndex,
+    startDayOffsetPercent: Number(synced?.startDayOffsetPercent) || 0,
+    startDayPercent: Number(synced?.startDayPercent) || 100,
+    endDayPercent: Number(synced?.endDayPercent) || 100,
+    startDateKey,
+    endDateKey,
   };
 };
 
@@ -1155,7 +1186,7 @@ const ProductionPlanBoard = () => {
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const [boardState, lineRows, factoryRows, lineWorkerRows, styleRows] = await Promise.all([
-          requestJSON('/assignment-board-state' + query).catch(() => ({ cards: [], assignments: [] })),
+          requestJSON('/assignment-board-view' + query).catch(() => ({ cards: [], assignments: [] })),
           requestJSON('/lines' + lineQuery).catch(() => []),
           requestJSON('/factories' + query).catch(() => []),
           requestJSON('/line-workers' + query).catch(() => []),
@@ -1219,7 +1250,7 @@ const ProductionPlanBoard = () => {
 
   const refreshBoardState = useCallback(async () => {
     const query = buildQueryString({ orgId: activeOrgId });
-    const boardState = await requestJSON('/assignment-board-state' + query, {
+    const boardState = await requestJSON('/assignment-board-view' + query, {
       forceRefresh: true,
     }).catch(() => null);
     if (!boardState) return false;
@@ -1301,6 +1332,7 @@ const ProductionPlanBoard = () => {
       1,
       toPositiveInt(targetView?.quantity ?? target?.quantity ?? 1, 1)
     );
+    const schedulePatch = buildAssignmentSchedulePatch(target, baseDate);
     const agreedProcessRows = buildProcessRows(targetView).map((row) => {
       const proposedSeconds = toOptionalPositiveNumber(
         row.suggestedSeconds ?? row.baseSeconds
@@ -1354,6 +1386,7 @@ const ProductionPlanBoard = () => {
       agreedBy,
       sourceAssignmentId: String(assignmentId),
       lineId: target?.lineId ?? null,
+      schedule: schedulePatch,
       quantity: orderQuantity,
       totalStPerPieceSeconds,
       totalRequestedPerPieceSeconds,
@@ -1376,6 +1409,7 @@ const ProductionPlanBoard = () => {
 
       return {
         ...item,
+        ...(schedulePatch || {}),
         ctStatus: 'AGREED',
         contractedSeconds:
           toNonNegativeInt(item?.contractedSeconds, 0) > 0
@@ -1433,6 +1467,7 @@ const ProductionPlanBoard = () => {
     const wagePerSecond = toOptionalPositiveNumber(targetView?.wagePerSecond);
     const headcount = Math.max(1, toPositiveInt(targetView?.headcount, 1));
     const workingDays = Number(targetView?.workingDays) > 0 ? Number(targetView.workingDays) : 0;
+    const schedulePatch = buildAssignmentSchedulePatch(target, baseDate);
 
     const totalBasePerPieceSeconds =
       processRows.length > 0
@@ -1489,13 +1524,7 @@ const ProductionPlanBoard = () => {
       lineName: targetView?.line?.name || '',
       quantity: orderQuantity,
       schedule: {
-        startIndex: toNonNegativeInt(target?.startIndex, 0),
-        endIndex: Math.max(
-          toNonNegativeInt(target?.startIndex, 0),
-          toNonNegativeInt(target?.endIndex, toNonNegativeInt(target?.startIndex, 0))
-        ),
-        startDayPercent: Number(target?.startDayPercent) || 100,
-        endDayPercent: Number(target?.endDayPercent) || 100,
+        ...(schedulePatch || {}),
       },
       totalBasePerPieceSeconds,
       totalSuggestedPerPieceSeconds,
@@ -1547,6 +1576,7 @@ const ProductionPlanBoard = () => {
       if (String(item?.id) !== String(assignmentId)) return item;
       return {
         ...item,
+        ...(schedulePatch || {}),
         ctStatus: 'REJECTED',
         ctOverride: true,
         ctSource: 'LINE_LEADER_PROPOSAL',
