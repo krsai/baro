@@ -30,7 +30,7 @@ const Attribute = React.lazy(() => import('./pages/App/Attribute'));
 const Order = React.lazy(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
 const CtReview = React.lazy(() => import('./pages/App/CtReview'));
-const Overrun = React.lazy(() => import('./pages/App/Overrun'));
+const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
 
 // 인증 상태를 확인하고, 인증되지 않은 사용자는 로그인으로 보낸다.
@@ -168,8 +168,8 @@ const router = createBrowserRouter([
             element: <CtReview />,
           },
           {
-            path: 'production-overrun',
-            element: <Overrun />,
+            path: 'production-result',
+            element: <ProductionResult />,
           },
           {
             path: 'work-history/new',

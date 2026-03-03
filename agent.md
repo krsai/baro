@@ -361,7 +361,7 @@ Organization (MANUFACTURER | BRAND)
 6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
 7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
 8. 초과 공정(WorkRecord 누적 > finalQuantity)도 **급여 지급 대상에 포함**한다.
-9. 초과 생산분은 운영자/관리자가 확인할 수 있도록 별도 확인 화면(초과 생산 모니터링)을 제공한다.
+9. 회계 관리의 `생산 결과` 메뉴는 연결만 되어 있으며, 세부 로직은 추후 구현한다.
 10. **ST(q) = Style.processes[].ct (+ stManual + timeRefQuantity)** — AT 데이터 없으면 PT가 ST 역할
 11. **ST 변경 절차**: AT(q)와 현재 ST 차이가 기준 이상이면 "ST 조정 필요" 안내 → 운영팀 검토 후 ST 값을 재설정
 12. **구독 상태 SUSPENDED 조직**: API 호출 403 차단. 로그인 자체는 허용되나 데이터 접근 불가
@@ -436,13 +436,12 @@ Organization (MANUFACTURER | BRAND)
 - 출퇴근/작업기록 변경 시 AT 동기화가 백그라운드로 재실행된다.
   - 파일: `backend/src/index.ts`
 
-### 5) 초과 생산 모니터링
-- 초과 생산 확인용 초기 페이지가 구현되어 있다.
-  - 라우트: `/production-overrun`
-  - 페이지: `frontend/src/pages/App/production/OverrunBoard.jsx`
+### 5) 생산 결과
+- 생산 결과 메뉴의 빈 초기 페이지가 연결되어 있다.
+  - 라우트: `/production-result`
+  - 페이지: `frontend/src/pages/App/production/ProductionResultBoard.jsx`
 - 백엔드 API:
   - `GET /assignment-plan-progress`
-  - `GET /assignment-overruns`
   - 파일: `backend/src/index.ts`
 
 ### 6) Clause 확인 우선순위(추천)
@@ -450,7 +449,7 @@ Organization (MANUFACTURER | BRAND)
 2. 스타일 공정에서 `수동 ST/자동 ST`를 여러 번 전환해도 저장/재편집이 일관적인지
 3. `stManual=false` 공정이 생산계획 보드에서 AT(q) 기준으로 계산되는지
 4. 출퇴근 입력이 없는 데이터에서 AT 학습이 8시간 폴백으로 동작하는지
-5. 초과 생산 페이지에서 `baseline / produced / overflow` 계산이 API와 동일한지
+5. 생산 결과 메뉴 구현 시 권한/라우팅/탭 동작이 기존 회계 관리 흐름과 일관적인지
 
 ## AT 모델 현재 구현 단계 (2026-02-25)
 

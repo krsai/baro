@@ -5244,16 +5244,6 @@ app.get("/assignment-plan-progress", async (req, res) => {
   res.json(rows);
 });
 
-app.get("/assignment-overruns", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-
-  const rows = await buildAssignmentPlanProgressRows(organization.id);
-  res.json(rows.filter((row) => row.isOverflow));
-});
-
 app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {

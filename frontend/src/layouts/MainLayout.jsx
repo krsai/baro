@@ -241,7 +241,7 @@ const MainLayout = () => {
         setOpen: setAccountingOpen,
         children: [
           { label: '급여 계산', icon: <CalculateIcon />, path: '/payroll' },
-          { label: '초과 생산', icon: <ListAltIcon />, path: '/production-overrun' },
+          { label: '생산 결과', icon: <ListAltIcon />, path: '/production-result' },
         ],
       },
       {
