@@ -2,12 +2,11 @@ import React from 'react';
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
-import { canAccessPath } from './utils/accessControl';
+import { canAccessPath, resolveFirstAccessiblePath } from './utils/accessControl';
 
 const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
 const Login = React.lazy(() => import('./pages/Auth/Login'));
 const SignUp = React.lazy(() => import('./pages/Auth/SignUp'));
-const Home = React.lazy(() => import('./pages/App/Home'));
 const Organization = React.lazy(() => import('./pages/App/Organization'));
 const Employee = React.lazy(() => import('./pages/App/Employee'));
 const Permission = React.lazy(() => import('./pages/App/Permission'));
@@ -32,6 +31,22 @@ const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
 const CtReview = React.lazy(() => import('./pages/App/CtReview'));
 const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
+
+const RootRedirect = () => {
+  const { isAuthenticated, devBypass, devProfile, accessProfile } = useAuth();
+
+  return (
+    <Navigate
+      to={resolveFirstAccessiblePath({
+        isAuthenticated,
+        devBypass,
+        devProfile,
+        accessProfile,
+      })}
+      replace
+    />
+  );
+};
 
 // 인증 상태를 확인하고, 인증되지 않은 사용자는 로그인으로 보낸다.
 const ProtectedRoute = () => {
@@ -69,7 +84,7 @@ const ProtectedRoute = () => {
 
   const canAccessCurrentPath = canAccessPath(location.pathname, authState);
   if (!canAccessCurrentPath) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={resolveFirstAccessiblePath(authState)} replace />;
   }
 
   return <Outlet />;
@@ -97,7 +112,7 @@ const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <Home />,
+            element: <RootRedirect />,
           },
           {
             path: 'business',

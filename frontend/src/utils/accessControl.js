@@ -11,7 +11,6 @@ const ORG_ROLES = {
 };
 
 const FEATURE_KEYS = {
-  DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   STYLE: 'STYLE',
   ASSIGNMENT: 'ASSIGNMENT',
@@ -34,7 +33,6 @@ const FEATURE_KEYS = {
 
 const MANUFACTURER_FEATURES = new Set([
   FEATURE_KEYS.PROFILE,
-  FEATURE_KEYS.DASHBOARD,
   FEATURE_KEYS.ORDER,
   FEATURE_KEYS.STYLE,
   FEATURE_KEYS.ASSIGNMENT,
@@ -55,13 +53,20 @@ const MANUFACTURER_FEATURES = new Set([
 
 const BRAND_FEATURES = new Set([
   FEATURE_KEYS.PROFILE,
-  FEATURE_KEYS.DASHBOARD,
   FEATURE_KEYS.ORDER,
   FEATURE_KEYS.STYLE,
 ]);
 
 const normalizeUpper = (value) =>
   typeof value === 'string' ? value.trim().toUpperCase() : '';
+
+const normalizePathname = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '/';
+  const withoutHash = raw.split('#')[0];
+  const pathname = withoutHash.split('?')[0];
+  return pathname || '/';
+};
 
 const toDateOrNull = (value) => {
   const date = new Date(value);
@@ -145,17 +150,6 @@ const canAccessFeatureByContext = (featureKey, context) => {
   switch (featureKey) {
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
-    case FEATURE_KEYS.DASHBOARD:
-      return (
-        isOrgMember &&
-        hasOrgRole(
-          context,
-          ORG_ROLES.ADMIN,
-          ORG_ROLES.OPERATOR,
-          ORG_ROLES.ACCOUNTANT,
-          ORG_ROLES.WORKER
-        )
-      );
     case FEATURE_KEYS.ORDER:
     case FEATURE_KEYS.STYLE:
       return (
@@ -205,8 +199,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
 };
 
 const resolveFeatureByPath = (pathname) => {
-  const path = String(pathname || '').trim();
-  if (!path || path === '/') return FEATURE_KEYS.DASHBOARD;
+  const path = normalizePathname(pathname);
+  if (path === '/') return null;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
@@ -230,9 +224,9 @@ const resolveFeatureByPath = (pathname) => {
 
 export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
-  const path = String(pathname || '').trim();
-  // The root route is the empty workspace shell. Allow it for any authenticated context.
-  if (!path || path === '/') return Boolean(context);
+  const path = normalizePathname(pathname);
+  // The root route is a redirect-only shell. Allow authenticated users to enter it.
+  if (path === '/') return Boolean(context);
   const featureKey = resolveFeatureByPath(path);
   if (!featureKey) return true;
   return canAccessFeatureByContext(featureKey, context);
@@ -244,29 +238,41 @@ export const canAccessFeature = (featureKey, authState) => {
 };
 
 const ACCESS_PATH_PRIORITY = [
-  '/system-setting',
   '/order',
   '/style',
   '/assignment',
   '/production-plan',
   '/ct-review',
-  '/production-result',
-  '/attendance',
   '/work-history',
+  '/attendance',
   '/payroll',
+  '/production-result',
   '/business',
   '/line',
   '/employee',
   '/customer',
+  '/profile',
   '/attribute',
   '/permission',
   '/holiday',
-  '/',
+  '/system-setting',
 ];
 
-export const resolveFirstAccessiblePath = (authState) => {
+export const resolveFirstAccessiblePath = (authState, options = {}) => {
+  const excludedPaths = new Set(
+    (Array.isArray(options.excludePaths) ? options.excludePaths : [])
+      .map((path) => normalizePathname(path))
+      .filter((path) => path !== '/')
+  );
+
   for (const path of ACCESS_PATH_PRIORITY) {
+    if (excludedPaths.has(path)) continue;
     if (canAccessPath(path, authState)) return path;
+  }
+  if (excludedPaths.size > 0) {
+    for (const path of ACCESS_PATH_PRIORITY) {
+      if (canAccessPath(path, authState)) return path;
+    }
   }
   return '/login';
 };

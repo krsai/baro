@@ -290,6 +290,11 @@ AGREED (확정)
 - 이메일로 ACTIVE OrgMembership 조회 → entryType='ORG', orgId, orgRole 반환
 - 멤버십 없거나 ACTIVE 아니면 → 403
 
+### 프론트엔드 루트 라우트 정책
+- `/`는 더 이상 대시보드 페이지가 아니다. 인증된 사용자가 `/`로 들어오면 `resolveFirstAccessiblePath` 기준 첫 접근 가능 메뉴로 즉시 redirect한다.
+- 로그인 성공, OAuth 콜백 복귀, 권한 없는 URL fallback, 마지막 탭 종료 후 복귀 경로는 모두 같은 기준(`resolveFirstAccessiblePath`)으로 맞춘다.
+- 사이드바/탭은 실제 메뉴만 다룬다. `/`는 빈 워크스페이스나 고정 탭으로 유지하지 않는다.
+
 ---
 
 ## 데이터 모델 요약

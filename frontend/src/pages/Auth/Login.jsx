@@ -12,6 +12,7 @@ import {
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
+import { resolveFirstAccessiblePath } from '../../utils/accessControl';
 
 const TEST_ACCOUNT_EMAIL_SUFFIXES = ['@test.local', '@baro.local'];
 
@@ -50,17 +51,29 @@ const Login = () => {
     loading,
     isSupabaseConfigured,
     enableDevBypass,
+    devBypass,
+    devProfile,
+    accessProfile,
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [orgRoleProfiles, setOrgRoleProfiles] = useState([]);
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
+  const authState = useMemo(
+    () => ({
+      isAuthenticated,
+      devBypass,
+      devProfile,
+      accessProfile,
+    }),
+    [accessProfile, devBypass, devProfile, isAuthenticated]
+  );
 
   useEffect(() => {
     if (!isAuthenticated || !hasWorkspaceAccess) return;
-    navigate('/', { replace: true });
-  }, [hasWorkspaceAccess, isAuthenticated, navigate]);
+    navigate(resolveFirstAccessiblePath(authState), { replace: true });
+  }, [authState, hasWorkspaceAccess, isAuthenticated, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,7 +231,15 @@ const Login = () => {
 
   const handleDevBypass = (profile) => {
     enableDevBypass(profile);
-    navigate('/', { replace: true });
+    navigate(
+      resolveFirstAccessiblePath({
+        isAuthenticated: true,
+        devBypass: true,
+        devProfile: profile,
+        accessProfile: profile,
+      }),
+      { replace: true }
+    );
   };
 
   return (

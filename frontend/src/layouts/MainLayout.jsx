@@ -22,14 +22,12 @@ import {
   Typography,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import HomeIcon from '@mui/icons-material/Home';
 import ProductionQuantityLimitsIcon from '@mui/icons-material/ProductionQuantityLimits';
 import OrganizationIcon from '@mui/icons-material/AccountTree';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import BusinessIcon from '@mui/icons-material/Business';
 import GroupIcon from '@mui/icons-material/Group';
-import BadgeIcon from '@mui/icons-material/Badge';
 import SecurityIcon from '@mui/icons-material/Security';
 import InfoIcon from '@mui/icons-material/Info';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -50,7 +48,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
-import { canAccessPath } from '../utils/accessControl';
+import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 
@@ -97,7 +95,6 @@ const MainLayout = () => {
     resetWorkspace,
     setNavigateToPath,
     notification,
-    dismissNotification,
   } = useApp();
   const networkLoading = useNetworkLoading();
 
@@ -144,6 +141,10 @@ const MainLayout = () => {
   );
   const hasPathAccess = React.useCallback(
     (path) => canAccessPath(path, authState),
+    [authState]
+  );
+  const resolveAccessiblePath = React.useCallback(
+    (options) => resolveFirstAccessiblePath(authState, options),
     [authState]
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
@@ -202,12 +203,6 @@ const MainLayout = () => {
 
   const menuItems = useMemo(() => {
     const baseItems = [
-      {
-        label: '대시보드',
-        icon: <HomeIcon />,
-        path: '/',
-        isParent: false,
-      },
       {
         label: '영업 관리',
         icon: <ShoppingCartIcon />,
@@ -326,15 +321,7 @@ const MainLayout = () => {
     },
     [flattenedMenuItems]
   );
-  // 대시보드 탭이 명시적으로 열려있지 않은 채 currentPath='/'일 때 Outlet을 숨긴다.
-  // openTabs.length === 0 조건만 쓰면, 메뉴 클릭 시 탭이 추가된 직후 라우트 전환 전
-  // 렌더 사이클에서 대시보드가 순간 노출(flash)되는 문제가 발생한다.
-  const hasDashboardTab = openTabs.some((tab) => tab.id === '/');
-  const shouldHideOutletForEmptyWorkspace =
-    currentPath === '/' && !hasDashboardTab && isAuthenticated && hasPathAccess('/');
   const tabsForRender = useMemo(() => {
-    // During route transition, avoid rendering a transient optimistic tab for
-    // the previous pathname (e.g. dashboard flash while opening another menu).
     if (
       pendingNavigationPathRef.current &&
       pendingNavigationPathRef.current !== currentPath
@@ -342,9 +329,9 @@ const MainLayout = () => {
       return openTabs;
     }
     if (openTabs.some((tab) => tab.id === currentPath)) return openTabs;
-    if (currentPath === '/login' || currentPath.startsWith('/auth')) return openTabs;
-    // Keep the empty workspace behavior when dashboard tab is intentionally closed.
-    if (openTabs.length === 0 && currentPath === '/') return openTabs;
+    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+      return openTabs;
+    }
 
     return [
       ...openTabs,
@@ -369,12 +356,16 @@ const MainLayout = () => {
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
     (path, options) => {
-      const nextPath = typeof path === 'string' && path.trim() ? path : '/';
+      const requestedPath =
+        typeof path === 'string' && path.trim() ? path : resolveAccessiblePath();
+      const requestedPathname = toPathname(requestedPath);
+      const nextPath = requestedPathname === '/' ? resolveAccessiblePath() : requestedPath;
       const nextPathname = toPathname(nextPath);
 
       if (!hasPathAccess(nextPathname)) {
-        if (currentPath !== '/') {
-          navigate('/');
+        const fallbackPath = resolveAccessiblePath();
+        if (currentPath !== fallbackPath) {
+          navigate(fallbackPath, { replace: true });
         }
         return;
       }
@@ -426,6 +417,7 @@ const MainLayout = () => {
       hasPathAccess,
       navigate,
       openTab,
+      resolveAccessiblePath,
       resolveTabLabel,
       schedulePendingNavigationCleanup,
     ]
@@ -449,10 +441,10 @@ const MainLayout = () => {
     }
 
     if (isLoggingOutRef.current) return;
-    if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
+    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+      return;
+    }
     if (skipAutoOpenPathRef.current === currentPath) return;
-    // Allow the user to close the dashboard tab and stay in an empty workspace.
-    if (openTabs.length === 0 && currentPath === '/') return;
     if (openTabs.some((tab) => tab.id === currentPath)) return;
 
     const label = resolveTabLabel(currentPath);
@@ -460,7 +452,9 @@ const MainLayout = () => {
   }, [closeTab, currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
 
   useEffect(() => {
-    if (currentPath === '/login' || currentPath.startsWith('/auth')) return;
+    if (currentPath === '/' || currentPath === '/login' || currentPath.startsWith('/auth')) {
+      return;
+    }
     recentTabHistoryRef.current = [
       currentPath,
       ...recentTabHistoryRef.current.filter((tabId) => tabId !== currentPath),
@@ -508,9 +502,9 @@ const MainLayout = () => {
 
     blockedTabIds.forEach((tabId) => closeTab(tabId));
     if (blockedTabIds.includes(currentPath)) {
-      navigate('/');
+      navigate(resolveAccessiblePath(), { replace: true });
     }
-  }, [closeTab, currentPath, hasPathAccess, navigate, openTabs]);
+  }, [closeTab, currentPath, hasPathAccess, navigate, openTabs, resolveAccessiblePath]);
 
   // Provide the navigation handler to the rest of the app via context.
   useEffect(() => {
@@ -565,20 +559,12 @@ const MainLayout = () => {
       const fallbackTab = recentFallbackId
         ? remainingTabById.get(recentFallbackId)
         : remainingTabs[remainingTabs.length - 1] || null;
-      if (!fallbackTab) {
-        skipAutoOpenPathRef.current = tabIdToClose;
-        pendingCloseTabRef.current = null;
-        pendingNavigationPathRef.current = null;
-        closeTab(tabIdToClose);
-        if (currentPath !== '/') {
-          navigate('/');
-        }
-        return;
-      }
-      const fallbackPath = fallbackTab ? (fallbackTab.path || fallbackTab.id) : '/';
+      const fallbackPath =
+        fallbackTab?.path ||
+        fallbackTab?.id ||
+        resolveAccessiblePath({ excludePaths: [tabIdToClose] });
       const fallbackPathname = toPathname(fallbackPath);
       if (fallbackPathname === currentPath) {
-        skipAutoOpenPathRef.current = tabIdToClose;
         pendingCloseTabRef.current = null;
         pendingNavigationPathRef.current = null;
         closeTab(tabIdToClose);
@@ -600,14 +586,7 @@ const MainLayout = () => {
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <List sx={{ flex: 1, overflowY: 'auto' }}>
         {menuItems.map((menu) => {
-          const isRootMenuSelected =
-            !menu.isParent &&
-            menu.path === '/' &&
-            currentPath === '/' &&
-            hasDashboardTab;
-          const isNonRootMenuSelected =
-            !menu.isParent && menu.path !== '/' && currentPath === menu.path;
-          const isMenuSelected = isRootMenuSelected || isNonRootMenuSelected;
+          const isMenuSelected = !menu.isParent && currentPath === menu.path;
 
           return (
             <React.Fragment key={menu.label}>
@@ -919,7 +898,7 @@ const MainLayout = () => {
             </Box>
           )}
           {/* Regular outlet for all non-keep-alive routes */}
-          {!KEEP_ALIVE_PATHS.has(currentPath) && !shouldHideOutletForEmptyWorkspace && <Outlet />}
+          {!KEEP_ALIVE_PATHS.has(currentPath) && <Outlet />}
           <GlobalLoadingOverlay
             open={networkLoading.isLoading}
             startedAt={networkLoading.startedAt}
