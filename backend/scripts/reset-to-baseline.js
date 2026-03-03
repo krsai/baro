@@ -31,6 +31,7 @@
 
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
+const BASELINE_ASSIGNMENT_AGREEMENTS = require('./reset-to-baseline.assignment-agreements.json');
 
 const prisma = new PrismaClient();
 
@@ -204,6 +205,169 @@ const BASELINE_ORDERS = [
 
 const sumItemQuantity = (item) =>
   Object.values(item.sizeQuantities || {}).reduce((s, v) => s + Number(v || 0), 0);
+
+const cloneJson = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return JSON.parse(JSON.stringify(value));
+};
+
+const BASELINE_LINE_NAME_BY_KEY = {
+  LINE_1: BASELINE_LINE_WORKER_MAP[0]?.lineName,
+  LINE_2: BASELINE_LINE_WORKER_MAP[1]?.lineName,
+};
+
+const resolveBaselineLineId = (lineNameToId, lineKey) => {
+  const lineName = BASELINE_LINE_NAME_BY_KEY[lineKey];
+  if (!lineName) {
+    throw new Error(`Unknown baseline line key: ${lineKey}`);
+  }
+  const lineId = lineNameToId[lineName];
+  if (!lineId) {
+    throw new Error(`Line not found for baseline seed: ${lineName}`);
+  }
+  return lineId;
+};
+
+function buildBaselineAssignmentBoardCards(orders, styleMap) {
+  const cards = [];
+  const occurrenceByVariant = new Map();
+
+  for (const order of orders) {
+    const orderId = String(order.orderId || order.orderNumber || '');
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    for (const item of items) {
+      const style = styleMap.get(item.styleId);
+      if (!style) continue;
+
+      const variantKey = `${orderId}::${item.styleId}::${item.colorCode || ''}`;
+      const occurrence = occurrenceByVariant.get(variantKey) || 0;
+      occurrenceByVariant.set(variantKey, occurrence + 1);
+
+      // The reset baseline lists each color bucket in M -> W order.
+      const gender = occurrence === 0 ? 'M' : occurrence === 1 ? 'W' : 'U';
+      const quantity = Number(item.totalQuantity || sumItemQuantity(item) || 0);
+      const processes = Array.isArray(style.processes) ? style.processes : [];
+      const processCount = processes.length;
+      const totalPtPerPiece = processes.reduce((sum, process) => sum + Number(process?.pt || 0), 0);
+      const totalAtPerPiece = processes.reduce((sum, process) => sum + Number(process?.at || 0), 0);
+      const totalStPerPiece = processes.reduce((sum, process) => {
+        const at = Number(process?.at);
+        if (Number.isFinite(at) && at > 0) return sum + at;
+        return sum + Number(process?.pt || 0);
+      }, 0);
+      const totalPt = totalPtPerPiece * quantity;
+      const totalAt = totalAtPerPiece * quantity;
+      const totalSt = totalStPerPiece * quantity;
+      const status = totalSt > 0 ? 'ST' : totalAt > 0 ? 'AT' : 'PT';
+      const cardId = `${orderId}::${item.styleId}::${item.colorCode}::${gender}`;
+
+      cards.push({
+        id: cardId,
+        originOrderId: cardId,
+        orderNo: order.orderNumber,
+        dueDate: order.dueDate,
+        customer: order.customerName || order.customer || '',
+        styleId: item.styleId,
+        styleName: style.name,
+        styleCode: style.styleCode,
+        colorId: item.colorCode,
+        colorName: item.colorName || '',
+        gender,
+        quantity,
+        processCount,
+        status,
+        totalSeconds: status === 'ST' ? totalSt : status === 'AT' ? totalAt : totalPt,
+        totalPt,
+        totalAt,
+        totalSt,
+        previewUrl: '',
+      });
+    }
+  }
+
+  return cards;
+}
+
+function applyBaselineAgreementSnapshots(cards, lineNameToId) {
+  const snapshotByCardId = new Map(
+    (Array.isArray(BASELINE_ASSIGNMENT_AGREEMENTS.cards) ? BASELINE_ASSIGNMENT_AGREEMENTS.cards : [])
+      .map((entry) => [String(entry.cardId), entry])
+  );
+
+  return cards.map((card) => {
+    const seed = snapshotByCardId.get(String(card.id));
+    if (!seed?.ctAgreedSnapshot) {
+      return card;
+    }
+
+    return {
+      ...card,
+      pendingCtProposal: null,
+      ctAgreedSnapshot: {
+        ...cloneJson(seed.ctAgreedSnapshot),
+        lineId: String(resolveBaselineLineId(lineNameToId, seed.lineKey)),
+      },
+    };
+  });
+}
+
+function buildBaselineAgreedAssignments(lineNameToId) {
+  return (Array.isArray(BASELINE_ASSIGNMENT_AGREEMENTS.assignments)
+    ? BASELINE_ASSIGNMENT_AGREEMENTS.assignments
+    : []
+  ).map((seed) => {
+    const cloned = cloneJson(seed);
+    const lineKey = cloned.lineKey;
+    delete cloned.lineKey;
+    return {
+      ...cloned,
+      lineId: String(resolveBaselineLineId(lineNameToId, lineKey)),
+    };
+  });
+}
+
+function buildAssignmentPlanSeedRows(orgId, lineNameToId) {
+  return buildBaselineAgreedAssignments(lineNameToId).map((seed) => {
+    const updatedAt = new Date(seed.updatedAt || seed.ctAgreedAt || new Date().toISOString());
+    const createdAt = seed.createdAt ? new Date(seed.createdAt) : updatedAt;
+    return {
+      orgId,
+      lineId: Number(seed.lineId),
+      externalId: seed.id,
+      cardId: seed.cardId || null,
+      orderNo: seed.orderNo || null,
+      customer: seed.customer || null,
+      label: seed.label || null,
+      colorName: seed.colorName || null,
+      previewUrl: seed.previewUrl || null,
+      imageUrl: seed.imageUrl || null,
+      thumbnailUrl: seed.thumbnailUrl || null,
+      quantity: seed.quantity ?? null,
+      originOrderId: seed.originOrderId || null,
+      basis: seed.basis || null,
+      proposalBasis: seed.proposalBasis || null,
+      proposalSeconds: seed.proposalSeconds ?? null,
+      contractedSeconds: seed.contractedSeconds ?? null,
+      ctStatus: seed.ctStatus || 'PENDING',
+      ctSource: seed.ctSource || null,
+      ctAgreedBy: seed.ctAgreedBy || null,
+      ctAgreedAt: seed.ctAgreedAt ? new Date(seed.ctAgreedAt) : null,
+      ctNote: seed.ctNote || null,
+      color: seed.color || null,
+      stripeColor: seed.stripeColor || null,
+      totalSeconds: seed.totalSeconds ?? null,
+      startIndex: seed.startIndex,
+      endIndex: seed.endIndex,
+      startDayOffsetPercent: seed.startDayOffsetPercent ?? null,
+      startDayPercent: seed.startDayPercent ?? null,
+      endDayPercent: seed.endDayPercent ?? null,
+      createdAt,
+      updatedAt,
+    };
+  });
+}
 
 // ── 마감일 동적 계산 헬퍼 ──────────────────────────────────────────────────
 const PROD_SECONDS_PER_DAY = 40 * 8 * 3600; // 40명 × 8시간 = 1,152,000초/일
@@ -519,6 +683,54 @@ async function main() {
   results.orders = { created: createdOrders, skipped: skippedOrders };
   console.log(`[10/10] 주문 등록: ${createdOrders}건 생성, ${skippedOrders}건 이미 존재`);
 
+  const seededOrders = await prisma.workOrder.findMany({
+    where: {
+      buyerOrgId: brand.id,
+      sellerOrgId: manufacturer.id,
+      orderNumber: { in: BASELINE_ORDERS.map((order) => order.orderNumber) },
+    },
+    select: {
+      orderId: true,
+      orderNumber: true,
+      dueDate: true,
+      customerName: true,
+      customer: true,
+      items: true,
+    },
+    orderBy: { orderNumber: 'asc' },
+  });
+
+  const baselineCards = buildBaselineAssignmentBoardCards(seededOrders, styleMap);
+  const seededCards = applyBaselineAgreementSnapshots(baselineCards, lineNameToId);
+  const seededAssignments = buildBaselineAgreedAssignments(lineNameToId);
+  const assignmentPlanSeedRows = buildAssignmentPlanSeedRows(
+    manufacturer.id,
+    lineNameToId
+  );
+
+  if (assignmentPlanSeedRows.length > 0) {
+    await prisma.assignmentPlan.createMany({
+      data: assignmentPlanSeedRows,
+    });
+  }
+
+  await prisma.assignmentBoardState.create({
+    data: {
+      orgId: manufacturer.id,
+      cards: seededCards,
+      assignments: seededAssignments,
+    },
+  });
+
+  results.assignmentBoardSeed = {
+    cards: seededCards.length,
+    agreedCards: (BASELINE_ASSIGNMENT_AGREEMENTS.cards || []).length,
+    agreedAssignments: seededAssignments.length,
+  };
+  console.log(
+    `[post-reset] Assignment board seed: 카드 ${seededCards.length}건, 동의 카드 ${(BASELINE_ASSIGNMENT_AGREEMENTS.cards || []).length}건, 동의 배정 ${seededAssignments.length}건`
+  );
+
   // 최종 현황
   const remaining = await prisma.$transaction([
     prisma.employee.count({ where: { orgId: manufacturer.id } }),
@@ -527,6 +739,8 @@ async function main() {
     prisma.factory.count({ where: { orgId: manufacturer.id } }),
     prisma.style.count({ where: { orgId: manufacturer.id } }),
     prisma.workOrder.count({ where: { OR: [{ buyerOrgId: brand.id }, { sellerOrgId: manufacturer.id }] } }),
+    prisma.assignmentPlan.count({ where: { orgId: manufacturer.id } }),
+    prisma.assignmentBoardState.count({ where: { orgId: manufacturer.id } }),
   ]);
 
   console.log('\n=== 초기화 완료 ===');
@@ -538,6 +752,8 @@ async function main() {
   console.log(`  LineAssignment (활성): ${remaining[2]}건`);
   console.log(`  Style: ${remaining[4]}개`);
   console.log(`  WorkOrder: ${remaining[5]}건`);
+  console.log(`  AssignmentPlan: ${remaining[6]}건`);
+  console.log(`  AssignmentBoardState: ${remaining[7]}건`);
 }
 
 main()
