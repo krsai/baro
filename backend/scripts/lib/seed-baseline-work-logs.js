@@ -3,6 +3,8 @@
 const BASELINE_ASSIGNMENT_AGREEMENTS = require('../reset-to-baseline.assignment-agreements.json');
 
 const WORK_LOG_QTY_VARIANCE_LIMIT = 5;
+const WORK_LOG_SEED_NOTE_PREFIX = 'Baseline seed';
+const WORK_SECONDS_PER_WORKER_PER_DAY = 8 * 60 * 60;
 
 const normalizeDateKey = (value) => {
   const text = String(value || '').trim();
@@ -14,6 +16,39 @@ const toStartOfDay = (dateKey) => {
   if (!normalized) return null;
   const date = new Date(`${normalized}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toDateKey = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isWeekend = (date) => {
+  const day = date.getDay();
+  return day === 0 || day === 6;
+};
+
+const listWorkingDateKeysInclusive = (startDateKey, endDateKey) => {
+  const startAt = toStartOfDay(startDateKey);
+  if (!startAt) return [];
+
+  const endAt = toStartOfDay(endDateKey) || startAt;
+  const from = startAt <= endAt ? startAt : endAt;
+  const to = startAt <= endAt ? endAt : startAt;
+  const values = [];
+  const cursor = new Date(from);
+
+  while (cursor <= to) {
+    if (!isWeekend(cursor)) {
+      values.push(toDateKey(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return values.length > 0 ? values : [toDateKey(startAt)];
 };
 
 const resolveRoundedPositiveInt = (value) => {
@@ -54,6 +89,83 @@ const resolveBaselineSeedDateKey = (seed) => {
   const month = String(fallbackDate.getMonth() + 1).padStart(2, '0');
   const day = String(fallbackDate.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getStableOffset = (seed, size) => {
+  if (!size || size <= 1) return 0;
+  const text = String(seed || '');
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % size;
+};
+
+const splitIntegerAcrossBuckets = (total, bucketCount, offsetSeed = '') => {
+  const quantity = Math.max(0, Math.round(Number(total || 0) || 0));
+  if (quantity <= 0) return [];
+  const safeBucketCount = Math.max(1, Math.round(Number(bucketCount || 0) || 0));
+  const buckets = Array.from({ length: safeBucketCount }, () => 0);
+  const base = Math.floor(quantity / safeBucketCount);
+  const remainder = quantity % safeBucketCount;
+  const startIndex = getStableOffset(offsetSeed, safeBucketCount);
+
+  for (let index = 0; index < safeBucketCount; index += 1) {
+    buckets[index] = base;
+  }
+  for (let index = 0; index < remainder; index += 1) {
+    const targetIndex = (startIndex + index) % safeBucketCount;
+    buckets[targetIndex] += 1;
+  }
+
+  return buckets;
+};
+
+const allocateQuantityAcrossDates = ({
+  quantity,
+  perPieceSeconds,
+  dateKeys,
+  resolveDailyCapacityPieces,
+}) => {
+  const remainingDates = Array.isArray(dateKeys) && dateKeys.length > 0 ? dateKeys : [];
+  if (remainingDates.length === 0) return [];
+
+  let quantityRemaining = Math.max(0, Math.round(Number(quantity || 0) || 0));
+  const allocations = [];
+
+  for (let index = 0; index < remainingDates.length && quantityRemaining > 0; index += 1) {
+    const dateKey = remainingDates[index];
+    const daysLeft = remainingDates.length - index;
+    const desiredPieces = Math.max(1, Math.ceil(quantityRemaining / daysLeft));
+    const dailyCapacityPieces = Math.max(
+      0,
+      Math.floor(Number(resolveDailyCapacityPieces(dateKey, perPieceSeconds)) || 0)
+    );
+    if (dailyCapacityPieces <= 0) continue;
+
+    const allocatedPieces = Math.min(quantityRemaining, desiredPieces, dailyCapacityPieces);
+    if (allocatedPieces <= 0) continue;
+
+    allocations.push({ dateKey, quantity: allocatedPieces });
+    quantityRemaining -= allocatedPieces;
+  }
+
+  let overflowDateCursor = toStartOfDay(remainingDates[remainingDates.length - 1]);
+  while (quantityRemaining > 0 && overflowDateCursor) {
+    overflowDateCursor.setDate(overflowDateCursor.getDate() + 1);
+    if (isWeekend(overflowDateCursor)) continue;
+
+    const overflowDateKey = toDateKey(overflowDateCursor);
+    const dailyCapacityPieces = Math.max(
+      1,
+      Math.floor(Number(resolveDailyCapacityPieces(overflowDateKey, perPieceSeconds)) || 0)
+    );
+    const allocatedPieces = Math.min(quantityRemaining, dailyCapacityPieces);
+    allocations.push({ dateKey: overflowDateKey, quantity: allocatedPieces });
+    quantityRemaining -= allocatedPieces;
+  }
+
+  return allocations.filter((entry) => entry.quantity > 0);
 };
 
 const buildStyleProcessSeedList = (style) => {
@@ -160,6 +272,7 @@ async function seedBaselineWorkLogs({
   orgId,
   skipExistingAssignments = true,
   backfillLineAssignmentStartAt = true,
+  replaceExistingSeededLogs = true,
 } = {}) {
   if (!prisma || !orgId) {
     throw new Error('seedBaselineWorkLogs requires prisma and orgId');
@@ -187,6 +300,17 @@ async function seedBaselineWorkLogs({
     assignmentSeeds.map((seed) => [String(seed.id), seed])
   );
   const earliestStartAt = resolveEarliestBaselineAssignmentStartAt();
+  let deletedSeededWorkLogs = 0;
+
+  if (replaceExistingSeededLogs) {
+    const deleted = await prisma.workLog.deleteMany({
+      where: {
+        orgId,
+        note: { startsWith: WORK_LOG_SEED_NOTE_PREFIX },
+      },
+    });
+    deletedSeededWorkLogs = deleted.count;
+  }
 
   const assignmentPlans = await prisma.assignmentPlan.findMany({
     where: {
@@ -326,6 +450,7 @@ async function seedBaselineWorkLogs({
   }
 
   const groups = new Map();
+  const lineCapacityRemainingByDate = new Map();
   let assignmentPlansSeeded = 0;
   let assignmentPlansSkipped = 0;
 
@@ -341,9 +466,8 @@ async function seedBaselineWorkLogs({
       continue;
     }
 
-    const workDate = resolveBaselineSeedDateKey(seed);
     const line = lineById.get(plan.lineId);
-    if (!workDate || !line) {
+    if (!line) {
       assignmentPlansSkipped += 1;
       continue;
     }
@@ -363,69 +487,124 @@ async function seedBaselineWorkLogs({
       continue;
     }
 
+    const totalPerPieceSeconds = processSeeds.reduce(
+      (sum, process) => sum + Math.max(0, Math.round(Number(process.ctSeconds || 0) || 0)),
+      0
+    );
+    if (totalPerPieceSeconds <= 0) {
+      assignmentPlansSkipped += 1;
+      continue;
+    }
+
     const actualQuantity = Math.max(
       1,
       baselineQuantity + createStableVariance(plan.externalId)
     );
-    const lineWorkerPool = lineAssignmentsByLineId.get(line.id) || [];
-    const activeWorkers = lineWorkerPool.filter((assignment) =>
-      isWorkerActiveOnDate(assignment, workDate)
-    );
-    const eligibleWorkers = activeWorkers.length > 0 ? activeWorkers : lineWorkerPool;
     const factory = factoryById.get(line.factoryId) || null;
-    const groupKey = `${line.id}::${workDate}`;
 
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, {
-        lineId: line.id,
-        lineName: line.name,
-        workDate,
-        factory,
-        assignmentPlanIds: new Set(),
-        workerIds: new Set(),
-        availableWorkerCount: eligibleWorkers.length,
-        totalContractedSeconds: 0,
-        records: [],
-      });
+    const startDateKey = resolveBaselineSeedDateKey(seed);
+    const endDateKey = normalizeDateKey(seed?.endDateKey) || startDateKey;
+    const scheduledDateKeys = listWorkingDateKeysInclusive(startDateKey, endDateKey);
+
+    const dayAllocations = allocateQuantityAcrossDates({
+      quantity: actualQuantity,
+      perPieceSeconds: totalPerPieceSeconds,
+      dateKeys: scheduledDateKeys,
+      resolveDailyCapacityPieces: (dateKey) => {
+        const lineWorkerPool = lineAssignmentsByLineId.get(line.id) || [];
+        const activeWorkers = lineWorkerPool.filter((assignment) =>
+          isWorkerActiveOnDate(assignment, dateKey)
+        );
+        const eligibleWorkers = activeWorkers.length > 0 ? activeWorkers : lineWorkerPool;
+        const totalDailyCapacitySeconds =
+          Math.max(1, eligibleWorkers.length || 1) * WORK_SECONDS_PER_WORKER_PER_DAY;
+        const capacityKey = `${line.id}::${dateKey}`;
+        if (!lineCapacityRemainingByDate.has(capacityKey)) {
+          lineCapacityRemainingByDate.set(capacityKey, totalDailyCapacitySeconds);
+        }
+        return Math.floor(
+          (lineCapacityRemainingByDate.get(capacityKey) || 0) / totalPerPieceSeconds
+        );
+      },
+    });
+
+    if (dayAllocations.length === 0) {
+      assignmentPlansSkipped += 1;
+      continue;
     }
 
-    const group = groups.get(groupKey);
-    const workerOffset = group.records.length;
-
-    group.assignmentPlanIds.add(plan.id);
-    group.availableWorkerCount = Math.max(
-      group.availableWorkerCount,
-      eligibleWorkers.length
-    );
-    group.totalContractedSeconds += Math.max(
-      0,
-      Math.round(Number(plan.contractedSeconds || 0) || 0)
-    );
-
-    processSeeds.forEach((process, index) => {
-      const worker =
-        eligibleWorkers.length > 0
-          ? eligibleWorkers[(workerOffset + index) % eligibleWorkers.length]
-          : null;
-
-      if (worker?.employeeId) {
-        group.workerIds.add(worker.employeeId);
+    dayAllocations.forEach((allocation, allocationIndex) => {
+      const workDate = allocation.dateKey;
+      const lineWorkerPool = lineAssignmentsByLineId.get(line.id) || [];
+      const activeWorkers = lineWorkerPool.filter((assignment) =>
+        isWorkerActiveOnDate(assignment, workDate)
+      );
+      const eligibleWorkers = activeWorkers.length > 0 ? activeWorkers : lineWorkerPool;
+      const dailyQuantity = allocation.quantity;
+      const capacityKey = `${line.id}::${workDate}`;
+      const existingRemainingSeconds = lineCapacityRemainingByDate.get(capacityKey);
+      if (existingRemainingSeconds !== undefined) {
+        lineCapacityRemainingByDate.set(
+          capacityKey,
+          Math.max(0, existingRemainingSeconds - dailyQuantity * totalPerPieceSeconds)
+        );
       }
 
-      group.records.push({
-        workerId: worker?.employeeId ?? null,
-        workerName: worker?.employee?.name || '',
-        customerName: plan.customer || '',
-        styleId: styleId || '',
-        styleName: plan.label || style?.name || '',
-        processCode: process.processCode || '',
-        processName: process.processName || '',
-        colorId: colorIdByCode.get(colorCode) ?? null,
-        colorCode: colorCode || '',
-        colorName: plan.colorName || '',
-        ctSeconds: Math.max(0, Math.round(Number(process.ctSeconds || 0) || 0)),
-        quantity: actualQuantity,
-        assignmentPlanId: plan.id,
+      const groupKey = `${factory?.id ?? 0}::${workDate}`;
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          lineIds: new Set(),
+          lineNames: new Set(),
+          workDate,
+          factory,
+          assignmentPlanIds: new Set(),
+          workerIds: new Set(),
+          totalContractedSeconds: 0,
+          records: [],
+        });
+      }
+
+      const group = groups.get(groupKey);
+      group.lineIds.add(line.id);
+      group.lineNames.add(line.name);
+      group.assignmentPlanIds.add(plan.id);
+      group.totalContractedSeconds += dailyQuantity * totalPerPieceSeconds;
+      eligibleWorkers.forEach((worker) => {
+        if (worker?.employeeId) {
+          group.workerIds.add(worker.employeeId);
+        }
+      });
+
+      const workerShares = eligibleWorkers.length > 0
+        ? splitIntegerAcrossBuckets(
+            dailyQuantity,
+            eligibleWorkers.length,
+            `${plan.externalId}::${workDate}::${allocationIndex}`
+          )
+        : [dailyQuantity];
+
+      processSeeds.forEach((process, processIndex) => {
+        workerShares.forEach((workerQuantity, workerIndex) => {
+          if (workerQuantity <= 0) return;
+          const worker = eligibleWorkers[workerIndex] || null;
+
+          group.records.push({
+            workerId: worker?.employeeId ?? null,
+            workerName: worker?.employee?.name || '',
+            customerName: plan.customer || '',
+            styleId: styleId || '',
+            styleName: plan.label || style?.name || '',
+            processCode: process.processCode || '',
+            processName: process.processName || '',
+            colorId: colorIdByCode.get(colorCode) ?? null,
+            colorCode: colorCode || '',
+            colorName: plan.colorName || '',
+            ctSeconds: Math.max(0, Math.round(Number(process.ctSeconds || 0) || 0)),
+            quantity: workerQuantity,
+            assignmentPlanId: plan.id,
+            _sortKey: `${plan.externalId}::${workDate}::${processIndex}::${workerIndex}`,
+          });
+        });
       });
     });
 
@@ -439,14 +618,19 @@ async function seedBaselineWorkLogs({
     if (left.workDate !== right.workDate) {
       return left.workDate.localeCompare(right.workDate);
     }
-    if (left.lineName !== right.lineName) {
-      return left.lineName.localeCompare(right.lineName);
-    }
-    return left.lineId - right.lineId;
+    return Number(left.factory?.id || 0) - Number(right.factory?.id || 0);
   });
 
   for (const group of sortedGroups) {
     if (group.records.length === 0) continue;
+
+    group.records.sort((left, right) =>
+      String(left._sortKey || '').localeCompare(String(right._sortKey || ''))
+    );
+    const lineIds = Array.from(group.lineIds.values()).sort((left, right) => left - right);
+    const lineNames = Array.from(group.lineNames.values()).sort((left, right) =>
+      String(left).localeCompare(String(right))
+    );
 
     const createdWorkLog = await prisma.workLog.create({
       data: {
@@ -458,13 +642,17 @@ async function seedBaselineWorkLogs({
           ? Number(group.factory.wagePerSecond)
           : null,
         ctBasis: 'CT',
-        workerCount: Math.max(group.workerIds.size, group.availableWorkerCount),
+        workerCount: Math.max(group.workerIds.size, 1),
         itemCount: group.assignmentPlanIds.size,
         totalContractedSeconds: Math.max(0, Math.round(group.totalContractedSeconds)),
-        note: `Baseline seed from assignment start date (qty variance +/-${WORK_LOG_QTY_VARIANCE_LIMIT})`,
+        note:
+          `${WORK_LOG_SEED_NOTE_PREFIX} from assignment schedule ` +
+          `(qty variance +/-${WORK_LOG_QTY_VARIANCE_LIMIT}, max 8h/worker/day)`,
         records: {
-          lineId: group.lineId,
-          lineName: group.lineName,
+          lineId: lineIds.length === 1 ? lineIds[0] : null,
+          lineName: lineNames.length === 1 ? lineNames[0] : null,
+          lineIds,
+          lineNames,
         },
       },
     });
@@ -473,7 +661,19 @@ async function seedBaselineWorkLogs({
       data: group.records.map((record) => ({
         orgId,
         workLogId: createdWorkLog.id,
-        ...record,
+        workerId: record.workerId,
+        workerName: record.workerName,
+        customerName: record.customerName,
+        styleId: record.styleId,
+        styleName: record.styleName,
+        processCode: record.processCode,
+        processName: record.processName,
+        colorId: record.colorId,
+        colorCode: record.colorCode,
+        colorName: record.colorName,
+        ctSeconds: record.ctSeconds,
+        quantity: record.quantity,
+        assignmentPlanId: record.assignmentPlanId,
       })),
     });
 
@@ -488,6 +688,7 @@ async function seedBaselineWorkLogs({
     workLogsCreated,
     workRecordsCreated,
     lineAssignmentsBackfilled,
+    deletedSeededWorkLogs,
   };
 }
 

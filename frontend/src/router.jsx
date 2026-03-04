@@ -28,7 +28,6 @@ const AuthCallback = React.lazy(() => import('./pages/Auth/AuthCallback'));
 const Attribute = React.lazy(() => import('./pages/App/Attribute'));
 const Order = React.lazy(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
-const CtReview = React.lazy(() => import('./pages/App/CtReview'));
 const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
 const WorkspaceShell = () => null;
@@ -178,10 +177,6 @@ const router = createBrowserRouter([
           {
             path: 'production-plan',
             element: <ProductionPlan />,
-          },
-          {
-            path: 'ct-review',
-            element: <CtReview />,
           },
           {
             path: 'production-result',

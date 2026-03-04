@@ -322,6 +322,46 @@ const toPositiveIdOrNull = (value) => {
   const rounded = Math.trunc(parsed);
   return rounded > 0 ? rounded : null;
 };
+const buildInitialRecordHydrationKey = (initialLog, selectedLine) => {
+  if (!initialLog?.id) return '';
+
+  const initialLineId = toPositiveIdOrNull(initialLog?.lineId);
+  if (initialLineId) {
+    return `log:${initialLog.id}:line:${initialLineId}`;
+  }
+
+  const initialLineName = String(initialLog?.lineName || '').trim();
+  if (initialLineName) {
+    return `log:${initialLog.id}:line-name:${initialLineName}`;
+  }
+
+  const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
+  if (!selectedLineId) return '';
+  return `log:${initialLog.id}:selected-line:${selectedLineId}`;
+};
+const filterRecordsByEmployees = (records, employees = []) => {
+  const safeRecords = Array.isArray(records) ? records : [];
+  if (safeRecords.length === 0 || employees.length === 0) return [];
+
+  const eligibleWorkerIds = new Set(
+    employees
+      .map((employee) => toPositiveIdOrNull(employee?.id))
+      .filter((workerId) => workerId !== null)
+  );
+  const eligibleWorkerNames = new Set(
+    employees
+      .map((employee) => String(employee?.name || '').trim())
+      .filter(Boolean)
+  );
+
+  return safeRecords.filter((record) => {
+    const workerId = toPositiveIdOrNull(record?.workerId);
+    if (workerId !== null) return eligibleWorkerIds.has(workerId);
+
+    const workerName = String(record?.workerName || '').trim();
+    return workerName ? eligibleWorkerNames.has(workerName) : false;
+  });
+};
 const isAgreedAssignmentPlan = (plan) =>
   String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
 const resolveAssignmentPlanBaselineQuantity = (plan) => {
@@ -419,6 +459,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [selectedLine, setSelectedLine] = useState(null);
   const [assignmentPlans, setAssignmentPlans] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [loadedEmployeeScopeKey, setLoadedEmployeeScopeKey] = useState('');
   const [customers, setCustomers] = useState([]);
   const [styles, setStyles] = useState([]);
   const [colors, setColors] = useState([]);
@@ -434,6 +475,24 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const initializedLineLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
   const isPageMode = mode === 'page';
+  const workDateKey = useMemo(
+    () => workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
+    [workDate]
+  );
+  const initialLogLineId = toPositiveIdOrNull(initialLog?.lineId);
+  const initialLogLineName = String(initialLog?.lineName || '').trim();
+  const isFactoryAggregateInitialLog =
+    Boolean(initialLog?.id) && !initialLogLineId && !initialLogLineName;
+  const selectedEmployeeScopeKey = useMemo(() => {
+    const factoryId = toPositiveIdOrNull(selectedFactory?.id);
+    const lineId = toPositiveIdOrNull(selectedLine?.id);
+    if (!factoryId || !lineId) return '';
+    return `${factoryId}:${lineId}:${workDateKey}`;
+  }, [selectedFactory?.id, selectedLine?.id, workDateKey]);
+  const initialRecordHydrationKey = useMemo(
+    () => buildInitialRecordHydrationKey(initialLog, selectedLine),
+    [initialLog, selectedLine]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -576,21 +635,21 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   useEffect(() => {
     let cancelled = false;
     const isPendingInitialHydration =
-      Boolean(initialLog?.id) &&
-      initializedRecordsLogIdRef.current !== initialLog.id;
-    const workDateKey = workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD');
+      Boolean(initialRecordHydrationKey) &&
+      initializedRecordsLogIdRef.current !== initialRecordHydrationKey;
 
     const loadEmployees = async () => {
       if (!selectedFactory?.id || !selectedLine?.id) {
         setEmployees([]);
+        setLoadedEmployeeScopeKey('');
         setWorkerFocusRequest(null);
         setItemFocusRequest(null);
         setDuplicateEntryMessage('');
-        if (!initialLog?.id) {
-          setWorkerLogs([]);
-        }
+        setWorkerLogs([]);
         return;
       }
+
+      setLoadedEmployeeScopeKey('');
       try {
         const data = await requestJSON(
           `/line-workers${buildQueryString({
@@ -607,6 +666,9 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         }));
         if (!cancelled) {
           setEmployees(list);
+          setLoadedEmployeeScopeKey(
+            `${selectedFactory.id}:${selectedLine.id}:${workDateKey}`
+          );
           if (isPendingInitialHydration) {
             // 상세 수정 초기화 중에는 기존 기록 복원 effect가 workerLogs를 세팅한다.
           } else {
@@ -637,25 +699,54 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           setDuplicateEntryMessage('');
         }
       } catch (_error) {
-        if (!cancelled) setEmployees([]);
+        if (!cancelled) {
+          setEmployees([]);
+          setLoadedEmployeeScopeKey(
+            `${selectedFactory.id}:${selectedLine.id}:${workDateKey}`
+          );
+        }
       }
     };
 
     setEmployees([]);
+    setLoadedEmployeeScopeKey('');
     setItemFocusRequest(null);
     setDuplicateEntryMessage('');
+    if (isPendingInitialHydration) {
+      setWorkerLogs([]);
+    }
     loadEmployees();
 
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, initialLog?.id, selectedFactory?.id, selectedLine?.id, workDate]);
+  }, [
+    activeOrgId,
+    initialLog?.id,
+    initialRecordHydrationKey,
+    selectedFactory?.id,
+    selectedLine?.id,
+    workDateKey,
+  ]);
 
   useEffect(() => {
     if (!initialLog?.id) return;
-    if (initializedRecordsLogIdRef.current === initialLog.id) return;
     if (!selectedFactory?.id) return;
-    if (!selectedLine?.id) return;
+    if (!initialRecordHydrationKey) {
+      if (isFactoryAggregateInitialLog) {
+        setWorkerLogs([]);
+        setDuplicateEntryMessage('');
+        setItemFocusRequest(null);
+        setWorkerFocusRequest(null);
+        initializedRecordsLogIdRef.current = '';
+      }
+      return;
+    }
+    if (initializedRecordsLogIdRef.current === initialRecordHydrationKey) return;
+    if (selectedEmployeeScopeKey && loadedEmployeeScopeKey !== selectedEmployeeScopeKey) {
+      return;
+    }
+    if (initialLogLineId && !selectedLine?.id) return;
     if (
       initialLog.factoryId &&
       String(selectedFactory.id || '') !== String(initialLog.factoryId)
@@ -663,13 +754,16 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       return;
     }
     if (
-      initialLog.lineId &&
-      String(selectedLine.id || '') !== String(initialLog.lineId)
+      initialLogLineId &&
+      String(selectedLine.id || '') !== String(initialLogLineId)
     ) {
       return;
     }
 
-    const nextWorkerLogs = buildWorkerLogsFromRecords(initialLog.records, {
+    const scopedRecords = isFactoryAggregateInitialLog
+      ? filterRecordsByEmployees(initialLog.records, employees)
+      : initialLog.records;
+    const nextWorkerLogs = buildWorkerLogsFromRecords(scopedRecords, {
       employees,
       customers,
       styles,
@@ -687,8 +781,21 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setDuplicateEntryMessage('');
     setItemFocusRequest(null);
     setWorkerFocusRequest(null);
-    initializedRecordsLogIdRef.current = initialLog.id;
-  }, [colors, customers, employees, initialLog, selectedFactory, selectedLine, styles]);
+    initializedRecordsLogIdRef.current = initialRecordHydrationKey;
+  }, [
+    colors,
+    customers,
+    employees,
+    initialLog,
+    initialLogLineId,
+    initialRecordHydrationKey,
+    isFactoryAggregateInitialLog,
+    loadedEmployeeScopeKey,
+    selectedEmployeeScopeKey,
+    selectedFactory,
+    selectedLine,
+    styles,
+  ]);
 
   const takenWorkerIds = useMemo(
     () => new Set(workerLogs.map((log) => log.worker?.id).filter(Boolean)),
@@ -1167,6 +1274,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             배정 작업 기록은 CT 동의된 배정 카드 선택이 필수입니다.
           </Alert>
         ) : null}
+        {isFactoryAggregateInitialLog ? (
+          <Alert severity="warning" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
+            이 작업 기록은 공장 단위로 합산 저장된 로그입니다. 라인을 선택해 조회할 수는 있지만, 현재 화면에서는 수정 저장을 지원하지 않습니다.
+          </Alert>
+        ) : null}
         <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
           실생산량은 주문/배정 수량과 달라도 됩니다. 초과 생산(+), 손실/폐기(-)를 반영한 실제 완료 수량을 입력해 주세요.
         </Alert>
@@ -1276,7 +1388,12 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={!selectedFactory || !selectedLine || summary.records.length === 0}
+            disabled={
+              !selectedFactory ||
+              !selectedLine ||
+              summary.records.length === 0 ||
+              isFactoryAggregateInitialLog
+            }
           >
             저장
           </Button>

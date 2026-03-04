@@ -41,7 +41,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import DnsIcon from '@mui/icons-material/Dns';
 import ContentCut from '@mui/icons-material/ContentCut';
 import TimelineIcon from '@mui/icons-material/Timeline';
-import RateReviewIcon from '@mui/icons-material/RateReview';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -225,7 +224,6 @@ const MainLayout = () => {
         children: [
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
-          { label: '배정 결과', icon: <RateReviewIcon />, path: '/ct-review' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
           { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
         ],
