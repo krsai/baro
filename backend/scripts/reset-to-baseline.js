@@ -32,6 +32,10 @@
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const BASELINE_ASSIGNMENT_AGREEMENTS = require('./reset-to-baseline.assignment-agreements.json');
+const {
+  resolveEarliestBaselineAssignmentStartAt,
+  seedBaselineWorkLogs,
+} = require('./lib/seed-baseline-work-logs');
 
 const prisma = new PrismaClient();
 
@@ -484,15 +488,19 @@ async function main() {
   // 7. 유지 데이터 이름 정규화 (factory, 비작업자 employee)
   let normalizedEmployees = 0;
 
-  const factory = await prisma.factory.findFirst({
+  let factory = await prisma.factory.findFirst({
     where: { orgId: manufacturer.id },
-    select: { id: true, name: true },
+    select: { id: true, name: true, wagePerSecond: true },
   });
   if (factory && factory.name !== BASELINE_FACTORY_NAME) {
     await prisma.factory.update({
       where: { id: factory.id },
       data: { name: BASELINE_FACTORY_NAME },
     });
+    factory = {
+      ...factory,
+      name: BASELINE_FACTORY_NAME,
+    };
   }
 
   // 비작업자 이름 정규화
@@ -539,6 +547,8 @@ async function main() {
 
   const workerEmployeeIds = Object.values(emailToEmployeeId);
   const now = new Date();
+  const baselineLineAssignmentStartAt =
+    resolveEarliestBaselineAssignmentStartAt() || now;
 
   // 기존 활성 배정 종료
   const closedAssignments = await prisma.lineAssignment.updateMany({
@@ -574,7 +584,7 @@ async function main() {
         continue;
       }
       await prisma.lineAssignment.create({
-        data: { lineId, employeeId, startAt: now },
+        data: { lineId, employeeId, startAt: baselineLineAssignmentStartAt },
       });
       await prisma.employee.update({
         where: { id: employeeId },
@@ -732,6 +742,17 @@ async function main() {
   );
 
   // 최종 현황
+  const workLogSeedResult = await seedBaselineWorkLogs({
+    prisma,
+    orgId: manufacturer.id,
+    skipExistingAssignments: false,
+    backfillLineAssignmentStartAt: false,
+  });
+  results.workLogSeed = workLogSeedResult;
+  console.log(
+    `[post-reset] Work log seed: WorkLog ${workLogSeedResult.workLogsCreated}건, WorkRecord ${workLogSeedResult.workRecordsCreated}건, assignment ${workLogSeedResult.assignmentPlansSeeded}건`
+  );
+
   const remaining = await prisma.$transaction([
     prisma.employee.count({ where: { orgId: manufacturer.id } }),
     prisma.line.count({ where: { orgId: manufacturer.id } }),
@@ -739,6 +760,8 @@ async function main() {
     prisma.factory.count({ where: { orgId: manufacturer.id } }),
     prisma.style.count({ where: { orgId: manufacturer.id } }),
     prisma.workOrder.count({ where: { OR: [{ buyerOrgId: brand.id }, { sellerOrgId: manufacturer.id }] } }),
+    prisma.workLog.count({ where: { orgId: manufacturer.id } }),
+    prisma.workRecord.count({ where: { orgId: manufacturer.id } }),
     prisma.assignmentPlan.count({ where: { orgId: manufacturer.id } }),
     prisma.assignmentBoardState.count({ where: { orgId: manufacturer.id } }),
   ]);
@@ -754,6 +777,11 @@ async function main() {
   console.log(`  WorkOrder: ${remaining[5]}건`);
   console.log(`  AssignmentPlan: ${remaining[6]}건`);
   console.log(`  AssignmentBoardState: ${remaining[7]}건`);
+  console.log('\nUpdated counts');
+  console.log(`  WorkLog: ${remaining[6]}`);
+  console.log(`  WorkRecord: ${remaining[7]}`);
+  console.log(`  AssignmentPlan: ${remaining[8]}`);
+  console.log(`  AssignmentBoardState: ${remaining[9]}`);
 }
 
 main()

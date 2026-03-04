@@ -9,6 +9,36 @@ const DEFAULT_GET_CACHE_TTL_MS = 45_000;
 const getResponseCache = new Map();
 const inFlightGetRequests = new Map();
 
+// mutation 경로가 어떤 GET 캐시 prefix를 무효화하는지 정의
+// 매핑되지 않은 경로는 fallback으로 전체 캐시 삭제
+const CACHE_INVALIDATION_MAP = {
+  '/assignment-board-state': ['/assignment-board'],
+  '/assignment-plans': ['/assignment-plans', '/assignment-board'],
+  '/assignment-cards': ['/assignment-cards', '/assignment-board'],
+  '/assignment-board-lines': ['/assignment-board'],
+  '/line-workers': ['/line-workers'],
+  '/lines': ['/lines', '/line-workers'],
+  '/work-orders': ['/work-orders', '/assignment-cards'],
+};
+
+const invalidateCacheByPath = (mutationPath) => {
+  const normalizedPath = String(mutationPath || '').split('?')[0];
+  const prefixesToInvalidate = Object.entries(CACHE_INVALIDATION_MAP)
+    .filter(([key]) => normalizedPath.startsWith(key))
+    .flatMap(([, prefixes]) => prefixes);
+
+  if (prefixesToInvalidate.length === 0) {
+    getResponseCache.clear();
+    return;
+  }
+
+  for (const [key] of getResponseCache.entries()) {
+    if (prefixesToInvalidate.some((prefix) => key.includes(prefix))) {
+      getResponseCache.delete(key);
+    }
+  }
+};
+
 const networkLoadingListeners = new Set();
 const activeNetworkRequestIds = new Set();
 const trackedRequestAbortControllers = new Map();
@@ -252,8 +282,8 @@ export const requestJSON = async (path, options = {}) => {
       }
 
       if (method !== 'GET') {
-        // Mutating requests invalidate cached GET responses to keep views consistent.
-        getResponseCache.clear();
+        // Mutating requests invalidate related cached GET responses.
+        invalidateCacheByPath(path);
       }
 
       return data;

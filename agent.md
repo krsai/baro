@@ -738,3 +738,27 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 **DEFAULT_ATTRIBUTES 초기화 방지**
 - `backend/src/index.ts`의 `DEFAULT_ATTRIBUTES.colors`를 빈 배열 `[]`로 변경 → `GET /attributes` 시 색상 재시드 방지
 - 기존 하드코딩 BLK/WHT/RED/BLU 4개 색상(orgId=1,2)은 사용되지 않아 DB에서 직접 삭제
+
+## 오늘 반영 메모 (2026-03-04)
+
+### 성능 개선 — 로딩 속도 3개 이슈 수정
+
+#### 이슈 1: assignment repair 쿼리 사전 체크
+- `assignmentPlanNeedsDisplayRepair(plan)` 헬퍼 추가: orderNo/customer/label/colorName 중 하나라도 비거나 corruption regex(`\?{2,}|<U+FFFD>`) 매칭 시 true 반환
+- `/assignment-plans` GET, `/assignment-board-state` GET 두 곳에서 `plans.some(assignmentPlanNeedsDisplayRepair)` 조건 추가
+- 효과: display 필드가 이미 정상이면 `loadAssignmentDisplayReferenceMaps`(workOrder + style 전체 조회 2개) 완전 스킵
+- 파일: `backend/src/index.ts`
+
+#### 이슈 2: AssignBoard 상호작용 리렌더링 최적화
+- `ScheduleTimeline`에 `memo()` 추가 — activeDrag/searchTerm/contextMenuState 등 무관 state 변경 시 타임라인 리렌더링 차단
+- `handleDragEnd` (5300줄 근처)에 `useCallback` 누락 보완 → DndContext에 안정적 참조 전달
+- `handleLinkPrev`에 `useCallback` 누락 보완 → ScheduleTimeline의 memo 효과를 살림
+- `useAssignBoardDnd` 훅 분리 (`sensors`, `handleDragStart`, `handleDragCancel`) — cardsRef/assignmentsRef 사용으로 컴포넌트 최상단에서 호출 가능
+- 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`, `frontend/src/pages/App/assign/components/ScheduleTimeline.jsx`, `frontend/src/pages/App/assign/hooks/useAssignBoardDnd.js`
+
+#### 이슈 3: GET 캐시 선택적 무효화
+- `CACHE_INVALIDATION_MAP`: mutation 경로별 무효화할 GET 캐시 prefix 목록 정의
+- `invalidateCacheByPath(mutationPath)`: 매핑된 prefix만 삭제, 매핑 없는 경로는 기존처럼 전체 삭제(fallback)
+- POST/PUT/DELETE 시 `getResponseCache.clear()` → `invalidateCacheByPath(path)` 교체
+- 효과: 보드 저장(PUT /assignment-board-state) 후 /factories, /lines, /line-workers 등 무관 캐시 유지
+- 파일: `frontend/src/utils/apiClient.js`

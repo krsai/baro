@@ -543,4 +543,4 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
   );
 };
 
-export default ScheduleTimeline;
+export default memo(ScheduleTimeline);

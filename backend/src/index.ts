@@ -20,6 +20,19 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+function assertGeneratedPrismaClientShape() {
+  const hasWorkOrderItemsRelation = Prisma.dmmf.datamodel.models
+    .find((model) => model.name === "WorkOrder")
+    ?.fields.some((field) => field.name === "workOrderItems");
+
+  if (!hasWorkOrderItemsRelation) {
+    throw new Error(
+      'Stale Prisma client detected: WorkOrder.workOrderItems is missing. Run "npx prisma generate" in backend, then restart the server.'
+    );
+  }
+}
+
+assertGeneratedPrismaClientShape();
 const prisma = new PrismaClient();
 
 const DEFAULT_ORG = {
@@ -3498,6 +3511,16 @@ const shouldRepairAssignmentDisplayField = (current: any, fallback: any): boolea
   if (!currentText) return true;
   return hasCorruptedAssignmentDisplayText(currentText);
 };
+// plan의 display 필드 중 하나라도 비어있거나 오염된 경우 true 반환
+// repair 호출 전 빠른 사전 체크용 — refs 로드 없이 실행 가능
+const ASSIGNMENT_PLAN_DISPLAY_FIELDS = ["orderNo", "customer", "label", "colorName"] as const;
+const assignmentPlanNeedsDisplayRepair = (plan: any): boolean => {
+  if (!plan || typeof plan !== "object") return false;
+  return ASSIGNMENT_PLAN_DISPLAY_FIELDS.some((field) => {
+    const text = resolveOptionalString((plan as any)[field], null);
+    return !text || hasCorruptedAssignmentDisplayText(text);
+  });
+};
 const shouldRepairAssignmentBoardDisplayPayloadOnWrite = ({
   cards,
   assignments,
@@ -5714,7 +5737,7 @@ app.get("/assignment-plans", async (req, res) => {
     },
     orderBy: [{ startIndex: "asc" }, { id: "asc" }],
   });
-  if (plans.length > 0) {
+  if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,
       plans,
@@ -6606,7 +6629,7 @@ app.get("/assignment-board-state", async (req, res) => {
           },
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
         });
-  if (assignmentPlans.length > 0) {
+  if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,
       plans: assignmentPlans,

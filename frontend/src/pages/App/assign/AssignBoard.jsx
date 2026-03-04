@@ -24,8 +24,9 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
+import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
@@ -1774,10 +1775,6 @@ const rebuildLineWithReplace = ({
 };
 
 const AssignBoard = () => {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-  );
-
   const { showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const location = useLocation();
@@ -1825,6 +1822,13 @@ const AssignBoard = () => {
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
   const daysRef = useRef(days);
+  const { sensors, handleDragStart, handleDragCancel } = useAssignBoardDnd({
+    persistReady,
+    loading,
+    cardsRef,
+    assignmentsRef,
+    setActiveDrag,
+  });
   const lineCapacityById = useMemo(() => {
     return buildLineCapacityMap(lines);
   }, [lines]);
@@ -3244,46 +3248,7 @@ const AssignBoard = () => {
     });
   }, [detailTargetKey]);
 
-  const handleDragStart = useCallback((event) => {
-    if (!persistReady || loading) return;
-    const { active } = event;
-    if (!active) return;
-    const id = String(active.id);
-    if (id.startsWith('card-')) {
-      const cardId = id.replace('card-', '');
-      const card = cardById.get(cardId);
-      if (card) {
-        setActiveDrag({
-          type: 'card',
-          label: card.styleName,
-          orderNo: card.orderNo,
-          previewUrl: card.previewUrl,
-          imageUrl: card.imageUrl,
-          thumbnailUrl: card.thumbnailUrl,
-          customer: card.customer,
-        });
-      }
-      return;
-    }
-    if (id.startsWith('assign-')) {
-      const assignmentId = id.replace('assign-', '');
-      const assignment = assignmentById.get(assignmentId);
-      if (assignment) {
-        setActiveDrag({
-          type: 'assignment',
-          label: assignment.label,
-          customer: assignment.customer,
-          orderNo: assignment.orderNo,
-        });
-      }
-    }
-  }, [assignmentById, cardById, loading, persistReady]);
-
-  const handleDragCancel = useCallback(() => {
-    setActiveDrag(null);
-  }, []);
-
-  const handleDragEnd = (event) => {
+  const handleDragEnd = useCallback((event) => {
     if (!persistReady || loading) {
       setActiveDrag(null);
       return;
@@ -3597,9 +3562,22 @@ const AssignBoard = () => {
       });
       setActiveDrag(null);
     }
-  };
+  }, [
+    persistReady,
+    loading,
+    assignmentById,
+    cardById,
+    showNotification,
+    mergeUnassignedCards,
+    mergeAssignmentIntoCardTarget,
+    mergeCardIntoAssignment,
+    mergeAssignments,
+    assignments,
+    days,
+    lineCapacityById,
+  ]);
 
-  const handleLinkPrev = (assignmentId) => {
+  const handleLinkPrev = useCallback((assignmentId) => {
     setAssignments((prev) => {
       const target = prev.find((item) => item.id === assignmentId);
       if (!target) return prev;
@@ -3625,7 +3603,7 @@ const AssignBoard = () => {
 
       return moved || prev;
     });
-  };
+  }, [days, lineCapacityById]);
 
   const promptSplitQuantity = useCallback((quantity) => {
     if (!quantity || quantity <= 1) return null;
