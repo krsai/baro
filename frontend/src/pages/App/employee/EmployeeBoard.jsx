@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
@@ -49,7 +50,7 @@ const ORG_ROLE_LABELS = ORG_ROLE_OPTIONS.reduce((map, option) => {
 }, {});
 
 const PAY_TYPE_OPTIONS = [
-  { value: 'CT', label: '성과급(CT)' },
+  { value: 'CT', label: '성과급' },
   { value: 'FIXED', label: '고정급' },
 ];
 
@@ -77,6 +78,7 @@ const formatDate = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
 };
+const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 
 const buildEmployeeDraft = (member, employee) => ({
   name: employee?.name || '',
@@ -93,10 +95,8 @@ const EmployeeRow = React.memo(
   ({
     member,
     employee,
-    factories,
     roleOptions,
     jobRoleOptions,
-    selectedOrgType,
     isUpdating,
     onSave,
   }) => {
@@ -137,29 +137,6 @@ const EmployeeRow = React.memo(
 
     return (
       <TableRow>
-        <TableCell>
-          {selectedOrgType === 'BRAND' ? (
-            <Typography variant="body2" color="text.secondary">
-              공장 없음
-            </Typography>
-          ) : (
-            <TextField
-              select
-              size="small"
-              value={draft.factoryId}
-              onChange={(e) => handleDraftChange({ factoryId: e.target.value })}
-              disabled={isUpdating}
-            >
-              <MenuItem value="">미지정</MenuItem>
-              {factories.map((factory) => (
-                <MenuItem key={factory.id} value={String(factory.id)}>
-                  {factory.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
-        </TableCell>
-
         <TableCell>
           <TextField
             size="small"
@@ -221,14 +198,7 @@ const EmployeeRow = React.memo(
                 </MenuItem>
               ))}
             </TextField>
-          ) : (
-            <TextField
-              size="small"
-              value={getOrgRoleLabel(draft.orgRole)}
-              disabled
-              sx={{ minWidth: 180 }}
-            />
-          )}
+          ) : null}
         </TableCell>
 
         <TableCell>
@@ -303,6 +273,7 @@ const EmployeeBoard = () => {
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [myEmail, setMyEmail] = useState(user?.email || '');
   const [selectedFactoryFilterId, setSelectedFactoryFilterId] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [statusMessage, setStatusMessage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
@@ -324,10 +295,6 @@ const EmployeeBoard = () => {
       : '';
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
-  const selectedFactoryFilter = useMemo(
-    () => factories.find((factory) => String(factory?.id) === String(selectedFactoryFilterId)) || null,
-    [factories, selectedFactoryFilterId]
-  );
 
   const employeeByMembership = useMemo(() => {
     const map = new Map();
@@ -336,6 +303,13 @@ const EmployeeBoard = () => {
     });
     return map;
   }, [employees]);
+  const factoryById = useMemo(() => {
+    const map = new Map();
+    factories.forEach((factory) => {
+      map.set(String(factory.id), factory);
+    });
+    return map;
+  }, [factories]);
 
   useEffect(() => {
     setMyEmail(user?.email || '');
@@ -605,9 +579,40 @@ const EmployeeBoard = () => {
       return String(employee?.factoryId || '') === String(selectedFactoryFilterId);
     });
   }, [activeMembers, employeeByMembership, selectedFactoryFilterId]);
+  const filteredActiveMembers = useMemo(() => {
+    const keyword = normalizeSearchText(searchTerm);
+    if (!keyword) return visibleActiveMembers;
+
+    return visibleActiveMembers.filter((member) => {
+      const employee = employeeByMembership.get(member.id) || null;
+      const roleLabel = getOrgRoleLabel(member.role);
+      const jobRoleLabel =
+        employee?.roleName ||
+        jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))?.name ||
+        '';
+      const statusLabel =
+        EMPLOYEE_STATUS_OPTIONS.find((option) => option.value === member.status)?.label || '';
+      const factoryName =
+        factoryById.get(String(employee?.factoryId || ''))?.name || '';
+      const searchableText = [
+        employee?.name,
+        member?.email,
+        employee?.bankName,
+        employee?.bankAccountNumber,
+        roleLabel,
+        jobRoleLabel,
+        statusLabel,
+        factoryName,
+      ]
+        .map(normalizeSearchText)
+        .join(' ');
+
+      return searchableText.includes(keyword);
+    });
+  }, [employeeByMembership, factoryById, jobRoleOptions, searchTerm, visibleActiveMembers]);
 
   const sortedActiveMembers = useMemo(() => {
-    return [...visibleActiveMembers].sort((a, b) => {
+    return [...filteredActiveMembers].sort((a, b) => {
       const aFactoryId = employeeByMembership.get(a.id)?.factoryId ?? null;
       const bFactoryId = employeeByMembership.get(b.id)?.factoryId ?? null;
 
@@ -621,7 +626,7 @@ const EmployeeBoard = () => {
       if (aIndex !== bIndex) return aIndex - bIndex;
       return String(a.email).localeCompare(String(b.email));
     });
-  }, [employeeByMembership, factoryOrder, visibleActiveMembers]);
+  }, [employeeByMembership, factoryOrder, filteredActiveMembers]);
 
   return (
     <AppPageContainer>
@@ -633,33 +638,12 @@ const EmployeeBoard = () => {
         <Box
           sx={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'flex-start', md: 'center' },
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2,
+            alignItems: 'center',
           }}
         >
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
             직원 관리
           </Typography>
-          {canFilterByFactory && (
-            <TextField
-              select
-              label="공장"
-              size="small"
-              value={selectedFactoryFilterId}
-              onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
-              disabled={!isAdmin}
-              sx={{ minWidth: 220 }}
-            >
-              {isAdmin && <MenuItem value="">전체 공장</MenuItem>}
-              {factories.map((factory) => (
-                <MenuItem key={factory.id} value={String(factory.id)}>
-                  {factory.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
         </Box>
 
         {pendingMembers.length > 0 && (
@@ -779,18 +763,46 @@ const EmployeeBoard = () => {
             <Typography variant="h6">
               재직/퇴직 직원 목록
             </Typography>
-            {selectedFactoryFilter && (
-              <Typography variant="body2" color="text.secondary">
-                {selectedFactoryFilter.name}
-              </Typography>
-            )}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                width: { xs: '100%', md: 'auto' },
+                flexDirection: { xs: 'column', md: 'row' },
+              }}
+            >
+              <SearchInput
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="이름, 이메일, 직무 검색"
+                sx={{ width: { xs: '100%', md: 280 } }}
+              />
+              {canFilterByFactory && (
+                <TextField
+                  select
+                  label="공장"
+                  size="small"
+                  value={selectedFactoryFilterId}
+                  onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
+                  disabled={!isAdmin}
+                  sx={{ minWidth: 220, width: { xs: '100%', md: 'auto' } }}
+                >
+                  {isAdmin && <MenuItem value="">전체 공장</MenuItem>}
+                  {factories.map((factory) => (
+                    <MenuItem key={factory.id} value={String(factory.id)}>
+                      {factory.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+            </Box>
           </Box>
 
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>공장</TableCell>
                   <TableCell>이름</TableCell>
                   <TableCell>이메일</TableCell>
                   <TableCell>은행</TableCell>
@@ -806,7 +818,11 @@ const EmployeeBoard = () => {
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
-                  <TableStatusRow colSpan={12} message="표시할 직원이 없습니다." sx={{ py: 2 }} />
+                  <TableStatusRow
+                    colSpan={11}
+                    message={searchTerm ? '검색 결과가 없습니다.' : '표시할 직원이 없습니다.'}
+                    sx={{ py: 2 }}
+                  />
                 ) : (
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
@@ -819,10 +835,8 @@ const EmployeeBoard = () => {
                         key={member.id}
                         member={member}
                         employee={employee}
-                        factories={factories}
                         roleOptions={roleOptions}
                         jobRoleOptions={jobRoleOptions}
-                        selectedOrgType={activeOrgType}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}
                       />

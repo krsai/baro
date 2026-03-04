@@ -762,3 +762,92 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - POST/PUT/DELETE 시 `getResponseCache.clear()` → `invalidateCacheByPath(path)` 교체
 - 효과: 보드 저장(PUT /assignment-board-state) 후 /factories, /lines, /line-workers 등 무관 캐시 유지
 - 파일: `frontend/src/utils/apiClient.js`
+
+### 직원 관리 규칙 정리
+
+#### 권한/직무/급여타입 정책
+- `관리자(ADMIN)`, `운영자(OPERATOR)`, `회계사(ACCOUNTANT)`는 권한명 자체를 직무로 간주한다.
+- 비작업자 3종은 별도 작업자 직무를 선택하지 않는다.
+- 작업자(`WORKER`)만 작업자 직무(`재단/봉제/다림/검수/포장/기타`)를 선택한다.
+- 기본 급여타입은 `봉제(WORKER_SEWING)=CT`, 그 외 전부 `FIXED`다.
+- 직원 관리 화면의 급여 타입은 `기본값 사용` 옵션을 제거하고 항상 명시값(`CT`/`FIXED`)으로 저장한다.
+- 기존 직원 데이터도 전부 명시값으로 DB 백필했다. 현재 로컬 기준 `null payType = 0건`.
+
+#### 공장 권한/필터 정책
+- 운영자는 본인 소속 공장 직원만 수정 가능하다.
+- 관리자는 전체 공장 또는 특정 공장 필터로 조회/수정 가능하다.
+- 직원 관리 화면의 공장 필터는 페이지 상단 우측이 아니라 **직원 목록 카드 제목 줄 우측**으로 이동했다.
+- 카드 제목 우측에 따로 표시되던 선택 공장명 텍스트는 제거했다. 필터 UI 하나만 남긴다.
+
+#### 구현 메모
+- 서버에서 비작업자 `roleId`는 비우고, 작업자만 유효 작업자 직무를 유지한다.
+- 작업자 직무가 비어 있거나 잘못 연결된 경우 기본값은 `WORKER_SEWING`으로 보정한다.
+- `/attributes`의 `roles` 응답은 현재 작업자 직무 하드코딩 목록만 내려준다.
+
+### 다국어 준비용 정규화 밑작업
+
+> **중요 원칙**: 실제 다국어(i18n) 적용은 **맨 마지막 단계**에서 진행한다.  
+> 이번 작업은 다국어를 바로 붙이기 위한 **선행 정규화 / anchor 준비 작업**이다.
+
+#### 이번에 정리한 기준
+- 다른 테이블을 참조할 때는 번역 가능한 문자열(name)을 직접 저장하지 말고, **ID FK를 anchor**로 사용한다.
+- 상태값은 한국어 문자열이 아니라 **enum/code 값**으로 저장한다.
+- 화면/API 호환 때문에 필요한 표시 문자열은 JOIN/유도값으로 응답하고, DB 저장 기준은 FK/code로 정리한다.
+
+#### 이번에 반영한 스키마 정규화
+- `WorkOrder.status`를 한국어 문자열에서 `WorkOrderStatus` enum으로 변경
+  - `ORDER_RECEIVED`, `IN_PROGRESS`, `PRODUCTION_DONE`, `SHIPPED`
+- `AssignmentPlan.ctStatus`를 `CtStatus` enum으로 변경
+  - `PENDING`, `SENT`, `AGREED`, `REJECTED`
+- 번역 anchor FK 추가
+  - `WorkOrderItem.styleUid -> Style.uid`
+  - `AssignmentPlan.colorId -> AttrColor.id`
+  - `WorkRecord.styleUid -> Style.uid`
+- 중복 문자열 제거
+  - `WorkOrderItem.colorName` 제거
+  - `WorkRecord.processName` 제거
+  - `WorkRecord.colorName` 제거
+
+#### 중요한 예외 / 설계 메모
+- `WorkOrderItem.styleId`, `WorkRecord.styleId`는 현재 시스템에서 비즈니스 키 문자열로 넓게 사용 중이다.
+- 따라서 스타일 번역/참조의 실제 anchor는 `styleId` 문자열이 아니라 **새 정수 FK `styleUid`** 로 본다.
+- `styleId` 문자열은 당분간 외부 식별/호환용으로 유지한다.
+- 스냅샷 성격의 문자열(`buyerOrgName`, `sellerOrgName`, `customerName`, `factoryName`, `workerName`)은 히스토리 보존 목적이 있으므로 성급히 제거하지 않는다.
+
+#### 현재 호환성 정책
+- DB에는 enum/FK 중심으로 저장한다.
+- API 응답은 기존 화면이 깨지지 않도록 `styleName`, `colorName`, `processName`을 JOIN 결과로 복원해서 내려준다.
+- 주문 상태는 DB/API 모두 코드값을 사용하고, 프런트에서 한글 라벨로 매핑한다.
+
+#### 기존 데이터 백필 상태
+- `WorkOrder.status` 기존 한국어 값은 enum 코드로 전환 완료
+- `AssignmentPlan.ctStatus` 기존 문자열은 enum으로 전환 완료
+- `WorkOrderItem.styleUid`는 현재 로컬 데이터 `16/16`건 연결 완료
+- `AssignmentPlan.colorId`는 현재 로컬 데이터 `6/6`건 연결 완료
+- `WorkRecord`는 현재 로컬 데이터가 `0건`이라 styleUid 백필 대상은 없었다
+
+#### 다국어 실제 개발 시 참고 모델
+- 속성 번역은 FK 기준 번역 테이블로 붙인다.
+  - 예시: `AttrColorTranslation(colorId, locale, name)`
+  - 예시: `AttrProcessTranslation(processId, locale, name)`
+  - 예시: `AttrRoleTranslation(roleId, locale, name)`
+- 상태값(enum)은 번역 테이블보다 **코드 -> locale 라벨 매핑**으로 처리하는 편이 단순하다.
+- 스타일명처럼 번역 대상이 실제로 필요한 경우에만 `StyleTranslation(styleUid, locale, name)` 같은 구조를 별도 검토한다.
+- 스냅샷 문자열은 번역 대상이 아니라 **당시 입력값 보존 데이터**로 취급한다.
+
+#### 다국어 구현 순서 (나중에 마지막 단계에서)
+1. 프런트 locale 인프라와 공통 label 레이어 도입
+2. 번역 대상 마스터의 translation 테이블 추가 + 기본 `ko` 데이터 시드
+3. 백엔드 응답을 locale 기준 JOIN/매핑하도록 확장
+4. 프런트 하드코딩 한글 라벨을 locale key 기반으로 치환
+5. 필요 시 번역 관리 UI를 마지막에 추가
+
+#### 검증 메모
+- `backend` TypeScript 빌드 통과
+- `frontend` Vite 빌드 통과
+- HTTP smoke test:
+  - `/orders`
+  - `/assignment-plans`
+  - `/work-logs`
+  - `/payroll`
+  모두 정상 응답 확인

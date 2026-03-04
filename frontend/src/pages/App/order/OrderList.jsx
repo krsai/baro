@@ -58,7 +58,19 @@ import {
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_STATUSES = ['주문접수', '작업중', '생산완료', '출고완료'];
+const ORDER_STATUSES = ['ORDER_RECEIVED', 'IN_PROGRESS', 'PRODUCTION_DONE', 'SHIPPED'];
+const ORDER_STATUS_LABELS = {
+  ORDER_RECEIVED: '주문접수',
+  IN_PROGRESS: '작업중',
+  PRODUCTION_DONE: '생산완료',
+  SHIPPED: '출고완료',
+};
+const ORDER_STATUS_LEGACY_MAP = {
+  주문접수: 'ORDER_RECEIVED',
+  작업중: 'IN_PROGRESS',
+  생산완료: 'PRODUCTION_DONE',
+  출고완료: 'SHIPPED',
+};
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
@@ -95,9 +107,16 @@ const GENDER_PASTEL_STYLES = {
   U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
   default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
 };
-const normalizeOrderStatus = (status) => (status || '').replace(/\s+/g, '').trim();
-
-const isOrderDeletable = (status) => normalizeOrderStatus(status) === '주문접수';
+const normalizeOrderStatus = (status) => {
+  const normalized = String(status || '').replace(/\s+/g, '').trim();
+  if (!normalized) return '';
+  const upper = normalized.toUpperCase();
+  if (ORDER_STATUS_LABELS[upper]) return upper;
+  return ORDER_STATUS_LEGACY_MAP[normalized] || normalized;
+};
+const getOrderStatusLabel = (status) =>
+  ORDER_STATUS_LABELS[normalizeOrderStatus(status)] || String(status || '').trim() || '-';
+const isOrderDeletable = (status) => normalizeOrderStatus(status) === 'ORDER_RECEIVED';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -500,7 +519,7 @@ const normalizeOrderForm = (order) => {
     customerName:
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
     items: items.map(normalizeOrderItem),
-    status: order.status || base.status,
+    status: normalizeOrderStatus(order.status) || base.status,
   };
 };
 
@@ -1567,7 +1586,7 @@ const OrderList = () => {
                 <MenuItem value={ORDER_FILTER_ALL}>전체 상태</MenuItem>
                 {ORDER_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {status}
+                    {ORDER_STATUS_LABELS[status] || status}
                   </MenuItem>
                 ))}
               </Select>
@@ -1658,7 +1677,9 @@ const OrderList = () => {
                         {order.totalQuantity != null ? order.totalQuantity.toLocaleString() : '-'}
                       </TableCell>
                       <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.dueDate || '-'}</TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.status || '-'}</TableCell>
+                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                        {getOrderStatusLabel(order.status)}
+                      </TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
                         <IconButton
                           size="small"
@@ -1775,7 +1796,7 @@ const OrderList = () => {
               >
                 {ORDER_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {status}
+                    {ORDER_STATUS_LABELS[status] || status}
                   </MenuItem>
                 ))}
               </Select>

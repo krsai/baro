@@ -39,6 +39,26 @@ enum OrganizationSubscriptionStatus {
   SUSPENDED
 }
 
+enum WorkOrderStatus {
+  ORDER_RECEIVED
+  IN_PROGRESS
+  PRODUCTION_DONE
+  SHIPPED
+}
+
+enum CtStatus {
+  PENDING
+  SENT
+  AGREED
+  REJECTED
+}
+
+enum WorkOrderItemGender {
+  M
+  W
+  U
+}
+
 enum SystemRole {
   SYSTEM_ADMIN
   USER
@@ -66,25 +86,25 @@ model Organization {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  colors     AttrColor[]
-  categories AttrCategory[]
-  roles      AttrRole[]
-  processes  AttrProcess[]
-  subscription OrganizationSubscription?
-  memberships OrgMembership[]
-  factories  Factory[]
-  employees  Employee[]
-  lines      Line[]
-  styles     Style[]
-  orders     WorkOrder[]
-  workLogs   WorkLog[]
-  workRecords WorkRecord[]
-  assignmentBoardState AssignmentBoardState?
-  assignmentPlans AssignmentPlan[]
-  payrollSnapshots PayrollSnapshot[]
-  attendanceEntries AttendanceEntry[]
-  manufacturerRelationships OrgRelationship[] @relation("ManufacturerOrgRelationships")
-  brandRelationships OrgRelationship[] @relation("BrandOrgRelationships")
+  colors                    AttrColor[]
+  categories                AttrCategory[]
+  roles                     AttrRole[]
+  processes                 AttrProcess[]
+  subscription              OrganizationSubscription?
+  memberships               OrgMembership[]
+  factories                 Factory[]
+  employees                 Employee[]
+  lines                     Line[]
+  styles                    Style[]
+  orders                    WorkOrder[]
+  workLogs                  WorkLog[]
+  workRecords               WorkRecord[]
+  assignmentBoardState      AssignmentBoardState?
+  assignmentPlans           AssignmentPlan[]
+  payrollSnapshots          PayrollSnapshot[]
+  attendanceEntries         AttendanceEntry[]
+  manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
+  brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
 }
 
 model OrganizationSubscription {
@@ -106,16 +126,16 @@ model OrganizationSubscription {
 }
 
 model OrgMembership {
-  id        Int         @id @default(autoincrement())
-  orgId     Int
-  email     String
-  role      OrgUserRole @default(OPERATOR)
-  status    OrgMembershipStatus @default(ACTIVE)
+  id          Int                 @id @default(autoincrement())
+  orgId       Int
+  email       String
+  role        OrgUserRole         @default(OPERATOR)
+  status      OrgMembershipStatus @default(ACTIVE)
   requestedAt DateTime?
-  approvedAt DateTime?
-  approvedBy String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  approvedAt  DateTime?
+  approvedBy  String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
   employee     Employee?
@@ -128,21 +148,21 @@ model OrgMembership {
 }
 
 model Factory {
-  id               Int      @id @default(autoincrement())
-  orgId            Int
-  name             String
-  address          String?
-  countryCode      String?
-  phoneNumber      String?
-  manager          String?
+  id                Int      @id @default(autoincrement())
+  orgId             Int
+  name              String
+  address           String?
+  countryCode       String?
+  phoneNumber       String?
+  manager           String?
   targetMonthlyWage Float?
-  wagePerSecond    Float?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  wagePerSecond     Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  employees    Employee[]
-  lines        Line[]
+  organization      Organization      @relation(fields: [orgId], references: [id])
+  employees         Employee[]
+  lines             Line[]
   attendanceEntries AttendanceEntry[]
 
   @@index([orgId])
@@ -158,43 +178,43 @@ model Line {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
-  factory      Factory      @relation(fields: [factoryId], references: [id])
-  manager      Employee?    @relation("LineManager", fields: [managerEmployeeId], references: [id])
-  assignments  LineAssignment[]
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  factory         Factory          @relation(fields: [factoryId], references: [id])
+  manager         Employee?        @relation("LineManager", fields: [managerEmployeeId], references: [id])
+  assignments     LineAssignment[]
   assignmentPlans AssignmentPlan[]
 
+  @@unique([factoryId, name])
   @@index([orgId])
   @@index([factoryId])
-  @@unique([factoryId, name])
 }
 
 model Employee {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  orgMembershipId Int      @unique
-  factoryId Int?
-  roleId    Int?
-  payType   String?
-  name      String?
-  phone     String?
-  bankName  String?
+  id                Int       @id @default(autoincrement())
+  orgId             Int
+  orgMembershipId   Int       @unique
+  factoryId         Int?
+  roleId            Int?
+  payType           String?
+  name              String?
+  phone             String?
+  bankName          String?
   bankAccountNumber String?
-  lineName  String?
-  position  String?
-  joinedAt  DateTime?
-  leftAt    DateTime?
-  leaveStartAt DateTime?
-  leaveEndAt   DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lineName          String?
+  position          String?
+  joinedAt          DateTime?
+  leftAt            DateTime?
+  leaveStartAt      DateTime?
+  leaveEndAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  organization Organization   @relation(fields: [orgId], references: [id])
-  membership   OrgMembership @relation(fields: [orgMembershipId], references: [id])
-  factory      Factory?        @relation(fields: [factoryId], references: [id])
-  role         AttrRole?       @relation(fields: [roleId], references: [id])
-  lineAssignments LineAssignment[]
-  managedLines   Line[] @relation("LineManager")
+  organization      Organization      @relation(fields: [orgId], references: [id])
+  membership        OrgMembership     @relation(fields: [orgMembershipId], references: [id])
+  factory           Factory?          @relation(fields: [factoryId], references: [id])
+  role              AttrRole?         @relation(fields: [roleId], references: [id])
+  lineAssignments   LineAssignment[]
+  managedLines      Line[]            @relation("LineManager")
   attendanceEntries AttendanceEntry[]
 
   @@index([orgId])
@@ -203,17 +223,17 @@ model Employee {
 }
 
 model AttendanceEntry {
-  id          Int      @id @default(autoincrement())
-  orgId       Int
-  factoryId   Int
-  workerId    Int
-  workDate    String
-  clockIn     String?
-  clockOut    String?
+  id            Int      @id @default(autoincrement())
+  orgId         Int
+  factoryId     Int
+  workerId      Int
+  workDate      String
+  clockIn       String?
+  clockOut      String?
   workedSeconds Int?
-  note        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
   factory      Factory      @relation(fields: [factoryId], references: [id])
@@ -226,10 +246,10 @@ model AttendanceEntry {
 }
 
 model LineAssignment {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   lineId     Int
   employeeId Int
-  startAt    DateTime @default(now())
+  startAt    DateTime  @default(now())
   endAt      DateTime?
 
   line     Line     @relation(fields: [lineId], references: [id])
@@ -253,7 +273,7 @@ model OrgRelationship {
   updatedAt         DateTime @updatedAt
 
   manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
-  brand         Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
+  brand        Organization @relation("BrandOrgRelationships", fields: [brandOrgId], references: [id])
 
   @@unique([manufacturerOrgId, brandOrgId])
   @@index([manufacturerOrgId])
@@ -266,9 +286,10 @@ model AttrColor {
   code  String
   name  String
 
-  organization   Organization    @relation(fields: [orgId], references: [id])
-  workOrderItems WorkOrderItem[]
-  workRecords    WorkRecord[]
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  workOrderItems  WorkOrderItem[]
+  workRecords     WorkRecord[]
+  assignmentPlans AssignmentPlan[]
 
   @@unique([orgId, code])
   @@index([orgId])
@@ -287,12 +308,12 @@ model AttrCategory {
 }
 
 model AttrRole {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
+  id             Int    @id @default(autoincrement())
+  orgId          Int
+  code           String
+  name           String
   defaultPayType String @default("FIXED")
-  sortOrder Int @default(0)
+  sortOrder      Int    @default(0)
 
   organization Organization @relation(fields: [orgId], references: [id])
   employees    Employee[]
@@ -333,7 +354,9 @@ model Style {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  organization Organization @relation(fields: [orgId], references: [id])
+  organization   Organization    @relation(fields: [orgId], references: [id])
+  workOrderItems WorkOrderItem[]
+  workRecords    WorkRecord[]
 
   @@unique([orgId, styleId])
   @@unique([orgId, customer, name])
@@ -342,7 +365,7 @@ model Style {
 }
 
 model WorkOrder {
-  id            Int      @id @default(autoincrement())
+  id            Int             @id @default(autoincrement())
   orgId         Int
   orderId       String
   orderNumber   String
@@ -353,11 +376,11 @@ model WorkOrder {
   customerId    Int?
   customerName  String?
   dueDate       String?
-  status        String
+  status        WorkOrderStatus @default(ORDER_RECEIVED)
   items         Json?
-  totalQuantity Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  totalQuantity Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
   workOrderItems WorkOrderItem[]
@@ -374,12 +397,12 @@ model WorkOrderItem {
   workOrderId    Int
   itemId         String   @default("")
   styleId        String?
+  styleUid       Int?
   styleName      String?
   styleCode      String?
   colorId        Int?
   colorCode      String?
-  colorName      String?
-  gender         String?
+  gender         WorkOrderItemGender?
   sizeQuantities Json?
   totalQuantity  Int      @default(0)
   sortOrder      Int      @default(0)
@@ -387,14 +410,16 @@ model WorkOrderItem {
   updatedAt      DateTime @updatedAt
 
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  style     Style?     @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
   color     AttrColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
 
   @@index([workOrderId])
+  @@index([styleUid])
   @@index([colorId])
 }
 
 model AssignmentPlan {
-  id                    Int      @id @default(autoincrement())
+  id                    Int       @id @default(autoincrement())
   orgId                 Int
   lineId                Int
   externalId            String
@@ -402,6 +427,7 @@ model AssignmentPlan {
   orderNo               String?
   customer              String?
   label                 String?
+  colorId               Int?
   colorName             String?
   previewUrl            String?
   imageUrl              String?
@@ -412,7 +438,7 @@ model AssignmentPlan {
   proposalBasis         String?
   proposalSeconds       Int?
   contractedSeconds     Int?
-  ctStatus              String   @default("PENDING")
+  ctStatus              CtStatus  @default(PENDING)
   ctSource              String?
   ctAgreedBy            String?
   ctAgreedAt            DateTime?
@@ -425,18 +451,20 @@ model AssignmentPlan {
   startDayOffsetPercent Float?
   startDayPercent       Float?
   endDayPercent         Float?
-  isCompleted           Boolean  @default(false)
+  isCompleted           Boolean   @default(false)
   finalQuantity         Int?
   completedAt           DateTime?
-  createdAt             DateTime @default(now())
+  createdAt             DateTime  @default(now())
   updatedAt             DateTime
 
   line         Line         @relation(fields: [lineId], references: [id])
   organization Organization @relation(fields: [orgId], references: [id])
+  attrColor    AttrColor?   @relation(fields: [colorId], references: [id], onDelete: SetNull)
   workRecords  WorkRecord[]
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
+  @@index([colorId])
 }
 
 model WorkLog {
@@ -470,13 +498,12 @@ model WorkRecord {
   workerName       String?
   customerName     String?
   styleId          String?
+  styleUid         Int?
   styleName        String?
   processId        Int?
   processCode      String?
-  processName      String?
   colorId          Int?
   colorCode        String?
-  colorName        String?
   assignmentPlanId Int?
   ctSeconds        Int      @default(0)
   quantity         Int      @default(0)
@@ -486,12 +513,14 @@ model WorkRecord {
   organization   Organization    @relation(fields: [orgId], references: [id])
   workLog        WorkLog         @relation(fields: [workLogId], references: [id], onDelete: Cascade)
   assignmentPlan AssignmentPlan? @relation(fields: [assignmentPlanId], references: [id])
+  style          Style?          @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
   color          AttrColor?      @relation(fields: [colorId], references: [id], onDelete: SetNull)
   process        AttrProcess?    @relation(fields: [processId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
+  @@index([styleUid])
   @@index([assignmentPlanId])
   @@index([workLogId])
   @@index([colorId])

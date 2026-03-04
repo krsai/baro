@@ -170,35 +170,35 @@ const BASELINE_ORDERS = [
   {
     orderId:     'ORD-2025SS-001',
     orderNumber: 'ORD-2025SS-001',
-    status:      '주문접수',
+    status:      'ORDER_RECEIVED',
     items: [
       // 레귤러핏 라운드넥 티셔츠 (25SS-T001) — 3,000장, 화이트/블랙/네이비, 남600+여400
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: '남성', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
-      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: '여성', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: 'M', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'WHITE', colorName: '화이트',    gender: 'W', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: 'M', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'BLACK', colorName: '블랙',      gender: 'W', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: 'M', sizeQuantities: { S: 90, M: 210, L: 210, XL: 90  } },
+      { styleId: 'S-2025SS-T001', styleCode: '25SS-T001', colorCode: 'NAVY',  colorName: '네이비',    gender: 'W', sizeQuantities: { S: 70, M: 130, L: 130, XL: 70  } },
       // 슬림핏 카라 폴로 셔츠 (25SS-P002) — 2,000장, 화이트/그레이멜란지, 남650+여350
-      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: '남성', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
-      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: '여성', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
-      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: '남성', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
-      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: '여성', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: 'M', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'WHITE',      colorName: '화이트',       gender: 'W', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: 'M', sizeQuantities: { S: 100, M: 225, L: 225, XL: 100 } },
+      { styleId: 'S-2025SS-P002', styleCode: '25SS-P002', colorCode: 'GRAY-MEL',   colorName: '그레이멜란지', gender: 'W', sizeQuantities: { S:  55, M: 120, L: 120, XL:  55 } },
     ],
   },
   {
     orderId:     'ORD-2025FW-001',
     orderNumber: 'ORD-2025FW-001',
-    status:      '주문접수',
+    status:      'ORDER_RECEIVED',
     items: [
       // 오버핏 데님 재킷 (25FW-J003) — 2,500장, 라이트블루/미드블루/인디고
       // 라이트블루/미드블루 각 850장 (남470+여380), 인디고 800장 (남440+여360)
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: '남성', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: '여성', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: '남성', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: '여성', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: '남성', sizeQuantities: { S: 45, M: 120, L: 155, XL:  90, '2XL': 30 } },
-      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: '여성', sizeQuantities: { S: 65, M: 125, L: 115, XL:  55             } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: 'M', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'LT-BLUE', colorName: '라이트블루', gender: 'W', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: 'M', sizeQuantities: { S: 50, M: 130, L: 160, XL: 100, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'MID-BLUE', colorName: '미드블루',   gender: 'W', sizeQuantities: { S: 70, M: 130, L: 120, XL:  60             } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: 'M', sizeQuantities: { S: 45, M: 120, L: 155, XL:  90, '2XL': 30 } },
+      { styleId: 'S-2025FW-J003', styleCode: '25FW-J003', colorCode: 'INDIGO',   colorName: '인디고',     gender: 'W', sizeQuantities: { S: 65, M: 125, L: 115, XL:  55             } },
     ],
   },
 ];

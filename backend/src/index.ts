@@ -47,41 +47,54 @@ const DEFAULT_ORG = {
 };
 
 const PAY_TYPE_OPTIONS = new Set(["CT", "FIXED"]);
+const WORK_ORDER_ITEM_GENDER_CODES = new Set(["M", "W", "U"]);
+const WORK_ORDER_STATUS_CODES = new Set([
+  "ORDER_RECEIVED",
+  "IN_PROGRESS",
+  "PRODUCTION_DONE",
+  "SHIPPED",
+]);
+const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
+  ["주문접수", "ORDER_RECEIVED"],
+  ["작업중", "IN_PROGRESS"],
+  ["생산완료", "PRODUCTION_DONE"],
+  ["출고완료", "SHIPPED"],
+]);
 const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
 const DEFAULT_EMPLOYEE_ROLES = [
   {
     code: "WORKER_CUTTING",
-    name: "작업자 - 재단",
+    name: "재단",
     defaultPayType: "FIXED",
     sortOrder: 1,
   },
   {
     code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
-    name: "작업자 - 봉제",
+    name: "봉제",
     defaultPayType: "CT",
     sortOrder: 2,
   },
   {
     code: "WORKER_IRONING",
-    name: "작업자 - 다림",
+    name: "다림",
     defaultPayType: "FIXED",
     sortOrder: 3,
   },
   {
     code: "WORKER_INSPECTION",
-    name: "작업자 - 검수",
+    name: "검수",
     defaultPayType: "FIXED",
     sortOrder: 4,
   },
   {
     code: "WORKER_PACKING",
-    name: "작업자 - 포장",
+    name: "포장",
     defaultPayType: "FIXED",
     sortOrder: 5,
   },
   {
     code: "WORKER_OTHER",
-    name: "작업자 - 기타",
+    name: "기타",
     defaultPayType: "FIXED",
     sortOrder: 6,
   },
@@ -146,6 +159,55 @@ const normalizePayType = (
     ? (normalized as "CT" | "FIXED")
     : fallback;
 };
+const normalizeWorkOrderItemGender = (
+  value: unknown,
+  fallback: "M" | "W" | "U" | null = "M"
+): "M" | "W" | "U" | null => {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const normalized = String(value).trim().toUpperCase();
+  if (!normalized) return fallback;
+  if (WORK_ORDER_ITEM_GENDER_CODES.has(normalized)) {
+    return normalized as "M" | "W" | "U";
+  }
+  if (normalized === "MEN" || normalized === "MALE" || normalized === "남성") {
+    return "M";
+  }
+  if (normalized === "WOMEN" || normalized === "FEMALE" || normalized === "여성") {
+    return "W";
+  }
+  if (normalized === "UNISEX" || normalized === "공용") {
+    return "U";
+  }
+  return fallback;
+};
+const resolveWorkOrderStatus = (
+  value: unknown,
+  fallback:
+    | "ORDER_RECEIVED"
+    | "IN_PROGRESS"
+    | "PRODUCTION_DONE"
+    | "SHIPPED" = "ORDER_RECEIVED"
+): "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" => {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const normalized = String(value).replace(/\s+/g, "").trim();
+  if (!normalized) return fallback;
+  const upper = normalized.toUpperCase();
+  if (WORK_ORDER_STATUS_CODES.has(upper)) {
+    return upper as
+      | "ORDER_RECEIVED"
+      | "IN_PROGRESS"
+      | "PRODUCTION_DONE"
+      | "SHIPPED";
+  }
+  return (WORK_ORDER_STATUS_LEGACY_CODE_MAP.get(normalized) ??
+    fallback) as
+    | "ORDER_RECEIVED"
+    | "IN_PROGRESS"
+    | "PRODUCTION_DONE"
+    | "SHIPPED";
+};
+const isWorkOrderDeletableStatus = (value: unknown) =>
+  resolveWorkOrderStatus(value) === "ORDER_RECEIVED";
 const toSortOrder = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -942,6 +1004,42 @@ const normalizeComparableText = (value: any) =>
   String(value ?? "")
     .trim()
     .toLowerCase();
+const collectPositiveIntSet = (...values: any[]) =>
+  Array.from(
+    new Set(
+      values
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+const resolveWorkOrderItemStyleUid = (item: any) =>
+  toPositiveIntOrNull(item?.style?.uid ?? item?.styleUid);
+const resolveWorkOrderItemStyleId = (item: any) =>
+  resolveOptionalString(item?.style?.styleId ?? item?.styleId, null);
+const resolveWorkOrderItemStyleCode = (item: any) =>
+  resolveOptionalString(item?.style?.styleCode ?? item?.styleCode, null);
+const resolveWorkOrderItemStyleName = (item: any) =>
+  resolveOptionalString(item?.style?.name ?? item?.styleName, null);
+const resolveWorkOrderItemColorName = (item: any) =>
+  resolveOptionalString(item?.color?.name ?? item?.colorName, null) ??
+  resolveOptionalString(item?.color?.code ?? item?.colorCode, null) ??
+  "";
+const resolveAssignmentPlanColorName = (plan: any) =>
+  resolveOptionalString(plan?.attrColor?.name ?? plan?.colorName, null) ??
+  resolveOptionalString(plan?.attrColor?.code, null) ??
+  "";
+const resolveWorkRecordStyleUid = (record: any) =>
+  toPositiveIntOrNull(record?.style?.uid ?? record?.styleUid);
+const resolveWorkRecordStyleId = (record: any) =>
+  resolveOptionalString(record?.style?.styleId ?? record?.styleId, null);
+const resolveWorkRecordStyleName = (record: any) =>
+  resolveOptionalString(record?.style?.name ?? record?.styleName, null);
+const resolveWorkRecordProcessName = (record: any) =>
+  resolveOptionalString(record?.process?.name ?? record?.processName, null);
+const resolveWorkRecordColorName = (record: any) =>
+  resolveOptionalString(record?.color?.name ?? record?.colorName, null) ??
+  resolveOptionalString(record?.color?.code ?? record?.colorCode, null) ??
+  "";
 
 const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
   const org = await prisma.organization.findUnique({
@@ -1030,7 +1128,13 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           styleName: true,
           customerName: true,
           processCode: true,
-          processName: true,
+          process: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
           quantity: true,
         },
       },
@@ -1251,7 +1355,9 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         const resolvedStyle = resolveCandidateStyle(record);
         if (!resolvedStyle) return null;
         const processCodeKey = normalizeProcessCodeKey(record.processCode);
-        const processNameKey = normalizeProcessNameKey(record.processName);
+        const processNameKey = normalizeProcessNameKey(
+          resolveWorkRecordProcessName(record)
+        );
         if (!processCodeKey && !processNameKey) return null;
         return {
           resolvedStyle,
@@ -1786,6 +1892,7 @@ const normalizeOrderItems = (value: any) =>
     .filter((item) => item && typeof item === "object")
     .map((item) => ({
       ...item,
+      gender: normalizeWorkOrderItemGender(item?.gender, "M"),
       totalQuantity: sumOrderItemQuantity(item),
     }));
 
@@ -1801,16 +1908,13 @@ const syncOrderItemColorSnapshots = async (items: any) => {
 
   if (colorIds.length === 0) {
     return normalizedItems.map((item) => {
+      const { colorName: _colorName, ...rest } = item ?? {};
       const colorCode =
         resolveOptionalString(item?.colorCode ?? item?.color, null) ?? "";
-      const colorName =
-        resolveOptionalString(item?.colorName ?? item?.color, null) ??
-        colorCode;
       return {
-        ...item,
+        ...rest,
         colorId: toPositiveIntOrNull(item?.colorId),
         colorCode,
-        colorName,
       };
     });
   }
@@ -1825,22 +1929,137 @@ const syncOrderItemColorSnapshots = async (items: any) => {
   }, new Map<number, { id: number; code: string; name: string }>());
 
   return normalizedItems.map((item) => {
+    const { colorName: _colorName, ...rest } = item ?? {};
     const colorId = toPositiveIntOrNull(item?.colorId);
     const linkedColor = colorId ? colorById.get(colorId) ?? null : null;
     const colorCode =
       resolveOptionalString(linkedColor?.code, null) ??
       resolveOptionalString(item?.colorCode ?? item?.color, null) ??
       "";
-    const colorName =
-      resolveOptionalString(linkedColor?.name, null) ??
-      resolveOptionalString(item?.colorName ?? item?.color, null) ??
-      colorCode;
 
     return {
-      ...item,
+      ...rest,
       colorId: linkedColor?.id ?? null,
       colorCode,
-      colorName,
+    };
+  });
+};
+const syncOrderItemStyleRefs = async (items: any, orgIds: any[]) => {
+  const normalizedItems = normalizeOrderItems(items);
+  const candidateOrgIds = collectPositiveIntSet(...orgIds);
+  const styleIds = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => resolveOptionalString(item?.styleId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const styleCodes = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => resolveOptionalString(item?.styleCode, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const styleNames = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => resolveOptionalString(item?.styleName, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  if (
+    candidateOrgIds.length === 0 ||
+    (styleIds.length === 0 && styleCodes.length === 0 && styleNames.length === 0)
+  ) {
+    return normalizedItems.map((item) => ({
+      ...item,
+      styleUid: toPositiveIntOrNull(item?.styleUid),
+      styleId: resolveOptionalString(item?.styleId, null),
+      styleName: resolveOptionalString(item?.styleName, null),
+      styleCode: resolveOptionalString(item?.styleCode, null),
+    }));
+  }
+
+  const styleWhere: Prisma.StyleWhereInput = {
+    orgId: { in: candidateOrgIds },
+    OR: [
+      ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
+      ...(styleCodes.length > 0 ? [{ styleCode: { in: styleCodes } }] : []),
+      ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
+    ],
+  };
+  const styles = await prisma.style.findMany({
+    where: styleWhere,
+    select: {
+      uid: true,
+      orgId: true,
+      styleId: true,
+      styleCode: true,
+      name: true,
+    },
+  });
+
+  const styleByUid = new Map<number, any>();
+  const styleByOrgStyleId = new Map<string, any>();
+  const styleByOrgStyleCode = new Map<string, any>();
+  const styleByOrgStyleName = new Map<string, any>();
+  styles.forEach((style) => {
+    styleByUid.set(style.uid, style);
+    const orgId = Number(style.orgId);
+    if (style.styleId) {
+      styleByOrgStyleId.set(`${orgId}:${normalizeComparableText(style.styleId)}`, style);
+    }
+    if (style.styleCode) {
+      styleByOrgStyleCode.set(`${orgId}:${normalizeComparableText(style.styleCode)}`, style);
+    }
+    if (style.name) {
+      styleByOrgStyleName.set(`${orgId}:${normalizeComparableText(style.name)}`, style);
+    }
+  });
+
+  const resolveLinkedStyle = (item: any) => {
+    const existingStyleUid = toPositiveIntOrNull(item?.styleUid);
+    if (existingStyleUid) {
+      const linked = styleByUid.get(existingStyleUid) ?? null;
+      if (linked) return linked;
+    }
+    const styleIdKey = normalizeComparableText(item?.styleId);
+    if (styleIdKey) {
+      for (const orgId of candidateOrgIds) {
+        const linked = styleByOrgStyleId.get(`${orgId}:${styleIdKey}`) ?? null;
+        if (linked) return linked;
+      }
+    }
+    const styleCodeKey = normalizeComparableText(item?.styleCode);
+    if (styleCodeKey) {
+      for (const orgId of candidateOrgIds) {
+        const linked = styleByOrgStyleCode.get(`${orgId}:${styleCodeKey}`) ?? null;
+        if (linked) return linked;
+      }
+    }
+    const styleNameKey = normalizeComparableText(item?.styleName);
+    if (styleNameKey) {
+      for (const orgId of candidateOrgIds) {
+        const linked = styleByOrgStyleName.get(`${orgId}:${styleNameKey}`) ?? null;
+        if (linked) return linked;
+      }
+    }
+    return null;
+  };
+
+  return normalizedItems.map((item) => {
+    const linkedStyle = resolveLinkedStyle(item);
+    return {
+      ...item,
+      styleUid: linkedStyle?.uid ?? toPositiveIntOrNull(item?.styleUid),
+      styleId: resolveOptionalString(linkedStyle?.styleId ?? item?.styleId, null),
+      styleName: resolveOptionalString(linkedStyle?.name ?? item?.styleName, null),
+      styleCode: resolveOptionalString(
+        linkedStyle?.styleCode ?? item?.styleCode,
+        null
+      ),
     };
   });
 };
@@ -1851,6 +2070,14 @@ const ORDER_CREATE_SERIALIZABLE_RETRIES = 2;
 const WORK_ORDER_ITEM_WITH_COLOR_INCLUDE = {
   orderBy: { sortOrder: "asc" as const },
   include: {
+    style: {
+      select: {
+        uid: true,
+        styleId: true,
+        styleCode: true,
+        name: true,
+      },
+    },
     color: {
       select: {
         id: true,
@@ -1919,9 +2146,10 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     customerId: resolvedCustomerId,
     customerName: resolvedCustomerName,
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
-    status:
-      resolveOptionalString(payload?.status, fallback?.status ?? "주문접수") ??
-      "주문접수",
+    status: resolveWorkOrderStatus(
+      payload?.status !== undefined ? payload?.status : fallback?.status,
+      "ORDER_RECEIVED"
+    ),
     items,
     totalQuantity: toNonNegativeInt(
       payload?.totalQuantity !== undefined
@@ -2059,12 +2287,12 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
                 workOrderId: created.id,
                 itemId: item.id || "",
                 styleId: resolveOptionalString(item.styleId, null),
+                styleUid: toPositiveIntOrNull(item.styleUid),
                 styleName: resolveOptionalString(item.styleName, null),
                 styleCode: resolveOptionalString(item.styleCode, null),
                 colorId: toPositiveIntOrNull(item.colorId),
                 colorCode: resolveOptionalString(item.colorCode, null),
-                colorName: resolveOptionalString(item.colorName, null),
-                gender: resolveOptionalString(item.gender, null),
+                gender: normalizeWorkOrderItemGender(item.gender, "M"),
                 sizeQuantities: item.sizeQuantities ?? null,
                 totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
                 sortOrder: idx,
@@ -2113,13 +2341,14 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
 
 const workOrderItemToItemShape = (row: any) => ({
   id: row.itemId || String(row.id),
-  styleId: row.styleId ?? "",
-  styleName: row.styleName ?? "",
-  styleCode: row.styleCode ?? "",
+  styleUid: resolveWorkOrderItemStyleUid(row),
+  styleId: resolveWorkOrderItemStyleId(row) ?? "",
+  styleName: resolveWorkOrderItemStyleName(row) ?? "",
+  styleCode: resolveWorkOrderItemStyleCode(row) ?? "",
   colorId: toPositiveIntOrNull(row?.color?.id ?? row?.colorId),
   colorCode: row?.color?.code ?? row.colorCode ?? "",
-  colorName: row?.color?.name ?? row.colorName ?? row?.color?.code ?? "",
-  gender: row.gender ?? "M",
+  colorName: resolveWorkOrderItemColorName(row),
+  gender: normalizeWorkOrderItemGender(row?.gender, "M") ?? "M",
   sizeQuantities: row.sizeQuantities ?? {},
   totalQuantity: row.totalQuantity ?? 0,
 });
@@ -2144,7 +2373,7 @@ const toOrderResponse = (order: any) => {
     customerName: order.customerName ?? order.buyerOrgName ?? "",
     customer: order.customerName ?? order.buyerOrgName ?? "",
     dueDate: order.dueDate ?? "",
-    status: order.status ?? "",
+    status: resolveWorkOrderStatus(order.status, "ORDER_RECEIVED"),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     createdAt: order.createdAt,
@@ -2347,10 +2576,12 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       workerName: resolveOptionalString(record.workerName, null),
       customerName: resolveOptionalString(record.customerName, null),
       styleId: resolveOptionalString(record.styleId, null),
+      styleUid: toPositiveIntOrNull(record.styleUid),
       styleName: resolveOptionalString(record.styleName, null),
+      processId: toPositiveIntOrNull(record.processId),
       processCode: resolveOptionalString(record.processCode, null),
       processName: resolveOptionalString(record.processName, null),
-      colorId: toNumberOrNull(record.colorId),
+      colorId: toPositiveIntOrNull(record.colorId),
       colorCode: resolveOptionalString(record.colorCode, null),
       colorName: resolveOptionalString(record.colorName, null),
       ctSeconds: toNonNegativeInt(record.ctSeconds, 0),
@@ -2360,6 +2591,199 @@ const normalizeWorkRecordPayloadList = (records: any) => {
   });
 
   return { rows, invalidWorkerRecordIndex };
+};
+const syncWorkRecordRefs = async ({
+  orgId,
+  records,
+}: {
+  orgId: number;
+  records: any[];
+}) => {
+  const normalizedRecords = ensureArray(records).filter(
+    (record) => record && typeof record === "object"
+  );
+  if (normalizedRecords.length === 0) return [];
+
+  const styleIds = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.styleId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const styleNames = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.styleName, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const processIds = collectPositiveIntSet(
+    ...normalizedRecords.map((record) => record?.processId)
+  );
+  const processCodes = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.processCode, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const processNames = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.processName, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const colorIds = collectPositiveIntSet(
+    ...normalizedRecords.map((record) => record?.colorId)
+  );
+  const colorCodes = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.colorCode, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const colorNames = Array.from(
+    new Set(
+      normalizedRecords
+        .map((record) => resolveOptionalString(record?.colorName, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  const [styles, processes, colors] = await Promise.all([
+    styleIds.length > 0 || styleNames.length > 0
+      ? prisma.style.findMany({
+          where: {
+            orgId,
+            OR: [
+              ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
+              ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
+            ],
+          },
+          select: {
+            uid: true,
+            styleId: true,
+            styleCode: true,
+            name: true,
+          },
+        })
+      : Promise.resolve([]),
+    processIds.length > 0 || processCodes.length > 0 || processNames.length > 0
+      ? prisma.attrProcess.findMany({
+          where: {
+            orgId,
+            OR: [
+              ...(processIds.length > 0 ? [{ id: { in: processIds } }] : []),
+              ...(processCodes.length > 0 ? [{ code: { in: processCodes } }] : []),
+              ...(processNames.length > 0 ? [{ name: { in: processNames } }] : []),
+            ],
+          },
+          select: { id: true, code: true, name: true },
+        })
+      : Promise.resolve([]),
+    colorIds.length > 0 || colorCodes.length > 0 || colorNames.length > 0
+      ? prisma.attrColor.findMany({
+          where: {
+            orgId,
+            OR: [
+              ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
+              ...(colorCodes.length > 0 ? [{ code: { in: colorCodes } }] : []),
+              ...(colorNames.length > 0 ? [{ name: { in: colorNames } }] : []),
+            ],
+          },
+          select: { id: true, code: true, name: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const styleByUid = new Map(styles.map((style) => [style.uid, style]));
+  const styleById = new Map(
+    styles
+      .filter((style) => style.styleId)
+      .map((style) => [normalizeComparableText(style.styleId), style])
+  );
+  const styleByName = new Map(
+    styles
+      .filter((style) => style.name)
+      .map((style) => [normalizeComparableText(style.name), style])
+  );
+  const processById = new Map(processes.map((process) => [process.id, process]));
+  const processByCode = new Map(
+    processes
+      .filter((process) => process.code)
+      .map((process) => [normalizeComparableText(process.code), process])
+  );
+  const processByName = new Map(
+    processes
+      .filter((process) => process.name)
+      .map((process) => [normalizeComparableText(process.name), process])
+  );
+  const colorById = new Map(colors.map((color) => [color.id, color]));
+  const colorByCode = new Map(
+    colors
+      .filter((color) => color.code)
+      .map((color) => [normalizeComparableText(color.code), color])
+  );
+  const colorByName = new Map(
+    colors
+      .filter((color) => color.name)
+      .map((color) => [normalizeComparableText(color.name), color])
+  );
+
+  return normalizedRecords.map((record) => {
+    const linkedStyle =
+      (toPositiveIntOrNull(record?.styleUid)
+        ? styleByUid.get(Number(record.styleUid)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.styleId, null)
+        ? styleById.get(normalizeComparableText(record.styleId)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.styleName, null)
+        ? styleByName.get(normalizeComparableText(record.styleName)) ?? null
+        : null);
+    const linkedProcess =
+      (toPositiveIntOrNull(record?.processId)
+        ? processById.get(Number(record.processId)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.processCode, null)
+        ? processByCode.get(normalizeComparableText(record.processCode)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.processName, null)
+        ? processByName.get(normalizeComparableText(record.processName)) ?? null
+        : null);
+    const linkedColor =
+      (toPositiveIntOrNull(record?.colorId)
+        ? colorById.get(Number(record.colorId)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.colorCode, null)
+        ? colorByCode.get(normalizeComparableText(record.colorCode)) ?? null
+        : null) ??
+      (resolveOptionalString(record?.colorName, null)
+        ? colorByName.get(normalizeComparableText(record.colorName)) ?? null
+        : null);
+
+    return {
+      ...record,
+      styleUid: linkedStyle?.uid ?? toPositiveIntOrNull(record?.styleUid),
+      styleId: resolveOptionalString(linkedStyle?.styleId ?? record?.styleId, null),
+      styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
+      processId: linkedProcess?.id ?? toPositiveIntOrNull(record?.processId),
+      processCode: resolveOptionalString(
+        linkedProcess?.code ?? record?.processCode,
+        null
+      ),
+      processName: resolveOptionalString(
+        linkedProcess?.name ?? record?.processName,
+        null
+      ),
+      colorId: linkedColor?.id ?? toPositiveIntOrNull(record?.colorId),
+      colorCode: resolveOptionalString(linkedColor?.code ?? record?.colorCode, null),
+      colorName: resolveOptionalString(linkedColor?.name ?? record?.colorName, null),
+    };
+  });
 };
 const buildWorkDateRange = (workDate: any) => {
   const normalized = normalizeDateKey(workDate);
@@ -2430,6 +2854,11 @@ const resolveWorkRecordProcessMetric = (
     processLabel: processName || processCode || "미지정 공정",
   };
 };
+const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
+  resolveWorkRecordProcessMetric(
+    record?.processCode,
+    resolveWorkRecordProcessName(record)
+  );
 type AssignmentProcessQuantityBucket = {
   assignmentPlanId: number;
   processMetricKey: string;
@@ -2447,10 +2876,7 @@ const collectAssignmentProcessQuantities = (records: any) => {
     const quantity = toNonNegativeInt(record.quantity, 0);
     if (quantity <= 0) return;
 
-    const processMetric = resolveWorkRecordProcessMetric(
-      record.processCode,
-      record.processName
-    );
+    const processMetric = resolveWorkRecordProcessMetricFromRecord(record);
     const bucketKey = toAssignmentProcessBucketKey(
       assignmentPlanId,
       processMetric.processMetricKey
@@ -2486,7 +2912,7 @@ const formatAssignmentPlanLabel = (plan: any) => {
   const parts = [
     resolveOptionalString(plan?.orderNo, null),
     resolveOptionalString(plan?.label, null),
-    resolveOptionalString(plan?.colorName, null),
+    resolveAssignmentPlanColorName(plan),
   ].filter((part): part is string => Boolean(part));
   if (parts.length > 0) return parts.join(" · ");
   return resolveOptionalString(plan?.externalId, null) || `assignmentPlan#${plan?.id ?? "?"}`;
@@ -2616,7 +3042,7 @@ const validateWorkLogAssignmentProcessQuantities = async ({
   }
 
   const existingRows = await prisma.workRecord.groupBy({
-    by: ["assignmentPlanId", "processCode", "processName"],
+    by: ["assignmentPlanId", "processId", "processCode"],
     where: {
       orgId,
       assignmentPlanId: { in: assignmentPlanIds },
@@ -2624,6 +3050,19 @@ const validateWorkLogAssignmentProcessQuantities = async ({
     },
     _sum: { quantity: true },
   });
+  const processIds = collectPositiveIntSet(
+    ...existingRows.map((row) => row.processId)
+  );
+  const processes =
+    processIds.length > 0
+      ? await prisma.attrProcess.findMany({
+          where: { id: { in: processIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const processNameById = new Map(
+    processes.map((process) => [process.id, resolveOptionalString(process.name, null)])
+  );
 
   const existingBuckets = new Map<string, number>();
   existingRows.forEach((row) => {
@@ -2634,7 +3073,7 @@ const validateWorkLogAssignmentProcessQuantities = async ({
 
     const processMetric = resolveWorkRecordProcessMetric(
       row.processCode,
-      row.processName
+      row.processId ? processNameById.get(Number(row.processId)) ?? null : null
     );
     const bucketKey = toAssignmentProcessBucketKey(
       assignmentPlanId,
@@ -2785,17 +3224,46 @@ const toWorkRecordResponse = (record: any) => ({
   workerId: record?.workerId ?? null,
   workerName: record?.workerName ?? "",
   customerName: record?.customerName ?? "",
-  styleId: record?.styleId ?? "",
-  styleName: record?.styleName ?? "",
-  processCode: record?.processCode ?? "",
-  processName: record?.processName ?? "",
-  colorId: record?.colorId ?? null,
-  colorCode: record?.colorCode ?? "",
-  colorName: record?.colorName ?? "",
+  styleUid: resolveWorkRecordStyleUid(record),
+  styleId: resolveWorkRecordStyleId(record) ?? "",
+  styleName: resolveWorkRecordStyleName(record) ?? "",
+  processId: toPositiveIntOrNull(record?.process?.id ?? record?.processId),
+  processCode: record?.process?.code ?? record?.processCode ?? "",
+  processName: resolveWorkRecordProcessName(record) ?? "",
+  colorId: toPositiveIntOrNull(record?.color?.id ?? record?.colorId),
+  colorCode: record?.color?.code ?? record?.colorCode ?? "",
+  colorName: resolveWorkRecordColorName(record),
   ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
   quantity: toNonNegativeInt(record?.quantity, 0),
   assignmentPlanId: record?.assignmentPlanId ?? null,
 });
+const WORK_RECORD_WITH_REFS_INCLUDE = {
+  orderBy: { id: "asc" as const },
+  include: {
+    style: {
+      select: {
+        uid: true,
+        styleId: true,
+        styleCode: true,
+        name: true,
+      },
+    },
+    process: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+    color: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
 const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const workDateInput =
     payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
@@ -3917,7 +4385,8 @@ const toAssignmentPlanResponse = (plan: any) => ({
   orderNo: plan.orderNo ?? "",
   customer: plan.customer ?? "",
   label: plan.label ?? "",
-  colorName: plan.colorName ?? "",
+  colorId: toPositiveIntOrNull(plan.colorId ?? plan.attrColor?.id),
+  colorName: resolveAssignmentPlanColorName(plan),
   previewUrl: plan.previewUrl ?? "",
   imageUrl: plan.imageUrl ?? "",
   thumbnailUrl: plan.thumbnailUrl ?? "",
@@ -3980,6 +4449,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         orderNo: resolveOptionalString(item.orderNo, null),
         customer: resolveOptionalString(item.customer, null),
         label: resolveOptionalString(item.label, null),
+        colorId: toPositiveIntOrNull(item.colorId),
         colorName: resolveOptionalString(item.colorName, null),
         previewUrl: resolveOptionalString(item.previewUrl, null),
         imageUrl: resolveOptionalString(item.imageUrl, null),
@@ -4016,12 +4486,66 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       acc.rows.push(item);
       return acc;
     }, { seen: new Set<string>(), rows: [] as any[] }).rows;
+const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
+  const normalizedItems = ensureArray(items).filter(
+    (item) => item && typeof item === "object"
+  );
+  if (normalizedItems.length === 0) return [];
+
+  const colorIds = collectPositiveIntSet(
+    ...normalizedItems.map((item) => item?.colorId)
+  );
+  const colorNames = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => resolveOptionalString(item?.colorName, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (colorIds.length === 0 && colorNames.length === 0) {
+    return normalizedItems;
+  }
+
+  const colors = await prisma.attrColor.findMany({
+    where: {
+      orgId,
+      OR: [
+        ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
+        ...(colorNames.length > 0 ? [{ name: { in: colorNames } }] : []),
+      ],
+    },
+    select: { id: true, code: true, name: true },
+  });
+  const colorById = new Map(colors.map((color) => [color.id, color]));
+  const colorByName = new Map(
+    colors
+      .filter((color) => color.name)
+      .map((color) => [normalizeComparableText(color.name), color])
+  );
+
+  return normalizedItems.map((item) => {
+    const linkedColor =
+      (toPositiveIntOrNull(item?.colorId)
+        ? colorById.get(Number(item.colorId)) ?? null
+        : null) ??
+      (resolveOptionalString(item?.colorName, null)
+        ? colorByName.get(normalizeComparableText(item.colorName)) ?? null
+        : null);
+
+    return {
+      ...item,
+      colorId: linkedColor?.id ?? toPositiveIntOrNull(item?.colorId),
+      colorName: resolveOptionalString(linkedColor?.name ?? item?.colorName, null),
+    };
+  });
+};
 const toAssignmentPlanWriteData = (item: any) => ({
   lineId: item.lineId,
   cardId: item.cardId ?? null,
   orderNo: item.orderNo ?? null,
   customer: item.customer ?? null,
   label: item.label ?? null,
+  colorId: item.colorId ?? null,
   colorName: item.colorName ?? null,
   previewUrl: item.previewUrl ?? null,
   imageUrl: item.imageUrl ?? null,
@@ -6272,7 +6796,8 @@ app.get("/assignment-plans", async (req, res) => {
         orderNo: plan.orderNo ?? "",
         label: plan.label ?? "",
         customer: plan.customer ?? "",
-        colorName: plan.colorName ?? "",
+        colorId: toPositiveIntOrNull(plan.colorId),
+        colorName: resolveAssignmentPlanColorName(plan),
         color: plan.color ?? "",
         quantity: plan.quantity ?? null,
         contractedSeconds: plan.contractedSeconds ?? null,
@@ -6346,7 +6871,7 @@ const buildAssignmentPlanProgressRows = async (
   const processAggregates =
     planIds.length > 0
       ? await prisma.workRecord.groupBy({
-          by: ["assignmentPlanId", "processCode", "processName"],
+          by: ["assignmentPlanId", "processId", "processCode"],
           where: {
             orgId,
             assignmentPlanId: { in: planIds },
@@ -6702,9 +7227,7 @@ app.get("/work-logs/:id", async (req, res) => {
   const workLog = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
     include: {
-      workRecords: {
-        orderBy: { id: "asc" },
-      },
+      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
   if (!workLog) {
@@ -6754,6 +7277,10 @@ app.post("/work-logs", async (req, res) => {
       error: `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`,
     });
   }
+  normalized.records = await syncWorkRecordRefs({
+    orgId: organization.id,
+    records: normalized.records,
+  });
   const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -6795,20 +7322,23 @@ app.post("/work-logs", async (req, res) => {
     });
 
     if (records.length > 0) {
-      const processCodeSet = [...new Set(records.map((r: any) => r.processCode).filter(Boolean))];
-      const processRows = processCodeSet.length > 0
-        ? await tx.attrProcess.findMany({
-            where: { orgId: organization.id, code: { in: processCodeSet as string[] } },
-            select: { id: true, code: true },
-          })
-        : [];
-      const processIdByCode = new Map(processRows.map((p) => [p.code, p.id]));
       await tx.workRecord.createMany({
         data: records.map((record: any) => ({
           orgId: organization.id,
           workLogId: next.id,
-          ...record,
-          processId: record.processCode ? (processIdByCode.get(record.processCode) ?? null) : null,
+          workerId: record.workerId,
+          workerName: record.workerName ?? null,
+          customerName: record.customerName ?? null,
+          styleId: record.styleId ?? null,
+          styleUid: record.styleUid ?? null,
+          styleName: record.styleName ?? null,
+          processId: record.processId ?? null,
+          processCode: record.processCode ?? null,
+          colorId: record.colorId ?? null,
+          colorCode: record.colorCode ?? null,
+          ctSeconds: record.ctSeconds ?? 0,
+          quantity: record.quantity ?? 0,
+          assignmentPlanId: record.assignmentPlanId ?? null,
         })),
       });
     }
@@ -6818,9 +7348,7 @@ app.post("/work-logs", async (req, res) => {
   const createdWithRecords = await prisma.workLog.findUnique({
     where: { id: created.id },
     include: {
-      workRecords: {
-        orderBy: { id: "asc" },
-      },
+      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
@@ -6879,6 +7407,10 @@ app.put("/work-logs/:id", async (req, res) => {
       error: `line worker mismatch for workDate (${lineValidation.missingWorkerIds.join(",")})`,
     });
   }
+  normalized.records = await syncWorkRecordRefs({
+    orgId: organization.id,
+    records: normalized.records,
+  });
   const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -6925,20 +7457,23 @@ app.put("/work-logs/:id", async (req, res) => {
     });
 
     if (records.length > 0) {
-      const processCodeSet = [...new Set(records.map((r: any) => r.processCode).filter(Boolean))];
-      const processRows = processCodeSet.length > 0
-        ? await tx.attrProcess.findMany({
-            where: { orgId: organization.id, code: { in: processCodeSet as string[] } },
-            select: { id: true, code: true },
-          })
-        : [];
-      const processIdByCode = new Map(processRows.map((p) => [p.code, p.id]));
       await tx.workRecord.createMany({
         data: records.map((record: any) => ({
           orgId: organization.id,
           workLogId: existing.id,
-          ...record,
-          processId: record.processCode ? (processIdByCode.get(record.processCode) ?? null) : null,
+          workerId: record.workerId,
+          workerName: record.workerName ?? null,
+          customerName: record.customerName ?? null,
+          styleId: record.styleId ?? null,
+          styleUid: record.styleUid ?? null,
+          styleName: record.styleName ?? null,
+          processId: record.processId ?? null,
+          processCode: record.processCode ?? null,
+          colorId: record.colorId ?? null,
+          colorCode: record.colorCode ?? null,
+          ctSeconds: record.ctSeconds ?? 0,
+          quantity: record.quantity ?? 0,
+          assignmentPlanId: record.assignmentPlanId ?? null,
         })),
       });
     }
@@ -6948,9 +7483,7 @@ app.put("/work-logs/:id", async (req, res) => {
   const updatedWithRecords = await prisma.workLog.findUnique({
     where: { id: updated.id },
     include: {
-      workRecords: {
-        orderBy: { id: "asc" },
-      },
+      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
@@ -7259,9 +7792,9 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
         })
       ).map((line) => line.id)
     );
-    const normalizedPlanChanges = normalizeAssignmentPlanPayload(
-      [patchedAssignment],
-      lineIdSet
+    const normalizedPlanChanges = await syncAssignmentPlanColorRefs(
+      organization.id,
+      normalizeAssignmentPlanPayload([patchedAssignment], lineIdSet)
     );
     if (normalizedPlanChanges.length > 0) {
       const planItem = normalizedPlanChanges[0];
@@ -7619,7 +8152,10 @@ app.put("/assignment-board-state", async (req, res) => {
         : null;
     const normalizedPlanChanges =
       changedPlanTargetAssignments.length > 0
-        ? normalizeAssignmentPlanPayload(changedPlanTargetAssignments, lineIdSet)
+        ? await syncAssignmentPlanColorRefs(
+            organization.id,
+            normalizeAssignmentPlanPayload(changedPlanTargetAssignments, lineIdSet)
+          )
         : [];
     const planSyncExternalIds = Array.from(
       new Set([
@@ -7819,6 +8355,10 @@ app.post("/orders", async (req, res) => {
   normalized.sellerOrgId = seller.id;
   normalized.sellerOrgName = seller.name ?? "";
   normalized.items = await syncOrderItemColorSnapshots(normalized.items);
+  normalized.items = await syncOrderItemStyleRefs(normalized.items, [
+    buyer.id,
+    seller.id,
+  ]);
   normalized.totalQuantity = normalized.items.reduce(
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
@@ -7871,6 +8411,10 @@ app.put("/orders/:orderId", async (req, res) => {
   normalized.sellerOrgId = seller.id;
   normalized.sellerOrgName = seller.name ?? "";
   normalized.items = await syncOrderItemColorSnapshots(normalized.items);
+  normalized.items = await syncOrderItemStyleRefs(normalized.items, [
+    buyer.id,
+    seller.id,
+  ]);
   normalized.totalQuantity = normalized.items.reduce(
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
@@ -7907,12 +8451,12 @@ app.put("/orders/:orderId", async (req, res) => {
           workOrderId: updatedOrder.id,
           itemId: item.id || "",
           styleId: resolveOptionalString(item.styleId, null),
+          styleUid: toPositiveIntOrNull(item.styleUid),
           styleName: resolveOptionalString(item.styleName, null),
           styleCode: resolveOptionalString(item.styleCode, null),
           colorId: toPositiveIntOrNull(item.colorId),
           colorCode: resolveOptionalString(item.colorCode, null),
-          colorName: resolveOptionalString(item.colorName, null),
-          gender: resolveOptionalString(item.gender, null),
+          gender: normalizeWorkOrderItemGender(item.gender, "M"),
           sizeQuantities: item.sizeQuantities ?? null,
           totalQuantity: toNonNegativeInt(item.totalQuantity, 0),
           sortOrder: idx,
@@ -7959,7 +8503,7 @@ app.delete("/orders/:orderId", async (req, res) => {
       error: "only order owner can delete",
     });
   }
-  if ((existing.status || "").replace(/\s+/g, "").trim() !== "주문접수") {
+  if (!isWorkOrderDeletableStatus(existing.status)) {
     return res.status(409).json({
       ok: false,
       error: "only 주문접수 orders can be deleted",
@@ -9147,7 +9691,7 @@ app.get("/payroll", async (req, res) => {
       workDate: { startsWith: month },
     },
     include: {
-      workRecords: { orderBy: { id: "asc" } },
+      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
   const workerIds = Array.from(
@@ -9230,11 +9774,12 @@ app.get("/payroll", async (req, res) => {
       const emp = employeeMap.get(key)!;
       emp.totalEarnings += earnings;
 
-      const processKey = record.processCode || record.processName || "unknown";
+      const processName = resolveWorkRecordProcessName(record) ?? "";
+      const processKey = record.processCode || processName || "unknown";
       if (!emp.processes.has(processKey)) {
         emp.processes.set(processKey, {
           processCode: record.processCode || "",
-          processName: record.processName || processKey,
+          processName: processName || processKey,
           totalQuantity: 0,
           totalEarnings: 0,
         });
