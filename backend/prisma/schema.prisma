@@ -175,6 +175,7 @@ model Employee {
   orgMembershipId Int      @unique
   factoryId Int?
   roleId    Int?
+  payType   String?
   name      String?
   phone     String?
   bankName  String?
@@ -290,12 +291,15 @@ model AttrRole {
   orgId Int
   code  String
   name  String
+  defaultPayType String @default("FIXED")
+  sortOrder Int @default(0)
 
   organization Organization @relation(fields: [orgId], references: [id])
   employees    Employee[]
 
   @@unique([orgId, code])
   @@index([orgId])
+  @@index([orgId, sortOrder])
 }
 
 model AttrProcess {

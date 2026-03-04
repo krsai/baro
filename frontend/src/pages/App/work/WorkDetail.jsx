@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   IconButton,
   Paper,
   Stack,
@@ -15,7 +14,6 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { koKR as datePickerKoKR } from '@mui/x-date-pickers/locales';
 import CloseIcon from '@mui/icons-material/Close';
-import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -45,24 +43,33 @@ const buildWorkerLog = () => ({
 });
 const buildFocusToken = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const normalizeKeyPart = (value) => String(value ?? '').trim().toLowerCase();
+const resolveWorkerKey = (worker) => normalizeKeyPart(worker?.id ?? worker?.name);
 const resolveCustomerKey = (customer) => normalizeKeyPart(customer?.id ?? customer?.name);
 const resolveStyleKey = (style) => normalizeKeyPart(style?.id ?? style?.name);
 const resolveColorKey = (color) => normalizeKeyPart(color?.id ?? color?.code ?? color?.name);
 const resolveProcessKey = (process) =>
-  normalizeKeyPart(process?.code ?? process?.name ?? process?.id);
-const buildProcessComboKey = ({ customer, style, color, process }) => {
+  normalizeKeyPart(process?.processKey ?? process?.code ?? process?.name ?? process?.id);
+const buildProcessComboKey = ({ worker, customer, style, color, process }) => {
+  const workerKey = resolveWorkerKey(worker);
   const customerKey = resolveCustomerKey(customer);
   const styleKey = resolveStyleKey(style);
   const colorKey = resolveColorKey(color);
   const processKey = resolveProcessKey(process);
 
-  if (!customerKey || !styleKey || !colorKey || !processKey) return '';
-  return `${customerKey}::${styleKey}::${colorKey}::${processKey}`;
+  if (!workerKey || !customerKey || !styleKey || !colorKey || !processKey) return '';
+  return `${workerKey}::${customerKey}::${styleKey}::${colorKey}::${processKey}`;
 };
-const hasDuplicateProcessCombo = (items = []) => {
+const hasDuplicateProcessCombo = (workerLogs = []) => {
   const seen = new Set();
-  for (const item of items) {
-    const key = buildProcessComboKey(item || {});
+  for (const log of workerLogs) {
+    const item = Array.isArray(log?.items) ? log.items[0] : null;
+    const key = buildProcessComboKey({
+      worker: log?.worker,
+      customer: item?.customer,
+      style: item?.style,
+      color: item?.color,
+      process: item?.process,
+    });
     if (!key) continue;
     if (seen.has(key)) return true;
     seen.add(key);
@@ -70,7 +77,9 @@ const hasDuplicateProcessCombo = (items = []) => {
   return false;
 };
 const findDuplicateWorkerLogIndex = (workerLogs = []) =>
-  workerLogs.findIndex((log) => hasDuplicateProcessCombo(log?.items));
+  workerLogs.findIndex((_log, index) =>
+    hasDuplicateProcessCombo(workerLogs.slice(0, index + 1))
+  );
 const equalsText = (left, right) =>
   String(left || '').trim() === String(right || '').trim();
 const stripCardGenderSuffix = (value) =>
@@ -207,45 +216,97 @@ const findWorkerValue = (employees, record, fallbackIndex) => {
     name: record?.workerName || `작업자 ${fallbackIndex + 1}`,
   };
 };
-const buildWorkerLogsFromRecords = (records, { employees, customers, styles, colors }) => {
-  const safeRecords = Array.isArray(records) ? records : [];
-  if (safeRecords.length === 0) return [];
+const resolvePlanStyleValue = ({ plan, styles, fallbackIndex }) => {
+  if (!plan) return null;
 
-  const groups = new Map();
+  const styleId = String(plan?.styleId || '').trim();
+  if (styleId) {
+    const byId = styles.find((style) => String(style?.id || '') === styleId);
+    if (byId) return byId;
 
-  safeRecords.forEach((record, index) => {
-    const workerKey =
-      record?.workerId !== null && record?.workerId !== undefined && record.workerId !== ''
-        ? `id:${record.workerId}`
-        : `name:${record?.workerName || 'unknown'}:${index}`;
+    const byStyleCode = styles.find((style) => equalsText(style?.styleCode, styleId));
+    if (byStyleCode) return byStyleCode;
+  }
 
-    if (!groups.has(workerKey)) {
-      groups.set(workerKey, {
-        id: buildLogId(),
-        worker: findWorkerValue(employees, record, index),
-        items: [],
-      });
-    }
-
-    const customer = findCustomerValue(customers, record?.customerName, index);
-    const style = findStyleValue(styles, record, index);
-    const process = findProcessValue(record, style, index);
-    const color = findColorValue(colors, record, index);
-    groups.get(workerKey).items.push({
-      id: buildItemId(),
-      customer,
-      style,
-      process,
-      color,
-      quantity: Number(record?.quantity) > 0 ? Number(record.quantity) : '',
-    });
+  const matchedStyle = findStyleFromCard({
+    styles,
+    customerName: plan?.customer,
+    label: plan?.label,
   });
+  if (matchedStyle) return matchedStyle;
 
-  return Array.from(groups.values()).map((log) => ({
-    ...log,
-    items: log.items.length > 0 ? log.items : [buildEmptyItem()],
-  }));
+  const fallbackStyleName = stripCardGenderSuffix(plan?.label) || plan?.label;
+  if (!fallbackStyleName && !styleId) return null;
+
+  return {
+    id: styleId || `virtual-style-${fallbackIndex}`,
+    name: fallbackStyleName || `스타일 ${fallbackIndex + 1}`,
+    customer: plan?.customer || '',
+    processes: [],
+  };
 };
+const resolvePlanCustomerValue = ({ plan, customers, fallbackIndex }) =>
+  findCustomerValue(customers, plan?.customer, fallbackIndex);
+const resolvePlanColorValue = ({ plan, colors, fallbackIndex }) => {
+  const matchedColor =
+    colors.find(
+      (color) =>
+        equalsText(color?.name, plan?.colorName) ||
+        equalsText(color?.code, plan?.color) ||
+        equalsText(color?.code, plan?.colorName)
+    ) || null;
+  if (matchedColor) return matchedColor;
+  if (!plan?.colorName && !plan?.color) return null;
+
+  return {
+    id: plan?.color || `virtual-color-${fallbackIndex}`,
+    code: plan?.color || '',
+    name: plan?.colorName || plan?.color || '색상',
+  };
+};
+const buildAgreedSnapshotByProcess = (plan) => {
+  const assignmentStatus = String(plan?.ctStatus || '').trim().toUpperCase();
+  const agreedSnapshot = plan?.ctAgreedSnapshot;
+  const orderQuantity = Math.max(1, resolveAssignmentPlanBaselineQuantity(plan) ?? 1);
+  const agreedSnapshotQuantity = Math.max(
+    1,
+    toPositiveIdOrNull(agreedSnapshot?.quantity) ?? orderQuantity
+  );
+  const canUseAgreedSnapshot =
+    assignmentStatus === 'AGREED' &&
+    agreedSnapshot &&
+    agreedSnapshotQuantity === orderQuantity &&
+    (!plan?.id ||
+      !agreedSnapshot?.sourceAssignmentId ||
+      String(agreedSnapshot.sourceAssignmentId) === String(plan.id));
+
+  const sourceRows =
+    canUseAgreedSnapshot && Array.isArray(agreedSnapshot?.processes)
+      ? agreedSnapshot.processes
+      : [];
+
+  return sourceRows.reduce((map, item) => {
+    const processKey = String(item?.processKey || '').trim();
+    if (!processKey) return map;
+    map.set(processKey, {
+      processKey,
+      name: String(item?.name || '').trim() || '공정',
+      agreedSeconds: Number(item?.agreedSeconds) || 0,
+      requestedSeconds: Number(
+        item?.requestedSeconds ??
+          item?.lineRequestedSeconds ??
+          item?.proposedSeconds ??
+          item?.agreedSeconds
+      ) || 0,
+      proposedSeconds: Number(
+        item?.proposedSeconds ?? item?.stSeconds ?? item?.suggestedSeconds
+      ) || 0,
+    });
+    return map;
+  }, new Map());
+};
+const buildProcessKey = (process, index = 0) =>
+  String(process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`);
 
 const toSeconds = (value) => {
   const parsed = Number(value);
@@ -266,49 +327,135 @@ const resolveCtSeconds = (process) => {
   return resolveFirstPositiveSeconds(
     process.ctSeconds,
     process.contractedSeconds,
+    process.ct,
     process.at,
     process.pt
   );
 };
-const toResolvedProcessShape = (process, fallbackId) => {
+const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null) => {
   if (!process || typeof process !== 'object') return null;
-  const ctSeconds = resolveCtSeconds(process);
+  const ctSeconds = resolveFirstPositiveSeconds(
+    agreedSnapshotEntry?.agreedSeconds,
+    agreedSnapshotEntry?.requestedSeconds,
+    agreedSnapshotEntry?.proposedSeconds,
+    process.ct,
+    process.ctSeconds,
+    process.contractedSeconds,
+    process.at,
+    process.pt
+  );
   return {
     id: process.instanceId || process.id || fallbackId,
+    processKey: process.instanceId || process.id || process.code || fallbackId,
     code: process.code || '',
-    name: process.name || '공정',
+    name: process.name || agreedSnapshotEntry?.name || '공정',
     pt: process.pt,
     at: process.at,
     ctSeconds,
-    contractedSeconds: resolveFirstPositiveSeconds(process.contractedSeconds, ctSeconds),
+    contractedSeconds: resolveFirstPositiveSeconds(ctSeconds, process.contractedSeconds),
   };
 };
-const resolveProcessFromAssignmentCard = ({ card, style, itemId }) => {
+const buildProcessOptionsForAssignmentCard = ({ card, style }) => {
   const styleProcesses = Array.isArray(style?.processes) ? style.processes : [];
-  const firstStyleProcess = styleProcesses[0];
-  const styleProcess = toResolvedProcessShape(
-    firstStyleProcess,
-    `style-process-${style?.id || itemId || 'item'}-0`
-  );
-  if (styleProcess) {
-    if (styleProcess.ctSeconds <= 0) {
-      const fallbackCardCtSeconds = resolveFirstPositiveSeconds(card?.contractedSeconds);
-      if (fallbackCardCtSeconds > 0) {
-        styleProcess.ctSeconds = fallbackCardCtSeconds;
-        styleProcess.contractedSeconds = fallbackCardCtSeconds;
-      }
-    }
-    return styleProcess;
-  }
+  const agreedSnapshotByProcess = buildAgreedSnapshotByProcess(card);
+  const options = styleProcesses
+    .map((process, index) =>
+      toResolvedProcessShape(
+        process,
+        `style-process-${style?.id || card?.dbId || 'item'}-${index}`,
+        agreedSnapshotByProcess.get(buildProcessKey(process, index)) ?? null
+      )
+    )
+    .filter(Boolean);
 
-  const fallbackCardCtSeconds = resolveFirstPositiveSeconds(card?.contractedSeconds);
+  agreedSnapshotByProcess.forEach((snapshotEntry, processKey) => {
+    if (options.some((option) => option.processKey === processKey)) return;
+    options.push({
+      id: processKey,
+      processKey,
+      code: '',
+      name: snapshotEntry.name || '공정',
+      pt: null,
+      at: null,
+      ctSeconds: resolveFirstPositiveSeconds(
+        snapshotEntry.agreedSeconds,
+        snapshotEntry.requestedSeconds,
+        snapshotEntry.proposedSeconds
+      ),
+      contractedSeconds: resolveFirstPositiveSeconds(
+        snapshotEntry.agreedSeconds,
+        snapshotEntry.requestedSeconds,
+        snapshotEntry.proposedSeconds
+      ),
+    });
+  });
+
+  return options;
+};
+const resolveProcessForRecord = ({ record, card, style, fallbackIndex }) => {
+  if (!record?.processCode && !record?.processName) return null;
+
+  const processOptions = buildProcessOptionsForAssignmentCard({ card, style });
+  if (record?.processCode) {
+    const byCode = processOptions.find((process) => equalsText(process?.code, record.processCode));
+    if (byCode) return byCode;
+  }
+  if (record?.processName) {
+    const byName = processOptions.find((process) => equalsText(process?.name, record.processName));
+    if (byName) return byName;
+  }
+  if (processOptions.length === 1) return processOptions[0];
+
+  const ctSeconds = Number(record?.ctSeconds) || 0;
   return {
-    id: `virtual-card-process-${card?.dbId || itemId || 'item'}`,
-    code: '',
-    name: '기본 공정',
-    ctSeconds: fallbackCardCtSeconds,
-    contractedSeconds: fallbackCardCtSeconds,
+    id: `virtual-process-${fallbackIndex}`,
+    processKey: `virtual-process-${fallbackIndex}`,
+    code: record?.processCode || '',
+    name: record?.processName || '공정',
+    ctSeconds,
+    contractedSeconds: ctSeconds,
   };
+};
+const buildWorkerLogsFromRecords = (
+  records,
+  { employees, customers, styles, colors, assignmentPlanById }
+) => {
+  const safeRecords = Array.isArray(records) ? records : [];
+  if (safeRecords.length === 0) return [];
+
+  return safeRecords.map((record, index) => {
+    const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
+    const card = assignmentPlanId ? assignmentPlanById.get(assignmentPlanId) ?? null : null;
+    const customer = card
+      ? resolvePlanCustomerValue({ plan: card, customers, fallbackIndex: index })
+      : findCustomerValue(customers, record?.customerName, index);
+    const style = card
+      ? resolvePlanStyleValue({ plan: card, styles, fallbackIndex: index })
+      : findStyleValue(styles, record, index);
+    const color = card
+      ? resolvePlanColorValue({ plan: card, colors, fallbackIndex: index })
+      : findColorValue(colors, record, index);
+    const process = card
+      ? resolveProcessForRecord({ record, card, style, fallbackIndex: index })
+      : findProcessValue(record, style, index);
+
+    return {
+      id: buildLogId(),
+      worker: findWorkerValue(employees, record, index),
+      items: [
+        {
+          id: buildItemId(),
+          card,
+          assignmentPlanId: assignmentPlanId ?? null,
+          customer,
+          style,
+          process,
+          color,
+          quantity: Number(record?.quantity) > 0 ? Number(record.quantity) : '',
+        },
+      ],
+    };
+  });
 };
 
 const toOptionalNumber = (value) => {
@@ -384,6 +531,34 @@ const formatAssignmentPlanLabel = (plan) => {
   if (plan?.dbId) return `배정 카드 #${plan.dbId}`;
   return '배정 카드';
 };
+const AUTO_NOTE_PREFIX = '[자동 초과 메모]';
+const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
+const formatWorkRecordProcessLabel = (record) => {
+  const code = String(record?.processCode || '').trim();
+  const name = String(record?.processName || '').trim();
+  if (code && name) return `[${code}] ${name}`;
+  return name || code || '공정';
+};
+const stripAutoNoteFromText = (value) => {
+  const text = String(value || '');
+  const leadingAutoPrefix = `${AUTO_NOTE_PREFIX}\n`;
+  if (text.startsWith(leadingAutoPrefix)) return '';
+  const prefixIndex = text.indexOf(leadingAutoPrefix);
+  if (prefixIndex >= 0) return text.slice(0, prefixIndex).trimEnd();
+  const markerIndex = text.indexOf(AUTO_NOTE_MARKER);
+  return markerIndex >= 0 ? text.slice(0, markerIndex) : text;
+};
+const buildCombinedNote = ({ manualNote, autoNote }) => {
+  const trimmedManualNote = String(manualNote || '').trim();
+  const trimmedAutoNote = String(autoNote || '').trim();
+  if (trimmedManualNote && trimmedAutoNote) {
+    return `${trimmedManualNote}${AUTO_NOTE_MARKER}${trimmedAutoNote}`;
+  }
+  if (trimmedAutoNote) {
+    return `${AUTO_NOTE_PREFIX}\n${trimmedAutoNote}`;
+  }
+  return trimmedManualNote;
+};
 const resolveAssignmentProcessMetric = (processCode, processName) => {
   const normalizedCode = String(processCode || '').trim().toUpperCase();
   if (normalizedCode) {
@@ -449,6 +624,88 @@ const reconcileWorkerForFactory = (worker, employees = []) => {
 
   return null;
 };
+const resolveWorkerGroupKey = (log) => {
+  const workerId = toPositiveIdOrNull(log?.worker?.id);
+  if (workerId) return `worker:${workerId}`;
+
+  const workerName = String(log?.worker?.name || '').trim().toLowerCase();
+  if (workerName) return `worker-name:${workerName}`;
+
+  return `row:${log?.id || 'blank'}`;
+};
+const groupWorkerLogsForDisplay = (workerLogs = []) => {
+  const groups = [];
+  const groupedByWorkerKey = new Map();
+
+  (Array.isArray(workerLogs) ? workerLogs : []).forEach((log) => {
+    const workerKey = resolveWorkerGroupKey(log);
+    const isBlankWorkerGroup = workerKey.startsWith('row:');
+    const existingGroup = isBlankWorkerGroup ? null : groupedByWorkerKey.get(workerKey);
+
+    if (existingGroup) {
+      existingGroup.entries.push(log);
+      if (!existingGroup.worker && log?.worker) {
+        existingGroup.worker = log.worker;
+      }
+      return;
+    }
+
+    const nextGroup = {
+      id: `group:${workerKey}`,
+      worker: log?.worker ?? null,
+      entries: [log],
+    };
+    groups.push(nextGroup);
+    if (!isBlankWorkerGroup) {
+      groupedByWorkerKey.set(workerKey, nextGroup);
+    }
+  });
+
+  return groups;
+};
+const normalizeEmployeeOption = (employee = {}) => ({
+  ...employee,
+  name: employee?.name || `작업자 ${employee?.id ?? ''}`.trim(),
+});
+const buildFactoryKey = (factoryId) => {
+  const normalizedFactoryId = toPositiveIdOrNull(factoryId);
+  return normalizedFactoryId ? String(normalizedFactoryId) : '';
+};
+const buildFactoryWorkDateKey = ({ factoryId, workDateKey }) => {
+  const factoryKey = buildFactoryKey(factoryId);
+  if (!factoryKey || !workDateKey) return '';
+  return `${factoryKey}:${workDateKey}`;
+};
+const buildEmployeeScopeKey = ({ factoryId, lineId, workDateKey }) => {
+  const normalizedFactoryId = toPositiveIdOrNull(factoryId);
+  const normalizedLineId = toPositiveIdOrNull(lineId);
+  if (!normalizedFactoryId || !normalizedLineId || !workDateKey) return '';
+  return `${normalizedFactoryId}:${normalizedLineId}:${workDateKey}`;
+};
+const groupAssignmentPlansByLineId = (plans = []) =>
+  (Array.isArray(plans) ? plans : []).reduce((map, plan) => {
+    const lineKey = String(toPositiveIdOrNull(plan?.lineId) ?? '').trim();
+    if (!lineKey) return map;
+    if (!map[lineKey]) {
+      map[lineKey] = [];
+    }
+    map[lineKey].push(plan);
+    return map;
+  }, {});
+const groupEmployeesByScopeKey = ({ factoryId, workDateKey, employees = [] }) =>
+  (Array.isArray(employees) ? employees : []).reduce((map, employee) => {
+    const scopeKey = buildEmployeeScopeKey({
+      factoryId,
+      lineId: employee?.currentLineId,
+      workDateKey,
+    });
+    if (!scopeKey) return map;
+    if (!map[scopeKey]) {
+      map[scopeKey] = [];
+    }
+    map[scopeKey].push(normalizeEmployeeOption(employee));
+    return map;
+  }, {});
 
 const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
@@ -457,7 +714,10 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [selectedFactory, setSelectedFactory] = useState(null);
   const [lines, setLines] = useState([]);
   const [selectedLine, setSelectedLine] = useState(null);
-  const [assignmentPlans, setAssignmentPlans] = useState([]);
+  const [assignmentPlansByLineId, setAssignmentPlansByLineId] = useState({});
+  const [loadedAssignmentFactoryKey, setLoadedAssignmentFactoryKey] = useState('');
+  const [employeesByScopeKey, setEmployeesByScopeKey] = useState({});
+  const [loadedEmployeeFactoryDateKey, setLoadedEmployeeFactoryDateKey] = useState('');
   const [employees, setEmployees] = useState([]);
   const [loadedEmployeeScopeKey, setLoadedEmployeeScopeKey] = useState('');
   const [customers, setCustomers] = useState([]);
@@ -465,8 +725,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const [colors, setColors] = useState([]);
   const [workerLogs, setWorkerLogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [itemFocusRequest, setItemFocusRequest] = useState(null);
-  const [workerFocusRequest, setWorkerFocusRequest] = useState(null);
+  const [focusRequest, setFocusRequest] = useState(null);
   const [duplicateEntryMessage, setDuplicateEntryMessage] = useState('');
   const [saveErrorMessage, setSaveErrorMessage] = useState('');
   const [note, setNote] = useState('');
@@ -483,16 +742,48 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const initialLogLineName = String(initialLog?.lineName || '').trim();
   const isFactoryAggregateInitialLog =
     Boolean(initialLog?.id) && !initialLogLineId && !initialLogLineName;
+  const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
+  const selectedLineKey = selectedLineId ? String(selectedLineId) : '';
+  const selectedFactoryKey = buildFactoryKey(selectedFactory?.id);
+  const selectedEmployeeFactoryDateKey = useMemo(
+    () =>
+      buildFactoryWorkDateKey({
+        factoryId: selectedFactory?.id,
+        workDateKey,
+      }),
+    [selectedFactory?.id, workDateKey]
+  );
   const selectedEmployeeScopeKey = useMemo(() => {
-    const factoryId = toPositiveIdOrNull(selectedFactory?.id);
-    const lineId = toPositiveIdOrNull(selectedLine?.id);
-    if (!factoryId || !lineId) return '';
-    return `${factoryId}:${lineId}:${workDateKey}`;
+    return buildEmployeeScopeKey({
+      factoryId: selectedFactory?.id,
+      lineId: selectedLine?.id,
+      workDateKey,
+    });
   }, [selectedFactory?.id, selectedLine?.id, workDateKey]);
+  const isAssignmentPlanCacheReady =
+    Boolean(selectedFactoryKey) && loadedAssignmentFactoryKey === selectedFactoryKey;
+  const isEmployeeFactoryDateCacheReady =
+    Boolean(selectedEmployeeFactoryDateKey) &&
+    loadedEmployeeFactoryDateKey === selectedEmployeeFactoryDateKey;
+  const assignmentPlans = useMemo(
+    () => (selectedLineKey ? assignmentPlansByLineId[selectedLineKey] || [] : []),
+    [assignmentPlansByLineId, selectedLineKey]
+  );
   const initialRecordHydrationKey = useMemo(
     () => buildInitialRecordHydrationKey(initialLog, selectedLine),
     [initialLog, selectedLine]
   );
+  const assignmentPlanById = useMemo(
+    () =>
+      assignmentPlans.reduce((map, plan) => {
+        const key = toPositiveIdOrNull(plan?.dbId);
+        if (key === null || map.has(key)) return map;
+        map.set(key, plan);
+        return map;
+      }, new Map()),
+    [assignmentPlans]
+  );
+  const skipInitialGlobalLoading = Boolean(initialLog?.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,10 +793,20 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const [factoryRows, customerRows, styleRows, attributeData] = await Promise.all([
-          requestJSON('/factories' + query).catch(() => []),
-          requestJSON('/customers' + query).catch(() => []),
-          fetchStylesFromApi({ orgId: activeOrgId }).catch(() => []),
-          fetchAttributes({ orgId: activeOrgId }).catch(() => null),
+          requestJSON('/factories' + query, {
+            skipGlobalLoading: skipInitialGlobalLoading,
+          }).catch(() => []),
+          requestJSON('/customers' + query, {
+            skipGlobalLoading: skipInitialGlobalLoading,
+          }).catch(() => []),
+          fetchStylesFromApi({
+            orgId: activeOrgId,
+            skipGlobalLoading: skipInitialGlobalLoading,
+          }).catch(() => []),
+          fetchAttributes({
+            orgId: activeOrgId,
+            skipGlobalLoading: skipInitialGlobalLoading,
+          }).catch(() => null),
         ]);
         if (cancelled) return;
         // ADMIN이 아닌 사용자는 소속 공장만 표시
@@ -532,33 +833,115 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id]);
+  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id, skipInitialGlobalLoading]);
 
   useEffect(() => {
     if (!selectedFactory?.id) {
       setLines([]);
       setSelectedLine(null);
-      setAssignmentPlans([]);
+      setAssignmentPlansByLineId({});
+      setLoadedAssignmentFactoryKey('');
+      setEmployeesByScopeKey({});
+      setLoadedEmployeeFactoryDateKey('');
       return;
     }
     let cancelled = false;
-    requestJSON(`/lines${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`)
-      .then((data) => { if (!cancelled) setLines(Array.isArray(data) ? data : []); })
-      .catch(() => { if (!cancelled) setLines([]); });
+    setLines([]);
+    setSelectedLine(null);
+    setAssignmentPlansByLineId({});
+    setLoadedAssignmentFactoryKey('');
+    setEmployeesByScopeKey({});
+    setLoadedEmployeeFactoryDateKey('');
+    requestJSON(`/lines${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`, {
+      skipGlobalLoading: true,
+    })
+      .then((data) => {
+        if (!cancelled) {
+          setLines(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLines([]);
+        }
+      });
     return () => { cancelled = true; };
   }, [selectedFactory?.id, activeOrgId]);
 
   useEffect(() => {
-    if (!selectedLine?.id) {
-      setAssignmentPlans([]);
+    if (!selectedFactory?.id) {
+      setAssignmentPlansByLineId({});
+      setLoadedAssignmentFactoryKey('');
       return;
     }
     let cancelled = false;
-    requestJSON(`/assignment-plans${buildQueryString({ lineId: selectedLine.id, orgId: activeOrgId })}`)
-      .then((data) => { if (!cancelled) setAssignmentPlans(Array.isArray(data) ? data : []); })
-      .catch(() => { if (!cancelled) setAssignmentPlans([]); });
+    const factoryKey = buildFactoryKey(selectedFactory.id);
+    setLoadedAssignmentFactoryKey('');
+    requestJSON(
+      `/assignment-plans${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`,
+      {
+        skipGlobalLoading: true,
+      }
+    )
+      .then((data) => {
+        if (!cancelled) {
+          setAssignmentPlansByLineId(groupAssignmentPlansByLineId(data));
+          setLoadedAssignmentFactoryKey(factoryKey);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssignmentPlansByLineId({});
+          setLoadedAssignmentFactoryKey(factoryKey);
+        }
+      });
     return () => { cancelled = true; };
-  }, [selectedLine?.id, activeOrgId]);
+  }, [selectedFactory?.id, activeOrgId]);
+
+  useEffect(() => {
+    if (!selectedFactory?.id) {
+      setEmployeesByScopeKey({});
+      setLoadedEmployeeFactoryDateKey('');
+      return;
+    }
+    let cancelled = false;
+    const employeeFactoryDateKey = buildFactoryWorkDateKey({
+      factoryId: selectedFactory.id,
+      workDateKey,
+    });
+    setLoadedEmployeeFactoryDateKey('');
+    requestJSON(
+      `/line-workers${buildQueryString({
+        factoryId: selectedFactory.id,
+        workDate: workDateKey,
+        orgId: activeOrgId,
+      })}`,
+      {
+        skipGlobalLoading: true,
+      }
+    )
+      .then((data) => {
+        if (!cancelled) {
+          setEmployeesByScopeKey(
+            groupEmployeesByScopeKey({
+              factoryId: selectedFactory.id,
+              workDateKey,
+              employees: data,
+            })
+          );
+          setLoadedEmployeeFactoryDateKey(employeeFactoryDateKey);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEmployeesByScopeKey({});
+          setLoadedEmployeeFactoryDateKey(employeeFactoryDateKey);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFactory?.id, workDateKey, activeOrgId]);
 
   useEffect(() => {
     initializedMetaLogIdRef.current = '';
@@ -568,7 +951,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
 
   useEffect(() => {
     if (initialLog?.id) {
-      setNote(initialLog.note || '');
+      setNote(stripAutoNoteFromText(initialLog.note || ''));
     } else {
       setNote('');
     }
@@ -633,100 +1016,72 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   }, [initialLog, lines, selectedFactory]);
 
   useEffect(() => {
-    let cancelled = false;
     const isPendingInitialHydration =
       Boolean(initialRecordHydrationKey) &&
       initializedRecordsLogIdRef.current !== initialRecordHydrationKey;
-
-    const loadEmployees = async () => {
-      if (!selectedFactory?.id || !selectedLine?.id) {
-        setEmployees([]);
-        setLoadedEmployeeScopeKey('');
-        setWorkerFocusRequest(null);
-        setItemFocusRequest(null);
-        setDuplicateEntryMessage('');
-        setWorkerLogs([]);
-        return;
-      }
-
+    if (!selectedFactory?.id || !selectedLine?.id) {
+      setEmployees([]);
       setLoadedEmployeeScopeKey('');
-      try {
-        const data = await requestJSON(
-          `/line-workers${buildQueryString({
-            factoryId: selectedFactory.id,
-            lineId: selectedLine.id,
-            workDate: workDateKey,
-            orgId: activeOrgId,
-          })}`
-        );
-        if (cancelled) return;
-        const list = (Array.isArray(data) ? data : []).map((employee) => ({
-          ...employee,
-          name: employee.name || `작업자 ${employee.id}`,
-        }));
-        if (!cancelled) {
-          setEmployees(list);
-          setLoadedEmployeeScopeKey(
-            `${selectedFactory.id}:${selectedLine.id}:${workDateKey}`
-          );
-          if (isPendingInitialHydration) {
-            // 상세 수정 초기화 중에는 기존 기록 복원 effect가 workerLogs를 세팅한다.
-          } else {
-            let nextInitialWorkerLogId = null;
-            setWorkerLogs((prev) => {
-              if (!Array.isArray(prev) || prev.length === 0) {
-                if (list.length === 0) return [];
-                const initialWorkerLog = buildWorkerLog();
-                nextInitialWorkerLogId = initialWorkerLog.id;
-                return [initialWorkerLog];
-              }
-
-              // Preserve current input rows, but remap worker selection to
-              // workers that belong to the selected line on the selected work date.
-              return prev.map((log) => ({
-                ...log,
-                worker: reconcileWorkerForFactory(log.worker, list),
-                items: Array.isArray(log.items) && log.items.length > 0 ? log.items : [buildEmptyItem()],
-              }));
-            });
-            if (nextInitialWorkerLogId) {
-              setWorkerFocusRequest({ logId: nextInitialWorkerLogId, token: buildFocusToken() });
-            } else {
-              setWorkerFocusRequest(null);
-            }
-          }
-          setItemFocusRequest(null);
-          setDuplicateEntryMessage('');
-        }
-      } catch (_error) {
-        if (!cancelled) {
-          setEmployees([]);
-          setLoadedEmployeeScopeKey(
-            `${selectedFactory.id}:${selectedLine.id}:${workDateKey}`
-          );
-        }
-      }
-    };
+      setFocusRequest(null);
+      setDuplicateEntryMessage('');
+      setWorkerLogs([]);
+      return;
+    }
 
     setEmployees([]);
     setLoadedEmployeeScopeKey('');
-    setItemFocusRequest(null);
+    setFocusRequest(null);
     setDuplicateEntryMessage('');
     if (isPendingInitialHydration) {
       setWorkerLogs([]);
     }
-    loadEmployees();
 
-    return () => {
-      cancelled = true;
-    };
+    if (!isEmployeeFactoryDateCacheReady) {
+      return;
+    }
+
+    const list = selectedEmployeeScopeKey ? employeesByScopeKey[selectedEmployeeScopeKey] || [] : [];
+    setEmployees(list);
+    setLoadedEmployeeScopeKey(selectedEmployeeScopeKey);
+    if (isPendingInitialHydration) {
+      return;
+    }
+
+    let nextInitialWorkerLogId = null;
+    setWorkerLogs((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) {
+        if (list.length === 0) return [];
+        const initialWorkerLog = buildWorkerLog();
+        nextInitialWorkerLogId = initialWorkerLog.id;
+        return [initialWorkerLog];
+      }
+
+      // Preserve current input rows, but remap worker selection to
+      // workers that belong to the selected line on the selected work date.
+      return prev.map((log) => ({
+        ...log,
+        worker: reconcileWorkerForFactory(log.worker, list),
+        items: Array.isArray(log.items) && log.items.length > 0 ? log.items : [buildEmptyItem()],
+      }));
+    });
+    if (nextInitialWorkerLogId) {
+      setFocusRequest({
+        entryId: nextInitialWorkerLogId,
+        field: 'worker',
+        token: buildFocusToken(),
+      });
+    } else {
+      setFocusRequest(null);
+    }
+    setDuplicateEntryMessage('');
   }, [
-    activeOrgId,
+    employeesByScopeKey,
+    isEmployeeFactoryDateCacheReady,
     initialLog?.id,
     initialRecordHydrationKey,
+    selectedEmployeeScopeKey,
     selectedFactory?.id,
     selectedLine?.id,
-    workDateKey,
   ]);
 
   useEffect(() => {
@@ -736,14 +1091,16 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       if (isFactoryAggregateInitialLog) {
         setWorkerLogs([]);
         setDuplicateEntryMessage('');
-        setItemFocusRequest(null);
-        setWorkerFocusRequest(null);
+        setFocusRequest(null);
         initializedRecordsLogIdRef.current = '';
       }
       return;
     }
     if (initializedRecordsLogIdRef.current === initialRecordHydrationKey) return;
     if (selectedEmployeeScopeKey && loadedEmployeeScopeKey !== selectedEmployeeScopeKey) {
+      return;
+    }
+    if (selectedLine?.id && !isAssignmentPlanCacheReady) {
       return;
     }
     if (initialLogLineId && !selectedLine?.id) return;
@@ -768,6 +1125,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       customers,
       styles,
       colors,
+      assignmentPlanById,
     });
 
     if (nextWorkerLogs.length > 0) {
@@ -779,8 +1137,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     }
 
     setDuplicateEntryMessage('');
-    setItemFocusRequest(null);
-    setWorkerFocusRequest(null);
+    setFocusRequest(null);
     initializedRecordsLogIdRef.current = initialRecordHydrationKey;
   }, [
     colors,
@@ -789,18 +1146,68 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     initialLog,
     initialLogLineId,
     initialRecordHydrationKey,
+    isAssignmentPlanCacheReady,
     isFactoryAggregateInitialLog,
     loadedEmployeeScopeKey,
+    assignmentPlanById,
     selectedEmployeeScopeKey,
     selectedFactory,
     selectedLine,
     styles,
   ]);
 
-  const takenWorkerIds = useMemo(
-    () => new Set(workerLogs.map((log) => log.worker?.id).filter(Boolean)),
+  const processOptionsByLogId = useMemo(
+    () =>
+      workerLogs.reduce((map, log) => {
+        const item = Array.isArray(log?.items) ? log.items[0] : null;
+        map.set(
+          log.id,
+          buildProcessOptionsForAssignmentCard({
+            card: item?.card,
+            style: item?.style,
+          })
+        );
+        return map;
+      }, new Map()),
     [workerLogs]
   );
+  const duplicateProcessKeysByLogId = useMemo(
+    () =>
+      workerLogs.reduce((map, log) => {
+        const currentItem = Array.isArray(log?.items) ? log.items[0] : null;
+        const currentWorkerId = toPositiveIdOrNull(log?.worker?.id);
+        const currentAssignmentPlanId = toPositiveIdOrNull(currentItem?.assignmentPlanId);
+        const usedProcessKeys = new Set();
+
+        if (currentWorkerId && currentAssignmentPlanId) {
+          workerLogs.forEach((otherLog) => {
+            if (otherLog?.id === log?.id) return;
+            const otherItem = Array.isArray(otherLog?.items) ? otherLog.items[0] : null;
+            if (toPositiveIdOrNull(otherLog?.worker?.id) !== currentWorkerId) return;
+            if (toPositiveIdOrNull(otherItem?.assignmentPlanId) !== currentAssignmentPlanId) return;
+
+            const processKey = String(
+              otherItem?.process?.processKey || otherItem?.process?.id || ''
+            ).trim();
+            if (processKey) {
+              usedProcessKeys.add(processKey);
+            }
+          });
+        }
+
+        map.set(log.id, usedProcessKeys);
+        return map;
+      }, new Map()),
+    [workerLogs]
+  );
+  const workerLogGroups = useMemo(
+    () => groupWorkerLogsForDisplay(workerLogs),
+    [workerLogs]
+  );
+  const isSelectedLineDataLoading =
+    Boolean(selectedLine?.id) &&
+    (!isAssignmentPlanCacheReady ||
+      (Boolean(selectedEmployeeScopeKey) && !isEmployeeFactoryDateCacheReady));
   const selectedFactoryWagePerSecond = useMemo(() => {
     if (!selectedFactory?.id) return null;
     const matchedFactory =
@@ -808,10 +1215,6 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       selectedFactory;
     return toOptionalNumber(matchedFactory?.wagePerSecond);
   }, [factories, selectedFactory]);
-  const totalInputItemCount = useMemo(
-    () => workerLogs.reduce((sum, log) => sum + log.items.length, 0),
-    [workerLogs]
-  );
   const agreedAssignmentPlans = useMemo(
     () => assignmentPlans.filter((plan) => isAgreedAssignmentPlan(plan)),
     [assignmentPlans]
@@ -819,153 +1222,195 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const hasAssignmentPlans = assignmentPlans.length > 0;
   const hasOnlyUnagreedAssignmentPlans =
     hasAssignmentPlans && agreedAssignmentPlans.length === 0;
-  const canAddWorker = Boolean(selectedFactory && selectedLine) && employees.length > 0;
 
-  const handleAddWorker = () => {
-    const nextLog = buildWorkerLog();
-    setWorkerLogs((prev) => [...prev, nextLog]);
-    setWorkerFocusRequest({ logId: nextLog.id, token: buildFocusToken() });
-    setDuplicateEntryMessage('');
+  const applyWorkerLogsWithDuplicateCheck = (updater) => {
+    let duplicateDetected = false;
+    setWorkerLogs((prev) => {
+      const nextWorkerLogs = updater(prev);
+      duplicateDetected = findDuplicateWorkerLogIndex(nextWorkerLogs) >= 0;
+      return nextWorkerLogs;
+    });
+    setDuplicateEntryMessage(
+      duplicateDetected
+        ? '같은 작업자/배정카드/공정 조합은 중복 입력할 수 없습니다. 수량으로 합산해 주세요.'
+        : ''
+    );
+  };
+
+  const buildNextRowFromLog = (log) => {
+    const item = Array.isArray(log?.items) && log.items.length > 0 ? log.items[0] : buildEmptyItem();
+    return {
+      id: buildLogId(),
+      worker: log?.worker ?? null,
+      items: [
+        {
+          ...buildEmptyItem(),
+          card: item?.card ?? null,
+          assignmentPlanId: item?.assignmentPlanId ?? null,
+          customer: item?.customer ?? null,
+          style: item?.style ?? null,
+          color: item?.color ?? null,
+          process: null,
+          quantity: '',
+        },
+      ],
+    };
+  };
+
+  const handleAddWorker = (templateLog = null) => {
+    const nextLog = templateLog ? buildNextRowFromLog(templateLog) : buildWorkerLog();
+    applyWorkerLogsWithDuplicateCheck((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      if (!templateLog?.id) return [...safePrev, nextLog];
+      const insertIndex = safePrev.findIndex((log) => log.id === templateLog.id);
+      if (insertIndex < 0) return [...safePrev, nextLog];
+      return [
+        ...safePrev.slice(0, insertIndex + 1),
+        nextLog,
+        ...safePrev.slice(insertIndex + 1),
+      ];
+    });
+    const nextItem = nextLog.items[0];
+    setFocusRequest({
+      entryId: nextLog.id,
+      field: nextItem?.card ? 'process' : nextLog.worker ? 'card' : 'worker',
+      token: buildFocusToken(),
+    });
   };
 
   const handleRemoveWorker = (logId) => {
-    setWorkerLogs((prev) => prev.filter((log) => log.id !== logId));
-    setItemFocusRequest((prev) => (prev?.logId === logId ? null : prev));
-    setWorkerFocusRequest((prev) => (prev?.logId === logId ? null : prev));
-    setDuplicateEntryMessage('');
+    applyWorkerLogsWithDuplicateCheck((prev) => prev.filter((log) => log.id !== logId));
+    setFocusRequest(null);
   };
 
-  const handleWorkerChange = (logId, nextWorker) => {
-    setWorkerLogs((prev) =>
-      prev.map((log) => (log.id === logId ? { ...log, worker: nextWorker } : log))
-    );
-    if (nextWorker?.id) {
-      const firstItemId = workerLogs.find((log) => log.id === logId)?.items?.[0]?.id;
-      if (firstItemId) {
-        setItemFocusRequest({
-          logId,
-          itemId: firstItemId,
-          field: 'card',
-          token: buildFocusToken(),
-        });
-      }
-    }
-    setDuplicateEntryMessage('');
-  };
-
-  const handleAddItem = (logId, { focusField = 'card' } = {}) => {
-    const nextItem = buildEmptyItem();
-    setWorkerLogs((prev) =>
-      prev.map((log) =>
-        log.id === logId
-          ? { ...log, items: [...log.items, nextItem] }
-          : log
+  const handleWorkerChange = (logIdsOrId, nextWorker) => {
+    const normalizedLogIds = Array.from(
+      new Set(
+        (Array.isArray(logIdsOrId) ? logIdsOrId : [logIdsOrId]).filter(Boolean)
       )
     );
-    setItemFocusRequest({
-      logId,
-      itemId: nextItem.id,
-      field: focusField,
-      token: buildFocusToken(),
-    });
-    setDuplicateEntryMessage('');
-  };
+    if (normalizedLogIds.length === 0) return;
+    const logIdSet = new Set(normalizedLogIds);
 
-  const handleRemoveItem = (logId, itemId) => {
-    setWorkerLogs((prev) =>
-      prev.map((log) =>
-        log.id === logId
-          ? { ...log, items: log.items.filter((item) => item.id !== itemId) }
-          : log
-      )
+    applyWorkerLogsWithDuplicateCheck((prev) =>
+      prev.map((log) => (logIdSet.has(log.id) ? { ...log, worker: nextWorker } : log))
     );
-    setDuplicateEntryMessage('');
-  };
-  const handleRequestFocusCancel = () => {
-    requestAnimationFrame(() => {
-      cancelButtonRef.current?.focus();
-    });
-  };
-
-  const handleItemChange = (logId, itemId, field, value) => {
-    let duplicateDetected = false;
-
-    setWorkerLogs((prev) =>
-      prev.map((log) => {
-        if (log.id !== logId) return log;
-        const nextItems = log.items.map((item) => {
-          if (item.id !== itemId) return item;
-          const next = { ...item, [field]: value };
-          if (field === 'card') {
-            if (value) {
-              const matchedStyle = findStyleFromCard({
-                styles,
-                customerName: value.customer,
-                label: value.label,
-              });
-              const fallbackStyleName = stripCardGenderSuffix(value.label) || value.label;
-              next.customer =
-                customers.find((customer) => equalsText(customer?.name, value.customer)) ||
-                (value.customer
-                  ? { id: `virtual-c-${value.dbId}`, name: value.customer }
-                  : null);
-              next.style =
-                matchedStyle ||
-                (fallbackStyleName
-                  ? {
-                      id: `virtual-s-${value.dbId}`,
-                      name: fallbackStyleName,
-                      customer: value.customer || '',
-                      processes: [],
-                    }
-                  : null);
-              next.color =
-                colors.find(
-                  (color) =>
-                    equalsText(color?.name, value.colorName) ||
-                    equalsText(color?.code, value.colorName)
-                ) ||
-                (value.colorName
-                  ? {
-                      id: `virtual-cl-${value.dbId}`,
-                      name: value.colorName,
-                      code: value.colorName,
-                    }
-                  : null);
-              next.process = resolveProcessFromAssignmentCard({
-                card: value,
-                style: next.style,
-                itemId: item.id,
-              });
-              next.assignmentPlanId = value.dbId ?? null;
-            } else {
-              next.customer = null;
-              next.style = null;
-              next.color = null;
-              next.process = null;
-              next.assignmentPlanId = null;
-            }
-          }
-          return next;
-        });
-
-        if (hasDuplicateProcessCombo(nextItems)) {
-          duplicateDetected = true;
-          return log;
-        }
-
-        return { ...log, items: nextItems };
-      })
-    );
-
-    if (duplicateDetected) {
-      setDuplicateEntryMessage(
-        '같은 작업자 내에서는 고객사/스타일/색상/공정 조합을 중복 입력할 수 없습니다. 수량으로 합산해 주세요.'
-      );
+    if (nextWorker) {
+      setFocusRequest({
+        entryId: normalizedLogIds[0],
+        field: 'card',
+        token: buildFocusToken(),
+      });
       return;
     }
+    setFocusRequest(null);
+  };
 
-    setDuplicateEntryMessage('');
+  const handleCardChange = (logId, value) => {
+    applyWorkerLogsWithDuplicateCheck((prev) =>
+      prev.map((log, index) => {
+        if (log.id !== logId) return log;
+        const currentItem =
+          Array.isArray(log.items) && log.items.length > 0 ? log.items[0] : buildEmptyItem();
+        if (!value) {
+          return {
+            ...log,
+            items: [
+              {
+                ...currentItem,
+                card: null,
+                assignmentPlanId: null,
+                customer: null,
+                style: null,
+                process: null,
+                color: null,
+                quantity: '',
+              },
+            ],
+          };
+        }
+
+        return {
+          ...log,
+          items: [
+            {
+              ...currentItem,
+              card: value,
+              assignmentPlanId: value.dbId ?? null,
+              customer: resolvePlanCustomerValue({
+                plan: value,
+                customers,
+                fallbackIndex: index,
+              }),
+              style: resolvePlanStyleValue({
+                plan: value,
+                styles,
+                fallbackIndex: index,
+              }),
+              process: null,
+              color: resolvePlanColorValue({
+                plan: value,
+                colors,
+                fallbackIndex: index,
+              }),
+              quantity: '',
+            },
+          ],
+        };
+      })
+    );
+    if (value) {
+      setFocusRequest({
+        entryId: logId,
+        field: 'process',
+        token: buildFocusToken(),
+      });
+    }
+  };
+
+  const handleProcessChange = (logId, value) => {
+    applyWorkerLogsWithDuplicateCheck((prev) =>
+      prev.map((log) => {
+        if (log.id !== logId) return log;
+        const currentItem =
+          Array.isArray(log.items) && log.items.length > 0 ? log.items[0] : buildEmptyItem();
+        return {
+          ...log,
+          items: [
+            {
+              ...currentItem,
+              process: value,
+            },
+          ],
+        };
+      })
+    );
+    if (value) {
+      setFocusRequest({
+        entryId: logId,
+        field: 'quantity',
+        token: buildFocusToken(),
+      });
+    }
+  };
+
+  const handleQuantityChange = (logId, value) => {
+    applyWorkerLogsWithDuplicateCheck((prev) =>
+      prev.map((log) => {
+        if (log.id !== logId) return log;
+        const currentItem =
+          Array.isArray(log.items) && log.items.length > 0 ? log.items[0] : buildEmptyItem();
+        return {
+          ...log,
+          items: [
+            {
+              ...currentItem,
+              quantity: value,
+            },
+          ],
+        };
+      })
+    );
   };
 
   const summary = useMemo(() => {
@@ -1006,12 +1451,33 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       totalContractedSeconds,
     };
   }, [workerLogs]);
-  const totalExpectedWage = useMemo(() => {
-    if (selectedFactoryWagePerSecond == null) return 0;
-    return summary.totalContractedSeconds * selectedFactoryWagePerSecond;
-  }, [selectedFactoryWagePerSecond, summary.totalContractedSeconds]);
-  const excludedItemCount = Math.max(0, totalInputItemCount - summary.records.length);
+  const autoExceededNote = useMemo(() => {
+    const lines = summary.records
+      .map((record) => {
+        const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
+        if (!assignmentPlanId) return null;
+        const plan = assignmentPlanById.get(assignmentPlanId);
+        const baselineQuantity = resolveAssignmentPlanBaselineQuantity(plan);
+        if (!baselineQuantity || record.quantity <= baselineQuantity) return null;
 
+        return `${
+          String(record?.workerName || '작업자').trim() || '작업자'
+        } / ${formatAssignmentPlanLabel(plan)} / ${formatWorkRecordProcessLabel(record)} ${
+          record.quantity - baselineQuantity
+        }개 초과`;
+      })
+      .filter(Boolean);
+
+    return lines.join('\n');
+  }, [assignmentPlanById, summary.records]);
+  const noteValue = useMemo(
+    () =>
+      buildCombinedNote({
+        manualNote: note,
+        autoNote: autoExceededNote,
+      }),
+    [autoExceededNote, note]
+  );
   const handleSave = () => {
     setSaveErrorMessage('');
     if (!selectedFactory) return;
@@ -1056,15 +1522,13 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       const duplicateLog = workerLogs[duplicateWorkerLogIndex];
       const workerLabel = duplicateLog?.worker?.name || `작업자 ${duplicateWorkerLogIndex + 1}`;
       setDuplicateEntryMessage(
-        `${workerLabel}에 고객사/스타일/색상/공정 중복 항목이 있습니다. 수량으로 합산 후 저장해 주세요.`
+        `${workerLabel}에 같은 배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.`
       );
       return;
     }
     if (hasAssignmentPlans) {
       if (hasOnlyUnagreedAssignmentPlans) {
-        setSaveErrorMessage(
-          '이 라인의 배정 카드는 아직 CT 동의가 완료되지 않았습니다. 라인장 CT 동의 후 작업 기록을 등록해 주세요.'
-        );
+        setSaveErrorMessage('이 라인에는 CT 동의된 배정카드가 없습니다.');
         return;
       }
       const agreedAssignmentPlanIdSet = new Set(
@@ -1076,9 +1540,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         (record) => toPositiveIdOrNull(record?.assignmentPlanId) === null
       );
       if (missingAssignmentRecord) {
-        setSaveErrorMessage(
-          '배정 작업 기록은 CT 동의된 배정 카드 선택이 필수입니다.'
-        );
+        setSaveErrorMessage('배정카드를 선택해 주세요.');
         return;
       }
       const unagreedAssignmentRecord = summary.records.find((record) => {
@@ -1093,11 +1555,6 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         return;
       }
     }
-    const assignmentPlanById = new Map(
-      assignmentPlans
-        .map((plan) => [toPositiveIdOrNull(plan?.dbId), plan])
-        .filter(([planId]) => planId !== null)
-    );
     const assignmentProcessRows = collectAssignmentProcessQuantityRows(summary.records);
     const excessiveAssignmentProcess = assignmentProcessRows.find((row) => {
       const plan = assignmentPlanById.get(row.assignmentPlanId);
@@ -1142,7 +1599,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       itemCount: summary.itemCount,
       totalContractedSeconds: summary.totalContractedSeconds,
       records: summary.records,
-      note: note.trim(),
+      note: noteValue,
     });
   };
 
@@ -1158,10 +1615,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Box>
-          <Typography variant="h6">작업 기록 입력</Typography>
-          <Typography variant="body2" color="text.secondary">
-            작업일 기준 라인 소속 작업자만 입력할 수 있도록 공장-라인 순서로 선택해 주세요.
-          </Typography>
+          <Typography variant="h6">작업 상세</Typography>
         </Box>
         {!isPageMode ? (
           <IconButton onClick={onClose}>
@@ -1188,7 +1642,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           </LocalizationProvider>
 
           <SearchableSelect
-            label="공장"
+            label={!loading && factories.length === 1 ? '공장 (자동선택)' : '공장'}
+            className={!loading && factories.length === 1 ? 'auto-selected-field' : undefined}
             options={factories}
             value={selectedFactory}
             onChange={(_event, value) => setSelectedFactory(value)}
@@ -1226,27 +1681,14 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             }
             InputProps={{ readOnly: true }}
             size="small"
-            helperText={
-              selectedFactory && selectedFactoryWagePerSecond == null
-                ? '공장 관리에서 초당 공임을 먼저 설정하세요.'
-                : undefined
-            }
-            sx={{ minWidth: 240 }}
+            sx={{ minWidth: 240, '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
           />
         </Stack>
 
-        <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
-          <Chip size="small" label={`작업자 ${workerLogs.length}명`} />
-          <Chip size="small" label={`입력 항목 ${totalInputItemCount}건`} />
-          <Chip size="small" label={`저장 대상 ${summary.records.length}건`} color="primary" variant="outlined" />
-          {excludedItemCount > 0 ? (
-            <Chip size="small" label={`미완성 ${excludedItemCount}건`} color="warning" variant="outlined" />
-          ) : null}
-        </Stack>
         <TextField
           label="비고"
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
+          value={noteValue}
+          onChange={(event) => setNote(stripAutoNoteFromText(event.target.value))}
           size="small"
           fullWidth
           multiline
@@ -1264,30 +1706,11 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             {saveErrorMessage}
           </Alert>
         ) : null}
-        {hasOnlyUnagreedAssignmentPlans ? (
-          <Alert severity="warning" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-            이 라인의 배정 카드는 아직 CT 동의 전입니다. 라인장 동의 후 작업 기록 저장이 가능합니다.
-          </Alert>
-        ) : null}
-        {hasAssignmentPlans ? (
-          <Alert severity="info" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-            배정 작업 기록은 CT 동의된 배정 카드 선택이 필수입니다.
-          </Alert>
-        ) : null}
         {isFactoryAggregateInitialLog ? (
           <Alert severity="warning" sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-            이 작업 기록은 공장 단위로 합산 저장된 로그입니다. 라인을 선택해 조회할 수는 있지만, 현재 화면에서는 수정 저장을 지원하지 않습니다.
+            공장 단위 합산 로그는 현재 수정 저장을 지원하지 않습니다.
           </Alert>
         ) : null}
-        <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-          실생산량은 주문/배정 수량과 달라도 됩니다. 초과 생산(+), 손실/폐기(-)를 반영한 실제 완료 수량을 입력해 주세요.
-        </Alert>
-        <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-          다만 배정 카드와 연결된 공정 수량은 비정상적으로 큰 값(기준 수량의 과도한 배수)으로 저장할 수 없습니다.
-        </Alert>
-        <Alert severity="info" icon={false} sx={{ mt: 1.5, py: 0, '& .MuiAlert-message': { py: 0.5 } }}>
-          키보드 사용 팁: 실생산량 칸에서 Tab은 항목 추가 버튼으로 이동, Enter는 새 항목 추가 후 배정 카드 칸으로 이동합니다.
-        </Alert>
       </Paper>
 
       <Paper
@@ -1303,26 +1726,24 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           <Typography variant="subtitle2" color="text.secondary">
             {selectedFactory
               ? selectedLine
-                ? employees.length > 0
-                  ? '작업자를 선택하고 항목을 입력하세요.'
+                ? isSelectedLineDataLoading
+                  ? '라인 데이터를 불러오는 중입니다.'
+                  : employees.length > 0
+                  ? `저장 대상 ${summary.records.length}건`
                   : '선택한 라인/작업일 기준으로 입력 가능한 작업자가 없습니다.'
                 : '라인을 먼저 선택하세요.'
               : '먼저 공장을 선택하세요.'}
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAddWorker}
-            disabled={!canAddWorker}
-          >
-            작업자 추가
-          </Button>
         </Box>
 
         {selectedFactory && employees.length === 0 ? (
           !selectedLine ? (
             <Alert severity="info" sx={{ mt: 2 }}>
               라인을 선택하면 해당 라인 소속 작업자만 불러옵니다.
+            </Alert>
+          ) : isSelectedLineDataLoading ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              라인 데이터를 준비하고 있습니다.
             </Alert>
           ) : (
           <Alert severity="warning" sx={{ mt: 2 }}>
@@ -1331,56 +1752,62 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           )
         ) : workerLogs.length === 0 ? (
           <Typography color="text.secondary" align="center" sx={{ py: 6 }}>
-            라인 선택 후 작업자 행이 자동으로 생성됩니다.
+            첫 줄을 불러오는 중입니다.
           </Typography>
         ) : (
-          workerLogs.map((log, index) => (
-            <WorkerLog
-              key={log.id}
-              rowIndex={index + 1}
-              log={log}
-              onWorkerChange={handleWorkerChange}
-              onRemoveWorker={handleRemoveWorker}
-              onAddItem={handleAddItem}
-              onRemoveItem={handleRemoveItem}
-              onItemChange={handleItemChange}
-              availableEmployees={employees}
-              factory={selectedFactory}
-              assignmentPlans={assignmentPlans}
-              takenWorkerIds={takenWorkerIds}
-              focusRequest={itemFocusRequest?.logId === log.id ? itemFocusRequest : null}
-              focusWorkerRequest={workerFocusRequest?.logId === log.id ? workerFocusRequest : null}
-              onRequestFocusCancel={handleRequestFocusCancel}
-            />
-          ))
+          <Stack spacing={1.25}>
+            {workerLogGroups.map((group) => (
+              <WorkerLog
+                key={group.id}
+                group={{
+                  ...group,
+                  entries: group.entries.map((log) => {
+                    const item =
+                      Array.isArray(log.items) && log.items.length > 0
+                        ? log.items[0]
+                        : buildEmptyItem();
+                    return {
+                      id: log.id,
+                      worker: log.worker,
+                      card: item.card,
+                      assignmentPlanId: item.assignmentPlanId,
+                      customer: item.customer,
+                      style: item.style,
+                      process: item.process,
+                      color: item.color,
+                      quantity: item.quantity,
+                    };
+                  }),
+                }}
+                availableEmployees={employees}
+                assignmentPlans={assignmentPlans}
+                processOptionsByLogId={processOptionsByLogId}
+                duplicateProcessKeysByLogId={duplicateProcessKeysByLogId}
+                focusRequest={focusRequest}
+                onWorkerChange={handleWorkerChange}
+                onCardChange={handleCardChange}
+                onProcessChange={handleProcessChange}
+                onQuantityChange={handleQuantityChange}
+                onAddRow={handleAddWorker}
+                onRemoveRow={handleRemoveWorker}
+                canRemoveRow={workerLogs.length > 1}
+              />
+            ))}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => handleAddWorker()}
+                disabled={!selectedLine || isSelectedLineDataLoading || employees.length === 0}
+              >
+                다른 작업자 추가
+              </Button>
+            </Box>
+          </Stack>
         )}
       </Paper>
 
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Stack spacing={0.5}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            총 CT:{' '}
-            {formatNumberWithCommas(summary.totalContractedSeconds, {
-              fallback: '0',
-              maximumFractionDigits: 0,
-            })}
-            초
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            예상 총 공임:{' '}
-            {selectedFactoryWagePerSecond == null
-              ? '-'
-              : `${formatNumberWithCommas(totalExpectedWage, {
-                  fallback: '0',
-                  maximumFractionDigits: 2,
-                })} 동`}
-          </Typography>
-          {excludedItemCount > 0 ? (
-            <Typography variant="caption" color="warning.main">
-              미완성 항목 {excludedItemCount}건은 저장 시 제외됩니다.
-            </Typography>
-          ) : null}
-        </Stack>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" onClick={onClose} ref={cancelButtonRef}>
             취소
@@ -1391,6 +1818,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             disabled={
               !selectedFactory ||
               !selectedLine ||
+              isSelectedLineDataLoading ||
               summary.records.length === 0 ||
               isFactoryAggregateInitialLog
             }

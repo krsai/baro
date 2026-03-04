@@ -180,11 +180,12 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="초당 급여"
+              label="초당 급여 (자동계산)"
               name="wagePerSecond"
               value={computedWageDisplay}
               InputProps={{ readOnly: true }}
               helperText="월 목표 급여 기준으로 자동 계산"
+              sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
             />
           </Grid>
         </Grid>

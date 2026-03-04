@@ -108,6 +108,37 @@
   background-color: var(--color-background-dark); /* Simulate action.hover or a lighter background */
 }
 
+/* ─── Placeholder 텍스트 크기 축소 ───────────────────────────────────────── */
+/* 실제 placeholder 속성 */
+.MuiInputBase-input::placeholder,
+.MuiInputBase-inputMultiline::placeholder {
+  font-size: 0.75rem !important;
+}
+/* MUI floating label이 input 내부에 위치할 때 (값 없는 경우, 시각적 placeholder 역할) */
+.MuiInputLabel-sizeSmall:not(.MuiInputLabel-shrink) {
+  font-size: 0.8125rem !important;
+}
+
+/* ─── Select 드롭다운 옵션 텍스트 크기 축소 ─────────────────────────────── */
+.MuiMenuItem-root {
+  font-size: 0.8125rem !important;
+}
+
+/* ─── 자동선택/자동입력 필드 (disabled 상태이지만 값이 있는 경우) ─────────── */
+/* 값이 회색으로 보여 placeholder와 구분이 어려운 문제 해결 */
+.auto-selected-field .MuiInputBase-input.Mui-disabled {
+  -webkit-text-fill-color: rgba(0, 0, 0, 0.78) !important;
+}
+.auto-selected-field .MuiInputLabel-root.Mui-disabled {
+  color: rgba(0, 0, 0, 0.55) !important;
+}
+.auto-selected-field .MuiOutlinedInput-root.Mui-disabled {
+  background-color: #edf5ff !important;
+}
+.auto-selected-field .MuiOutlinedInput-root.Mui-disabled .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(100, 160, 230, 0.4) !important;
+}
+
 /* ─── Compact Date Picker ────────────────────────────────────────────────── */
 /* .compact-date-picker 클래스는 CustomDatePicker에서 자동으로 적용됨 */
 .compact-date-picker {

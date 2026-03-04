@@ -314,6 +314,10 @@ const MainLayout = () => {
   );
   const resolveTabLabel = React.useCallback(
     (path) => {
+      if (path === '/work-history/new') return '작업 상세';
+      if (path.startsWith('/work-history/') && path !== '/work-history') {
+        return '작업 상세';
+      }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||
         flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));

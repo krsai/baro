@@ -1,148 +1,144 @@
 import React, { useEffect, useRef } from 'react';
-import { Box, IconButton, TextField, Typography } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
+import { Box, IconButton, Stack, TextField } from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
-const toSeconds = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return parsed > 0 ? Math.round(parsed) : 0;
-};
-
-const resolveFirstPositiveSeconds = (...values) => {
-  for (const value of values) {
-    const seconds = toSeconds(value);
-    if (seconds > 0) return seconds;
-  }
-  return 0;
-};
-
-const resolveCtSeconds = (process) => {
-  if (!process) return 0;
-  return resolveFirstPositiveSeconds(
-    process.ctSeconds,
-    process.contractedSeconds,
-    process.at,
-    process.pt
-  );
-};
-
 const isAgreedAssignmentPlan = (plan) =>
   String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
-
-const formatTextFieldValue = (value) => {
-  const text = String(value || '').trim();
-  return text || '-';
-};
-
-const formatProcessLabel = (process) => {
-  if (!process) return '-';
-  const code = String(process?.code || '').trim();
-  const name = String(process?.name || '').trim();
-  if (code && name) return `[${code}] ${name}`;
-  return code || name || '-';
-};
 
 const formatCardOptionLabel = (option) => {
   const customer = String(option?.customer || '').trim() || '고객사 미지정';
   const orderNo = String(option?.orderNo || '-').trim() || '-';
   const styleLabel = String(option?.label || '').trim() || '스타일 미지정';
   const colorName = String(option?.colorName || '').trim() || '색상 미지정';
-  const quantityText =
-    option?.quantity != null
-      ? ` · 배정 ${formatNumberWithCommas(option.quantity, {
-          fallback: '0',
-          maximumFractionDigits: 0,
-        })}`
-      : '';
-  const statusText = isAgreedAssignmentPlan(option) ? 'CT 동의' : 'CT 미동의';
-  return `${customer} · [${orderNo}] · ${styleLabel} · ${colorName}${quantityText} · ${statusText}`;
+  return `${customer} · [${orderNo}] · ${styleLabel} · ${colorName}`;
 };
 
-const calculateWage = (item, factory) => {
-  const quantity = Number(item?.quantity) || 0;
-  if (!item?.process || quantity <= 0 || !factory) {
-    return { ctSeconds: 0, wagePerPiece: 0, totalWage: 0, hasValidWage: true };
-  }
+const formatProcessOptionLabel = (option) => {
+  if (!option) return '';
+  const code = String(option?.code || '').trim();
+  const name = String(option?.name || '').trim();
+  if (code && name) return `[${code}] ${name}`;
+  return code || name || '공정';
+};
 
-  const ctSeconds = resolveCtSeconds(item.process);
-  const wagePerSecond = Number(factory.wagePerSecond);
-  if (!Number.isFinite(wagePerSecond) || wagePerSecond <= 0) {
-    return { ctSeconds, wagePerPiece: 0, totalWage: 0, hasValidWage: false };
+const resolveRowCtSeconds = (process) => {
+  const candidates = [
+    process?.ctSeconds,
+    process?.contractedSeconds,
+    process?.ct,
+    process?.at,
+    process?.pt,
+  ];
+  for (const value of candidates) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed);
+    }
   }
-  const wagePerPiece = ctSeconds * wagePerSecond;
-  const totalWage = wagePerPiece * quantity;
-
-  return {
-    ctSeconds,
-    wagePerPiece,
-    totalWage,
-    hasValidWage: true,
-  };
+  return 0;
 };
 
 const WorkItemRow = ({
-  item,
-  itemIndex,
-  disabled,
-  focusRequest,
-  onItemChange,
-  onRemoveItem,
-  onRequestAddItem,
-  onRequestActionFocus,
-  factory,
+  entry,
+  availableEmployees = [],
   assignmentPlans = [],
+  processOptions = [],
+  duplicateProcessKeys = new Set(),
+  focusRequest,
+  onWorkerChange,
+  onCardChange,
+  onProcessChange,
+  onQuantityChange,
+  onAddRow,
+  onRemoveRow,
+  canRemove = true,
+  embedded = false,
+  showWorkerField = false,
 }) => {
+  const workerInputRef = useRef(null);
   const cardInputRef = useRef(null);
+  const processInputRef = useRef(null);
   const quantityInputRef = useRef(null);
 
-  const wageInfo = calculateWage(item, factory);
-  const canMoveToNextItem = !disabled && Boolean(item.process) && Number(item.quantity) > 0;
-
   useEffect(() => {
-    if (!focusRequest?.token || focusRequest.itemId !== item.id) return;
+    if (!focusRequest?.token || focusRequest.entryId !== entry?.id) return;
 
     const focusMap = {
+      worker: showWorkerField ? workerInputRef.current : null,
       card: cardInputRef.current,
+      process: processInputRef.current,
       quantity: quantityInputRef.current,
     };
 
     requestAnimationFrame(() => {
-      const target = focusMap[focusRequest.field] || cardInputRef.current;
+      const target =
+        focusMap[focusRequest.field] ||
+        (showWorkerField ? workerInputRef.current : cardInputRef.current);
       target?.focus();
     });
-  }, [focusRequest?.token, focusRequest?.itemId, focusRequest?.field, item.id]);
+  }, [entry?.id, focusRequest?.entryId, focusRequest?.field, focusRequest?.token, showWorkerField]);
 
-  const hasCard = Boolean(item.card);
+  const currentWorker = entry?.worker || null;
+  const cardDisabled = !currentWorker || assignmentPlans.length === 0;
+  const processDisabled = !entry?.card || processOptions.length === 0;
+  const quantityDisabled = !entry?.process;
+  const ctSeconds = resolveRowCtSeconds(entry?.process);
 
   return (
     <Box
       sx={{
-        mb: 1,
-        p: 1,
-        border: '1px solid',
-        borderColor: hasCard ? 'primary.light' : 'divider',
-        borderRadius: 1.5,
-        backgroundColor: disabled ? '#fafafa' : '#fff',
+        p: embedded ? 0 : 1.5,
+        border: embedded ? 'none' : '1px solid',
+        borderColor: embedded ? 'transparent' : 'divider',
+        borderRadius: embedded ? 0 : 2,
+        backgroundColor: embedded ? 'transparent' : '#fff',
       }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-          항목 {itemIndex}
-        </Typography>
-        <IconButton onClick={onRemoveItem} color="error" tabIndex={-1} size="small" disabled={disabled}>
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      </Box>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1,
+          gridTemplateColumns: {
+            xs: '1fr',
+            xl: 'minmax(180px, 1fr) minmax(360px, 2.3fr) minmax(220px, 1.35fr) 120px 120px auto',
+          },
+          alignItems: 'start',
+        }}
+      >
+        {showWorkerField ? (
+          <SearchableSelect
+            label="작업자"
+            options={availableEmployees}
+            value={currentWorker}
+            onChange={(_event, value) => onWorkerChange?.(entry?.id, value)}
+            autoHighlight
+            getOptionLabel={(option) => option?.name || ''}
+            isOptionEqualToValue={(option, value) => option?.id === value?.id}
+            textFieldProps={{
+              size: 'small',
+              placeholder: '작업자를 선택하세요.',
+              inputRef: workerInputRef,
+            }}
+          />
+        ) : (
+          <Box
+            aria-hidden="true"
+            sx={{
+              display: { xs: 'none', xl: 'block' },
+            }}
+          />
+        )}
 
-      <Box sx={{ mb: 1 }}>
         <SearchableSelect
-          label="배정 카드 (CT 동의)"
+          label="배정카드"
           options={assignmentPlans}
-          value={item.card || null}
-          onChange={(_event, value) => onItemChange('card', value)}
-          disabled={disabled || assignmentPlans.length === 0}
+          value={entry?.card || null}
+          onChange={(_event, value) => onCardChange?.(entry?.id, value)}
+          disabled={cardDisabled}
+          autoHighlight
           getOptionLabel={formatCardOptionLabel}
           isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
           getOptionDisabled={(option) => !isAgreedAssignmentPlan(option)}
@@ -150,77 +146,51 @@ const WorkItemRow = ({
             size: 'small',
             placeholder:
               assignmentPlans.length === 0
-                ? '선택 가능한 배정 카드가 없습니다.'
-                : 'CT 동의된 카드를 선택하면 고객사/스타일/색상/공정이 자동 입력됩니다.',
+                ? '선택 가능한 배정카드가 없습니다.'
+                : '배정카드를 선택하세요.',
             inputRef: cardInputRef,
           }}
         />
-      </Box>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gap: 1,
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: 'minmax(140px, 1.05fr) minmax(160px, 1.1fr) minmax(130px, 1fr) minmax(220px, 1.4fr) 90px 110px 140px 160px',
-          },
-        }}
-      >
-        <TextField
-          label="고객사"
-          size="small"
-          value={formatTextFieldValue(item.customer?.name)}
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-          fullWidth
-        />
-
-        <TextField
-          label="스타일"
-          size="small"
-          value={formatTextFieldValue(item.style?.name)}
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-          fullWidth
-        />
-
-        <TextField
-          label="색상"
-          size="small"
-          value={formatTextFieldValue(item.color?.name || item.color?.code)}
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-          fullWidth
-        />
-
-        <TextField
+        <SearchableSelect
           label="공정"
-          size="small"
-          value={formatProcessLabel(item.process)}
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-          fullWidth
+          options={processOptions}
+          value={entry?.process || null}
+          onChange={(_event, value) => onProcessChange?.(entry?.id, value)}
+          disabled={processDisabled}
+          autoHighlight
+          getOptionLabel={formatProcessOptionLabel}
+          isOptionEqualToValue={(option, value) => option?.id === value?.id}
+          getOptionDisabled={(option) =>
+            duplicateProcessKeys.has(option?.processKey || option?.id) &&
+            (entry?.process?.processKey || entry?.process?.id) !==
+              (option?.processKey || option?.id)
+          }
+          textFieldProps={{
+            size: 'small',
+            placeholder: !entry?.card
+              ? '배정카드를 먼저 선택하세요.'
+              : processOptions.length === 0
+                ? '선택 가능한 공정이 없습니다.'
+                : '공정을 선택하세요.',
+            inputRef: processInputRef,
+          }}
         />
 
         <TextField
-          label="실생산량"
+          label="생산량"
           type="number"
           size="small"
-          value={item.quantity}
+          value={entry?.quantity ?? ''}
           onChange={(event) => {
             const raw = event.target.value;
             if (raw === '') {
-              onItemChange('quantity', '');
+              onQuantityChange?.(entry?.id, '');
               return;
             }
             const parsed = Number.parseInt(raw, 10);
             if (Number.isFinite(parsed) && parsed > 0) {
-              onItemChange('quantity', parsed);
+              onQuantityChange?.(entry?.id, parsed);
             }
           }}
           onKeyDown={(event) => {
@@ -228,40 +198,26 @@ const WorkItemRow = ({
               event.preventDefault();
               return;
             }
-
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing && canMoveToNextItem) {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
               event.preventDefault();
-              onRequestAddItem?.();
-              return;
-            }
-
-            if (
-              event.key === 'Tab' &&
-              !event.shiftKey &&
-              !event.ctrlKey &&
-              !event.altKey &&
-              !event.metaKey &&
-              !event.nativeEvent.isComposing
-            ) {
-              event.preventDefault();
-              onRequestActionFocus?.();
+              onAddRow?.(entry);
             }
           }}
-          disabled={disabled || !item.process}
+          disabled={quantityDisabled}
           inputRef={quantityInputRef}
           inputProps={{ min: 1 }}
           fullWidth
         />
 
         <TextField
-          label="CT(초/개)"
+          label="CT"
           size="small"
           value={
-            item.process
-              ? formatNumberWithCommas(wageInfo.ctSeconds, {
+            entry?.process
+              ? `${formatNumberWithCommas(ctSeconds, {
                   fallback: '0',
                   maximumFractionDigits: 0,
-                })
+                })}초`
               : '-'
           }
           InputProps={{ readOnly: true }}
@@ -270,53 +226,25 @@ const WorkItemRow = ({
           fullWidth
         />
 
-        <TextField
-          label="공임(개당)"
-          size="small"
-          value={
-            item.process && wageInfo.hasValidWage
-              ? `${formatNumberWithCommas(wageInfo.wagePerPiece, {
-                  fallback: '0',
-                  maximumFractionDigits: 2,
-                })} 동`
-              : item.process
-                ? '공임 미설정'
-                : '-'
-          }
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{
-            '& .MuiInputBase-root': { backgroundColor: '#f8fafc' },
-            ...(item.process && !wageInfo.hasValidWage
-              ? { '& .MuiInputBase-input': { color: 'warning.main', fontWeight: 700 } }
-              : {}),
-          }}
-          fullWidth
-        />
-
-        <TextField
-          label="총 공임"
-          size="small"
-          value={
-            item.quantity && wageInfo.hasValidWage
-              ? `${formatNumberWithCommas(wageInfo.totalWage, {
-                  fallback: '0',
-                  maximumFractionDigits: 2,
-                })} 동`
-              : item.quantity
-                ? '공임 미설정'
-                : '-'
-          }
-          InputProps={{ readOnly: true }}
-          inputProps={{ tabIndex: -1 }}
-          sx={{
-            '& .MuiInputBase-root': { backgroundColor: '#f8fafc' },
-            ...(item.quantity && !wageInfo.hasValidWage
-              ? { '& .MuiInputBase-input': { color: 'warning.main', fontWeight: 700 } }
-              : {}),
-          }}
-          fullWidth
-        />
+        <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+          <IconButton
+            color="primary"
+            onClick={() => onAddRow?.(entry)}
+            aria-label="행 추가"
+            size="small"
+          >
+            <AddCircleOutlineIcon />
+          </IconButton>
+          <IconButton
+            color="error"
+            onClick={() => onRemoveRow?.(entry?.id)}
+            aria-label="행 삭제"
+            size="small"
+            disabled={!canRemove}
+          >
+            <DeleteOutlineIcon />
+          </IconButton>
+        </Stack>
       </Box>
     </Box>
   );

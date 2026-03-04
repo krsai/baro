@@ -19,6 +19,7 @@ import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { fetchAttributes } from '../../../utils/attributeApi';
 
 const EMPLOYEE_STATUS_OPTIONS = [
   { value: 'ACTIVE', label: '재직' },
@@ -33,10 +34,27 @@ const ORG_ROLE_OPTIONS = [
   { value: 'WORKER', label: '작업자' },
 ];
 
+const PAY_TYPE_OPTIONS = [
+  { value: '', label: '직무 기본값 사용' },
+  { value: 'CT', label: '성과급(CT)' },
+  { value: 'FIXED', label: '고정급' },
+];
+
 const getRoleOptionsByOrgType = (orgType) =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? ORG_ROLE_OPTIONS.filter((option) => option.value !== 'WORKER')
     : ORG_ROLE_OPTIONS;
+
+const formatPayTypeLabel = (value) =>
+  String(value || '').toUpperCase() === 'CT' ? '성과급(CT)' : '고정급';
+
+const sortJobRoleOptions = (rows = []) =>
+  [...rows].sort((a, b) => {
+    const aOrder = Number.isFinite(Number(a?.sortOrder)) ? Number(a.sortOrder) : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(Number(b?.sortOrder)) ? Number(b.sortOrder) : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return String(a?.name || a?.code || '').localeCompare(String(b?.name || b?.code || ''));
+  });
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -48,7 +66,9 @@ const buildEmployeeDraft = (member, employee) => ({
   name: employee?.name || '',
   bankName: employee?.bankName || '',
   bankAccountNumber: employee?.bankAccountNumber || '',
-  role: String(member?.role || 'WORKER').toUpperCase(),
+  orgRole: String(member?.role || 'WORKER').toUpperCase(),
+  jobRoleId: employee?.roleId ? String(employee.roleId) : '',
+  payType: String(employee?.payType || '').toUpperCase(),
   factoryId: employee?.factoryId ? String(employee.factoryId) : '',
   status: member.status,
 });
@@ -59,6 +79,7 @@ const EmployeeRow = React.memo(
     employee,
     factories,
     roleOptions,
+    jobRoleOptions,
     selectedOrgType,
     isUpdating,
     onSave,
@@ -68,6 +89,14 @@ const EmployeeRow = React.memo(
     const [isDirty, setIsDirty] = useState(false);
     const joinedAt = employee?.joinedAt || member.approvedAt;
     const leftAt = employee?.leftAt;
+    const selectedJobRole = useMemo(
+      () =>
+        jobRoleOptions.find((role) => String(role.id) === String(draft.jobRoleId || '')) || null,
+      [draft.jobRoleId, jobRoleOptions]
+    );
+    const defaultPayTypeLabel = selectedJobRole
+      ? formatPayTypeLabel(selectedJobRole.defaultPayType)
+      : null;
 
     useEffect(() => {
       if (!isDirty) {
@@ -145,8 +174,8 @@ const EmployeeRow = React.memo(
           <TextField
             select
             size="small"
-            value={draft.role}
-            onChange={(e) => handleDraftChange({ role: e.target.value })}
+            value={draft.orgRole}
+            onChange={(e) => handleDraftChange({ orgRole: e.target.value })}
             disabled={isUpdating}
           >
             {roleOptions.map((role) => (
@@ -155,6 +184,48 @@ const EmployeeRow = React.memo(
               </MenuItem>
             ))}
           </TextField>
+        </TableCell>
+
+        <TableCell>
+          <TextField
+            select
+            size="small"
+            value={draft.jobRoleId}
+            onChange={(e) => handleDraftChange({ jobRoleId: e.target.value })}
+            disabled={isUpdating}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="">미지정</MenuItem>
+            {jobRoleOptions.map((role) => (
+              <MenuItem key={role.id} value={String(role.id)}>
+                {role.name || role.code}
+              </MenuItem>
+            ))}
+          </TextField>
+        </TableCell>
+
+        <TableCell>
+          <TextField
+            select
+            size="small"
+            value={draft.payType}
+            onChange={(e) => handleDraftChange({ payType: e.target.value })}
+            disabled={isUpdating}
+            sx={{ minWidth: 170 }}
+          >
+            {PAY_TYPE_OPTIONS.map((option) => (
+              <MenuItem key={option.value || 'default'} value={option.value}>
+                {option.value || !defaultPayTypeLabel
+                  ? option.label
+                  : `${option.label} (${defaultPayTypeLabel})`}
+              </MenuItem>
+            ))}
+          </TextField>
+          {!draft.payType && defaultPayTypeLabel && (
+            <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+              현재 기본값: {defaultPayTypeLabel}
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>
@@ -209,6 +280,7 @@ const EmployeeBoard = () => {
   const [pendingMembers, setPendingMembers] = useState([]);
   const [activeMembers, setActiveMembers] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [myEmail, setMyEmail] = useState(user?.email || '');
 
   const [statusMessage, setStatusMessage] = useState(null);
@@ -281,12 +353,28 @@ const EmployeeBoard = () => {
     }
   }, []);
 
+  const fetchJobRoles = useCallback(async (orgId) => {
+    if (!orgId) return;
+    try {
+      const data = await fetchAttributes({
+        orgId,
+        skipGlobalLoading: true,
+      });
+      const roles = Array.isArray(data?.roles) ? data.roles : [];
+      setJobRoleOptions(sortJobRoleOptions(roles));
+    } catch (_error) {
+      setJobRoleOptions([]);
+      setStatusMessage({ type: 'error', text: '직무 정보를 불러오지 못했습니다.' });
+    }
+  }, []);
+
   useEffect(() => {
     if (!activeOrgId) return;
     fetchMemberships(activeOrgId);
     fetchEmployees(activeOrgId);
     fetchFactories(activeOrgId, activeOrgType);
-  }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories]);
+    fetchJobRoles(activeOrgId);
+  }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories, fetchJobRoles]);
 
   const handleApprove = async (member) => {
     if (approvingId) return;
@@ -366,6 +454,8 @@ const EmployeeBoard = () => {
           name: draft.name,
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
+          roleId: draft.jobRoleId ? Number(draft.jobRoleId) : null,
+          payType: draft.payType || null,
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
@@ -376,13 +466,13 @@ const EmployeeBoard = () => {
           body: JSON.stringify(employeePayload),
         });
 
-        if (draft.status !== member.status || draft.role !== member.role) {
+        if (draft.status !== member.status || draft.orgRole !== member.role) {
           await requestJSON(`/org-memberships/${member.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               status: draft.status,
-              role: draft.role,
+              role: draft.orgRole,
               approvedBy: myEmail,
             }),
           });
@@ -444,13 +534,13 @@ const EmployeeBoard = () => {
             <TableContainer>
               <Table size="small">
                 <TableHead>
-                  <TableRow>
-                    <TableCell>이메일</TableCell>
-                    <TableCell>공장</TableCell>
-                    <TableCell>역할</TableCell>
-                    <TableCell>요청일</TableCell>
-                    <TableCell>액션</TableCell>
-                  </TableRow>
+                    <TableRow>
+                      <TableCell>이메일</TableCell>
+                      <TableCell>공장</TableCell>
+                      <TableCell>권한</TableCell>
+                      <TableCell>요청일</TableCell>
+                      <TableCell>액션</TableCell>
+                    </TableRow>
                 </TableHead>
                 <TableBody>
                   {pendingMembers.map((member) => (
@@ -551,7 +641,9 @@ const EmployeeBoard = () => {
                   <TableCell>이메일</TableCell>
                   <TableCell>은행</TableCell>
                   <TableCell>계좌번호</TableCell>
-                  <TableCell>역할</TableCell>
+                  <TableCell>권한</TableCell>
+                  <TableCell>직무</TableCell>
+                  <TableCell>급여 타입</TableCell>
                   <TableCell>상태</TableCell>
                   <TableCell>입사일</TableCell>
                   <TableCell>퇴사일</TableCell>
@@ -560,7 +652,7 @@ const EmployeeBoard = () => {
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
-                  <TableStatusRow colSpan={10} message="표시할 직원이 없습니다." sx={{ py: 2 }} />
+                  <TableStatusRow colSpan={12} message="표시할 직원이 없습니다." sx={{ py: 2 }} />
                 ) : (
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
@@ -575,6 +667,7 @@ const EmployeeBoard = () => {
                         employee={employee}
                         factories={factories}
                         roleOptions={roleOptions}
+                        jobRoleOptions={jobRoleOptions}
                         selectedOrgType={activeOrgType}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}

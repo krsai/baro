@@ -46,6 +46,47 @@ const DEFAULT_ORG = {
   type: "MANUFACTURER" as const,
 };
 
+const PAY_TYPE_OPTIONS = new Set(["CT", "FIXED"]);
+const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
+const DEFAULT_EMPLOYEE_ROLES = [
+  {
+    code: "WORKER_CUTTING",
+    name: "작업자 - 재단",
+    defaultPayType: "FIXED",
+    sortOrder: 1,
+  },
+  {
+    code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
+    name: "작업자 - 봉제",
+    defaultPayType: "CT",
+    sortOrder: 2,
+  },
+  {
+    code: "WORKER_IRONING",
+    name: "작업자 - 다림",
+    defaultPayType: "FIXED",
+    sortOrder: 3,
+  },
+  {
+    code: "WORKER_INSPECTION",
+    name: "작업자 - 검수",
+    defaultPayType: "FIXED",
+    sortOrder: 4,
+  },
+  {
+    code: "WORKER_PACKING",
+    name: "작업자 - 포장",
+    defaultPayType: "FIXED",
+    sortOrder: 5,
+  },
+  {
+    code: "WORKER_OTHER",
+    name: "작업자 - 기타",
+    defaultPayType: "FIXED",
+    sortOrder: 6,
+  },
+] as const;
+
 const DEFAULT_ATTRIBUTES = {
   colors: [] as { code: string; name: string }[],
   categories: [
@@ -55,11 +96,7 @@ const DEFAULT_ATTRIBUTES = {
     { code: "DRS", name: "Dress" },
     { code: "ACC", name: "Accessory" },
   ],
-  roles: [
-    { code: "ADMIN", name: "관리자" },
-    { code: "MGR", name: "공장장" },
-    { code: "WORKER", name: "작업자" },
-  ],
+  roles: DEFAULT_EMPLOYEE_ROLES,
   processes: [
     { code: "P01", name: "테스트 공정 01" },
     { code: "P02", name: "테스트 공정 02" },
@@ -95,6 +132,21 @@ const toNumberOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+const normalizePayType = (
+  value: unknown,
+  fallback: "CT" | "FIXED" | null = null
+): "CT" | "FIXED" | null => {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const normalized = String(value).trim().toUpperCase();
+  return PAY_TYPE_OPTIONS.has(normalized)
+    ? (normalized as "CT" | "FIXED")
+    : fallback;
+};
+const toSortOrder = (value: unknown, fallback = 0): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.trunc(parsed));
 };
 const FACTORY_WORK_DAYS_PER_MONTH = 26;
 const FACTORY_WORK_HOURS_PER_DAY = 8;
@@ -4098,15 +4150,166 @@ const seedAttributesIfEmpty = async (orgId: number) => {
       data: DEFAULT_ATTRIBUTES.categories.map((item) => ({ ...item, orgId })),
       skipDuplicates: true,
     }),
-    prisma.attrRole.createMany({
-      data: DEFAULT_ATTRIBUTES.roles.map((item) => ({ ...item, orgId })),
-      skipDuplicates: true,
-    }),
     prisma.attrProcess.createMany({
       data: DEFAULT_ATTRIBUTES.processes.map((item) => ({ ...item, orgId })),
       skipDuplicates: true,
     }),
   ]);
+  await ensureDefaultEmployeeRoles(orgId);
+};
+
+const resolveEmployeeEffectivePayType = (employee: any): "CT" | "FIXED" =>
+  normalizePayType(employee?.payType, null) ??
+  normalizePayType(employee?.role?.defaultPayType, "FIXED") ??
+  "FIXED";
+
+const toAttrRoleResponse = (role: any) => ({
+  id: role?.id ?? null,
+  code: String(role?.code ?? "").trim(),
+  name: String(role?.name ?? "").trim(),
+  defaultPayType: normalizePayType(role?.defaultPayType, "FIXED") ?? "FIXED",
+  sortOrder: toSortOrder(role?.sortOrder, 0),
+});
+
+const toEmployeeResponse = (employee: any) => ({
+  id: employee?.id ?? null,
+  orgId: employee?.orgId ?? null,
+  orgMembershipId: employee?.orgMembershipId ?? null,
+  factoryId: employee?.factoryId ?? null,
+  roleId: employee?.roleId ?? null,
+  roleCode: String(employee?.role?.code ?? "").trim(),
+  roleName: String(employee?.role?.name ?? "").trim(),
+  roleDefaultPayType:
+    normalizePayType(employee?.role?.defaultPayType, "FIXED") ?? "FIXED",
+  payType: normalizePayType(employee?.payType, null),
+  effectivePayType: resolveEmployeeEffectivePayType(employee),
+  name: employee?.name ?? null,
+  phone: employee?.phone ?? null,
+  bankName: employee?.bankName ?? null,
+  bankAccountNumber: employee?.bankAccountNumber ?? null,
+  lineName: employee?.lineName ?? null,
+  position: employee?.position ?? null,
+  joinedAt: employee?.joinedAt ?? null,
+  leftAt: employee?.leftAt ?? null,
+  leaveStartAt: employee?.leaveStartAt ?? null,
+  leaveEndAt: employee?.leaveEndAt ?? null,
+  createdAt: employee?.createdAt ?? null,
+  updatedAt: employee?.updatedAt ?? null,
+});
+
+const ensureDefaultEmployeeRoles = async (orgId: number) => {
+  const existingRoles = await prisma.attrRole.findMany({
+    where: { orgId },
+    select: { id: true, code: true, name: true, defaultPayType: true, sortOrder: true },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+
+  const sewingLegacyCodes = new Set(["WORKER", DEFAULT_EMPLOYEE_ROLE_CODE_SEWING]);
+  const sewingLegacyNames = new Set(["작업자", "작업자 - 봉제"]);
+  const legacyWorkerRoleIds = existingRoles
+    .filter((role) => {
+      const normalizedCode = String(role?.code || "").trim().toUpperCase();
+      const normalizedName = String(role?.name || "").trim();
+      return (
+        sewingLegacyCodes.has(normalizedCode) || sewingLegacyNames.has(normalizedName)
+      );
+    })
+    .map((role) => Number(role.id))
+    .filter((roleId) => Number.isFinite(roleId));
+
+  const usedRoleIds = new Set<number>();
+  const writes: Prisma.PrismaPromise<any>[] = [];
+
+  DEFAULT_EMPLOYEE_ROLES.forEach((defaultRole) => {
+    const matchedRole =
+      existingRoles.find(
+        (role) => !usedRoleIds.has(role.id) && role.code === defaultRole.code
+      ) ||
+      existingRoles.find(
+        (role) => !usedRoleIds.has(role.id) && role.name === defaultRole.name
+      ) ||
+      (defaultRole.code === DEFAULT_EMPLOYEE_ROLE_CODE_SEWING
+        ? existingRoles.find(
+            (role) =>
+              !usedRoleIds.has(role.id) &&
+              (role.code === "WORKER" || role.name === "작업자")
+          )
+        : null);
+
+    if (matchedRole) {
+      usedRoleIds.add(matchedRole.id);
+      writes.push(
+        prisma.attrRole.update({
+          where: { id: matchedRole.id },
+          data: {
+            code: defaultRole.code,
+            name: defaultRole.name,
+            defaultPayType: defaultRole.defaultPayType,
+            sortOrder: defaultRole.sortOrder,
+          },
+        })
+      );
+      return;
+    }
+
+    writes.push(
+      prisma.attrRole.create({
+        data: {
+          orgId,
+          code: defaultRole.code,
+          name: defaultRole.name,
+          defaultPayType: defaultRole.defaultPayType,
+          sortOrder: defaultRole.sortOrder,
+        },
+      })
+    );
+  });
+
+  if (writes.length > 0) {
+    await prisma.$transaction(writes);
+  }
+
+  const roles = await prisma.attrRole.findMany({
+    where: { orgId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+  const sewingRole =
+    roles.find((role) => role.code === DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) ?? null;
+  if (!sewingRole) return roles;
+
+  const workerEmployees = await prisma.employee.findMany({
+    where: {
+      orgId,
+      OR: [
+        { roleId: null },
+        ...(legacyWorkerRoleIds.length > 0 ? [{ roleId: { in: legacyWorkerRoleIds } }] : []),
+      ],
+    },
+    include: {
+      membership: {
+        select: { role: true },
+      },
+    },
+  });
+  const migrateEmployeeIds = workerEmployees
+    .filter((employee) => employee.membership?.role === "WORKER")
+    .map((employee) => Number(employee.id))
+    .filter((employeeId) => Number.isFinite(employeeId));
+
+  if (migrateEmployeeIds.length > 0) {
+    await prisma.employee.updateMany({
+      where: { id: { in: migrateEmployeeIds } },
+      data: { roleId: sewingRole.id },
+    });
+  }
+
+  return roles;
+};
+
+const resolveDefaultEmployeeRoleId = async (orgId: number) => {
+  const roles = await ensureDefaultEmployeeRoles(orgId);
+  const sewingRole = roles.find((role) => role.code === DEFAULT_EMPLOYEE_ROLE_CODE_SEWING);
+  return sewingRole?.id ?? null;
 };
 
 const normalizeManagedAttributeCode = (value: any): string =>
@@ -4263,6 +4466,80 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
   }
 
   return model.findMany({ where: { orgId }, orderBy: { id: "asc" } });
+};
+
+const syncRoleSection = async (orgId: number, items: any) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const incomingIds = safeItems
+    .filter((item) => isNumericId(item.id))
+    .map((item) => toId(item.id));
+
+  const existing = await prisma.attrRole.findMany({
+    where: { orgId },
+    select: { id: true, code: true },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+  const existingIds = existing.map((item) => item.id);
+  const incomingIdSet = new Set(incomingIds);
+  const deleteIds = existingIds.filter((id) => !incomingIdSet.has(id));
+
+  if (deleteIds.length > 0) {
+    await prisma.employee.updateMany({
+      where: {
+        orgId,
+        roleId: { in: deleteIds },
+      },
+      data: { roleId: null },
+    });
+    await prisma.attrRole.deleteMany({ where: { orgId, id: { in: deleteIds } } });
+  }
+
+  const creates = [];
+  const updates = [];
+  for (const [index, item] of safeItems.entries()) {
+    const itemId = isNumericId(item.id) ? toId(item.id) : null;
+    const code = resolveOptionalString(item.code, null);
+    const name = resolveOptionalString(item.name, null);
+    const defaultPayType = normalizePayType(item.defaultPayType, "FIXED") ?? "FIXED";
+    const sortOrder = toSortOrder(item.sortOrder, index + 1);
+
+    if (!code && !name) continue;
+
+    const data = {
+      code: code ?? "",
+      name: name ?? "",
+      defaultPayType,
+      sortOrder,
+    };
+
+    if (itemId) {
+      updates.push(
+        prisma.attrRole.updateMany({
+          where: { id: itemId, orgId },
+          data,
+        })
+      );
+    } else {
+      creates.push({
+        orgId,
+        ...data,
+      });
+    }
+  }
+
+  if (creates.length > 0) {
+    await prisma.attrRole.createMany({ data: creates, skipDuplicates: true });
+  }
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
+  }
+
+  const roles = await prisma.attrRole.findMany({
+    where: { orgId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+  return roles.map(toAttrRoleResponse);
 };
 
 app.get("/health", (_req, res) => {
@@ -4520,6 +4797,9 @@ app.patch("/org-memberships/:id/approve", async (req, res) => {
       return res.status(404).json({ ok: false, error: "factory not found" });
     }
   }
+  if (isManufacturerOrg(membership.organization)) {
+    await ensureDefaultEmployeeRoles(membership.orgId);
+  }
   if (employeeRoleIdNum) {
     const attrRole = await prisma.attrRole.findFirst({
       where: { id: employeeRoleIdNum, orgId: membership.orgId },
@@ -4543,12 +4823,19 @@ app.patch("/org-memberships/:id/approve", async (req, res) => {
     const existingEmployee = await prisma.employee.findUnique({
       where: { orgMembershipId: membership.id },
     });
+    const resolvedEmployeeRoleId =
+      employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
+        ? employeeRoleIdNum
+        : existingEmployee?.roleId ??
+          (nextRole === "WORKER"
+            ? await resolveDefaultEmployeeRoleId(membership.orgId)
+            : null);
     await prisma.employee.upsert({
       where: { orgMembershipId: membership.id },
       update: {
         orgId: membership.orgId,
         factoryId: factoryIdNum,
-        roleId: employeeRoleIdNum,
+        roleId: resolvedEmployeeRoleId,
         joinedAt: existingEmployee?.joinedAt ?? now,
         leftAt: null,
         leaveStartAt: null,
@@ -4558,7 +4845,7 @@ app.patch("/org-memberships/:id/approve", async (req, res) => {
         orgId: membership.orgId,
         orgMembershipId: membership.id,
         factoryId: factoryIdNum,
-        roleId: employeeRoleIdNum,
+        roleId: resolvedEmployeeRoleId,
         joinedAt: now,
       },
     });
@@ -4665,10 +4952,16 @@ app.patch("/org-memberships/:id", async (req, res) => {
     const existingEmployee = await prisma.employee.findUnique({
       where: { orgMembershipId: membership.id },
     });
+    const resolvedRoleId =
+      existingEmployee?.roleId ??
+      (nextRole === "WORKER"
+        ? await resolveDefaultEmployeeRoleId(membership.orgId)
+        : null);
 
     const currentStatus = data.status ?? membership.status;
     const employeeData: any = {
       orgId: membership.orgId,
+      ...(nextRole === "WORKER" && resolvedRoleId ? { roleId: resolvedRoleId } : {}),
     };
 
     if (currentStatus === "ACTIVE") {
@@ -4787,11 +5080,15 @@ app.get("/employees", async (req, res) => {
       ? { membership: { role: membershipRole as any } }
       : {}),
   };
+  await ensureDefaultEmployeeRoles(organization.id);
   const employees = await prisma.employee.findMany({
     where,
+    include: {
+      role: true,
+    },
     orderBy: { id: "asc" },
   });
-  res.json(employees);
+  res.json(employees.map(toEmployeeResponse));
 });
 
 app.post("/employees", async (req, res) => {
@@ -4800,6 +5097,7 @@ app.post("/employees", async (req, res) => {
     factoryId,
     position,
     roleId,
+    payType,
     name,
     bankName,
     bankAccountNumber,
@@ -4826,6 +5124,8 @@ app.post("/employees", async (req, res) => {
       .status(400)
       .json({ ok: false, error: "membership is not active" });
   }
+
+  await ensureDefaultEmployeeRoles(membership.orgId);
 
   let factoryIdNum = null;
   if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
@@ -4866,6 +5166,19 @@ app.post("/employees", async (req, res) => {
     roleIdNum = parsedRoleId;
   }
 
+  let payTypeValue = null;
+  if (payType !== undefined) {
+    if (payType === "" || payType === null) {
+      payTypeValue = null;
+    } else {
+      const normalizedPayType = normalizePayType(payType, null);
+      if (!normalizedPayType) {
+        return res.status(400).json({ ok: false, error: "invalid payType" });
+      }
+      payTypeValue = normalizedPayType;
+    }
+  }
+
   const existingEmployee = await prisma.employee.findUnique({
     where: { orgMembershipId: membership.id },
   });
@@ -4877,13 +5190,20 @@ app.post("/employees", async (req, res) => {
   const resolvedRoleId =
     roleIdNum !== null && roleIdNum !== undefined
       ? roleIdNum
-      : existingEmployee?.roleId ?? null;
+      : existingEmployee?.roleId ??
+        (membership.role === "WORKER"
+          ? await resolveDefaultEmployeeRoleId(membership.orgId)
+          : null);
 
   const data = {
     orgId: membership.orgId,
     orgMembershipId: membership.id,
     factoryId: resolvedFactoryId,
     roleId: resolvedRoleId,
+    payType:
+      payType !== undefined
+        ? payTypeValue
+        : normalizePayType(existingEmployee?.payType, null),
     name: resolveOptionalString(name, existingEmployee?.name ?? null),
     bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
     bankAccountNumber: resolveOptionalString(
@@ -4917,9 +5237,12 @@ app.post("/employees", async (req, res) => {
   const refreshedEmployee = await prisma.employee.update({
     where: { id: employee.id },
     data: { lineName: syncedLineName },
+    include: {
+      role: true,
+    },
   });
 
-  res.json(refreshedEmployee);
+  res.json(toEmployeeResponse(refreshedEmployee));
 });
 
 app.get("/factories", async (req, res) => {
@@ -5468,10 +5791,10 @@ app.get("/line-workers", async (req, res) => {
   if (hasWorkDateFilter && !normalizedWorkDate) {
     return res.status(400).json({ ok: false, error: "invalid workDate" });
   }
-  if (hasWorkDateFilter && !hasLineFilter) {
+  if (hasWorkDateFilter && !hasLineFilter && !hasFactoryFilter) {
     return res
       .status(400)
-      .json({ ok: false, error: "lineId is required when workDate is provided" });
+      .json({ ok: false, error: "factoryId or lineId is required when workDate is provided" });
   }
 
   if (hasFactoryFilter) {
@@ -5549,6 +5872,13 @@ app.get("/line-workers", async (req, res) => {
     );
   }
 
+  const dateRange = normalizedWorkDate
+    ? buildWorkDateRange(normalizedWorkDate)
+    : null;
+  if (normalizedWorkDate && !dateRange) {
+    return res.status(400).json({ ok: false, error: "invalid workDate" });
+  }
+
   const [workers, assignments] = await Promise.all([
     prisma.employee.findMany({
       where: {
@@ -5565,7 +5895,12 @@ app.get("/line-workers", async (req, res) => {
           orgId: organization.id,
           ...(hasFactoryFilter ? { factoryId } : {}),
         },
-        endAt: null,
+        ...(dateRange
+          ? {
+              startAt: { lte: dateRange.endAt },
+              OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+            }
+          : { endAt: null }),
       },
       select: { employeeId: true, lineId: true },
     }),
@@ -5690,8 +6025,48 @@ app.get("/assignment-plans", async (req, res) => {
   }
 
   const lineId = Number(req.query.lineId);
-  if (!Number.isFinite(lineId) || lineId <= 0) {
-    return res.status(400).json({ ok: false, error: "lineId is required" });
+  const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
+  const factoryId = Number(req.query.factoryId);
+  const hasFactoryFilter = Number.isFinite(factoryId) && factoryId > 0;
+  if (!hasLineFilter && !hasFactoryFilter) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "lineId or factoryId is required" });
+  }
+
+  let lineIds: number[] = [];
+  if (hasLineFilter) {
+    const line = await prisma.line.findFirst({
+      where: {
+        id: lineId,
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+      },
+      select: { id: true },
+    });
+    if (!line) {
+      return res.status(404).json({ ok: false, error: "line not found" });
+    }
+    lineIds = [line.id];
+  } else {
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryId, orgId: organization.id },
+      select: { id: true },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+
+    const factoryLines = await prisma.line.findMany({
+      where: { orgId: organization.id, factoryId },
+      select: { id: true },
+    });
+    lineIds = factoryLines
+      .map((line) => Number(line.id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (lineIds.length === 0) {
+      return res.json([]);
+    }
   }
 
   let boardState = await prisma.assignmentBoardState.findUnique({
@@ -5729,13 +6104,15 @@ app.get("/assignment-plans", async (req, res) => {
     return res.json([]);
   }
 
+  const assignmentPlanLineFilter: Prisma.AssignmentPlanWhereInput["lineId"] =
+    lineIds.length === 1 ? lineIds[0]! : { in: lineIds };
   let plans = await prisma.assignmentPlan.findMany({
     where: {
       orgId: organization.id,
-      lineId,
+      lineId: assignmentPlanLineFilter,
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
-    orderBy: [{ startIndex: "asc" }, { id: "asc" }],
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
   if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
@@ -5746,25 +6123,50 @@ app.get("/assignment-plans", async (req, res) => {
     plans = repairedPlans.plans;
   }
 
+  const boardCards = ensureArray(boardState?.cards);
+  const cardById = boardCards.reduce((map, card) => {
+    const key = resolveOptionalString(card?.id, null);
+    if (!key || map.has(key)) return map;
+    map.set(key, card);
+    return map;
+  }, new Map<string, any>());
+
   res.json(
-    plans.map((plan) => ({
-      dbId: plan.id,
-      id: plan.externalId,
-      lineId: String(plan.lineId),
-      orderNo: plan.orderNo ?? "",
-      label: plan.label ?? "",
-      customer: plan.customer ?? "",
-      colorName: plan.colorName ?? "",
-      color: plan.color ?? "",
-      quantity: plan.quantity ?? null,
-      contractedSeconds: plan.contractedSeconds ?? null,
-      ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
-      startIndex: plan.startIndex,
-      endIndex: plan.endIndex,
-      isCompleted: plan.isCompleted,
-      finalQuantity: plan.finalQuantity ?? null,
-      completedAt: plan.completedAt ?? null,
-    }))
+    plans.map((plan) => {
+      const cardId =
+        resolveOptionalString(plan.cardId, null) ??
+        resolveOptionalString(plan.originOrderId, null) ??
+        null;
+      const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
+      return {
+        dbId: plan.id,
+        id: plan.externalId,
+        lineId: String(plan.lineId),
+        cardId,
+        styleId:
+          resolveOptionalString(matchedCard?.styleId, null) ??
+          resolveOptionalString(matchedCard?.styleCode, null) ??
+          null,
+        styleCode: resolveOptionalString(matchedCard?.styleCode, null) ?? "",
+        orderNo: plan.orderNo ?? "",
+        label: plan.label ?? "",
+        customer: plan.customer ?? "",
+        colorName: plan.colorName ?? "",
+        color: plan.color ?? "",
+        quantity: plan.quantity ?? null,
+        contractedSeconds: plan.contractedSeconds ?? null,
+        ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
+        ctAgreedSnapshot:
+          matchedCard?.ctAgreedSnapshot && typeof matchedCard.ctAgreedSnapshot === "object"
+            ? matchedCard.ctAgreedSnapshot
+            : null,
+        startIndex: plan.startIndex,
+        endIndex: plan.endIndex,
+        isCompleted: plan.isCompleted,
+        finalQuantity: plan.finalQuantity ?? null,
+        completedAt: plan.completedAt ?? null,
+      };
+    })
   );
 });
 
@@ -8163,10 +8565,9 @@ app.get("/attributes", async (req, res) => {
       where: { orgId: organization.id },
       orderBy: { id: "asc" },
     }),
-    prisma.attrRole.findMany({
-      where: { orgId: organization.id },
-      orderBy: { id: "asc" },
-    }),
+    ensureDefaultEmployeeRoles(organization.id).then((items) =>
+      items.map(toAttrRoleResponse)
+    ),
     includeProcesses
       ? prisma.attrProcess.findMany({
           where: { orgId: organization.id },
@@ -8265,21 +8666,9 @@ app.put("/attributes", async (req, res) => {
   }
   if (payload.roles) {
     tasks.push(
-      syncSection(prisma.attrRole, organization.id, payload.roles, {
-        beforeDeleteIds: async (deleteIds: number[]) => {
-          await prisma.employee.updateMany({
-            where: {
-              orgId: organization.id,
-              roleId: { in: deleteIds },
-            },
-            data: { roleId: null },
-          });
-        },
-      }).then(
-        (data) => {
-          response.roles = data;
-        }
-      )
+      syncRoleSection(organization.id, payload.roles).then((data) => {
+        response.roles = data;
+      })
     );
   }
   if (payload.processes) {
@@ -8640,6 +9029,30 @@ app.get("/payroll", async (req, res) => {
       workRecords: { orderBy: { id: "asc" } },
     },
   });
+  const workerIds = Array.from(
+    new Set(
+      workLogs
+        .flatMap((workLog) => workLog.workRecords)
+        .map((record) => Number(record.workerId))
+        .filter((workerId) => Number.isSafeInteger(workerId) && workerId > 0)
+    )
+  );
+  const employeesById =
+    workerIds.length > 0
+      ? new Map(
+          (
+            await prisma.employee.findMany({
+              where: {
+                orgId: organization.id,
+                id: { in: workerIds },
+              },
+              include: {
+                role: true,
+              },
+            })
+          ).map((employee) => [employee.id, employee])
+        )
+      : new Map<number, any>();
 
   // 직원별 집계
   const employeeMap = new Map<
@@ -8647,6 +9060,8 @@ app.get("/payroll", async (req, res) => {
     {
       workerId: number | null;
       workerName: string;
+      roleName: string;
+      payType: "CT" | "FIXED";
       totalEarnings: number;
       processes: Map<
         string,
@@ -8670,10 +9085,13 @@ app.get("/payroll", async (req, res) => {
           ? `w-${record.workerId}`
           : `n-${record.workerName || "unknown"}`;
 
+      const employee =
+        record.workerId != null ? employeesById.get(Number(record.workerId)) ?? null : null;
+      const effectivePayType = resolveEmployeeEffectivePayType(employee);
       const ctSeconds = Number(record.ctSeconds);
       const quantity = Number(record.quantity);
       const earnings =
-        validWage && ctSeconds > 0 && quantity > 0
+        effectivePayType === "CT" && validWage && ctSeconds > 0 && quantity > 0
           ? ctSeconds * quantity * wagePerSecond
           : 0;
 
@@ -8681,6 +9099,8 @@ app.get("/payroll", async (req, res) => {
         employeeMap.set(key, {
           workerId: record.workerId ?? null,
           workerName: record.workerName || "이름없음",
+          roleName: String(employee?.role?.name ?? "").trim(),
+          payType: effectivePayType,
           totalEarnings: 0,
           processes: new Map(),
         });
@@ -8708,6 +9128,8 @@ app.get("/payroll", async (req, res) => {
     .map((emp) => ({
       workerId: emp.workerId,
       workerName: emp.workerName,
+      roleName: emp.roleName,
+      payType: emp.payType,
       totalEarnings: emp.totalEarnings,
       processes: Array.from(emp.processes.values()),
     }))

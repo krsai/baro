@@ -9,11 +9,21 @@ const toPositiveOrgId = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+const normalizePayType = (value) => {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  return normalized === 'CT' || normalized === 'FIXED' ? normalized : null;
+};
+const normalizeSortOrder = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const normalizeAttributeItem = (item = {}) => ({
   id: item.id ?? null,
   code: String(item.code ?? '').trim(),
   name: String(item.name ?? '').trim(),
+  defaultPayType: normalizePayType(item.defaultPayType),
+  sortOrder: normalizeSortOrder(item.sortOrder),
 });
 
 const mergeAttributeItem = (items = [], nextItem) => {
@@ -77,6 +87,12 @@ const normalizeAttributePayload = (payload = {}) => {
       id: item.id ?? undefined,
       code: String(item.code ?? '').trim(),
       name: String(item.name ?? '').trim(),
+      ...(key === 'roles'
+        ? {
+            defaultPayType: normalizePayType(item.defaultPayType) ?? 'FIXED',
+            sortOrder: normalizeSortOrder(item.sortOrder),
+          }
+        : {}),
     }));
   });
   return normalized;

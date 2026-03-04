@@ -1655,7 +1655,7 @@ const OrderList = () => {
                         {formatStyleSummary(order.items)}
                       </TableCell>
                       <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {order.totalQuantity ?? '-'}
+                        {order.totalQuantity != null ? order.totalQuantity.toLocaleString() : '-'}
                       </TableCell>
                       <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.dueDate || '-'}</TableCell>
                       <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.status || '-'}</TableCell>
@@ -1937,7 +1937,8 @@ const OrderList = () => {
                           >
                             <TextField
                               size="small"
-                              label="스타일 코드"
+                              label={group.styleCode ? '스타일 코드 (자동입력)' : '스타일 코드'}
+                              className={group.styleCode ? 'auto-selected-field' : undefined}
                               value={group.styleCode || ''}
                               fullWidth
                               InputProps={{ readOnly: true }}
@@ -2069,7 +2070,7 @@ const OrderList = () => {
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-            주문 합계 수량: {getOrderTotal()}
+            주문 합계 수량: {getOrderTotal().toLocaleString()}
           </Typography>
         </Box>
       </Paper>

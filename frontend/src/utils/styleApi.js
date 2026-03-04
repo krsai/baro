@@ -93,7 +93,10 @@ const fetchStylesFromServer = async (options = {}) => {
       orgId: options.orgId,
       ownerOrgId: options.ownerOrgId,
       compact: options.compact ? 1 : undefined,
-    })}`
+    })}`,
+    {
+      skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+    }
   );
   if (!Array.isArray(data)) return [];
   return data.map(normalizeStyle);
@@ -155,6 +158,7 @@ export const fetchStyles = async (options = {}) => {
     orgId: hasOrgFilter ? orgIdNum : null,
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     compact: Boolean(options?.compact),
+    skipGlobalLoading: Boolean(options?.skipGlobalLoading),
   });
   styles.forEach((style) => {
     writeStyleToCache(style, {

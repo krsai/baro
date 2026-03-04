@@ -76,14 +76,13 @@ const WorkList = () => {
   );
 
   const handleAdd = () => {
-    navigateToPath('/work-history/new', { label: '작업 기록 추가' });
+    navigateToPath('/work-history/new', { label: '작업 상세' });
   };
 
   const handleEdit = (log) => {
     if (!log?.id) return;
-    const labelSuffix = log.workDate || log.factoryName || log.id;
     navigateToPath(`/work-history/${log.id}`, {
-      label: `작업 기록 ${labelSuffix}`,
+      label: '작업 상세',
     });
   };
 
