@@ -102,6 +102,12 @@ const DEFAULT_EMPLOYEE_ROLES = [
 const DEFAULT_EMPLOYEE_ROLE_CODES = new Set<string>(
   DEFAULT_EMPLOYEE_ROLES.map((role) => role.code)
 );
+const ORG_ROLE_LABELS: Record<OrgUserRole, string> = {
+  ADMIN: "관리자",
+  OPERATOR: "운영자",
+  ACCOUNTANT: "회계사",
+  WORKER: "작업자",
+};
 
 const DEFAULT_ATTRIBUTES = {
   colors: [] as { code: string; name: string }[],
@@ -4694,6 +4700,11 @@ const resolveEmployeeEffectivePayType = (employee: any): "CT" | "FIXED" =>
   normalizePayType(employee?.payType, null) ??
   resolveRoleDefaultPayType(employee?.role) ??
   "FIXED";
+
+const resolveOrgRoleLabel = (value: unknown): string => {
+  const normalized = String(value || "").trim().toUpperCase() as OrgUserRole;
+  return ORG_ROLE_LABELS[normalized] || "";
+};
 
 const resolveEmployeeStoredPayType = async ({
   orgId,
@@ -9644,6 +9655,145 @@ app.post("/at-sync/run-now", async (req, res) => {
 
 // ─── Payroll ───────────────────────────────────────────────────────────────
 
+const toPayrollAmountOrNull = (value: unknown): number | null => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toPayrollAmount = (value: unknown, fallback = 0): number =>
+  toPayrollAmountOrNull(value) ?? fallback;
+
+const buildPayrollEmployeeKey = (workerId: unknown, fallbackName: unknown): string => {
+  const normalizedWorkerId = toPositiveIntOrNull(workerId);
+  if (normalizedWorkerId !== null) return `w-${normalizedWorkerId}`;
+  const fallbackKey = normalizeComparableText(fallbackName);
+  return `n-${fallbackKey || "unknown"}`;
+};
+
+const getPayrollMonthRange = (month: string) => {
+  const [yearText, monthText] = String(month || "").split("-");
+  const year = Number(yearText);
+  const monthNumber = Number(monthText);
+  const start = new Date(Date.UTC(year, monthNumber - 1, 1));
+  const endExclusive = new Date(Date.UTC(year, monthNumber, 1));
+  return { start, endExclusive };
+};
+
+const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
+  resolveOptionalString(
+    employee?.name ?? fallback ?? employee?.membership?.email ?? null,
+    null
+  ) || "이름없음";
+
+const resolvePayrollRoleName = (employee: any): string =>
+  resolveOptionalString(employee?.role?.name, null) ??
+  resolveOrgRoleLabel(employee?.membership?.role) ??
+  "";
+
+const isPayrollEmployeeRelevantForMonth = (
+  employee: any,
+  range: { start: Date; endExclusive: Date }
+) => {
+  const membershipStatus = String(employee?.membership?.status || "")
+    .trim()
+    .toUpperCase();
+  if (membershipStatus === "PENDING" || membershipStatus === "REJECTED") {
+    return false;
+  }
+
+  const effectiveStart =
+    employee?.joinedAt ?? employee?.membership?.approvedAt ?? employee?.createdAt ?? null;
+  const effectiveEnd = employee?.leftAt ?? null;
+
+  if (effectiveStart) {
+    const startedAt = new Date(effectiveStart);
+    if (!Number.isNaN(startedAt.getTime()) && startedAt >= range.endExclusive) {
+      return false;
+    }
+  }
+
+  if (effectiveEnd) {
+    const endedAt = new Date(effectiveEnd);
+    if (!Number.isNaN(endedAt.getTime()) && endedAt < range.start) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const normalizePayrollProcessSnapshot = (process: any) => {
+  const totalCtSeconds = toPayrollAmount(process?.totalCtSeconds, 0);
+  const totalEarnings = toPayrollAmount(process?.totalEarnings, 0);
+  const providedWagePerSecond = toPayrollAmountOrNull(process?.wagePerSecond);
+
+  return {
+    processCode: resolveOptionalString(process?.processCode, "") || "",
+    processName:
+      resolveOptionalString(process?.processName, null) ??
+      resolveOptionalString(process?.processCode, null) ??
+      "-",
+    totalQuantity: toPayrollAmount(process?.totalQuantity, 0),
+    totalCtSeconds,
+    wagePerSecond:
+      providedWagePerSecond !== null
+        ? providedWagePerSecond
+        : totalCtSeconds > 0
+          ? totalEarnings / totalCtSeconds
+          : 0,
+    totalEarnings,
+  };
+};
+
+const normalizePayrollSnapshotEmployee = (employee: any) => {
+  const payType = normalizePayType(employee?.payType, "FIXED") ?? "FIXED";
+  const workerName =
+    resolveOptionalString(employee?.workerName, null) ??
+    resolveOptionalString(employee?.name, null) ??
+    "이름없음";
+  const workerId = toPositiveIntOrNull(employee?.workerId);
+  const roleName =
+    resolveOptionalString(employee?.roleName, null) ??
+    resolveOrgRoleLabel(employee?.orgRole) ??
+    "";
+  const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
+  const storedTotalEarnings = toPayrollAmountOrNull(employee?.totalEarnings);
+  const bonus = toPayrollAmount(employee?.bonus, 0);
+  const deduction = toPayrollAmount(employee?.deduction, 0);
+  const baseEarnings =
+    toPayrollAmountOrNull(employee?.baseEarnings) ??
+    (payType === "CT" ? storedTotalEarnings ?? 0 : 0);
+  const finalEarnings =
+    toPayrollAmountOrNull(employee?.finalEarnings) ??
+    storedTotalEarnings ??
+    (payType === "FIXED"
+      ? toPayrollAmount(employee?.fixedSalary, 0) + bonus - deduction
+      : baseEarnings + bonus - deduction);
+  const fixedSalary =
+    toPayrollAmountOrNull(employee?.fixedSalary) ??
+    (payType === "FIXED" ? finalEarnings - bonus + deduction : 0);
+
+  return {
+    employeeKey:
+      resolveOptionalString(employee?.employeeKey, null) ??
+      buildPayrollEmployeeKey(workerId, workerName),
+    workerId,
+    workerName,
+    orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
+    roleName,
+    payType,
+    bankName: resolveOptionalString(employee?.bankName, null),
+    bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+    baseEarnings,
+    fixedSalary,
+    bonus,
+    deduction,
+    finalEarnings,
+    totalEarnings: finalEarnings,
+    processes,
+  };
+};
+
 app.get("/payroll/snapshots", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -9680,7 +9830,7 @@ app.get("/payroll", async (req, res) => {
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
       month,
-      employees: snapshot.data,
+      employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
     });
   }
 
@@ -9694,6 +9844,7 @@ app.get("/payroll", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
+  const payrollMonthRange = getPayrollMonthRange(month);
   const workerIds = Array.from(
     new Set(
       workLogs
@@ -9702,59 +9853,94 @@ app.get("/payroll", async (req, res) => {
         .filter((workerId) => Number.isSafeInteger(workerId) && workerId > 0)
     )
   );
-  const employeesById =
-    workerIds.length > 0
-      ? new Map(
-          (
-            await prisma.employee.findMany({
-              where: {
-                orgId: organization.id,
-                id: { in: workerIds },
-              },
-              include: {
-                role: true,
-              },
-            })
-          ).map((employee) => [employee.id, employee])
-        )
-      : new Map<number, any>();
+  const employeeRows = await prisma.employee.findMany({
+    where: {
+      orgId: organization.id,
+      ...(workerIds.length > 0
+        ? {
+            OR: [
+              { membership: { status: { notIn: ["PENDING", "REJECTED"] } } },
+              { id: { in: workerIds } },
+            ],
+          }
+        : { membership: { status: { notIn: ["PENDING", "REJECTED"] } } }),
+    },
+    include: {
+      role: true,
+      membership: {
+        select: {
+          role: true,
+          status: true,
+          email: true,
+          approvedAt: true,
+        },
+      },
+    },
+  });
+  const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
+  const payrollEmployees = employeeRows.filter((employee) =>
+    isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
+  );
 
   // 직원별 집계
   const employeeMap = new Map<
     string,
     {
+      employeeKey: string;
       workerId: number | null;
       workerName: string;
+      orgRole: string;
       roleName: string;
       payType: "CT" | "FIXED";
-      totalEarnings: number;
+      bankName: string | null;
+      bankAccountNumber: string | null;
+      baseEarnings: number;
       processes: Map<
         string,
         {
           processCode: string;
           processName: string;
           totalQuantity: number;
+          totalCtSeconds: number;
           totalEarnings: number;
         }
       >;
     }
   >();
 
+  payrollEmployees.forEach((employee) => {
+    const workerName = resolvePayrollEmployeeName(employee);
+    const employeeKey = buildPayrollEmployeeKey(employee?.id, workerName);
+    employeeMap.set(employeeKey, {
+      employeeKey,
+      workerId: employee?.id ?? null,
+      workerName,
+      orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
+      roleName: resolvePayrollRoleName(employee),
+      payType: resolveEmployeeEffectivePayType(employee),
+      bankName: resolveOptionalString(employee?.bankName, null),
+      bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+      baseEarnings: 0,
+      processes: new Map(),
+    });
+  });
+
   for (const workLog of workLogs) {
     const wagePerSecond = Number(workLog.factoryWagePerSecond);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
 
     for (const record of workLog.workRecords) {
-      const key =
-        record.workerId != null
-          ? `w-${record.workerId}`
-          : `n-${record.workerName || "unknown"}`;
-
       const employee =
         record.workerId != null ? employeesById.get(Number(record.workerId)) ?? null : null;
-      const effectivePayType = resolveEmployeeEffectivePayType(employee);
+      const workerName = resolvePayrollEmployeeName(employee, record.workerName);
+      const key = buildPayrollEmployeeKey(record.workerId, workerName);
+      const effectivePayType = employee
+        ? resolveEmployeeEffectivePayType(employee)
+        : "CT";
       const ctSeconds = Number(record.ctSeconds);
       const quantity = Number(record.quantity);
+      const totalCtSeconds =
+        ctSeconds > 0 && quantity > 0 ? ctSeconds * quantity : 0;
       const earnings =
         effectivePayType === "CT" && validWage && ctSeconds > 0 && quantity > 0
           ? ctSeconds * quantity * wagePerSecond
@@ -9762,17 +9948,21 @@ app.get("/payroll", async (req, res) => {
 
       if (!employeeMap.has(key)) {
         employeeMap.set(key, {
+          employeeKey: key,
           workerId: record.workerId ?? null,
-          workerName: record.workerName || "이름없음",
-          roleName: String(employee?.role?.name ?? "").trim(),
+          workerName,
+          orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
+          roleName: resolvePayrollRoleName(employee),
           payType: effectivePayType,
-          totalEarnings: 0,
+          bankName: resolveOptionalString(employee?.bankName, null),
+          bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+          baseEarnings: 0,
           processes: new Map(),
         });
       }
 
       const emp = employeeMap.get(key)!;
-      emp.totalEarnings += earnings;
+      emp.baseEarnings += earnings;
 
       const processName = resolveWorkRecordProcessName(record) ?? "";
       const processKey = record.processCode || processName || "unknown";
@@ -9781,34 +9971,56 @@ app.get("/payroll", async (req, res) => {
           processCode: record.processCode || "",
           processName: processName || processKey,
           totalQuantity: 0,
+          totalCtSeconds: 0,
           totalEarnings: 0,
         });
       }
       const proc = emp.processes.get(processKey)!;
       proc.totalQuantity += quantity;
+      proc.totalCtSeconds += totalCtSeconds;
       proc.totalEarnings += earnings;
     }
   }
 
   const employees = Array.from(employeeMap.values())
     .map((emp) => ({
+      employeeKey: emp.employeeKey,
       workerId: emp.workerId,
       workerName: emp.workerName,
+      orgRole: emp.orgRole,
       roleName: emp.roleName,
       payType: emp.payType,
-      totalEarnings: emp.totalEarnings,
-      processes: Array.from(emp.processes.values()),
+      bankName: emp.bankName,
+      bankAccountNumber: emp.bankAccountNumber,
+      baseEarnings: emp.baseEarnings,
+      fixedSalary: 0,
+      bonus: 0,
+      deduction: 0,
+      finalEarnings: emp.baseEarnings,
+      totalEarnings: emp.baseEarnings,
+      processes: Array.from(emp.processes.values()).map((process) => ({
+        processCode: process.processCode,
+        processName: process.processName,
+        totalQuantity: process.totalQuantity,
+        totalCtSeconds: process.totalCtSeconds,
+        wagePerSecond:
+          process.totalCtSeconds > 0
+            ? process.totalEarnings / process.totalCtSeconds
+            : 0,
+        totalEarnings: process.totalEarnings,
+      })),
     }))
-    .sort((a, b) => b.totalEarnings - a.totalEarnings);
+    .sort((a, b) => b.finalEarnings - a.finalEarnings);
 
   return res.json({ locked: false, month, employees });
 });
 
 app.post("/payroll/lock", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ["ADMIN", "ACCOUNTANT"],
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
 
   const { month, lockedBy, employees } = req.body ?? {};
   if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
@@ -9828,13 +10040,42 @@ app.post("/payroll/lock", async (req, res) => {
     data: {
       orgId: organization.id,
       month: String(month),
-      data: employees ?? [],
+      data: ensureArray(employees).map(normalizePayrollSnapshotEmployee),
       lockedAt: new Date(),
       lockedBy: String(lockedBy || "unknown"),
     },
   });
 
   return res.status(201).json(snapshot);
+});
+
+app.delete("/payroll/snapshots/:month", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ["ADMIN"],
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  const month = String(req.params.month || "");
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return res
+      .status(400)
+      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
+  }
+
+  const existing = await prisma.payrollSnapshot.findUnique({
+    where: { orgId_month: { orgId: organization.id, month } },
+    select: { id: true },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "snapshot not found" });
+  }
+
+  await prisma.payrollSnapshot.delete({
+    where: { id: existing.id },
+  });
+
+  return res.json({ ok: true, month });
 });
 
 // ───────────────────────────────────────────────────────────────────────────

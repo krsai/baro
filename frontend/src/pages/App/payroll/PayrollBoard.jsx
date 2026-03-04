@@ -94,7 +94,7 @@ const PayrollBoard = () => {
                   snapshots.map((snapshot) => {
                     const employees = Array.isArray(snapshot.data) ? snapshot.data : [];
                     const totalEarnings = employees.reduce(
-                      (sum, e) => sum + Number(e.totalEarnings || 0),
+                      (sum, e) => sum + Number(e.finalEarnings ?? e.totalEarnings ?? 0),
                       0
                     );
                     return (
