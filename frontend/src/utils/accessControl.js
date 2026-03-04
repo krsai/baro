@@ -187,7 +187,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.PAYROLL:
       return (
         isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR, ORG_ROLES.ACCOUNTANT)
       );
     case FEATURE_KEYS.PERMISSION:
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);

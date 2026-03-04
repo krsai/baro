@@ -851,3 +851,100 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
   - `/work-logs`
   - `/payroll`
   모두 정상 응답 확인
+
+## 오늘 반영 메모 (2026-03-05)
+
+### 급여 계산 1차 구현
+
+#### 화면/동작
+- 급여 계산 화면을 1차 실사용 형태로 확장했다.
+- 메인 표는 `직원 / 급여 구분 / 기준 급여 / 보너스 / 공제 / 최종 급여 / 상세` 구조다.
+- `FIXED` 직원은 기준 급여를 수동 입력한다.
+- `CT` 직원은 서버 계산값을 기준 급여로 사용한다.
+- 모든 직원은 `보너스`, `공제`를 입력할 수 있고 최종 급여는 `기준 급여 + 보너스 - 공제`로 계산한다.
+- 확정 상태에서는 입력이 잠기고, 관리자만 `확정 취소`를 할 수 있다.
+- 공정 상세는 `공정 / 수량 / 총 CT초 / 적용 평균단가 / 급여`를 표시한다.
+- 파일: `frontend/src/pages/App/payroll/PayrollEntry.jsx`, `frontend/src/pages/App/payroll/PayrollBoard.jsx`
+
+#### 백엔드 응답/스냅샷
+- `GET /payroll`은 작업기록이 없는 `FIXED` 직원도 응답에 포함한다.
+- 비작업자(`관리자/운영자/회계사`)도 급여 화면에서 직무명이 비지 않도록 권한명 기반 직무 라벨을 같이 내려준다.
+- 응답 employee 항목은 다음 필드를 포함한다.
+  - `employeeKey`
+  - `baseEarnings`
+  - `fixedSalary`
+  - `bonus`
+  - `deduction`
+  - `finalEarnings`
+  - `bankName`
+  - `bankAccountNumber`
+- 공정 상세 항목은 `totalCtSeconds`, `wagePerSecond`, `totalEarnings`를 포함한다.
+- `POST /payroll/lock`은 위 구조를 정규화해서 스냅샷 JSON으로 저장한다.
+- `DELETE /payroll/snapshots/:month`를 추가해 확정 취소를 지원한다. 권한은 `ADMIN`만 허용한다.
+- 파일: `backend/src/index.ts`(기존 구현), 이후 `backend/src/payroll/*`로 분리 시작
+
+#### 검증 메모
+- `backend` 빌드 통과
+- `frontend` 빌드 통과
+- HTTP smoke test:
+  - `GET /payroll?orgId=2&month=2026-03` → `200`, 직원 `43명`, `FIXED 3명` 포함 확인
+  - `POST /payroll/lock`
+  - `GET /payroll`
+  - `DELETE /payroll/snapshots/:month`
+  순서로 확정/재조회/취소 정상 확인
+
+### 급여 계산 메뉴 접근 권한 수정
+- 운영자(`OPERATOR`)도 `회계 관리 > 급여 계산` 메뉴를 볼 수 있도록 프론트 접근 제어를 수정했다.
+- 기존에는 `ADMIN`, `ACCOUNTANT`만 허용되어 운영자 로그인 시 메뉴가 숨겨졌다.
+- 수정 후 `PAYROLL` feature 접근 권한은 `ADMIN`, `OPERATOR`, `ACCOUNTANT`다.
+- 파일: `frontend/src/utils/accessControl.js`
+
+### 백엔드 구조 정리 시작
+
+#### 이번에 실제로 분리한 모듈
+- Prisma 싱글톤 분리
+  - `backend/src/db.ts`
+- env 초기화 분리
+  - `backend/src/config/env.ts`
+- 공용 헬퍼 분리
+  - `backend/src/utils/common.ts`
+  - `backend/src/utils/http.ts`
+- 공통 접근/권한 해석 분리
+  - `backend/src/middleware/access.ts`
+- 직원 급여 타입/권한 라벨 공용 로직 분리
+  - `backend/src/employees/employeeCompensation.ts`
+- WorkRecord 공용 include/이름 해석 분리
+  - `backend/src/work-records/workRecord.shared.ts`
+- 급여 도메인 분리
+  - `backend/src/payroll/payroll.routes.ts`
+  - `backend/src/payroll/payroll.controller.ts`
+  - `backend/src/payroll/payroll.service.ts`
+- `backend/src/index.ts`는 위 모듈을 import하고 `payrollRouter`를 mount하는 형태로 정리했다.
+
+#### 백엔드 개발 시 참고할 구조 원칙
+- 방향은 **고전 MVC 전체 강제**가 아니라 **feature-based modular monolith**로 간다.
+- 기본 원칙은 **fat service, thin controller**다.
+  - `routes`: URL 연결만 담당
+  - `controller`: `req/res` 변환, status code, 입력 파싱
+  - `service`: 실제 비즈니스 규칙과 흐름
+- `index.ts`는 최종적으로 **서버 bootstrap + route mount + 전역 에러 처리**만 남기는 방향으로 줄인다.
+- Prisma는 파일마다 새로 만들지 않고 `db.ts`의 singleton만 사용한다.
+- `utils`에는 **여러 도메인이 같이 쓰는 진짜 공용 함수만** 둔다.
+  - 예: 문자열/숫자 정규화, 공통 HTTP 에러 유틸
+- 특정 도메인 규칙은 공용으로 빼지 않고 **그 도메인 service 또는 shared 파일**에 둔다.
+  - 예: payroll snapshot 정규화, employee role/payType 보정
+- `middleware`에는 인증/권한/조직 접근 해석처럼 HTTP 입구 공통 로직을 둔다.
+- `repository` 계층은 지금 필수는 아니다.
+  - Prisma 쿼리가 과도하게 복잡해질 때만 선택적으로 도입한다.
+
+#### 백엔드 리팩터링 순서 기준
+1. `db.ts`
+2. 공용 `utils`
+3. 공통 `middleware`
+4. 기능 단위 모듈 분리 (`payroll`부터 시작)
+5. 같은 패턴으로 `employee`, `organization/subscription`, `order`, `work-log`, `assignment` 확장
+
+#### 주의사항
+- 공용 분리 과정에서 **domain-specific helper를 무리하게 utils로 올리지 않는다.**
+- 현재는 `payroll`만 먼저 패턴을 확정한 상태다.
+- 다음 분리 후보는 `employee` 도메인이다.
