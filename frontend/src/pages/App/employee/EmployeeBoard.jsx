@@ -173,7 +173,7 @@ const EmployeeRow = React.memo(
           </TextField>
           {draft.status === 'TERMINATED' && (
             <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-              퇴사 처리 시 작업 기록은 보존됩니다.
+              퇴사 처리 시 기존 생산/급여 집계 데이터는 보존됩니다.
             </Typography>
           )}
           {member.status === 'TERMINATED' && draft.status === 'ACTIVE' && (

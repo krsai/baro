@@ -32,10 +32,6 @@
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const BASELINE_ASSIGNMENT_AGREEMENTS = require('./reset-to-baseline.assignment-agreements.json');
-const {
-  resolveEarliestBaselineAssignmentStartAt,
-  seedBaselineWorkLogs,
-} = require('./lib/seed-baseline-work-logs');
 
 const prisma = new PrismaClient();
 
@@ -547,8 +543,7 @@ async function main() {
 
   const workerEmployeeIds = Object.values(emailToEmployeeId);
   const now = new Date();
-  const baselineLineAssignmentStartAt =
-    resolveEarliestBaselineAssignmentStartAt() || now;
+  const baselineLineAssignmentStartAt = now;
 
   // 기존 활성 배정 종료
   const closedAssignments = await prisma.lineAssignment.updateMany({
@@ -742,12 +737,11 @@ async function main() {
   );
 
   // 최종 현황
-  const workLogSeedResult = await seedBaselineWorkLogs({
-    prisma,
-    orgId: manufacturer.id,
-    skipExistingAssignments: false,
-    backfillLineAssignmentStartAt: false,
-  });
+  const workLogSeedResult = {
+    workLogsCreated: 0,
+    workRecordsCreated: 0,
+    assignmentPlansSeeded: 0,
+  };
   results.workLogSeed = workLogSeedResult;
   console.log(
     `[post-reset] Work log seed: WorkLog ${workLogSeedResult.workLogsCreated}건, WorkRecord ${workLogSeedResult.workRecordsCreated}건, assignment ${workLogSeedResult.assignmentPlansSeeded}건`

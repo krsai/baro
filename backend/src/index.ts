@@ -6264,7 +6264,6 @@ app.post("/work-logs", async (req, res) => {
       data: {
         orgId: organization.id,
         ...workLogData,
-        // Keep line metadata in legacy JSON for edit-time context.
         records: {
           lineId: lineValidation.line?.id ?? null,
           lineName: lineValidation.line?.name ?? null,

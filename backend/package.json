@@ -9,8 +9,6 @@
     "postinstall": "npm run prisma:prepare-client",
     "preseed:test-accounts": "npm run prisma:prepare-client",
     "seed:test-accounts": "node scripts/seed-test-accounts.js",
-    "seed:baseline-work-logs": "node scripts/seed-baseline-work-logs.js",
-    "report:work-log-summary": "node scripts/report-work-log-summary.js",
     "predev": "npm run prisma:prepare-client",
     "prestart": "npm run prisma:prepare-client",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
