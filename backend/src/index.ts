@@ -86,6 +86,9 @@ const DEFAULT_EMPLOYEE_ROLES = [
     sortOrder: 6,
   },
 ] as const;
+const DEFAULT_EMPLOYEE_ROLE_CODES = new Set<string>(
+  DEFAULT_EMPLOYEE_ROLES.map((role) => role.code)
+);
 
 const DEFAULT_ATTRIBUTES = {
   colors: [] as { code: string; name: string }[],
@@ -148,6 +151,8 @@ const toSortOrder = (value: unknown, fallback = 0): number => {
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.trunc(parsed));
 };
+const isWorkerEmployeeRoleCode = (value: unknown): boolean =>
+  DEFAULT_EMPLOYEE_ROLE_CODES.has(String(value ?? "").trim().toUpperCase());
 const FACTORY_WORK_DAYS_PER_MONTH = 26;
 const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
@@ -4158,16 +4163,47 @@ const seedAttributesIfEmpty = async (orgId: number) => {
   await ensureDefaultEmployeeRoles(orgId);
 };
 
+const resolveRoleDefaultPayType = (role: any): "CT" | "FIXED" =>
+  normalizePayType(role?.defaultPayType, "FIXED") ?? "FIXED";
+
 const resolveEmployeeEffectivePayType = (employee: any): "CT" | "FIXED" =>
   normalizePayType(employee?.payType, null) ??
-  normalizePayType(employee?.role?.defaultPayType, "FIXED") ??
+  resolveRoleDefaultPayType(employee?.role) ??
   "FIXED";
+
+const resolveEmployeeStoredPayType = async ({
+  orgId,
+  membershipRole,
+  roleId,
+  payType,
+}: {
+  orgId: number;
+  membershipRole: OrgUserRole;
+  roleId: number | null;
+  payType: unknown;
+}): Promise<"CT" | "FIXED"> => {
+  if (membershipRole !== "WORKER") return "FIXED";
+
+  const explicitPayType = normalizePayType(payType, null);
+  if (explicitPayType) return explicitPayType;
+
+  const normalizedRoleId = Number(roleId);
+  if (Number.isSafeInteger(normalizedRoleId) && normalizedRoleId > 0) {
+    const role = await prisma.attrRole.findFirst({
+      where: { id: normalizedRoleId, orgId },
+      select: { defaultPayType: true },
+    });
+    return resolveRoleDefaultPayType(role);
+  }
+
+  return "FIXED";
+};
 
 const toAttrRoleResponse = (role: any) => ({
   id: role?.id ?? null,
   code: String(role?.code ?? "").trim(),
   name: String(role?.name ?? "").trim(),
-  defaultPayType: normalizePayType(role?.defaultPayType, "FIXED") ?? "FIXED",
+  defaultPayType: resolveRoleDefaultPayType(role),
   sortOrder: toSortOrder(role?.sortOrder, 0),
 });
 
@@ -4179,9 +4215,8 @@ const toEmployeeResponse = (employee: any) => ({
   roleId: employee?.roleId ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
   roleName: String(employee?.role?.name ?? "").trim(),
-  roleDefaultPayType:
-    normalizePayType(employee?.role?.defaultPayType, "FIXED") ?? "FIXED",
-  payType: normalizePayType(employee?.payType, null),
+  roleDefaultPayType: resolveRoleDefaultPayType(employee?.role),
+  payType: resolveEmployeeEffectivePayType(employee),
   effectivePayType: resolveEmployeeEffectivePayType(employee),
   name: employee?.name ?? null,
   phone: employee?.phone ?? null,
@@ -4203,19 +4238,6 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
     select: { id: true, code: true, name: true, defaultPayType: true, sortOrder: true },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
-
-  const sewingLegacyCodes = new Set(["WORKER", DEFAULT_EMPLOYEE_ROLE_CODE_SEWING]);
-  const sewingLegacyNames = new Set(["작업자", "작업자 - 봉제"]);
-  const legacyWorkerRoleIds = existingRoles
-    .filter((role) => {
-      const normalizedCode = String(role?.code || "").trim().toUpperCase();
-      const normalizedName = String(role?.name || "").trim();
-      return (
-        sewingLegacyCodes.has(normalizedCode) || sewingLegacyNames.has(normalizedName)
-      );
-    })
-    .map((role) => Number(role.id))
-    .filter((roleId) => Number.isFinite(roleId));
 
   const usedRoleIds = new Set<number>();
   const writes: Prisma.PrismaPromise<any>[] = [];
@@ -4280,27 +4302,110 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
   const workerEmployees = await prisma.employee.findMany({
     where: {
       orgId,
-      OR: [
-        { roleId: null },
-        ...(legacyWorkerRoleIds.length > 0 ? [{ roleId: { in: legacyWorkerRoleIds } }] : []),
-      ],
     },
     include: {
       membership: {
         select: { role: true },
       },
+      role: {
+        select: { code: true, defaultPayType: true },
+      },
     },
   });
   const migrateEmployeeIds = workerEmployees
-    .filter((employee) => employee.membership?.role === "WORKER")
+    .filter(
+      (employee) =>
+        employee.membership?.role === "WORKER" &&
+        (!employee.roleId || !isWorkerEmployeeRoleCode(employee.role?.code))
+    )
+    .map((employee) => Number(employee.id))
+    .filter((employeeId) => Number.isFinite(employeeId));
+  const clearEmployeeRoleIds = workerEmployees
+    .filter((employee) => employee.membership?.role !== "WORKER" && employee.roleId !== null)
+    .map((employee) => Number(employee.id))
+    .filter((employeeId) => Number.isFinite(employeeId));
+  const workerIdsNeedingCtPayType = workerEmployees
+    .filter((employee) => {
+      if (employee.membership?.role !== "WORKER") return false;
+      if (normalizePayType(employee.payType, null)) return false;
+      const nextPayType =
+        employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
+          ? resolveRoleDefaultPayType(employee.role)
+          : resolveRoleDefaultPayType(sewingRole);
+      return nextPayType === "CT";
+    })
+    .map((employee) => Number(employee.id))
+    .filter((employeeId) => Number.isFinite(employeeId));
+  const workerIdsNeedingFixedPayType = workerEmployees
+    .filter((employee) => {
+      if (employee.membership?.role !== "WORKER") return false;
+      if (normalizePayType(employee.payType, null)) return false;
+      const nextPayType =
+        employee.roleId && isWorkerEmployeeRoleCode(employee.role?.code)
+          ? resolveRoleDefaultPayType(employee.role)
+          : resolveRoleDefaultPayType(sewingRole);
+      return nextPayType === "FIXED";
+    })
+    .map((employee) => Number(employee.id))
+    .filter((employeeId) => Number.isFinite(employeeId));
+  const nonWorkerIdsNeedingFixedPayType = workerEmployees
+    .filter(
+      (employee) =>
+        employee.membership?.role !== "WORKER" &&
+        normalizePayType(employee.payType, null) !== "FIXED"
+    )
     .map((employee) => Number(employee.id))
     .filter((employeeId) => Number.isFinite(employeeId));
 
-  if (migrateEmployeeIds.length > 0) {
-    await prisma.employee.updateMany({
-      where: { id: { in: migrateEmployeeIds } },
-      data: { roleId: sewingRole.id },
-    });
+  if (
+    migrateEmployeeIds.length > 0 ||
+    clearEmployeeRoleIds.length > 0 ||
+    workerIdsNeedingCtPayType.length > 0 ||
+    workerIdsNeedingFixedPayType.length > 0 ||
+    nonWorkerIdsNeedingFixedPayType.length > 0
+  ) {
+    const reconciliationWrites: Prisma.PrismaPromise<any>[] = [];
+    if (migrateEmployeeIds.length > 0) {
+      reconciliationWrites.push(
+        prisma.employee.updateMany({
+          where: { id: { in: migrateEmployeeIds } },
+          data: { roleId: sewingRole.id },
+        })
+      );
+    }
+    if (clearEmployeeRoleIds.length > 0) {
+      reconciliationWrites.push(
+        prisma.employee.updateMany({
+          where: { id: { in: clearEmployeeRoleIds } },
+          data: { roleId: null },
+        })
+      );
+    }
+    if (workerIdsNeedingCtPayType.length > 0) {
+      reconciliationWrites.push(
+        prisma.employee.updateMany({
+          where: { id: { in: workerIdsNeedingCtPayType } },
+          data: { payType: "CT" },
+        })
+      );
+    }
+    if (workerIdsNeedingFixedPayType.length > 0) {
+      reconciliationWrites.push(
+        prisma.employee.updateMany({
+          where: { id: { in: workerIdsNeedingFixedPayType } },
+          data: { payType: "FIXED" },
+        })
+      );
+    }
+    if (nonWorkerIdsNeedingFixedPayType.length > 0) {
+      reconciliationWrites.push(
+        prisma.employee.updateMany({
+          where: { id: { in: nonWorkerIdsNeedingFixedPayType } },
+          data: { payType: "FIXED" },
+        })
+      );
+    }
+    await prisma.$transaction(reconciliationWrites);
   }
 
   return roles;
@@ -4824,18 +4929,24 @@ app.patch("/org-memberships/:id/approve", async (req, res) => {
       where: { orgMembershipId: membership.id },
     });
     const resolvedEmployeeRoleId =
-      employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
-        ? employeeRoleIdNum
-        : existingEmployee?.roleId ??
-          (nextRole === "WORKER"
-            ? await resolveDefaultEmployeeRoleId(membership.orgId)
-            : null);
+      nextRole === "WORKER"
+        ? employeeRoleIdNum !== null && employeeRoleIdNum !== undefined
+          ? employeeRoleIdNum
+          : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
+        : null;
+    const resolvedPayType = await resolveEmployeeStoredPayType({
+      orgId: membership.orgId,
+      membershipRole: nextRole,
+      roleId: resolvedEmployeeRoleId,
+      payType: existingEmployee?.payType,
+    });
     await prisma.employee.upsert({
       where: { orgMembershipId: membership.id },
       update: {
         orgId: membership.orgId,
         factoryId: factoryIdNum,
         roleId: resolvedEmployeeRoleId,
+        payType: resolvedPayType,
         joinedAt: existingEmployee?.joinedAt ?? now,
         leftAt: null,
         leaveStartAt: null,
@@ -4846,6 +4957,7 @@ app.patch("/org-memberships/:id/approve", async (req, res) => {
         orgMembershipId: membership.id,
         factoryId: factoryIdNum,
         roleId: resolvedEmployeeRoleId,
+        payType: resolvedPayType,
         joinedAt: now,
       },
     });
@@ -4948,20 +5060,27 @@ app.patch("/org-memberships/:id", async (req, res) => {
   });
 
   if (isManufacturerOrg(membership.organization)) {
+    await ensureDefaultEmployeeRoles(membership.orgId);
     const now = new Date();
     const existingEmployee = await prisma.employee.findUnique({
       where: { orgMembershipId: membership.id },
     });
     const resolvedRoleId =
-      existingEmployee?.roleId ??
-      (nextRole === "WORKER"
-        ? await resolveDefaultEmployeeRoleId(membership.orgId)
-        : null);
+      nextRole === "WORKER"
+        ? existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
+        : null;
+    const resolvedPayType = await resolveEmployeeStoredPayType({
+      orgId: membership.orgId,
+      membershipRole: nextRole,
+      roleId: resolvedRoleId,
+      payType: existingEmployee?.payType,
+    });
 
     const currentStatus = data.status ?? membership.status;
     const employeeData: any = {
       orgId: membership.orgId,
-      ...(nextRole === "WORKER" && resolvedRoleId ? { roleId: resolvedRoleId } : {}),
+      roleId: resolvedRoleId,
+      payType: resolvedPayType,
     };
 
     if (currentStatus === "ACTIVE") {
@@ -5188,22 +5307,24 @@ app.post("/employees", async (req, res) => {
       : existingEmployee?.factoryId ?? null
     : null;
   const resolvedRoleId =
-    roleIdNum !== null && roleIdNum !== undefined
-      ? roleIdNum
-      : existingEmployee?.roleId ??
-        (membership.role === "WORKER"
-          ? await resolveDefaultEmployeeRoleId(membership.orgId)
-          : null);
+    membership.role === "WORKER"
+      ? roleIdNum !== null && roleIdNum !== undefined
+        ? roleIdNum
+        : existingEmployee?.roleId ?? (await resolveDefaultEmployeeRoleId(membership.orgId))
+      : null;
+  const resolvedPayType = await resolveEmployeeStoredPayType({
+    orgId: membership.orgId,
+    membershipRole: membership.role,
+    roleId: resolvedRoleId,
+    payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
+  });
 
   const data = {
     orgId: membership.orgId,
     orgMembershipId: membership.id,
     factoryId: resolvedFactoryId,
     roleId: resolvedRoleId,
-    payType:
-      payType !== undefined
-        ? payTypeValue
-        : normalizePayType(existingEmployee?.payType, null),
+    payType: resolvedPayType,
     name: resolveOptionalString(name, existingEmployee?.name ?? null),
     bankName: resolveOptionalString(bankName, existingEmployee?.bankName ?? null),
     bankAccountNumber: resolveOptionalString(
@@ -8566,7 +8687,7 @@ app.get("/attributes", async (req, res) => {
       orderBy: { id: "asc" },
     }),
     ensureDefaultEmployeeRoles(organization.id).then((items) =>
-      items.map(toAttrRoleResponse)
+      items.filter((item) => isWorkerEmployeeRoleCode(item.code)).map(toAttrRoleResponse)
     ),
     includeProcesses
       ? prisma.attrProcess.findMany({

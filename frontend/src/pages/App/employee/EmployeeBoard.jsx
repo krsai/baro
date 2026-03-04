@@ -34,8 +34,21 @@ const ORG_ROLE_OPTIONS = [
   { value: 'WORKER', label: '작업자' },
 ];
 
+const WORKER_JOB_ROLE_CODES = new Set([
+  'WORKER_CUTTING',
+  'WORKER_SEWING',
+  'WORKER_IRONING',
+  'WORKER_INSPECTION',
+  'WORKER_PACKING',
+  'WORKER_OTHER',
+]);
+const DEFAULT_WORKER_JOB_ROLE_CODE = 'WORKER_SEWING';
+const ORG_ROLE_LABELS = ORG_ROLE_OPTIONS.reduce((map, option) => {
+  map[option.value] = option.label;
+  return map;
+}, {});
+
 const PAY_TYPE_OPTIONS = [
-  { value: '', label: '직무 기본값 사용' },
   { value: 'CT', label: '성과급(CT)' },
   { value: 'FIXED', label: '고정급' },
 ];
@@ -45,8 +58,11 @@ const getRoleOptionsByOrgType = (orgType) =>
     ? ORG_ROLE_OPTIONS.filter((option) => option.value !== 'WORKER')
     : ORG_ROLE_OPTIONS;
 
-const formatPayTypeLabel = (value) =>
-  String(value || '').toUpperCase() === 'CT' ? '성과급(CT)' : '고정급';
+const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
+const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER';
+const isWorkerJobRoleOption = (role) =>
+  WORKER_JOB_ROLE_CODES.has(String(role?.code || '').trim().toUpperCase());
+const getOrgRoleLabel = (value) => ORG_ROLE_LABELS[String(value || '').toUpperCase()] || '-';
 
 const sortJobRoleOptions = (rows = []) =>
   [...rows].sort((a, b) => {
@@ -68,7 +84,7 @@ const buildEmployeeDraft = (member, employee) => ({
   bankAccountNumber: employee?.bankAccountNumber || '',
   orgRole: String(member?.role || 'WORKER').toUpperCase(),
   jobRoleId: employee?.roleId ? String(employee.roleId) : '',
-  payType: String(employee?.payType || '').toUpperCase(),
+  payType: String(employee?.payType || employee?.effectivePayType || 'FIXED').toUpperCase(),
   factoryId: employee?.factoryId ? String(employee.factoryId) : '',
   status: member.status,
 });
@@ -89,14 +105,14 @@ const EmployeeRow = React.memo(
     const [isDirty, setIsDirty] = useState(false);
     const joinedAt = employee?.joinedAt || member.approvedAt;
     const leftAt = employee?.leftAt;
-    const selectedJobRole = useMemo(
-      () =>
-        jobRoleOptions.find((role) => String(role.id) === String(draft.jobRoleId || '')) || null,
-      [draft.jobRoleId, jobRoleOptions]
-    );
-    const defaultPayTypeLabel = selectedJobRole
-      ? formatPayTypeLabel(selectedJobRole.defaultPayType)
-      : null;
+    const isWorker = isWorkerOrgRole(draft.orgRole);
+    const defaultWorkerJobRoleId = useMemo(() => {
+      const matchedRole = jobRoleOptions.find(
+        (role) => String(role?.code || '').trim().toUpperCase() === DEFAULT_WORKER_JOB_ROLE_CODE
+      );
+      return matchedRole?.id ? String(matchedRole.id) : '';
+    }, [jobRoleOptions]);
+    const effectiveJobRoleId = isWorker ? draft.jobRoleId || defaultWorkerJobRoleId : '';
 
     useEffect(() => {
       if (!isDirty) {
@@ -110,7 +126,10 @@ const EmployeeRow = React.memo(
     };
 
     const handleSave = async () => {
-      const didSave = await onSave(member, draft);
+      const didSave = await onSave(member, {
+        ...draft,
+        jobRoleId: effectiveJobRoleId,
+      });
       if (didSave) {
         setIsDirty(false);
       }
@@ -187,21 +206,29 @@ const EmployeeRow = React.memo(
         </TableCell>
 
         <TableCell>
-          <TextField
-            select
-            size="small"
-            value={draft.jobRoleId}
-            onChange={(e) => handleDraftChange({ jobRoleId: e.target.value })}
-            disabled={isUpdating}
-            sx={{ minWidth: 180 }}
-          >
-            <MenuItem value="">미지정</MenuItem>
-            {jobRoleOptions.map((role) => (
-              <MenuItem key={role.id} value={String(role.id)}>
-                {role.name || role.code}
-              </MenuItem>
-            ))}
-          </TextField>
+          {isWorker ? (
+            <TextField
+              select
+              size="small"
+              value={effectiveJobRoleId}
+              onChange={(e) => handleDraftChange({ jobRoleId: e.target.value })}
+              disabled={isUpdating}
+              sx={{ minWidth: 180 }}
+            >
+              {jobRoleOptions.map((role) => (
+                <MenuItem key={role.id} value={String(role.id)}>
+                  {role.name || role.code}
+                </MenuItem>
+              ))}
+            </TextField>
+          ) : (
+            <TextField
+              size="small"
+              value={getOrgRoleLabel(draft.orgRole)}
+              disabled
+              sx={{ minWidth: 180 }}
+            />
+          )}
         </TableCell>
 
         <TableCell>
@@ -215,17 +242,10 @@ const EmployeeRow = React.memo(
           >
             {PAY_TYPE_OPTIONS.map((option) => (
               <MenuItem key={option.value || 'default'} value={option.value}>
-                {option.value || !defaultPayTypeLabel
-                  ? option.label
-                  : `${option.label} (${defaultPayTypeLabel})`}
+                {option.label}
               </MenuItem>
             ))}
           </TextField>
-          {!draft.payType && defaultPayTypeLabel && (
-            <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-              현재 기본값: {defaultPayTypeLabel}
-            </Typography>
-          )}
         </TableCell>
 
         <TableCell>
@@ -273,7 +293,7 @@ const EmployeeRow = React.memo(
 );
 
 const EmployeeBoard = () => {
-  const { user, activeOrgId, activeOrgType } = useAuth();
+  const { user, activeOrgId, activeOrgType, activeOrgRole, activeFactoryId } = useAuth();
   const { showNotification } = useApp();
 
   const [factories, setFactories] = useState([]);
@@ -282,6 +302,7 @@ const EmployeeBoard = () => {
   const [employees, setEmployees] = useState([]);
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [myEmail, setMyEmail] = useState(user?.email || '');
+  const [selectedFactoryFilterId, setSelectedFactoryFilterId] = useState('');
 
   const [statusMessage, setStatusMessage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
@@ -295,6 +316,17 @@ const EmployeeBoard = () => {
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType),
     [activeOrgType]
+  );
+  const isAdmin = isAdminOrgRole(activeOrgRole);
+  const operatorFactoryId =
+    !isAdmin && Number.isInteger(Number(activeFactoryId)) && Number(activeFactoryId) > 0
+      ? String(activeFactoryId)
+      : '';
+  const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
+  const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
+  const selectedFactoryFilter = useMemo(
+    () => factories.find((factory) => String(factory?.id) === String(selectedFactoryFilterId)) || null,
+    [factories, selectedFactoryFilterId]
   );
 
   const employeeByMembership = useMemo(() => {
@@ -337,21 +369,33 @@ const EmployeeBoard = () => {
 
     try {
       const data = await requestJSON(`/factories${buildQueryString({ orgId })}`);
-      setFactories(Array.isArray(data) ? data : []);
+      const allFactories = Array.isArray(data) ? data : [];
+      const visibleFactories = isAdmin
+        ? allFactories
+        : operatorFactoryId
+          ? allFactories.filter((factory) => String(factory?.id) === operatorFactoryId)
+          : [];
+      setFactories(visibleFactories);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '공장 정보를 불러오지 못했습니다.' });
     }
-  }, []);
+  }, [isAdmin, operatorFactoryId]);
 
-  const fetchEmployees = useCallback(async (orgId) => {
+  const fetchEmployees = useCallback(async (orgId, factoryId) => {
     if (!orgId) return;
+    if (!isAdmin && !factoryId && activeOrgType !== 'BRAND') {
+      setEmployees([]);
+      return;
+    }
     try {
-      const data = await requestJSON(`/employees${buildQueryString({ orgId })}`);
+      const data = await requestJSON(
+        `/employees${buildQueryString({ orgId, factoryId: factoryId || undefined })}`
+      );
       setEmployees(Array.isArray(data) ? data : []);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '직원 정보를 불러오지 못했습니다.' });
     }
-  }, []);
+  }, [activeOrgType, isAdmin]);
 
   const fetchJobRoles = useCallback(async (orgId) => {
     if (!orgId) return;
@@ -361,7 +405,7 @@ const EmployeeBoard = () => {
         skipGlobalLoading: true,
       });
       const roles = Array.isArray(data?.roles) ? data.roles : [];
-      setJobRoleOptions(sortJobRoleOptions(roles));
+      setJobRoleOptions(sortJobRoleOptions(roles.filter(isWorkerJobRoleOption)));
     } catch (_error) {
       setJobRoleOptions([]);
       setStatusMessage({ type: 'error', text: '직무 정보를 불러오지 못했습니다.' });
@@ -371,53 +415,93 @@ const EmployeeBoard = () => {
   useEffect(() => {
     if (!activeOrgId) return;
     fetchMemberships(activeOrgId);
-    fetchEmployees(activeOrgId);
     fetchFactories(activeOrgId, activeOrgType);
     fetchJobRoles(activeOrgId);
   }, [activeOrgId, activeOrgType, fetchMemberships, fetchEmployees, fetchFactories, fetchJobRoles]);
 
-  const handleApprove = async (member) => {
-    if (approvingId) return;
-    setApprovingId(member.id);
-    setStatusMessage(null);
-
-    const factoryId = pendingFactoryOverrides[member.id] || '';
-    const selectedRole = String(
-      pendingRoleOverrides[member.id] || member.role || ''
-    ).toUpperCase();
-
-    if (activeOrgType !== 'BRAND' && !factoryId) {
-      setStatusMessage({ type: 'error', text: '승인 전에 공장을 선택해 주세요.' });
-      setApprovingId(null);
+  useEffect(() => {
+    if (activeOrgType === 'BRAND') {
+      setSelectedFactoryFilterId('');
       return;
     }
-
-    if (!selectedRole) {
-      setStatusMessage({ type: 'error', text: '승인 전에 역할을 선택해 주세요.' });
-      setApprovingId(null);
+    if (!canFilterByFactory) {
+      if (!isAdmin) {
+        setSelectedFactoryFilterId(operatorFactoryId);
+      }
       return;
     }
-
-    try {
-      await requestJSON(`/org-memberships/${member.id}/approve`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role: selectedRole,
-          approvedBy: myEmail,
-          factoryId: factoryId ? Number(factoryId) : null,
-        }),
-      });
-
-      await fetchMemberships(activeOrgId);
-      await fetchEmployees(activeOrgId);
-      setStatusMessage({ type: 'success', text: '승인을 완료했습니다.' });
-    } catch (error) {
-      setStatusMessage({ type: 'error', text: error?.message || '승인에 실패했습니다.' });
-    } finally {
-      setApprovingId(null);
+    if (!isAdmin) {
+      setSelectedFactoryFilterId(operatorFactoryId);
+      return;
     }
-  };
+    setSelectedFactoryFilterId((prev) => {
+      if (!prev) return '';
+      const exists = factories.some((factory) => String(factory?.id) === String(prev));
+      return exists ? prev : '';
+    });
+  }, [activeOrgType, canFilterByFactory, factories, isAdmin, operatorFactoryId]);
+
+  useEffect(() => {
+    if (!activeOrgId) return;
+    fetchEmployees(activeOrgId, selectedFactoryFilterId);
+  }, [activeOrgId, fetchEmployees, selectedFactoryFilterId]);
+
+  const handleApprove = useCallback(
+    async (member) => {
+      if (approvingId) return;
+      setApprovingId(member.id);
+      setStatusMessage(null);
+
+      const factoryId = pendingFactoryOverrides[member.id] || defaultPendingFactoryId || '';
+      const selectedRole = String(
+        pendingRoleOverrides[member.id] || member.role || ''
+      ).toUpperCase();
+
+      if (activeOrgType !== 'BRAND' && !factoryId) {
+        setStatusMessage({ type: 'error', text: '승인 전에 공장을 선택해 주세요.' });
+        setApprovingId(null);
+        return;
+      }
+
+      if (!selectedRole) {
+        setStatusMessage({ type: 'error', text: '승인 전에 역할을 선택해 주세요.' });
+        setApprovingId(null);
+        return;
+      }
+
+      try {
+        await requestJSON(`/org-memberships/${member.id}/approve`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            role: selectedRole,
+            approvedBy: myEmail,
+            factoryId: factoryId ? Number(factoryId) : null,
+          }),
+        });
+
+        await fetchMemberships(activeOrgId);
+        await fetchEmployees(activeOrgId, selectedFactoryFilterId);
+        setStatusMessage({ type: 'success', text: '승인을 완료했습니다.' });
+      } catch (error) {
+        setStatusMessage({ type: 'error', text: error?.message || '승인에 실패했습니다.' });
+      } finally {
+        setApprovingId(null);
+      }
+    },
+    [
+      activeOrgId,
+      activeOrgType,
+      approvingId,
+      defaultPendingFactoryId,
+      fetchEmployees,
+      fetchMemberships,
+      myEmail,
+      pendingFactoryOverrides,
+      pendingRoleOverrides,
+      selectedFactoryFilterId,
+    ]
+  );
 
   const handleReject = async (member) => {
     if (rejectingId) return;
@@ -449,13 +533,34 @@ const EmployeeBoard = () => {
       setStatusMessage(null);
 
       try {
+        const saveMembership = async () => {
+          if (draft.status === member.status && draft.orgRole === member.role) return;
+          await requestJSON(`/org-memberships/${member.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: draft.status,
+              role: draft.orgRole,
+              approvedBy: myEmail,
+            }),
+          });
+        };
+        const shouldSaveMembershipFirst =
+          draft.orgRole !== member.role &&
+          draft.orgRole === 'WORKER' &&
+          draft.status === 'ACTIVE';
+
+        if (shouldSaveMembershipFirst) {
+          await saveMembership();
+        }
+
         const employeePayload = {
           orgMembershipId: member.id,
           name: draft.name,
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
-          roleId: draft.jobRoleId ? Number(draft.jobRoleId) : null,
-          payType: draft.payType || null,
+          roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
+          payType: draft.payType || 'FIXED',
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
@@ -466,19 +571,11 @@ const EmployeeBoard = () => {
           body: JSON.stringify(employeePayload),
         });
 
-        if (draft.status !== member.status || draft.orgRole !== member.role) {
-          await requestJSON(`/org-memberships/${member.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              status: draft.status,
-              role: draft.orgRole,
-              approvedBy: myEmail,
-            }),
-          });
+        if (!shouldSaveMembershipFirst) {
+          await saveMembership();
         }
 
-        await fetchEmployees(activeOrgId);
+        await fetchEmployees(activeOrgId, selectedFactoryFilterId);
         await fetchMemberships(activeOrgId);
         setStatusMessage({ type: 'success', text: '직원 정보가 저장되었습니다.' });
         return true;
@@ -490,7 +587,7 @@ const EmployeeBoard = () => {
         setUpdatingMembershipIds((prev) => ({ ...prev, [member.id]: false }));
       }
     },
-    [activeOrgId, fetchEmployees, fetchMemberships, myEmail, updatingEmployeeIds, updatingMembershipIds]
+    [activeOrgId, fetchEmployees, fetchMemberships, myEmail, selectedFactoryFilterId, updatingEmployeeIds, updatingMembershipIds]
   );
 
   const factoryOrder = useMemo(() => {
@@ -501,8 +598,16 @@ const EmployeeBoard = () => {
     return map;
   }, [factories]);
 
+  const visibleActiveMembers = useMemo(() => {
+    if (!selectedFactoryFilterId) return activeMembers;
+    return activeMembers.filter((member) => {
+      const employee = employeeByMembership.get(member.id);
+      return String(employee?.factoryId || '') === String(selectedFactoryFilterId);
+    });
+  }, [activeMembers, employeeByMembership, selectedFactoryFilterId]);
+
   const sortedActiveMembers = useMemo(() => {
-    return [...activeMembers].sort((a, b) => {
+    return [...visibleActiveMembers].sort((a, b) => {
       const aFactoryId = employeeByMembership.get(a.id)?.factoryId ?? null;
       const bFactoryId = employeeByMembership.get(b.id)?.factoryId ?? null;
 
@@ -516,7 +621,7 @@ const EmployeeBoard = () => {
       if (aIndex !== bIndex) return aIndex - bIndex;
       return String(a.email).localeCompare(String(b.email));
     });
-  }, [activeMembers, employeeByMembership, factoryOrder]);
+  }, [employeeByMembership, factoryOrder, visibleActiveMembers]);
 
   return (
     <AppPageContainer>
@@ -524,6 +629,38 @@ const EmployeeBoard = () => {
         {statusMessage && (
           <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
         )}
+
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', md: 'center' },
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 2,
+          }}
+        >
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            직원 관리
+          </Typography>
+          {canFilterByFactory && (
+            <TextField
+              select
+              label="공장"
+              size="small"
+              value={selectedFactoryFilterId}
+              onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
+              disabled={!isAdmin}
+              sx={{ minWidth: 220 }}
+            >
+              {isAdmin && <MenuItem value="">전체 공장</MenuItem>}
+              {factories.map((factory) => (
+                <MenuItem key={factory.id} value={String(factory.id)}>
+                  {factory.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+        </Box>
 
         {pendingMembers.length > 0 && (
           <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
@@ -556,16 +693,17 @@ const EmployeeBoard = () => {
                           <TextField
                             select
                             size="small"
-                            value={pendingFactoryOverrides[member.id] || ''}
+                            value={pendingFactoryOverrides[member.id] || defaultPendingFactoryId}
                             onChange={(e) =>
                               setPendingFactoryOverrides((prev) => ({
                                 ...prev,
                                 [member.id]: e.target.value,
                               }))
                             }
+                            disabled={!isAdmin}
                             sx={{ minWidth: 150 }}
                           >
-                            <MenuItem value="">공장 선택</MenuItem>
+                            {isAdmin && <MenuItem value="">공장 선택</MenuItem>}
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}
@@ -628,9 +766,25 @@ const EmployeeBoard = () => {
         )}
 
         <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            재직/퇴직 직원 목록
-          </Typography>
+          <Box
+            sx={{
+              mb: 2,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: { xs: 'flex-start', md: 'center' },
+              flexDirection: { xs: 'column', md: 'row' },
+              gap: 1,
+            }}
+          >
+            <Typography variant="h6">
+              재직/퇴직 직원 목록
+            </Typography>
+            {selectedFactoryFilter && (
+              <Typography variant="body2" color="text.secondary">
+                {selectedFactoryFilter.name}
+              </Typography>
+            )}
+          </Box>
 
           <TableContainer>
             <Table size="small">
