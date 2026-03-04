@@ -1,20 +1,65 @@
 ﻿import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
-import dotenv from "dotenv";
-import { PrismaClient, Prisma, type OrgUserRole } from "@prisma/client";
+import "./config/env";
+import { Prisma, type OrgUserRole } from "@prisma/client";
+import { prisma } from "./db";
+import {
+  normalizePayType,
+  resolveEmployeeEffectivePayType,
+  resolveOrgRoleLabel,
+  resolveRoleDefaultPayType,
+} from "./employees/employeeCompensation";
+import {
+  attachOrganizationSubscription,
+  ensureOrganizationSubscription,
+  getHardCodedSystemAdminEmail,
+  getOrganizationByQuery,
+  getRequestedOrgIdText,
+  getRequesterEmail,
+  requireOrgRole,
+  requireSystemAdmin,
+} from "./middleware/access";
+import { payrollRouter } from "./payroll/payroll.routes";
 import {
   parseDateKeyParts,
   resolveAtTrainingMonthKey,
   shiftMonthKey,
 } from "./utils/atTrainingMonthKey";
 import {
+  ensureArray,
+  isNumericId,
+  isValidOrgCode,
+  normalizeComparableText,
+  normalizeEmail,
+  normalizeOrgCode,
+  resolveOptionalString,
+  toId,
+  toNumberOrNull,
+  toPositiveInt,
+  toPositiveIntOrNull,
+  wait,
+} from "./utils/common";
+import {
+  createHttpError,
+  getErrorCode,
+  getErrorMessage,
+  getErrorStatus,
+  toErrorRecord,
+} from "./utils/http";
+import {
+  resolveWorkRecordColorName,
+  resolveWorkRecordProcessName,
+  resolveWorkRecordStyleId,
+  resolveWorkRecordStyleName,
+  resolveWorkRecordStyleUid,
+  WORK_RECORD_WITH_REFS_INCLUDE,
+} from "./work-records/workRecord.shared";
+import {
   AT_MONTHLY_A_CLAMP_RATIO,
   fitAtParamsWithProportionalAllocation,
   type AtTrainingDayBucket,
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
-
-dotenv.config({ override: true });
 
 const app = express();
 app.use(cors());
@@ -33,20 +78,7 @@ function assertGeneratedPrismaClientShape() {
 }
 
 assertGeneratedPrismaClientShape();
-const prisma = new PrismaClient();
 
-const DEFAULT_ORG = {
-  name: "BARO",
-  businessNumber: "",
-  representative: "관리자",
-  industry: "봉제",
-  address: "",
-  phone: "",
-  email: "baro.garment@gmail.com",
-  type: "MANUFACTURER" as const,
-};
-
-const PAY_TYPE_OPTIONS = new Set(["CT", "FIXED"]);
 const WORK_ORDER_ITEM_GENDER_CODES = new Set(["M", "W", "U"]);
 const WORK_ORDER_STATUS_CODES = new Set([
   "ORDER_RECEIVED",
@@ -102,12 +134,6 @@ const DEFAULT_EMPLOYEE_ROLES = [
 const DEFAULT_EMPLOYEE_ROLE_CODES = new Set<string>(
   DEFAULT_EMPLOYEE_ROLES.map((role) => role.code)
 );
-const ORG_ROLE_LABELS: Record<OrgUserRole, string> = {
-  ADMIN: "관리자",
-  OPERATOR: "운영자",
-  ACCOUNTANT: "회계사",
-  WORKER: "작업자",
-};
 
 const DEFAULT_ATTRIBUTES = {
   colors: [] as { code: string; name: string }[],
@@ -133,38 +159,6 @@ const DEFAULT_ATTRIBUTES = {
   ],
 };
 
-const isNumericId = (value: unknown): boolean => {
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "string") return /^\d+$/.test(value);
-  return false;
-};
-
-const toId = (value: unknown): number => Number(value);
-const normalizeEmail = (value: unknown): string => {
-  if (typeof value !== "string") return "";
-  return value.trim().toLowerCase();
-};
-const normalizeOrgCode = (value: unknown): string | null => {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().toUpperCase();
-  return trimmed === "" ? null : trimmed;
-};
-const isValidOrgCode = (value: string): boolean => /^[A-Z]{4}$/.test(value);
-const toNumberOrNull = (value: unknown): number | null => {
-  if (value === "" || value === null || value === undefined) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-const normalizePayType = (
-  value: unknown,
-  fallback: "CT" | "FIXED" | null = null
-): "CT" | "FIXED" | null => {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const normalized = String(value).trim().toUpperCase();
-  return PAY_TYPE_OPTIONS.has(normalized)
-    ? (normalized as "CT" | "FIXED")
-    : fallback;
-};
 const normalizeWorkOrderItemGender = (
   value: unknown,
   fallback: "M" | "W" | "U" | null = "M"
@@ -251,19 +245,6 @@ const resolveFactoryWageFields = (
     wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
   };
 };
-const toPositiveIntOrNull = (value: unknown): number | null => {
-  if (value === "" || value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const rounded = Math.trunc(parsed);
-  return rounded > 0 ? rounded : null;
-};
-const toPositiveInt = (value: unknown, fallback = 1): number => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  const rounded = Math.trunc(parsed);
-  return rounded > 0 ? rounded : fallback;
-};
 const STARTUP_DB_MAX_RETRIES = toPositiveInt(
   process.env.STARTUP_DB_MAX_RETRIES,
   5
@@ -272,22 +253,6 @@ const STARTUP_DB_RETRY_DELAY_MS = toPositiveInt(
   process.env.STARTUP_DB_RETRY_DELAY_MS,
   1500
 );
-const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-const resolveOptionalString = (
-  value: unknown,
-  fallback: string | null = null
-): string | null => {
-  if (value === undefined) return fallback;
-  if (value === null) return null;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed === "" ? null : trimmed;
-  }
-  return fallback;
-};
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ADMIN",
@@ -311,10 +276,6 @@ const SUBSCRIPTION_STATUSES = new Set([
   "GRACE",
   "SUSPENDED",
 ]);
-const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
-const HARD_CODED_SYSTEM_ADMIN_EMAIL = normalizeEmail(
-  process.env.SYSTEM_ADMIN_EMAIL || "krsailer82@gmail.com"
-);
 const TRIAL_DAYS = 30;
 const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
   ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;
@@ -328,18 +289,6 @@ const isBrandOrg = (org: { type?: string | null } | null | undefined) =>
   org?.type === "BRAND";
 const addDays = (date: Date, days: number): Date =>
   new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
-
-const isBaroOrganization = (organization: any) => {
-  const normalizedName =
-    typeof organization?.name === "string"
-      ? organization.name.trim().toLowerCase()
-      : "";
-  const normalizedCode =
-    typeof organization?.code === "string"
-      ? organization.code.trim().toUpperCase()
-      : "";
-  return normalizedName === "baro" || normalizedCode === "BARO";
-};
 
 const normalizeSubscriptionEmailInput = (
   value: unknown,
@@ -371,301 +320,6 @@ const normalizeDateInput = (
     return { error: `${fieldName} is invalid` };
   }
   return { value: date };
-};
-
-const ensureOrganizationSubscription = async (organization: any) => {
-  if (!organization) return null;
-
-  const existing = await prisma.organizationSubscription.findUnique({
-    where: { orgId: organization.id },
-  });
-  if (existing) {
-    if (!isBaroOrganization(organization)) return existing;
-
-    const patch: any = {};
-    if (!existing.membershipEmail) {
-      patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
-    }
-    if (!existing.billingEmail) {
-      patch.billingEmail = BARO_SUBSCRIPTION_EMAIL;
-    }
-    if (existing.status === "ACTIVE" && !existing.activatedAt) {
-      patch.activatedAt = new Date();
-    }
-
-    if (Object.keys(patch).length === 0) return existing;
-    return prisma.organizationSubscription.update({
-      where: { id: existing.id },
-      data: patch,
-    });
-  }
-
-  if (isBaroOrganization(organization)) {
-    return prisma.organizationSubscription.create({
-      data: {
-        orgId: organization.id,
-        status: "ACTIVE",
-        membershipEmail: BARO_SUBSCRIPTION_EMAIL,
-        billingEmail: BARO_SUBSCRIPTION_EMAIL,
-        activatedAt: new Date(),
-      },
-    });
-  }
-
-  return prisma.organizationSubscription.create({
-    data: {
-      orgId: organization.id,
-      status: "NOT_SUBSCRIBED",
-    },
-  });
-};
-
-const attachOrganizationSubscription = async (organization: any) => {
-  if (!organization) return null;
-  const subscription = await ensureOrganizationSubscription(organization);
-  return { ...organization, subscription };
-};
-
-const ensureOrganizationAccessible = (organization: any, options: any = {}) => {
-  if (!organization) return organization;
-  if (options.allowSuspended) return organization;
-  if (organization.subscription?.status === "SUSPENDED") {
-    throw createHttpError(403, "organization is suspended");
-  }
-  return organization;
-};
-const createHttpError = (status: number, message: string) => {
-  const error = new Error(message) as Error & { status: number };
-  error.status = status;
-  return error;
-};
-
-const toErrorRecord = (error: unknown): Record<string, unknown> | null =>
-  error && typeof error === "object" ? (error as Record<string, unknown>) : null;
-
-const getErrorStatus = (error: unknown): number | null => {
-  const status = Number(toErrorRecord(error)?.status);
-  return Number.isFinite(status) ? status : null;
-};
-
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  const message = toErrorRecord(error)?.message;
-  return typeof message === "string" && message.trim() ? message : fallback;
-};
-
-const getErrorCode = (error: unknown): string => {
-  const code = toErrorRecord(error)?.code;
-  return typeof code === "string" ? code : "";
-};
-
-const readRequestHeader = (req: Request, name: string): string => {
-  const raw = req.header(name);
-  return typeof raw === "string" ? raw.trim() : "";
-};
-
-const getRequesterEmail = (req: Request): string => {
-  const headerEmail = normalizeEmail(readRequestHeader(req, "x-user-email"));
-  return headerEmail;
-};
-
-const getRequestedOrgIdText = (req: Request): string => {
-  const rawFromQuery =
-    req.query.orgId === undefined || req.query.orgId === null
-      ? ""
-      : String(req.query.orgId).trim();
-  if (rawFromQuery) return rawFromQuery;
-  return readRequestHeader(req, "x-org-id");
-};
-
-const getPrimaryOrganization = async (options = {}) => {
-  let organization = await prisma.organization.findFirst({
-    orderBy: { id: "asc" },
-  });
-
-  if (!organization) {
-    organization = await prisma.organization.create({ data: DEFAULT_ORG });
-  }
-
-  const withSubscription = await attachOrganizationSubscription(organization);
-  return ensureOrganizationAccessible(withSubscription, options);
-};
-
-const getOrganizationByQuery = async (req: Request, options = {}) => {
-  const rawOrgId = getRequestedOrgIdText(req);
-  const requesterEmail = getRequesterEmail(req);
-  if (rawOrgId !== "") {
-    if (!/^\d+$/.test(rawOrgId)) {
-      throw createHttpError(400, "invalid orgId");
-    }
-    const orgId = Number(rawOrgId);
-    if (!Number.isSafeInteger(orgId) || orgId <= 0) {
-      throw createHttpError(400, "invalid orgId");
-    }
-    const organization = await prisma.organization.findUnique({ where: { id: orgId } });
-    if (!organization) return null;
-
-    if (requesterEmail) {
-      const [systemUser, membership] = await Promise.all([
-        prisma.systemUser.findUnique({
-          where: { email: requesterEmail },
-          select: { systemRole: true },
-        }),
-        prisma.orgMembership.findUnique({
-          where: { orgId_email: { orgId, email: requesterEmail } },
-          select: { status: true },
-        }),
-      ]);
-
-      const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
-      const isActiveMember = membership?.status === "ACTIVE";
-      if (!isSystemAdmin && !isActiveMember) {
-        throw createHttpError(403, "organization access denied");
-      }
-    }
-
-    const withSubscription = await attachOrganizationSubscription(organization);
-    return ensureOrganizationAccessible(withSubscription, options);
-  }
-
-  if (requesterEmail) {
-    const [systemUser, membership] = await Promise.all([
-      prisma.systemUser.findUnique({
-        where: { email: requesterEmail },
-        select: { systemRole: true },
-      }),
-      prisma.orgMembership.findFirst({
-        where: {
-          email: requesterEmail,
-          status: "ACTIVE",
-        },
-        include: { organization: true },
-        orderBy: { id: "asc" },
-      }),
-    ]);
-
-    if (membership?.organization) {
-      const withSubscription = await attachOrganizationSubscription(
-        membership.organization
-      );
-      return ensureOrganizationAccessible(withSubscription, options);
-    }
-
-    if (systemUser?.systemRole === "SYSTEM_ADMIN") {
-      return getPrimaryOrganization(options);
-    }
-  }
-
-  return getPrimaryOrganization(options);
-};
-
-const getRequestAccessContext = async (req: Request, options: any = {}) => {
-  const organization = await getOrganizationByQuery(req, options);
-  if (!organization) return null;
-
-  const requesterEmail = getRequesterEmail(req);
-  if (!requesterEmail) {
-    return {
-      organization,
-      requesterEmail: "",
-      systemUser: null,
-      orgMembership: null,
-    };
-  }
-
-  const [systemUser, orgMembership] = await Promise.all([
-    prisma.systemUser.findUnique({
-      where: { email: requesterEmail },
-      select: { systemRole: true },
-    }),
-    prisma.orgMembership.findUnique({
-      where: {
-        orgId_email: {
-          orgId: organization.id,
-          email: requesterEmail,
-        },
-      },
-      select: { role: true, status: true },
-    }),
-  ]);
-
-  return {
-    organization,
-    requesterEmail,
-    systemUser,
-    orgMembership,
-  };
-};
-
-const requireOrgRole = async (
-  req: Request,
-  res: Response,
-  options: {
-    allowedRoles?: OrgUserRole[];
-    allowSystemAdmin?: boolean;
-    allowSuspended?: boolean;
-  } = {}
-) => {
-  const {
-    allowedRoles = ORG_ACCESS_ROLES,
-    allowSystemAdmin = true,
-    allowSuspended = false,
-  } = options;
-  let context = null;
-  try {
-    context = await getRequestAccessContext(req, { allowSuspended });
-  } catch (error) {
-    const status = getErrorStatus(error) ?? 500;
-    const message = getErrorMessage(error, "failed to resolve access context");
-    res.status(status).json({ ok: false, error: message });
-    return null;
-  }
-  if (!context?.organization) {
-    res.status(404).json({ ok: false, error: "organization not found" });
-    return null;
-  }
-
-  if (!context.requesterEmail) {
-    res.status(401).json({ ok: false, error: "request user email is required" });
-    return null;
-  }
-
-  const isSystemAdmin = context.systemUser?.systemRole === "SYSTEM_ADMIN";
-  if (allowSystemAdmin && isSystemAdmin) return context;
-
-  if (!context.orgMembership || context.orgMembership.status !== "ACTIVE") {
-    res.status(403).json({ ok: false, error: "active org membership is required" });
-    return null;
-  }
-
-  if (
-    Array.isArray(allowedRoles) &&
-    allowedRoles.length > 0 &&
-    !allowedRoles.includes(context.orgMembership.role as OrgUserRole)
-  ) {
-    res.status(403).json({ ok: false, error: "insufficient org role" });
-    return null;
-  }
-
-  return context;
-};
-
-const requireSystemAdmin = async (req: Request, res: Response) => {
-  const requesterEmail = getRequesterEmail(req);
-  if (!requesterEmail) {
-    res.status(401).json({ ok: false, error: "request user email is required" });
-    return null;
-  }
-
-  const systemUser = await prisma.systemUser.findUnique({
-    where: { email: requesterEmail },
-    select: { systemRole: true },
-  });
-  if (systemUser?.systemRole !== "SYSTEM_ADMIN") {
-    res.status(403).json({ ok: false, error: "system admin access required" });
-    return null;
-  }
-
-  return { requesterEmail };
 };
 
 const toOrganizationResponse = (organization: any) => {
@@ -803,7 +457,7 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
 };
 
 const ensureHardcodedSystemAdmin = async () => {
-  const email = normalizeEmail(HARD_CODED_SYSTEM_ADMIN_EMAIL);
+  const email = getHardCodedSystemAdminEmail();
   if (!email) return null;
 
   return prisma.systemUser.upsert({
@@ -838,7 +492,6 @@ const createStyleId = () =>
     .slice(2, 6)
     .toUpperCase()}`;
 
-const ensureArray = (value: any): any[] => (Array.isArray(value) ? value : []);
 const toStyleIdentityKey = (customer: any, value: any) =>
   `${(customer ?? "").trim()}::${(value ?? "").trim()}`;
 
@@ -1006,10 +659,6 @@ const toStyleProcessMetricKey = (
   value: string
 ) => `${styleKey}::${type}:${value}`;
 
-const normalizeComparableText = (value: any) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase();
 const collectPositiveIntSet = (...values: any[]) =>
   Array.from(
     new Set(
@@ -1033,18 +682,6 @@ const resolveWorkOrderItemColorName = (item: any) =>
 const resolveAssignmentPlanColorName = (plan: any) =>
   resolveOptionalString(plan?.attrColor?.name ?? plan?.colorName, null) ??
   resolveOptionalString(plan?.attrColor?.code, null) ??
-  "";
-const resolveWorkRecordStyleUid = (record: any) =>
-  toPositiveIntOrNull(record?.style?.uid ?? record?.styleUid);
-const resolveWorkRecordStyleId = (record: any) =>
-  resolveOptionalString(record?.style?.styleId ?? record?.styleId, null);
-const resolveWorkRecordStyleName = (record: any) =>
-  resolveOptionalString(record?.style?.name ?? record?.styleName, null);
-const resolveWorkRecordProcessName = (record: any) =>
-  resolveOptionalString(record?.process?.name ?? record?.processName, null);
-const resolveWorkRecordColorName = (record: any) =>
-  resolveOptionalString(record?.color?.name ?? record?.colorName, null) ??
-  resolveOptionalString(record?.color?.code ?? record?.colorCode, null) ??
   "";
 
 const resolveStyleSyncTargetOrgIds = async (orgId: number) => {
@@ -3243,33 +2880,6 @@ const toWorkRecordResponse = (record: any) => ({
   quantity: toNonNegativeInt(record?.quantity, 0),
   assignmentPlanId: record?.assignmentPlanId ?? null,
 });
-const WORK_RECORD_WITH_REFS_INCLUDE = {
-  orderBy: { id: "asc" as const },
-  include: {
-    style: {
-      select: {
-        uid: true,
-        styleId: true,
-        styleCode: true,
-        name: true,
-      },
-    },
-    process: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    },
-    color: {
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    },
-  },
-};
 const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const workDateInput =
     payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
@@ -4693,19 +4303,6 @@ const seedAttributesIfEmpty = async (orgId: number) => {
   await ensureDefaultEmployeeRoles(orgId);
 };
 
-const resolveRoleDefaultPayType = (role: any): "CT" | "FIXED" =>
-  normalizePayType(role?.defaultPayType, "FIXED") ?? "FIXED";
-
-const resolveEmployeeEffectivePayType = (employee: any): "CT" | "FIXED" =>
-  normalizePayType(employee?.payType, null) ??
-  resolveRoleDefaultPayType(employee?.role) ??
-  "FIXED";
-
-const resolveOrgRoleLabel = (value: unknown): string => {
-  const normalized = String(value || "").trim().toUpperCase() as OrgUserRole;
-  return ORG_ROLE_LABELS[normalized] || "";
-};
-
 const resolveEmployeeStoredPayType = async ({
   orgId,
   membershipRole,
@@ -5193,7 +4790,7 @@ app.get("/auth/context", async (req, res) => {
   }
 
   // Auto-provision system admin on first login
-  if (requesterEmail === HARD_CODED_SYSTEM_ADMIN_EMAIL) {
+  if (requesterEmail === getHardCodedSystemAdminEmail()) {
     await prisma.systemUser.upsert({
       where: { email: requesterEmail },
       update: { systemRole: "SYSTEM_ADMIN" },
@@ -9655,428 +9252,7 @@ app.post("/at-sync/run-now", async (req, res) => {
 
 // ─── Payroll ───────────────────────────────────────────────────────────────
 
-const toPayrollAmountOrNull = (value: unknown): number | null => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const toPayrollAmount = (value: unknown, fallback = 0): number =>
-  toPayrollAmountOrNull(value) ?? fallback;
-
-const buildPayrollEmployeeKey = (workerId: unknown, fallbackName: unknown): string => {
-  const normalizedWorkerId = toPositiveIntOrNull(workerId);
-  if (normalizedWorkerId !== null) return `w-${normalizedWorkerId}`;
-  const fallbackKey = normalizeComparableText(fallbackName);
-  return `n-${fallbackKey || "unknown"}`;
-};
-
-const getPayrollMonthRange = (month: string) => {
-  const [yearText, monthText] = String(month || "").split("-");
-  const year = Number(yearText);
-  const monthNumber = Number(monthText);
-  const start = new Date(Date.UTC(year, monthNumber - 1, 1));
-  const endExclusive = new Date(Date.UTC(year, monthNumber, 1));
-  return { start, endExclusive };
-};
-
-const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
-  resolveOptionalString(
-    employee?.name ?? fallback ?? employee?.membership?.email ?? null,
-    null
-  ) || "이름없음";
-
-const resolvePayrollRoleName = (employee: any): string =>
-  resolveOptionalString(employee?.role?.name, null) ??
-  resolveOrgRoleLabel(employee?.membership?.role) ??
-  "";
-
-const isPayrollEmployeeRelevantForMonth = (
-  employee: any,
-  range: { start: Date; endExclusive: Date }
-) => {
-  const membershipStatus = String(employee?.membership?.status || "")
-    .trim()
-    .toUpperCase();
-  if (membershipStatus === "PENDING" || membershipStatus === "REJECTED") {
-    return false;
-  }
-
-  const effectiveStart =
-    employee?.joinedAt ?? employee?.membership?.approvedAt ?? employee?.createdAt ?? null;
-  const effectiveEnd = employee?.leftAt ?? null;
-
-  if (effectiveStart) {
-    const startedAt = new Date(effectiveStart);
-    if (!Number.isNaN(startedAt.getTime()) && startedAt >= range.endExclusive) {
-      return false;
-    }
-  }
-
-  if (effectiveEnd) {
-    const endedAt = new Date(effectiveEnd);
-    if (!Number.isNaN(endedAt.getTime()) && endedAt < range.start) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const normalizePayrollProcessSnapshot = (process: any) => {
-  const totalCtSeconds = toPayrollAmount(process?.totalCtSeconds, 0);
-  const totalEarnings = toPayrollAmount(process?.totalEarnings, 0);
-  const providedWagePerSecond = toPayrollAmountOrNull(process?.wagePerSecond);
-
-  return {
-    processCode: resolveOptionalString(process?.processCode, "") || "",
-    processName:
-      resolveOptionalString(process?.processName, null) ??
-      resolveOptionalString(process?.processCode, null) ??
-      "-",
-    totalQuantity: toPayrollAmount(process?.totalQuantity, 0),
-    totalCtSeconds,
-    wagePerSecond:
-      providedWagePerSecond !== null
-        ? providedWagePerSecond
-        : totalCtSeconds > 0
-          ? totalEarnings / totalCtSeconds
-          : 0,
-    totalEarnings,
-  };
-};
-
-const normalizePayrollSnapshotEmployee = (employee: any) => {
-  const payType = normalizePayType(employee?.payType, "FIXED") ?? "FIXED";
-  const workerName =
-    resolveOptionalString(employee?.workerName, null) ??
-    resolveOptionalString(employee?.name, null) ??
-    "이름없음";
-  const workerId = toPositiveIntOrNull(employee?.workerId);
-  const roleName =
-    resolveOptionalString(employee?.roleName, null) ??
-    resolveOrgRoleLabel(employee?.orgRole) ??
-    "";
-  const processes = ensureArray(employee?.processes).map(normalizePayrollProcessSnapshot);
-  const storedTotalEarnings = toPayrollAmountOrNull(employee?.totalEarnings);
-  const bonus = toPayrollAmount(employee?.bonus, 0);
-  const deduction = toPayrollAmount(employee?.deduction, 0);
-  const baseEarnings =
-    toPayrollAmountOrNull(employee?.baseEarnings) ??
-    (payType === "CT" ? storedTotalEarnings ?? 0 : 0);
-  const finalEarnings =
-    toPayrollAmountOrNull(employee?.finalEarnings) ??
-    storedTotalEarnings ??
-    (payType === "FIXED"
-      ? toPayrollAmount(employee?.fixedSalary, 0) + bonus - deduction
-      : baseEarnings + bonus - deduction);
-  const fixedSalary =
-    toPayrollAmountOrNull(employee?.fixedSalary) ??
-    (payType === "FIXED" ? finalEarnings - bonus + deduction : 0);
-
-  return {
-    employeeKey:
-      resolveOptionalString(employee?.employeeKey, null) ??
-      buildPayrollEmployeeKey(workerId, workerName),
-    workerId,
-    workerName,
-    orgRole: String(employee?.orgRole || "").trim().toUpperCase(),
-    roleName,
-    payType,
-    bankName: resolveOptionalString(employee?.bankName, null),
-    bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
-    baseEarnings,
-    fixedSalary,
-    bonus,
-    deduction,
-    finalEarnings,
-    totalEarnings: finalEarnings,
-    processes,
-  };
-};
-
-app.get("/payroll/snapshots", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-  const snapshots = await prisma.payrollSnapshot.findMany({
-    where: { orgId: organization.id },
-    orderBy: { month: "desc" },
-    select: { id: true, month: true, lockedAt: true, lockedBy: true, createdAt: true },
-  });
-  return res.json(snapshots);
-});
-
-app.get("/payroll", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-
-  const month = String(req.query.month || "");
-  if (!/^\d{4}-\d{2}$/.test(month)) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
-  }
-
-  // 확정된 스냅샷이 있으면 스냅샷 데이터 반환
-  const snapshot = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId: organization.id, month } },
-  });
-  if (snapshot) {
-    return res.json({
-      locked: true,
-      lockedAt: snapshot.lockedAt,
-      lockedBy: snapshot.lockedBy,
-      month,
-      employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
-    });
-  }
-
-  // 실시간 집계: 해당 월의 WorkLog + WorkRecord 조회
-  const workLogs = await prisma.workLog.findMany({
-    where: {
-      orgId: organization.id,
-      workDate: { startsWith: month },
-    },
-    include: {
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
-    },
-  });
-  const payrollMonthRange = getPayrollMonthRange(month);
-  const workerIds = Array.from(
-    new Set(
-      workLogs
-        .flatMap((workLog) => workLog.workRecords)
-        .map((record) => Number(record.workerId))
-        .filter((workerId) => Number.isSafeInteger(workerId) && workerId > 0)
-    )
-  );
-  const employeeRows = await prisma.employee.findMany({
-    where: {
-      orgId: organization.id,
-      ...(workerIds.length > 0
-        ? {
-            OR: [
-              { membership: { status: { notIn: ["PENDING", "REJECTED"] } } },
-              { id: { in: workerIds } },
-            ],
-          }
-        : { membership: { status: { notIn: ["PENDING", "REJECTED"] } } }),
-    },
-    include: {
-      role: true,
-      membership: {
-        select: {
-          role: true,
-          status: true,
-          email: true,
-          approvedAt: true,
-        },
-      },
-    },
-  });
-  const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
-  const payrollEmployees = employeeRows.filter((employee) =>
-    isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
-  );
-
-  // 직원별 집계
-  const employeeMap = new Map<
-    string,
-    {
-      employeeKey: string;
-      workerId: number | null;
-      workerName: string;
-      orgRole: string;
-      roleName: string;
-      payType: "CT" | "FIXED";
-      bankName: string | null;
-      bankAccountNumber: string | null;
-      baseEarnings: number;
-      processes: Map<
-        string,
-        {
-          processCode: string;
-          processName: string;
-          totalQuantity: number;
-          totalCtSeconds: number;
-          totalEarnings: number;
-        }
-      >;
-    }
-  >();
-
-  payrollEmployees.forEach((employee) => {
-    const workerName = resolvePayrollEmployeeName(employee);
-    const employeeKey = buildPayrollEmployeeKey(employee?.id, workerName);
-    employeeMap.set(employeeKey, {
-      employeeKey,
-      workerId: employee?.id ?? null,
-      workerName,
-      orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
-      roleName: resolvePayrollRoleName(employee),
-      payType: resolveEmployeeEffectivePayType(employee),
-      bankName: resolveOptionalString(employee?.bankName, null),
-      bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
-      baseEarnings: 0,
-      processes: new Map(),
-    });
-  });
-
-  for (const workLog of workLogs) {
-    const wagePerSecond = Number(workLog.factoryWagePerSecond);
-    const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
-
-    for (const record of workLog.workRecords) {
-      const employee =
-        record.workerId != null ? employeesById.get(Number(record.workerId)) ?? null : null;
-      const workerName = resolvePayrollEmployeeName(employee, record.workerName);
-      const key = buildPayrollEmployeeKey(record.workerId, workerName);
-      const effectivePayType = employee
-        ? resolveEmployeeEffectivePayType(employee)
-        : "CT";
-      const ctSeconds = Number(record.ctSeconds);
-      const quantity = Number(record.quantity);
-      const totalCtSeconds =
-        ctSeconds > 0 && quantity > 0 ? ctSeconds * quantity : 0;
-      const earnings =
-        effectivePayType === "CT" && validWage && ctSeconds > 0 && quantity > 0
-          ? ctSeconds * quantity * wagePerSecond
-          : 0;
-
-      if (!employeeMap.has(key)) {
-        employeeMap.set(key, {
-          employeeKey: key,
-          workerId: record.workerId ?? null,
-          workerName,
-          orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
-          roleName: resolvePayrollRoleName(employee),
-          payType: effectivePayType,
-          bankName: resolveOptionalString(employee?.bankName, null),
-          bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
-          baseEarnings: 0,
-          processes: new Map(),
-        });
-      }
-
-      const emp = employeeMap.get(key)!;
-      emp.baseEarnings += earnings;
-
-      const processName = resolveWorkRecordProcessName(record) ?? "";
-      const processKey = record.processCode || processName || "unknown";
-      if (!emp.processes.has(processKey)) {
-        emp.processes.set(processKey, {
-          processCode: record.processCode || "",
-          processName: processName || processKey,
-          totalQuantity: 0,
-          totalCtSeconds: 0,
-          totalEarnings: 0,
-        });
-      }
-      const proc = emp.processes.get(processKey)!;
-      proc.totalQuantity += quantity;
-      proc.totalCtSeconds += totalCtSeconds;
-      proc.totalEarnings += earnings;
-    }
-  }
-
-  const employees = Array.from(employeeMap.values())
-    .map((emp) => ({
-      employeeKey: emp.employeeKey,
-      workerId: emp.workerId,
-      workerName: emp.workerName,
-      orgRole: emp.orgRole,
-      roleName: emp.roleName,
-      payType: emp.payType,
-      bankName: emp.bankName,
-      bankAccountNumber: emp.bankAccountNumber,
-      baseEarnings: emp.baseEarnings,
-      fixedSalary: 0,
-      bonus: 0,
-      deduction: 0,
-      finalEarnings: emp.baseEarnings,
-      totalEarnings: emp.baseEarnings,
-      processes: Array.from(emp.processes.values()).map((process) => ({
-        processCode: process.processCode,
-        processName: process.processName,
-        totalQuantity: process.totalQuantity,
-        totalCtSeconds: process.totalCtSeconds,
-        wagePerSecond:
-          process.totalCtSeconds > 0
-            ? process.totalEarnings / process.totalCtSeconds
-            : 0,
-        totalEarnings: process.totalEarnings,
-      })),
-    }))
-    .sort((a, b) => b.finalEarnings - a.finalEarnings);
-
-  return res.json({ locked: false, month, employees });
-});
-
-app.post("/payroll/lock", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ["ADMIN", "ACCOUNTANT"],
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  const { month, lockedBy, employees } = req.body ?? {};
-  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
-  }
-
-  const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId: organization.id, month } },
-  });
-  if (existing) {
-    return res.status(409).json({ ok: false, error: "already locked" });
-  }
-
-  const snapshot = await prisma.payrollSnapshot.create({
-    data: {
-      orgId: organization.id,
-      month: String(month),
-      data: ensureArray(employees).map(normalizePayrollSnapshotEmployee),
-      lockedAt: new Date(),
-      lockedBy: String(lockedBy || "unknown"),
-    },
-  });
-
-  return res.status(201).json(snapshot);
-});
-
-app.delete("/payroll/snapshots/:month", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ["ADMIN"],
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  const month = String(req.params.month || "");
-  if (!/^\d{4}-\d{2}$/.test(month)) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "month is required (format: YYYY-MM)" });
-  }
-
-  const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId: organization.id, month } },
-    select: { id: true },
-  });
-  if (!existing) {
-    return res.status(404).json({ ok: false, error: "snapshot not found" });
-  }
-
-  await prisma.payrollSnapshot.delete({
-    where: { id: existing.id },
-  });
-
-  return res.json({ ok: true, month });
-});
+app.use(payrollRouter);
 
 // ───────────────────────────────────────────────────────────────────────────
 
