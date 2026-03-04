@@ -3248,7 +3248,7 @@ const AssignBoard = () => {
     });
   }, [detailTargetKey]);
 
-  const handleDragEnd = useCallback((event) => {
+  const handleDragEnd = (event) => {
     if (!persistReady || loading) {
       setActiveDrag(null);
       return;
@@ -3562,20 +3562,7 @@ const AssignBoard = () => {
       });
       setActiveDrag(null);
     }
-  }, [
-    persistReady,
-    loading,
-    assignmentById,
-    cardById,
-    showNotification,
-    mergeUnassignedCards,
-    mergeAssignmentIntoCardTarget,
-    mergeCardIntoAssignment,
-    mergeAssignments,
-    assignments,
-    days,
-    lineCapacityById,
-  ]);
+  };
 
   const handleLinkPrev = useCallback((assignmentId) => {
     setAssignments((prev) => {
