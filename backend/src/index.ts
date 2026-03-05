@@ -536,6 +536,9 @@ type StyleAtParams = {
   version: number;
   updatedAt: string | null;
   trainedPeriod: string | null;
+  attendanceCoverage: number | null;
+  attendanceFallbackShare: number | null;
+  observationCount: number | null;
 };
 
 const toStyleAtParams = (value: any): StyleAtParams | null => {
@@ -563,8 +566,36 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
     trainedPeriodRaw && /^\d{4}-\d{2}$/.test(trainedPeriodRaw)
       ? trainedPeriodRaw
       : null;
+  const attendanceCoverageRaw = toNumberOrNull((value as any).attendanceCoverage);
+  const attendanceCoverage =
+    attendanceCoverageRaw === null
+      ? null
+      : roundToScale(Math.min(1, Math.max(0, attendanceCoverageRaw)), 4);
+  const attendanceFallbackShareRaw = toNumberOrNull(
+    (value as any).attendanceFallbackShare
+  );
+  const attendanceFallbackShare =
+    attendanceFallbackShareRaw === null
+      ? attendanceCoverage === null
+        ? null
+        : roundToScale(Math.min(1, Math.max(0, 1 - attendanceCoverage)), 4)
+      : roundToScale(Math.min(1, Math.max(0, attendanceFallbackShareRaw)), 4);
+  const observationCountRaw = toNumberOrNull((value as any).observationCount);
+  const observationCount =
+    observationCountRaw === null
+      ? null
+      : Math.max(0, Math.trunc(observationCountRaw));
 
-  return { a, b, version, updatedAt, trainedPeriod };
+  return {
+    a,
+    b,
+    version,
+    updatedAt,
+    trainedPeriod,
+    attendanceCoverage,
+    attendanceFallbackShare,
+    observationCount,
+  };
 };
 
 const isSameStyleAtParams = (
@@ -578,7 +609,10 @@ const isSameStyleAtParams = (
     left.b === right.b &&
     left.version === right.version &&
     left.updatedAt === right.updatedAt &&
-    left.trainedPeriod === right.trainedPeriod
+    left.trainedPeriod === right.trainedPeriod &&
+    left.attendanceCoverage === right.attendanceCoverage &&
+    left.attendanceFallbackShare === right.attendanceFallbackShare &&
+    left.observationCount === right.observationCount
   );
 };
 
@@ -890,6 +924,14 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
 
   const trainingDayBuckets: AtTrainingDayBucket[] = [];
   const fallbackPerPieceByMetricKey = new Map<string, number | null>();
+  const metricTrainingQualityByMetricKey = new Map<
+    string,
+    {
+      totalQuantity: number;
+      weightedCoverageQuantity: number;
+      observationCount: number;
+    }
+  >();
   const matchedStyleUids = new Set<number>();
   const attendanceSecondsByWorkerDate = new Map<string, number>();
   const processLookupByStyleUid = styleCandidates.reduce((map, style) => {
@@ -1077,6 +1119,29 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       perProcessGroups.set(metricKey, current);
     });
 
+    let attendanceCoverageRatio: number | null = null;
+    if (!USE_ATTENDANCE_INPUT_FOR_AT) {
+      attendanceCoverageRatio = 1;
+    } else if (workerIdsForDay.size > 0) {
+      if (workLogFactoryId === null) {
+        attendanceCoverageRatio = 0;
+      } else {
+        let attendanceProvidedCount = 0;
+        workerIdsForDay.forEach((workerId) => {
+          const key = toAttendanceWorkerDateKey(workDate, workerId, workLogFactoryId);
+          if (attendanceSecondsByWorkerDate.has(key)) {
+            attendanceProvidedCount += 1;
+          }
+        });
+        attendanceCoverageRatio = attendanceProvidedCount / workerIdsForDay.size;
+      }
+    }
+    if (!Number.isFinite(attendanceCoverageRatio as number)) {
+      attendanceCoverageRatio = null;
+    } else if (attendanceCoverageRatio !== null) {
+      attendanceCoverageRatio = Math.min(1, Math.max(0, attendanceCoverageRatio));
+    }
+
     const totalDaySeconds =
       workerIdsForDay.size > 0
         ? Array.from(workerIdsForDay.values()).reduce(
@@ -1097,7 +1162,20 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       dayProcessRows.push({
         metricKey,
         quantity: group.totalQuantity,
+        attendanceCoverage: attendanceCoverageRatio,
       });
+      const qualityCurrent = metricTrainingQualityByMetricKey.get(metricKey) || {
+        totalQuantity: 0,
+        weightedCoverageQuantity: 0,
+        observationCount: 0,
+      };
+      qualityCurrent.totalQuantity += group.totalQuantity;
+      if (attendanceCoverageRatio !== null) {
+        qualityCurrent.weightedCoverageQuantity +=
+          group.totalQuantity * attendanceCoverageRatio;
+      }
+      qualityCurrent.observationCount += 1;
+      metricTrainingQualityByMetricKey.set(metricKey, qualityCurrent);
       if (!fallbackPerPieceByMetricKey.has(metricKey)) {
         fallbackPerPieceByMetricKey.set(
           metricKey,
@@ -1185,21 +1263,62 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         (process as any).timeRefQuantity,
         DEFAULT_TIME_REF_QUANTITY
       );
+      const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
+      const nextAttendanceCoverage =
+        qualityStats && qualityStats.totalQuantity > 0
+          ? roundToScale(
+              Math.min(
+                1,
+                Math.max(
+                  0,
+                  qualityStats.weightedCoverageQuantity / qualityStats.totalQuantity
+                )
+              ),
+              4
+            )
+          : null;
+      const nextAttendanceFallbackShare =
+        nextAttendanceCoverage == null
+          ? null
+          : roundToScale(Math.max(0, 1 - nextAttendanceCoverage), 4);
+      const nextObservationCount =
+        qualityStats && qualityStats.observationCount > 0
+          ? Math.trunc(qualityStats.observationCount)
+          : null;
       const nextAt = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
       const currentAt = toOptionalSeconds((process as any).at);
       if (nextAt === null) return process;
-      const shouldRefreshAtParams =
+      const hasAtParamDelta =
         currentAtParams === null ||
         currentAtParams.a !== fitted.a ||
-        currentAtParams.b !== fitted.b ||
-        currentAtParams.trainedPeriod !== trainingMonthKey;
+        currentAtParams.b !== fitted.b;
+      const hasQualityDelta =
+        (currentAtParams?.attendanceCoverage ?? null) !==
+          (nextAttendanceCoverage ?? null) ||
+        (currentAtParams?.attendanceFallbackShare ?? null) !==
+          (nextAttendanceFallbackShare ?? null) ||
+        (currentAtParams?.observationCount ?? null) !==
+          (nextObservationCount ?? null);
+      const hasTrainingPeriodDelta =
+        currentAtParams?.trainedPeriod !== trainingMonthKey;
+      const shouldRefreshAtParams =
+        currentAtParams === null ||
+        hasAtParamDelta ||
+        hasQualityDelta ||
+        hasTrainingPeriodDelta;
       const nextAtParams = shouldRefreshAtParams
         ? {
             a: fitted.a,
             b: fitted.b,
-            version: (currentAtParams?.version ?? 0) + 1,
+            version:
+              currentAtParams === null
+                ? 1
+                : currentAtParams.version + (hasAtParamDelta ? 1 : 0),
             updatedAt: new Date().toISOString(),
             trainedPeriod: trainingMonthKey,
+            attendanceCoverage: nextAttendanceCoverage,
+            attendanceFallbackShare: nextAttendanceFallbackShare,
+            observationCount: nextObservationCount,
           }
         : currentAtParams;
       const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);

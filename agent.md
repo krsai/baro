@@ -1079,3 +1079,25 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
   - 재고/이동/BOM 비교 데이터 영속화 API
   - 작업 완료 도메인 연계 및 확정 로직
   - 고객 이동 로직 재사용 전송 엔진
+
+### AT 신뢰도 정책 업데이트 (2026-03-05)
+
+- 화면 일관성:
+  - AT 신뢰도 분류는 주문/카드 수량(`displayOrderQuantity`)이 아니라 공정의 `timeRefQuantity` 기준으로 계산한다.
+  - 같은 공정/같은 `atParams`는 화면(스타일/생산계획/배정)과 관계없이 같은 신뢰도 상태를 가져야 한다.
+
+- LOW_SENSITIVITY 조건:
+  - `b <= 0`일 때 무조건 LOW로 고정하지 않는다.
+  - `b > 0`이면서 `setupShare < threshold`인 경우에만 LOW_SENSITIVITY로 분류한다.
+
+- 버전 증가 규칙:
+  - `atParams.version`은 `a,b`가 실제로 변할 때만 증가한다.
+  - `trainedPeriod`/품질 메타만 변경된 경우에는 version을 유지한다.
+
+- 출퇴근 폴백 반영:
+  - 학습 시 공정별 출퇴근 커버리지(`attendanceCoverage`)와 폴백 비율(`attendanceFallbackShare`)을 `atParams`에 기록한다.
+  - 프론트 신뢰도 퍼센트는 폴백 비율 패널티를 반영한다.
+
+- 스타일 단위 집계:
+  - 스타일 신뢰도는 공정 최소값(min) 대신 공정별 AT 기여시간 가중 평균 퍼센트로 집계한다.
+  - 집계 퍼센트로 상태(`COLLECTING/FALLBACK/LOW_SENSITIVITY/LEARNING/STABLE`)를 매핑한다.

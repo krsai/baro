@@ -36,6 +36,7 @@ import {
   resolveProcessActualTime,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
+  resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
 
@@ -314,12 +315,8 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     [displayOrderQuantity]
   );
   const styleAtReliability = useMemo(() => {
-    if (safeProcesses.length === 0) return null;
-    const reliabilities = safeProcesses.map((p) =>
-      resolveProcessAtReliability(p, displayOrderQuantity)
-    );
-    return reliabilities.reduce((min, r) => (r.percent < min.percent ? r : min));
-  }, [safeProcesses, displayOrderQuantity]);
+    return resolveStyleAtReliability(safeProcesses);
+  }, [safeProcesses]);
 
   const addDisabledIdentitySet = useMemo(() => {
     const set = new Set();

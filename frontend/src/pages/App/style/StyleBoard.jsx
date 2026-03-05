@@ -37,7 +37,7 @@ import {
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
-  resolveProcessAtReliability,
+  resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
 
@@ -223,13 +223,7 @@ const StyleBoard = () => {
           hasTotalST && factoryWagePerSecond != null
             ? totalST * factoryWagePerSecond
             : null;
-        const styleAtReliability = (() => {
-          if (processes.length === 0) return null;
-          const rs = processes.map((p) =>
-            resolveProcessAtReliability(p, DEFAULT_TIME_REF_QUANTITY)
-          );
-          return rs.reduce((min, r) => (r.percent < min.percent ? r : min));
-        })();
+        const styleAtReliability = resolveStyleAtReliability(processes);
         return {
           ...style,
           totalPT,

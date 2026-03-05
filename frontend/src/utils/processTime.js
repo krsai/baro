@@ -2,6 +2,7 @@
 
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
 const AT_RELIABILITY_SETUP_SHARE_THRESHOLD = 0.03;
+const AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX = 20;
 export const AT_RELIABILITY_STATUS = {
   COLLECTING: 'COLLECTING',
   FALLBACK: 'FALLBACK',
@@ -54,10 +55,30 @@ const resolveAtParamsMeta = (process) => {
     typeof raw.trainedPeriod === 'string' && /^\d{4}-\d{2}$/.test(raw.trainedPeriod)
       ? raw.trainedPeriod
       : null;
+  const attendanceCoverageRaw = Number(raw.attendanceCoverage);
+  const attendanceCoverage =
+    Number.isFinite(attendanceCoverageRaw) && attendanceCoverageRaw >= 0
+      ? clamp(attendanceCoverageRaw, 0, 1)
+      : null;
+  const attendanceFallbackShareRaw = Number(raw.attendanceFallbackShare);
+  const attendanceFallbackShare =
+    Number.isFinite(attendanceFallbackShareRaw) && attendanceFallbackShareRaw >= 0
+      ? clamp(attendanceFallbackShareRaw, 0, 1)
+      : attendanceCoverage == null
+        ? null
+        : clamp(1 - attendanceCoverage, 0, 1);
+  const observationCountRaw = Number(raw.observationCount);
+  const observationCount =
+    Number.isFinite(observationCountRaw) && observationCountRaw >= 0
+      ? Math.trunc(observationCountRaw)
+      : null;
   return {
     ...params,
     version,
     trainedPeriod,
+    attendanceCoverage,
+    attendanceFallbackShare,
+    observationCount,
   };
 };
 
@@ -66,27 +87,42 @@ const resolveAtReliabilityPercent = ({
   setupShare,
   version,
   hasTrainedPeriod,
+  attendanceFallbackShare,
 }) => {
+  const fallbackPenalty = Number.isFinite(attendanceFallbackShare)
+    ? clamp(
+      Number(attendanceFallbackShare) * AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX,
+      0,
+      AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX
+    )
+    : 0;
+
   if (status === AT_RELIABILITY_STATUS.COLLECTING) return 0;
-  if (status === AT_RELIABILITY_STATUS.FALLBACK) return 35;
+  if (status === AT_RELIABILITY_STATUS.FALLBACK) {
+    return Math.round(clamp(35 - fallbackPenalty, 0, 100));
+  }
 
   if (status === AT_RELIABILITY_STATUS.LOW_SENSITIVITY) {
     const setupScore = Number.isFinite(setupShare)
       ? clamp((setupShare / AT_RELIABILITY_SETUP_SHARE_THRESHOLD) * 25, 0, 25)
       : 0;
-    return Math.round(clamp(35 + setupScore, 0, 100));
+    return Math.round(clamp(35 + setupScore - fallbackPenalty, 0, 100));
   }
 
   if (status === AT_RELIABILITY_STATUS.LEARNING) {
     const versionScore = clamp((Number(version) - 1) * 6, 0, 24);
     const trainedScore = hasTrainedPeriod ? 8 : 0;
-    return Math.round(clamp(58 + versionScore + trainedScore, 0, 100));
+    return Math.round(
+      clamp(58 + versionScore + trainedScore - fallbackPenalty, 0, 100)
+    );
   }
 
   if (status === AT_RELIABILITY_STATUS.STABLE) {
     const versionScore = clamp((Number(version) - 2) * 2, 0, 8);
     const trainedScore = hasTrainedPeriod ? 2 : 0;
-    return Math.round(clamp(90 + versionScore + trainedScore, 0, 100));
+    return Math.round(
+      clamp(90 + versionScore + trainedScore - fallbackPenalty, 0, 100)
+    );
   }
 
   return 0;
@@ -102,18 +138,104 @@ const toAtReliabilityResult = (status, options = {}) => {
       ? Math.trunc(Number(options.version))
       : 0;
   const hasTrainedPeriod = Boolean(options.hasTrainedPeriod);
+  const attendanceCoverage =
+    Number.isFinite(options.attendanceCoverage) && options.attendanceCoverage >= 0
+      ? clamp(Number(options.attendanceCoverage), 0, 1)
+      : null;
+  const attendanceFallbackShare =
+    Number.isFinite(options.attendanceFallbackShare) && options.attendanceFallbackShare >= 0
+      ? clamp(Number(options.attendanceFallbackShare), 0, 1)
+      : null;
+  const observationCount =
+    Number.isFinite(Number(options.observationCount)) && Number(options.observationCount) >= 0
+      ? Math.trunc(Number(options.observationCount))
+      : null;
   return {
     status,
     setupShare,
     version,
     hasTrainedPeriod,
+    attendanceCoverage,
+    attendanceFallbackShare,
+    observationCount,
     percent: resolveAtReliabilityPercent({
       status,
       setupShare,
       version,
       hasTrainedPeriod,
+      attendanceFallbackShare,
     }),
   };
+};
+
+export const resolveAtReliabilityStatusFromPercent = (percentValue) => {
+  const percent = Number(percentValue);
+  if (!Number.isFinite(percent) || percent <= 0) {
+    return AT_RELIABILITY_STATUS.COLLECTING;
+  }
+  if (percent <= 35) return AT_RELIABILITY_STATUS.FALLBACK;
+  if (percent < 58) return AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
+  if (percent < 90) return AT_RELIABILITY_STATUS.LEARNING;
+  return AT_RELIABILITY_STATUS.STABLE;
+};
+
+export const aggregateAtReliability = (entries = []) => {
+  const candidates = (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      const reliability = entry?.reliability ?? entry;
+      const percent = Number(reliability?.percent);
+      if (!Number.isFinite(percent)) return null;
+      const weightRaw = Number(entry?.weight);
+      const weight = Number.isFinite(weightRaw) && weightRaw > 0 ? weightRaw : 1;
+      return { percent: clamp(percent, 0, 100), weight };
+    })
+    .filter(Boolean);
+  if (candidates.length === 0) return null;
+
+  const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
+  const weightedPercentRaw =
+    totalWeight > 0
+      ? candidates.reduce(
+        (sum, candidate) => sum + candidate.percent * candidate.weight,
+        0
+      ) / totalWeight
+      : candidates.reduce((sum, candidate) => sum + candidate.percent, 0) /
+      candidates.length;
+  const percent = Math.round(clamp(weightedPercentRaw, 0, 100));
+  return {
+    status: resolveAtReliabilityStatusFromPercent(percent),
+    setupShare: null,
+    version: 0,
+    hasTrainedPeriod: false,
+    attendanceCoverage: null,
+    attendanceFallbackShare: null,
+    observationCount: null,
+    percent,
+  };
+};
+
+export const resolveStyleAtReliability = (processes = []) => {
+  const normalized = normalizeProcesses(processes);
+  if (normalized.length === 0) return null;
+
+  const entries = normalized.map((process) => {
+    const referenceQuantity = toPositiveInt(
+      process?.timeRefQuantity,
+      DEFAULT_TIME_REF_QUANTITY
+    );
+    const atPerPieceSeconds = resolveProcessAtPerPieceSeconds(process, referenceQuantity);
+    const processQuantity = toPositiveInt(process?.quantity, 1);
+    const weight =
+      Number.isFinite(atPerPieceSeconds) && atPerPieceSeconds > 0
+        ? atPerPieceSeconds * processQuantity
+        : processQuantity;
+    return {
+      reliability: resolveProcessAtReliability(process, referenceQuantity),
+      weight,
+    };
+  });
+
+  return aggregateAtReliability(entries);
 };
 
 export const normalizeProcess = (process = {}, index = 0) => {
@@ -198,10 +320,13 @@ export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const reliabilityReferenceQuantity = toPositiveInt(
+    normalized?.timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
   const atPerPieceSeconds = resolveProcessAtPerPieceSeconds(
     normalized,
-    resolvedOrderQuantity
+    reliabilityReferenceQuantity
   );
   if (atPerPieceSeconds == null) {
     return toAtReliabilityResult(AT_RELIABILITY_STATUS.COLLECTING);
@@ -214,31 +339,36 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
 
   const setupShare =
     atPerPieceSeconds > 0
-      ? (atParams.b / resolvedOrderQuantity) / atPerPieceSeconds
+      ? (atParams.b / reliabilityReferenceQuantity) / atPerPieceSeconds
       : null;
+  const hasSetupComponent = atParams.b > 0;
   const hasLowSensitivity =
-    atParams.b <= 0 ||
-    (Number.isFinite(setupShare) && setupShare < AT_RELIABILITY_SETUP_SHARE_THRESHOLD);
+    hasSetupComponent &&
+    Number.isFinite(setupShare) &&
+    setupShare < AT_RELIABILITY_SETUP_SHARE_THRESHOLD;
+  let status = AT_RELIABILITY_STATUS.LEARNING;
   if (hasLowSensitivity) {
-    return toAtReliabilityResult(AT_RELIABILITY_STATUS.LOW_SENSITIVITY, {
-      setupShare,
-      version: atParams.version,
-      hasTrainedPeriod: Boolean(atParams.trainedPeriod),
-    });
+    status = AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
+  } else if (atParams.version >= 2 && atParams.trainedPeriod) {
+    status = AT_RELIABILITY_STATUS.STABLE;
   }
 
-  if (atParams.version >= 2 && atParams.trainedPeriod) {
-    return toAtReliabilityResult(AT_RELIABILITY_STATUS.STABLE, {
-      setupShare,
-      version: atParams.version,
-      hasTrainedPeriod: true,
-    });
+  const fallbackShare = atParams.attendanceFallbackShare;
+  if (Number.isFinite(fallbackShare)) {
+    if (fallbackShare >= 0.7) {
+      status = AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
+    } else if (fallbackShare >= 0.4 && status === AT_RELIABILITY_STATUS.STABLE) {
+      status = AT_RELIABILITY_STATUS.LEARNING;
+    }
   }
 
-  return toAtReliabilityResult(AT_RELIABILITY_STATUS.LEARNING, {
+  return toAtReliabilityResult(status, {
     setupShare,
     version: atParams.version,
     hasTrainedPeriod: Boolean(atParams.trainedPeriod),
+    attendanceCoverage: atParams.attendanceCoverage,
+    attendanceFallbackShare: fallbackShare,
+    observationCount: atParams.observationCount,
   });
 };
 

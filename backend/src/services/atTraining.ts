@@ -6,6 +6,7 @@ export type AtMetricObservation = {
 export type AtTrainingDayProcessRow = {
   metricKey: string;
   quantity: number;
+  attendanceCoverage?: number | null;
 };
 
 export type AtTrainingDayBucket = {
