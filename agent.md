@@ -948,3 +948,22 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - 공용 분리 과정에서 **domain-specific helper를 무리하게 utils로 올리지 않는다.**
 - 현재는 `payroll`만 먼저 패턴을 확정한 상태다.
 - 다음 분리 후보는 `employee` 도메인이다.
+
+### 초기화 스크립트 운영 규칙 (2026-03-05)
+
+#### 단일 진입점
+- 테스트 계정/조직/라인/스타일/주문/배정 시드는 `backend/scripts/reset-to-baseline.js` 하나에서 처리한다.
+- 분리돼 있던 테스트 계정 전용 스크립트 `backend/scripts/seed-test-accounts.js`는 제거되었다.
+- 실행 커맨드:
+  - 루트: `npm run reset:baseline`
+  - 백엔드: `npm run reset:baseline` (`prereset:baseline`에서 `prisma:prepare-client` 자동 실행)
+
+#### 작업기록 데이터 보호 원칙
+- baseline reset은 `WorkLog`, `WorkRecord` 데이터를 삭제/초기화하지 않는다.
+- reset 결과 요약 카운트에도 `WorkLog`, `WorkRecord` 항목은 포함하지 않는다.
+- 따라서 작업기록 기반 검증(AT/급여/이력 확인)은 reset 이후에도 유지되는 것이 정상 동작이다.
+
+#### 운영 주의사항
+- Prisma 마이그레이션 이후에는 반드시 Prisma Client 재생성 상태를 확인한다.
+- 권장 커맨드: `npm --prefix backend run prisma:prepare-client` (또는 `npm run reset:baseline` 실행 시 자동 처리)
+- 스키마와 생성된 클라이언트가 불일치하면 배정/주문 조회 API에서 컬럼 불일치 오류가 발생할 수 있다.
