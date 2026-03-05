@@ -142,6 +142,27 @@ const getPrimaryOrganization = async (options: OrganizationAccessOptions = {}) =
   return ensureOrganizationAccessible(withSubscription, options);
 };
 
+const getSystemAdminDefaultOrganization = async (
+  options: OrganizationAccessOptions = {}
+) => {
+  const organizationWithActiveMembers = await prisma.organization.findFirst({
+    where: {
+      memberships: {
+        some: { status: "ACTIVE" },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+  if (organizationWithActiveMembers) {
+    const withSubscription = await attachOrganizationSubscription(
+      organizationWithActiveMembers
+    );
+    return ensureOrganizationAccessible(withSubscription, options);
+  }
+
+  return getPrimaryOrganization(options);
+};
+
 export const getOrganizationByQuery = async (
   req: Request,
   options: OrganizationAccessOptions = {}
@@ -206,7 +227,7 @@ export const getOrganizationByQuery = async (
     }
 
     if (systemUser?.systemRole === "SYSTEM_ADMIN") {
-      return getPrimaryOrganization(options);
+      return getSystemAdminDefaultOrganization(options);
     }
   }
 

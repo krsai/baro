@@ -66,13 +66,41 @@ app.use(cors());
 app.use(express.json());
 
 function assertGeneratedPrismaClientShape() {
-  const hasWorkOrderItemsRelation = Prisma.dmmf.datamodel.models
-    .find((model) => model.name === "WorkOrder")
-    ?.fields.some((field) => field.name === "workOrderItems");
+  const modelByName = new Map(
+    Prisma.dmmf.datamodel.models.map((model) => [model.name, model])
+  );
+  const hasField = (modelName: string, fieldName: string) =>
+    Boolean(
+      modelByName
+        .get(modelName)
+        ?.fields.some((field) => field.name === fieldName)
+    );
 
-  if (!hasWorkOrderItemsRelation) {
+  const staleSignals: string[] = [];
+  if (!hasField("WorkOrder", "workOrderItems")) {
+    staleSignals.push("WorkOrder.workOrderItems missing");
+  }
+  if (!hasField("WorkOrderItem", "style")) {
+    staleSignals.push("WorkOrderItem.style missing");
+  }
+  if (hasField("WorkOrderItem", "colorName")) {
+    staleSignals.push("WorkOrderItem.colorName still present");
+  }
+  if (!hasField("WorkRecord", "styleUid")) {
+    staleSignals.push("WorkRecord.styleUid missing");
+  }
+  if (hasField("WorkRecord", "processName")) {
+    staleSignals.push("WorkRecord.processName still present");
+  }
+  if (hasField("WorkRecord", "colorName")) {
+    staleSignals.push("WorkRecord.colorName still present");
+  }
+
+  if (staleSignals.length > 0) {
     throw new Error(
-      'Stale Prisma client detected: WorkOrder.workOrderItems is missing. Run "npx prisma generate" in backend, then restart the server.'
+      `Stale Prisma client detected (${staleSignals.join(
+        "; "
+      )}). Run "npm run prisma:prepare-client" in backend and restart the server.`
     );
   }
 }
@@ -4803,13 +4831,28 @@ app.get("/auth/context", async (req, res) => {
     select: { systemRole: true },
   });
   if (systemUser?.systemRole === "SYSTEM_ADMIN") {
+    // /auth/context is called before API headers are fully hydrated on first load.
+    // Ensure org resolution can still evaluate system-admin fallback organization.
+    if (!getRequesterEmail(req)) {
+      (req.headers as any)["x-user-email"] = requesterEmail;
+    }
+
+    let organization = null;
+    try {
+      organization = await getOrganizationByQuery(req, { allowSuspended: true });
+    } catch (error) {
+      const status = getErrorStatus(error) ?? 500;
+      const message = getErrorMessage(error, "failed to resolve organization");
+      return res.status(status).json({ ok: false, error: message });
+    }
+
     return res.json({
       email: requesterEmail,
       entryType: "SYSTEM",
       systemRole: systemUser.systemRole,
-      orgId: null,
-      orgName: null,
-      orgType: null,
+      orgId: organization?.id ?? null,
+      orgName: organization?.name ?? null,
+      orgType: organization?.type ?? null,
       orgRole: null,
       employeeName: null,
     });
