@@ -208,6 +208,35 @@ const InventoryBoard = () => {
       return tokens.every((token) => text.includes(token));
     });
   }, [items, searchKeyword]);
+  const quickCategoryOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          ['원단', '부자재', ...items.map((item) => String(item?.category || '').trim())].filter(
+            Boolean
+          )
+        )
+      ),
+    [items]
+  );
+  const quickCodeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => String(item?.code || '').trim()).filter(Boolean))
+      ),
+    [items]
+  );
+  const quickUnitOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          ['ea', 'yd', 'm', 'kg', ...items.map((item) => String(item?.unit || '').trim())].filter(
+            Boolean
+          )
+        )
+      ),
+    [items]
+  );
 
   const selectedItem = itemById.get(Number(selectedItemId)) || null;
   const searchHasNoResult = tokenize(searchKeyword).length > 0 && filteredItems.length === 0;
@@ -312,7 +341,7 @@ const InventoryBoard = () => {
 
   const header = (
     <Stack spacing={1}>
-      <Typography variant="h6">재고 관리 (UI 시안)</Typography>
+      <Typography variant="h6">재고 불출 (UI 시안)</Typography>
       <Typography variant="body2" color="text.secondary">
         품목 FK 기반 거래를 전제로 한 화면 구조입니다. 현재 단계에서는 저장/비교를 로컬 상태로만 동작시킵니다.
       </Typography>
@@ -735,15 +764,28 @@ const InventoryBoard = () => {
         <DialogTitle>품목 빠른 등록</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-            <TextField
-              size="small"
-              label="종류"
+            <Autocomplete
+              freeSolo
+              options={quickCategoryOptions}
               value={quickCreateDraft.category}
-              onChange={(event) =>
-                setQuickCreateDraft((prev) => ({ ...prev, category: event.target.value }))
+              onChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({
+                  ...prev,
+                  category: typeof value === 'string' ? value : '',
+                }))
               }
-              placeholder="예: 원단, 부자재"
-              required
+              onInputChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({ ...prev, category: value }))
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  label="종류"
+                  placeholder="예: 원단, 부자재"
+                  required
+                />
+              )}
             />
             <TextField
               size="small"
@@ -755,13 +797,22 @@ const InventoryBoard = () => {
               placeholder="예: YS001, 스냅"
               required
             />
-            <TextField
-              size="small"
-              label="코드(선택)"
+            <Autocomplete
+              freeSolo
+              options={quickCodeOptions}
               value={quickCreateDraft.code}
-              onChange={(event) =>
-                setQuickCreateDraft((prev) => ({ ...prev, code: event.target.value }))
+              onChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({
+                  ...prev,
+                  code: typeof value === 'string' ? value : '',
+                }))
               }
+              onInputChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({ ...prev, code: value }))
+              }
+              renderInput={(params) => (
+                <TextField {...params} size="small" label="코드(선택)" />
+              )}
             />
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
               <TextField
@@ -781,15 +832,28 @@ const InventoryBoard = () => {
                 }
               />
             </Box>
-            <TextField
-              size="small"
-              label="단위"
+            <Autocomplete
+              freeSolo
+              options={quickUnitOptions}
               value={quickCreateDraft.unit}
-              onChange={(event) =>
-                setQuickCreateDraft((prev) => ({ ...prev, unit: event.target.value }))
+              onChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({
+                  ...prev,
+                  unit: typeof value === 'string' ? value : '',
+                }))
               }
-              placeholder="예: yd, m, ea"
-              required
+              onInputChange={(_event, value) =>
+                setQuickCreateDraft((prev) => ({ ...prev, unit: value }))
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  label="단위"
+                  placeholder="예: yd, m, ea"
+                  required
+                />
+              )}
             />
           </Stack>
         </DialogContent>

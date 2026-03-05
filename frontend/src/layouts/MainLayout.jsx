@@ -115,6 +115,7 @@ const MainLayout = () => {
   const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
@@ -232,8 +233,17 @@ const MainLayout = () => {
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
-          { label: '재고 관리', icon: <Inventory2Icon />, path: '/inventory' },
           { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
+        ],
+      },
+      {
+        label: '재고 관리',
+        icon: <Inventory2Icon />,
+        isParent: true,
+        isOpen: inventoryOpen,
+        setOpen: setInventoryOpen,
+        children: [
+          { label: '재고 불출', icon: <Inventory2Icon />, path: '/inventory' },
         ],
       },
       {
@@ -308,6 +318,7 @@ const MainLayout = () => {
     adminOpen,
     basicInfoOpen,
     hasPathAccess,
+    inventoryOpen,
     orderOpen,
     pendingEmployeeCount,
     productionOpen,
@@ -575,7 +586,8 @@ const MainLayout = () => {
   const handleTabChange = (event, newValue) => {
     // User clicks a tab: make URL the only source of truth.
     const selectedTab = tabsForRender.find((tab) => tab.id === newValue);
-    handleNavigation(selectedTab?.path || newValue);
+    // Pass the existing label so tabs with custom labels (e.g. style detail) are not reset.
+    handleNavigation(selectedTab?.path || newValue, { label: selectedTab?.label });
   };
 
   const handleCloseTab = (e, tabIdToClose) => {

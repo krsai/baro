@@ -224,10 +224,25 @@ const run = async () => {
     const workers = lineWorkers[entry.lineId] ?? [];
     const planIds = entry.items.map((i) => i.plan.dbId);
 
+    // 중복 계획일 경우 총 person-seconds가 작업자 수용량을 초과하면 비례 스케일 조정
+    // 수용량 = workers × SHIFT_SECONDS (예: 20명 × 28800s = 576,000s)
+    const maxPersonSeconds = workers.length * SHIFT_SECONDS;
+    const rawPersonSeconds = entry.items.reduce((s, { plan, qty }) => {
+      const ctPerPiece = plan.processes.reduce((ps, p) => ps + p.ct, 0);
+      return s + qty * ctPerPiece;
+    }, 0);
+    const capacityScale = rawPersonSeconds > maxPersonSeconds
+      ? maxPersonSeconds / rawPersonSeconds
+      : 1;
+    const scaledItems = entry.items.map(({ plan, qty }) => ({
+      plan,
+      qty: Math.max(1, Math.round(qty * capacityScale)),
+    }));
+
     // 해당 날 활성 계획들의 공정을 flat 리스트로
     // 의류 라인에서 모든 공정은 동일한 수량(라인 일일 생산량)을 처리함
     const allProcessItems = [];
-    for (const { plan, qty } of entry.items) {
+    for (const { plan, qty } of scaledItems) {
       for (const proc of plan.processes) {
         allProcessItems.push({ plan, proc, qty }); // 각 공정이 전체 qty를 처리
       }
@@ -275,7 +290,7 @@ const run = async () => {
 
     const workerCount = new Set(records.map((r) => r.workerId)).size;
     const totalContractedSeconds = records.reduce((s, r) => s + r.ctSeconds * r.quantity, 0);
-    const totalQty = entry.items.reduce((s, i) => s + i.qty, 0);
+    const totalQty = scaledItems.reduce((s, i) => s + i.qty, 0);
     const avgCtHours = (totalContractedSeconds / Math.max(1, workerCount) / 3600).toFixed(1);
 
     const body = {

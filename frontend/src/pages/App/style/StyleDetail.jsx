@@ -340,13 +340,6 @@ const StyleDetail = () => {
         </ToggleButtonGroup>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
-            variant="outlined"
-            onClick={handleRevert}
-            disabled={loadingStyle || isNew || !isDirty}
-          >
-            되돌리기
-          </Button>
-          <Button
             variant="contained"
             color="primary"
             onClick={handleSave}

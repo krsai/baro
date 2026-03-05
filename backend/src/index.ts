@@ -1206,7 +1206,9 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
 
       const isStManual = (process as any).stManual === true;
       const currentCt = toOptionalSeconds((process as any).ct);
-      const nextCt = !isStManual ? nextAt : currentCt;
+      // ST(CT)는 자동으로 AT에 맞춰 변경하지 않음. stManual=false이면 PT 기준 유지.
+      const pt = toOptionalSeconds((process as any).pt);
+      const nextCt = !isStManual ? (pt ?? currentCt) : currentCt;
       const ctChanged = (currentCt ?? null) !== (nextCt ?? null);
       const atChanged = currentAt !== nextAt;
       if (!atChanged && !ctChanged && !atParamsChanged) return process;

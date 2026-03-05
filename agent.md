@@ -474,7 +474,7 @@ Organization (MANUFACTURER | BRAND)
 - 저장/반영:
   - `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`
   - `Style.processes[].at = a + b / timeRefQuantity`
-  - `stManual=false` 공정은 `ct`도 `at`로 동기화, `stManual=true` 공정은 수동 ST(`ct`) 유지
+  - `stManual=false` 공정은 AT 동기화 시 `ct`를 PT(`pt`) 기준으로 유지 (AT 신뢰도가 충분해지면 운영자가 수동으로 ST 조정), `stManual=true` 공정은 수동 ST(`ct`) 유지
 - 실행 경로:
   - 이벤트 트리거(출퇴근/작업기록 저장)
   - 매월 5일 이후 자동 스케줄러
@@ -539,12 +539,47 @@ Organization (MANUFACTURER | BRAND)
 - DB 영속 상태 판단은 `ctStatus + ctSource + contractedSeconds` 조합을 기준으로 한다.
 
 ### ST/AT 저장 정책 정합성
-- `stManual=false` 공정은 AT 동기화 시 DB `ct`를 `nextAt(= a + b / timeRefQuantity)`로 동기화한다.
+- `stManual=false` 공정은 AT 동기화 시 DB `ct`를 PT(`pt`)로 설정한다 (AT를 자동으로 ST에 반영하지 않음).
 - `stManual=true` 공정은 수동 ST(`ct`)를 유지한다.
+- AT 신뢰도가 충분해지면 운영자가 직접 ST를 수정한다.
 
 ### AT 학습 실행 정책 정합성
 - 이벤트 트리거(출퇴근/작업기록 저장) + 자동 스케줄러 병행으로 동기화한다.
 - 자동 스케줄러는 DB 락 + 월 실행 이력 기반으로 해당 학습월의 중복 실행을 제어한다.
+
+## 공유 상태 색상 팔레트
+
+생산계획 카드 상태 라벨, AT 신뢰도 칩 등 여러 곳에서 일관되게 사용하는 팔레트.
+새 UI 컴포넌트에 상태 색상이 필요하면 이 팔레트를 재사용할 것.
+
+| 상태 키  | 의미 | 배경(bg)    | 텍스트(text) | 테두리(border rgba)          |
+|---------|------|------------|-------------|------------------------------|
+| PENDING | 대기  | `#EBEBF0` | `#747484`   | `rgba(116, 116, 132, 0.35)` |
+| SENT    | 제안  | `#BFEAD0` | `#268444`   | `rgba(38, 132, 68, 0.35)`   |
+| AGREED  | 확정  | `#C8DFF7` | `#3674B4`   | `rgba(54, 116, 180, 0.4)`   |
+| REJECTED| 요청  | `#F7DCC8` | `#AC6424`   | `rgba(172, 100, 36, 0.35)`  |
+
+AT 신뢰도 → 팔레트 매핑:
+- COLLECTING → PENDING
+- FALLBACK / LOW_SENSITIVITY → REJECTED
+- LEARNING → SENT
+- STABLE → AGREED
+
+사용 파일:
+- `frontend/src/pages/App/production/ProductionPlanBoard.jsx` — `CALENDAR_CT_STATUS_META`
+- `frontend/src/pages/App/style/StyleBoard.jsx` — `AT_RELIABILITY_PALETTE`
+- `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx` — `AT_RELIABILITY_PALETTE`
+
+## 오늘 반영 메모 (2026-03-05)
+
+- `formatSeconds`는 소수점 없이 정수로 표시한다 (`Math.round` 적용).
+- **ST 자동 갱신 정책 변경**: `stManual=false` 공정은 AT 동기화 시 CT를 AT로 덮지 않고 PT 기준으로 유지한다. 운영자가 AT 신뢰도를 확인 후 직접 ST를 수정하는 수동 운영 방식으로 전환.
+- **AT 신뢰도 배지 추가**:
+  - 스타일 목록(`StyleBoard`): AT 값 오른쪽에 스타일 전체 공정의 최저 신뢰도 Chip 표시.
+  - 스타일 상세(`StyleProcess`): AT(q) 컬럼 헤더 오른쪽에 동일 집계 신뢰도 Chip 표시.
+  - 신뢰도 색상: COLLECTING=default, FALLBACK/LOW_SENSITIVITY=warning, LEARNING=info, STABLE=success.
+  - 신뢰도는 공정별로 계산되지만 스타일 단위로 묶어(최솟값) 표시한다 (라인 배정 데이터 특성상 공정 간 편차가 거의 없음).
+- AT 학습 기준월: 오늘(5일 이상)이면 전월 데이터 사용. 샘플 데이터가 현재월(3월)에 있으면 `POST /at-sync/run-now { trainingMonthKey: "YYYY-MM" }`으로 강제 학습 가능.
 
 
 ---
@@ -980,13 +1015,18 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 #### 핵심 모델링 원칙 (FK 우선)
 - 모든 재고 변동 레코드는 반드시 `itemId(FK)`를 가진다.  
   - 자유 텍스트 품목명만으로 거래를 저장하지 않는다.
-- 품목 마스터는 `카테고리 + 품목명 + 규격 + 색상 + 단위` 조합의 SKU 단위로 관리한다.
-  - 예: `스냅 10mm`, `스냅 15mm`는 서로 다른 SKU.
+- 품목은 `품목 마스터(제품 공통)`와 `재고 SKU(변형)`를 분리해 관리한다.
+  - 품목 마스터: `카테고리 + 품목명 + 규격 + 기본단위` (예: `원단 YS-001`)
+  - 재고 SKU(변형): `itemMasterId + 색상(옵션)` 단위
+  - 원단처럼 색상별 재고 추적이 필요한 경우 `같은 제품 + 색상별 SKU`로 분리한다.
+  - 색상이 없는 부자재는 `색상 NULL(또는 NO_COLOR)` 단일 SKU로 운영한다.
   - 상위 분류(종류)는 검색/집계를 위한 분류값으로 유지한다.
 - 삭제 정책은 `RESTRICT + soft delete`를 우선한다.
   - 거래가 있는 품목은 물리 삭제하지 않고 비활성 처리한다.
 - 중복 방지를 위해 정규화 키(unique 후보)를 둔다.
-  - 예: `(orgId, categoryId, normalizedName, normalizedSpec, colorId, unitId)`
+  - 예:
+    - 마스터 unique: `(orgId, categoryId, normalizedName, normalizedSpec, unitId)`
+    - SKU unique: `(itemMasterId, colorId)` (`colorId` nullable 처리 포함)
 
 #### 공장 간 이동 설계 (고객 이동 로직 재사용 전제)
 - `TransferHeader` + `TransferLine` 구조로 송신/수신을 분리 기록한다.

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   Paper,
   Button,
+  Chip,
   Table,
   TableBody,
   TableCell,
@@ -30,13 +31,33 @@ import {
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
+  AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotal,
   formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
+  resolveProcessAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
+
+// 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
+const AT_RELIABILITY_PALETTE = {
+  [AT_RELIABILITY_STATUS.COLLECTING]:     { bg: '#EBEBF0', text: '#747484' },
+  [AT_RELIABILITY_STATUS.FALLBACK]:       { bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]:{ bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.LEARNING]:       { bg: '#BFEAD0', text: '#268444' },
+  [AT_RELIABILITY_STATUS.STABLE]:         { bg: '#C8DFF7', text: '#3674B4' },
+};
+const AT_RELIABILITY_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1 },
+};
+const formatAtReliabilityLabel = (reliability) => {
+  const percent = Number(reliability?.percent);
+  if (!Number.isFinite(percent)) return '0%';
+  return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
+};
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -118,7 +139,7 @@ const StyleBoard = () => {
   const handleRowDoubleClick = (style) => {
     const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
     const query = buildQueryString({ ownerOrgId });
-    navigateToPath(`/style/${style.id}${query}`, { label: `스타일 ${style.name || style.id}` });
+    navigateToPath(`/style/${style.id}${query}`, { label: `스타일: ${style.name || style.id}` });
   };
 
   const handleAddNewClick = () => {
@@ -202,6 +223,13 @@ const StyleBoard = () => {
           hasTotalST && factoryWagePerSecond != null
             ? totalST * factoryWagePerSecond
             : null;
+        const styleAtReliability = (() => {
+          if (processes.length === 0) return null;
+          const rs = processes.map((p) =>
+            resolveProcessAtReliability(p, DEFAULT_TIME_REF_QUANTITY)
+          );
+          return rs.reduce((min, r) => (r.percent < min.percent ? r : min));
+        })();
         return {
           ...style,
           totalPT,
@@ -211,6 +239,7 @@ const StyleBoard = () => {
           hasTotalPT: hasAnyProcessTime(processes, 'pt'),
           hasTotalAT: hasAnyProcessTime(processes, 'at'),
           hasTotalST,
+          styleAtReliability,
         };
       }),
     [canViewProcessSummary, factoryWagePerSecond, filteredStyles]
@@ -270,7 +299,22 @@ const StyleBoard = () => {
                     <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
-                    <TableCell>{style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        {style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}
+                        {style.styleAtReliability && style.hasTotalAT && (
+                          <Chip
+                            size="small"
+                            label={formatAtReliabilityLabel(style.styleAtReliability)}
+                            sx={{
+                              ...AT_RELIABILITY_CHIP_SX,
+                              backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,
+                              color: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).text,
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
                     <TableCell>{style.hasTotalST ? formatSeconds(style.totalST) : '-'}</TableCell>

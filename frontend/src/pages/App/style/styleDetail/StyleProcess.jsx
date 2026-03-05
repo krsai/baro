@@ -23,7 +23,6 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import EditIcon from '@mui/icons-material/Edit';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
@@ -73,12 +72,13 @@ const toDraftNumberText = (value) => {
   return String(roundToScale(parsed, 4));
 };
 
-const AT_RELIABILITY_COLOR = {
-  [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
-  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
-  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
-  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
-  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+// 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
+const AT_RELIABILITY_PALETTE = {
+  [AT_RELIABILITY_STATUS.COLLECTING]:     { bg: '#EBEBF0', text: '#747484' },
+  [AT_RELIABILITY_STATUS.FALLBACK]:       { bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]:{ bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.LEARNING]:       { bg: '#BFEAD0', text: '#268444' },
+  [AT_RELIABILITY_STATUS.STABLE]:         { bg: '#C8DFF7', text: '#3674B4' },
 };
 
 const AT_RELIABILITY_CHIP_SX = {
@@ -90,9 +90,9 @@ const AT_RELIABILITY_CHIP_SX = {
   },
 };
 
-const resolveAtReliabilityColor = (reliability) =>
-  AT_RELIABILITY_COLOR[reliability?.status] ||
-  AT_RELIABILITY_COLOR[AT_RELIABILITY_STATUS.COLLECTING];
+const resolveAtReliabilityPalette = (reliability) =>
+  AT_RELIABILITY_PALETTE[reliability?.status] ||
+  AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING];
 
 const resolveAtReliabilityPercentLabel = (reliability) => {
   const percent = Number(reliability?.percent);
@@ -134,36 +134,6 @@ const createInstanceId = (process) =>
   `${process?.code || process?.name || 'PROC'}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-
-const findMasterProcess = (process, options) => {
-  if (!process) return null;
-  return (
-    options.find((item) => item.id === process.id) ||
-    options.find((item) => item.code === process.code) ||
-    options.find((item) => item.name === process.name) ||
-    null
-  );
-};
-
-const createDraftFromProcess = (process, options) => {
-  const processQuantity = toPositiveInt(process?.quantity, 1);
-  const ptTotalForDisplay =
-    process?.pt == null
-      ? null
-      : process.pt * processQuantity;
-  const stManual = process?.stManual === true;
-  const stTotalForDisplay =
-    stManual && process?.ct != null
-      ? process.ct * processQuantity
-      : null;
-
-  return {
-    process: findMasterProcess(process, options),
-    pt: toDraftNumberText(ptTotalForDisplay),
-    stManual,
-    st: toDraftNumberText(stTotalForDisplay),
-  };
-};
 
 const resolveDraftStInputValue = (draft, autoStTotalSeconds) => {
   if (draft?.stManual) return draft.st;
@@ -287,9 +257,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
   const [addError, setAddError] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState(createEmptyDraft);
-  const [editError, setEditError] = useState('');
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
@@ -346,6 +313,13 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     () => displayOrderQuantity.toLocaleString('ko-KR'),
     [displayOrderQuantity]
   );
+  const styleAtReliability = useMemo(() => {
+    if (safeProcesses.length === 0) return null;
+    const reliabilities = safeProcesses.map((p) =>
+      resolveProcessAtReliability(p, displayOrderQuantity)
+    );
+    return reliabilities.reduce((min, r) => (r.percent < min.percent ? r : min));
+  }, [safeProcesses, displayOrderQuantity]);
 
   const addDisabledIdentitySet = useMemo(() => {
     const set = new Set();
@@ -356,15 +330,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     return set;
   }, [safeProcesses]);
 
-  const editDisabledIdentitySet = useMemo(() => {
-    const set = new Set();
-    safeProcesses.forEach((process) => {
-      if (process.instanceId === editingId) return;
-      const identity = getProcessIdentity(process);
-      if (identity) set.add(identity);
-    });
-    return set;
-  }, [editingId, safeProcesses]);
   const canStartAdd = !isLoadingOptions && processOptions.length > 0;
 
   useEffect(() => {
@@ -429,7 +394,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   };
 
   const handleStartAddRow = () => {
-    if (editingId || !canStartAdd) return;
+    if (!canStartAdd) return;
     setIsAddingRow(true);
     setAddDraft(createEmptyDraft());
     setAddError('');
@@ -452,45 +417,27 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
     handleCancelAddRow();
   };
 
-  const handleStartEdit = (process) => {
-    setIsAddingRow(false);
-    setAddDraft(createEmptyDraft());
-    setAddError('');
-    setEditingId(process.instanceId);
-    setEditDraft(createDraftFromProcess(process, processOptions));
-    setEditError('');
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditDraft(createEmptyDraft());
-    setEditError('');
-  };
-
-  const handleSaveEdit = (process) => {
-    const errorMessage = validateDraft(editDraft, { ignoreInstanceId: process.instanceId });
-    if (errorMessage) {
-      setEditError(errorMessage);
+  const handleInlineChange = (process, field, rawValue) => {
+    let updatedProcess;
+    if (field === 'pt') {
+      const parsed = parseOptionalSecondsInput(rawValue);
+      updatedProcess = normalizeProcess({ ...process, pt: parsed });
+    } else if (field === 'st') {
+      const parsed = parseOptionalSecondsInput(rawValue);
+      const hasValue = parsed != null;
+      updatedProcess = normalizeProcess({ ...process, ct: hasValue ? parsed : null, stManual: hasValue });
+    } else {
       return;
     }
-
-    const updatedProcess = buildProcessPayload(editDraft, process, timeRefQuantity);
-    const nextProcesses = safeProcesses.map((item) =>
-      item.instanceId === process.instanceId ? updatedProcess : item
-    );
-    onProcessesChange(nextProcesses);
-    handleCancelEdit();
+    onProcessesChange(safeProcesses.map((p) => p.instanceId === process.instanceId ? updatedProcess : p));
   };
 
   const handleRemoveProcess = (instanceId) => {
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
-    if (editingId === instanceId) {
-      handleCancelEdit();
-    }
   };
 
   const onDragEnd = (result) => {
-    if (isAddingRow || editingId) return;
+    if (isAddingRow) return;
     if (!result.destination) return;
 
     const nextProcesses = Array.from(safeProcesses);
@@ -500,24 +447,11 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
   };
 
   const renderRowActions = (process) => (
-    <Stack direction="row" spacing={0.5} justifyContent="center">
-      <Tooltip title="수정">
-        <span>
-          <IconButton
-            size="small"
-            onClick={() => handleStartEdit(process)}
-            disabled={isAddingRow || Boolean(editingId)}
-          >
-            <EditIcon fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
-      <Tooltip title="삭제">
-        <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-    </Stack>
+    <Tooltip title="삭제">
+      <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
+        <DeleteIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
   );
 
   const addPreviewProcess = isAddingRow
@@ -530,10 +464,6 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           addPreviewProcess,
           displayOrderQuantity
         );
-  const addPreviewAtReliability =
-    addPreviewProcess == null
-      ? { status: AT_RELIABILITY_STATUS.COLLECTING }
-      : resolveProcessAtReliability(addPreviewProcess, displayOrderQuantity);
   const addPreviewStTotalSeconds =
     addPreviewProcess == null
       ? null
@@ -570,7 +500,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleStartAddRow}
-          disabled={isAddingRow || Boolean(editingId) || !canStartAdd}
+          disabled={isAddingRow || !canStartAdd}
           sx={{
             minWidth: 108,
             height: 36,
@@ -618,11 +548,24 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
-                    <Tooltip title={`AT(${timeRefQuantityLabel}): 실제 작업 기록 기반 자동 산출값입니다.`} placement="top">
-                      <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                        {`AT(${timeRefQuantityLabel})`}
-                      </Box>
-                    </Tooltip>
+                    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
+                      <Tooltip title={`AT(${timeRefQuantityLabel}): 실제 작업 기록 기반 자동 산출값입니다.`} placement="top">
+                        <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                          {`AT(${timeRefQuantityLabel})`}
+                        </Box>
+                      </Tooltip>
+                      {styleAtReliability && (
+                        <Chip
+                          size="small"
+                          label={resolveAtReliabilityPercentLabel(styleAtReliability)}
+                          sx={{
+                            ...AT_RELIABILITY_CHIP_SX,
+                            backgroundColor: resolveAtReliabilityPalette(styleAtReliability).bg,
+                            color: resolveAtReliabilityPalette(styleAtReliability).text,
+                          }}
+                        />
+                      )}
+                    </Stack>
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
                     <Tooltip title={`ST(${timeRefQuantityLabel}): 배정 기준으로 사용하는 표준 시간입니다.`} placement="top">
@@ -680,18 +623,7 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Stack spacing={0.25} alignItems="flex-end">
-                            <Typography variant="body2">
-                              {formatSeconds(addPreviewAtTotalSeconds)}
-                            </Typography>
-                            <Chip
-                              size="small"
-                              variant="outlined"
-                              color={resolveAtReliabilityColor(addPreviewAtReliability)}
-                              label={resolveAtReliabilityPercentLabel(addPreviewAtReliability)}
-                              sx={AT_RELIABILITY_CHIP_SX}
-                            />
-                          </Stack>
+                          {formatSeconds(addPreviewAtTotalSeconds)}
                         </TableCell>
                         <TableCell align="right">
                           <Stack
@@ -762,29 +694,13 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                           key={process.instanceId}
                           draggableId={process.instanceId}
                           index={index}
-                          isDragDisabled={Boolean(isAddingRow || editingId)}
+                          isDragDisabled={Boolean(isAddingRow)}
                         >
                           {(dragProvided) => {
-                            const isEditing = editingId === process.instanceId;
-                            const previewProcess = isEditing
-                              ? buildProcessPayload(editDraft, process, timeRefQuantity)
-                              : process;
-                            const previewPtTotalSeconds =
-                              toOptionalSeconds(previewProcess?.pt);
                             const previewAtTotalSeconds =
-                              resolveProcessAtPerPieceSeconds(
-                                previewProcess,
-                                displayOrderQuantity
-                              );
-                            const previewAtReliability = resolveProcessAtReliability(
-                              previewProcess,
-                              displayOrderQuantity
-                            );
+                              resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
                             const previewStTotalSeconds =
-                              resolveProcessStPerPieceSeconds(
-                                previewProcess,
-                                displayOrderQuantity
-                              );
+                              resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
 
                             return (
                               <>
@@ -792,16 +708,12 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                   ref={dragProvided.innerRef}
                                   {...dragProvided.draggableProps}
                                   hover
-                                  onDoubleClick={() => {
-                                    if (!isAddingRow && !editingId) handleStartEdit(process);
-                                  }}
-                                  sx={{ cursor: isEditing ? 'default' : 'pointer' }}
                                 >
                                   <TableCell
                                     align="center"
                                     {...dragProvided.dragHandleProps}
                                     sx={{
-                                      cursor: isAddingRow || editingId ? 'not-allowed' : 'grab',
+                                      cursor: isAddingRow ? 'not-allowed' : 'grab',
                                       color: 'text.secondary',
                                     }}
                                   >
@@ -817,133 +729,43 @@ const StyleProcess = ({ processes = [], onProcessesChange }) => {
                                   </TableCell>
 
                                   <TableCell>
-                                    {isEditing ? (
-                                      <SearchableSelect
-                                        size="small"
-                                        label="공정 선택"
-                                        options={processOptions}
-                                        value={editDraft.process}
-                                        onChange={(_event, value) => {
-                                          setEditDraft((prev) => ({ ...prev, process: value }));
-                                          setEditError('');
-                                        }}
-                                        getOptionLabel={(option) => `[${option.code}] ${option.name}`}
-                                        isOptionEqualToValue={(option, value) =>
-                                          option.id === value?.id || option.code === value?.code
-                                        }
-                                        getOptionDisabled={(option) =>
-                                          editDisabledIdentitySet.has(getProcessIdentity(option))
-                                        }
-                                        sx={{ width: '100%' }}
-                                      />
-                                    ) : (
-                                      `[${process.code}] ${process.name}`
-                                    )}
+                                    {`[${process.code}] ${process.name}`}
                                   </TableCell>
 
                                   <TableCell align="right">
-                                    {isEditing ? (
-                                      <TextField
-                                        size="small"
-                                        type="number"
-                                        value={editDraft.pt}
-                                        onChange={(event) =>
-                                          setEditDraft((prev) => ({ ...prev, pt: event.target.value }))
-                                        }
-                                        onWheel={(e) => e.target.blur()}
-                                        inputProps={{ min: 0 }}
-                                        placeholder="-"
-                                        sx={{ width: 86 }}
-                                      />
-                                    ) : (
-                                      formatSeconds(previewPtTotalSeconds)
-                                    )}
+                                    <TextField
+                                      key={process.instanceId + '_pt'}
+                                      size="small"
+                                      type="number"
+                                      defaultValue={toDraftNumberText(process.pt)}
+                                      onBlur={(e) => handleInlineChange(process, 'pt', e.target.value)}
+                                      onWheel={(e) => e.target.blur()}
+                                      inputProps={{ min: 0 }}
+                                      placeholder="-"
+                                      sx={{ width: 86 }}
+                                    />
                                   </TableCell>
 
                                   <TableCell align="right">
-                                    <Stack spacing={0.25} alignItems="flex-end">
-                                      <Typography variant="body2">
-                                        {formatSeconds(previewAtTotalSeconds)}
-                                      </Typography>
-                                      <Chip
-                                        size="small"
-                                        variant="outlined"
-                                        color={resolveAtReliabilityColor(previewAtReliability)}
-                                        label={resolveAtReliabilityPercentLabel(previewAtReliability)}
-                                        sx={AT_RELIABILITY_CHIP_SX}
-                                      />
-                                    </Stack>
+                                    {formatSeconds(previewAtTotalSeconds)}
                                   </TableCell>
                                   <TableCell align="right">
-                                    {isEditing ? (
-                                      <Stack
-                                        direction="column"
-                                        spacing={0.5}
-                                        alignItems="flex-end"
-                                        sx={{ minWidth: 110 }}
-                                      >
-                                        <TextField
-                                          size="small"
-                                          type="number"
-                                          value={resolveDraftStInputValue(
-                                            editDraft,
-                                            previewStTotalSeconds
-                                          )}
-                                          onChange={(event) => {
-                                            const nextValue = event.target.value;
-                                            const hasManualValue =
-                                              String(nextValue).trim() !== '';
-                                            setEditDraft((prev) => ({
-                                              ...prev,
-                                              stManual: hasManualValue,
-                                              st: nextValue,
-                                            }));
-                                          }}
-                                          onWheel={(e) => e.target.blur()}
-                                          inputProps={{ min: 0 }}
-                                          placeholder="-"
-                                          sx={{ width: 86 }}
-                                        />
-                                      </Stack>
-                                    ) : (
-                                      <Typography
-                                        variant="body2"
-                                        fontWeight={process?.stManual ? 700 : 400}
-                                        color={process?.stManual ? 'primary.main' : 'text.primary'}
-                                      >
-                                        {formatSeconds(previewStTotalSeconds)}
-                                      </Typography>
-                                    )}
+                                    <TextField
+                                      key={process.instanceId + '_st'}
+                                      size="small"
+                                      type="number"
+                                      defaultValue={process.stManual ? toDraftNumberText(process.ct) : ''}
+                                      onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
+                                      onWheel={(e) => e.target.blur()}
+                                      inputProps={{ min: 0 }}
+                                      placeholder="-"
+                                      sx={{ width: 86, '& input': { fontWeight: process?.stManual ? 700 : 400 } }}
+                                    />
                                   </TableCell>
                                   <TableCell align="center">
-                                    {isEditing ? (
-                                      <Stack direction="row" spacing={0.5} justifyContent="center">
-                                        <Tooltip title="저장">
-                                          <IconButton size="small" onClick={() => handleSaveEdit(process)}>
-                                            <CheckIcon fontSize="small" />
-                                          </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="취소">
-                                          <IconButton size="small" onClick={handleCancelEdit}>
-                                            <CloseIcon fontSize="small" />
-                                          </IconButton>
-                                        </Tooltip>
-                                      </Stack>
-                                    ) : (
-                                      renderRowActions(process)
-                                    )}
+                                    {renderRowActions(process)}
                                   </TableCell>
                                 </TableRow>
-
-                                {isEditing && editError && (
-                                  <TableRow>
-                                    <TableCell colSpan={6} sx={{ py: 0.75 }}>
-                                      <Typography variant="caption" color="error">
-                                        {editError}
-                                      </Typography>
-                                    </TableCell>
-                                  </TableRow>
-                                )}
                               </>
                             );
                           }}

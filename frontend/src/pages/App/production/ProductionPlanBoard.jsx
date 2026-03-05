@@ -51,10 +51,10 @@ const STATUS_META = {
   REJECTED: { label: '요청', color: 'warning' },
 };
 const CALENDAR_CT_STATUS_META = {
-  PENDING: { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
-  SENT: { cardBg: '#BFEAD0', labelColor: '#3A9858', borderColor: 'rgba(58, 152, 88, 0.35)' },
-  AGREED: { cardBg: '#C8DFF7', labelColor: '#4A88C8', borderColor: 'rgba(74, 136, 200, 0.4)' },
-  REJECTED: { cardBg: '#F7DCC8', labelColor: '#C07838', borderColor: 'rgba(192, 120, 56, 0.35)' },
+  PENDING:  { cardBg: '#EBEBF0', labelColor: '#747484', borderColor: 'rgba(116, 116, 132, 0.35)' },
+  SENT:     { cardBg: '#BFEAD0', labelColor: '#268444', borderColor: 'rgba(38, 132, 68, 0.35)' },
+  AGREED:   { cardBg: '#C8DFF7', labelColor: '#3674B4', borderColor: 'rgba(54, 116, 180, 0.4)' },
+  REJECTED: { cardBg: '#F7DCC8', labelColor: '#AC6424', borderColor: 'rgba(172, 100, 36, 0.35)' },
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
