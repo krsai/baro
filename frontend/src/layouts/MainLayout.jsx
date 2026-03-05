@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useNavigate, Outlet } from 'react-router-dom';
+import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
 import {
@@ -54,14 +54,20 @@ import useNetworkLoading from '../hooks/useNetworkLoading';
 const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 
-const KEEP_ALIVE_PATHS = new Set(['/assignment']);
-const KeepAliveAssign = React.lazy(() => import('../pages/App/Assign'));
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
   if (!raw) return '/';
   const withoutHash = raw.split('#')[0];
   const pathname = withoutHash.split('?')[0];
   return pathname || '/';
+};
+const isKeepAliveCandidatePath = (path) => {
+  const pathname = toPathname(path);
+  if (!pathname || pathname === '/') return false;
+  if (pathname === EMPTY_WORKSPACE_PATH) return false;
+  if (pathname === '/login') return false;
+  if (pathname.startsWith('/auth')) return false;
+  return true;
 };
 
 const resolveNameFromEmail = (email) => {
@@ -73,6 +79,7 @@ const resolveNameFromEmail = (email) => {
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const routeOutlet = useOutlet();
   const currentPath = location.pathname || '/';
   const currentRoutePath = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
   const {
@@ -98,10 +105,9 @@ const MainLayout = () => {
   } = useApp();
   const networkLoading = useNetworkLoading();
 
-  const [mountedKeepAlivePaths, setMountedKeepAlivePaths] = useState(() => {
-    const s = new Set();
-    if (KEEP_ALIVE_PATHS.has(currentPath)) s.add(currentPath);
-    return s;
+  const [mountedTabOutlets, setMountedTabOutlets] = useState(() => {
+    if (!isKeepAliveCandidatePath(currentPath) || !routeOutlet) return new Map();
+    return new Map([[currentPath, routeOutlet]]);
   });
 
   const [adminOpen, setAdminOpen] = useState(false);
@@ -484,24 +490,30 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
-    if (KEEP_ALIVE_PATHS.has(currentPath)) {
-      setMountedKeepAlivePaths((prev) => {
-        if (prev.has(currentPath)) return prev;
-        const next = new Set(prev);
-        next.add(currentPath);
-        return next;
-      });
-    }
-  }, [currentPath]);
+    if (!isKeepAliveCandidatePath(currentPath)) return;
+    if (!routeOutlet) return;
+    setMountedTabOutlets((prev) => {
+      if (prev.get(currentPath) === routeOutlet) return prev;
+      const next = new Map(prev);
+      next.set(currentPath, routeOutlet);
+      return next;
+    });
+  }, [currentPath, routeOutlet]);
 
   useEffect(() => {
-    const openTabIds = new Set(openTabs.map((tab) => toPathname(tab?.id || tab?.path || '')));
-    setMountedKeepAlivePaths((prev) => {
+    const keepAlivePaths = new Set(
+      openTabs
+        .map((tab) => toPathname(tab?.id || tab?.path || ''))
+        .filter((path) => isKeepAliveCandidatePath(path))
+    );
+    if (isKeepAliveCandidatePath(currentPath)) {
+      keepAlivePaths.add(currentPath);
+    }
+    setMountedTabOutlets((prev) => {
       let changed = false;
-      const next = new Set(prev);
-      prev.forEach((path) => {
-        if (path === currentPath) return;
-        if (openTabIds.has(path)) return;
+      const next = new Map(prev);
+      prev.forEach((_value, path) => {
+        if (keepAlivePaths.has(path)) return;
         next.delete(path);
         changed = true;
       });
@@ -539,7 +551,7 @@ const MainLayout = () => {
     pendingNavigationPathRef.current = null;
     pendingCloseTabRef.current = null;
     recentTabHistoryRef.current = [];
-    setMountedKeepAlivePaths(new Set());
+    setMountedTabOutlets(new Map());
     cancelAllTrackedRequests('logout');
     resetWorkspace();
 
@@ -616,6 +628,10 @@ const MainLayout = () => {
     // After (potentially) setting the new active tab, remove the closed tab from the list.
     closeTab(tabIdToClose);
   };
+
+  const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
+  const shouldRenderLiveOutlet =
+    !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -917,23 +933,20 @@ const MainLayout = () => {
             position: 'relative',
           }}
         >
-          {/* Keep-alive: /assignment — stays mounted after first visit */}
-          {mountedKeepAlivePaths.has('/assignment') && (
+          {Array.from(mountedTabOutlets.entries()).map(([path, element]) => (
             <Box
+              key={path}
               sx={{
-                display: currentPath === '/assignment' ? 'flex' : 'none',
+                display: currentPath === path ? 'flex' : 'none',
                 flexDirection: 'column',
                 minHeight: '100%',
                 minWidth: 0,
               }}
             >
-              <React.Suspense fallback={null}>
-                <KeepAliveAssign />
-              </React.Suspense>
+              {element}
             </Box>
-          )}
-          {/* Regular outlet for all non-keep-alive routes */}
-          {!KEEP_ALIVE_PATHS.has(currentPath) && <Outlet />}
+          ))}
+          {shouldRenderLiveOutlet && routeOutlet}
           <GlobalLoadingOverlay
             open={networkLoading.isLoading}
             startedAt={networkLoading.startedAt}

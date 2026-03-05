@@ -9,7 +9,9 @@
       "Bash(npx prisma generate)",
       "Bash(grep -v \"^+\\\\s*//\")",
       "Bash(npm run build)",
-      "Bash(xargs grep -l \"assignment-board-view\\\\|assignment_board\\\\|assignmentBoard\")"
+      "Bash(xargs grep -l \"assignment-board-view\\\\|assignment_board\\\\|assignmentBoard\")",
+      "Bash(\"c:/Users/krsai/OneDrive/바탕 화면/baro/scripts/generate-assignment-work-records.mjs\":*)",
+      "Bash(ls scripts/_*.json)"
     ]
   }
 }

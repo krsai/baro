@@ -1788,6 +1788,8 @@ const AssignBoard = () => {
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
   const [persistReady, setPersistReady] = useState(false);
+  const hasLoadedSourceDataRef = useRef(false);
+  const lastLoadedOrgIdRef = useRef(null);
   const startDateRef = useRef(getMonthStartDate());
   const splitCounterRef = useRef(1);
   const lastSavedSnapshotRef = useRef('');
@@ -2286,12 +2288,23 @@ const AssignBoard = () => {
 
   useEffect(() => {
     if (!isAssignmentRouteActive) return undefined;
+    const normalizedOrgId =
+      Number.isFinite(Number(activeOrgId)) && Number(activeOrgId) > 0
+        ? Number(activeOrgId)
+        : null;
+    if (
+      hasLoadedSourceDataRef.current &&
+      lastLoadedOrgIdRef.current === normalizedOrgId
+    ) {
+      return undefined;
+    }
     let cancelled = false;
 
     const loadSourceData = async () => {
       setPersistReady(false);
       setLoading(true);
       let appliedSavedBoardState = false;
+      let loadedSuccessfully = false;
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
         let assignmentCardsSettled = false;
@@ -2345,6 +2358,7 @@ const AssignBoard = () => {
         if (assignmentCardsSettled && assignmentCardsResponseCache) {
           applyAssignmentCardsResponse(assignmentCardsResponseCache, nextLines, boardState);
           appliedSavedBoardState = true;
+          loadedSuccessfully = true;
           return;
         }
 
@@ -2356,6 +2370,7 @@ const AssignBoard = () => {
           markPersistReady: assignmentCardsSettled,
         });
         appliedSavedBoardState = true;
+        loadedSuccessfully = true;
 
         if (assignmentCardsSettled) {
           return;
@@ -2369,6 +2384,7 @@ const AssignBoard = () => {
         }
 
         applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState);
+        loadedSuccessfully = true;
       } catch (_error) {
         if (!cancelled) {
           if (!appliedSavedBoardState) {
@@ -2386,7 +2402,13 @@ const AssignBoard = () => {
           setPersistReady(true);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          if (loadedSuccessfully) {
+            hasLoadedSourceDataRef.current = true;
+            lastLoadedOrgIdRef.current = normalizedOrgId;
+          }
+          setLoading(false);
+        }
       }
     };
 
