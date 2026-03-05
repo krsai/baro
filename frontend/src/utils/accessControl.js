@@ -17,6 +17,7 @@ const FEATURE_KEYS = {
   PRODUCTION_PLAN: 'PRODUCTION_PLAN',
   CT_REVIEW: 'CT_REVIEW',
   PRODUCTION_RESULT: 'PRODUCTION_RESULT',
+  INVENTORY: 'INVENTORY',
   ATTENDANCE: 'ATTENDANCE',
   WORK_HISTORY: 'WORK_HISTORY',
   PAYROLL: 'PAYROLL',
@@ -39,6 +40,7 @@ const MANUFACTURER_FEATURES = new Set([
   FEATURE_KEYS.PRODUCTION_PLAN,
   FEATURE_KEYS.CT_REVIEW,
   FEATURE_KEYS.PRODUCTION_RESULT,
+  FEATURE_KEYS.INVENTORY,
   FEATURE_KEYS.ATTENDANCE,
   FEATURE_KEYS.WORK_HISTORY,
   FEATURE_KEYS.PAYROLL,
@@ -157,6 +159,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
         hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
       );
     case FEATURE_KEYS.ASSIGNMENT:
+    case FEATURE_KEYS.INVENTORY:
     case FEATURE_KEYS.ATTENDANCE:
     case FEATURE_KEYS.WORK_HISTORY:
     case FEATURE_KEYS.BUSINESS:
@@ -207,6 +210,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/production-plan')) return FEATURE_KEYS.PRODUCTION_PLAN;
   if (path.startsWith('/ct-review')) return FEATURE_KEYS.CT_REVIEW;
   if (path.startsWith('/production-result')) return FEATURE_KEYS.PRODUCTION_RESULT;
+  if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
@@ -243,6 +247,7 @@ const ACCESS_PATH_PRIORITY = [
   '/assignment',
   '/production-plan',
   '/ct-review',
+  '/inventory',
   '/work-history',
   '/attendance',
   '/payroll',

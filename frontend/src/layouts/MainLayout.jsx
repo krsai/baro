@@ -46,6 +46,7 @@ import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
@@ -231,6 +232,7 @@ const MainLayout = () => {
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
+          { label: '재고 관리', icon: <Inventory2Icon />, path: '/inventory' },
           { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
         ],
       },

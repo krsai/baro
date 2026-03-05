@@ -136,10 +136,9 @@ const WorkList = () => {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700 }}>작업일자</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>공장</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>기준</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>작업자 수</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>품목 수</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>총 CT</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>평균 CT</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>비고</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 64, textAlign: 'center' }}>
                     삭제
@@ -149,12 +148,12 @@ const WorkList = () => {
               <TableBody>
                 {loading ? (
                   <TableStatusRow
-                    colSpan={8}
+                    colSpan={7}
                     message="작업 기록을 불러오는 중입니다."
                   />
                 ) : sortedLogs.length === 0 ? (
                   <TableStatusRow
-                    colSpan={8}
+                    colSpan={7}
                     message="등록된 작업 기록이 없습니다."
                   />
                 ) : (
@@ -170,10 +169,9 @@ const WorkList = () => {
                       >
                         <TableCell>{log.workDate || '-'}</TableCell>
                         <TableCell>{log.factoryName || '-'}</TableCell>
-                        <TableCell>{log.ctBasis || 'CT'}</TableCell>
                         <TableCell>{log.workerCount ?? 0}</TableCell>
                         <TableCell>{log.itemCount ?? 0}</TableCell>
-                        <TableCell>{formatSeconds(log.totalContractedSeconds)}</TableCell>
+                        <TableCell>{formatSeconds(Math.round((log.totalContractedSeconds ?? 0) / Math.max(1, log.workerCount ?? 1)))}</TableCell>
                         <TableCell>{formatNote(log.note)}</TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton

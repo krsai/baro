@@ -29,6 +29,7 @@ const Attribute = React.lazy(() => import('./pages/App/Attribute'));
 const Order = React.lazy(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
 const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
+const Inventory = React.lazy(() => import('./pages/App/Inventory'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
 const WorkspaceShell = () => null;
 const WORKSPACE_PATH = '/workspace';
@@ -181,6 +182,10 @@ const router = createBrowserRouter([
           {
             path: 'production-result',
             element: <ProductionResult />,
+          },
+          {
+            path: 'inventory',
+            element: <Inventory />,
           },
           {
             path: 'work-history/new',

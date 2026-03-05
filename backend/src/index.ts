@@ -2025,7 +2025,7 @@ const workOrderItemToItemShape = (row: any) => ({
 });
 
 const toOrderResponse = (order: any) => {
-  const itemsFromRelation = Array.isArray(order?.workOrderItems)
+  const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
     ? [...order.workOrderItems]
         .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
         .map(workOrderItemToItemShape)
@@ -3547,7 +3547,7 @@ const buildAssignmentCardsFromOrders = ({
   };
 
   ensureArray(orders).forEach((order, orderIndex) => {
-    const itemsFromRelation = Array.isArray(order?.workOrderItems)
+    const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
       ? [...order.workOrderItems]
           .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
           .map(workOrderItemToItemShape)

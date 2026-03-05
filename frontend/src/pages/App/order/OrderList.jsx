@@ -522,6 +522,53 @@ const normalizeOrderForm = (order) => {
     status: normalizeOrderStatus(order.status) || base.status,
   };
 };
+const toStableJsonText = (value) => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => toStableJsonText(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${toStableJsonText(value[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
+  const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? source?.sellerOrgId);
+  const resolvedSellerOrgName = String(fixedSellerOrg?.name || source?.sellerOrgName || '').trim();
+  const normalizedItems = (Array.isArray(source?.items) ? source.items : []).map((item) => {
+    const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
+    const sizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
+      const quantity = Number(normalizedSizeQuantities?.[size]) || 0;
+      if (quantity > 0) {
+        acc[size] = quantity;
+      }
+      return acc;
+    }, {});
+    return {
+      styleId: String(item?.styleId || '').trim(),
+      styleName: String(item?.styleName || '').trim(),
+      styleCode: String(item?.styleCode || '').trim(),
+      colorId: toPositiveColorId(item?.colorId),
+      colorCode: getItemColorCode(item),
+      colorName: String(item?.colorName || '').trim(),
+      gender: normalizeGenderCode(item?.gender, 'M') || 'M',
+      sizeQuantities,
+    };
+  });
+
+  return {
+    orderNumber: String(source?.orderNumber || '').trim(),
+    buyerOrgId: toOrgId(source?.buyerOrgId),
+    buyerOrgName: String(source?.buyerOrgName || source?.customerName || '').trim(),
+    sellerOrgId: resolvedSellerOrgId,
+    sellerOrgName: resolvedSellerOrgName,
+    dueDate: String(source?.dueDate || '').trim(),
+    status: normalizeOrderStatus(source?.status) || ORDER_STATUSES[0],
+    items: normalizedItems,
+  };
+};
 
 const getStyleSummaryKey = (item) => {
   const styleId = String(item?.styleId || '').trim();
@@ -581,6 +628,7 @@ const OrderList = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
   const styleAddButtonRef = useRef(null);
   const colorInputRefs = useRef(new Map());
@@ -634,6 +682,9 @@ const OrderList = () => {
     let cancelled = false;
 
     const loadOrdersFromDb = async () => {
+      if (!cancelled) {
+        setOrdersLoaded(false);
+      }
       try {
         const items = await fetchOrdersFromApi({ orgId: activeOrgId });
         if (!cancelled) {
@@ -643,6 +694,11 @@ const OrderList = () => {
         if (!cancelled) {
           setOrders([]);
           showNotification(error?.message || '주문 목록을 불러오지 못했습니다.', 'error');
+        }
+      }
+      finally {
+        if (!cancelled) {
+          setOrdersLoaded(true);
         }
       }
     };
@@ -741,6 +797,9 @@ const OrderList = () => {
     }
 
     const initKey = isNewOrder ? 'new' : orderId || '';
+    if (!isNewOrder && !ordersLoaded) {
+      return;
+    }
     if (detailInitKeyRef.current === initKey) {
       return;
     }
@@ -764,7 +823,7 @@ const OrderList = () => {
       return;
     }
     setFormData(normalizeOrderForm(targetOrder));
-  }, [isDetailMode, isNewOrder, orderId, orders, navigateToPath, showNotification]);
+  }, [isDetailMode, isNewOrder, orderId, orders, ordersLoaded, navigateToPath, showNotification]);
 
   useEffect(() => {
     if (!isDetailMode || !isNewOrder) return;
@@ -1000,6 +1059,21 @@ const OrderList = () => {
       };
     });
   }, [formData.items]);
+  const currentDetailOrder = useMemo(() => {
+    if (isNewOrder) return null;
+    return orders.find((order) => order.id === orderId) || null;
+  }, [isNewOrder, orderId, orders]);
+  const hasFormChanges = useMemo(() => {
+    if (isNewOrder) return true;
+    if (!currentDetailOrder) return false;
+
+    const baselineSnapshot = toComparableOrderSnapshot(
+      normalizeOrderForm(currentDetailOrder),
+      fixedSellerOrg
+    );
+    const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
+    return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
+  }, [currentDetailOrder, fixedSellerOrg, formData, isNewOrder]);
 
   const handleAdd = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
@@ -1046,10 +1120,6 @@ const OrderList = () => {
       return;
     }
     navigateToPath('/order', { label: '주문' });
-  };
-
-  const handleCloseDetail = () => {
-    closeDetailAndGoList();
   };
 
   const handleBuyerChange = (_event, customer) => {
@@ -1391,6 +1461,11 @@ const OrderList = () => {
   };
 
   const handleSave = async () => {
+    if (!isNewOrder && !hasFormChanges) {
+      showNotification('변경된 내용이 없습니다.', 'info');
+      return;
+    }
+
     const errorMessage = validateOrder();
     if (errorMessage) {
       showNotification(errorMessage, 'error');
@@ -1715,8 +1790,7 @@ const OrderList = () => {
               임시 저장 삭제
             </Button>
           )}
-          <Button onClick={handleCloseDetail}>취소</Button>
-          <Button onClick={handleSave} variant="contained">
+          <Button onClick={handleSave} variant="contained" disabled={!isNewOrder && !hasFormChanges}>
             저장
           </Button>
         </Stack>
