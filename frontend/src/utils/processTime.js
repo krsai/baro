@@ -2,7 +2,16 @@
 
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
 const AT_RELIABILITY_SETUP_SHARE_THRESHOLD = 0.03;
-const AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX = 20;
+const AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX = 18;
+const AT_RELIABILITY_SAMPLE_REFERENCE_COUNT = 24;
+const AT_RELIABILITY_SAMPLE_SCORE_BASE = 18;
+const AT_RELIABILITY_SAMPLE_SCORE_MAX = 72;
+const AT_RELIABILITY_TRAINED_PERIOD_BONUS = 6;
+const AT_RELIABILITY_VERSION_BONUS_MAX = 8;
+const AT_RELIABILITY_LOW_SENSITIVITY_PENALTY_MAX = 6;
+const AT_RELIABILITY_FALLBACK_PERCENT_THRESHOLD = 30;
+const AT_RELIABILITY_LOW_SENSITIVITY_PERCENT_THRESHOLD = 55;
+const AT_RELIABILITY_STABLE_PERCENT_THRESHOLD = 78;
 export const AT_RELIABILITY_STATUS = {
   COLLECTING: 'COLLECTING',
   FALLBACK: 'FALLBACK',
@@ -30,6 +39,51 @@ const roundToScale = (value, digits = 4) => {
   return Math.round(value * factor) / factor;
 };
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const toNonNegativeInt = (value, fallback = 0) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+};
+
+const resolveObservationScore = (observationCount) => {
+  const count = toNonNegativeInt(observationCount, 0);
+  if (count <= 0) return 0;
+  const progress = clamp(
+    count / AT_RELIABILITY_SAMPLE_REFERENCE_COUNT,
+    0,
+    1
+  );
+  return (
+    AT_RELIABILITY_SAMPLE_SCORE_BASE +
+    (AT_RELIABILITY_SAMPLE_SCORE_MAX - AT_RELIABILITY_SAMPLE_SCORE_BASE) *
+      Math.sqrt(progress)
+  );
+};
+
+const resolveVersionScore = (version) => {
+  const normalized = Number(version);
+  if (!Number.isFinite(normalized) || normalized <= 0) return 0;
+  return clamp(Math.log2(Math.max(1, normalized)) * 2, 0, AT_RELIABILITY_VERSION_BONUS_MAX);
+};
+
+const resolveLowSensitivityPenalty = ({ setupShare, observationCount }) => {
+  if (!Number.isFinite(setupShare) || setupShare >= AT_RELIABILITY_SETUP_SHARE_THRESHOLD) {
+    return 0;
+  }
+  const count = toNonNegativeInt(observationCount, 0);
+  const sampleMaturity = clamp(count / AT_RELIABILITY_SAMPLE_REFERENCE_COUNT, 0, 1);
+  const sensitivityGap = clamp(
+    (AT_RELIABILITY_SETUP_SHARE_THRESHOLD - setupShare) /
+      AT_RELIABILITY_SETUP_SHARE_THRESHOLD,
+    0,
+    1
+  );
+  return (
+    sensitivityGap *
+    (1 - sampleMaturity) *
+    AT_RELIABILITY_LOW_SENSITIVITY_PENALTY_MAX
+  );
+};
 
 const resolveAtParams = (process) => {
   if (!process || typeof process !== 'object') return null;
@@ -83,11 +137,11 @@ const resolveAtParamsMeta = (process) => {
 };
 
 const resolveAtReliabilityPercent = ({
-  status,
   setupShare,
   version,
   hasTrainedPeriod,
   attendanceFallbackShare,
+  observationCount,
 }) => {
   const fallbackPenalty = Number.isFinite(attendanceFallbackShare)
     ? clamp(
@@ -96,36 +150,20 @@ const resolveAtReliabilityPercent = ({
       AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX
     )
     : 0;
-
-  if (status === AT_RELIABILITY_STATUS.COLLECTING) return 0;
-  if (status === AT_RELIABILITY_STATUS.FALLBACK) {
-    return Math.round(clamp(35 - fallbackPenalty, 0, 100));
-  }
-
-  if (status === AT_RELIABILITY_STATUS.LOW_SENSITIVITY) {
-    const setupScore = Number.isFinite(setupShare)
-      ? clamp((setupShare / AT_RELIABILITY_SETUP_SHARE_THRESHOLD) * 25, 0, 25)
-      : 0;
-    return Math.round(clamp(35 + setupScore - fallbackPenalty, 0, 100));
-  }
-
-  if (status === AT_RELIABILITY_STATUS.LEARNING) {
-    const versionScore = clamp((Number(version) - 1) * 6, 0, 24);
-    const trainedScore = hasTrainedPeriod ? 8 : 0;
-    return Math.round(
-      clamp(58 + versionScore + trainedScore - fallbackPenalty, 0, 100)
-    );
-  }
-
-  if (status === AT_RELIABILITY_STATUS.STABLE) {
-    const versionScore = clamp((Number(version) - 2) * 2, 0, 8);
-    const trainedScore = hasTrainedPeriod ? 2 : 0;
-    return Math.round(
-      clamp(90 + versionScore + trainedScore - fallbackPenalty, 0, 100)
-    );
-  }
-
-  return 0;
+  const observationScore = resolveObservationScore(observationCount);
+  const versionScore = resolveVersionScore(version);
+  const trainedScore = hasTrainedPeriod ? AT_RELIABILITY_TRAINED_PERIOD_BONUS : 0;
+  const lowSensitivityPenalty = resolveLowSensitivityPenalty({
+    setupShare,
+    observationCount,
+  });
+  return Math.round(
+    clamp(
+      observationScore + versionScore + trainedScore - fallbackPenalty - lowSensitivityPenalty,
+      0,
+      100
+    )
+  );
 };
 
 const toAtReliabilityResult = (status, options = {}) => {
@@ -150,6 +188,16 @@ const toAtReliabilityResult = (status, options = {}) => {
     Number.isFinite(Number(options.observationCount)) && Number(options.observationCount) >= 0
       ? Math.trunc(Number(options.observationCount))
       : null;
+  const overridePercent = Number(options.percent);
+  const percent = Number.isFinite(overridePercent)
+    ? Math.round(clamp(overridePercent, 0, 100))
+    : resolveAtReliabilityPercent({
+      setupShare,
+      version,
+      hasTrainedPeriod,
+      attendanceFallbackShare,
+      observationCount,
+    });
   return {
     status,
     setupShare,
@@ -158,13 +206,7 @@ const toAtReliabilityResult = (status, options = {}) => {
     attendanceCoverage,
     attendanceFallbackShare,
     observationCount,
-    percent: resolveAtReliabilityPercent({
-      status,
-      setupShare,
-      version,
-      hasTrainedPeriod,
-      attendanceFallbackShare,
-    }),
+    percent,
   };
 };
 
@@ -173,9 +215,15 @@ export const resolveAtReliabilityStatusFromPercent = (percentValue) => {
   if (!Number.isFinite(percent) || percent <= 0) {
     return AT_RELIABILITY_STATUS.COLLECTING;
   }
-  if (percent <= 35) return AT_RELIABILITY_STATUS.FALLBACK;
-  if (percent < 58) return AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
-  if (percent < 90) return AT_RELIABILITY_STATUS.LEARNING;
+  if (percent <= AT_RELIABILITY_FALLBACK_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.FALLBACK;
+  }
+  if (percent < AT_RELIABILITY_LOW_SENSITIVITY_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
+  }
+  if (percent < AT_RELIABILITY_STABLE_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.LEARNING;
+  }
   return AT_RELIABILITY_STATUS.STABLE;
 };
 
@@ -329,38 +377,32 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     reliabilityReferenceQuantity
   );
   if (atPerPieceSeconds == null) {
-    return toAtReliabilityResult(AT_RELIABILITY_STATUS.COLLECTING);
+    return toAtReliabilityResult(AT_RELIABILITY_STATUS.COLLECTING, {
+      percent: 0,
+    });
   }
 
   const atParams = resolveAtParamsMeta(normalized);
   if (!atParams) {
-    return toAtReliabilityResult(AT_RELIABILITY_STATUS.FALLBACK);
+    const percent = 18;
+    return toAtReliabilityResult(resolveAtReliabilityStatusFromPercent(percent), {
+      percent,
+    });
   }
 
   const setupShare =
     atPerPieceSeconds > 0
       ? (atParams.b / reliabilityReferenceQuantity) / atPerPieceSeconds
       : null;
-  const hasSetupComponent = atParams.b > 0;
-  const hasLowSensitivity =
-    hasSetupComponent &&
-    Number.isFinite(setupShare) &&
-    setupShare < AT_RELIABILITY_SETUP_SHARE_THRESHOLD;
-  let status = AT_RELIABILITY_STATUS.LEARNING;
-  if (hasLowSensitivity) {
-    status = AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
-  } else if (atParams.version >= 2 && atParams.trainedPeriod) {
-    status = AT_RELIABILITY_STATUS.STABLE;
-  }
-
   const fallbackShare = atParams.attendanceFallbackShare;
-  if (Number.isFinite(fallbackShare)) {
-    if (fallbackShare >= 0.7) {
-      status = AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
-    } else if (fallbackShare >= 0.4 && status === AT_RELIABILITY_STATUS.STABLE) {
-      status = AT_RELIABILITY_STATUS.LEARNING;
-    }
-  }
+  const percent = resolveAtReliabilityPercent({
+    setupShare,
+    version: atParams.version,
+    hasTrainedPeriod: Boolean(atParams.trainedPeriod),
+    attendanceFallbackShare: fallbackShare,
+    observationCount: atParams.observationCount,
+  });
+  const status = resolveAtReliabilityStatusFromPercent(percent);
 
   return toAtReliabilityResult(status, {
     setupShare,
@@ -369,6 +411,7 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
     attendanceCoverage: atParams.attendanceCoverage,
     attendanceFallbackShare: fallbackShare,
     observationCount: atParams.observationCount,
+    percent,
   });
 };
 

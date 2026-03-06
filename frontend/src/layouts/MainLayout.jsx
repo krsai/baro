@@ -51,6 +51,7 @@ import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../util
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import useNetworkLoading from '../hooks/useNetworkLoading';
+import { RequestScopeBoundary } from '../context/RequestScopeContext';
 
 const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
@@ -948,19 +949,29 @@ const MainLayout = () => {
           }}
         >
           {Array.from(mountedTabOutlets.entries()).map(([path, element]) => (
-            <Box
+            <RequestScopeBoundary
               key={path}
-              sx={{
-                display: currentPath === path ? 'flex' : 'none',
-                flexDirection: 'column',
-                minHeight: '100%',
-                minWidth: 0,
-              }}
+              scopeId={path}
+              active={currentPath === path}
             >
-              {element}
-            </Box>
+              <Box
+                sx={{
+                  display: currentPath === path ? 'flex' : 'none',
+                  flexDirection: 'column',
+                  minHeight: '100%',
+                  minWidth: 0,
+                }}
+              >
+                {element}
+              </Box>
+            </RequestScopeBoundary>
           ))}
-          {shouldRenderLiveOutlet && routeOutlet}
+          {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
+            <RequestScopeBoundary scopeId={currentPath} active>
+              {routeOutlet}
+            </RequestScopeBoundary>
+          ) : null}
+          {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
           <GlobalLoadingOverlay
             open={networkLoading.isLoading}
             startedAt={networkLoading.startedAt}

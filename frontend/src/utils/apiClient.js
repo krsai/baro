@@ -5,9 +5,16 @@ const requestContext = {
   userEmail: '',
   orgId: null,
 };
+const DEFAULT_REQUEST_SCOPE_GROUP = 'workspace';
+const REQUEST_SCOPE_PREEMPTION_REASON = 'request_scope_preempted';
 const DEFAULT_GET_CACHE_TTL_MS = 45_000;
 const getResponseCache = new Map();
 const inFlightGetRequests = new Map();
+const activeRequestScopeByGroup = new Map();
+const activeRequestScopeEntriesByGroup = new Map();
+const requestScopeSchedulerByGroup = new Map();
+let requestScopeTaskSequence = 0;
+let activeRequestScopeEntrySequence = 0;
 
 // mutation 경로가 어떤 GET 캐시 prefix를 무효화하는지 정의
 // 매핑되지 않은 경로는 fallback으로 전체 캐시 삭제
@@ -45,6 +52,228 @@ const trackedRequestAbortControllers = new Map();
 let networkRequestSequence = 0;
 let networkLoadingStartedAt = null;
 const DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+
+const normalizeRequestScopeValue = (value) =>
+  typeof value === 'string' ? value.trim() : '';
+
+const normalizeRequestScopeGroup = (value) =>
+  normalizeRequestScopeValue(value) || DEFAULT_REQUEST_SCOPE_GROUP;
+
+const getRequestScopeSchedulerState = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  let state = requestScopeSchedulerByGroup.get(normalizedGroupId);
+  if (!state) {
+    state = {
+      groupId: normalizedGroupId,
+      pending: [],
+      running: new Map(),
+    };
+    requestScopeSchedulerByGroup.set(normalizedGroupId, state);
+  }
+  return state;
+};
+
+const getActiveRequestScope = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) =>
+  normalizeRequestScopeValue(activeRequestScopeByGroup.get(normalizeRequestScopeGroup(groupId)));
+
+const recomputeActiveRequestScope = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const entries = activeRequestScopeEntriesByGroup.get(normalizedGroupId);
+  if (!entries || entries.size === 0) {
+    activeRequestScopeByGroup.delete(normalizedGroupId);
+    return;
+  }
+
+  let winner = null;
+  entries.forEach((entry) => {
+    if (
+      !winner ||
+      entry.priority > winner.priority ||
+      (entry.priority === winner.priority && entry.sequence > winner.sequence)
+    ) {
+      winner = entry;
+    }
+  });
+
+  if (winner?.scopeId) {
+    activeRequestScopeByGroup.set(normalizedGroupId, winner.scopeId);
+    return;
+  }
+  activeRequestScopeByGroup.delete(normalizedGroupId);
+};
+
+const isRequestScopePreemptionError = (error) =>
+  error?.status === 499 &&
+  error?.details?.reason === REQUEST_SCOPE_PREEMPTION_REASON;
+
+const cleanupRequestScopeSchedulerState = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const state = requestScopeSchedulerByGroup.get(normalizedGroupId);
+  if (!state) return;
+  if (state.pending.length > 0) return;
+  if (state.running.size > 0) return;
+  if (activeRequestScopeByGroup.has(normalizedGroupId)) return;
+  requestScopeSchedulerByGroup.delete(normalizedGroupId);
+};
+
+const getNextPendingRequestScope = (state) => {
+  let nextTask = null;
+  state.pending.forEach((task) => {
+    if (!nextTask || task.sequence < nextTask.sequence) {
+      nextTask = task;
+    }
+  });
+  return nextTask?.scopeId || '';
+};
+
+const pumpRequestScopeScheduler = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const state = requestScopeSchedulerByGroup.get(normalizedGroupId);
+  if (!state) return;
+
+  const startTasksForScope = (scopeId) => {
+    if (!scopeId) return;
+    const tasksToStart = state.pending.filter((task) => task.scopeId === scopeId);
+    tasksToStart.forEach((task) => {
+      const pendingIndex = state.pending.findIndex((candidate) => candidate.id === task.id);
+      if (pendingIndex === -1) return;
+      state.pending.splice(pendingIndex, 1);
+      state.running.set(task.id, task);
+
+      const controller = new AbortController();
+      task.controller = controller;
+
+      Promise.resolve()
+        .then(() => task.run(controller.signal))
+        .then((result) => {
+          task.resolve(result);
+        })
+        .catch((error) => {
+          if (isRequestScopePreemptionError(error)) {
+            state.pending.push(task);
+            return;
+          }
+          task.reject(error);
+        })
+        .finally(() => {
+          if (state.running.get(task.id) === task) {
+            state.running.delete(task.id);
+          }
+          task.controller = null;
+          pumpRequestScopeScheduler(normalizedGroupId);
+          cleanupRequestScopeSchedulerState(normalizedGroupId);
+        });
+    });
+  };
+
+  const activeScopeId = getActiveRequestScope(normalizedGroupId);
+  const hasActiveDemand =
+    Boolean(activeScopeId) &&
+    (state.pending.some((task) => task.scopeId === activeScopeId) ||
+      Array.from(state.running.values()).some((task) => task.scopeId === activeScopeId));
+
+  if (hasActiveDemand) {
+    state.running.forEach((task) => {
+      if (task.scopeId === activeScopeId) return;
+      if (!task.controller || task.controller.signal.aborted) return;
+      task.controller.abort(REQUEST_SCOPE_PREEMPTION_REASON);
+    });
+    startTasksForScope(activeScopeId);
+    return;
+  }
+
+  startTasksForScope(getNextPendingRequestScope(state));
+};
+
+const scheduleScopedRequest = ({
+  groupId = DEFAULT_REQUEST_SCOPE_GROUP,
+  scopeId,
+  run,
+}) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const normalizedScopeId = normalizeRequestScopeValue(scopeId);
+  if (!normalizedScopeId) {
+    return run();
+  }
+
+  return new Promise((resolve, reject) => {
+    const state = getRequestScopeSchedulerState(normalizedGroupId);
+    state.pending.push({
+      id: `${normalizedGroupId}:${normalizedScopeId}:${++requestScopeTaskSequence}`,
+      groupId: normalizedGroupId,
+      scopeId: normalizedScopeId,
+      sequence: requestScopeTaskSequence,
+      controller: null,
+      run,
+      resolve,
+      reject,
+    });
+    pumpRequestScopeScheduler(normalizedGroupId);
+  });
+};
+
+export const setActiveRequestScope = (
+  groupId = DEFAULT_REQUEST_SCOPE_GROUP,
+  scopeId = '',
+) => {
+  activateRequestScope(groupId, '__legacy__', scopeId, 0);
+};
+
+export const clearActiveRequestScope = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
+  deactivateRequestScope(groupId, '__legacy__');
+};
+
+export const activateRequestScope = (
+  groupId = DEFAULT_REQUEST_SCOPE_GROUP,
+  token,
+  scopeId = '',
+  priority = 0,
+) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const normalizedToken = normalizeRequestScopeValue(token);
+  if (!normalizedToken) return;
+  const normalizedScopeId = normalizeRequestScopeValue(scopeId);
+  let entries = activeRequestScopeEntriesByGroup.get(normalizedGroupId);
+  if (!entries) {
+    entries = new Map();
+    activeRequestScopeEntriesByGroup.set(normalizedGroupId, entries);
+  }
+
+  if (!normalizedScopeId) {
+    entries.delete(normalizedToken);
+    if (entries.size === 0) {
+      activeRequestScopeEntriesByGroup.delete(normalizedGroupId);
+    }
+  } else {
+    entries.set(normalizedToken, {
+      scopeId: normalizedScopeId,
+      priority: Number.isFinite(Number(priority)) ? Number(priority) : 0,
+      sequence: ++activeRequestScopeEntrySequence,
+    });
+  }
+
+  recomputeActiveRequestScope(normalizedGroupId);
+  pumpRequestScopeScheduler(normalizedGroupId);
+  cleanupRequestScopeSchedulerState(normalizedGroupId);
+};
+
+export const deactivateRequestScope = (
+  groupId = DEFAULT_REQUEST_SCOPE_GROUP,
+  token,
+) => {
+  const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+  const normalizedToken = normalizeRequestScopeValue(token);
+  if (!normalizedToken) return;
+  const entries = activeRequestScopeEntriesByGroup.get(normalizedGroupId);
+  if (!entries) return;
+  entries.delete(normalizedToken);
+  if (entries.size === 0) {
+    activeRequestScopeEntriesByGroup.delete(normalizedGroupId);
+  }
+  recomputeActiveRequestScope(normalizedGroupId);
+  pumpRequestScopeScheduler(normalizedGroupId);
+  cleanupRequestScopeSchedulerState(normalizedGroupId);
+};
 
 export const setRequestContext = (next = {}) => {
   const normalizedEmail =
@@ -93,6 +322,26 @@ const endTrackedRequest = (requestId) => {
 };
 
 export const cancelAllTrackedRequests = (reason = 'cancelled') => {
+  activeRequestScopeEntriesByGroup.clear();
+  requestScopeSchedulerByGroup.forEach((state) => {
+    state.pending.splice(0).forEach((task) => {
+      task.reject(
+        createHttpError('request cancelled', 499, {
+          reason,
+        })
+      );
+    });
+    state.running.forEach((task) => {
+      try {
+        if (!task.controller?.signal?.aborted) {
+          task.controller.abort(reason);
+        }
+      } catch (_error) {
+        // ignore abort failures
+      }
+    });
+  });
+  activeRequestScopeByGroup.clear();
   trackedRequestAbortControllers.forEach((controller) => {
     try {
       if (!controller?.signal?.aborted) {
@@ -168,6 +417,7 @@ export const requestJSON = async (path, options = {}) => {
     forceRefresh = false,
     cacheTtlMs = DEFAULT_GET_CACHE_TTL_MS,
     requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    requestScheduler = null,
     ...requestOptions
   } = options || {};
   const method = String(requestOptions.method || 'GET')
@@ -179,6 +429,13 @@ export const requestJSON = async (path, options = {}) => {
     Number.isFinite(normalizedCacheTtl) && normalizedCacheTtl > 0
       ? normalizedCacheTtl
       : DEFAULT_GET_CACHE_TTL_MS;
+  const schedulerGroupId = normalizeRequestScopeGroup(
+    requestScheduler?.groupId ?? DEFAULT_REQUEST_SCOPE_GROUP
+  );
+  const schedulerScopeId = normalizeRequestScopeValue(
+    requestScheduler?.scopeId ?? getActiveRequestScope(schedulerGroupId)
+  );
+  const shouldScheduleByScope = method === 'GET' && Boolean(schedulerScopeId);
   const cacheKey = shouldUseCache
     ? [
         method,
@@ -188,6 +445,10 @@ export const requestJSON = async (path, options = {}) => {
         `headers:${normalizeHeadersKey(requestOptions.headers)}`,
       ].join('::')
     : '';
+  const inFlightKey =
+    shouldUseCache && shouldScheduleByScope
+      ? `${cacheKey}::scope:${schedulerGroupId}:${schedulerScopeId}`
+      : cacheKey;
 
   if (shouldUseCache) {
     purgeExpiredGetCache();
@@ -196,7 +457,7 @@ export const requestJSON = async (path, options = {}) => {
       if (cached && cached.expiresAt > Date.now()) {
         return cloneResponseData(cached.data);
       }
-      const inFlight = inFlightGetRequests.get(cacheKey);
+      const inFlight = inFlightGetRequests.get(inFlightKey);
       if (inFlight) {
         const shared = await inFlight;
         return cloneResponseData(shared);
@@ -204,7 +465,7 @@ export const requestJSON = async (path, options = {}) => {
     }
   }
 
-  const execute = async () => {
+  const execute = async (schedulerSignal = null) => {
     const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
     const timeoutMsRaw = Number(requestTimeoutMs);
     const timeoutMs =
@@ -214,6 +475,7 @@ export const requestJSON = async (path, options = {}) => {
     const mergedAbortController = new AbortController();
     let timeoutId = null;
     let onExternalAbort = null;
+    let onSchedulerAbort = null;
 
     if (requestOptions.signal) {
       if (requestOptions.signal.aborted) {
@@ -223,6 +485,17 @@ export const requestJSON = async (path, options = {}) => {
           mergedAbortController.abort(requestOptions.signal.reason);
         };
         requestOptions.signal.addEventListener('abort', onExternalAbort, { once: true });
+      }
+    }
+
+    if (schedulerSignal) {
+      if (schedulerSignal.aborted) {
+        mergedAbortController.abort(schedulerSignal.reason);
+      } else {
+        onSchedulerAbort = () => {
+          mergedAbortController.abort(schedulerSignal.reason);
+        };
+        schedulerSignal.addEventListener('abort', onSchedulerAbort, { once: true });
       }
     }
 
@@ -301,6 +574,9 @@ export const requestJSON = async (path, options = {}) => {
       if (requestOptions.signal && onExternalAbort) {
         requestOptions.signal.removeEventListener('abort', onExternalAbort);
       }
+      if (schedulerSignal && onSchedulerAbort) {
+        schedulerSignal.removeEventListener('abort', onSchedulerAbort);
+      }
       if (trackedRequestId !== null) {
         endTrackedRequest(trackedRequestId);
       }
@@ -308,11 +584,23 @@ export const requestJSON = async (path, options = {}) => {
   };
 
   if (!shouldUseCache) {
-    return execute();
+    return shouldScheduleByScope
+      ? scheduleScopedRequest({
+          groupId: schedulerGroupId,
+          scopeId: schedulerScopeId,
+          run: execute,
+        })
+      : execute();
   }
 
-  const networkPromise = execute();
-  inFlightGetRequests.set(cacheKey, networkPromise);
+  const networkPromise = shouldScheduleByScope
+    ? scheduleScopedRequest({
+        groupId: schedulerGroupId,
+        scopeId: schedulerScopeId,
+        run: execute,
+      })
+    : execute();
+  inFlightGetRequests.set(inFlightKey, networkPromise);
   try {
     const data = await networkPromise;
     getResponseCache.set(cacheKey, {
@@ -321,6 +609,6 @@ export const requestJSON = async (path, options = {}) => {
     });
     return cloneResponseData(data);
   } finally {
-    inFlightGetRequests.delete(cacheKey);
+    inFlightGetRequests.delete(inFlightKey);
   }
 };

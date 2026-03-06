@@ -28,20 +28,29 @@ const FactoryList = () => {
   const [deletingFactoryId, setDeletingFactoryId] = useState(null);
   const { showNotification } = useApp();
 
-  const fetchFactories = async () => {
+  const fetchFactories = async (options = {}) => {
+    const isActive = options.isActive ?? (() => true);
     setLoading(true);
     try {
-      const data = await requestJSON('/factories');
+      const data = await requestJSON('/factories', {
+      });
+      if (!isActive()) return;
       setFactories(Array.isArray(data) ? data : []);
     } catch (_error) {
+      if (!isActive()) return;
       showNotification('공장 목록을 불러오지 못했습니다.', 'error');
     } finally {
+      if (!isActive()) return;
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFactories();
+    let active = true;
+    fetchFactories({ isActive: () => active });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleAddClick = () => {

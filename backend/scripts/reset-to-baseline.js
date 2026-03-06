@@ -30,6 +30,8 @@
 
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
+
+// Baseline worker headcount is 20 per line, 40 total across Sample Line 1 and 2.
 const BASELINE_ASSIGNMENT_AGREEMENTS = {
   "cards": [
     {

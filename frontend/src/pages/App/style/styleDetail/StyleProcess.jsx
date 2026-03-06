@@ -190,7 +190,10 @@ const resolveCommonTimeRefQuantity = (rows = []) => {
   return toPositiveInt(first?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY);
 };
 
-const StyleProcess = ({ processes = [], onProcessesChange }) => {
+const StyleProcess = ({
+  processes = [],
+  onProcessesChange,
+}) => {
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [timeRefQuantity, setTimeRefQuantity] = useState(() =>
     resolveCommonTimeRefQuantity(safeProcesses)

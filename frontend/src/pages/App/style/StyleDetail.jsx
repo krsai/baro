@@ -19,6 +19,7 @@ import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
@@ -355,29 +356,35 @@ const StyleDetail = () => {
       ) : (
         <>
           {loadedTabs.basicInfo && (
-            <Box sx={{ display: currentTab === 'basicInfo' ? 'block' : 'none' }}>
-              <StyleInfo
-                isNew={isNew}
-                formData={styleFormData}
-                handleInputChange={handleStyleInputChange}
-                canViewProcessSummary={canViewProcessInfo}
-                isBrandOrg={isBrandOrg}
-                defaultCustomerName={defaultBrandCustomerName}
-              />
-            </Box>
+            <RequestScopeBoundary scopeId="basicInfo" active={currentTab === 'basicInfo'}>
+              <Box sx={{ display: currentTab === 'basicInfo' ? 'block' : 'none' }}>
+                <StyleInfo
+                  isNew={isNew}
+                  formData={styleFormData}
+                  handleInputChange={handleStyleInputChange}
+                  canViewProcessSummary={canViewProcessInfo}
+                  isBrandOrg={isBrandOrg}
+                  defaultCustomerName={defaultBrandCustomerName}
+                />
+              </Box>
+            </RequestScopeBoundary>
           )}
           {canViewProcessInfo && loadedTabs.processInfo && (
-            <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
-              <StyleProcess
-                processes={styleFormData.processes}
-                onProcessesChange={handleProcessesChange}
-              />
-            </Box>
+            <RequestScopeBoundary scopeId="processInfo" active={currentTab === 'processInfo'}>
+              <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
+                <StyleProcess
+                  processes={styleFormData.processes}
+                  onProcessesChange={handleProcessesChange}
+                />
+              </Box>
+            </RequestScopeBoundary>
           )}
           {loadedTabs.bom && (
-            <Box sx={{ display: currentTab === 'bom' ? 'block' : 'none' }}>
-              <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
-            </Box>
+            <RequestScopeBoundary scopeId="bom" active={currentTab === 'bom'}>
+              <Box sx={{ display: currentTab === 'bom' ? 'block' : 'none' }}>
+                <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />
+              </Box>
+            </RequestScopeBoundary>
           )}
         </>
       )}

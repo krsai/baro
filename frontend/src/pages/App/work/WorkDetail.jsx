@@ -82,6 +82,26 @@ const findDuplicateWorkerLogIndex = (workerLogs = []) =>
   );
 const equalsText = (left, right) =>
   String(left || '').trim() === String(right || '').trim();
+const DISPLAY_NAME_COLLATOR = new Intl.Collator('ko', {
+  numeric: true,
+  sensitivity: 'base',
+});
+const normalizeDisplayText = (value) => String(value || '').trim();
+const compareDisplayText = (left, right) =>
+  DISPLAY_NAME_COLLATOR.compare(normalizeDisplayText(left), normalizeDisplayText(right));
+const sortByDisplayLabel = (items = [], getLabel = (item) => item?.name || '') =>
+  [...(Array.isArray(items) ? items : [])].sort((left, right) => {
+    const labelComparison = compareDisplayText(getLabel(left), getLabel(right));
+    if (labelComparison !== 0) return labelComparison;
+
+    const secondaryComparison = compareDisplayText(
+      left?.name ?? left?.label ?? left?.email ?? '',
+      right?.name ?? right?.label ?? right?.email ?? ''
+    );
+    if (secondaryComparison !== 0) return secondaryComparison;
+
+    return compareDisplayText(left?.id ?? left?.dbId ?? '', right?.id ?? right?.dbId ?? '');
+  });
 const stripCardGenderSuffix = (value) =>
   String(value || '')
     .replace(/\s*\[(M|W|U)\]\s*$/i, '')
@@ -210,10 +230,11 @@ const findWorkerValue = (employees, record, fallbackIndex) => {
     if (matchedByName) return matchedByName;
   }
 
-  if (!record?.workerName && !record?.workerId) return null;
+  const workerName = String(record?.workerName || '').trim();
+  if (!workerName) return null;
   return {
     id: record?.workerId || `virtual-worker-${fallbackIndex}`,
-    name: record?.workerName || `작업자 ${fallbackIndex + 1}`,
+    name: workerName,
   };
 };
 const resolvePlanStyleValue = ({ plan, styles, fallbackIndex }) => {
@@ -472,6 +493,16 @@ const toPositiveIdOrNull = (value) => {
 const buildInitialRecordHydrationKey = (initialLog, selectedLine) => {
   if (!initialLog?.id) return '';
 
+  const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
+  if (selectedLineId) {
+    return `log:${initialLog.id}:selected-line:${selectedLineId}`;
+  }
+
+  const selectedLineName = String(selectedLine?.name || '').trim();
+  if (selectedLineName) {
+    return `log:${initialLog.id}:selected-line-name:${selectedLineName}`;
+  }
+
   const initialLineId = toPositiveIdOrNull(initialLog?.lineId);
   if (initialLineId) {
     return `log:${initialLog.id}:line:${initialLineId}`;
@@ -482,9 +513,7 @@ const buildInitialRecordHydrationKey = (initialLog, selectedLine) => {
     return `log:${initialLog.id}:line-name:${initialLineName}`;
   }
 
-  const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
-  if (!selectedLineId) return '';
-  return `log:${initialLog.id}:selected-line:${selectedLineId}`;
+  return '';
 };
 const filterRecordsByEmployees = (records, employees = []) => {
   const safeRecords = Array.isArray(records) ? records : [];
@@ -663,9 +692,18 @@ const groupWorkerLogsForDisplay = (workerLogs = []) => {
 
   return groups;
 };
+const resolveEmployeeDisplayName = (employee = {}) => {
+  const name = String(employee?.name || '').trim();
+  if (name) return name;
+
+  const email = String(employee?.email || '').trim();
+  if (email) return email;
+
+  return '';
+};
 const normalizeEmployeeOption = (employee = {}) => ({
   ...employee,
-  name: employee?.name || `작업자 ${employee?.id ?? ''}`.trim(),
+  name: resolveEmployeeDisplayName(employee),
 });
 const buildFactoryKey = (factoryId) => {
   const normalizedFactoryId = toPositiveIdOrNull(factoryId);
@@ -683,7 +721,9 @@ const buildEmployeeScopeKey = ({ factoryId, lineId, workDateKey }) => {
   return `${normalizedFactoryId}:${normalizedLineId}:${workDateKey}`;
 };
 const groupAssignmentPlansByLineId = (plans = []) =>
-  (Array.isArray(plans) ? plans : []).reduce((map, plan) => {
+  sortByDisplayLabel(Array.isArray(plans) ? plans : [], (plan) =>
+    formatAssignmentPlanLabel(plan)
+  ).reduce((map, plan) => {
     const lineKey = String(toPositiveIdOrNull(plan?.lineId) ?? '').trim();
     if (!lineKey) return map;
     if (!map[lineKey]) {
@@ -692,8 +732,8 @@ const groupAssignmentPlansByLineId = (plans = []) =>
     map[lineKey].push(plan);
     return map;
   }, {});
-const groupEmployeesByScopeKey = ({ factoryId, workDateKey, employees = [] }) =>
-  (Array.isArray(employees) ? employees : []).reduce((map, employee) => {
+const groupEmployeesByScopeKey = ({ factoryId, workDateKey, employees = [] }) => {
+  const groupedEmployees = (Array.isArray(employees) ? employees : []).reduce((map, employee) => {
     const scopeKey = buildEmployeeScopeKey({
       factoryId,
       lineId: employee?.currentLineId,
@@ -707,14 +747,95 @@ const groupEmployeesByScopeKey = ({ factoryId, workDateKey, employees = [] }) =>
     return map;
   }, {});
 
-const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => {
+  Object.keys(groupedEmployees).forEach((scopeKey) => {
+    groupedEmployees[scopeKey] = sortByDisplayLabel(
+      groupedEmployees[scopeKey],
+      (employee) => resolveEmployeeDisplayName(employee)
+    );
+  });
+
+  return groupedEmployees;
+};
+const buildInitialFactorySelection = (workLog) => {
+  if (!workLog) return null;
+  if (!workLog?.factoryId && !workLog?.factoryName) return null;
+  return {
+    id: workLog?.factoryId || '',
+    name: workLog?.factoryName || '',
+  };
+};
+const buildInitialLineSelection = (workLog) => {
+  if (!workLog) return null;
+  if (!workLog?.lineId && !workLog?.lineName) return null;
+  return {
+    id: workLog?.lineId || '',
+    name: workLog?.lineName || '',
+  };
+};
+const buildInitialWorkDateValue = (workLog) => {
+  const nextDate = dayjs(workLog?.workDate || workLog?.createdAt || undefined);
+  return nextDate.isValid() ? nextDate : dayjs();
+};
+const findMatchingLineOption = (lines = [], line) => {
+  if (!line || (!line?.id && !line?.name)) return null;
+
+  return (
+    lines.find((option) => String(option?.id || '') === String(line?.id || '')) ||
+    lines.find((option) => equalsText(option?.name, line?.name)) ||
+    null
+  );
+};
+const shouldKeepInitialLineSelection = ({ currentLine, selectedFactoryId, initialLog }) => {
+  if (!currentLine || !selectedFactoryId || !initialLog?.id) return false;
+
+  const normalizedSelectedFactoryId = toPositiveIdOrNull(selectedFactoryId);
+  const initialFactoryId = toPositiveIdOrNull(initialLog.factoryId);
+  if (
+    !normalizedSelectedFactoryId ||
+    !initialFactoryId ||
+    normalizedSelectedFactoryId !== initialFactoryId
+  ) {
+    return false;
+  }
+
+  return Boolean(findMatchingLineOption([currentLine], buildInitialLineSelection(initialLog)));
+};
+const reconcileLineSelection = ({ currentLine, lines, selectedFactoryId, initialLog }) => {
+  const nextLines = Array.isArray(lines) ? lines : [];
+  const matchedCurrentLine = findMatchingLineOption(nextLines, currentLine);
+  if (matchedCurrentLine) return matchedCurrentLine;
+
+  if (!selectedFactoryId || !initialLog?.id) return null;
+
+  const normalizedSelectedFactoryId = toPositiveIdOrNull(selectedFactoryId);
+  const initialFactoryId = toPositiveIdOrNull(initialLog.factoryId);
+  if (
+    !normalizedSelectedFactoryId ||
+    !initialFactoryId ||
+    normalizedSelectedFactoryId !== initialFactoryId
+  ) {
+    return null;
+  }
+
+  return findMatchingLineOption(nextLines, buildInitialLineSelection(initialLog));
+};
+
+const WorkDetail = ({
+  onClose,
+  onSave,
+  onSelectionContextChange,
+  isLogSwitching = false,
+  mode = 'drawer',
+  initialLog = null,
+}) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
-  const [workDate, setWorkDate] = useState(dayjs());
+  const [workDate, setWorkDate] = useState(() => buildInitialWorkDateValue(initialLog));
   const [factories, setFactories] = useState([]);
-  const [selectedFactory, setSelectedFactory] = useState(null);
+  const [selectedFactory, setSelectedFactory] = useState(() => buildInitialFactorySelection(initialLog));
   const [lines, setLines] = useState([]);
-  const [selectedLine, setSelectedLine] = useState(null);
+  const [selectedLine, setSelectedLine] = useState(() => buildInitialLineSelection(initialLog));
   const [assignmentPlansByLineId, setAssignmentPlansByLineId] = useState({});
+  const [loadedLineFactoryKey, setLoadedLineFactoryKey] = useState('');
   const [loadedAssignmentFactoryKey, setLoadedAssignmentFactoryKey] = useState('');
   const [employeesByScopeKey, setEmployeesByScopeKey] = useState({});
   const [loadedEmployeeFactoryDateKey, setLoadedEmployeeFactoryDateKey] = useState('');
@@ -733,6 +854,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   const initializedMetaLogIdRef = useRef('');
   const initializedLineLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
+  const previousSelectedLineIdRef = useRef(null);
+  const [hydratedRecordKey, setHydratedRecordKey] = useState('');
   const isPageMode = mode === 'page';
   const workDateKey = useMemo(
     () => workDate?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD'),
@@ -762,6 +885,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   }, [selectedFactory?.id, selectedLine?.id, workDateKey]);
   const isAssignmentPlanCacheReady =
     Boolean(selectedFactoryKey) && loadedAssignmentFactoryKey === selectedFactoryKey;
+  const isLineCacheReady =
+    Boolean(selectedFactoryKey) && loadedLineFactoryKey === selectedFactoryKey;
   const isEmployeeFactoryDateCacheReady =
     Boolean(selectedEmployeeFactoryDateKey) &&
     loadedEmployeeFactoryDateKey === selectedEmployeeFactoryDateKey;
@@ -812,10 +937,12 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         // ADMIN이 아닌 사용자는 소속 공장만 표시
         const allFactories = Array.isArray(factoryRows) ? factoryRows : [];
         const isAdmin = activeOrgRole === 'ADMIN';
-        const filteredFactories =
+        const filteredFactories = sortByDisplayLabel(
           !isAdmin && activeFactoryId
             ? allFactories.filter((f) => f.id === activeFactoryId)
-            : allFactories;
+            : allFactories,
+          (factory) => factory?.name || ''
+        );
         setFactories(filteredFactories);
         // 신규 입력이고 소속 공장이 하나로 특정되는 경우 자동 선택
         if (!initialLog?.id && filteredFactories.length === 1) {
@@ -839,6 +966,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     if (!selectedFactory?.id) {
       setLines([]);
       setSelectedLine(null);
+      setLoadedLineFactoryKey('');
       setAssignmentPlansByLineId({});
       setLoadedAssignmentFactoryKey('');
       setEmployeesByScopeKey({});
@@ -846,27 +974,52 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       return;
     }
     let cancelled = false;
+    const selectedFactoryId = selectedFactory.id;
+    const factoryKey = buildFactoryKey(selectedFactoryId);
     setLines([]);
-    setSelectedLine(null);
+    setSelectedLine((currentLine) =>
+      shouldKeepInitialLineSelection({ currentLine, selectedFactoryId, initialLog })
+        ? currentLine
+        : null
+    );
+    setLoadedLineFactoryKey('');
     setAssignmentPlansByLineId({});
     setLoadedAssignmentFactoryKey('');
     setEmployeesByScopeKey({});
     setLoadedEmployeeFactoryDateKey('');
-    requestJSON(`/lines${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`, {
+    requestJSON(`/lines${buildQueryString({ factoryId: selectedFactoryId, orgId: activeOrgId })}`, {
       skipGlobalLoading: true,
     })
       .then((data) => {
         if (!cancelled) {
-          setLines(Array.isArray(data) ? data : []);
+          const nextLines = sortByDisplayLabel(Array.isArray(data) ? data : [], (line) => line?.name || '');
+          setLines(nextLines);
+          setSelectedLine((currentLine) =>
+            reconcileLineSelection({
+              currentLine,
+              lines: nextLines,
+              selectedFactoryId,
+              initialLog,
+            })
+          );
+          setLoadedLineFactoryKey(factoryKey);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setLines([]);
+          setLoadedLineFactoryKey(factoryKey);
         }
       });
     return () => { cancelled = true; };
-  }, [selectedFactory?.id, activeOrgId]);
+  }, [
+    activeOrgId,
+    initialLog?.id,
+    initialLog?.factoryId,
+    initialLog?.lineId,
+    initialLog?.lineName,
+    selectedFactory?.id,
+  ]);
 
   useEffect(() => {
     if (!selectedFactory?.id) {
@@ -947,7 +1100,22 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     initializedMetaLogIdRef.current = '';
     initializedLineLogIdRef.current = '';
     initializedRecordsLogIdRef.current = '';
+    setHydratedRecordKey('');
   }, [initialLog?.id]);
+
+  useEffect(() => {
+    setSelectedFactory(buildInitialFactorySelection(initialLog));
+    setSelectedLine(buildInitialLineSelection(initialLog));
+    setWorkDate(buildInitialWorkDateValue(initialLog));
+  }, [
+    initialLog?.id,
+    initialLog?.factoryId,
+    initialLog?.factoryName,
+    initialLog?.lineId,
+    initialLog?.lineName,
+    initialLog?.workDate,
+    initialLog?.createdAt,
+  ]);
 
   useEffect(() => {
     if (initialLog?.id) {
@@ -1020,6 +1188,8 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       Boolean(initialRecordHydrationKey) &&
       initializedRecordsLogIdRef.current !== initialRecordHydrationKey;
     if (!selectedFactory?.id || !selectedLine?.id) {
+      previousSelectedLineIdRef.current = null;
+      setHydratedRecordKey('');
       setEmployees([]);
       setLoadedEmployeeScopeKey('');
       setFocusRequest(null);
@@ -1033,6 +1203,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setFocusRequest(null);
     setDuplicateEntryMessage('');
     if (isPendingInitialHydration) {
+      setHydratedRecordKey('');
       setWorkerLogs([]);
     }
 
@@ -1041,14 +1212,25 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     }
 
     const list = selectedEmployeeScopeKey ? employeesByScopeKey[selectedEmployeeScopeKey] || [] : [];
+    const previousSelectedLineId = previousSelectedLineIdRef.current;
+    const hasLineChanged =
+      previousSelectedLineId !== null && previousSelectedLineId !== selectedLineId;
     setEmployees(list);
     setLoadedEmployeeScopeKey(selectedEmployeeScopeKey);
     if (isPendingInitialHydration) {
+      previousSelectedLineIdRef.current = selectedLineId;
       return;
     }
 
     let nextInitialWorkerLogId = null;
     setWorkerLogs((prev) => {
+      if (hasLineChanged) {
+        if (list.length === 0) return [];
+        const initialWorkerLog = buildWorkerLog();
+        nextInitialWorkerLogId = initialWorkerLog.id;
+        return [initialWorkerLog];
+      }
+
       if (!Array.isArray(prev) || prev.length === 0) {
         if (list.length === 0) return [];
         const initialWorkerLog = buildWorkerLog();
@@ -1074,6 +1256,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       setFocusRequest(null);
     }
     setDuplicateEntryMessage('');
+    previousSelectedLineIdRef.current = selectedLineId;
   }, [
     employeesByScopeKey,
     isEmployeeFactoryDateCacheReady,
@@ -1110,16 +1293,19 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     ) {
       return;
     }
-    if (
-      initialLogLineId &&
-      String(selectedLine.id || '') !== String(initialLogLineId)
-    ) {
-      return;
-    }
+
+    const selectedLineMatchesInitialLog =
+      !initialLogLineId && !initialLogLineName
+        ? true
+        : initialLogLineId
+          ? String(selectedLine?.id || '') === String(initialLogLineId)
+          : equalsText(selectedLine?.name, initialLogLineName);
 
     const scopedRecords = isFactoryAggregateInitialLog
       ? filterRecordsByEmployees(initialLog.records, employees)
-      : initialLog.records;
+      : selectedLineMatchesInitialLog
+        ? initialLog.records
+        : [];
     const nextWorkerLogs = buildWorkerLogsFromRecords(scopedRecords, {
       employees,
       customers,
@@ -1139,12 +1325,14 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     setDuplicateEntryMessage('');
     setFocusRequest(null);
     initializedRecordsLogIdRef.current = initialRecordHydrationKey;
+    setHydratedRecordKey(initialRecordHydrationKey);
   }, [
     colors,
     customers,
     employees,
     initialLog,
     initialLogLineId,
+    initialLogLineName,
     initialRecordHydrationKey,
     isAssignmentPlanCacheReady,
     isFactoryAggregateInitialLog,
@@ -1206,8 +1394,19 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
   );
   const isSelectedLineDataLoading =
     Boolean(selectedLine?.id) &&
-    (!isAssignmentPlanCacheReady ||
+    (!isLineCacheReady ||
+      !isAssignmentPlanCacheReady ||
       (Boolean(selectedEmployeeScopeKey) && !isEmployeeFactoryDateCacheReady));
+  const isInitialRecordHydrationPending =
+    Boolean(initialRecordHydrationKey) && hydratedRecordKey !== initialRecordHydrationKey;
+  const isInitialDetailLoading =
+    Boolean(initialLog?.id) &&
+    (loading ||
+      (Boolean(selectedFactoryKey) && !isLineCacheReady) ||
+      (Boolean(selectedFactoryKey) && !isAssignmentPlanCacheReady) ||
+      (Boolean(selectedEmployeeFactoryDateKey) && !isEmployeeFactoryDateCacheReady) ||
+      isInitialRecordHydrationPending);
+  const isLineSelectionLoading = Boolean(selectedFactory?.id) && !selectedLine && !isLineCacheReady;
   const selectedFactoryWagePerSecond = useMemo(() => {
     if (!selectedFactory?.id) return null;
     const matchedFactory =
@@ -1215,6 +1414,20 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
       selectedFactory;
     return toOptionalNumber(matchedFactory?.wagePerSecond);
   }, [factories, selectedFactory]);
+  useEffect(() => {
+    onSelectionContextChange?.({
+      factoryId: toPositiveIdOrNull(selectedFactory?.id),
+      lineId: selectedLineId,
+      workDate: workDateKey,
+      workLogId: toPositiveIdOrNull(initialLog?.id),
+    });
+  }, [
+    initialLog?.id,
+    onSelectionContextChange,
+    selectedFactory?.id,
+    selectedLineId,
+    workDateKey,
+  ]);
   const agreedAssignmentPlans = useMemo(
     () => assignmentPlans.filter((plan) => isAgreedAssignmentPlan(plan)),
     [assignmentPlans]
@@ -1461,7 +1674,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
         if (!baselineQuantity || record.quantity <= baselineQuantity) return null;
 
         return `${
-          String(record?.workerName || '작업자').trim() || '작업자'
+          String(record?.workerName || '').trim() || '이름 미상'
         } / ${formatAssignmentPlanLabel(plan)} / ${formatWorkRecordProcessLabel(record)} ${
           record.quantity - baselineQuantity
         }개 초과`;
@@ -1509,7 +1722,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     });
     if (invalidWorkerLogIndex >= 0) {
       setSaveErrorMessage(
-        `작업자 ${invalidWorkerLogIndex + 1} 항목에 유효한 작업자 ID가 없습니다. 작업자를 다시 선택해 주세요.`
+        `${invalidWorkerLogIndex + 1}번째 작업 항목에 유효한 작업자 ID가 없습니다. 작업자를 다시 선택해 주세요.`
       );
       return;
     }
@@ -1520,7 +1733,9 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     const duplicateWorkerLogIndex = findDuplicateWorkerLogIndex(workerLogs);
     if (duplicateWorkerLogIndex >= 0) {
       const duplicateLog = workerLogs[duplicateWorkerLogIndex];
-      const workerLabel = duplicateLog?.worker?.name || `작업자 ${duplicateWorkerLogIndex + 1}`;
+      const workerLabel =
+        String(duplicateLog?.worker?.name || '').trim() ||
+        `${duplicateWorkerLogIndex + 1}번째 작업자 행`;
       setDuplicateEntryMessage(
         `${workerLabel}에 같은 배정/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.`
       );
@@ -1603,6 +1818,45 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
     });
   };
 
+  if (isInitialDetailLoading && !isLogSwitching) {
+    return (
+      <Box
+        sx={{
+          width: isPageMode ? '100%' : { xs: '100vw', md: '56vw' },
+          p: isPageMode ? 0 : 3,
+          height: isPageMode ? 'auto' : '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box>
+            <Typography variant="h6">작업 상세</Typography>
+          </Box>
+          {!isPageMode ? (
+            <IconButton onClick={onClose}>
+              <CloseIcon />
+            </IconButton>
+          ) : null}
+        </Box>
+
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 3,
+            minHeight: 240,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#fafbff',
+          }}
+        >
+          <Typography color="text.secondary">작업 기록을 준비하고 있습니다.</Typography>
+        </Paper>
+      </Box>
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -1660,7 +1914,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
             value={selectedLine}
             onChange={(_event, value) => setSelectedLine(value)}
             autoHighlight
-            disabled={!selectedFactory || lines.length === 0}
+            disabled={!selectedFactory || !isLineCacheReady || lines.length === 0 || isLogSwitching}
             sx={{ minWidth: 200 }}
             getOptionLabel={(option) => option?.name || ''}
             isOptionEqualToValue={(option, value) => option?.id === value?.id}
@@ -1726,21 +1980,35 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           <Typography variant="subtitle2" color="text.secondary">
             {selectedFactory
               ? selectedLine
-                ? isSelectedLineDataLoading
+                ? isLogSwitching
+                  ? '선택한 라인 기록을 불러오는 중입니다.'
+                  : isSelectedLineDataLoading
                   ? '라인 데이터를 불러오는 중입니다.'
                   : employees.length > 0
                   ? `저장 대상 ${summary.records.length}건`
                   : '선택한 라인/작업일 기준으로 입력 가능한 작업자가 없습니다.'
+                : isLineSelectionLoading
+                ? '라인 정보를 불러오는 중입니다.'
                 : '라인을 먼저 선택하세요.'
               : '먼저 공장을 선택하세요.'}
           </Typography>
         </Box>
 
-        {selectedFactory && employees.length === 0 ? (
+        {isLogSwitching ? (
+          <Alert severity="info" sx={{ mt: 2 }}>
+            같은 작업일의 다른 라인 기록으로 전환하고 있습니다.
+          </Alert>
+        ) : selectedFactory && employees.length === 0 ? (
           !selectedLine ? (
+            isLineSelectionLoading ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              라인 정보를 불러오는 중입니다.
+            </Alert>
+            ) : (
             <Alert severity="info" sx={{ mt: 2 }}>
               라인을 선택하면 해당 라인 소속 작업자만 불러옵니다.
             </Alert>
+            )
           ) : isSelectedLineDataLoading ? (
             <Alert severity="info" sx={{ mt: 2 }}>
               라인 데이터를 준비하고 있습니다.
@@ -1751,9 +2019,16 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
           </Alert>
           )
         ) : workerLogs.length === 0 ? (
-          <Typography color="text.secondary" align="center" sx={{ py: 6 }}>
-            첫 줄을 불러오는 중입니다.
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => handleAddWorker()}
+              disabled={!selectedLine || isSelectedLineDataLoading || isLogSwitching || employees.length === 0}
+            >
+              첫 작업자 추가
+            </Button>
+          </Box>
         ) : (
           <Stack spacing={1.25}>
             {workerLogGroups.map((group) => (
@@ -1798,7 +2073,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
                 size="small"
                 variant="outlined"
                 onClick={() => handleAddWorker()}
-                disabled={!selectedLine || isSelectedLineDataLoading || employees.length === 0}
+                disabled={!selectedLine || isSelectedLineDataLoading || isLogSwitching || employees.length === 0}
               >
                 다른 작업자 추가
               </Button>
@@ -1819,6 +2094,7 @@ const WorkDetail = ({ onClose, onSave, mode = 'drawer', initialLog = null }) => 
               !selectedFactory ||
               !selectedLine ||
               isSelectedLineDataLoading ||
+              isLogSwitching ||
               summary.records.length === 0 ||
               isFactoryAggregateInitialLog
             }

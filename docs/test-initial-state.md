@@ -4,8 +4,8 @@ This file is the source-of-truth snapshot for the test reset target.
 
 ## Baseline ID
 
-- `test-baseline-v1.7`
-- Captured on: `2026-02-24`
+- `test-baseline-v1.8`
+- Captured on: `2026-03-06`
 
 ## Rules
 
@@ -16,6 +16,8 @@ This file is the source-of-truth snapshot for the test reset target.
   `entryType=SYSTEM` + `systemRole=SYSTEM_ADMIN`.
 - Org bypass accounts (`ADMIN`, `OPERATOR`, `ACCOUNTANT`, `WORKER`) must not
   see `Subscription Management`.
+- Baseline reset preserves `WorkLog` and `WorkRecord`.
+- Older notes that say `20 workers` mean `20 workers per line`, not `20 total`.
 
 ## System Users
 
@@ -36,7 +38,7 @@ This file is the source-of-truth snapshot for the test reset target.
 - `manufacturer-admin@test.local` -> `ADMIN` / `ACTIVE`
 - `manufacturer-operator@test.local` -> `OPERATOR` / `ACTIVE`
 - `manufacturer-accountant@test.local` -> `ACCOUNTANT` / `ACTIVE`
-- `manufacturer-worker@test.local` -> `WORKER` / `ACTIVE`
+- Worker memberships are created from the two line worker pools below
 - Org `TSBR`
 - `brand-admin@test.local` -> `ADMIN` / `ACTIVE`
 - `brand-operator@test.local` -> `OPERATOR` / `ACTIVE`
@@ -46,172 +48,101 @@ This file is the source-of-truth snapshot for the test reset target.
 
 Non-worker staff:
 
-- `테스트 관리자` (membership: `manufacturer-admin@test.local`)
-- `테스트 운영자` (membership: `manufacturer-operator@test.local`)
-- `테스트 회계담당` (membership: `manufacturer-accountant@test.local`)
+- `Manager` (membership: `manufacturer-admin@test.local`)
+- `Operator` (membership: `manufacturer-operator@test.local`)
+- `Accountant` (membership: `manufacturer-accountant@test.local`)
 
-Workers (20명, all assigned to `샘플 공장`):
+Workers:
 
-| # | Name | Email |
-|---|------|-------|
-| 01 | `테스트 작업자 01` | `manufacturer-worker@test.local` |
-| 02 | `테스트 작업자 02` | `sample-line-worker-01@test.local` |
-| 03 | `테스트 작업자 03` | `sample-line-worker-02@test.local` |
-| 04 | `테스트 작업자 04` | `sample-line-worker-03@test.local` |
-| 05 | `테스트 작업자 05` | `sample-line-worker-04@test.local` |
-| 06 | `테스트 작업자 06` | `sample-line-worker-05@test.local` |
-| 07 | `테스트 작업자 07` | `sample-line-worker-06@test.local` |
-| 08 | `테스트 작업자 08` | `sample-line-worker-07@test.local` |
-| 09 | `테스트 작업자 09` | `sample-line-worker-08@test.local` |
-| 10 | `테스트 작업자 10` | `test-worker-10@test.local` |
-| 11 | `테스트 작업자 11` | `test-worker-11@test.local` |
-| 12 | `테스트 작업자 12` | `test-worker-12@test.local` |
-| 13 | `테스트 작업자 13` | `test-worker-13@test.local` |
-| 14 | `테스트 작업자 14` | `test-worker-14@test.local` |
-| 15 | `테스트 작업자 15` | `test-worker-15@test.local` |
-| 16 | `테스트 작업자 16` | `test-worker-16@test.local` |
-| 17 | `테스트 작업자 17` | `test-worker-17@test.local` |
-| 18 | `테스트 작업자 18` | `test-worker-18@test.local` |
-| 19 | `테스트 작업자 19` | `test-worker-19@test.local` |
-| 20 | `테스트 작업자 20` | `test-worker-20@test.local` |
+- Total baseline workers: `40`
+- All baseline workers belong to factory `Sample Factory`
+- `Sample Line 1`: `20` workers
+- `Sample Line 2`: `20` workers
+- Each line manager is the `01` worker of that line
+
+Worker account patterns:
+
+- `line1-worker01@baro.local` -> `Line1 Worker 01`
+- `line1-worker02@baro.local` -> `Line1 Worker 02`
+- ...
+- `line1-worker20@baro.local` -> `Line1 Worker 20`
+- `line2-worker01@baro.local` -> `Line2 Worker 01`
+- `line2-worker02@baro.local` -> `Line2 Worker 02`
+- ...
+- `line2-worker20@baro.local` -> `Line2 Worker 20`
 
 ## Factory and Line
 
-- Factory: `샘플 공장` (org: `TSMF`)
+- Factory: `Sample Factory` (org: `TSMF`)
 - Target monthly wage: `8,000,000 VND`
 - Wage per second (derived): `10.68 VND/sec` (26 days/month, 8 hours/day)
-- Line: `샘플 라인 1` (factory: `샘플 공장`)
-- Line: `샘플 라인 2` (factory: `샘플 공장`)
+- Line: `Sample Line 1` (factory: `Sample Factory`)
+- Line: `Sample Line 2` (factory: `Sample Factory`)
+- Baseline headcount: `20 workers per line`, `40 workers total`
 
-## Line Assignments (초기화 시 자동 재설정)
+## Line Assignments (reset baseline)
 
-Reset 실행 시 기존 모든 LineAssignment를 종료(endAt 설정)하고 아래와 같이 재배정한다.
+Reset closes existing active `LineAssignment` rows for baseline workers and then
+recreates the active assignments below.
 
-- `샘플 라인 1`: 작업자 01~10 (10명)
-- `샘플 라인 2`: 작업자 11~20 (10명)
+- `Sample Line 1`: `line1-worker01@baro.local` ... `line1-worker20@baro.local`
+- `Sample Line 2`: `line2-worker01@baro.local` ... `line2-worker20@baro.local`
+- `Line.managerEmployeeId` points to `line1-worker01` for line 1 and
+  `line2-worker01` for line 2
 
 ## Attributes (TSMF only)
 
-- Processes are reset to exactly 10 rows below:
-- `P01` -> `테스트 공정 01`
-- `P02` -> `테스트 공정 02`
-- `P03` -> `테스트 공정 03`
-- `P04` -> `테스트 공정 04`
-- `P05` -> `테스트 공정 05`
-- `P06` -> `테스트 공정 06`
-- `P07` -> `테스트 공정 07`
-- `P08` -> `테스트 공정 08`
-- `P09` -> `테스트 공정 09`
-- `P10` -> `테스트 공정 10`
+Colors:
 
-## Styles (TSMF, 초기화 시 자동 생성)
+- `WHITE` -> `White`
+- `BLACK` -> `Black`
+- `NAVY` -> `Navy`
+- `GRAY-MEL` -> `Gray Melange`
+- `LT-BLUE` -> `Light Blue`
+- `MID-BLUE` -> `Mid Blue`
+- `INDIGO` -> `Indigo`
 
-Reset 실행 시 기존 Style을 전부 삭제하고 아래 2개 샘플 스타일을 새로 생성한다.
+Processes:
 
-### 샘플 스타일 A
+- `P01` -> `Test Process 01`
+- `P02` -> `Test Process 02`
+- `P03` -> `Test Process 03`
+- `P04` -> `Test Process 04`
+- `P05` -> `Test Process 05`
+- `P06` -> `Test Process 06`
+- `P07` -> `Test Process 07`
+- `P08` -> `Test Process 08`
+- `P09` -> `Test Process 09`
+- `P10` -> `Test Process 10`
 
-- `styleId`: `S-SAMPLE-A`
-- `styleCode`: `SA-001`
-- `name`: `샘플 스타일 A`
-- `customer`: TSBR 브랜드 조직명 (런타임 조회)
-- `season`: `2025SS` / `collection`: `샘플 컬렉션`
-- `registrationDate`: `2025-01-01`
-- 공정 6개, `timeRefQuantity=1000`, PT 합계 **5,000초**
+## Styles (TSMF, reset baseline)
 
-| code | name         |  PT (초) |
-|------|--------------|----------|
-| P01  | 테스트 공정 01 |    950 |
-| P02  | 테스트 공정 02 |    900 |
-| P03  | 테스트 공정 03 |    850 |
-| P04  | 테스트 공정 04 |    800 |
-| P05  | 테스트 공정 05 |    750 |
-| P06  | 테스트 공정 06 |    750 |
-| **합계** |            | **5,000** |
+Baseline styles:
 
-### 샘플 스타일 B
+- `S-2025SS-T001` / `25SS-T001` / `Daily Round T-Shirt`
+  season `2025SS`, collection `Basic Line`, `8` processes, total PT `3,500`
+- `S-2025SS-P002` / `25SS-P002` / `Slim Collar Hero Polo`
+  season `2025SS`, collection `Sport Casual`, `9` processes, total PT `4,400`
+- `S-2025FW-J003` / `25FW-J003` / `Urban Corduroy Pants`
+  season `2025FW`, collection `Urban Premium`, `10` processes, total PT `6,000`
 
-- `styleId`: `S-SAMPLE-B`
-- `styleCode`: `SB-001`
-- `name`: `샘플 스타일 B`
-- `customer`: TSBR 브랜드 조직명 (런타임 조회)
-- `season`: `2025SS` / `collection`: `샘플 컬렉션`
-- `registrationDate`: `2025-01-01`
-- 공정 7개, `timeRefQuantity=1000`, PT 합계 **7,000초**
+## Work Orders (reset baseline)
 
-| code | name         |  PT (초) |
-|------|--------------|----------|
-| P01  | 테스트 공정 01 |  1,100 |
-| P02  | 테스트 공정 02 |  1,050 |
-| P03  | 테스트 공정 03 |  1,000 |
-| P04  | 테스트 공정 04 |  1,000 |
-| P05  | 테스트 공정 05 |  1,000 |
-| P06  | 테스트 공정 06 |    950 |
-| P07  | 테스트 공정 07 |    900 |
-| **합계** |            | **7,000** |
+Baseline work orders:
 
-## Work Orders (초기화 시 자동 생성)
+- `ORD-2025SS-001`
+  status `ORDER_RECEIVED`, total quantity `5,000`
+  includes `Daily Round T-Shirt` and `Slim Collar Hero Polo`
+- `ORD-2025FW-001`
+  status `ORDER_RECEIVED`, total quantity `2,500`
+  includes `Urban Corduroy Pants`
 
-Reset 실행 시 기존 WorkOrder를 전부 삭제하고 아래 2개 샘플 주문을 새로 생성한다.
+## Assignment Seed
 
-### 사이즈 분포 기준표
-
-| Size | 375개 | 350개 | 250개 |
-|------|------:|------:|------:|
-| XS   |    25 |    25 |    15 |
-| S    |    50 |    45 |    35 |
-| M    |   100 |    90 |    70 |
-| L    |   125 |   110 |    85 |
-| XL   |    50 |    55 |    30 |
-| 2XL  |    25 |    25 |    15 |
-| **합계** | **375** | **350** | **250** |
-
-### ORD-2025-SA (샘플 스타일 A 주문)
-
-- `orderId`: `order-baseline-sa`
-- `orderNumber`: `ORD-2025-SA`
-- `dueDate`: `2025-06-30`
-- `status`: `주문접수`
-- buyer: TSBR / seller: TSMF
-- 총 수량: 1,500개 (375 × 4 조합)
-
-| 성별 | 색상 | 수량 |
-|------|------|------|
-| M    | BLK (Black) | 375 |
-| M    | WHT (White) | 375 |
-| W    | BLK (Black) | 375 |
-| W    | WHT (White) | 375 |
-
-### ORD-2025-SB (샘플 스타일 B 주문)
-
-- `orderId`: `order-baseline-sb`
-- `orderNumber`: `ORD-2025-SB`
-- `dueDate`: `2025-07-31`
-- `status`: `주문접수`
-- buyer: TSBR / seller: TSMF
-- 총 수량: 1,500개 (375 × 4 조합)
-
-| 성별 | 색상 | 수량 |
-|------|------|------|
-| M    | BLK (Black) | 375 |
-| M    | RED (Red)   | 375 |
-| W    | WHT (White) | 375 |
-| W    | BLU (Blue)  | 375 |
-
-### ORD-2025-MIX (혼합 주문 — 스타일 A+B)
-
-- `orderId`: `order-baseline-mix`
-- `orderNumber`: `ORD-2025-MIX`
-- `dueDate`: `2025-08-31`
-- `status`: `주문접수`
-- buyer: TSBR / seller: TSMF
-- 총 수량: 1,200개 (250×2 + 350×2)
-
-| 스타일 | 성별 | 색상 | 수량 |
-|--------|------|------|------|
-| A (SA-001) | M | RED (Red)   | 250 |
-| A (SA-001) | W | BLU (Blue)  | 250 |
-| B (SB-001) | M | WHT (White) | 350 |
-| B (SB-001) | W | BLK (Black) | 350 |
+- Reset rebuilds baseline assignment board cards and agreed assignment plans.
+- Baseline assignment schedules are split across `Sample Line 1` and
+  `Sample Line 2`.
+- Headcount assumption for those schedules is `20 workers per line`.
 
 ## Notes
 

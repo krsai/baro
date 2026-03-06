@@ -123,12 +123,19 @@ export const fetchAttributes = async (options = {}) => {
   const hasOrgFilter = orgId !== null;
   const forceRefresh = Boolean(options?.forceRefresh);
   const skipGlobalLoading = Boolean(options?.skipGlobalLoading);
+  const requestScheduler = options?.requestScheduler ?? null;
   const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+  const schedulerGroupId = String(requestScheduler?.groupId ?? '').trim();
+  const schedulerScopeId = String(requestScheduler?.scopeId ?? '').trim();
+  const inFlightKey =
+    schedulerGroupId && schedulerScopeId
+      ? `${cacheKey}::scope:${schedulerGroupId}:${schedulerScopeId}`
+      : cacheKey;
 
   if (!forceRefresh) {
     const cached = readFreshAttributesCache(cacheKey);
     if (cached) return cached;
-    const inflight = attributesInFlight.get(cacheKey);
+    const inflight = attributesInFlight.get(inFlightKey);
     if (inflight) return inflight;
   }
 
@@ -137,18 +144,18 @@ export const fetchAttributes = async (options = {}) => {
       `/attributes${buildQueryString({
         orgId: hasOrgFilter ? orgId : undefined,
       })}`,
-      { skipGlobalLoading }
+      { skipGlobalLoading, requestScheduler }
     );
     const normalized = normalizeAttributes(data);
     writeAttributesCache(cacheKey, normalized);
     return normalized;
   })();
 
-  attributesInFlight.set(cacheKey, requestPromise);
+  attributesInFlight.set(inFlightKey, requestPromise);
   try {
     return await requestPromise;
   } finally {
-    attributesInFlight.delete(cacheKey);
+    attributesInFlight.delete(inFlightKey);
   }
 };
 

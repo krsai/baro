@@ -155,3 +155,16 @@
 .compact-date-picker .MuiSvgIcon-root {
   font-size: 1.1rem !important;
 }
+.compact-date-picker .MuiPickersInputBase-root,
+.compact-date-picker .MuiPickersInputBase-input,
+.compact-date-picker .MuiPickersInputBase-sectionContent,
+.compact-date-picker .MuiPickersSectionList-root,
+.compact-date-picker .MuiPickersSectionList-section,
+.compact-date-picker .MuiPickersSectionList-sectionContent {
+  font-size: 0.8125rem !important;
+  line-height: 1.2 !important;
+}
+.compact-date-picker .MuiPickersInputBase-sectionsContainer {
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}

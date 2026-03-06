@@ -1,8 +1,15 @@
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
+const buildReadRequestOptions = (options = {}) => ({
+  skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+  skipCache: Boolean(options?.skipCache),
+  forceRefresh: Boolean(options?.forceRefresh),
+  ...(options?.cacheTtlMs ? { cacheTtlMs: options.cacheTtlMs } : {}),
+});
+
 export const loadWorkLogs = async (options = {}) => {
   const query = buildQueryString({ orgId: options?.orgId, factoryId: options?.factoryId });
-  const data = await requestJSON('/work-logs' + query);
+  const data = await requestJSON('/work-logs' + query, buildReadRequestOptions(options));
   return Array.isArray(data) ? data : [];
 };
 
@@ -19,7 +26,10 @@ export const findWorkLogById = async (workLogId, options = {}) => {
   if (!workLogId) return null;
   try {
     const query = buildQueryString({ orgId: options?.orgId });
-    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query);
+    return await requestJSON(
+      `/work-logs/${encodeURIComponent(workLogId)}` + query,
+      buildReadRequestOptions(options)
+    );
   } catch (error) {
     if (error?.status === 404) return null;
     throw error;

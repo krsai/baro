@@ -28,10 +28,12 @@ const OrganizationDetail = () => {
   const [formData, setFormData] = useState(buildCompanyInfo());
 
   useEffect(() => {
+    let active = true;
+
     const fetchOrganization = async () => {
       try {
         const data = await requestJSON('/organizations/primary');
-        if (!data) return;
+        if (!active || !data) return;
         setOrganizationId(data.id ?? null);
         setFormData(buildCompanyInfo(data));
       } catch (_error) {
@@ -40,6 +42,9 @@ const OrganizationDetail = () => {
     };
 
     fetchOrganization();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleInputChange = (e) => {

@@ -27,6 +27,7 @@ const SearchableSelect = ({
   onHighlightChange,
   onClose,
   getOptionDisabled,
+  isOptionEqualToValue = (option, selectedValue) => option === selectedValue,
   slotProps,
   ...props
 }) => {
@@ -79,14 +80,20 @@ const SearchableSelect = ({
     slotProps?.listbox?.sx,
   ];
 
+  const resolvedValue =
+    value == null || Array.isArray(value)
+      ? value
+      : options.find((option) => isOptionEqualToValue(option, value)) ?? value;
+
   return (
     <Autocomplete
-      value={value}
+      value={resolvedValue}
       onChange={onChange}
       options={options}
       getOptionLabel={getOptionLabel}
       disabled={disabled}
       autoSelect={autoSelect}
+      isOptionEqualToValue={isOptionEqualToValue}
       getOptionDisabled={getOptionDisabled}
       onHighlightChange={handleHighlightChange}
       onClose={handleClose}
