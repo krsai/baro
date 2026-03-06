@@ -908,7 +908,6 @@ const WorkDetail = ({
       }, new Map()),
     [assignmentPlans]
   );
-  const skipInitialGlobalLoading = Boolean(initialLog?.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -918,19 +917,13 @@ const WorkDetail = ({
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const [factoryRows, customerRows, styleRows, attributeData] = await Promise.all([
-          requestJSON('/factories' + query, {
-            skipGlobalLoading: skipInitialGlobalLoading,
-          }).catch(() => []),
-          requestJSON('/customers' + query, {
-            skipGlobalLoading: skipInitialGlobalLoading,
-          }).catch(() => []),
+          requestJSON('/factories' + query).catch(() => []),
+          requestJSON('/customers' + query).catch(() => []),
           fetchStylesFromApi({
             orgId: activeOrgId,
-            skipGlobalLoading: skipInitialGlobalLoading,
           }).catch(() => []),
           fetchAttributes({
             orgId: activeOrgId,
-            skipGlobalLoading: skipInitialGlobalLoading,
           }).catch(() => null),
         ]);
         if (cancelled) return;
@@ -960,7 +953,7 @@ const WorkDetail = ({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id, skipInitialGlobalLoading]);
+  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id]);
 
   useEffect(() => {
     if (!selectedFactory?.id) {
@@ -988,7 +981,6 @@ const WorkDetail = ({
     setEmployeesByScopeKey({});
     setLoadedEmployeeFactoryDateKey('');
     requestJSON(`/lines${buildQueryString({ factoryId: selectedFactoryId, orgId: activeOrgId })}`, {
-      skipGlobalLoading: true,
     })
       .then((data) => {
         if (!cancelled) {
@@ -1031,10 +1023,7 @@ const WorkDetail = ({
     const factoryKey = buildFactoryKey(selectedFactory.id);
     setLoadedAssignmentFactoryKey('');
     requestJSON(
-      `/assignment-plans${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`,
-      {
-        skipGlobalLoading: true,
-      }
+      `/assignment-plans${buildQueryString({ factoryId: selectedFactory.id, orgId: activeOrgId })}`
     )
       .then((data) => {
         if (!cancelled) {
@@ -1068,10 +1057,7 @@ const WorkDetail = ({
         factoryId: selectedFactory.id,
         workDate: workDateKey,
         orgId: activeOrgId,
-      })}`,
-      {
-        skipGlobalLoading: true,
-      }
+      })}`
     )
       .then((data) => {
         if (!cancelled) {
@@ -1397,15 +1383,6 @@ const WorkDetail = ({
     (!isLineCacheReady ||
       !isAssignmentPlanCacheReady ||
       (Boolean(selectedEmployeeScopeKey) && !isEmployeeFactoryDateCacheReady));
-  const isInitialRecordHydrationPending =
-    Boolean(initialRecordHydrationKey) && hydratedRecordKey !== initialRecordHydrationKey;
-  const isInitialDetailLoading =
-    Boolean(initialLog?.id) &&
-    (loading ||
-      (Boolean(selectedFactoryKey) && !isLineCacheReady) ||
-      (Boolean(selectedFactoryKey) && !isAssignmentPlanCacheReady) ||
-      (Boolean(selectedEmployeeFactoryDateKey) && !isEmployeeFactoryDateCacheReady) ||
-      isInitialRecordHydrationPending);
   const isLineSelectionLoading = Boolean(selectedFactory?.id) && !selectedLine && !isLineCacheReady;
   const selectedFactoryWagePerSecond = useMemo(() => {
     if (!selectedFactory?.id) return null;
@@ -1817,45 +1794,6 @@ const WorkDetail = ({
       note: noteValue,
     });
   };
-
-  if (isInitialDetailLoading && !isLogSwitching) {
-    return (
-      <Box
-        sx={{
-          width: isPageMode ? '100%' : { xs: '100vw', md: '56vw' },
-          p: isPageMode ? 0 : 3,
-          height: isPageMode ? 'auto' : '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Box>
-            <Typography variant="h6">작업 상세</Typography>
-          </Box>
-          {!isPageMode ? (
-            <IconButton onClick={onClose}>
-              <CloseIcon />
-            </IconButton>
-          ) : null}
-        </Box>
-
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 3,
-            minHeight: 240,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#fafbff',
-          }}
-        >
-          <Typography color="text.secondary">작업 기록을 준비하고 있습니다.</Typography>
-        </Paper>
-      </Box>
-    );
-  }
 
   return (
     <Box

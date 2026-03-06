@@ -12,6 +12,7 @@ import {
   Divider,
   Drawer,
   FormControl,
+  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -27,6 +28,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
@@ -55,6 +59,15 @@ const CALENDAR_CT_STATUS_META = {
   SENT:     { cardBg: '#BFEAD0', labelColor: '#268444', borderColor: 'rgba(38, 132, 68, 0.35)' },
   AGREED:   { cardBg: '#C8DFF7', labelColor: '#3674B4', borderColor: 'rgba(54, 116, 180, 0.4)' },
   REJECTED: { cardBg: '#F7DCC8', labelColor: '#AC6424', borderColor: 'rgba(172, 100, 36, 0.35)' },
+};
+const resolveCtStatusChipSx = (status) => {
+  const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.PENDING;
+  return {
+    bgcolor: meta.cardBg,
+    color: meta.labelColor,
+    borderColor: meta.borderColor,
+    fontWeight: 700,
+  };
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
 const normalizeCtStatus = (value) => {
@@ -641,6 +654,13 @@ const ProductionPlanBoard = () => {
     }
     return actionableAssignments[0] || assignmentsForView[0] || null;
   }, [actionableAssignments, assignmentsForView, selectedAssignmentId]);
+  const focusCalendarMonthForAssignment = useCallback((assignment) => {
+    if (!assignment) return;
+    const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+    if (!bounds) return;
+    const targetMonth = toMonthStart(bounds.startDate);
+    setCalendarMonth((prev) => (isSameMonth(prev, targetMonth) ? prev : targetMonth));
+  }, [baseDate]);
   const selectedQuantityLabel = useMemo(
     () =>
       formatNumberWithCommas(
@@ -704,6 +724,13 @@ const ProductionPlanBoard = () => {
     [calendarMonth]
   );
 
+  const calendarMonthEnd = useMemo(() => {
+    const end = new Date(calendarMonth);
+    end.setMonth(end.getMonth() + 1);
+    end.setDate(0);
+    return end;
+  }, [calendarMonth]);
+
   const weekRows = useMemo(() => {
     const rows = [];
     for (let i = 0; i < calendarDays.length; i += 7) {
@@ -718,41 +745,44 @@ const ProductionPlanBoard = () => {
       const weekStartKey = weekDayKeys[0];
       const weekEndKey = weekDayKeys[6];
 
+      // Collect assignments for this week with their col spans
       const weekItems = [];
       assignmentsForView.forEach((assignment) => {
         const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
         if (!bounds) return;
-        const aStartKey = bounds.startKey;
-        const aEndKey = bounds.endKey;
+        if (bounds.endKey < weekStartKey || bounds.startKey > weekEndKey) return;
 
-        if (aEndKey < weekStartKey || aStartKey > weekEndKey) return;
-
-        const rawStartCol = weekDayKeys.findIndex((k) => k >= aStartKey);
+        const rawStartCol = weekDayKeys.findIndex((k) => k >= bounds.startKey);
         const startCol = Math.max(0, rawStartCol === -1 ? 0 : rawStartCol);
-
         let endCol = 6;
         for (let i = 6; i >= 0; i -= 1) {
-          if (weekDayKeys[i] <= aEndKey) {
-            endCol = i;
-            break;
-          }
+          if (weekDayKeys[i] <= bounds.endKey) { endCol = i; break; }
         }
-
         weekItems.push({ assignment, startCol, endCol: Math.min(6, endCol) });
       });
 
-      // Assign lanes to prevent vertical overlap
-      const withLanes = [];
-      const laneEndCols = [];
-      weekItems.forEach((item) => {
-        let lane = laneEndCols.findIndex((ec) => ec < item.startCol);
-        if (lane === -1) lane = laneEndCols.length;
-        laneEndCols[lane] = item.endCol;
-        withLanes.push({ ...item, lane });
+      // Sort for consistent slot ordering
+      weekItems.sort((a, b) => a.startCol - b.startCol || a.assignment.id - b.assignment.id);
+
+      // Build per-day occupancy: col -> [assignment, ...]
+      const dayOccupancy = Array.from({ length: 7 }, () => []);
+      weekItems.forEach(({ assignment, startCol, endCol }) => {
+        for (let col = startCol; col <= endCol; col++) {
+          dayOccupancy[col].push(assignment);
+        }
       });
 
-      const maxLane = withLanes.length > 0 ? Math.max(...withLanes.map((x) => x.lane)) : -1;
-      return { weekDays, bars: withLanes, maxLane };
+      // Emit one segment per (assignment × day)
+      const segments = [];
+      weekItems.forEach(({ assignment, startCol, endCol }) => {
+        for (let col = startCol; col <= endCol; col++) {
+          const slotIndex = dayOccupancy[col].indexOf(assignment);
+          const totalSlots = dayOccupancy[col].length;
+          segments.push({ assignment, col, slotIndex, totalSlots, isWeekFirst: col === startCol, isWeekLast: col === endCol });
+        }
+      });
+
+      return { weekDays, segments };
     });
   }, [weekRows, assignmentsForView, baseDate]);
 
@@ -769,21 +799,6 @@ const ProductionPlanBoard = () => {
       return String((actionableAssignments[0] || assignmentsForView[0]).id);
     });
   }, [actionableAssignments, assignmentsForView]);
-
-  useEffect(() => {
-    if (!selectedAssignment) return;
-    const bounds = resolveAssignmentScheduleBounds(selectedAssignment, baseDate);
-    if (!bounds) return;
-    const targetMonth = toMonthStart(bounds.startDate);
-    setCalendarMonth((prev) =>
-      isSameMonth(prev, targetMonth) ? prev : targetMonth
-    );
-  }, [
-    selectedAssignment?.id,
-    selectedAssignment?.startDateKey,
-    selectedAssignment?.startIndex,
-    baseDate,
-  ]);
 
   useEffect(() => {
     if (!selectedAssignment) {
@@ -1338,6 +1353,89 @@ const ProductionPlanBoard = () => {
     [activeOrgId, baseDate, cards, refreshBoardState]
   );
 
+  const handleToggleCompletion = useCallback(async (assignment) => {
+    const assignmentId = String(assignment?.id || '').trim();
+    if (!assignmentId || savingAssignmentId) return;
+
+    const query = buildQueryString({ orgId: activeOrgId });
+    const isCompleted = Boolean(assignment?.isCompleted);
+
+    setSavingAssignmentId(assignmentId);
+    try {
+      let completionResult = null;
+      if (isCompleted) {
+        completionResult = await requestJSON(`/assignment-plans/${encodeURIComponent(assignmentId)}/reopen${query}`, {
+          method: 'PATCH',
+          skipGlobalLoading: true,
+        });
+      } else {
+        completionResult = await requestJSON(`/assignment-plans/${encodeURIComponent(assignmentId)}/complete${query}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+          skipGlobalLoading: true,
+        });
+      }
+      const nextIsCompleted = Boolean(completionResult?.isCompleted ?? !isCompleted);
+      const nextFinalQuantity = nextIsCompleted
+        ? toNonNegativeInt(completionResult?.finalQuantity, null)
+        : null;
+      const nextCompletedAt = nextIsCompleted
+        ? String(completionResult?.completedAt || assignment?.completedAt || new Date().toISOString())
+        : null;
+
+      setAssignments((prevAssignments) =>
+        (Array.isArray(prevAssignments) ? prevAssignments : []).map((item) => {
+          if (String(item?.id || '') !== assignmentId) return item;
+          return {
+            ...item,
+            isCompleted: nextIsCompleted,
+            finalQuantity: nextFinalQuantity,
+            completedAt: nextCompletedAt,
+          };
+        })
+      );
+
+      const progressRows = await requestJSON(
+        '/assignment-plan-progress' +
+          buildQueryString({
+            orgId: activeOrgId,
+            ids: assignmentId,
+          }),
+        {
+          forceRefresh: true,
+          skipGlobalLoading: true,
+        }
+      ).catch(() => []);
+
+      const progressRow = Array.isArray(progressRows)
+        ? progressRows.find((row) => String(row?.id || '') === assignmentId) || null
+        : null;
+      if (progressRow) {
+        const progressEntry = buildAssignmentProgressMap([progressRow]).get(assignmentId);
+        if (progressEntry) {
+          setAssignmentProgressById((prevMap) => {
+            const nextMap = new Map(prevMap);
+            nextMap.set(assignmentId, progressEntry);
+            return nextMap;
+          });
+        }
+      }
+
+      showNotification(
+        isCompleted ? '작업이 미완료 상태로 전환되었습니다.' : '작업이 완료 상태로 전환되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      showNotification(
+        resolveBoardSaveErrorMessage(error, '작업 완료 상태 변경에 실패했습니다.'),
+        'error'
+      );
+    } finally {
+      setSavingAssignmentId(null);
+    }
+  }, [activeOrgId, savingAssignmentId, showNotification]);
+
   const handleAgree = async (assignmentId) => {
     if (!assignmentId || savingAssignmentId) return;
 
@@ -1824,10 +1922,10 @@ const ProductionPlanBoard = () => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Chip label={`대기 ${statusSummary.pending}`} />
-            <Chip label={`제안 ${statusSummary.sent}`} color="info" variant="outlined" />
-            <Chip label={`확정 ${statusSummary.agreed}`} color="success" variant="outlined" />
-            <Chip label={`요청 ${statusSummary.rejected}`} color="warning" variant="outlined" />
+            <Chip label={`대기 ${statusSummary.pending}`} variant="outlined" sx={resolveCtStatusChipSx('PENDING')} />
+            <Chip label={`제안 ${statusSummary.sent}`} variant="outlined" sx={resolveCtStatusChipSx('SENT')} />
+            <Chip label={`요청 ${statusSummary.rejected}`} variant="outlined" sx={resolveCtStatusChipSx('REJECTED')} />
+            <Chip label={`확정 ${statusSummary.agreed}`} variant="outlined" sx={resolveCtStatusChipSx('AGREED')} />
           </Stack>
         </Box>
       }
@@ -1880,6 +1978,7 @@ const ProductionPlanBoard = () => {
                           hover
                           selected={rowSelected}
                           onClick={() => {
+                            focusCalendarMonthForAssignment(assignment);
                             setSelectedAssignmentId(String(assignment.id));
                             setIsPanelOpen(true);
                           }}
@@ -1966,85 +2065,111 @@ const ProductionPlanBoard = () => {
                         <TableCell align="right">배정수량</TableCell>
                         <TableCell>일정</TableCell>
                         <TableCell>진행률</TableCell>
+                        <TableCell>완료 상태</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {agreedAssignments.map((assignment) => (
-                        <TableRow key={assignment.id} hover>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {assignment?.line?.name || ('라인 ' + assignment.lineId)}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {assignment?.factory?.name || '-'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {agreedAssignments.map((assignment) => {
+                        const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
+                        return (
+                          <TableRow key={assignment.id} hover>
+                            <TableCell>
                               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {assignment.customer || '-'}
+                                {assignment?.line?.name || ('라인 ' + assignment.lineId)}
                               </Typography>
-                              {assignment.ctOverride && (
-                                <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
-                              )}
-                            </Box>
-                            <Typography variant="caption" color="text.secondary">
-                              {assignment.label || '-'}
-                              {assignment.colorName ? ` · ${assignment.colorName}` : ''}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatNumberWithCommas(assignment.quantity, { fallback: '-', maximumFractionDigits: 0 })}
-                          </TableCell>
-                          <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
-                          <TableCell sx={{ minWidth: 180 }}>
-                            {assignment.progress?.progressPercent == null ? (
                               <Typography variant="caption" color="text.secondary">
-                                기록 없음
+                                {assignment?.factory?.name || '-'}
                               </Typography>
-                            ) : (
-                              <Stack spacing={0.5}>
-                                <Typography variant="caption" color="text.secondary">
-                                  {`${formatNumberWithCommas(
-                                    assignment.progress?.producedQuantity || 0,
-                                    { fallback: '0', maximumFractionDigits: 0 }
-                                  )} / ${
-                                    assignment.progress?.baselineQuantity != null
-                                      ? formatNumberWithCommas(assignment.progress.baselineQuantity, {
-                                          fallback: '0',
-                                          maximumFractionDigits: 0,
-                                        })
-                                      : '-'
-                                  } (${formatPercentLabel(assignment.progress.progressPercent)})`}
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {assignment.customer || '-'}
                                 </Typography>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={Math.max(
-                                    0,
-                                    Math.min(100, Number(assignment.progress.progressPercent) || 0)
-                                  )}
-                                  color={
-                                    Number(assignment.progress?.overflowQuantity) > 0
-                                      ? 'error'
-                                      : Number(assignment.progress?.progressPercent) >= 100
-                                        ? 'success'
-                                        : 'primary'
-                                  }
-                                  sx={{ height: 8, borderRadius: 8 }}
-                                />
-                                {Number(assignment.progress?.overflowQuantity) > 0 && (
-                                  <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
-                                    {`초과 ${formatNumberWithCommas(
-                                      assignment.progress.overflowQuantity,
-                                      { fallback: '0', maximumFractionDigits: 0 }
-                                    )}개`}
-                                  </Typography>
+                                {assignment.ctOverride && (
+                                  <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                                 )}
+                              </Box>
+                              <Typography variant="caption" color="text.secondary">
+                                {assignment.label || '-'}
+                                {assignment.colorName ? ` · ${assignment.colorName}` : ''}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatNumberWithCommas(assignment.quantity, { fallback: '-', maximumFractionDigits: 0 })}
+                            </TableCell>
+                            <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
+                            <TableCell sx={{ minWidth: 180 }}>
+                              {assignment.progress?.progressPercent == null ? (
+                                <Typography variant="caption" color="text.secondary">
+                                  기록 없음
+                                </Typography>
+                              ) : (
+                                <Stack spacing={0.5}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {`${formatNumberWithCommas(
+                                      assignment.progress?.producedQuantity || 0,
+                                      { fallback: '0', maximumFractionDigits: 0 }
+                                    )} / ${
+                                      assignment.progress?.baselineQuantity != null
+                                        ? formatNumberWithCommas(assignment.progress.baselineQuantity, {
+                                            fallback: '0',
+                                            maximumFractionDigits: 0,
+                                          })
+                                        : '-'
+                                    } (${formatPercentLabel(assignment.progress.progressPercent)})`}
+                                  </Typography>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={Math.max(
+                                      0,
+                                      Math.min(100, Number(assignment.progress.progressPercent) || 0)
+                                    )}
+                                    color={
+                                      Number(assignment.progress?.overflowQuantity) > 0
+                                        ? 'error'
+                                        : Number(assignment.progress?.progressPercent) >= 100
+                                          ? 'success'
+                                          : 'primary'
+                                    }
+                                    sx={{ height: 8, borderRadius: 8 }}
+                                  />
+                                  {Number(assignment.progress?.overflowQuantity) > 0 && (
+                                    <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
+                                      {`초과 ${formatNumberWithCommas(
+                                        assignment.progress.overflowQuantity,
+                                        { fallback: '0', maximumFractionDigits: 0 }
+                                      )}개`}
+                                    </Typography>
+                                  )}
+                                </Stack>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ minWidth: 180 }}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Chip
+                                  size="small"
+                                  label={assignment.isCompleted ? '완료' : '미완료'}
+                                  color={assignment.isCompleted ? 'success' : 'default'}
+                                  variant={assignment.isCompleted ? 'filled' : 'outlined'}
+                                />
+                                <Button
+                                  size="small"
+                                  variant={assignment.isCompleted ? 'outlined' : 'contained'}
+                                  color={assignment.isCompleted ? 'warning' : 'success'}
+                                  onClick={() => handleToggleCompletion(assignment)}
+                                  disabled={Boolean(savingAssignmentId)}
+                                >
+                                  {renderActionButtonLabel(
+                                    assignment.isCompleted ? '미완료 전환' : '완료 처리',
+                                    completionBusy
+                                  )}
+                                </Button>
                               </Stack>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -2139,20 +2264,51 @@ const ProductionPlanBoard = () => {
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                   계획 일정 달력 (월)
                 </Typography>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}>
-                    이전
-                  </Button>
-                  <Typography
-                    variant="body2"
-                    sx={{ minWidth: 78, textAlign: 'center', fontWeight: 600 }}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <IconButton
+                    size="small"
+                    onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}
+                    title="이전 달"
+                    sx={{ p: 0.25 }}
                   >
-                    {formatMonthLabel(calendarMonth)}
-                  </Typography>
-                  <Button size="small" onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}>
-                    다음
-                  </Button>
-                </Stack>
+                    <ChevronLeftIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                  <CustomDatePicker
+                    value={calendarMonth}
+                    onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
+                  />
+                  <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+                  <CustomDatePicker
+                    value={calendarMonthEnd}
+                    onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}
+                    title="다음 달"
+                    sx={{ p: 0.25 }}
+                  >
+                    <ChevronRightIcon sx={{ fontSize: 18 }} />
+                  </IconButton>
+                  <Stack sx={{ gap: '2px' }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}
+                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                    >
+                      M+
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}
+                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                    >
+                      M-
+                    </Button>
+                  </Stack>
+                </Box>
               </Box>
 
               <Box
@@ -2191,9 +2347,9 @@ const ProductionPlanBoard = () => {
                 </Box>
 
                 {/* 주차별 렌더링 - 날짜 행 + 이벤트 바 행 */}
-                {calendarBarData.map(({ weekDays, bars, maxLane }, weekIndex) => {
+                {calendarBarData.map(({ weekDays, segments }, weekIndex) => {
                   const isLastWeek = weekIndex === calendarBarData.length - 1;
-                  const barAreaHeight = bars.length > 0 ? (maxLane + 1) * 26 + 10 : 30;
+                  const barAreaHeight = 36;
 
                   return (
                     <Box key={weekIndex}>
@@ -2281,19 +2437,19 @@ const ProductionPlanBoard = () => {
                           );
                         })}
 
-                        {/* 연속 이벤트 바 */}
-                        {bars.map(({ assignment, startCol, endCol, lane }) => {
-                          const isSelected =
-                            String(assignment.id) === String(selectedAssignment?.id);
-                          const statusMeta =
-                            CALENDAR_CT_STATUS_META[
-                              normalizeCtStatus(assignment?.status ?? assignment?.ctStatus)
-                            ] || CALENDAR_CT_STATUS_META.PENDING;
+                        {/* 연속 이벤트 바 (per-day segments, proportional overlap) */}
+                        {segments.map(({ assignment, col, slotIndex, totalSlots, isWeekFirst, isWeekLast }) => {
+                          const segKey = `${assignment.id}-${col}`;
+                          const isSelected = String(assignment.id) === String(selectedAssignment?.id);
+                          const statusMeta = CALENDAR_CT_STATUS_META[normalizeCtStatus(assignment?.status ?? assignment?.ctStatus)] || CALENDAR_CT_STATUS_META.PENDING;
+                          const leftPct = ((col + slotIndex / totalSlots) / 7 * 100).toFixed(4);
+                          const widthPct = (1 / (7 * totalSlots) * 100).toFixed(4);
+                          const rTL = isWeekFirst ? '4px' : '0';
+                          const rTR = isWeekLast ? '4px' : '0';
                           const labelParts = [
                             assignment?.line?.name || `L${assignment?.lineId || '-'}`,
                             assignment.label,
                             assignment.colorName,
-                            assignment.gender,
                             assignment.quantity != null
                               ? `${formatNumberWithCommas(assignment.quantity, { maximumFractionDigits: 0 })}개`
                               : null,
@@ -2301,45 +2457,52 @@ const ProductionPlanBoard = () => {
 
                           return (
                             <Box
-                              key={assignment.id}
+                              key={segKey}
                               onClick={() => {
+                                focusCalendarMonthForAssignment(assignment);
                                 setSelectedAssignmentId(String(assignment.id));
                                 setIsPanelOpen(true);
                               }}
                               sx={{
                                 position: 'absolute',
-                                top: lane * 26 + 3,
-                                left: `calc(${startCol} / 7 * 100% + 3px)`,
-                                width: `calc(${endCol - startCol + 1} / 7 * 100% - 6px)`,
-                                height: 22,
+                                top: 4,
+                                left: `calc(${leftPct}% + 1px)`,
+                                width: `calc(${widthPct}% - 2px)`,
+                                height: 28,
                                 bgcolor: statusMeta.cardBg,
                                 border: '1px solid',
                                 borderColor: isSelected ? statusMeta.labelColor : statusMeta.borderColor,
-                                borderRadius: 0.75,
-                                px: 0.75,
+                                borderRadius: `${rTL} ${rTR} ${rTR} ${rTL}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 cursor: 'pointer',
                                 overflow: 'hidden',
-                                zIndex: 1,
-                                boxShadow: isSelected ? `inset 0 0 0 1px ${statusMeta.labelColor}` : 'none',
-                                '&:hover': { opacity: 0.82 },
+                                zIndex: isSelected ? 2 : 1,
+                                boxShadow: isSelected
+                                  ? `inset 0 0 0 1px ${statusMeta.labelColor}, 0 2px 6px rgba(0,0,0,0.12)`
+                                  : '0 1px 4px rgba(0,0,0,0.10)',
+                                '&:hover': { opacity: 0.82, zIndex: 3 },
                               }}
                             >
-                              <Typography
-                                variant="caption"
-                                sx={{
-                                  fontWeight: 600,
-                                  color: statusMeta.labelColor,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  fontSize: '0.65rem',
-                                  lineHeight: 1,
-                                }}
-                              >
-                                {labelParts.join(' · ')}
-                              </Typography>
+                              {/* 라벨은 첫 번째 세그먼트에만 표시 */}
+                              {isWeekFirst && (
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    position: 'relative',
+                                    fontWeight: 600,
+                                    color: statusMeta.labelColor,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    fontSize: '0.65rem',
+                                    lineHeight: 1,
+                                    px: 0.5,
+                                  }}
+                                >
+                                  {labelParts.join(' · ')}
+                                </Typography>
+                              )}
                             </Box>
                           );
                         })}

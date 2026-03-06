@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, CircularProgress, Paper, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -8,6 +7,18 @@ import WorkDetail from './WorkDetail';
 import { appendWorkLog, findWorkLogById, loadWorkLogs, updateWorkLog } from './workLogStorage';
 
 const normalizeWorkLogId = (value) => String(value || '').trim();
+const normalizeWorkDateKey = (value) => {
+  const normalized = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
+};
+const buildFactoryDateCacheKey = (factoryId, workDate) => {
+  const normalizedFactoryId = Number(factoryId);
+  const normalizedWorkDate = normalizeWorkDateKey(workDate);
+  if (!Number.isFinite(normalizedFactoryId) || normalizedFactoryId <= 0 || !normalizedWorkDate) {
+    return '';
+  }
+  return `${normalizedFactoryId}:${normalizedWorkDate}`;
+};
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
@@ -19,17 +30,18 @@ const WorkEntry = () => {
 
   const [loading, setLoading] = useState(Boolean(isEditMode));
   const [existingLog, setExistingLog] = useState(null);
-  const [workLogsByFactoryId, setWorkLogsByFactoryId] = useState({});
+  const [workLogsByFactoryDateKey, setWorkLogsByFactoryDateKey] = useState({});
   const [workLogDetailsById, setWorkLogDetailsById] = useState({});
   const [switchingLogId, setSwitchingLogId] = useState('');
 
   const displayedWorkLogId = normalizeWorkLogId(existingLog?.id);
   const currentFactoryId = Number(existingLog?.factoryId);
+  const currentWorkDateKey = normalizeWorkDateKey(existingLog?.workDate);
+  const currentFactoryDateKey = buildFactoryDateCacheKey(currentFactoryId, currentWorkDateKey);
   const cachedCurrentLog = routeWorkLogId ? workLogDetailsById[routeWorkLogId] || null : null;
-  const cachedFactoryLogs =
-    Number.isFinite(currentFactoryId) && currentFactoryId > 0
-      ? workLogsByFactoryId[currentFactoryId]
-      : undefined;
+  const cachedFactoryDateLogs = currentFactoryDateKey
+    ? workLogsByFactoryDateKey[currentFactoryDateKey]
+    : undefined;
 
   const cacheWorkLogDetail = useCallback((record) => {
     const nextWorkLogId = normalizeWorkLogId(record?.id);
@@ -64,7 +76,7 @@ const WorkEntry = () => {
     if (!isEditMode) {
       setLoading(false);
       setExistingLog(null);
-      setWorkLogsByFactoryId({});
+      setWorkLogsByFactoryDateKey({});
       setWorkLogDetailsById({});
       setSwitchingLogId('');
       return;
@@ -84,7 +96,6 @@ const WorkEntry = () => {
       try {
         const record = await findWorkLogById(routeWorkLogId, {
           orgId: activeOrgId,
-          skipGlobalLoading: true,
         });
         if (cancelled) return;
         if (!record) {
@@ -119,34 +130,34 @@ const WorkEntry = () => {
   ]);
 
   useEffect(() => {
-    if (!Number.isFinite(currentFactoryId) || currentFactoryId <= 0) return undefined;
-    if (Array.isArray(cachedFactoryLogs)) return undefined;
+    if (!currentFactoryDateKey) return undefined;
+    if (Array.isArray(cachedFactoryDateLogs)) return undefined;
 
     let cancelled = false;
     loadWorkLogs({
       orgId: activeOrgId,
       factoryId: currentFactoryId,
-      skipGlobalLoading: true,
+      workDate: currentWorkDateKey,
     })
       .then((rows) => {
         if (cancelled) return;
-        setWorkLogsByFactoryId((prev) => ({
+        setWorkLogsByFactoryDateKey((prev) => ({
           ...prev,
-          [currentFactoryId]: Array.isArray(rows) ? rows : [],
+          [currentFactoryDateKey]: Array.isArray(rows) ? rows : [],
         }));
       })
       .catch(() => {
         if (cancelled) return;
-        setWorkLogsByFactoryId((prev) => ({
+        setWorkLogsByFactoryDateKey((prev) => ({
           ...prev,
-          [currentFactoryId]: [],
+          [currentFactoryDateKey]: [],
         }));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, cachedFactoryLogs, currentFactoryId]);
+  }, [activeOrgId, cachedFactoryDateLogs, currentFactoryDateKey, currentFactoryId, currentWorkDateKey]);
 
   useEffect(() => {
     if (!switchingLogId) return;
@@ -187,7 +198,10 @@ const WorkEntry = () => {
   const handleSelectionContextChange = useCallback(
     async ({ factoryId, lineId, workDate, workLogId: activeWorkLogId }) => {
       if (!isEditMode) return;
-      if (!factoryId || !lineId || !workDate) return;
+      const workDateKey = normalizeWorkDateKey(workDate);
+      if (!factoryId || !lineId || !workDateKey) return;
+      const cacheKey = buildFactoryDateCacheKey(factoryId, workDateKey);
+      if (!cacheKey) return;
 
       const currentVisibleWorkLogId = normalizeWorkLogId(
         activeWorkLogId || displayedWorkLogId || routeWorkLogId
@@ -195,25 +209,25 @@ const WorkEntry = () => {
       if (!currentVisibleWorkLogId) return;
 
       try {
-        const cachedLogs = workLogsByFactoryId[factoryId];
+        const cachedLogs = workLogsByFactoryDateKey[cacheKey];
         const logs = Array.isArray(cachedLogs)
           ? cachedLogs
           : await loadWorkLogs({
               orgId: activeOrgId,
               factoryId,
-              skipGlobalLoading: true,
+              workDate: workDateKey,
             });
 
         if (!Array.isArray(cachedLogs)) {
-          setWorkLogsByFactoryId((prev) => ({
+          setWorkLogsByFactoryDateKey((prev) => ({
             ...prev,
-            [factoryId]: Array.isArray(logs) ? logs : [],
+            [cacheKey]: Array.isArray(logs) ? logs : [],
           }));
         }
 
         const matchedLog = logs.find(
           (log) =>
-            String(log?.workDate || '').trim() === workDate &&
+            String(log?.workDate || '').trim() === workDateKey &&
             Number(log?.lineId) === Number(lineId)
         );
         if (!matchedLog?.id) return;
@@ -235,7 +249,6 @@ const WorkEntry = () => {
           cachedDetail ||
           (await findWorkLogById(matchedLogId, {
             orgId: activeOrgId,
-            skipGlobalLoading: true,
           }));
 
         if (!targetRecord?.id) {
@@ -264,7 +277,7 @@ const WorkEntry = () => {
       routeWorkLogId,
       switchingLogId,
       workLogDetailsById,
-      workLogsByFactoryId,
+      workLogsByFactoryDateKey,
     ]
   );
 
@@ -277,25 +290,7 @@ const WorkEntry = () => {
   }, [displayedWorkLogId, hasExistingLog, isEditMode, loading, routeWorkLogId, switchingLogId]);
 
   if (isInitialLoading) {
-    return (
-      <AppPageContainer>
-        <Paper
-          variant="outlined"
-          sx={{
-            minHeight: 280,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#fafbff',
-          }}
-        >
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
-            <CircularProgress size={28} />
-            <Typography color="text.secondary">작업 기록을 불러오는 중입니다.</Typography>
-          </Box>
-        </Paper>
-      </AppPageContainer>
-    );
+    return <AppPageContainer />;
   }
 
   return (

@@ -5418,29 +5418,35 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
     return res.status(400).json({ ok: false, error: "finalQuantity must be a non-negative number" });
   }
 
-  const plan = await prisma.assignmentPlan.findUnique({
-    where: { orgId_externalId: { orgId: organization.id, externalId } },
-  });
-  if (!plan) {
-    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  let updatedPlan: {
+    id: number;
+    externalId: string;
+    isCompleted: boolean;
+    finalQuantity: number | null;
+    completedAt: Date | null;
+  };
+  try {
+    updatedPlan = await prisma.assignmentPlan.update({
+      where: { orgId_externalId: { orgId: organization.id, externalId } },
+      data: {
+        isCompleted: true,
+        finalQuantity: finalQuantity != null ? Math.round(finalQuantity) : null,
+        completedAt: new Date(),
+      },
+      select: {
+        id: true,
+        externalId: true,
+        isCompleted: true,
+        finalQuantity: true,
+        completedAt: true,
+      },
+    });
+  } catch (error) {
+    if (getErrorCode(error) === "P2025") {
+      return res.status(404).json({ ok: false, error: "assignment plan not found" });
+    }
+    throw error;
   }
-
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: {
-      isCompleted: true,
-      finalQuantity: finalQuantity != null ? Math.round(finalQuantity) : null,
-      completedAt: new Date(),
-    },
-  });
-
-  const accumulatedResult = await prisma.workRecord.aggregate({
-    where: { assignmentPlanId: plan.id },
-    _sum: { quantity: true },
-  });
-  const accumulatedQuantity = accumulatedResult._sum.quantity ?? 0;
-  const isOverflow =
-    updatedPlan.finalQuantity != null && accumulatedQuantity > updatedPlan.finalQuantity;
 
   res.json({
     ok: true,
@@ -5449,8 +5455,6 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
     isCompleted: updatedPlan.isCompleted,
     finalQuantity: updatedPlan.finalQuantity ?? null,
     completedAt: updatedPlan.completedAt ?? null,
-    accumulatedQuantity,
-    isOverflow,
   });
 });
 
@@ -5461,19 +5465,34 @@ app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
   }
 
   const { externalId } = req.params;
-  const plan = await prisma.assignmentPlan.findUnique({
-    where: { orgId_externalId: { orgId: organization.id, externalId } },
-  });
-  if (!plan) {
-    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  let updatedPlan: {
+    id: number;
+    externalId: string;
+    isCompleted: boolean;
+  };
+  try {
+    updatedPlan = await prisma.assignmentPlan.update({
+      where: { orgId_externalId: { orgId: organization.id, externalId } },
+      data: { isCompleted: false, finalQuantity: null, completedAt: null },
+      select: {
+        id: true,
+        externalId: true,
+        isCompleted: true,
+      },
+    });
+  } catch (error) {
+    if (getErrorCode(error) === "P2025") {
+      return res.status(404).json({ ok: false, error: "assignment plan not found" });
+    }
+    throw error;
   }
 
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: { isCompleted: false, finalQuantity: null, completedAt: null },
+  res.json({
+    ok: true,
+    dbId: updatedPlan.id,
+    id: updatedPlan.externalId,
+    isCompleted: updatedPlan.isCompleted,
   });
-
-  res.json({ ok: true, dbId: updatedPlan.id, id: updatedPlan.externalId, isCompleted: false });
 });
 
 app.get("/attendance-entries", async (req, res) => {
@@ -5632,6 +5651,15 @@ app.get("/work-logs", async (req, res) => {
 
   const factoryId = Number(req.query.factoryId);
   const hasFactoryFilter = Number.isFinite(factoryId);
+  const workDateInput = req.query.workDate;
+  const hasWorkDateFilter =
+    workDateInput !== undefined &&
+    workDateInput !== null &&
+    String(workDateInput).trim() !== "";
+  const workDate = normalizeDateKey(workDateInput);
+  if (hasWorkDateFilter && !workDate) {
+    return res.status(400).json({ ok: false, error: "invalid workDate" });
+  }
   if (hasFactoryFilter) {
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
@@ -5645,6 +5673,7 @@ app.get("/work-logs", async (req, res) => {
     where: {
       orgId: organization.id,
       ...(hasFactoryFilter ? { factoryId } : {}),
+      ...(workDate ? { workDate } : {}),
     },
     orderBy: [{ workDate: "desc" }, { id: "desc" }],
   });

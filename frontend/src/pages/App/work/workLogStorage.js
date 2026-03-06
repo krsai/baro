@@ -8,7 +8,11 @@ const buildReadRequestOptions = (options = {}) => ({
 });
 
 export const loadWorkLogs = async (options = {}) => {
-  const query = buildQueryString({ orgId: options?.orgId, factoryId: options?.factoryId });
+  const query = buildQueryString({
+    orgId: options?.orgId,
+    factoryId: options?.factoryId,
+    workDate: options?.workDate,
+  });
   const data = await requestJSON('/work-logs' + query, buildReadRequestOptions(options));
   return Array.isArray(data) ? data : [];
 };

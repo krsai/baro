@@ -691,6 +691,13 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - 수정: `Promise.all(updatePlanRows.map(...))` 병렬 실행
 - 파일: `backend/src/index.ts` (PUT /assignment-board-state 핸들러 내부)
 
+### 상태 토글 경량화 원칙 (2026-03-06)
+- 완료/미완료 같은 **단순 상태 토글**은 기본적으로 `단건 mutation + 해당 row 로컬 상태 반영`으로 처리한다.
+- 상태 토글 직후 **전체 보드 재조회**(`refreshBoardState`)와 **전체 진행률 재집계**(all assignment `groupBy`)는 기본 금지한다.
+- 진행률/파생값 동기화가 필요하면 **해당 assignment 1건만** 재조회한다.
+- 전역 로딩 오버레이는 긴 네트워크 작업에서만 사용하고, 단건 토글 요청에는 버튼 단위 busy 표시를 우선한다.
+- 위 원칙을 벗어나는 구현은 요구사항(정합성/감사/통계) 근거를 코드 주석 또는 PR 설명에 명시해야 한다.
+
 ## 오늘 반영 메모 (2026-03-02)
 
 ### AssignmentBoardState 동시 수정 충돌 방지

@@ -20,7 +20,7 @@ let activeRequestScopeEntrySequence = 0;
 // 매핑되지 않은 경로는 fallback으로 전체 캐시 삭제
 const CACHE_INVALIDATION_MAP = {
   '/assignment-board-state': ['/assignment-board'],
-  '/assignment-plans': ['/assignment-plans', '/assignment-board'],
+  '/assignment-plans': ['/assignment-plans', '/assignment-board', '/assignment-plan-progress'],
   '/assignment-cards': ['/assignment-cards', '/assignment-board'],
   '/assignment-board-lines': ['/assignment-board'],
   '/line-workers': ['/line-workers'],
