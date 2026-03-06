@@ -135,6 +135,9 @@ const createInstanceId = (process) =>
   `${process?.code || process?.name || 'PROC'}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+const toProcessOptionLabel = (process) => `[${process?.code || ''}] ${process?.name || ''}`.trim();
+const compareProcessOptionTextAsc = (left, right) =>
+  toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right), 'ko');
 
 const resolveDraftStInputValue = (draft, autoStTotalSeconds) => {
   if (draft?.stManual) return draft.st;
@@ -255,7 +258,7 @@ const StyleProcess = ({
         actualTime: process.actualTime ?? null,
       });
     });
-    return Array.from(byIdentity.values());
+    return Array.from(byIdentity.values()).sort(compareProcessOptionTextAsc);
   }, [normalizedAttributeOptions, safeProcesses]);
 
   const [isAddingRow, setIsAddingRow] = useState(false);

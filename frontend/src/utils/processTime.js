@@ -422,13 +422,11 @@ export const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
     return ct;
   }
 
-  const atPerPiece = resolveProcessAtPerPieceSeconds(normalized, orderQuantity);
-  if (atPerPiece !== null) return atPerPiece;
-
-  if (ct !== null) return ct;
-
   const pt = toOptionalNumber(normalized?.pt);
   if (pt !== null) return pt;
+
+  // Legacy fallback: keep existing ct when pt is empty.
+  if (ct !== null) return ct;
   return null;
 };
 
@@ -465,7 +463,7 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
   }, 0);
 };
 
-// Official CT baseline priority: ct -> at -> pt.
+// Official ST baseline priority: manual ct -> pt -> legacy ct.
 export const resolveProcessCtBaseSeconds = (process, orderQuantity = 1) => {
   if (!process) return null;
   return resolveProcessStPerPieceSeconds(process, orderQuantity);

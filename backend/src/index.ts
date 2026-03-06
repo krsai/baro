@@ -255,6 +255,15 @@ const DEFAULT_TIME_REF_QUANTITY = 1000;
 // 출퇴근 입력값을 AT 계산에 반영한다.
 // 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
 const USE_ATTENDANCE_INPUT_FOR_AT = true;
+const AT_MONTHLY_A_CLAMP_BREAKOUT_RATIO = (() => {
+  const parsed = Number(process.env.AT_MONTHLY_A_CLAMP_BREAKOUT_RATIO);
+  if (!Number.isFinite(parsed) || parsed <= 1) return 8;
+  return parsed;
+})();
+const AT_MONTHLY_A_CLAMP_BREAKOUT_MIN_OBSERVATIONS = toPositiveInt(
+  process.env.AT_MONTHLY_A_CLAMP_BREAKOUT_MIN_OBSERVATIONS,
+  8
+);
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
@@ -603,13 +612,33 @@ const isSameStyleAtParams = (
 
 const clampAtSlopeByMonthlyChange = (
   nextAInput: number,
-  currentAtParams: StyleAtParams | null
+  currentAtParams: StyleAtParams | null,
+  options: { observationCount?: number | null } = {}
 ): number => {
   const nextA = toOptionalSeconds(nextAInput);
   if (nextA == null) return nextAInput;
   if (!currentAtParams || currentAtParams.a <= 0) return nextA;
-  const minA = currentAtParams.a * (1 - AT_MONTHLY_A_CLAMP_RATIO);
-  const maxA = currentAtParams.a * (1 + AT_MONTHLY_A_CLAMP_RATIO);
+
+  const observationCountRaw = Number(options.observationCount);
+  const observationCount =
+    Number.isFinite(observationCountRaw) && observationCountRaw > 0
+      ? Math.trunc(observationCountRaw)
+      : 0;
+  const currentA = currentAtParams.a;
+  const divergenceRatio = Math.max(
+    nextA / currentA,
+    currentA / Math.max(nextA, Number.EPSILON)
+  );
+  if (
+    observationCount >= AT_MONTHLY_A_CLAMP_BREAKOUT_MIN_OBSERVATIONS &&
+    Number.isFinite(divergenceRatio) &&
+    divergenceRatio >= AT_MONTHLY_A_CLAMP_BREAKOUT_RATIO
+  ) {
+    return nextA;
+  }
+
+  const minA = currentA * (1 - AT_MONTHLY_A_CLAMP_RATIO);
+  const maxA = currentA * (1 + AT_MONTHLY_A_CLAMP_RATIO);
   return roundToScale(Math.min(maxA, Math.max(minA, nextA)), 4);
 };
 
@@ -640,8 +669,8 @@ const normalizeStyleProcess = (process: any) => {
     Math.abs(Number(next.ct) - Number(next.at)) < 1e-4;
   next.stManual =
     typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt;
-  if (next.stManual !== true && next.ct == null && next.at != null) {
-    next.ct = next.at;
+  if (next.stManual !== true && next.ct == null) {
+    next.ct = next.pt ?? null;
   }
   if ("referenceQuantity" in next) {
     delete (next as any).referenceQuantity;
@@ -1235,15 +1264,6 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       if (!fittedRaw) return process;
 
       const currentAtParams = toStyleAtParams((process as any).atParams);
-      const clampedA = clampAtSlopeByMonthlyChange(fittedRaw.a, currentAtParams);
-      const fitted =
-        clampedA !== fittedRaw.a
-          ? { a: clampedA, b: fittedRaw.b }
-          : fittedRaw;
-      if (clampedA !== fittedRaw.a) {
-        clampAdjustedProcesses += 1;
-      }
-
       const referenceQuantity = toPositiveInt(
         (process as any).timeRefQuantity,
         DEFAULT_TIME_REF_QUANTITY
@@ -1270,6 +1290,16 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         qualityStats && qualityStats.observationCount > 0
           ? Math.trunc(qualityStats.observationCount)
           : null;
+      const clampedA = clampAtSlopeByMonthlyChange(fittedRaw.a, currentAtParams, {
+        observationCount: nextObservationCount,
+      });
+      const fitted =
+        clampedA !== fittedRaw.a
+          ? { a: clampedA, b: fittedRaw.b }
+          : fittedRaw;
+      if (clampedA !== fittedRaw.a) {
+        clampAdjustedProcesses += 1;
+      }
       const nextAt = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
       const currentAt = toOptionalSeconds((process as any).at);
       if (nextAt === null) return process;
