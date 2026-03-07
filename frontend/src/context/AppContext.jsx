@@ -4,10 +4,8 @@ import React, {
   useState,
   useCallback,
   useRef,
-  useEffect,
   useMemo,
 } from 'react';
-import { fetchAttributes } from '../utils/attributeApi';
 
 // Create the App Context
 const AppContext = createContext();
@@ -102,30 +100,6 @@ export const AppProvider = ({ children }) => {
 
   const [roles, setRoles] = useState([]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadRoles = async () => {
-      try {
-        const data = await fetchAttributes({ skipGlobalLoading: true });
-        const roleRows = Array.isArray(data?.roles) ? data.roles : [];
-        if (cancelled || roleRows.length === 0) return;
-        setRoles(
-          roleRows.map((role) => ({
-            id: role.id,
-            name: role.name || role.code || '',
-            description: role.code || '',
-          }))
-        );
-      } catch (_error) {
-        // keep empty roles on failure
-      }
-    };
-    loadRoles();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Keep navigation handler in a ref to avoid function identity churn across renders.
   const navigateToPathRef = useRef((..._args) => {
     console.warn('navigateToPath is not implemented');
@@ -201,4 +175,3 @@ export const useApp = () => {
   }
   return context;
 };
-

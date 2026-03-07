@@ -39,6 +39,12 @@ import {
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
+import {
+  TIME_DIVERGENCE_SEVERITY,
+  calculateDivergencePercent,
+  formatDivergencePercentLabel,
+  resolveDivergenceMeta,
+} from '../../../../utils/timeDivergence';
 
 const createEmptyDraft = () => ({
   process: null,
@@ -46,6 +52,7 @@ const createEmptyDraft = () => ({
   st: '',
   stManual: false,
 });
+const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -76,10 +83,11 @@ const toDraftNumberText = (value) => {
 // 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
 const AT_RELIABILITY_PALETTE = {
   [AT_RELIABILITY_STATUS.COLLECTING]:     { bg: '#EBEBF0', text: '#747484' },
-  [AT_RELIABILITY_STATUS.FALLBACK]:       { bg: '#F7DCC8', text: '#AC6424' },
-  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]:{ bg: '#F7DCC8', text: '#AC6424' },
-  [AT_RELIABILITY_STATUS.LEARNING]:       { bg: '#BFEAD0', text: '#268444' },
-  [AT_RELIABILITY_STATUS.STABLE]:         { bg: '#C8DFF7', text: '#3674B4' },
+  [AT_RELIABILITY_STATUS.UNRELIABLE]:     { bg: '#F5D0D5', text: '#B42318' },
+  [AT_RELIABILITY_STATUS.INSUFFICIENT]:   { bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.USABLE]:         { bg: '#F5E7B2', text: '#8A6100' },
+  [AT_RELIABILITY_STATUS.TRUSTED]:        { bg: '#BFEAD0', text: '#268444' },
+  [AT_RELIABILITY_STATUS.VERIFIED]:       { bg: '#C8DFF7', text: '#3674B4' },
 };
 
 const AT_RELIABILITY_CHIP_SX = {
@@ -95,11 +103,30 @@ const resolveAtReliabilityPalette = (reliability) =>
   AT_RELIABILITY_PALETTE[reliability?.status] ||
   AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING];
 
+const ST_AT_GAP_PALETTE = {
+  [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
+  [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
+  [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#F5D0D5', text: '#B42318' },
+};
+
+const ST_AT_GAP_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': {
+    px: 0.75,
+    fontSize: '0.65rem',
+    lineHeight: 1.1,
+    fontWeight: 700,
+  },
+};
+
 const resolveAtReliabilityPercentLabel = (reliability) => {
   const percent = Number(reliability?.percent);
   if (!Number.isFinite(percent)) return '0%';
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
+
+const resolveStAtGapPalette = (meta) =>
+  ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
 
 const normalizeProcessOption = (item) => {
   const code = String(item?.code ?? '')
@@ -201,9 +228,8 @@ const StyleProcess = ({
   const [timeRefQuantity, setTimeRefQuantity] = useState(() =>
     resolveCommonTimeRefQuantity(safeProcesses)
   );
-  const [timeRefQuantityInput, setTimeRefQuantityInput] = useState(() =>
-    resolveCommonTimeRefQuantity(safeProcesses).toLocaleString('ko-KR')
-  );
+  const [timeRefQuantityInput, setTimeRefQuantityInput] = useState('');
+  const [isTimeRefQuantityEditing, setIsTimeRefQuantityEditing] = useState(false);
   const [attributeProcesses, setAttributeProcesses] = useState([]);
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
@@ -278,7 +304,7 @@ const StyleProcess = ({
         return acc + processQuantity * ptPerPiece;
       }, 0);
     },
-    [safeProcesses, displayOrderQuantity]
+    [safeProcesses]
   );
   const totalAT = useMemo(
     () => {
@@ -320,9 +346,17 @@ const StyleProcess = ({
     () => displayOrderQuantity.toLocaleString('ko-KR'),
     [displayOrderQuantity]
   );
+  const ptTimeRefQuantityLabel = useMemo(
+    () => PT_REFERENCE_QUANTITY.toLocaleString('ko-KR'),
+    []
+  );
   const styleAtReliability = useMemo(() => {
     return resolveStyleAtReliability(safeProcesses);
   }, [safeProcesses]);
+  const totalStGapPercent = useMemo(
+    () => (hasAT && hasST ? calculateDivergencePercent(totalAT, totalST) : null),
+    [hasAT, hasST, totalAT, totalST]
+  );
 
   const addDisabledIdentitySet = useMemo(() => {
     const set = new Set();
@@ -338,12 +372,14 @@ const StyleProcess = ({
   useEffect(() => {
     if (safeProcesses.length === 0) {
       setTimeRefQuantity(DEFAULT_TIME_REF_QUANTITY);
-      setTimeRefQuantityInput(DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR'));
+      setTimeRefQuantityInput('');
+      setIsTimeRefQuantityEditing(false);
       return;
     }
     const nextRef = resolveCommonTimeRefQuantity(safeProcesses);
     setTimeRefQuantity((prev) => (prev === nextRef ? prev : nextRef));
-    setTimeRefQuantityInput(nextRef.toLocaleString('ko-KR'));
+    setTimeRefQuantityInput('');
+    setIsTimeRefQuantityEditing(false);
   }, [safeProcesses]);
 
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
@@ -351,19 +387,21 @@ const StyleProcess = ({
     setTimeRefQuantityInput(event.target.value);
   };
 
-  // 포커스 진입 시: 콤마 제거해 깔끔하게 편집
   const handleTimeRefQuantityFocus = () => {
-    setTimeRefQuantityInput(String(timeRefQuantity));
+    if (isTimeRefQuantityEditing) return;
+    setTimeRefQuantityInput('');
+    setIsTimeRefQuantityEditing(true);
   };
 
-  // 포커스 벗어날 때: 파싱 후 천 단위 콤마 포맷으로 표시 및 공정 동기화
-  const handleTimeRefQuantityBlur = () => {
-    const nextValue = toPositiveInt(
-      String(timeRefQuantityInput).replace(/,/g, ''),
-      DEFAULT_TIME_REF_QUANTITY
-    );
+  const commitTimeRefQuantity = () => {
+    const rawValue = String(timeRefQuantityInput).replace(/,/g, '').trim();
+    const nextValue = rawValue
+      ? toPositiveInt(rawValue, timeRefQuantity)
+      : timeRefQuantity;
+
     setTimeRefQuantity(nextValue);
-    setTimeRefQuantityInput(nextValue.toLocaleString('ko-KR'));
+    setTimeRefQuantityInput('');
+    setIsTimeRefQuantityEditing(false);
     if (safeProcesses.length === 0) return;
     const needsSync = safeProcesses.some(
       (process) =>
@@ -375,6 +413,16 @@ const StyleProcess = ({
         normalizeProcess({ ...process, timeRefQuantity: nextValue })
       )
     );
+  };
+
+  const handleTimeRefQuantityBlur = () => {
+    commitTimeRefQuantity();
+  };
+
+  const handleTimeRefQuantityKeyDown = (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    event.currentTarget.blur();
   };
 
   const validateDraft = (draft, options = {}) => {
@@ -474,6 +522,29 @@ const StyleProcess = ({
           addPreviewProcess,
           displayOrderQuantity
         );
+  const renderStGapChip = (percent) => {
+    if (percent == null) return null;
+    const gapMeta = resolveDivergenceMeta(percent);
+    const palette = resolveStAtGapPalette(gapMeta);
+    const label = formatDivergencePercentLabel(percent);
+    const tooltipTitle = gapMeta.needsReview
+      ? `AT와 ST 차이가 ${label}로 커서 ST 조정 검토가 필요합니다.`
+      : `AT와 ST 차이율 ${label}`;
+
+    return (
+      <Tooltip title={tooltipTitle}>
+        <Chip
+          size="small"
+          label={label}
+          sx={{
+            ...ST_AT_GAP_CHIP_SX,
+            backgroundColor: palette.bg,
+            color: palette.text,
+          }}
+        />
+      </Tooltip>
+    );
+  };
 
   return (
     <Box>
@@ -484,17 +555,19 @@ const StyleProcess = ({
       >
         <Stack direction="row" spacing={1.25} alignItems="center">
           <Typography variant="h6">스타일 공정 목록</Typography>
-          <Tooltip title="기준 수량 q는 기본값 1000이며, PT/ST 시간값은 1개 작업 기준으로 입력합니다.">
+          <Tooltip title="PT는 항상 1,000장 기준으로 입력하고, 기준 수량 q는 AT/ST 확인 문맥으로 사용합니다.">
             <TextField
               size="small"
               type="text"
               inputMode="numeric"
               label="기준 수량 q"
-              value={timeRefQuantityInput}
+              value={isTimeRefQuantityEditing ? timeRefQuantityInput : ''}
               onChange={handleTimeRefQuantityChange}
               onFocus={handleTimeRefQuantityFocus}
               onBlur={handleTimeRefQuantityBlur}
-              placeholder="1,000"
+              onKeyDown={handleTimeRefQuantityKeyDown}
+              placeholder={timeRefQuantityLabel}
+              InputLabelProps={{ shrink: true }}
               sx={{ width: 140 }}
             />
           </Tooltip>
@@ -542,11 +615,11 @@ const StyleProcess = ({
                   <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
                     <Tooltip
-                      title={`PT(${timeRefQuantityLabel}): 기준 수량 q 문맥에서 입력한 예상 시간(초)입니다.`}
+                      title={`PT(${ptTimeRefQuantityLabel}): 항상 1,000장 기준으로 입력하는 예상 시간(초)입니다.`}
                       placement="top"
                     >
                       <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                        {`PT(${timeRefQuantityLabel})`}
+                        {`PT(${ptTimeRefQuantityLabel})`}
                       </Box>
                     </Tooltip>
                   </TableCell>
@@ -570,12 +643,15 @@ const StyleProcess = ({
                       )}
                     </Stack>
                   </TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
-                    <Tooltip title={`ST(${timeRefQuantityLabel}): 배정 기준으로 사용하는 표준 시간입니다.`} placement="top">
-                      <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                        {`ST(${timeRefQuantityLabel})`}
-                      </Box>
-                    </Tooltip>
+                  <TableCell align="right" sx={{ width: 190 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
+                      <Tooltip title={`ST(${timeRefQuantityLabel}): 배정 기준으로 사용하는 표준 시간입니다.`} placement="top">
+                        <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
+                          {`ST(${timeRefQuantityLabel})`}
+                        </Box>
+                      </Tooltip>
+                      {hasAT && hasST && totalStGapPercent != null ? renderStGapChip(totalStGapPercent) : null}
+                    </Stack>
                   </TableCell>
                   <TableCell align="center" sx={{ width: 120 }}>
                     작업
@@ -629,34 +705,27 @@ const StyleProcess = ({
                           {formatSeconds(addPreviewAtTotalSeconds)}
                         </TableCell>
                         <TableCell align="right">
-                          <Stack
-                            direction="column"
-                            spacing={0.5}
-                            alignItems="flex-end"
-                            sx={{ minWidth: 110 }}
-                          >
-                            <TextField
-                              size="small"
-                              type="number"
-                              value={resolveDraftStInputValue(
-                                addDraft,
-                                addPreviewStTotalSeconds
-                              )}
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                const hasManualValue = String(nextValue).trim() !== '';
-                                setAddDraft((prev) => ({
-                                  ...prev,
-                                  stManual: hasManualValue,
-                                  st: nextValue,
-                                }));
-                              }}
-                              onWheel={(e) => e.target.blur()}
-                              inputProps={{ min: 0 }}
-                              placeholder="-"
-                              sx={{ width: 86 }}
-                            />
-                          </Stack>
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={resolveDraftStInputValue(
+                              addDraft,
+                              addPreviewStTotalSeconds
+                            )}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              const hasManualValue = String(nextValue).trim() !== '';
+                              setAddDraft((prev) => ({
+                                ...prev,
+                                stManual: hasManualValue,
+                                st: nextValue,
+                              }));
+                            }}
+                            onWheel={(e) => e.target.blur()}
+                            inputProps={{ min: 0 }}
+                            placeholder="-"
+                            sx={{ width: 86 }}
+                          />
                         </TableCell>
                         <TableCell align="center">
                           <Stack direction="row" spacing={0.5} justifyContent="center">
@@ -761,7 +830,11 @@ const StyleProcess = ({
                                       onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
                                       onWheel={(e) => e.target.blur()}
                                       inputProps={{ min: 0 }}
-                                      placeholder="-"
+                                      placeholder={
+                                        previewStTotalSeconds == null
+                                          ? '-'
+                                          : toDraftNumberText(previewStTotalSeconds)
+                                      }
                                       sx={{ width: 86, '& input': { fontWeight: process?.stManual ? 700 : 400 } }}
                                     />
                                   </TableCell>

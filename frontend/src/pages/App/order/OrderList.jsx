@@ -647,7 +647,7 @@ const OrderList = () => {
 
   const refreshStyles = async (orgId = null) => {
     try {
-      const items = await fetchStylesFromApi({ orgId });
+      const items = await fetchStylesFromApi({ orgId, compact: true });
       setStyles(items);
     } catch (error) {
       setStyles([]);

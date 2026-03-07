@@ -283,6 +283,11 @@ export const setRequestContext = (next = {}) => {
   requestContext.orgId = Number.isFinite(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null;
 };
 
+export const getRequestContext = () => ({
+  userEmail: requestContext.userEmail,
+  orgId: requestContext.orgId,
+});
+
 const getNetworkLoadingSnapshot = () => ({
   isLoading: activeNetworkRequestIds.size > 0,
   activeRequestCount: activeNetworkRequestIds.size,

@@ -9,15 +9,29 @@ const AT_RELIABILITY_SAMPLE_SCORE_MAX = 72;
 const AT_RELIABILITY_TRAINED_PERIOD_BONUS = 6;
 const AT_RELIABILITY_VERSION_BONUS_MAX = 8;
 const AT_RELIABILITY_LOW_SENSITIVITY_PENALTY_MAX = 6;
-const AT_RELIABILITY_FALLBACK_PERCENT_THRESHOLD = 30;
-const AT_RELIABILITY_LOW_SENSITIVITY_PERCENT_THRESHOLD = 55;
-const AT_RELIABILITY_STABLE_PERCENT_THRESHOLD = 78;
+const AT_RELIABILITY_RAW_SCORE_MAX =
+  AT_RELIABILITY_SAMPLE_SCORE_MAX +
+  AT_RELIABILITY_TRAINED_PERIOD_BONUS +
+  AT_RELIABILITY_VERSION_BONUS_MAX;
+const AT_RELIABILITY_MEANINGFUL_PERCENT_THRESHOLD = 65;
+const AT_RELIABILITY_USABLE_PERCENT_THRESHOLD = 75;
+const AT_RELIABILITY_TRUSTED_PERCENT_THRESHOLD = 85;
+const AT_RELIABILITY_VERIFIED_PERCENT_THRESHOLD = 95;
+const AT_RELIABILITY_MIN_OBSERVATION_COUNT_MEANINGFUL = 4;
+const AT_RELIABILITY_MIN_OBSERVATION_COUNT_USABLE = 8;
+const AT_RELIABILITY_MIN_OBSERVATION_COUNT_TRUSTED = 16;
+const AT_RELIABILITY_MIN_OBSERVATION_COUNT_VERIFIED = 24;
+const AT_RELIABILITY_MAX_FALLBACK_SHARE_MEANINGFUL = 0.5;
+const AT_RELIABILITY_MAX_FALLBACK_SHARE_USABLE = 0.35;
+const AT_RELIABILITY_MAX_FALLBACK_SHARE_TRUSTED = 0.2;
+const AT_RELIABILITY_MAX_FALLBACK_SHARE_VERIFIED = 0.08;
 export const AT_RELIABILITY_STATUS = {
   COLLECTING: 'COLLECTING',
-  FALLBACK: 'FALLBACK',
-  LOW_SENSITIVITY: 'LOW_SENSITIVITY',
-  LEARNING: 'LEARNING',
-  STABLE: 'STABLE',
+  UNRELIABLE: 'UNRELIABLE',
+  INSUFFICIENT: 'INSUFFICIENT',
+  USABLE: 'USABLE',
+  TRUSTED: 'TRUSTED',
+  VERIFIED: 'VERIFIED',
 };
 
 const toOptionalNumber = (value) => {
@@ -143,6 +157,10 @@ const resolveAtReliabilityPercent = ({
   attendanceFallbackShare,
   observationCount,
 }) => {
+  const normalizedObservationCount = toNonNegativeInt(observationCount, 0);
+  const normalizedFallbackShare = Number.isFinite(attendanceFallbackShare)
+    ? clamp(Number(attendanceFallbackShare), 0, 1)
+    : null;
   const fallbackPenalty = Number.isFinite(attendanceFallbackShare)
     ? clamp(
       Number(attendanceFallbackShare) * AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX,
@@ -157,13 +175,45 @@ const resolveAtReliabilityPercent = ({
     setupShare,
     observationCount,
   });
-  return Math.round(
-    clamp(
-      observationScore + versionScore + trainedScore - fallbackPenalty - lowSensitivityPenalty,
-      0,
-      100
-    )
+  const rawScore = clamp(
+    observationScore + versionScore + trainedScore - fallbackPenalty - lowSensitivityPenalty,
+    0,
+    AT_RELIABILITY_RAW_SCORE_MAX
   );
+  let percent = Math.round(clamp((rawScore / AT_RELIABILITY_RAW_SCORE_MAX) * 100, 0, 100));
+
+  if (
+    !hasTrainedPeriod ||
+    normalizedObservationCount < AT_RELIABILITY_MIN_OBSERVATION_COUNT_MEANINGFUL ||
+    normalizedFallbackShare === null ||
+    normalizedFallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_MEANINGFUL
+  ) {
+    return Math.min(percent, AT_RELIABILITY_MEANINGFUL_PERCENT_THRESHOLD - 1);
+  }
+
+  if (
+    normalizedObservationCount < AT_RELIABILITY_MIN_OBSERVATION_COUNT_USABLE ||
+    normalizedFallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_USABLE
+  ) {
+    return Math.min(percent, AT_RELIABILITY_USABLE_PERCENT_THRESHOLD - 1);
+  }
+
+  if (
+    normalizedObservationCount < AT_RELIABILITY_MIN_OBSERVATION_COUNT_TRUSTED ||
+    normalizedFallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_TRUSTED
+  ) {
+    return Math.min(percent, AT_RELIABILITY_TRUSTED_PERCENT_THRESHOLD - 1);
+  }
+
+  if (
+    normalizedObservationCount < AT_RELIABILITY_MIN_OBSERVATION_COUNT_VERIFIED ||
+    normalizedFallbackShare > AT_RELIABILITY_MAX_FALLBACK_SHARE_VERIFIED ||
+    resolveVersionScore(version) <= 0
+  ) {
+    return Math.min(percent, AT_RELIABILITY_VERIFIED_PERCENT_THRESHOLD - 1);
+  }
+
+  return percent;
 };
 
 const toAtReliabilityResult = (status, options = {}) => {
@@ -215,16 +265,19 @@ export const resolveAtReliabilityStatusFromPercent = (percentValue) => {
   if (!Number.isFinite(percent) || percent <= 0) {
     return AT_RELIABILITY_STATUS.COLLECTING;
   }
-  if (percent <= AT_RELIABILITY_FALLBACK_PERCENT_THRESHOLD) {
-    return AT_RELIABILITY_STATUS.FALLBACK;
+  if (percent < AT_RELIABILITY_MEANINGFUL_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.UNRELIABLE;
   }
-  if (percent < AT_RELIABILITY_LOW_SENSITIVITY_PERCENT_THRESHOLD) {
-    return AT_RELIABILITY_STATUS.LOW_SENSITIVITY;
+  if (percent < AT_RELIABILITY_USABLE_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.INSUFFICIENT;
   }
-  if (percent < AT_RELIABILITY_STABLE_PERCENT_THRESHOLD) {
-    return AT_RELIABILITY_STATUS.LEARNING;
+  if (percent < AT_RELIABILITY_TRUSTED_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.USABLE;
   }
-  return AT_RELIABILITY_STATUS.STABLE;
+  if (percent < AT_RELIABILITY_VERIFIED_PERCENT_THRESHOLD) {
+    return AT_RELIABILITY_STATUS.TRUSTED;
+  }
+  return AT_RELIABILITY_STATUS.VERIFIED;
 };
 
 export const aggregateAtReliability = (entries = []) => {

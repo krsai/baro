@@ -60,6 +60,7 @@ const CALENDAR_CT_STATUS_META = {
   AGREED:   { cardBg: '#C8DFF7', labelColor: '#3674B4', borderColor: 'rgba(54, 116, 180, 0.4)' },
   REJECTED: { cardBg: '#F7DCC8', labelColor: '#AC6424', borderColor: 'rgba(172, 100, 36, 0.35)' },
 };
+const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const resolveCtStatusChipSx = (status) => {
   const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.PENDING;
   return {
@@ -235,10 +236,11 @@ const toOptionalPositiveNumber = (value) => {
 };
 const AT_RELIABILITY_COLOR = {
   [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
-  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
-  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
-  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
-  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+  [AT_RELIABILITY_STATUS.UNRELIABLE]: 'error',
+  [AT_RELIABILITY_STATUS.INSUFFICIENT]: 'warning',
+  [AT_RELIABILITY_STATUS.USABLE]: 'info',
+  [AT_RELIABILITY_STATUS.TRUSTED]: 'success',
+  [AT_RELIABILITY_STATUS.VERIFIED]: 'primary',
 };
 const AT_RELIABILITY_CHIP_SX = {
   height: 18,
@@ -272,10 +274,7 @@ const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
 };
 const resolveProcessPtInfo = (process, orderQuantity = 1) => {
   const ptSeconds = toOptionalPositiveNumber(process?.pt);
-  const referenceQuantity = toPositiveInt(
-    process?.timeRefQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
+  const referenceQuantity = DEFAULT_TIME_REF_QUANTITY;
   return {
     seconds: ptSeconds,
     referenceQuantity,
@@ -2789,7 +2788,7 @@ const ProductionPlanBoard = () => {
                           <TableRow>
                             <TableCell align="right">#</TableCell>
                             <TableCell>공정</TableCell>
-                            <TableCell align="right">{`PT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`제안 CT(${selectedQuantityLabel})`}</TableCell>

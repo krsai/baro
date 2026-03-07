@@ -1,4 +1,4 @@
-import { buildQueryString, requestJSON } from './apiClient';
+import { buildQueryString, getRequestContext, requestJSON } from './apiClient';
 
 const ATTRIBUTE_CACHE_TTL_MS = 30 * 1000;
 const attributesCache = new Map();
@@ -8,6 +8,11 @@ const normalizeArray = (value) => (Array.isArray(value) ? value : []);
 const toPositiveOrgId = (value) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const getEffectiveAttributeOrgId = (value) => {
+  const explicitOrgId = toPositiveOrgId(value);
+  if (explicitOrgId !== null) return explicitOrgId;
+  return toPositiveOrgId(getRequestContext().orgId);
 };
 const normalizePayType = (value) => {
   const normalized = String(value ?? '').trim().toUpperCase();
@@ -119,12 +124,12 @@ const writeAttributesCache = (cacheKey, data) => {
 };
 
 export const fetchAttributes = async (options = {}) => {
-  const orgId = toPositiveOrgId(options?.orgId);
-  const hasOrgFilter = orgId !== null;
+  const orgId = getEffectiveAttributeOrgId(options?.orgId);
+  const hasOrgScope = orgId !== null;
   const forceRefresh = Boolean(options?.forceRefresh);
   const skipGlobalLoading = Boolean(options?.skipGlobalLoading);
   const requestScheduler = options?.requestScheduler ?? null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const schedulerGroupId = String(requestScheduler?.groupId ?? '').trim();
   const schedulerScopeId = String(requestScheduler?.scopeId ?? '').trim();
   const inFlightKey =
@@ -142,7 +147,7 @@ export const fetchAttributes = async (options = {}) => {
   const requestPromise = (async () => {
     const data = await requestJSON(
       `/attributes${buildQueryString({
-        orgId: hasOrgFilter ? orgId : undefined,
+        orgId: hasOrgScope ? orgId : undefined,
       })}`,
       { skipGlobalLoading, requestScheduler }
     );
@@ -160,13 +165,13 @@ export const fetchAttributes = async (options = {}) => {
 };
 
 export const updateAttributes = async (payload, options = {}) => {
-  const orgId = toPositiveOrgId(options?.orgId);
-  const hasOrgFilter = orgId !== null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+  const orgId = getEffectiveAttributeOrgId(options?.orgId);
+  const hasOrgScope = orgId !== null;
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const body = normalizeAttributePayload(payload);
   const data = await requestJSON(
     `/attributes${buildQueryString({
-      orgId: hasOrgFilter ? orgId : undefined,
+      orgId: hasOrgScope ? orgId : undefined,
     })}`,
     {
       method: 'PUT',
@@ -190,16 +195,16 @@ export const updateAttributes = async (payload, options = {}) => {
 };
 
 export const createColorAttribute = async (payload, options = {}) => {
-  const orgId = toPositiveOrgId(options?.orgId);
-  const hasOrgFilter = orgId !== null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgFilter);
+  const orgId = getEffectiveAttributeOrgId(options?.orgId);
+  const hasOrgScope = orgId !== null;
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const body = {
     code: String(payload?.code ?? '').trim(),
     name: String(payload?.name ?? '').trim(),
   };
   const data = await requestJSON(
     `/attributes/colors${buildQueryString({
-      orgId: hasOrgFilter ? orgId : undefined,
+      orgId: hasOrgScope ? orgId : undefined,
     })}`,
     {
       method: 'POST',

@@ -100,6 +100,7 @@ const resolveCtUnitCost = (seconds, wagePerSecond) => {
 };
 const formatCurrencyDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
+const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const formatSecondsLabel = (value, fallback = '-') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -112,10 +113,11 @@ const formatDaysLabel = (value, fallback = '-') => {
 };
 const AT_RELIABILITY_COLOR = {
   [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
-  [AT_RELIABILITY_STATUS.FALLBACK]: 'warning',
-  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]: 'warning',
-  [AT_RELIABILITY_STATUS.LEARNING]: 'info',
-  [AT_RELIABILITY_STATUS.STABLE]: 'success',
+  [AT_RELIABILITY_STATUS.UNRELIABLE]: 'error',
+  [AT_RELIABILITY_STATUS.INSUFFICIENT]: 'warning',
+  [AT_RELIABILITY_STATUS.USABLE]: 'info',
+  [AT_RELIABILITY_STATUS.TRUSTED]: 'success',
+  [AT_RELIABILITY_STATUS.VERIFIED]: 'primary',
 };
 const AT_RELIABILITY_CHIP_SX = {
   height: 18,
@@ -153,10 +155,7 @@ const CT_STATUS_LABEL = {
 };
 const resolveProcessPtInfo = (process, orderQuantity = 1) => {
   const ptSeconds = toOptionalPositiveNumber(process?.pt);
-  const referenceQuantity = toPositiveInt(
-    process?.timeRefQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
+  const referenceQuantity = DEFAULT_TIME_REF_QUANTITY;
   return {
     seconds: ptSeconds,
     referenceQuantity,
@@ -5055,7 +5054,7 @@ const AssignBoard = () => {
                           <TableRow>
                             <TableCell align="right">#</TableCell>
                             <TableCell>공정</TableCell>
-                            <TableCell align="right">{`PT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`제안 CT(${detailQuantityLabel})`}</TableCell>

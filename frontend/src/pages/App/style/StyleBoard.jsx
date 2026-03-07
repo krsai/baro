@@ -17,6 +17,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Tooltip,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../../../context/AppContext';
@@ -40,24 +41,42 @@ import {
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
+import {
+  TIME_DIVERGENCE_SEVERITY,
+  calculateDivergencePercent,
+  formatDivergencePercentLabel,
+  resolveDivergenceMeta,
+} from '../../../utils/timeDivergence';
 
 // 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
 const AT_RELIABILITY_PALETTE = {
   [AT_RELIABILITY_STATUS.COLLECTING]:     { bg: '#EBEBF0', text: '#747484' },
-  [AT_RELIABILITY_STATUS.FALLBACK]:       { bg: '#F7DCC8', text: '#AC6424' },
-  [AT_RELIABILITY_STATUS.LOW_SENSITIVITY]:{ bg: '#F7DCC8', text: '#AC6424' },
-  [AT_RELIABILITY_STATUS.LEARNING]:       { bg: '#BFEAD0', text: '#268444' },
-  [AT_RELIABILITY_STATUS.STABLE]:         { bg: '#C8DFF7', text: '#3674B4' },
+  [AT_RELIABILITY_STATUS.UNRELIABLE]:     { bg: '#F5D0D5', text: '#B42318' },
+  [AT_RELIABILITY_STATUS.INSUFFICIENT]:   { bg: '#F7DCC8', text: '#AC6424' },
+  [AT_RELIABILITY_STATUS.USABLE]:         { bg: '#F5E7B2', text: '#8A6100' },
+  [AT_RELIABILITY_STATUS.TRUSTED]:        { bg: '#BFEAD0', text: '#268444' },
+  [AT_RELIABILITY_STATUS.VERIFIED]:       { bg: '#C8DFF7', text: '#3674B4' },
 };
 const AT_RELIABILITY_CHIP_SX = {
   height: 18,
   '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1 },
+};
+const ST_AT_GAP_PALETTE = {
+  [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#DCEAF8', text: '#245A95' },
+  [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F7DCC8', text: '#AC6424' },
+  [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#F5D0D5', text: '#B42318' },
+};
+const ST_AT_GAP_CHIP_SX = {
+  height: 18,
+  '& .MuiChip-label': { px: 0.75, fontSize: '0.65rem', lineHeight: 1.1, fontWeight: 700 },
 };
 const formatAtReliabilityLabel = (reliability) => {
   const percent = Number(reliability?.percent);
   if (!Number.isFinite(percent)) return '0%';
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
 };
+const resolveStAtGapPalette = (meta) =>
+  ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -219,21 +238,29 @@ const StyleBoard = () => {
           (process) =>
             resolveProcessStPerPieceSeconds(process, DEFAULT_TIME_REF_QUANTITY) != null
         );
+        const hasTotalPT = hasAnyProcessTime(processes, 'pt');
+        const hasTotalAT = hasAnyProcessTime(processes, 'at');
         const stPerPieceCost =
           hasTotalST && factoryWagePerSecond != null
             ? totalST * factoryWagePerSecond
             : null;
         const styleAtReliability = resolveStyleAtReliability(processes);
+        const stGapPercent =
+          hasTotalAT && hasTotalST
+            ? calculateDivergencePercent(totalAT, totalST)
+            : null;
         return {
           ...style,
           totalPT,
           totalAT,
           totalST,
           stPerPieceCost,
-          hasTotalPT: hasAnyProcessTime(processes, 'pt'),
-          hasTotalAT: hasAnyProcessTime(processes, 'at'),
+          hasTotalPT,
+          hasTotalAT,
           hasTotalST,
           styleAtReliability,
+          stGapPercent,
+          stGapMeta: resolveDivergenceMeta(stGapPercent),
         };
       }),
     [canViewProcessSummary, factoryWagePerSecond, filteredStyles]
@@ -311,7 +338,30 @@ const StyleBoard = () => {
                     </TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
-                    <TableCell>{style.hasTotalST ? formatSeconds(style.totalST) : '-'}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                        {style.hasTotalST ? formatSeconds(style.totalST) : '-'}
+                        {style.hasTotalAT && style.hasTotalST && style.stGapPercent != null && (
+                          <Tooltip
+                            title={
+                              style.stGapMeta?.needsReview
+                                ? `AT와 ST 차이가 ${formatDivergencePercentLabel(style.stGapPercent)}로 커서 ST 조정 검토가 필요합니다.`
+                                : `AT와 ST 차이율 ${formatDivergencePercentLabel(style.stGapPercent)}`
+                            }
+                          >
+                            <Chip
+                              size="small"
+                              label={formatDivergencePercentLabel(style.stGapPercent)}
+                              sx={{
+                                ...ST_AT_GAP_CHIP_SX,
+                                backgroundColor: resolveStAtGapPalette(style.stGapMeta).bg,
+                                color: resolveStAtGapPalette(style.stGapMeta).text,
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
+                    </TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
                     <TableCell>

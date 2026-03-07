@@ -38,6 +38,22 @@ type RequireOrgRoleOptions = OrganizationAccessOptions & {
   allowSystemAdmin?: boolean;
 };
 
+const ORG_ACCESS_CACHE_TTL_MS = 5_000;
+const MAX_ORG_ACCESS_CACHE_SIZE = 512;
+const organizationAccessCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    value: any;
+  }
+>();
+const organizationAccessInFlight = new Map<string, Promise<any>>();
+const requestOrganizationAccessCacheKey = Symbol("requestOrganizationAccessCache");
+
+type RequestWithOrganizationAccessCache = Request & {
+  [requestOrganizationAccessCacheKey]?: Map<string, any>;
+};
+
 const isBaroOrganization = (organization: any) => {
   const normalizedName =
     typeof organization?.name === "string"
@@ -52,6 +68,53 @@ const isBaroOrganization = (organization: any) => {
 
 export const getHardCodedSystemAdminEmail = () =>
   normalizeEmail(process.env.SYSTEM_ADMIN_EMAIL || "krsailer82@gmail.com");
+
+const getRequestOrganizationAccessCache = (req: Request) => {
+  const typedRequest = req as RequestWithOrganizationAccessCache;
+  if (!typedRequest[requestOrganizationAccessCacheKey]) {
+    typedRequest[requestOrganizationAccessCacheKey] = new Map<string, any>();
+  }
+  return typedRequest[requestOrganizationAccessCacheKey];
+};
+
+const purgeExpiredOrganizationAccessCache = () => {
+  const now = Date.now();
+  for (const [key, entry] of organizationAccessCache.entries()) {
+    if (!entry || entry.expiresAt <= now) {
+      organizationAccessCache.delete(key);
+    }
+  }
+};
+
+const trimOrganizationAccessCache = () => {
+  purgeExpiredOrganizationAccessCache();
+  while (organizationAccessCache.size > MAX_ORG_ACCESS_CACHE_SIZE) {
+    const oldestKey = organizationAccessCache.keys().next().value;
+    if (!oldestKey) break;
+    organizationAccessCache.delete(oldestKey);
+  }
+};
+
+const buildOrganizationAccessCacheKey = (
+  rawOrgId: string,
+  requesterEmail: string,
+  options: OrganizationAccessOptions = {}
+) =>
+  [
+    `org:${rawOrgId || "auto"}`,
+    `user:${requesterEmail || "anonymous"}`,
+    `allowSuspended:${options.allowSuspended ? 1 : 0}`,
+  ].join("::");
+
+const cloneOrganizationAccessValue = (value: any) => {
+  if (!value || typeof value !== "object") return value;
+  return {
+    ...value,
+    ...(value.subscription && typeof value.subscription === "object"
+      ? { subscription: { ...value.subscription } }
+      : {}),
+  };
+};
 
 export const ensureOrganizationSubscription = async (organization: any) => {
   if (!organization) return null;
@@ -163,12 +226,11 @@ const getSystemAdminDefaultOrganization = async (
   return getPrimaryOrganization(options);
 };
 
-export const getOrganizationByQuery = async (
-  req: Request,
+const resolveOrganizationByQuery = async (
+  rawOrgId: string,
+  requesterEmail: string,
   options: OrganizationAccessOptions = {}
 ) => {
-  const rawOrgId = getRequestedOrgIdText(req);
-  const requesterEmail = getRequesterEmail(req);
   if (rawOrgId !== "") {
     if (!/^\d+$/.test(rawOrgId)) {
       throw createHttpError(400, "invalid orgId");
@@ -232,6 +294,50 @@ export const getOrganizationByQuery = async (
   }
 
   return getPrimaryOrganization(options);
+};
+
+export const getOrganizationByQuery = async (
+  req: Request,
+  options: OrganizationAccessOptions = {}
+) => {
+  const rawOrgId = getRequestedOrgIdText(req);
+  const requesterEmail = getRequesterEmail(req);
+  const cacheKey = buildOrganizationAccessCacheKey(rawOrgId, requesterEmail, options);
+  const requestCache = getRequestOrganizationAccessCache(req);
+
+  if (requestCache.has(cacheKey)) {
+    return cloneOrganizationAccessValue(requestCache.get(cacheKey));
+  }
+
+  purgeExpiredOrganizationAccessCache();
+  const cached = organizationAccessCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    requestCache.set(cacheKey, cached.value);
+    return cloneOrganizationAccessValue(cached.value);
+  }
+
+  let inFlight = organizationAccessInFlight.get(cacheKey);
+  if (!inFlight) {
+    inFlight = resolveOrganizationByQuery(rawOrgId, requesterEmail, options).then((value) => {
+      organizationAccessCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + ORG_ACCESS_CACHE_TTL_MS,
+      });
+      trimOrganizationAccessCache();
+      return value;
+    });
+    organizationAccessInFlight.set(cacheKey, inFlight);
+  }
+
+  try {
+    const value = await inFlight;
+    requestCache.set(cacheKey, value);
+    return cloneOrganizationAccessValue(value);
+  } finally {
+    if (organizationAccessInFlight.get(cacheKey) === inFlight) {
+      organizationAccessInFlight.delete(cacheKey);
+    }
+  }
 };
 
 export const getRequestAccessContext = async (
