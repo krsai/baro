@@ -55,11 +55,14 @@ const STATUS_META = {
   REJECTED: { label: '요청', color: 'warning' },
 };
 const CALENDAR_CT_STATUS_META = {
-  PENDING:  { cardBg: '#EBEBF0', labelColor: '#747484', borderColor: 'rgba(116, 116, 132, 0.35)' },
-  SENT:     { cardBg: '#BFEAD0', labelColor: '#268444', borderColor: 'rgba(38, 132, 68, 0.35)' },
-  AGREED:   { cardBg: '#C8DFF7', labelColor: '#3674B4', borderColor: 'rgba(54, 116, 180, 0.4)' },
-  REJECTED: { cardBg: '#F7DCC8', labelColor: '#AC6424', borderColor: 'rgba(172, 100, 36, 0.35)' },
+  PENDING:  { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
+  SENT:     { cardBg: '#BFEAD0', labelColor: '#3A9858', borderColor: 'rgba(58, 152, 88, 0.35)' },
+  AGREED:   { cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8', borderColor: 'rgba(74, 136, 200, 0.4)' },
+  REJECTED: { cardBg: '#F7DCC8', labelColor: '#C07838', borderColor: 'rgba(192, 120, 56, 0.35)' },
 };
+const CALENDAR_BAR_HEIGHT = 64;
+const CALENDAR_BAR_GAP = 6;
+const CALENDAR_LANE_EPSILON = 1e-4;
 const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const resolveCtStatusChipSx = (status) => {
   const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.PENDING;
@@ -411,6 +414,383 @@ const buildMonthlyCalendarDays = (monthDate) => {
   return days;
 };
 
+const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
+  const topLeft = isClippedLeft ? 0 : 8;
+  const topRight = isClippedRight ? 0 : 8;
+  const bottomRight = isClippedRight ? 0 : 8;
+  const bottomLeft = isClippedLeft ? 0 : 8;
+  return `${topLeft}px ${topRight}px ${bottomRight}px ${bottomLeft}px`;
+};
+
+const diffCalendarDays = (targetDate, baseDate) => {
+  if (!(targetDate instanceof Date) || Number.isNaN(targetDate.getTime())) return 0;
+  if (!(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) return 0;
+  const targetUtc = Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const baseUtc = Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  return Math.round((targetUtc - baseUtc) / (24 * 60 * 60 * 1000));
+};
+
+const resolveBarPercentUnit = (value, fallbackPercent = 100) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallbackPercent / 100;
+  return parsed / 100;
+};
+
+const buildCalendarAssignmentRange = (assignment, baseDate, weekStartDate) => {
+  const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
+  if (!bounds) return null;
+
+  const startOffset = resolveBarPercentUnit(assignment?.startDayOffsetPercent, 0);
+  const startPercent = resolveBarPercentUnit(assignment?.startDayPercent, 100);
+  const endPercent = resolveBarPercentUnit(assignment?.endDayPercent, 100);
+  const startDayIndex = diffCalendarDays(bounds.startDate, weekStartDate);
+  const endDayIndex = diffCalendarDays(bounds.endDate, weekStartDate);
+
+  if (bounds.startKey === bounds.endKey) {
+    const start = startDayIndex + startOffset;
+    return {
+      bounds,
+      start,
+      end: start + startPercent,
+    };
+  }
+
+  const fullDays = Math.max(endDayIndex - startDayIndex - 1, 0);
+  const start = startDayIndex + startOffset;
+  return {
+    bounds,
+    start,
+    end: start + startPercent + fullDays + endPercent,
+  };
+};
+
+const assignCalendarLanes = (items) => {
+  const laneEndByIndex = [];
+  return items.map((item) => {
+    let laneIndex = 0;
+    while (laneIndex < laneEndByIndex.length) {
+      if (item.startUnit >= laneEndByIndex[laneIndex] - CALENDAR_LANE_EPSILON) break;
+      laneIndex += 1;
+    }
+    laneEndByIndex[laneIndex] = item.endUnit;
+    return {
+      ...item,
+      laneIndex,
+    };
+  });
+};
+
+const CalendarAssignmentBar = ({
+  assignment,
+  startUnit,
+  endUnit,
+  laneIndex,
+  statusMeta,
+  isSelected,
+  isClippedLeft,
+  isClippedRight,
+  onClick,
+}) => {
+  const ctStatus = normalizeCtStatus(assignment?.status ?? assignment?.ctStatus);
+  const ctLabel = STATUS_META[ctStatus]?.label || STATUS_META.PENDING.label;
+  const previewUrl =
+    assignment?.previewUrl ||
+    assignment?.imageUrl ||
+    assignment?.thumbnailUrl ||
+    '';
+  const progressPercent = ctStatus === 'AGREED'
+    ? Math.min(100, Math.max(0, Number(assignment?.progress?.progressPercent) || 0))
+    : 0;
+  const spanUnits = Math.max(0, endUnit - startUnit);
+  const isCompact = spanUnits < 0.95;
+  const isNarrow = spanUnits < 1.32;
+  const hideMetaBadges = spanUnits < 1.56;
+  const hideSecondary = spanUnits < 0.8;
+  const widthPct = ((spanUnits / 7) * 100).toFixed(4);
+  const leftPct = ((startUnit / 7) * 100).toFixed(4);
+  const lineName = assignment?.line?.name || `라인 ${assignment?.lineId || '-'}`;
+  const orderNo =
+    assignment?.orderNo ||
+    assignment?.orderNumber ||
+    assignment?.card?.orderNo ||
+    assignment?.card?.orderNumber ||
+    '';
+  const customer =
+    assignment?.customer ||
+    assignment?.customerName ||
+    assignment?.card?.customer ||
+    assignment?.card?.customerName ||
+    '-';
+  const quantityLabel = assignment?.quantity != null
+    ? `수량 ${formatNumberWithCommas(assignment.quantity, {
+        fallback: '0',
+        maximumFractionDigits: 0,
+      })}`
+    : '';
+  const line1 = orderNo ? `${customer} · ${orderNo}` : customer || lineName;
+  const line2 = [
+    assignment?.label || '-',
+    assignment?.colorName || '',
+    assignment?.gender || '',
+    quantityLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const durationLabel = formatDaysLabel(assignment?.workingDays, '');
+
+  return (
+    <Box
+      onClick={onClick}
+      title={[lineName, line1, line2].filter(Boolean).join(' | ')}
+      sx={{
+        position: 'absolute',
+        top: CALENDAR_BAR_GAP + laneIndex * (CALENDAR_BAR_HEIGHT + CALENDAR_BAR_GAP),
+        left: `${leftPct}%`,
+        width: widthPct === '0.0000' ? '0' : `${widthPct}%`,
+        height: CALENDAR_BAR_HEIGHT,
+        boxSizing: 'border-box',
+        borderRadius: getClipBorderRadius(isClippedLeft, isClippedRight),
+        backgroundColor: statusMeta.cardBg,
+        color: '#1f2a3a',
+        border: '1px solid',
+        borderColor: isSelected ? statusMeta.labelColor : statusMeta.borderColor,
+        borderLeft: isClippedLeft
+          ? '2px dashed rgba(0,0,0,0.22)'
+          : `1px solid ${isSelected ? statusMeta.labelColor : statusMeta.borderColor}`,
+        borderRight: isClippedRight
+          ? '2px dashed rgba(0,0,0,0.22)'
+          : `1px solid ${isSelected ? statusMeta.labelColor : statusMeta.borderColor}`,
+        boxShadow: isSelected
+          ? `inset 0 0 0 1px ${statusMeta.labelColor}, 0 2px 6px rgba(0,0,0,0.12)`
+          : '0 1px 4px rgba(0,0,0,0.10)',
+        px: isNarrow ? 1 : 1.5,
+        pl: isClippedLeft ? 2.5 : isNarrow ? 1 : 1.5,
+        pr: isClippedRight ? 2.5 : isNarrow ? 1 : 6,
+        display: 'flex',
+        alignItems: 'center',
+        gap: isNarrow ? 1 : 1.5,
+        overflow: 'visible',
+        cursor: 'pointer',
+        zIndex: isSelected ? 3 : 2,
+        '&:hover': {
+          opacity: 0.9,
+          zIndex: 4,
+        },
+      }}
+    >
+      {ctStatus === 'AGREED' && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: getClipBorderRadius(isClippedLeft, isClippedRight),
+            overflow: 'hidden',
+            pointerEvents: 'none',
+            zIndex: 0,
+          }}
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${progressPercent}%`,
+              height: '100%',
+              backgroundColor: statusMeta.progressBg || 'transparent',
+              transition: 'width 0.35s ease',
+            }}
+          />
+        </Box>
+      )}
+
+      {isClippedLeft && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: '0 auto 0 0',
+            width: 20,
+            background: `repeating-linear-gradient(
+              45deg,
+              transparent,
+              transparent 3px,
+              rgba(0,0,0,0.10) 3px,
+              rgba(0,0,0,0.10) 5px
+            )`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <Typography sx={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', lineHeight: 1 }}>
+            {'<<'}
+          </Typography>
+        </Box>
+      )}
+
+      {isClippedRight && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: '0 0 0 auto',
+            width: 20,
+            background: `repeating-linear-gradient(
+              -45deg,
+              transparent,
+              transparent 3px,
+              rgba(0,0,0,0.10) 3px,
+              rgba(0,0,0,0.10) 5px
+            )`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
+          <Typography sx={{ fontSize: 10, fontWeight: 700, color: 'rgba(0,0,0,0.4)', lineHeight: 1 }}>
+            {'>>'}
+          </Typography>
+        </Box>
+      )}
+
+      {previewUrl ? (
+        <Box
+          component="img"
+          src={previewUrl}
+          alt={assignment?.label || '작업'}
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            width: isNarrow ? 28 : 40,
+            height: isNarrow ? 28 : 40,
+            borderRadius: 1,
+            objectFit: 'cover',
+            border: '1px solid rgba(0,0,0,0.08)',
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <Box
+          sx={{
+            position: 'relative',
+            zIndex: 1,
+            width: isNarrow ? 28 : 40,
+            height: isNarrow ? 28 : 40,
+            borderRadius: 1,
+            border: '1px dashed rgba(0,0,0,0.18)',
+            backgroundColor: 'rgba(255,255,255,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            color: 'rgba(0,0,0,0.3)',
+            fontSize: isNarrow ? 7 : 8,
+            textAlign: 'center',
+            lineHeight: 1.2,
+            whiteSpace: 'pre',
+            px: 0.2,
+          }}
+        >
+          이미지{'\n'}없음
+        </Box>
+      )}
+
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minWidth: 0,
+          overflow: 'hidden',
+          width: '100%',
+          flex: 1,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            color: '#1f2a3a',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            lineHeight: 1.4,
+            fontSize: isNarrow ? 11 : 13,
+          }}
+        >
+          {isCompact ? (customer || lineName) : line1}
+        </Typography>
+        {!hideSecondary && (
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'rgba(31,42,58,0.78)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: 1.4,
+              fontSize: isNarrow ? 10 : 12,
+            }}
+          >
+            {isCompact ? (assignment?.label || lineName) : line2}
+          </Typography>
+        )}
+      </Box>
+
+      {!hideMetaBadges && durationLabel ? (
+        <Box
+          sx={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            zIndex: 1,
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            fontSize: 11,
+            fontWeight: 700,
+            color: '#364152',
+            maxWidth: '50%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {durationLabel}
+        </Box>
+      ) : null}
+
+      {!hideMetaBadges && (
+        <Box
+          sx={{
+            position: 'absolute',
+            right: 8,
+            bottom: 8,
+            zIndex: 1,
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.7)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: statusMeta.labelColor,
+            maxWidth: '60%',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {ctLabel}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 const isNonWorkingDate = (date, holidaySet) => {
   if (!date) return false;
   if (date.getDay() === 0) return true;
@@ -562,6 +942,20 @@ const ProductionPlanBoard = () => {
           style,
           line,
           factory,
+          previewUrl:
+            card?.previewUrl ||
+            card?.imageUrl ||
+            card?.thumbnailUrl ||
+            (Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : ''),
+          imageUrl:
+            card?.imageUrl ||
+            card?.previewUrl ||
+            (Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : ''),
+          thumbnailUrl:
+            card?.thumbnailUrl ||
+            card?.imageUrl ||
+            card?.previewUrl ||
+            (Array.isArray(style?.imageUrls) && style.imageUrls.length > 0 ? style.imageUrls[0] : ''),
           headcount,
           lineDailyCapacitySeconds,
           status,
@@ -619,6 +1013,23 @@ const ProductionPlanBoard = () => {
     [assignmentsForView]
   );
 
+  const workStatusSummary = useMemo(
+    () =>
+      assignmentsForView.reduce(
+        (acc, assignment) => {
+          if (normalizeCtStatus(assignment?.status) !== 'AGREED') {
+            acc.notReady += 1;
+            return acc;
+          }
+          if (assignment?.isCompleted) acc.completed += 1;
+          else acc.inProgress += 1;
+          return acc;
+        },
+        { notReady: 0, inProgress: 0, completed: 0 }
+      ),
+    [assignmentsForView]
+  );
+
   const actionableAssignments = useMemo(
     () =>
       assignmentsForView.filter(
@@ -633,10 +1044,20 @@ const ProductionPlanBoard = () => {
     [assignmentsForView, isLineLeaderView]
   );
 
-  const agreedAssignments = useMemo(
-    () => assignmentsForView.filter((assignment) => normalizeCtStatus(assignment?.status) === 'AGREED'),
-    [assignmentsForView]
-  );
+  const reviewAssignments = useMemo(() => {
+    const nextAssignments = [...assignmentsForView];
+    nextAssignments.sort((left, right) => {
+      const leftStatus = normalizeCtStatus(left?.status);
+      const rightStatus = normalizeCtStatus(right?.status);
+      const leftIsAgreed = leftStatus === 'AGREED';
+      const rightIsAgreed = rightStatus === 'AGREED';
+      if (leftIsAgreed !== rightIsAgreed) {
+        return leftIsAgreed ? 1 : -1;
+      }
+      return 0;
+    });
+    return nextAssignments;
+  }, [assignmentsForView]);
 
   const deltaCards = useMemo(
     () => (Array.isArray(cards) ? cards : []).filter((card) => card?.type === 'DELTA'),
@@ -740,50 +1161,51 @@ const ProductionPlanBoard = () => {
 
   const calendarBarData = useMemo(() => {
     return weekRows.map((weekDays) => {
-      const weekDayKeys = weekDays.map((d) => buildDateKey(d));
-      const weekStartKey = weekDayKeys[0];
-      const weekEndKey = weekDayKeys[6];
+      const weekStartDate = weekDays[0];
+      const weekItems = assignmentsForView
+        .map((assignment) => {
+          const range = buildCalendarAssignmentRange(assignment, baseDate, weekStartDate);
+          if (!range) return null;
 
-      // Collect assignments for this week with their col spans
-      const weekItems = [];
-      assignmentsForView.forEach((assignment) => {
-        const bounds = resolveAssignmentScheduleBounds(assignment, baseDate);
-        if (!bounds) return;
-        if (bounds.endKey < weekStartKey || bounds.startKey > weekEndKey) return;
+          const startUnit = Math.max(0, range.start);
+          const endUnit = Math.min(7, range.end);
+          if (endUnit - startUnit <= CALENDAR_LANE_EPSILON) return null;
 
-        const rawStartCol = weekDayKeys.findIndex((k) => k >= bounds.startKey);
-        const startCol = Math.max(0, rawStartCol === -1 ? 0 : rawStartCol);
-        let endCol = 6;
-        for (let i = 6; i >= 0; i -= 1) {
-          if (weekDayKeys[i] <= bounds.endKey) { endCol = i; break; }
-        }
-        weekItems.push({ assignment, startCol, endCol: Math.min(6, endCol) });
-      });
+          return {
+            assignment,
+            startUnit,
+            endUnit,
+            isClippedLeft: range.start < 0,
+            isClippedRight: range.end > 7,
+          };
+        })
+        .filter(Boolean);
 
-      // Sort for consistent slot ordering
-      weekItems.sort((a, b) => a.startCol - b.startCol || a.assignment.id - b.assignment.id);
+      weekItems.sort((left, right) =>
+        left.startUnit - right.startUnit ||
+        right.endUnit - left.endUnit ||
+        String(left.assignment?.id || '').localeCompare(String(right.assignment?.id || ''), undefined, { numeric: true })
+      );
 
-      // Build per-day occupancy: col -> [assignment, ...]
-      const dayOccupancy = Array.from({ length: 7 }, () => []);
-      weekItems.forEach(({ assignment, startCol, endCol }) => {
-        for (let col = startCol; col <= endCol; col++) {
-          dayOccupancy[col].push(assignment);
-        }
-      });
+      const segments = assignCalendarLanes(weekItems);
 
-      // Emit one segment per (assignment × day)
-      const segments = [];
-      weekItems.forEach(({ assignment, startCol, endCol }) => {
-        for (let col = startCol; col <= endCol; col++) {
-          const slotIndex = dayOccupancy[col].indexOf(assignment);
-          const totalSlots = dayOccupancy[col].length;
-          segments.push({ assignment, col, slotIndex, totalSlots, isWeekFirst: col === startCol, isWeekLast: col === endCol });
-        }
-      });
-
-      return { weekDays, segments };
+      return {
+        weekDays,
+        segments,
+        laneCount: Math.max(1, segments.reduce((maxLane, item) => Math.max(maxLane, item.laneIndex + 1), 1)),
+      };
     });
   }, [weekRows, assignmentsForView, baseDate]);
+
+  const calendarLegend = useMemo(
+    () => [
+      { label: '대기', status: 'PENDING' },
+      { label: '제안', status: 'SENT' },
+      { label: '요청', status: 'REJECTED' },
+      { label: '확정', status: 'AGREED' },
+    ],
+    []
+  );
 
   useEffect(() => {
     if (assignmentsForView.length === 0) {
@@ -1422,12 +1844,12 @@ const ProductionPlanBoard = () => {
       }
 
       showNotification(
-        isCompleted ? '작업이 미완료 상태로 전환되었습니다.' : '작업이 완료 상태로 전환되었습니다.',
+        isCompleted ? '작업이 진행 상태로 전환되었습니다.' : '작업이 완료 상태로 전환되었습니다.',
         'success'
       );
     } catch (error) {
       showNotification(
-        resolveBoardSaveErrorMessage(error, '작업 완료 상태 변경에 실패했습니다.'),
+        resolveBoardSaveErrorMessage(error, '작업 상태 변경에 실패했습니다.'),
         'error'
       );
     } finally {
@@ -1917,7 +2339,7 @@ const ProductionPlanBoard = () => {
           <Box>
             <Typography variant="h6">작업 계획 협의</Typography>
             <Typography variant="body2" color="text.secondary">
-              라인 배정 작업의 ST/제안 CT를 확인하고 요청 CT를 등록하거나 동의를 처리합니다.
+              CT 상태와 작업 상태를 한 목록에서 함께 확인하고 요청 CT 등록, 동의, 진행/완료 전환을 처리합니다.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
@@ -1925,6 +2347,8 @@ const ProductionPlanBoard = () => {
             <Chip label={`제안 ${statusSummary.sent}`} variant="outlined" sx={resolveCtStatusChipSx('SENT')} />
             <Chip label={`요청 ${statusSummary.rejected}`} variant="outlined" sx={resolveCtStatusChipSx('REJECTED')} />
             <Chip label={`확정 ${statusSummary.agreed}`} variant="outlined" sx={resolveCtStatusChipSx('AGREED')} />
+            <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
+            <Chip label={`완료 ${workStatusSummary.completed}`} color="success" variant="outlined" />
           </Stack>
         </Box>
       }
@@ -1942,34 +2366,43 @@ const ProductionPlanBoard = () => {
                   borderBottom: '1px solid',
                   borderColor: 'divider',
                   bgcolor: 'grey.50',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
                 }}
               >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  제안/요청 목록
+                  작업 계획 목록
                 </Typography>
+                <Chip size="small" label={`${reviewAssignments.length}건`} variant="outlined" />
               </Box>
               <TableContainer sx={{ maxHeight: 420 }}>
                 <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>상태</TableCell>
+                    <TableCell>CT 상태</TableCell>
                     <TableCell>라인</TableCell>
                     <TableCell>고객</TableCell>
                     <TableCell>스타일</TableCell>
                     <TableCell align="right">수량</TableCell>
                     <TableCell align="right">예상 비용(한 벌)</TableCell>
                     <TableCell>예상 일정</TableCell>
+                    <TableCell>진행률</TableCell>
+                    <TableCell>작업 상태</TableCell>
+                    <TableCell align="center">변경</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
-                    <TableStatusRow colSpan={7} message="불러오는 중..." sx={{ py: 2 }} />
-                  ) : actionableAssignments.length === 0 ? (
-                    <TableStatusRow colSpan={7} message="검토할 배정 작업이 없습니다." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={10} message="불러오는 중..." sx={{ py: 2 }} />
+                  ) : reviewAssignments.length === 0 ? (
+                    <TableStatusRow colSpan={10} message="표시할 배정 작업이 없습니다." sx={{ py: 2 }} />
                   ) : (
-                    actionableAssignments.map((assignment) => {
+                    reviewAssignments.map((assignment) => {
                       const statusMeta = STATUS_META[assignment.status] || STATUS_META.PENDING;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
+                      const isAgreed = assignment.status === 'AGREED';
+                      const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
 
                       return (
                         <TableRow
@@ -1987,8 +2420,8 @@ const ProductionPlanBoard = () => {
                             <Chip
                               size="small"
                               label={statusMeta.label}
-                              color={statusMeta.color}
-                              variant={assignment.status === 'SENT' ? 'filled' : 'outlined'}
+                              variant="outlined"
+                              sx={resolveCtStatusChipSx(assignment.status)}
                             />
                           </TableCell>
                           <TableCell>
@@ -2027,6 +2460,89 @@ const ProductionPlanBoard = () => {
                             {assignment.perPieceCost == null ? '-' : formatCurrencyDong(assignment.perPieceCost)}
                           </TableCell>
                           <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
+                          <TableCell sx={{ minWidth: 180 }}>
+                            {assignment.progress?.progressPercent == null ? (
+                              <Typography variant="caption" color="text.secondary">
+                                기록 없음
+                              </Typography>
+                            ) : (
+                              <Stack spacing={0.5}>
+                                <Typography variant="caption" color="text.secondary">
+                                  {`${formatNumberWithCommas(
+                                    assignment.progress?.producedQuantity || 0,
+                                    { fallback: '0', maximumFractionDigits: 0 }
+                                  )} / ${
+                                    assignment.progress?.baselineQuantity != null
+                                      ? formatNumberWithCommas(assignment.progress.baselineQuantity, {
+                                          fallback: '0',
+                                          maximumFractionDigits: 0,
+                                        })
+                                      : '-'
+                                  } (${formatPercentLabel(assignment.progress.progressPercent)})`}
+                                </Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={Math.max(
+                                    0,
+                                    Math.min(100, Number(assignment.progress.progressPercent) || 0)
+                                  )}
+                                  color={
+                                    Number(assignment.progress?.overflowQuantity) > 0
+                                      ? 'error'
+                                      : Number(assignment.progress?.progressPercent) >= 100
+                                        ? 'success'
+                                        : 'primary'
+                                  }
+                                  sx={{ height: 8, borderRadius: 8 }}
+                                />
+                                {Number(assignment.progress?.overflowQuantity) > 0 && (
+                                  <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
+                                    {`초과 ${formatNumberWithCommas(
+                                      assignment.progress.overflowQuantity,
+                                      { fallback: '0', maximumFractionDigits: 0 }
+                                    )}개`}
+                                  </Typography>
+                                )}
+                              </Stack>
+                            )}
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 120 }}>
+                            {isAgreed ? (
+                              <Chip
+                                size="small"
+                                label={assignment.isCompleted ? '완료' : '진행'}
+                                color={assignment.isCompleted ? 'success' : 'default'}
+                                variant={assignment.isCompleted ? 'filled' : 'outlined'}
+                              />
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                CT 미확정
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="center" sx={{ minWidth: 104 }}>
+                            {isAgreed ? (
+                              <Button
+                                size="small"
+                                variant={assignment.isCompleted ? 'outlined' : 'contained'}
+                                color={assignment.isCompleted ? 'warning' : 'success'}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleToggleCompletion(assignment);
+                                }}
+                                disabled={Boolean(savingAssignmentId)}
+                              >
+                                {renderActionButtonLabel(
+                                  assignment.isCompleted ? '진행' : '완료',
+                                  completionBusy
+                                )}
+                              </Button>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                -
+                              </Typography>
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -2035,145 +2551,6 @@ const ProductionPlanBoard = () => {
                 </Table>
               </TableContainer>
             </Paper>
-
-            {agreedAssignments.length > 0 && (
-              <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
-                <Box
-                  sx={{
-                    px: 2,
-                    py: 1.25,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    bgcolor: 'success.50',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                  }}
-                >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    CT 확정 목록
-                  </Typography>
-                  <Chip size="small" label={`${agreedAssignments.length}건`} color="success" variant="outlined" />
-                </Box>
-                <TableContainer sx={{ maxHeight: 280 }}>
-                  <Table size="small" stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>라인</TableCell>
-                        <TableCell>고객/스타일</TableCell>
-                        <TableCell align="right">배정수량</TableCell>
-                        <TableCell>일정</TableCell>
-                        <TableCell>진행률</TableCell>
-                        <TableCell>완료 상태</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {agreedAssignments.map((assignment) => {
-                        const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
-                        return (
-                          <TableRow key={assignment.id} hover>
-                            <TableCell>
-                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                {assignment?.line?.name || ('라인 ' + assignment.lineId)}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {assignment?.factory?.name || '-'}
-                              </Typography>
-                            </TableCell>
-                            <TableCell>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {assignment.customer || '-'}
-                                </Typography>
-                                {assignment.ctOverride && (
-                                  <Chip size="small" label="CT 임시" color="warning" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
-                                )}
-                              </Box>
-                              <Typography variant="caption" color="text.secondary">
-                                {assignment.label || '-'}
-                                {assignment.colorName ? ` · ${assignment.colorName}` : ''}
-                              </Typography>
-                            </TableCell>
-                            <TableCell align="right">
-                              {formatNumberWithCommas(assignment.quantity, { fallback: '-', maximumFractionDigits: 0 })}
-                            </TableCell>
-                            <TableCell>{formatScheduleRange(baseDate, assignment)}</TableCell>
-                            <TableCell sx={{ minWidth: 180 }}>
-                              {assignment.progress?.progressPercent == null ? (
-                                <Typography variant="caption" color="text.secondary">
-                                  기록 없음
-                                </Typography>
-                              ) : (
-                                <Stack spacing={0.5}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {`${formatNumberWithCommas(
-                                      assignment.progress?.producedQuantity || 0,
-                                      { fallback: '0', maximumFractionDigits: 0 }
-                                    )} / ${
-                                      assignment.progress?.baselineQuantity != null
-                                        ? formatNumberWithCommas(assignment.progress.baselineQuantity, {
-                                            fallback: '0',
-                                            maximumFractionDigits: 0,
-                                          })
-                                        : '-'
-                                    } (${formatPercentLabel(assignment.progress.progressPercent)})`}
-                                  </Typography>
-                                  <LinearProgress
-                                    variant="determinate"
-                                    value={Math.max(
-                                      0,
-                                      Math.min(100, Number(assignment.progress.progressPercent) || 0)
-                                    )}
-                                    color={
-                                      Number(assignment.progress?.overflowQuantity) > 0
-                                        ? 'error'
-                                        : Number(assignment.progress?.progressPercent) >= 100
-                                          ? 'success'
-                                          : 'primary'
-                                    }
-                                    sx={{ height: 8, borderRadius: 8 }}
-                                  />
-                                  {Number(assignment.progress?.overflowQuantity) > 0 && (
-                                    <Typography variant="caption" color="error" sx={{ fontWeight: 600 }}>
-                                      {`초과 ${formatNumberWithCommas(
-                                        assignment.progress.overflowQuantity,
-                                        { fallback: '0', maximumFractionDigits: 0 }
-                                      )}개`}
-                                    </Typography>
-                                  )}
-                                </Stack>
-                              )}
-                            </TableCell>
-                            <TableCell sx={{ minWidth: 180 }}>
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <Chip
-                                  size="small"
-                                  label={assignment.isCompleted ? '완료' : '미완료'}
-                                  color={assignment.isCompleted ? 'success' : 'default'}
-                                  variant={assignment.isCompleted ? 'filled' : 'outlined'}
-                                />
-                                <Button
-                                  size="small"
-                                  variant={assignment.isCompleted ? 'outlined' : 'contained'}
-                                  color={assignment.isCompleted ? 'warning' : 'success'}
-                                  onClick={() => handleToggleCompletion(assignment)}
-                                  disabled={Boolean(savingAssignmentId)}
-                                >
-                                  {renderActionButtonLabel(
-                                    assignment.isCompleted ? '미완료 전환' : '완료 처리',
-                                    completionBusy
-                                  )}
-                                </Button>
-                              </Stack>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            )}
 
             {/* 미배정 풀 - 수량 변경 차이 카드 */}
             {deltaCards.length > 0 && (
@@ -2309,6 +2686,31 @@ const ProductionPlanBoard = () => {
                   </Stack>
                 </Box>
               </Box>
+              <Stack direction="row" spacing={0.75} sx={{ px: 0.25, mb: 1, flexWrap: 'wrap' }}>
+                {calendarLegend.map((item) => {
+                  const meta = CALENDAR_CT_STATUS_META[item.status];
+                  return (
+                    <Chip
+                      key={item.status}
+                      size="small"
+                      label={item.label}
+                      variant="outlined"
+                      sx={{
+                        bgcolor: meta.cardBg,
+                        color: meta.labelColor,
+                        borderColor: meta.borderColor,
+                        fontWeight: 700,
+                      }}
+                    />
+                  );
+                })}
+                <Chip
+                  size="small"
+                  label="<< / >> 연속"
+                  variant="outlined"
+                  sx={{ fontWeight: 700 }}
+                />
+              </Stack>
 
               <Box
                 sx={{
@@ -2346,9 +2748,12 @@ const ProductionPlanBoard = () => {
                 </Box>
 
                 {/* 주차별 렌더링 - 날짜 행 + 이벤트 바 행 */}
-                {calendarBarData.map(({ weekDays, segments }, weekIndex) => {
+                {calendarBarData.map(({ weekDays, segments, laneCount }, weekIndex) => {
                   const isLastWeek = weekIndex === calendarBarData.length - 1;
-                  const barAreaHeight = 36;
+                  const barAreaHeight = Math.max(
+                    CALENDAR_BAR_HEIGHT + CALENDAR_BAR_GAP * 2,
+                    laneCount * (CALENDAR_BAR_HEIGHT + CALENDAR_BAR_GAP) + CALENDAR_BAR_GAP
+                  );
 
                   return (
                     <Box key={weekIndex}>
@@ -2436,73 +2841,29 @@ const ProductionPlanBoard = () => {
                           );
                         })}
 
-                        {/* 연속 이벤트 바 (per-day segments, proportional overlap) */}
-                        {segments.map(({ assignment, col, slotIndex, totalSlots, isWeekFirst, isWeekLast }) => {
-                          const segKey = `${assignment.id}-${col}`;
+                        {/* 연속 이벤트 바 (주차별 span bar) */}
+                        {segments.map(({ assignment, startUnit, endUnit, laneIndex, isClippedLeft, isClippedRight }) => {
+                          const segKey = `${assignment.id}-${weekIndex}-${laneIndex}`;
                           const isSelected = String(assignment.id) === String(selectedAssignment?.id);
                           const statusMeta = CALENDAR_CT_STATUS_META[normalizeCtStatus(assignment?.status ?? assignment?.ctStatus)] || CALENDAR_CT_STATUS_META.PENDING;
-                          const leftPct = ((col + slotIndex / totalSlots) / 7 * 100).toFixed(4);
-                          const widthPct = (1 / (7 * totalSlots) * 100).toFixed(4);
-                          const rTL = isWeekFirst ? '4px' : '0';
-                          const rTR = isWeekLast ? '4px' : '0';
-                          const labelParts = [
-                            assignment?.line?.name || `L${assignment?.lineId || '-'}`,
-                            assignment.label,
-                            assignment.colorName,
-                            assignment.quantity != null
-                              ? `${formatNumberWithCommas(assignment.quantity, { maximumFractionDigits: 0 })}개`
-                              : null,
-                          ].filter(Boolean);
 
                           return (
-                            <Box
+                            <CalendarAssignmentBar
                               key={segKey}
+                              assignment={assignment}
+                              startUnit={startUnit}
+                              endUnit={endUnit}
+                              laneIndex={laneIndex}
+                              statusMeta={statusMeta}
+                              isSelected={isSelected}
+                              isClippedLeft={isClippedLeft}
+                              isClippedRight={isClippedRight}
                               onClick={() => {
                                 focusCalendarMonthForAssignment(assignment);
                                 setSelectedAssignmentId(String(assignment.id));
                                 setIsPanelOpen(true);
                               }}
-                              sx={{
-                                position: 'absolute',
-                                top: 4,
-                                left: `calc(${leftPct}% + 1px)`,
-                                width: `calc(${widthPct}% - 2px)`,
-                                height: 28,
-                                bgcolor: statusMeta.cardBg,
-                                border: '1px solid',
-                                borderColor: isSelected ? statusMeta.labelColor : statusMeta.borderColor,
-                                borderRadius: `${rTL} ${rTR} ${rTR} ${rTL}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                cursor: 'pointer',
-                                overflow: 'hidden',
-                                zIndex: isSelected ? 2 : 1,
-                                boxShadow: isSelected
-                                  ? `inset 0 0 0 1px ${statusMeta.labelColor}, 0 2px 6px rgba(0,0,0,0.12)`
-                                  : '0 1px 4px rgba(0,0,0,0.10)',
-                                '&:hover': { opacity: 0.82, zIndex: 3 },
-                              }}
-                            >
-                              {/* 라벨은 첫 번째 세그먼트에만 표시 */}
-                              {isWeekFirst && (
-                                <Typography
-                                  variant="caption"
-                                  sx={{
-                                    position: 'relative',
-                                    fontWeight: 600,
-                                    color: statusMeta.labelColor,
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    fontSize: '0.65rem',
-                                    lineHeight: 1,
-                                    px: 0.5,
-                                  }}
-                                >
-                                  {labelParts.join(' · ')}
-                                </Typography>
-                              )}
-                            </Box>
+                            />
                           );
                         })}
                       </Box>
