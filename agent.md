@@ -559,14 +559,17 @@ Organization (MANUFACTURER | BRAND)
 | AGREED  | 확정  | `#C8DFF7` | `#3674B4`   | `rgba(54, 116, 180, 0.4)`   |
 | REJECTED| 요청  | `#F7DCC8` | `#AC6424`   | `rgba(172, 100, 36, 0.35)`  |
 
-AT 신뢰도 → 팔레트 매핑:
-- COLLECTING → PENDING
-- FALLBACK / LOW_SENSITIVITY → REJECTED
-- LEARNING → SENT
-- STABLE → AGREED
+AT 신뢰도 팔레트 매핑(현재 코드 기준):
+- COLLECTING → neutral gray (`#EBEBF0` / `#747484`)
+- UNRELIABLE → red (`#F5D0D5` / `#B42318`)
+- INSUFFICIENT → orange (`#F7DCC8` / `#AC6424`)
+- USABLE → yellow (`#F5E7B2` / `#8A6100`)
+- TRUSTED → green (`#BFEAD0` / `#268444`)
+- VERIFIED → blue (`#C8DFF7` / `#3674B4`)
 
 사용 파일:
-- `frontend/src/pages/App/production/ProductionPlanBoard.jsx` — `CALENDAR_CT_STATUS_META`
+- `frontend/src/pages/App/production/ProductionPlanBoard.jsx` — `AT_RELIABILITY_COLOR`
+- `frontend/src/pages/App/assign/AssignBoard.jsx` — `AT_RELIABILITY_COLOR`
 - `frontend/src/pages/App/style/StyleBoard.jsx` — `AT_RELIABILITY_PALETTE`
 - `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx` — `AT_RELIABILITY_PALETTE`
 
@@ -575,10 +578,10 @@ AT 신뢰도 → 팔레트 매핑:
 - `formatSeconds`는 소수점 없이 정수로 표시한다 (`Math.round` 적용).
 - **ST 자동 갱신 정책 변경**: `stManual=false` 공정은 AT 동기화 시 CT를 AT로 덮지 않고 PT 기준으로 유지한다. 운영자가 AT 신뢰도를 확인 후 직접 ST를 수정하는 수동 운영 방식으로 전환.
 - **AT 신뢰도 배지 추가**:
-  - 스타일 목록(`StyleBoard`): AT 값 오른쪽에 스타일 전체 공정의 최저 신뢰도 Chip 표시.
+  - 스타일 목록(`StyleBoard`): AT 값 오른쪽에 스타일 전체 공정의 집계 신뢰도 Chip 표시.
   - 스타일 상세(`StyleProcess`): AT(q) 컬럼 헤더 오른쪽에 동일 집계 신뢰도 Chip 표시.
-  - 신뢰도 색상: COLLECTING=default, FALLBACK/LOW_SENSITIVITY=warning, LEARNING=info, STABLE=success.
-  - 신뢰도는 공정별로 계산되지만 스타일 단위로 묶어(최솟값) 표시한다 (라인 배정 데이터 특성상 공정 간 편차가 거의 없음).
+  - 신뢰도 단계/색상 키: COLLECTING=default, UNRELIABLE=error, INSUFFICIENT=warning, USABLE=info, TRUSTED=success, VERIFIED=primary.
+  - 스타일 신뢰도는 공정별로 계산한 뒤 공정별 AT 기여시간 가중 평균 퍼센트로 집계한다.
 - AT 학습 기준월: 오늘(5일 이상)이면 전월 데이터 사용. 샘플 데이터가 현재월(3월)에 있으면 `POST /at-sync/run-now { trainingMonthKey: "YYYY-MM" }`으로 강제 학습 가능.
 
 
@@ -1093,9 +1096,10 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
   - AT 신뢰도 분류는 주문/카드 수량(`displayOrderQuantity`)이 아니라 공정의 `timeRefQuantity` 기준으로 계산한다.
   - 같은 공정/같은 `atParams`는 화면(스타일/생산계획/배정)과 관계없이 같은 신뢰도 상태를 가져야 한다.
 
-- LOW_SENSITIVITY 조건:
-  - `b <= 0`일 때 무조건 LOW로 고정하지 않는다.
-  - `b > 0`이면서 `setupShare < threshold`인 경우에만 LOW_SENSITIVITY로 분류한다.
+- LOW_SENSITIVITY 관련 메모:
+  - 현재 코드에서 `LOW_SENSITIVITY`는 별도 상태명이 아니라 퍼센트 계산용 penalty 개념이다.
+  - `b <= 0`일 때는 LOW_SENSITIVITY penalty를 적용하지 않는다.
+  - `b > 0`이면서 `setupShare < threshold`인 경우에만 LOW_SENSITIVITY penalty를 적용한다.
 
 - 버전 증가 규칙:
   - `atParams.version`은 `a,b`가 실제로 변할 때만 증가한다.
@@ -1107,4 +1111,4 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 
 - 스타일 단위 집계:
   - 스타일 신뢰도는 공정 최소값(min) 대신 공정별 AT 기여시간 가중 평균 퍼센트로 집계한다.
-  - 집계 퍼센트로 상태(`COLLECTING/FALLBACK/LOW_SENSITIVITY/LEARNING/STABLE`)를 매핑한다.
+  - 집계 퍼센트로 상태(`COLLECTING/UNRELIABLE/INSUFFICIENT/USABLE/TRUSTED/VERIFIED`)를 매핑한다.

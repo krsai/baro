@@ -117,6 +117,10 @@ const normalizeOrderStatus = (status) => {
 const getOrderStatusLabel = (status) =>
   ORDER_STATUS_LABELS[normalizeOrderStatus(status)] || String(status || '').trim() || '-';
 const isOrderDeletable = (status) => normalizeOrderStatus(status) === 'ORDER_RECEIVED';
+const buildOrderTabLabel = (order) => {
+  const orderNumber = String(order?.orderNumber || order?.id || '').trim();
+  return orderNumber ? `주문: ${orderNumber}` : '주문';
+};
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -1063,6 +1067,18 @@ const OrderList = () => {
     if (isNewOrder) return null;
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
+  useEffect(() => {
+    if (!isDetailMode || isNewOrder || !currentDetailOrder?.id) return;
+    navigateToPath(`/order/${currentDetailOrder.id}`, {
+      label: buildOrderTabLabel(currentDetailOrder),
+    });
+  }, [
+    currentDetailOrder?.id,
+    currentDetailOrder?.orderNumber,
+    isDetailMode,
+    isNewOrder,
+    navigateToPath,
+  ]);
   const hasFormChanges = useMemo(() => {
     if (isNewOrder) return true;
     if (!currentDetailOrder) return false;
@@ -1082,7 +1098,7 @@ const OrderList = () => {
   const handleEdit = (order) => {
     if (!order?.id) return;
     navigateToPath(`/order/${order.id}`, {
-      label: `주문 ${order.orderNumber || order.id}`,
+      label: buildOrderTabLabel(order),
     });
   };
 
