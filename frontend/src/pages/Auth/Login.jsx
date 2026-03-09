@@ -12,15 +12,15 @@ import {
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
+import {
+  getOrganizationTypeLabel,
+  normalizeOrganizationType,
+  ORGANIZATION_TYPE_KEYS,
+} from '../../constants/organizationType';
 
 const WORKSPACE_PATH = '/workspace';
 
 const TEST_ACCOUNT_EMAIL_SUFFIXES = ['@test.local', '@baro.local'];
-
-const ORG_TYPE_LABEL_BY_KEY = {
-  MANUFACTURER: '\uC218\uC8FC\uC790',
-  BRAND: '\uBC1C\uC8FC\uC790',
-};
 
 const ORG_ROLE_LABEL_BY_KEY = {
   ADMIN: '\uAD00\uB9AC\uC790',
@@ -91,15 +91,16 @@ const Login = () => {
               `/org-memberships${buildQueryString({ orgId })}`
             ).catch(() => []);
             const memberships = Array.isArray(membershipRows) ? membershipRows : [];
-            const orgType = normalizeUpper(org?.type);
-            const typeLabel = ORG_TYPE_LABEL_BY_KEY[orgType] || orgType || '\uC870\uC9C1';
+            const orgTypeRaw = normalizeUpper(org?.type);
+            const orgType = normalizeOrganizationType(orgTypeRaw) || orgTypeRaw;
+            const typeLabel = getOrganizationTypeLabel(orgType, orgType || '\uC870\uC9C1');
             const activeTestMemberships = memberships
               .filter((membership) => normalizeUpper(membership?.status) === 'ACTIVE')
               .filter((membership) => isTestAccountEmail(membership?.email));
 
             let lineManagerLineNamesByEmail = new Map();
             const hasPotentialLineLeaders =
-              orgType === 'MANUFACTURER' &&
+              orgType === ORGANIZATION_TYPE_KEYS.MANUFACTURER &&
               activeTestMemberships.some(
                 (membership) => normalizeUpper(membership?.role) === 'WORKER'
               );
@@ -149,7 +150,7 @@ const Login = () => {
                     ? lineManagerLineNamesByEmail.get(membershipEmail) || []
                     : [];
                 if (!roleLabel) return null;
-                if (orgType === 'BRAND' && orgRole === 'WORKER') return null;
+                if (orgType === ORGANIZATION_TYPE_KEYS.BRAND && orgRole === 'WORKER') return null;
                 if (orgRole === 'WORKER' && managedLineNames.length === 0) return null;
 
                 const isLineLeader = orgRole === 'WORKER';
@@ -192,7 +193,10 @@ const Login = () => {
         const next = grouped
           .filter((group) => Array.isArray(group.profiles) && group.profiles.length > 0)
           .sort((a, b) => {
-            const typeOrder = { MANUFACTURER: 0, BRAND: 1 };
+            const typeOrder = {
+              [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 0,
+              [ORGANIZATION_TYPE_KEYS.BRAND]: 1,
+            };
             const aType = typeOrder[a.orgType] ?? 99;
             const bType = typeOrder[b.orgType] ?? 99;
             if (aType !== bType) return aType - bType;
@@ -272,7 +276,7 @@ const Login = () => {
                   {`${org?.name || '\uC870\uC9C1'} (${typeLabel})`}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {orgType === 'MANUFACTURER'
+                  {orgType === ORGANIZATION_TYPE_KEYS.MANUFACTURER
                     ? '\uAD00\uB9AC\uC790/\uC6B4\uC601\uC790/\uD68C\uACC4\uC0AC/\uC791\uC5C5\uC790 \uD14C\uC2A4\uD2B8 \uACC4\uC815'
                     : '\uAD00\uB9AC\uC790/\uC6B4\uC601\uC790/\uD68C\uACC4\uC0AC \uD14C\uC2A4\uD2B8 \uACC4\uC815 (\uC791\uC5C5\uC790 \uC81C\uC678)'}
                 </Typography>

@@ -23,6 +23,10 @@ import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded';
 import { requestJSON } from '../../utils/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import SystemProviderFooter from '../../components/SystemProviderFooter';
+import {
+  ORGANIZATION_TYPE_OPTIONS,
+  normalizeOrganizationType,
+} from '../../constants/organizationType';
 
 const WORKSPACE_PATH = '/workspace';
 const COUNTRY_OPTIONS = [
@@ -84,6 +88,7 @@ const getOrganizationSearchKey = (organization) => {
 
 const buildRegisterFormDefault = (requesterEmail = '') => ({
   organizationName: '',
+  organizationType: '',
   country: 'KR',
   companyAddress: '',
   businessNumber: '',
@@ -253,6 +258,7 @@ const Onboarding = () => {
     clearMessages();
 
     const organizationName = String(registerForm.organizationName || '').trim();
+    const organizationType = normalizeOrganizationType(registerForm.organizationType);
     const country = normalizeUpper(registerForm.country || 'KR');
     const companyAddress = String(registerForm.companyAddress || '').trim();
     const businessNumber = normalizeBusinessNumber(registerForm.businessNumber);
@@ -265,6 +271,10 @@ const Onboarding = () => {
       organizationName.length > ONBOARDING_COMPANY_NAME_MAX_LENGTH
     ) {
       setRegisterErrorMessage(`회사명은 ${ONBOARDING_COMPANY_NAME_MIN_LENGTH}~${ONBOARDING_COMPANY_NAME_MAX_LENGTH}자로 입력해 주세요.`);
+      return;
+    }
+    if (!organizationType) {
+      setRegisterErrorMessage('\uC5C5\uC885\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.');
       return;
     }
     if (country !== 'KR' && country !== 'VN') {
@@ -302,6 +312,7 @@ const Onboarding = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organizationNameEn: organizationName,
+          organizationType,
           country,
           companyAddress,
           businessNumber,
@@ -491,6 +502,25 @@ const Onboarding = () => {
           ) : null}
 
           <Stack spacing={1.6}>
+            <TextField
+              fullWidth
+              required
+              select
+              label={'\uC5C5\uC885'}
+              name="organizationType"
+              value={registerForm.organizationType}
+              onChange={handleRegisterChange}
+              disabled={registerSubmitting}
+            >
+              <MenuItem value="">
+                <em>{'\uC120\uD0DD\uD574 \uC8FC\uC138\uC694'}</em>
+              </MenuItem>
+              {ORGANIZATION_TYPE_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               fullWidth
               required

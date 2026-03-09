@@ -123,6 +123,7 @@ model OnboardingRequest {
   requesterEmail     String
   requestType        OnboardingRequestType   @default(REGISTER_ORG)
   organizationNameEn String
+  organizationType   OrganizationType        @default(MANUFACTURER)
   country            String                  @default("KR")
   companyAddress     String                  @default("")
   businessNumber     String

@@ -299,6 +299,27 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const TRIAL_DAYS = 30;
+const ORGANIZATION_TYPE_KEYS = {
+  MANUFACTURER: "MANUFACTURER",
+  BRAND: "BRAND",
+} as const;
+type OrganizationTypeKey =
+  (typeof ORGANIZATION_TYPE_KEYS)[keyof typeof ORGANIZATION_TYPE_KEYS];
+
+const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
+  Object.values(ORGANIZATION_TYPE_KEYS)
+);
+const ONBOARDING_ORGANIZATION_TYPE_TOKENS: Record<string, OrganizationTypeKey> = {
+  manufacturer: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
+  factory: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
+  "공장": ORGANIZATION_TYPE_KEYS.MANUFACTURER,
+  "수주자": ORGANIZATION_TYPE_KEYS.MANUFACTURER,
+  "테스트수주자": ORGANIZATION_TYPE_KEYS.MANUFACTURER,
+  brand: ORGANIZATION_TYPE_KEYS.BRAND,
+  "브랜드": ORGANIZATION_TYPE_KEYS.BRAND,
+  "발주자": ORGANIZATION_TYPE_KEYS.BRAND,
+  "테스트발주자": ORGANIZATION_TYPE_KEYS.BRAND,
+};
 const ONBOARDING_COUNTRY_OPTIONS = new Set(["KR", "VN"]);
 const ONBOARDING_COMPANY_NAME_MIN_LENGTH = 2;
 const ONBOARDING_COMPANY_NAME_MAX_LENGTH = 120;
@@ -652,6 +673,23 @@ const clampAtSlopeByMonthlyChange = (
 const resolveOnboardingRequesterEmail = (req: Request, fallbackEmail?: unknown) =>
   normalizeEmail(getRequesterEmail(req) || req.query?.email || fallbackEmail);
 
+const resolveOnboardingOrganizationType = (
+  value: unknown
+): OrganizationTypeKey | null => {
+  const token = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (!token) return null;
+  if (ONBOARDING_ORGANIZATION_TYPE_TOKENS[token]) {
+    return ONBOARDING_ORGANIZATION_TYPE_TOKENS[token];
+  }
+  const normalized = token.toUpperCase() as OrganizationTypeKey;
+  return ONBOARDING_ORGANIZATION_TYPE_OPTIONS.has(normalized)
+    ? normalized
+    : null;
+};
+
 const resolveOnboardingCountry = (value: unknown): "KR" | "VN" | null => {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
@@ -691,6 +729,7 @@ const toOnboardingRequestSummary = (request: any) => ({
   id: request.id,
   requesterEmail: request.requesterEmail,
   organizationNameEn: request.organizationNameEn,
+  organizationType: request.organizationType ?? null,
   country: request.country ?? null,
   companyAddress: request.companyAddress ?? null,
   businessNumber: request.businessNumber,
@@ -706,7 +745,7 @@ const toOnboardingRequestSummary = (request: any) => ({
   rejectionReason: request.rejectionReason ?? null,
   organizationId: request.organizationId ?? null,
   organizationName: request.organization?.name ?? null,
-  organizationType: request.organization?.type ?? null,
+  approvedOrganizationType: request.organization?.type ?? null,
 });
 
 const normalizeStyleProcess = (process: any) => {
@@ -5176,6 +5215,19 @@ app.post("/onboarding/company-requests", async (req, res) => {
     });
   }
 
+  const rawOrganizationType =
+    req.body?.organizationType ?? req.body?.orgType ?? req.body?.industryType;
+  const organizationType =
+    rawOrganizationType === undefined || rawOrganizationType === null || rawOrganizationType === ""
+      ? ORGANIZATION_TYPE_KEYS.MANUFACTURER
+      : resolveOnboardingOrganizationType(rawOrganizationType);
+  if (!organizationType) {
+    return res.status(400).json({
+      ok: false,
+      error: `organizationType must be ${ORGANIZATION_TYPE_KEYS.MANUFACTURER} or ${ORGANIZATION_TYPE_KEYS.BRAND}`,
+    });
+  }
+
   const country = resolveOnboardingCountry(req.body?.country ?? req.body?.countryCode);
   if (!country) {
     return res.status(400).json({ ok: false, error: "country must be KR or VN" });
@@ -5252,6 +5304,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
         where: { id: existingPendingRequest.id },
         data: {
           organizationNameEn,
+          organizationType,
           country,
           companyAddress,
           businessNumber,
@@ -5264,6 +5317,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
           requesterEmail,
           requestType: "REGISTER_ORG",
           organizationNameEn,
+          organizationType,
           country,
           companyAddress,
           businessNumber,
@@ -5351,6 +5405,9 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   }
 
   const now = new Date();
+  const organizationType =
+    resolveOnboardingOrganizationType(companyRequest.organizationType) ??
+    ORGANIZATION_TYPE_KEYS.MANUFACTURER;
   const organization = await prisma.organization.create({
     data: {
       name: companyRequest.organizationNameEn,
@@ -5358,7 +5415,7 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
       address: companyRequest.companyAddress || null,
       email: companyRequest.contactEmail,
       phone: companyRequest.contactPhone,
-      type: "MANUFACTURER",
+      type: organizationType,
     },
   });
 

@@ -17,6 +17,7 @@ import {
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
+import { getOrganizationTypeLabel } from '../../../constants/organizationType';
 
 const SUBSCRIPTION_STATUS_OPTIONS = [
   { value: 'NOT_SUBSCRIBED', label: 'Not Subscribed' },
@@ -169,6 +170,7 @@ const OnboardingBoard = () => {
                     <TableCell>요청일</TableCell>
                     <TableCell>요청자 이메일</TableCell>
                     <TableCell>회사명</TableCell>
+                    <TableCell>업종</TableCell>
                     <TableCell>국가</TableCell>
                     <TableCell>회사 주소</TableCell>
                     <TableCell>사업자등록번호</TableCell>
@@ -184,6 +186,7 @@ const OnboardingBoard = () => {
                       <TableCell>{toDateTimeText(row.createdAt)}</TableCell>
                       <TableCell>{row.requesterEmail}</TableCell>
                       <TableCell>{row.organizationNameEn}</TableCell>
+                      <TableCell>{getOrganizationTypeLabel(row.organizationType)}</TableCell>
                       <TableCell>{row.country === 'VN' ? '베트남' : '한국'}</TableCell>
                       <TableCell>{row.companyAddress || '-'}</TableCell>
                       <TableCell>{row.businessNumber}</TableCell>
@@ -232,7 +235,7 @@ const OnboardingBoard = () => {
                   ))}
                   {pendingCompanyRequests.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                      <TableCell colSpan={11} sx={{ textAlign: 'center', color: 'text.secondary' }}>
                         대기 중인 신규 회사 등록 요청이 없습니다.
                       </TableCell>
                     </TableRow>
