@@ -23,7 +23,6 @@ import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded';
 import { requestJSON } from '../../utils/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import SystemProviderFooter from '../../components/SystemProviderFooter';
-import { SYSTEM_PROVIDER } from '../../constants/systemProvider';
 
 const WORKSPACE_PATH = '/workspace';
 const COUNTRY_OPTIONS = [
@@ -113,6 +112,7 @@ const Onboarding = () => {
   const [registerDrawerOpen, setRegisterDrawerOpen] = useState(false);
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
   const [registerForm, setRegisterForm] = useState(buildRegisterFormDefault(''));
+  const [registerErrorMessage, setRegisterErrorMessage] = useState('');
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -181,13 +181,13 @@ const Onboarding = () => {
 
   const hasSearchInput = companySearchText.trim().length > 0;
   const hasMatchedOrganizations = matchedOrganizations.length > 0;
-  const shouldPromoteRegister = hasSearchInput && !hasMatchedOrganizations;
   const canJoinSelectedOrganization =
     !!selectedOrganization?.id && !joinSubmitting && !loadingOrganizations;
 
   const clearMessages = () => {
     setErrorMessage('');
     setSuccessMessage('');
+    setRegisterErrorMessage('');
   };
 
   const handleJoinCompany = async () => {
@@ -243,6 +243,9 @@ const Onboarding = () => {
 
   const handleRegisterChange = (event) => {
     const { name, value } = event.target;
+    if (registerErrorMessage) {
+      setRegisterErrorMessage('');
+    }
     setRegisterForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -261,34 +264,34 @@ const Onboarding = () => {
       organizationName.length < ONBOARDING_COMPANY_NAME_MIN_LENGTH ||
       organizationName.length > ONBOARDING_COMPANY_NAME_MAX_LENGTH
     ) {
-      setErrorMessage(`회사명은 ${ONBOARDING_COMPANY_NAME_MIN_LENGTH}~${ONBOARDING_COMPANY_NAME_MAX_LENGTH}자로 입력해 주세요.`);
+      setRegisterErrorMessage(`회사명은 ${ONBOARDING_COMPANY_NAME_MIN_LENGTH}~${ONBOARDING_COMPANY_NAME_MAX_LENGTH}자로 입력해 주세요.`);
       return;
     }
     if (country !== 'KR' && country !== 'VN') {
-      setErrorMessage('국가를 선택해 주세요.');
+      setRegisterErrorMessage('국가를 선택해 주세요.');
       return;
     }
     if (!companyAddress) {
-      setErrorMessage('회사 주소를 입력해 주세요.');
+      setRegisterErrorMessage('회사 주소를 입력해 주세요.');
       return;
     }
     if (!businessNumber) {
-      setErrorMessage('사업자등록번호를 입력해 주세요.');
+      setRegisterErrorMessage('사업자등록번호를 입력해 주세요.');
       return;
     }
     if (!isValidBusinessNumberFormat(country, businessNumber)) {
-      setErrorMessage(businessNumberErrorMessageByCountry(country));
+      setRegisterErrorMessage(businessNumberErrorMessageByCountry(country));
       return;
     }
     if (
       !representativeContact ||
       representativeContact.length > ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH
     ) {
-      setErrorMessage(`대표 연락처를 입력해 주세요. (최대 ${ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH}자)`);
+      setRegisterErrorMessage(`대표 연락처를 입력해 주세요. (최대 ${ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH}자)`);
       return;
     }
     if (!representativeEmail || !representativeEmail.includes('@')) {
-      setErrorMessage('대표 이메일을 입력해 주세요.');
+      setRegisterErrorMessage('대표 이메일을 입력해 주세요.');
       return;
     }
 
@@ -310,7 +313,7 @@ const Onboarding = () => {
       setRegisterDrawerOpen(false);
       setRegisterForm(buildRegisterFormDefault(requesterEmail));
     } catch (error) {
-      setErrorMessage(error?.message || '신규 회사 등록 요청 중 오류가 발생했습니다.');
+      setRegisterErrorMessage(error?.message || '신규 회사 등록 요청 중 오류가 발생했습니다.');
     } finally {
       setRegisterSubmitting(false);
     }
@@ -338,9 +341,6 @@ const Onboarding = () => {
             <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
               소속 회사를 검색해서 승인 요청하거나, 회사가 없으면 신규 등록을 진행해 주세요.
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              로그인 이메일: {requesterEmail || '-'}
-            </Typography>
           </Box>
 
           {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
@@ -355,14 +355,24 @@ const Onboarding = () => {
             }}
           >
             <Stack spacing={2}>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.08em' }}>
-                  STEP 1
-                </Typography>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                alignItems={{ xs: 'flex-start', sm: 'center' }}
+                justifyContent="space-between"
+                spacing={1}
+              >
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   소속 회사 선택
                 </Typography>
-              </Box>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  onClick={handleOpenRegisterDrawer}
+                  startIcon={<AddBusinessRoundedIcon />}
+                >
+                  신규 회사 등록
+                </Button>
+              </Stack>
 
               <Autocomplete
                 options={matchedOrganizations}
@@ -438,52 +448,6 @@ const Onboarding = () => {
             </Stack>
           </Paper>
 
-          <Paper
-            variant="outlined"
-            sx={{
-              p: { xs: 2, md: 3 },
-              borderRadius: 3,
-              borderStyle: 'dashed',
-              borderColor: shouldPromoteRegister ? 'secondary.main' : 'divider',
-              bgcolor: shouldPromoteRegister ? '#fff8ef' : '#ffffff',
-            }}
-          >
-            <Stack spacing={1.2}>
-              <Box>
-                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: '0.08em' }}>
-                  STEP 2
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  회사가 없으면 신규 등록
-                </Typography>
-              </Box>
-
-              <Typography variant="body2" color="text.secondary">
-                신규 회사 등록 버튼을 눌러 등록 양식을 입력해 주세요.
-              </Typography>
-
-              {shouldPromoteRegister ? (
-                <Alert severity="info" sx={{ py: 0 }}>
-                  "{companySearchText}"에 일치하는 업체가 없어 신규 등록을 권장합니다.
-                </Alert>
-              ) : null}
-
-              <Box>
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  onClick={handleOpenRegisterDrawer}
-                  startIcon={<AddBusinessRoundedIcon />}
-                >
-                  신규 회사 등록 열기
-                </Button>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                신규 회사 등록 요청은 시스템 관리자({SYSTEM_PROVIDER.email})에게 전달됩니다.
-              </Typography>
-            </Stack>
-          </Paper>
-
           <Box sx={{ mt: 0.5 }}>
             <Button variant="text" onClick={handleGoLogin}>
               다른 계정으로 다시 로그인
@@ -519,6 +483,12 @@ const Onboarding = () => {
           </Stack>
 
           <Divider sx={{ mb: 2 }} />
+
+          {registerErrorMessage ? (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {registerErrorMessage}
+            </Alert>
+          ) : null}
 
           <Stack spacing={1.6}>
             <TextField
