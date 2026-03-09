@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Container, Button, Typography, Box, Link, CircularProgress } from '@mui/material';
+import { Container, Button, Typography, Box, Link } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import Copyright from '../../components/Copyright';
 import { useAuth } from '../../context/AuthContext';
@@ -27,7 +27,7 @@ const SignUp = () => {
         }}
       >
         <Typography component="h1" variant="h5">
-          테스트 계정으로 시작하기
+          신규 계정으로 시작하기
         </Typography>
         <Box sx={{ mt: 3, width: '100%' }}>
           <Button
@@ -42,12 +42,13 @@ const SignUp = () => {
           </Button>
           {!isSupabaseConfigured && (
             <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과 `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
+              Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
+              `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
             </Typography>
           )}
         </Box>
         <Link component={RouterLink} to="/login" variant="body2" sx={{ mt: 2 }}>
-          이미 계정이 있으신가요? 이메일로 로그인
+          이미 계정이 있으신가요? 로그인으로 이동
         </Link>
       </Box>
       <Copyright sx={{ mt: 5 }} />

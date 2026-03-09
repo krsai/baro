@@ -250,6 +250,38 @@ const normalizeAccessProfile = (profile) => {
     };
   }
 
+  if (entryType === 'ONBOARDING') {
+    const email = typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '';
+    const pendingMembershipCountRaw = Number(profile.pendingMembershipCount);
+    const pendingMembershipCount =
+      Number.isFinite(pendingMembershipCountRaw) && pendingMembershipCountRaw > 0
+        ? Math.trunc(pendingMembershipCountRaw)
+        : 0;
+
+    const latestRegistrationRequest =
+      profile.latestRegistrationRequest &&
+      typeof profile.latestRegistrationRequest === 'object' &&
+      !Array.isArray(profile.latestRegistrationRequest)
+        ? profile.latestRegistrationRequest
+        : null;
+
+    return {
+      entryType: 'ONBOARDING',
+      systemRole: normalizeUpper(profile.systemRole || 'USER'),
+      orgType: null,
+      orgRole: null,
+      orgId: null,
+      orgName: null,
+      employeeName: null,
+      factoryId: null,
+      email,
+      pendingMembershipCount,
+      latestRegistrationRequest,
+      onboardingRequired: true,
+      label: email || '\uC2E0\uADDC \uACC4\uC815',
+    };
+  }
+
   const orgType = normalizeUpper(profile.orgType);
   const orgRole = normalizeUpper(profile.orgRole);
   const orgName =
@@ -289,6 +321,7 @@ export const AuthProvider = ({ children }) => {
   const [devProfile, setDevProfile] = useState(() => loadDevProfile());
   const [accessProfile, setAccessProfile] = useState(null);
   const [accessLoading, setAccessLoading] = useState(false);
+  const [accessLookupEmail, setAccessLookupEmail] = useState('');
   const [loading, setLoading] = useState(() =>
     isSupabaseConfigured && readAuthStorage(DEV_BYPASS_KEY) !== '1'
   );
@@ -325,12 +358,14 @@ export const AuthProvider = ({ children }) => {
 
       if (!email) {
         if (!cancelled) {
+          setAccessLookupEmail('');
           setAccessProfile(null);
           setAccessLoading(false);
         }
         return;
       }
 
+      setAccessLookupEmail(email);
       setAccessLoading(true);
       let abortTimeoutId = null;
       try {
@@ -443,7 +478,7 @@ export const AuthProvider = ({ children }) => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/login`,
         queryParams: {
           prompt: 'select_account',
         },
@@ -488,8 +523,21 @@ export const AuthProvider = ({ children }) => {
     writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
   };
 
-  // In devBypass mode, prefer DB-fetched accessProfile; fall back to hardcoded devProfile
-  const effectiveProfile = devBypass ? (accessProfile || devProfile) : accessProfile;
+  const normalizedCurrentUserEmail =
+    typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+  const normalizedAccessProfileEmail =
+    typeof accessProfile?.email === 'string' ? accessProfile.email.trim().toLowerCase() : '';
+  const isAccessProfileForCurrentUser =
+    !devBypass &&
+    !!normalizedCurrentUserEmail &&
+    !!accessProfile &&
+    normalizedAccessProfileEmail === normalizedCurrentUserEmail;
+
+  // In devBypass mode, prefer DB-fetched accessProfile; fall back to hardcoded devProfile.
+  // In normal mode, ignore stale accessProfile rows from previous sessions.
+  const effectiveProfile = devBypass
+    ? (accessProfile || devProfile)
+    : (isAccessProfileForCurrentUser ? accessProfile : null);
   const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
   const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
   const activeOrgRole = normalizeUpper(effectiveProfile?.orgRole);
@@ -504,16 +552,33 @@ export const AuthProvider = ({ children }) => {
       typeof effectiveProfile?.email === 'string'
         ? effectiveProfile.email.trim().toLowerCase()
         : '';
+    const userEmailForRequestContext = devBypass
+      ? (emailFromProfile || emailFromUser)
+      : (emailFromUser || emailFromProfile);
 
     setRequestContext({
-      userEmail: emailFromProfile || emailFromUser,
+      userEmail: userEmailForRequestContext,
       orgId: activeOrgId,
     });
-  }, [activeOrgId, effectiveProfile?.email, user?.email]);
+  }, [activeOrgId, devBypass, effectiveProfile?.email, user?.email]);
 
   const loadingState =
-    loading || (!devBypass && !!user && isSupabaseConfigured && accessLoading);
-  const hasWorkspaceAccess = devBypass || (!devBypass && !!user && !!accessProfile);
+    loading ||
+    (!devBypass &&
+      !!user &&
+      isSupabaseConfigured &&
+      (accessLoading || accessLookupEmail !== normalizedCurrentUserEmail));
+  const hasWorkspaceAccess =
+    devBypass ||
+    (!devBypass &&
+      !!user &&
+      !!effectiveProfile &&
+      normalizeUpper(effectiveProfile.entryType) !== 'ONBOARDING');
+  const requiresOnboarding =
+    !devBypass &&
+    !!user &&
+    !!effectiveProfile &&
+    normalizeUpper(effectiveProfile.entryType) === 'ONBOARDING';
 
   const value = useMemo(
     () => ({
@@ -529,6 +594,7 @@ export const AuthProvider = ({ children }) => {
       activeProfile: effectiveProfile,
       loading: loadingState,
       hasWorkspaceAccess,
+      requiresOnboarding,
       isAuthenticated: !!user || devBypass,
       isSupabaseConfigured,
       signInWithGoogle,
@@ -548,6 +614,7 @@ export const AuthProvider = ({ children }) => {
       effectiveProfile,
       loadingState,
       hasWorkspaceAccess,
+      requiresOnboarding,
     ]
   );
 

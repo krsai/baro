@@ -49,6 +49,7 @@ const Login = () => {
     signInWithGoogle,
     isAuthenticated,
     hasWorkspaceAccess,
+    requiresOnboarding,
     loading,
     isSupabaseConfigured,
     enableDevBypass,
@@ -60,9 +61,15 @@ const Login = () => {
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
 
   useEffect(() => {
-    if (!isAuthenticated || !hasWorkspaceAccess) return;
-    navigate(WORKSPACE_PATH, { replace: true });
-  }, [hasWorkspaceAccess, isAuthenticated, navigate]);
+    if (!isAuthenticated || loading) return;
+    if (hasWorkspaceAccess) {
+      navigate(WORKSPACE_PATH, { replace: true });
+      return;
+    }
+    if (requiresOnboarding) {
+      navigate('/onboarding', { replace: true });
+    }
+  }, [hasWorkspaceAccess, isAuthenticated, loading, navigate, requiresOnboarding]);
 
   useEffect(() => {
     let cancelled = false;

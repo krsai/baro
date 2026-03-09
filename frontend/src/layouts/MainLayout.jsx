@@ -295,7 +295,10 @@ const MainLayout = () => {
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
-        children: [{ label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' }],
+        children: [
+          { label: '가입 요청', icon: <GroupIcon />, path: '/system-onboarding' },
+          { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
+        ],
       },
     ];
 

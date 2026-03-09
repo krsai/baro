@@ -1,4 +1,4 @@
-import "../config/env";
+﻿import "../config/env";
 import { type Request, type Response } from "express";
 import { type OrgUserRole } from "@prisma/client";
 import { prisma } from "../db";
@@ -9,17 +9,6 @@ import {
   getErrorStatus,
   readRequestHeader,
 } from "../utils/http";
-
-const DEFAULT_ORG = {
-  name: "BARO",
-  businessNumber: "",
-  representative: "관리자",
-  industry: "봉제",
-  address: "",
-  phone: "",
-  email: "baro.garment@gmail.com",
-  type: "MANUFACTURER" as const,
-};
 
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ADMIN",
@@ -193,13 +182,10 @@ export const getRequestedOrgIdText = (req: Request): string => {
 };
 
 const getPrimaryOrganization = async (options: OrganizationAccessOptions = {}) => {
-  let organization = await prisma.organization.findFirst({
+  const organization = await prisma.organization.findFirst({
     orderBy: { id: "asc" },
   });
-
-  if (!organization) {
-    organization = await prisma.organization.create({ data: DEFAULT_ORG });
-  }
+  if (!organization) return null;
 
   const withSubscription = await attachOrganizationSubscription(organization);
   return ensureOrganizationAccessible(withSubscription, options);
@@ -448,3 +434,4 @@ export const requireSystemAdmin = async (req: Request, res: Response) => {
 
   return { requesterEmail };
 };
+

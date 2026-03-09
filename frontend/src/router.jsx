@@ -3,9 +3,9 @@ import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router
 import { useAuth } from './context/AuthContext';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
 import { canAccessPath, resolveFirstAccessiblePath } from './utils/accessControl';
+import Login from './pages/Auth/Login';
 
 const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
-const Login = React.lazy(() => import('./pages/Auth/Login'));
 const SignUp = React.lazy(() => import('./pages/Auth/SignUp'));
 const Organization = React.lazy(() => import('./pages/App/Organization'));
 const Employee = React.lazy(() => import('./pages/App/Employee'));
@@ -13,6 +13,7 @@ const Permission = React.lazy(() => import('./pages/App/Permission'));
 const Line = React.lazy(() => import('./pages/App/Line'));
 const Holiday = React.lazy(() => import('./pages/App/Holiday'));
 const SystemBoard = React.lazy(() => import('./pages/App/system/systemBoard'));
+const OnboardingBoard = React.lazy(() => import('./pages/App/system/OnboardingBoard'));
 const Customer = React.lazy(() => import('./pages/App/Customer'));
 const Style = React.lazy(() => import('./pages/App/Style'));
 const StyleBoard = React.lazy(() => import('./pages/App/style/StyleBoard'));
@@ -24,7 +25,7 @@ const Attendance = React.lazy(() => import('./pages/App/Attendance'));
 const WorkEntry = React.lazy(() => import('./pages/App/work/WorkEntry'));
 const Payroll = React.lazy(() => import('./pages/App/Payroll'));
 const PayrollEntry = React.lazy(() => import('./pages/App/payroll/PayrollEntry'));
-const AuthCallback = React.lazy(() => import('./pages/Auth/AuthCallback'));
+const Onboarding = React.lazy(() => import('./pages/Auth/Onboarding'));
 const Attribute = React.lazy(() => import('./pages/App/Attribute'));
 const Order = React.lazy(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
@@ -33,6 +34,12 @@ const Inventory = React.lazy(() => import('./pages/App/Inventory'));
 const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
 const WorkspaceShell = () => null;
 const WORKSPACE_PATH = '/workspace';
+
+const OAuthCallbackRedirect = () => {
+  const location = useLocation();
+  const nextPath = `/login${location.search || ''}${location.hash || ''}`;
+  return <Navigate to={nextPath} replace />;
+};
 
 const RootRedirect = () => {
   const { isAuthenticated } = useAuth();
@@ -47,7 +54,14 @@ const RootRedirect = () => {
 
 // 인증 상태를 확인하고, 인증되지 않은 사용자는 로그인으로 보낸다.
 const ProtectedRoute = () => {
-  const { isAuthenticated, loading, devBypass, devProfile, accessProfile } = useAuth();
+  const {
+    isAuthenticated,
+    loading,
+    hasWorkspaceAccess,
+    devBypass,
+    devProfile,
+    accessProfile,
+  } = useAuth();
   const location = useLocation();
   const loadingStartedAtRef = React.useRef(null);
   const authState = {
@@ -79,6 +93,10 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (!hasWorkspaceAccess) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   const canAccessCurrentPath = canAccessPath(location.pathname, authState);
   if (!canAccessCurrentPath) {
     return <Navigate to={resolveFirstAccessiblePath(authState)} replace />;
@@ -93,17 +111,21 @@ const router = createBrowserRouter([
     element: <Login />,
   },
   {
+    path: '/auth/callback',
+    element: <OAuthCallbackRedirect />,
+  },
+  {
     path: '/signup',
     element: <SignUp />,
+  },
+  {
+    path: '/onboarding',
+    element: <Onboarding />,
   },
   {
     path: '/',
     element: <MainLayout />,
     children: [
-      {
-        path: 'auth/callback',
-        element: <AuthCallback />,
-      },
       {
         element: <ProtectedRoute />,
         children: [
@@ -130,6 +152,10 @@ const router = createBrowserRouter([
           {
             path: 'system-setting',
             element: <SystemBoard />,
+          },
+          {
+            path: 'system-onboarding',
+            element: <OnboardingBoard />,
           },
           {
             path: 'customer',

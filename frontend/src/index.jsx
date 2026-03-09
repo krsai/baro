@@ -9,6 +9,11 @@ import './styles/table.css';
 import './styles/form.css';
 import App from './App';
 
+if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
+  const nextPath = `/login${window.location.search || ''}${window.location.hash || ''}`;
+  window.history.replaceState(null, '', nextPath);
+}
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

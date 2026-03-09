@@ -39,6 +39,16 @@ enum OrganizationSubscriptionStatus {
   SUSPENDED
 }
 
+enum OnboardingRequestType {
+  REGISTER_ORG
+}
+
+enum OnboardingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum WorkOrderStatus {
   ORDER_RECEIVED
   IN_PROGRESS
@@ -105,6 +115,34 @@ model Organization {
   attendanceEntries         AttendanceEntry[]
   manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
   brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
+  onboardingRequests        OnboardingRequest[]
+}
+
+model OnboardingRequest {
+  id                 Int                     @id @default(autoincrement())
+  requesterEmail     String
+  requestType        OnboardingRequestType   @default(REGISTER_ORG)
+  organizationNameEn String
+  country            String                  @default("KR")
+  companyAddress     String                  @default("")
+  businessNumber     String
+  contactEmail       String
+  contactPhone       String
+  status             OnboardingRequestStatus @default(PENDING)
+  approvedBy         String?
+  approvedAt         DateTime?
+  rejectedBy         String?
+  rejectedAt         DateTime?
+  rejectionReason    String?
+  organizationId     Int?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([status])
+  @@index([requesterEmail])
+  @@index([requesterEmail, status])
 }
 
 model OrganizationSubscription {

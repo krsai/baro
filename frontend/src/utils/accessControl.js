@@ -29,6 +29,7 @@ const FEATURE_KEYS = {
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
   SYSTEM_SETTING: 'SYSTEM_SETTING',
+  SYSTEM_ONBOARDING: 'SYSTEM_ONBOARDING',
   PROFILE: 'PROFILE',
 };
 
@@ -110,6 +111,10 @@ const buildAccessContext = ({
   const orgType = normalizeUpper(baseProfile?.orgType);
   const orgRole = normalizeUpper(baseProfile?.orgRole);
 
+  if (entryType === 'ONBOARDING') {
+    return null;
+  }
+
   if (entryType === 'SYSTEM') {
     return {
       allowAll: false,
@@ -135,7 +140,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   if (context.entryType === 'SYSTEM') {
     return (
       context.systemRole === 'SYSTEM_ADMIN' &&
-      featureKey === FEATURE_KEYS.SYSTEM_SETTING
+      (featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
+        featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING)
     );
   }
 
@@ -195,6 +201,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.PERMISSION:
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);
     case FEATURE_KEYS.SYSTEM_SETTING:
+    case FEATURE_KEYS.SYSTEM_ONBOARDING:
       return false;
     default:
       return false;
@@ -222,6 +229,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/permission')) return FEATURE_KEYS.PERMISSION;
   if (path.startsWith('/holiday')) return FEATURE_KEYS.HOLIDAY;
   if (path.startsWith('/system-setting')) return FEATURE_KEYS.SYSTEM_SETTING;
+  if (path.startsWith('/system-onboarding')) return FEATURE_KEYS.SYSTEM_ONBOARDING;
   if (path.startsWith('/profile')) return FEATURE_KEYS.PROFILE;
   return null;
 };
@@ -260,6 +268,7 @@ const ACCESS_PATH_PRIORITY = [
   '/attribute',
   '/permission',
   '/holiday',
+  '/system-onboarding',
   '/system-setting',
 ];
 

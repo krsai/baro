@@ -299,6 +299,13 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const TRIAL_DAYS = 30;
+const ONBOARDING_COUNTRY_OPTIONS = new Set(["KR", "VN"]);
+const ONBOARDING_COMPANY_NAME_MIN_LENGTH = 2;
+const ONBOARDING_COMPANY_NAME_MAX_LENGTH = 120;
+const ONBOARDING_COMPANY_ADDRESS_MAX_LENGTH = 240;
+const ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH = 40;
+const ONBOARDING_KR_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{3}-\d{2}-\d{5})$/;
+const ONBOARDING_VN_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{13}|\d{10}-\d{3})$/;
 const resolveRole = (value: any, fallback: OrgUserRole = "WORKER"): OrgUserRole =>
   ROLE_OPTIONS.has(value) ? (value as OrgUserRole) : fallback;
 const resolveStatus = (value: any) =>
@@ -641,6 +648,66 @@ const clampAtSlopeByMonthlyChange = (
   const maxA = currentA * (1 + AT_MONTHLY_A_CLAMP_RATIO);
   return roundToScale(Math.min(maxA, Math.max(minA, nextA)), 4);
 };
+
+const resolveOnboardingRequesterEmail = (req: Request, fallbackEmail?: unknown) =>
+  normalizeEmail(getRequesterEmail(req) || req.query?.email || fallbackEmail);
+
+const resolveOnboardingCountry = (value: unknown): "KR" | "VN" | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized === "KR" || normalized === "KOREA" || normalized === "SOUTH KOREA") {
+    return "KR";
+  }
+  if (
+    normalized === "VN" ||
+    normalized === "VIETNAM" ||
+    normalized === "VIET NAM"
+  ) {
+    return "VN";
+  }
+  return ONBOARDING_COUNTRY_OPTIONS.has(normalized) ? (normalized as "KR" | "VN") : null;
+};
+
+const normalizeOnboardingBusinessNumber = (value: unknown) =>
+  String(resolveOptionalString(value, "") || "")
+    .trim()
+    .replace(/\s+/g, "");
+
+const isValidOnboardingBusinessNumber = (
+  country: "KR" | "VN",
+  businessNumber: string
+) => {
+  if (country === "KR") {
+    return ONBOARDING_KR_BUSINESS_NUMBER_REGEX.test(businessNumber);
+  }
+  if (country === "VN") {
+    return ONBOARDING_VN_BUSINESS_NUMBER_REGEX.test(businessNumber);
+  }
+  return false;
+};
+
+const toOnboardingRequestSummary = (request: any) => ({
+  id: request.id,
+  requesterEmail: request.requesterEmail,
+  organizationNameEn: request.organizationNameEn,
+  country: request.country ?? null,
+  companyAddress: request.companyAddress ?? null,
+  businessNumber: request.businessNumber,
+  contactEmail: request.contactEmail,
+  contactPhone: request.contactPhone,
+  status: request.status,
+  createdAt: request.createdAt,
+  updatedAt: request.updatedAt,
+  approvedBy: request.approvedBy ?? null,
+  approvedAt: request.approvedAt ?? null,
+  rejectedBy: request.rejectedBy ?? null,
+  rejectedAt: request.rejectedAt ?? null,
+  rejectionReason: request.rejectionReason ?? null,
+  organizationId: request.organizationId ?? null,
+  organizationName: request.organization?.name ?? null,
+  organizationType: request.organization?.type ?? null,
+});
 
 const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
@@ -5014,24 +5081,20 @@ app.get("/auth/context", async (req, res) => {
       },
       include: { organization: true, employee: true },
     });
-    if (!membership || membership.status !== "ACTIVE" || !membership.organization) {
-      return res.status(403).json({
-        ok: false,
-        error: "active org membership is required",
+    if (membership && membership.status === "ACTIVE" && membership.organization) {
+      return res.json({
+        email: requesterEmail,
+        entryType: "ORG",
+        systemRole: "USER",
+        orgId: membership.organization.id,
+        orgName: membership.organization.name ?? null,
+        orgType: membership.organization.type ?? null,
+        orgRole: membership.role,
+        factoryId: membership.employee?.factoryId ?? null,
+        employeeName: membership.employee?.name ?? null,
       });
     }
-
-    return res.json({
-      email: requesterEmail,
-      entryType: "ORG",
-      systemRole: "USER",
-      orgId: membership.organization.id,
-      orgName: membership.organization.name ?? null,
-      orgType: membership.organization.type ?? null,
-      orgRole: membership.role,
-      factoryId: membership.employee?.factoryId ?? null,
-      employeeName: membership.employee?.name ?? null,
-    });
+    // If requested org is stale/unauthorized, fall through and resolve by user's actual access.
   }
 
   const membership = await prisma.orgMembership.findFirst({
@@ -5043,9 +5106,36 @@ app.get("/auth/context", async (req, res) => {
     orderBy: { id: "asc" },
   });
   if (!membership || !membership.organization) {
-    return res.status(403).json({
-      ok: false,
-      error: "active org membership is required",
+    const [pendingMembershipCount, latestRegistrationRequest] = await Promise.all([
+      prisma.orgMembership.count({
+        where: {
+          email: requesterEmail,
+          status: "PENDING",
+        },
+      }),
+      prisma.onboardingRequest.findFirst({
+        where: {
+          requesterEmail,
+          status: "PENDING",
+        },
+        orderBy: { id: "desc" },
+      }),
+    ]);
+
+    return res.json({
+      email: requesterEmail,
+      entryType: "ONBOARDING",
+      systemRole: "USER",
+      orgId: null,
+      orgName: null,
+      orgType: null,
+      orgRole: null,
+      employeeName: null,
+      onboardingRequired: true,
+      pendingMembershipCount,
+      latestRegistrationRequest: latestRegistrationRequest
+        ? toOnboardingRequestSummary(latestRegistrationRequest)
+        : null,
     });
   }
 
@@ -5059,6 +5149,339 @@ app.get("/auth/context", async (req, res) => {
     orgRole: membership.role,
     factoryId: membership.employee?.factoryId ?? null,
     employeeName: membership.employee?.name ?? null,
+  });
+});
+
+app.post("/onboarding/company-requests", async (req, res) => {
+  const requesterEmail = resolveOnboardingRequesterEmail(
+    req,
+    req.body?.requesterEmail ?? req.body?.email
+  );
+  if (!requesterEmail || !requesterEmail.includes("@")) {
+    return res.status(400).json({ ok: false, error: "request user email is required" });
+  }
+
+  const organizationNameEn = resolveOptionalString(
+    req.body?.organizationName ?? req.body?.organizationNameEn,
+    null
+  );
+  if (
+    !organizationNameEn ||
+    organizationNameEn.length < ONBOARDING_COMPANY_NAME_MIN_LENGTH ||
+    organizationNameEn.length > ONBOARDING_COMPANY_NAME_MAX_LENGTH
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: `organizationName must be ${ONBOARDING_COMPANY_NAME_MIN_LENGTH}-${ONBOARDING_COMPANY_NAME_MAX_LENGTH} chars`,
+    });
+  }
+
+  const country = resolveOnboardingCountry(req.body?.country ?? req.body?.countryCode);
+  if (!country) {
+    return res.status(400).json({ ok: false, error: "country must be KR or VN" });
+  }
+
+  const companyAddress = resolveOptionalString(
+    req.body?.companyAddress ?? req.body?.address,
+    null
+  );
+  if (!companyAddress || companyAddress.length > ONBOARDING_COMPANY_ADDRESS_MAX_LENGTH) {
+    return res.status(400).json({
+      ok: false,
+      error: `companyAddress is required (max ${ONBOARDING_COMPANY_ADDRESS_MAX_LENGTH} chars)`,
+    });
+  }
+
+  const businessNumber = normalizeOnboardingBusinessNumber(req.body?.businessNumber);
+  if (!businessNumber) {
+    return res.status(400).json({ ok: false, error: "businessNumber is required" });
+  }
+  if (!isValidOnboardingBusinessNumber(country, businessNumber)) {
+    return res.status(400).json({
+      ok: false,
+      error:
+        country === "KR"
+          ? "invalid KR businessNumber format (10 digits or 3-2-5)"
+          : "invalid VN businessNumber format (10 digits or 13 digits)",
+    });
+  }
+
+  const contactEmail = normalizeEmail(req.body?.representativeEmail ?? req.body?.contactEmail);
+  if (!contactEmail || !contactEmail.includes("@")) {
+    return res.status(400).json({ ok: false, error: "contactEmail is required" });
+  }
+
+  const contactPhone = resolveOptionalString(
+    req.body?.representativeContact ?? req.body?.contactPhone,
+    null
+  );
+  if (
+    !contactPhone ||
+    contactPhone.length > ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: `contactPhone is required (max ${ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH} chars)`,
+    });
+  }
+
+  const hasActiveMembership = await prisma.orgMembership.count({
+    where: {
+      email: requesterEmail,
+      status: "ACTIVE",
+    },
+  });
+  if (hasActiveMembership > 0) {
+    return res.status(409).json({
+      ok: false,
+      error: "active org membership already exists",
+    });
+  }
+
+  const existingPendingRequest = await prisma.onboardingRequest.findFirst({
+    where: {
+      requesterEmail,
+      status: "PENDING",
+      requestType: "REGISTER_ORG",
+    },
+    orderBy: { id: "desc" },
+  });
+
+  const savedRequest = existingPendingRequest
+    ? await prisma.onboardingRequest.update({
+        where: { id: existingPendingRequest.id },
+        data: {
+          organizationNameEn,
+          country,
+          companyAddress,
+          businessNumber,
+          contactEmail,
+          contactPhone,
+        },
+      })
+    : await prisma.onboardingRequest.create({
+        data: {
+          requesterEmail,
+          requestType: "REGISTER_ORG",
+          organizationNameEn,
+          country,
+          companyAddress,
+          businessNumber,
+          contactEmail,
+          contactPhone,
+          status: "PENDING",
+        },
+      });
+
+  return res.status(existingPendingRequest ? 200 : 201).json({
+    ok: true,
+    request: toOnboardingRequestSummary(savedRequest),
+  });
+});
+
+app.get("/system/onboarding-requests", async (req, res) => {
+  if (!(await requireSystemAdmin(req, res))) return;
+
+  const [pendingMembershipRequests, pendingCompanyRequests] = await Promise.all([
+    prisma.orgMembership.findMany({
+      where: { status: "PENDING" },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+      orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
+    }),
+    prisma.onboardingRequest.findMany({
+      where: { status: "PENDING" },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    }),
+  ]);
+
+  return res.json({
+    pendingMembershipRequests: pendingMembershipRequests.map((item) => ({
+      id: item.id,
+      orgId: item.orgId,
+      orgName: item.organization?.name ?? null,
+      orgType: item.organization?.type ?? null,
+      email: item.email,
+      role: item.role,
+      status: item.status,
+      requestedAt: item.requestedAt ?? item.createdAt,
+      createdAt: item.createdAt,
+    })),
+    pendingCompanyRequests: pendingCompanyRequests.map(toOnboardingRequestSummary),
+  });
+});
+
+app.patch("/system/company-requests/:id/approve", async (req, res) => {
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const companyRequest = await prisma.onboardingRequest.findUnique({
+    where: { id },
+  });
+  if (!companyRequest) {
+    return res.status(404).json({ ok: false, error: "request not found" });
+  }
+  if (companyRequest.status !== "PENDING") {
+    return res.status(409).json({ ok: false, error: "request is not pending" });
+  }
+
+  const rawSubscriptionStatus = req.body?.subscriptionStatus ?? req.body?.status;
+  const normalizedSubscriptionStatus =
+    rawSubscriptionStatus === undefined
+      ? undefined
+      : resolveSubscriptionStatus(rawSubscriptionStatus);
+  if (rawSubscriptionStatus !== undefined && !normalizedSubscriptionStatus) {
+    return res.status(400).json({ ok: false, error: "invalid subscription status" });
+  }
+
+  const normalizedMembershipEmail = normalizeEmail(req.body?.membershipEmail);
+  const normalizedBillingEmail = normalizeEmail(req.body?.billingEmail);
+  const subscriptionPayload: Record<string, unknown> = {};
+  if (normalizedSubscriptionStatus) {
+    subscriptionPayload.subscriptionStatus = normalizedSubscriptionStatus;
+  }
+  if (normalizedSubscriptionStatus === "ACTIVE") {
+    subscriptionPayload.membershipEmail =
+      normalizedMembershipEmail || companyRequest.contactEmail;
+    subscriptionPayload.billingEmail =
+      normalizedBillingEmail || companyRequest.contactEmail;
+  } else {
+    if (normalizedMembershipEmail) {
+      subscriptionPayload.membershipEmail = normalizedMembershipEmail;
+    }
+    if (normalizedBillingEmail) {
+      subscriptionPayload.billingEmail = normalizedBillingEmail;
+    }
+  }
+
+  const now = new Date();
+  const organization = await prisma.organization.create({
+    data: {
+      name: companyRequest.organizationNameEn,
+      businessNumber: companyRequest.businessNumber,
+      address: companyRequest.companyAddress || null,
+      email: companyRequest.contactEmail,
+      phone: companyRequest.contactPhone,
+      type: "MANUFACTURER",
+    },
+  });
+
+  await applySubscriptionPayload(organization, subscriptionPayload);
+  const organizationWithSubscription = await attachOrganizationSubscription(organization);
+
+  const approvedMembership = await prisma.orgMembership.upsert({
+    where: {
+      orgId_email: {
+        orgId: organization.id,
+        email: companyRequest.requesterEmail,
+      },
+    },
+    update: {
+      role: "ADMIN",
+      status: "ACTIVE",
+      requestedAt: now,
+      approvedAt: now,
+      approvedBy: systemAdmin.requesterEmail,
+    },
+    create: {
+      orgId: organization.id,
+      email: companyRequest.requesterEmail,
+      role: "ADMIN",
+      status: "ACTIVE",
+      requestedAt: now,
+      approvedAt: now,
+      approvedBy: systemAdmin.requesterEmail,
+    },
+  });
+
+  const updatedRequest = await prisma.onboardingRequest.update({
+    where: { id: companyRequest.id },
+    data: {
+      status: "APPROVED",
+      approvedAt: now,
+      approvedBy: systemAdmin.requesterEmail,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      organizationId: organization.id,
+    },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      },
+    },
+  });
+
+  return res.json({
+    ok: true,
+    request: toOnboardingRequestSummary(updatedRequest),
+    organization: toOrganizationResponse(organizationWithSubscription),
+    membership: approvedMembership,
+  });
+});
+
+app.patch("/system/company-requests/:id/reject", async (req, res) => {
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
+
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ ok: false, error: "invalid id" });
+  }
+
+  const companyRequest = await prisma.onboardingRequest.findUnique({
+    where: { id },
+  });
+  if (!companyRequest) {
+    return res.status(404).json({ ok: false, error: "request not found" });
+  }
+  if (companyRequest.status !== "PENDING") {
+    return res.status(409).json({ ok: false, error: "request is not pending" });
+  }
+
+  const rejectionReason = resolveOptionalString(req.body?.reason, null);
+  const now = new Date();
+  const updatedRequest = await prisma.onboardingRequest.update({
+    where: { id: companyRequest.id },
+    data: {
+      status: "REJECTED",
+      rejectedAt: now,
+      rejectedBy: systemAdmin.requesterEmail,
+      rejectionReason,
+      approvedAt: null,
+      approvedBy: null,
+      organizationId: null,
+    },
+  });
+
+  return res.json({
+    ok: true,
+    request: toOnboardingRequestSummary(updatedRequest),
   });
 });
 
