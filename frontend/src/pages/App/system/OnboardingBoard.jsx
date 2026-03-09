@@ -18,14 +18,10 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
 import { getOrganizationTypeLabel } from '../../../constants/organizationType';
-
-const SUBSCRIPTION_STATUS_OPTIONS = [
-  { value: 'NOT_SUBSCRIBED', label: 'Not Subscribed' },
-  { value: 'TRIAL', label: 'Trial' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'GRACE', label: 'Grace' },
-  { value: 'SUSPENDED', label: 'Suspended' },
-];
+import {
+  ORGANIZATION_SUBSCRIPTION_STATUS_KEYS,
+  ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS,
+} from '../../../constants/organizationAccess';
 
 const toDateTimeText = (value) => {
   const date = new Date(value);
@@ -59,7 +55,7 @@ const OnboardingBoard = () => {
         const next = { ...prev };
         companyRows.forEach((row) => {
           if (!next[row.id]) {
-            next[row.id] = 'NOT_SUBSCRIBED';
+            next[row.id] = ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED;
           }
         });
         return next;
@@ -93,7 +89,8 @@ const OnboardingBoard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           subscriptionStatus:
-            companySubscriptionStatuses[requestRow.id] || 'NOT_SUBSCRIBED',
+            companySubscriptionStatuses[requestRow.id] ||
+            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
         }),
       });
       showNotification('신규 회사 등록 요청을 승인했습니다.', 'success');
@@ -197,13 +194,16 @@ const OnboardingBoard = () => {
                           fullWidth
                           size="small"
                           select
-                          value={companySubscriptionStatuses[row.id] || 'NOT_SUBSCRIBED'}
+                          value={
+                            companySubscriptionStatuses[row.id] ||
+                            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED
+                          }
                           onChange={(event) =>
                             handleCompanySubscriptionChange(row.id, event.target.value)
                           }
                           disabled={processingKey !== ''}
                         >
-                          {SUBSCRIPTION_STATUS_OPTIONS.map((option) => (
+                          {ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS.map((option) => (
                             <MenuItem key={option.value} value={option.value}>
                               {option.label}
                             </MenuItem>

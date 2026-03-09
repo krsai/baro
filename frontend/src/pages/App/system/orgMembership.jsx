@@ -23,41 +23,31 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-
-const ORG_TYPES = [
-  { value: 'MANUFACTURER', label: 'Manufacturer' },
-  { value: 'BRAND', label: 'Brand' },
-];
-
-const ROLE_OPTIONS = [
-  { value: 'ADMIN', label: 'Admin' },
-  { value: 'OPERATOR', label: 'Operator' },
-  { value: 'ACCOUNTANT', label: 'Accountant' },
-  { value: 'WORKER', label: 'Worker' },
-];
-
-const SUBSCRIPTION_STATUS_OPTIONS = [
-  { value: 'NOT_SUBSCRIBED', label: 'Not Subscribed' },
-  { value: 'TRIAL', label: 'Trial' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'GRACE', label: 'Grace' },
-  { value: 'SUSPENDED', label: 'Suspended' },
-];
-
-const STATUS_CHIP_COLOR = {
-  ACTIVE: 'success',
-  TRIAL: 'info',
-  GRACE: 'warning',
-  SUSPENDED: 'error',
-  NOT_SUBSCRIBED: 'default',
-};
+import {
+  ORG_ROLE_KEYS,
+  ORG_ROLE_OPTIONS,
+  ORGANIZATION_SUBSCRIPTION_STATUS_KEYS,
+  ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS,
+  getOrgMembershipStatusChipColor,
+  getOrgMembershipStatusLabel,
+  getOrgRoleLabel,
+  getOrganizationSubscriptionStatusChipColor,
+  getOrganizationSubscriptionStatusLabel,
+  isOrgMembershipStatusFilled,
+  isOrganizationSubscriptionStatusFilled,
+} from '../../../constants/organizationAccess';
+import {
+  ORGANIZATION_TYPE_KEYS,
+  ORGANIZATION_TYPE_OPTIONS,
+  getOrganizationTypeLabel,
+} from '../../../constants/organizationType';
 
 const SubscriptionChip = ({ status }) => (
   <Chip
-    label={status ?? '—'}
+    label={getOrganizationSubscriptionStatusLabel(status, status || '—')}
     size="small"
-    color={STATUS_CHIP_COLOR[status] ?? 'default'}
-    variant={status === 'ACTIVE' ? 'filled' : 'outlined'}
+    color={getOrganizationSubscriptionStatusChipColor(status)}
+    variant={isOrganizationSubscriptionStatusFilled(status) ? 'filled' : 'outlined'}
   />
 );
 
@@ -81,23 +71,23 @@ const OrgMembership = () => {
   const [orgForm, setOrgForm] = useState({
     name: '',
     code: '',
-    type: 'MANUFACTURER',
+    type: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
     email: '',
-    subscriptionStatus: 'NOT_SUBSCRIBED',
+    subscriptionStatus: ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
     membershipEmail: '',
     billingEmail: '',
     representative: '',
     address: '',
     phone: '',
     initialMemberEmail: '',
-    initialMemberRole: 'ADMIN',
+    initialMemberRole: ORG_ROLE_KEYS.ADMIN,
   });
 
   // 멤버 할당 폼
   const [assignForm, setAssignForm] = useState({
     orgId: '',
     email: '',
-    role: 'OPERATOR',
+    role: ORG_ROLE_KEYS.OPERATOR,
   });
 
   const [loadingOrgs, setLoadingOrgs] = useState(false);
@@ -149,7 +139,8 @@ const OrgMembership = () => {
     }
     setEditingOrgId(org.id);
     setSubEditForm({
-      subscriptionStatus: org.subscription?.status ?? 'NOT_SUBSCRIBED',
+      subscriptionStatus:
+        org.subscription?.status ?? ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
       membershipEmail: org.subscription?.membershipEmail ?? '',
       billingEmail: org.subscription?.billingEmail ?? '',
     });
@@ -163,7 +154,7 @@ const OrgMembership = () => {
   const handleUpdateSubscription = async () => {
     if (savingSubscription || !editingOrgId) return;
     if (
-      subEditForm.subscriptionStatus === 'ACTIVE' &&
+      subEditForm.subscriptionStatus === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE &&
       (!subEditForm.membershipEmail.trim() || !subEditForm.billingEmail.trim())
     ) {
       showNotification('Active 상태에는 Membership Email과 Billing Email이 필요합니다.', 'error');
@@ -207,7 +198,7 @@ const OrgMembership = () => {
       return;
     }
     if (
-      orgForm.subscriptionStatus === 'ACTIVE' &&
+      orgForm.subscriptionStatus === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE &&
       (!orgForm.membershipEmail.trim() || !orgForm.billingEmail.trim())
     ) {
       showNotification('Active 상태에는 Membership Email과 Billing Email이 필요합니다.', 'error');
@@ -252,16 +243,16 @@ const OrgMembership = () => {
       setOrgForm({
         name: '',
         code: '',
-        type: 'MANUFACTURER',
+        type: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
         email: '',
-        subscriptionStatus: 'NOT_SUBSCRIBED',
+        subscriptionStatus: ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
         membershipEmail: '',
         billingEmail: '',
         representative: '',
         address: '',
         phone: '',
         initialMemberEmail: '',
-        initialMemberRole: 'ADMIN',
+        initialMemberRole: ORG_ROLE_KEYS.ADMIN,
       });
       setShowCreateForm(false);
       showNotification(
@@ -366,7 +357,9 @@ const OrgMembership = () => {
                       <TableRow hover>
                         <TableCell sx={{ color: 'text.secondary' }}>{org.id}</TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>{org.name}</TableCell>
-                        <TableCell>{org.type}</TableCell>
+                        <TableCell>
+                          {getOrganizationTypeLabel(org.type, org.type || '—')}
+                        </TableCell>
                         <TableCell>
                           <SubscriptionChip status={org.subscription?.status} />
                         </TableCell>
@@ -412,7 +405,7 @@ const OrgMembership = () => {
                                     value={subEditForm.subscriptionStatus}
                                     onChange={handleSubEditChange}
                                   >
-                                    {SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
+                                    {ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
                                       <MenuItem key={opt.value} value={opt.value}>
                                         {opt.label}
                                       </MenuItem>
@@ -518,7 +511,7 @@ const OrgMembership = () => {
                     value={orgForm.type}
                     onChange={handleOrgChange}
                   >
-                    {ORG_TYPES.map((opt) => (
+                    {ORGANIZATION_TYPE_OPTIONS.map((opt) => (
                       <MenuItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </MenuItem>
@@ -543,7 +536,7 @@ const OrgMembership = () => {
                     value={orgForm.subscriptionStatus}
                     onChange={handleOrgChange}
                   >
-                    {SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
+                    {ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS.map((opt) => (
                       <MenuItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </MenuItem>
@@ -624,7 +617,7 @@ const OrgMembership = () => {
                     value={orgForm.initialMemberRole}
                     onChange={handleOrgChange}
                   >
-                    {ROLE_OPTIONS.map((opt) => (
+                    {ORG_ROLE_OPTIONS.map((opt) => (
                       <MenuItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </MenuItem>
@@ -670,7 +663,12 @@ const OrgMembership = () => {
                         component="span"
                         sx={{ ml: 1, fontSize: '0.75rem', color: 'text.secondary' }}
                       >
-                        ({org.subscription?.status ?? 'NO SUB'})
+                        (
+                        {getOrganizationSubscriptionStatusLabel(
+                          org.subscription?.status ??
+                            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED
+                        )}
+                        )
                       </Box>
                     </MenuItem>
                   ))}
@@ -695,7 +693,7 @@ const OrgMembership = () => {
                   value={assignForm.role}
                   onChange={handleAssignChange}
                 >
-                  {ROLE_OPTIONS.map((opt) => (
+                  {ORG_ROLE_OPTIONS.map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>
                       {opt.label}
                     </MenuItem>
@@ -733,21 +731,15 @@ const OrgMembership = () => {
                   {members.map((member) => (
                     <TableRow key={member.id}>
                       <TableCell>{member.email}</TableCell>
-                      <TableCell>{member.role}</TableCell>
+                      <TableCell>{getOrgRoleLabel(member.role, member.role || '—')}</TableCell>
                       <TableCell>
                         <Chip
-                          label={member.status}
+                          label={getOrgMembershipStatusLabel(member.status, member.status || '—')}
                           size="small"
-                          color={
-                            member.status === 'ACTIVE'
-                              ? 'success'
-                              : member.status === 'PENDING'
-                              ? 'warning'
-                              : member.status === 'SUSPENDED'
-                              ? 'error'
-                              : 'default'
+                          color={getOrgMembershipStatusChipColor(member.status)}
+                          variant={
+                            isOrgMembershipStatusFilled(member.status) ? 'filled' : 'outlined'
                           }
-                          variant={member.status === 'ACTIVE' ? 'filled' : 'outlined'}
                         />
                       </TableCell>
                       <TableCell sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
