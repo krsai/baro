@@ -433,7 +433,7 @@ const Onboarding = () => {
               </Stack>
 
               <Typography variant="caption" color="text.secondary">
-                모든 요청은 시스템 관리자({SYSTEM_PROVIDER.email})에게 전달되며 승인 후 이메일로 안내됩니다.
+                소속 회사 승인 요청은 해당 회사의 관리자/운영자에게 전달되며 승인 후 이메일로 안내됩니다.
               </Typography>
             </Stack>
           </Paper>
@@ -478,6 +478,9 @@ const Onboarding = () => {
                   신규 회사 등록 열기
                 </Button>
               </Box>
+              <Typography variant="caption" color="text.secondary">
+                신규 회사 등록 요청은 시스템 관리자({SYSTEM_PROVIDER.email})에게 전달됩니다.
+              </Typography>
             </Stack>
           </Paper>
 

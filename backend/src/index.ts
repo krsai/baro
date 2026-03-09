@@ -5282,47 +5282,22 @@ app.post("/onboarding/company-requests", async (req, res) => {
 app.get("/system/onboarding-requests", async (req, res) => {
   if (!(await requireSystemAdmin(req, res))) return;
 
-  const [pendingMembershipRequests, pendingCompanyRequests] = await Promise.all([
-    prisma.orgMembership.findMany({
-      where: { status: "PENDING" },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
+  const pendingCompanyRequests = await prisma.onboardingRequest.findMany({
+    where: { status: "PENDING" },
+    include: {
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
         },
       },
-      orderBy: [{ requestedAt: "desc" }, { id: "desc" }],
-    }),
-    prisma.onboardingRequest.findMany({
-      where: { status: "PENDING" },
-      include: {
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    }),
-  ]);
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
 
   return res.json({
-    pendingMembershipRequests: pendingMembershipRequests.map((item) => ({
-      id: item.id,
-      orgId: item.orgId,
-      orgName: item.organization?.name ?? null,
-      orgType: item.organization?.type ?? null,
-      email: item.email,
-      role: item.role,
-      status: item.status,
-      requestedAt: item.requestedAt ?? item.createdAt,
-      createdAt: item.createdAt,
-    })),
+    pendingMembershipRequests: [],
     pendingCompanyRequests: pendingCompanyRequests.map(toOnboardingRequestSummary),
   });
 });

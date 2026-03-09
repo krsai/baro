@@ -1,7 +1,11 @@
 import { Prisma, type OrgUserRole } from "@prisma/client";
 import { type Request, type Response, Router } from "express";
 import { prisma } from "../db";
-import { getOrganizationByQuery, requireSystemAdmin } from "../middleware/access";
+import {
+  getOrganizationByQuery,
+  getRequesterEmail,
+  requireSystemAdmin,
+} from "../middleware/access";
 import { normalizeEmail } from "../utils/common";
 
 type OrgMembershipRoutesDeps = {
@@ -29,6 +33,45 @@ export const createOrgMembershipRouter = ({
   resolveStatus,
 }: OrgMembershipRoutesDeps) => {
   const orgMembershipRouter = Router();
+  const REQUEST_REVIEWER_ROLES = new Set<OrgUserRole>(["ADMIN", "OPERATOR"]);
+
+  const requireOrgMembershipReviewer = async (
+    req: Request,
+    res: Response,
+    orgId: number
+  ) => {
+    const requesterEmail = normalizeEmail(getRequesterEmail(req));
+    if (!requesterEmail) {
+      res.status(401).json({ ok: false, error: "request user email is required" });
+      return null;
+    }
+
+    const requesterMembership = await prisma.orgMembership.findUnique({
+      where: {
+        orgId_email: {
+          orgId,
+          email: requesterEmail,
+        },
+      },
+      select: {
+        status: true,
+        role: true,
+      },
+    });
+
+    if (
+      requesterMembership?.status !== "ACTIVE" ||
+      !REQUEST_REVIEWER_ROLES.has(requesterMembership.role)
+    ) {
+      res.status(403).json({
+        ok: false,
+        error: "org admin/operator access required",
+      });
+      return null;
+    }
+
+    return requesterEmail;
+  };
 
   const listOrgMemberships = async (req: Request, res: Response) => {
     let organization = null;
@@ -65,7 +108,8 @@ export const createOrgMembershipRouter = ({
   orgMembershipRouter.post("/org-memberships/apply", async (req, res) => {
     const { orgId, email, role } = req.body ?? {};
     const orgIdNum = Number(orgId);
-    const normalizedEmail = normalizeEmail(email);
+    const requesterEmail = normalizeEmail(getRequesterEmail(req));
+    const normalizedEmail = requesterEmail || normalizeEmail(email);
 
     if (!Number.isFinite(orgIdNum)) {
       return res.status(400).json({ ok: false, error: "orgId is required" });
@@ -73,6 +117,9 @@ export const createOrgMembershipRouter = ({
 
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       return res.status(400).json({ ok: false, error: "email is required" });
+    }
+    if (requesterEmail && normalizeEmail(email) && normalizeEmail(email) !== requesterEmail) {
+      return res.status(403).json({ ok: false, error: "email does not match request user" });
     }
 
     const organization = await prisma.organization.findUnique({
@@ -136,6 +183,8 @@ export const createOrgMembershipRouter = ({
     if (!membership) {
       return res.status(404).json({ ok: false, error: "membership not found" });
     }
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    if (!requesterEmail) return;
 
     const nextRole = resolveRole(role, membership.role);
     let factoryIdNum = null;
@@ -184,7 +233,8 @@ export const createOrgMembershipRouter = ({
         role: nextRole,
         status: "ACTIVE",
         approvedAt: new Date(),
-        approvedBy: normalizedApprovedBy || membership.approvedBy || null,
+        approvedBy:
+          requesterEmail || normalizedApprovedBy || membership.approvedBy || null,
       },
     });
 
@@ -248,6 +298,8 @@ export const createOrgMembershipRouter = ({
     if (!membership) {
       return res.status(404).json({ ok: false, error: "membership not found" });
     }
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    if (!requesterEmail) return;
 
     const now = new Date();
     const employee = await prisma.employee.findUnique({
@@ -270,7 +322,8 @@ export const createOrgMembershipRouter = ({
       data: {
         status: "REJECTED",
         approvedAt: now,
-        approvedBy: normalizedApprovedBy || membership.approvedBy || null,
+        approvedBy:
+          requesterEmail || normalizedApprovedBy || membership.approvedBy || null,
       },
     });
 
@@ -300,6 +353,8 @@ export const createOrgMembershipRouter = ({
     if (!membership) {
       return res.status(404).json({ ok: false, error: "membership not found" });
     }
+    const requesterEmail = await requireOrgMembershipReviewer(req, res, membership.orgId);
+    if (!requesterEmail) return;
 
     const nextRole = role ? resolveRole(role, membership.role) : membership.role;
     const nextStatus = status ? resolveStatus(status) : null;
@@ -313,7 +368,8 @@ export const createOrgMembershipRouter = ({
     };
 
     if (nextStatus && nextStatus !== membership.status) {
-      data.approvedBy = normalizedApprovedBy || membership.approvedBy || null;
+      data.approvedBy =
+        requesterEmail || normalizedApprovedBy || membership.approvedBy || null;
       if (nextStatus === "ACTIVE") {
         data.approvedAt = membership.approvedAt || new Date();
       }
