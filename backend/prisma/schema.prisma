@@ -105,6 +105,8 @@ model Organization {
   employees                 Employee[]
   lines                     Line[]
   styles                    Style[]
+  styleProcesses            StyleProcess[]
+  styleProcessStandards     StyleProcessStandard[]
   orders                    WorkOrder[]
   workLogs                  WorkLog[]
   workRecords               WorkRecord[]
@@ -390,6 +392,7 @@ model Style {
   updatedAt        DateTime @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
+  styleProcesses StyleProcess[]
   workOrderItems WorkOrderItem[]
   workRecords    WorkRecord[]
 
@@ -397,6 +400,47 @@ model Style {
   @@unique([orgId, customer, name])
   @@unique([orgId, customer, styleCode])
   @@index([orgId])
+}
+
+model StyleProcess {
+  id                 Int      @id @default(autoincrement())
+  orgId              Int
+  styleUid           Int
+  processCode        String
+  processName        String
+  processDescription String?
+  processQuantity    Int      @default(1)
+  sortOrder          Int      @default(0)
+  ptSeconds          Float?
+  atParams           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization          @relation(fields: [orgId], references: [id])
+  style        Style                 @relation(fields: [styleUid], references: [uid], onDelete: Cascade)
+  standards    StyleProcessStandard[]
+
+  @@unique([styleUid, processCode])
+  @@index([orgId])
+  @@index([styleUid])
+}
+
+model StyleProcessStandard {
+  id             Int      @id @default(autoincrement())
+  orgId          Int
+  styleProcessId Int
+  quantity       Int
+  stSeconds      Float
+  setBy          String?
+  setAt          DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  styleProcess StyleProcess @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+
+  @@unique([styleProcessId, quantity])
+  @@index([orgId])
+  @@index([styleProcessId])
 }
 
 model WorkOrder {

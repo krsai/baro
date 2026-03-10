@@ -44,6 +44,7 @@ import {
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
+  resolveProcessExactStPerPieceSeconds,
 } from '../../../utils/processTime';
 import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
@@ -293,14 +294,13 @@ const resolveProcessStSeedSeconds = ({
   const proposal = toOptionalPositiveNumber(proposalStSeconds);
   if (proposal != null) return { seconds: proposal, source: 'ST' };
 
-  const manualSt = process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
+  const manualSt = toOptionalPositiveNumber(
+    resolveProcessExactStPerPieceSeconds(process, orderQuantity)
+  );
   if (manualSt != null) return { seconds: manualSt, source: 'ST' };
 
   const ptInfo = resolveProcessPtInfo(process, orderQuantity);
   if (ptInfo.seconds != null) return { seconds: ptInfo.seconds, source: 'PT' };
-
-  const atPerPiece = resolveProcessAtSeconds(process, orderQuantity);
-  if (atPerPiece != null) return { seconds: atPerPiece, source: 'AT' };
 
   return { seconds: 0, source: 'NONE' };
 };

@@ -570,6 +570,14 @@ type StyleAtParams = {
   observationCount: number | null;
 };
 
+type StyleStValue = {
+  quantity: number;
+  seconds: number;
+  setBy: string | null;
+  setAt: string | null;
+  updatedAt: string | null;
+};
+
 const toStyleAtParams = (value: any): StyleAtParams | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const a = toOptionalSeconds((value as any).a);
@@ -627,19 +635,75 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
   };
 };
 
-const toStyleAtParamsFromLegacyScalar = (value: any): StyleAtParams | null => {
-  const a = toOptionalSeconds(value);
-  if (a === null) return null;
+const toStyleStValue = (value: any): StyleStValue | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const quantity = toPositiveIntOrNull((value as any).quantity);
+  const seconds = toOptionalSeconds((value as any).seconds);
+  if (quantity === null || seconds === null) return null;
+  const setAtRaw = resolveOptionalString((value as any).setAt, null);
+  const setAtDate = setAtRaw ? new Date(setAtRaw) : null;
+  const updatedAtRaw = resolveOptionalString((value as any).updatedAt, null);
+  const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
   return {
-    a,
-    b: 0,
-    version: 1,
-    updatedAt: null,
-    trainedPeriod: null,
-    attendanceCoverage: null,
-    attendanceFallbackShare: null,
-    observationCount: null,
+    quantity,
+    seconds,
+    setBy: resolveOptionalString((value as any).setBy, null),
+    setAt:
+      setAtDate && !Number.isNaN(setAtDate.getTime())
+        ? setAtDate.toISOString()
+        : null,
+    updatedAt:
+      updatedAtDate && !Number.isNaN(updatedAtDate.getTime())
+        ? updatedAtDate.toISOString()
+        : null,
   };
+};
+
+const normalizeStyleProcessStValues = (
+  values: any,
+  legacyProcess: any = null
+): StyleStValue[] => {
+  const byQuantity = new Map<number, StyleStValue>();
+  ensureArray(values).forEach((value) => {
+    const normalized = toStyleStValue(value);
+    if (!normalized) return;
+    byQuantity.set(normalized.quantity, normalized);
+  });
+
+  const legacyCt = toOptionalSeconds((legacyProcess as any)?.ct);
+  const legacyQuantity = toPositiveInt(
+    (legacyProcess as any)?.timeRefQuantity ??
+      (legacyProcess as any)?.referenceQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  if (
+    byQuantity.size === 0 &&
+    (legacyProcess as any)?.stManual === true &&
+    legacyCt !== null
+  ) {
+    byQuantity.set(legacyQuantity, {
+      quantity: legacyQuantity,
+      seconds: legacyCt,
+      setBy: "LEGACY",
+      setAt: null,
+      updatedAt: null,
+    });
+  }
+
+  return Array.from(byQuantity.values()).sort(
+    (left, right) => left.quantity - right.quantity
+  );
+};
+
+const findStyleProcessExactStValue = (
+  values: StyleStValue[] = [],
+  orderQuantity = 1
+): StyleStValue | null => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  return (
+    values.find((value) => toPositiveInt(value.quantity, 0) === resolvedOrderQuantity) ??
+    null
+  );
 };
 
 const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
@@ -651,9 +715,7 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
   }
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
   const processQuantity = toPositiveInt((process as any).quantity, 1);
-  const atParams =
-    toStyleAtParams((process as any).atParams) ??
-    toStyleAtParamsFromLegacyScalar((process as any).at);
+  const atParams = toStyleAtParams((process as any).atParams);
   if (!atParams) return null;
   return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
 };
@@ -873,13 +935,27 @@ const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
   }
-  const { st: _legacySt, ...rest } = process;
+  const { st: _legacySt, processQuantity: _legacyProcessQuantity, ...rest } = process;
   const next = { ...rest };
+  const normalizedStValues = normalizeStyleProcessStValues(
+    (next as any).stValues,
+    next
+  );
+  const resolvedTimeRefQuantity = toPositiveInt(
+    (next as any).timeRefQuantity ??
+      (next as any).referenceQuantity ??
+      normalizedStValues[0]?.quantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  const exactStValue = findStyleProcessExactStValue(
+    normalizedStValues,
+    resolvedTimeRefQuantity
+  );
   if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
-  if ("ct" in next) next.ct = toOptionalSeconds(next.ct);
-  const normalizedAtParams =
-    toStyleAtParams((next as any).atParams) ??
-    toStyleAtParamsFromLegacyScalar((next as any).at);
+  const legacyCt =
+    normalizedStValues.length === 0 ? toOptionalSeconds(next.ct) : null;
+  next.ct = exactStValue?.seconds ?? legacyCt;
+  const normalizedAtParams = toStyleAtParams((next as any).atParams);
   if (normalizedAtParams) {
     (next as any).atParams = normalizedAtParams;
   } else if ("atParams" in next) {
@@ -888,10 +964,12 @@ const normalizeStyleProcess = (process: any) => {
   if ("at" in next) {
     delete (next as any).at;
   }
-  next.timeRefQuantity = toPositiveInt(
-    (next as any).timeRefQuantity ?? (next as any).referenceQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
+  if (normalizedStValues.length > 0) {
+    (next as any).stValues = normalizedStValues;
+  } else if ("stValues" in next) {
+    delete (next as any).stValues;
+  }
+  next.timeRefQuantity = resolvedTimeRefQuantity;
   const hasCt = next.ct !== null && next.ct !== undefined;
   const atPerPiece = resolveStyleProcessAtPerPieceSecondsForReferenceQuantity(next);
   const hasAt = atPerPiece !== null;
@@ -900,18 +978,54 @@ const normalizeStyleProcess = (process: any) => {
     hasAt &&
     Math.abs(Number(next.ct) - Number(atPerPiece)) < 1e-4;
   next.stManual =
-    typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt;
-  if (next.stManual !== true && next.ct == null) {
-    next.ct = next.pt ?? null;
-  }
+    exactStValue !== null ||
+    (typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt);
   if ("referenceQuantity" in next) {
     delete (next as any).referenceQuantity;
+  }
+  next.quantity = toPositiveInt(
+    (next as any).quantity ?? _legacyProcessQuantity,
+    1
+  );
+  if ("processQuantity" in next) {
+    delete (next as any).processQuantity;
   }
   return next;
 };
 
 const normalizeStyleProcesses = (value: any) =>
   ensureArray(value).map((process) => normalizeStyleProcess(process));
+
+const resolveStyleProcessExactStPerPieceSeconds = (
+  process: any,
+  orderQuantity = 1
+) => {
+  const normalized = normalizeStyleProcess(process);
+  const exactStValue = findStyleProcessExactStValue(
+    ensureArray((normalized as any)?.stValues) as StyleStValue[],
+    orderQuantity
+  );
+  if (exactStValue) return exactStValue.seconds;
+
+  if (ensureArray((normalized as any)?.stValues).length > 0) {
+    return null;
+  }
+
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const legacyQuantity = toPositiveInt(
+    (normalized as any)?.timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  const legacyCt = toOptionalSeconds((normalized as any)?.ct);
+  if (
+    (normalized as any)?.stManual === true &&
+    legacyCt !== null &&
+    legacyQuantity === resolvedOrderQuantity
+  ) {
+    return legacyCt;
+  }
+  return null;
+};
 
 type StyleProcessDuplicateIdentity = {
   identityKey: string;
@@ -1469,20 +1583,20 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
   );
 
   const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
+  await ensureStyleProcessStorageForStyles(styles);
+  const processRowsByStyleUid = await loadStyleProcessRowsByStyleUid(
+    styles.map((style) => style.uid)
+  );
 
   let updatedStyles = 0;
   let updatedProcesses = 0;
   let clampAdjustedProcesses = 0;
   for (const style of styles) {
-    const normalizedProcesses = normalizeStyleProcesses(style.processes);
     let changed = false;
-    const nextProcesses = normalizedProcesses.map((process) => {
-      if (!process || typeof process !== "object" || Array.isArray(process)) {
-        return process;
-      }
-
-      const codeKey = normalizeProcessCodeKey((process as any).code);
-      const nameKey = normalizeProcessNameKey((process as any).name);
+    const processRows = processRowsByStyleUid.get(style.uid) || [];
+    for (const processRow of processRows) {
+      const codeKey = normalizeProcessCodeKey((processRow as any).processCode);
+      const nameKey = normalizeProcessNameKey((processRow as any).processName);
       const metricKey =
         (codeKey
           ? toStyleProcessMetricKey(String(style.uid), "code", codeKey)
@@ -1490,16 +1604,12 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         (nameKey
           ? toStyleProcessMetricKey(String(style.uid), "name", nameKey)
           : null);
-      if (!metricKey) return process;
+      if (!metricKey) continue;
 
       const fittedRaw = fittedParamsByMetric.get(metricKey);
-      if (!fittedRaw) return process;
+      if (!fittedRaw) continue;
 
-      const currentAtParams = toStyleAtParams((process as any).atParams);
-      const referenceQuantity = toPositiveInt(
-        (process as any).timeRefQuantity,
-        DEFAULT_TIME_REF_QUANTITY
-      );
+      const currentAtParams = toStyleAtParams((processRow as any).atParams);
       const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
       const nextAttendanceCoverage =
         qualityStats && qualityStats.totalQuantity > 0
@@ -1532,8 +1642,6 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       if (clampedA !== fittedRaw.a) {
         clampAdjustedProcesses += 1;
       }
-      const nextAtPerPiece = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
-      if (nextAtPerPiece === null) return process;
       const hasAtParamDelta =
         currentAtParams === null ||
         currentAtParams.a !== fitted.a ||
@@ -1568,30 +1676,21 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           }
         : currentAtParams;
       const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);
-
-      const isStManual = (process as any).stManual === true;
-      const currentCt = toOptionalSeconds((process as any).ct);
-      // ST(CT)는 자동으로 AT에 맞춰 변경하지 않음. stManual=false이면 PT 기준 유지.
-      const pt = toOptionalSeconds((process as any).pt);
-      const nextCt = !isStManual ? (pt ?? currentCt) : currentCt;
-      const ctChanged = (currentCt ?? null) !== (nextCt ?? null);
-      if (!ctChanged && !atParamsChanged) return process;
+      if (!atParamsChanged) continue;
 
       changed = true;
       updatedProcesses += 1;
-      return {
-        ...(process as any),
-        ...(atParamsChanged ? { atParams: nextAtParams } : {}),
-        ...(ctChanged ? { ct: nextCt } : {}),
-      };
-    });
+      await prisma.styleProcess.update({
+        where: { id: processRow.id },
+        data: {
+          atParams: nextAtParams,
+        },
+      });
+    }
 
     if (!changed) continue;
     updatedStyles += 1;
-    await prisma.style.update({
-      where: { uid: style.uid },
-      data: { processes: nextProcesses },
-    });
+    await refreshStyleProcessMirrorForStyleUids([style.uid]);
   }
 
   if (clampAdjustedProcesses > 0) {
@@ -1878,9 +1977,360 @@ const findStyleConflict = async ({
   return "style already exists for this customer";
 };
 
+type StyleStorageClient = Prisma.TransactionClient | typeof prisma;
+
+const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
+  standards: {
+    orderBy: [{ quantity: "asc" }, { id: "asc" }],
+  },
+};
+
+const resolveStyleProcessStorageCode = (process: any, index: number) => {
+  const codeKey = normalizeProcessCodeKey(process?.code);
+  if (codeKey) return codeKey;
+  const nameKey = normalizeProcessNameKey(process?.name);
+  if (nameKey) return nameKey.toUpperCase();
+  return `PROC_${index + 1}`;
+};
+
+const buildStyleProcessStorageDrafts = (processes: any): any[] =>
+  normalizeStyleProcesses(processes).map((process, index) => ({
+    processCode: resolveStyleProcessStorageCode(process, index),
+    processName:
+      resolveOptionalString((process as any)?.name, null) ??
+      resolveOptionalString((process as any)?.code, null) ??
+      resolveStyleProcessStorageCode(process, index),
+    processDescription: resolveOptionalString((process as any)?.description, null),
+    processQuantity: toPositiveInt(
+      (process as any)?.quantity ?? (process as any)?.processQuantity,
+      1
+    ),
+    sortOrder: index,
+    ptSeconds: toOptionalSeconds((process as any)?.pt),
+    atParams: toStyleAtParams((process as any)?.atParams),
+    stValues: normalizeStyleProcessStValues((process as any)?.stValues, process),
+  }));
+
+const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
+  ensureArray(rows)
+    .slice()
+    .sort(
+      (left, right) =>
+        Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
+        Number(left?.id ?? 0) - Number(right?.id ?? 0)
+    )
+    .map((row, index) =>
+      normalizeStyleProcess({
+        code: row.processCode,
+        name: row.processName,
+        description: row.processDescription ?? null,
+        quantity: row.processQuantity ?? 1,
+        pt: toOptionalSeconds(row.ptSeconds),
+        atParams: toStyleAtParams(row.atParams),
+        stValues: ensureArray(row.standards).map((standard) => ({
+          quantity: toPositiveInt((standard as any)?.quantity, DEFAULT_TIME_REF_QUANTITY),
+          seconds: toOptionalSeconds((standard as any)?.stSeconds),
+          setBy: resolveOptionalString((standard as any)?.setBy, null),
+          setAt:
+            (standard as any)?.setAt instanceof Date
+              ? (standard as any).setAt.toISOString()
+              : resolveOptionalString((standard as any)?.setAt, null),
+          updatedAt:
+            (standard as any)?.updatedAt instanceof Date
+              ? (standard as any).updatedAt.toISOString()
+              : resolveOptionalString((standard as any)?.updatedAt, null),
+        })),
+        timeRefQuantity:
+          ensureArray(row.standards)[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
+        instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
+      })
+    );
+
+const loadStyleProcessRowsByStyleUid = async (
+  styleUids: number[],
+  db: StyleStorageClient = prisma
+) => {
+  const normalizedStyleUids = Array.from(
+    new Set(
+      ensureArray(styleUids)
+        .map((styleUid) => toPositiveIntOrNull(styleUid))
+        .filter((styleUid): styleUid is number => styleUid !== null)
+    )
+  );
+  if (normalizedStyleUids.length === 0) return new Map<number, any[]>();
+  const rows = await db.styleProcess.findMany({
+    where: { styleUid: { in: normalizedStyleUids } },
+    include: STYLE_PROCESS_STANDARD_INCLUDE,
+    orderBy: [{ styleUid: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
+  });
+  return rows.reduce((map, row) => {
+    const current = map.get(row.styleUid) || [];
+    current.push(row);
+    map.set(row.styleUid, current);
+    return map;
+  }, new Map<number, any[]>());
+};
+
+const refreshStyleProcessMirrorForStyleUids = async (
+  styleUids: number[],
+  db: StyleStorageClient = prisma
+) => {
+  const normalizedStyleUids = Array.from(
+    new Set(
+      ensureArray(styleUids)
+        .map((styleUid) => toPositiveIntOrNull(styleUid))
+        .filter((styleUid): styleUid is number => styleUid !== null)
+    )
+  );
+  if (normalizedStyleUids.length === 0) return new Map<number, any[]>();
+  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, db);
+  await Promise.all(
+    normalizedStyleUids.map((styleUid) =>
+      db.style.update({
+        where: { uid: styleUid },
+        data: {
+          processes: buildStyleProcessMirrorFromRows(
+            rowsByStyleUid.get(styleUid) || []
+          ),
+        },
+      })
+    )
+  );
+  return rowsByStyleUid;
+};
+
+const syncStyleProcessStorageForStyle = async ({
+  styleUid,
+  orgId,
+  processes,
+  db = prisma,
+}: {
+  styleUid: number;
+  orgId: number;
+  processes: any;
+  db?: StyleStorageClient;
+}) => {
+  const drafts = buildStyleProcessStorageDrafts(processes);
+  const existingRows = await db.styleProcess.findMany({
+    where: { styleUid },
+    select: { id: true, processCode: true },
+  });
+  const existingByCode = new Map(
+    existingRows.map((row) => [normalizeProcessCodeKey(row.processCode), row.id])
+  );
+  const nextCodes = new Set(drafts.map((draft) => normalizeProcessCodeKey(draft.processCode)));
+
+  if (existingRows.length > 0) {
+    const deleteIds = existingRows
+      .filter((row) => !nextCodes.has(normalizeProcessCodeKey(row.processCode)))
+      .map((row) => row.id);
+    if (deleteIds.length > 0) {
+      await db.styleProcess.deleteMany({
+        where: { id: { in: deleteIds } },
+      });
+    }
+  }
+
+  for (const draft of drafts) {
+    const existingId = existingByCode.get(normalizeProcessCodeKey(draft.processCode));
+    const row = existingId
+      ? await db.styleProcess.update({
+          where: { id: existingId },
+          data: {
+            processCode: draft.processCode,
+            processName: draft.processName,
+            processDescription: draft.processDescription,
+            processQuantity: draft.processQuantity,
+            sortOrder: draft.sortOrder,
+            ptSeconds: draft.ptSeconds,
+            atParams: draft.atParams,
+          },
+        })
+      : await db.styleProcess.create({
+          data: {
+            orgId,
+            styleUid,
+            processCode: draft.processCode,
+            processName: draft.processName,
+            processDescription: draft.processDescription,
+            processQuantity: draft.processQuantity,
+            sortOrder: draft.sortOrder,
+            ptSeconds: draft.ptSeconds,
+            atParams: draft.atParams,
+          },
+        });
+
+    await db.styleProcessStandard.deleteMany({
+      where: { styleProcessId: row.id },
+    });
+    if (draft.stValues.length > 0) {
+      await db.styleProcessStandard.createMany({
+        data: draft.stValues.map((stValue: StyleStValue) => ({
+          orgId,
+          styleProcessId: row.id,
+          quantity: stValue.quantity,
+          stSeconds: stValue.seconds,
+          setBy: stValue.setBy,
+          setAt: stValue.setAt ? new Date(stValue.setAt) : undefined,
+        })),
+      });
+    }
+  }
+
+  const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids([styleUid], db);
+  return buildStyleProcessMirrorFromRows(rowsByStyleUid.get(styleUid) || []);
+};
+
+const ensureStyleProcessStorageForStyles = async (
+  styles: any[],
+  db: StyleStorageClient = prisma
+) => {
+  const styleRows = ensureArray(styles).filter(
+    (style) => style && typeof style === "object" && Number.isFinite(Number(style?.uid))
+  );
+  if (styleRows.length === 0) return new Map<number, any[]>();
+
+  let rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
+    styleRows.map((style) => Number(style.uid)),
+    db
+  );
+  const missingStyles = styleRows.filter((style) => {
+    if ((rowsByStyleUid.get(Number(style.uid)) || []).length > 0) return false;
+    return normalizeStyleProcesses(style?.processes).length > 0;
+  });
+
+  for (const style of missingStyles) {
+    await syncStyleProcessStorageForStyle({
+      styleUid: Number(style.uid),
+      orgId: Number(style.orgId),
+      processes: style.processes,
+      db,
+    });
+  }
+
+  if (missingStyles.length > 0) {
+    rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
+      styleRows.map((style) => Number(style.uid)),
+      db
+    );
+  }
+
+  return styleRows.reduce((map, style) => {
+    const styleUid = Number(style.uid);
+    const rows = rowsByStyleUid.get(styleUid) || [];
+    map.set(
+      styleUid,
+      rows.length > 0 ? buildStyleProcessMirrorFromRows(rows) : normalizeStyleProcesses(style.processes)
+    );
+    return map;
+  }, new Map<number, any[]>());
+};
+
+const collectStyleQuantityRequirementsFromOrders = ({
+  orders,
+  styles,
+}: {
+  orders: any[];
+  styles: any[];
+}) => {
+  const quantityByStyleUid = new Map<number, Set<number>>();
+  const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId, null);
+    if (!styleId) return map;
+    const current = map.get(styleId) || [];
+    current.push(style);
+    map.set(styleId, current);
+    return map;
+  }, new Map<string, any[]>());
+
+  ensureArray(orders).forEach((order) => {
+    const itemsFromRelation =
+      Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
+        ? [...order.workOrderItems]
+            .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+            .map(workOrderItemToItemShape)
+        : null;
+    const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
+    items.forEach((item) => {
+      const style = resolveStyleCandidateForAssignmentCard({
+        order,
+        item,
+        styleCandidatesById,
+      });
+      const styleUid = toPositiveIntOrNull(style?.uid);
+      if (styleUid === null) return;
+      resolveAssignmentCardVariantBuckets(item).forEach(({ quantity }) => {
+        const normalizedQuantity = toPositiveIntOrNull(quantity);
+        if (normalizedQuantity === null) return;
+        const current = quantityByStyleUid.get(styleUid) || new Set<number>();
+        current.add(normalizedQuantity);
+        quantityByStyleUid.set(styleUid, current);
+      });
+    });
+  });
+
+  return quantityByStyleUid;
+};
+
+const ensureStyleStandardsForQuantities = async ({
+  styles,
+  quantityByStyleUid,
+  db = prisma,
+}: {
+  styles: any[];
+  quantityByStyleUid: Map<number, Set<number>>;
+  db?: StyleStorageClient;
+}) => {
+  const styleUids = Array.from(quantityByStyleUid.keys());
+  if (styleUids.length === 0) {
+    return ensureStyleProcessStorageForStyles(styles, db);
+  }
+
+  await ensureStyleProcessStorageForStyles(styles, db);
+  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, db);
+  const touchedStyleUids = new Set<number>();
+
+  for (const styleUid of styleUids) {
+    const requiredQuantities = Array.from(quantityByStyleUid.get(styleUid) || []);
+    const processRows = rowsByStyleUid.get(styleUid) || [];
+    for (const processRow of processRows) {
+      const existingQuantities = new Set(
+        ensureArray(processRow.standards).map((standard) =>
+          toPositiveInt((standard as any)?.quantity, 0)
+        )
+      );
+      const ptSeconds = toOptionalSeconds(processRow.ptSeconds);
+      if (ptSeconds === null) continue;
+      const missingQuantities = requiredQuantities.filter(
+        (quantity) => !existingQuantities.has(quantity)
+      );
+      if (missingQuantities.length === 0) continue;
+      await db.styleProcessStandard.createMany({
+        data: missingQuantities.map((quantity) => ({
+          orgId: processRow.orgId,
+          styleProcessId: processRow.id,
+          quantity,
+          stSeconds: ptSeconds,
+          setBy: "PT_DERIVED",
+        })),
+      });
+      touchedStyleUids.add(styleUid);
+    }
+  }
+
+  if (touchedStyleUids.size > 0) {
+    await refreshStyleProcessMirrorForStyleUids(Array.from(touchedStyleUids), db);
+  }
+
+  return ensureStyleProcessStorageForStyles(styles, db);
+};
+
 const toStyleResponse = (
   style: any,
-  options: { includeProcesses?: boolean } = {}
+  options: {
+    includeProcesses?: boolean;
+    processMirrorMap?: Map<number, any[]>;
+  } = {}
 ) => ({
   id: style.styleId,
   ownerOrgId: style.orgId ?? null,
@@ -1897,7 +2347,8 @@ const toStyleResponse = (
   processes:
     options.includeProcesses === false
       ? []
-      : normalizeStyleProcesses(style.processes),
+      : options.processMirrorMap?.get(Number(style.uid)) ??
+        normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
   createdAt: style.createdAt,
@@ -3788,15 +4239,14 @@ const resolveAssignmentCardStSeedSeconds = ({
   orderQuantity?: number;
 }) => {
   const normalized = normalizeStyleProcess(process);
-  const manualSt =
-    normalized?.stManual === true ? toOptionalSeconds(normalized?.ct) : null;
+  const manualSt = resolveStyleProcessExactStPerPieceSeconds(
+    normalized,
+    orderQuantity
+  );
   if (manualSt != null) return manualSt;
 
   const pt = toOptionalSeconds(normalized?.pt);
   if (pt != null) return pt;
-
-  const atPerPiece = resolveAssignmentCardAtPerPieceSeconds(normalized, orderQuantity);
-  if (atPerPiece != null && atPerPiece > 0) return atPerPiece;
   return null;
 };
 const calculateAssignmentCardTotalForOrderQuantity = (
@@ -3833,15 +4283,12 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
   }, 0);
 const resolveAssignmentCardStatus = ({
   totalPt,
-  totalAt,
   totalSt,
 }: {
   totalPt: number;
-  totalAt: number;
   totalSt: number;
 }) => {
   if (Number(totalSt) > 0) return "ST";
-  if (Number(totalAt) > 0) return "AT";
   if (Number(totalPt) > 0) return "PT";
   return "NONE";
 };
@@ -3925,7 +4372,6 @@ const buildAssignmentCardsFromOrders = ({
       totalSt: mergedTotalSt,
       status: resolveAssignmentCardStatus({
         totalPt: mergedTotalPt,
-        totalAt: mergedTotalAt,
         totalSt: mergedTotalSt,
       }),
       dueDate: existing.dueDate || nextCard.dueDate || "",
@@ -3985,9 +4431,8 @@ const buildAssignmentCardsFromOrders = ({
           quantity
         );
         const totalSt = calculateAssignmentCardStTotalForOrderQuantity(processes, quantity);
-        const status = resolveAssignmentCardStatus({ totalPt, totalAt, totalSt });
-        const totalSeconds =
-          status === "ST" ? totalSt : status === "AT" ? totalAt : totalPt;
+        const status = resolveAssignmentCardStatus({ totalPt, totalSt });
+        const totalSeconds = status === "ST" ? totalSt : totalPt;
 
         const resolvedOrderId =
           resolveOptionalString(order?.orderId ?? order?.id, null) ??
@@ -4215,6 +4660,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       where: { orgId: { in: accessibleOwnerOrgIds } },
       orderBy: { uid: "asc" },
       select: {
+        uid: true,
         orgId: true,
         styleId: true,
         styleCode: true,
@@ -4240,10 +4686,32 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     loadAssignmentCardsForOrg({ orgId }),
     buildAssignmentCardColorNameMap(),
   ]);
+  const initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles);
+  const stylesWithProcesses = styles.map((style) => ({
+    ...style,
+    processes:
+      initialProcessMirrorMap.get(Number(style.uid)) ??
+      normalizeStyleProcesses(style.processes),
+  }));
+  const quantityByStyleUid = collectStyleQuantityRequirementsFromOrders({
+    orders,
+    styles: stylesWithProcesses,
+  });
+  const processMirrorMap = await ensureStyleStandardsForQuantities({
+    styles,
+    quantityByStyleUid,
+  });
+  const hydratedStyles = styles.map((style) => ({
+    ...style,
+    processes:
+      processMirrorMap.get(Number(style.uid)) ??
+      initialProcessMirrorMap.get(Number(style.uid)) ??
+      normalizeStyleProcesses(style.processes),
+  }));
 
   const baseCards = buildAssignmentCardsFromOrders({
     orders,
-    styles,
+    styles: hydratedStyles,
     colorNameByCode,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
@@ -6623,6 +7091,8 @@ app.get("/work-logs", async (req, res) => {
   if (hasWorkDateFilter && !workDate) {
     return res.status(400).json({ ok: false, error: "invalid workDate" });
   }
+  const dateFrom = normalizeDateKey(req.query.dateFrom);
+  const dateTo = normalizeDateKey(req.query.dateTo);
   if (hasFactoryFilter) {
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
@@ -6632,11 +7102,17 @@ app.get("/work-logs", async (req, res) => {
     }
   }
 
+  const workDateFilter = workDate
+    ? { workDate }
+    : dateFrom || dateTo
+      ? { workDate: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } }
+      : {};
+
   const workLogs = await prisma.workLog.findMany({
     where: {
       orgId: organization.id,
       ...(hasFactoryFilter ? { factoryId } : {}),
-      ...(workDate ? { workDate } : {}),
+      ...workDateFilter,
     },
     orderBy: [{ workDate: "desc" }, { id: "desc" }],
   });
@@ -7020,6 +7496,7 @@ app.get("/assignment-cards", async (req, res) => {
       where: { orgId: { in: accessibleOwnerOrgIds } },
       orderBy: { uid: "asc" },
       select: {
+        uid: true,
         orgId: true,
         styleId: true,
         styleCode: true,
@@ -7036,12 +7513,16 @@ app.get("/assignment-cards", async (req, res) => {
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
   const includeProcesses = isManufacturerOrg(organization);
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles(styles)
+    : new Map<number, any[]>();
 
   res.json({
     cards,
     styles: styles.map((style) =>
       toStyleResponse(style, {
         includeProcesses,
+        processMirrorMap,
       })
     ),
     updatedAt: state?.updatedAt ?? null,
@@ -8256,6 +8737,7 @@ app.get("/styles", async (req, res) => {
       ? {
           // Skip heavy BOM payload for list pages that only need summary/process data.
           select: {
+            uid: true,
             orgId: true,
             styleId: true,
             styleCode: true,
@@ -8273,8 +8755,15 @@ app.get("/styles", async (req, res) => {
         }
       : {}),
   });
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles(styles)
+    : new Map<number, any[]>();
 
-  res.json(styles.map((style) => toStyleResponse(style, { includeProcesses })));
+  res.json(
+    styles.map((style) =>
+      toStyleResponse(style, { includeProcesses, processMirrorMap })
+    )
+  );
 });
 
 app.get("/styles/:styleId", async (req, res) => {
@@ -8299,7 +8788,11 @@ app.get("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "style not found" });
   }
 
-  res.json(toStyleResponse(style, { includeProcesses }));
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles([style])
+    : new Map<number, any[]>();
+
+  res.json(toStyleResponse(style, { includeProcesses, processMirrorMap }));
 });
 
 app.post("/styles", async (req, res) => {
@@ -8352,17 +8845,36 @@ app.post("/styles", async (req, res) => {
       .json({ ok: false, error: "styleId already exists" });
   }
 
-  const created = await prisma.style.create({
-    data: {
-      orgId: owner.ownerOrgId,
-      ...payload,
-    },
+  const created = await prisma.$transaction(async (tx) => {
+    const createdStyle = await tx.style.create({
+      data: {
+        orgId: owner.ownerOrgId,
+        ...payload,
+        processes: includeProcesses ? [] : payload.processes,
+      },
+    });
+    if (includeProcesses) {
+      await syncStyleProcessStorageForStyle({
+        styleUid: createdStyle.uid,
+        orgId: owner.ownerOrgId,
+        processes: payload.processes,
+        db: tx,
+      });
+    }
+    return tx.style.findUniqueOrThrow({
+      where: { uid: createdStyle.uid },
+    });
   });
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles([created])
+    : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
     await resolveStyleSyncTargetOrgIds(owner.ownerOrgId)
   );
-  res.status(201).json(toStyleResponse(created, { includeProcesses }));
+  res
+    .status(201)
+    .json(toStyleResponse(created, { includeProcesses, processMirrorMap }));
 });
 
 app.put("/styles/:styleId", async (req, res) => {
@@ -8439,29 +8951,45 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(409).json({ ok: false, error: conflictMessage });
   }
 
-  const updated = await prisma.style.update({
-    where: { uid: existing.uid },
-    data: {
-      styleCode: normalized.styleCode,
-      name: normalized.name,
-      customer: normalized.customer,
-      registrationDate: normalized.registrationDate,
-      designer: normalized.designer,
-      collection: normalized.collection,
-      season: normalized.season,
-      imageUrls: normalized.imageUrls,
-      processes: includeProcesses
-        ? normalized.processes
-        : normalizeStyleProcesses(existing.processes),
-      bom: normalized.bom,
-      bomNotes: normalized.bomNotes,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updatedStyle = await tx.style.update({
+      where: { uid: existing.uid },
+      data: {
+        styleCode: normalized.styleCode,
+        name: normalized.name,
+        customer: normalized.customer,
+        registrationDate: normalized.registrationDate,
+        designer: normalized.designer,
+        collection: normalized.collection,
+        season: normalized.season,
+        imageUrls: normalized.imageUrls,
+        ...(!includeProcesses
+          ? { processes: normalizeStyleProcesses(existing.processes) }
+          : {}),
+        bom: normalized.bom,
+        bomNotes: normalized.bomNotes,
+      },
+    });
+    if (includeProcesses) {
+      await syncStyleProcessStorageForStyle({
+        styleUid: existing.uid,
+        orgId: existing.orgId,
+        processes: normalized.processes,
+        db: tx,
+      });
+    }
+    return tx.style.findUniqueOrThrow({
+      where: { uid: updatedStyle.uid },
+    });
   });
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles([updated])
+    : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
     await resolveStyleSyncTargetOrgIds(existing.orgId)
   );
-  res.json(toStyleResponse(updated, { includeProcesses }));
+  res.json(toStyleResponse(updated, { includeProcesses, processMirrorMap }));
 });
 
 app.delete("/styles/:styleId", async (req, res) => {
@@ -8649,10 +9177,10 @@ app.post("/styles/import", async (req, res) => {
     }
   }
 
-  await prisma.$transaction(
-    rowsWithOwner.map((item: any) => {
+  await prisma.$transaction(async (tx) => {
+    for (const item of rowsWithOwner) {
       const { ownerOrgId, ...stylePayload } = item;
-      return prisma.style.upsert({
+      const upserted = await tx.style.upsert({
         where: {
           orgId_styleId: {
             orgId: ownerOrgId,
@@ -8668,28 +9196,44 @@ app.post("/styles/import", async (req, res) => {
           collection: stylePayload.collection,
           season: stylePayload.season,
           imageUrls: stylePayload.imageUrls,
-          processes: stylePayload.processes,
+          processes: includeProcesses ? [] : stylePayload.processes,
           bom: stylePayload.bom,
           bomNotes: stylePayload.bomNotes,
         },
         create: {
           orgId: ownerOrgId,
           ...stylePayload,
+          processes: includeProcesses ? [] : stylePayload.processes,
         },
       });
-    })
-  );
+      if (includeProcesses) {
+        await syncStyleProcessStorageForStyle({
+          styleUid: upserted.uid,
+          orgId: ownerOrgId,
+          processes: stylePayload.processes,
+          db: tx,
+        });
+      }
+    }
+  });
 
   const imported = await prisma.style.findMany({
     where: { orgId: { in: uniqueOwnerOrgIds } },
     orderBy: { uid: "asc" },
   });
+  const processMirrorMap = includeProcesses
+    ? await ensureStyleProcessStorageForStyles(imported)
+    : new Map<number, any[]>();
 
   const syncTargetOrgIds = (
     await Promise.all(uniqueOwnerOrgIds.map((orgId) => resolveStyleSyncTargetOrgIds(orgId)))
   ).flat();
   await rebuildAssignmentCardsForOrgIds(syncTargetOrgIds);
-  res.status(201).json(imported.map((style) => toStyleResponse(style, { includeProcesses })));
+  res.status(201).json(
+    imported.map((style) =>
+      toStyleResponse(style, { includeProcesses, processMirrorMap })
+    )
+  );
 });
 
 app.get("/attributes", async (req, res) => {

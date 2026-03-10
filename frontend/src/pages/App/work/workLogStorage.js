@@ -12,6 +12,8 @@ export const loadWorkLogs = async (options = {}) => {
     orgId: options?.orgId,
     factoryId: options?.factoryId,
     workDate: options?.workDate,
+    dateFrom: options?.dateFrom,
+    dateTo: options?.dateTo,
   });
   const data = await requestJSON('/work-logs' + query, buildReadRequestOptions(options));
   return Array.isArray(data) ? data : [];

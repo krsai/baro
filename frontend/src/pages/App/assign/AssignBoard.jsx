@@ -51,6 +51,7 @@ import {
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
+  resolveProcessExactStPerPieceSeconds,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
@@ -171,14 +172,13 @@ const resolveProcessStSeedSeconds = ({
   const proposal = toOptionalPositiveNumber(proposalStSeconds);
   if (proposal != null) return { seconds: proposal, source: 'ST' };
 
-  const manualSt = process?.stManual === true ? toOptionalPositiveNumber(process?.ct) : null;
+  const manualSt = toOptionalPositiveNumber(
+    resolveProcessExactStPerPieceSeconds(process, orderQuantity)
+  );
   if (manualSt != null) return { seconds: manualSt, source: 'ST' };
 
   const ptInfo = resolveProcessPtInfo(process, orderQuantity);
   if (ptInfo.seconds != null) return { seconds: ptInfo.seconds, source: 'PT' };
-
-  const atPerPiece = resolveProcessAtPerPieceSeconds(process, orderQuantity);
-  if (atPerPiece != null && atPerPiece > 0) return { seconds: atPerPiece, source: 'AT' };
 
   return { seconds: 0, source: 'NONE' };
 };
@@ -693,9 +693,8 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
     const mergedTotalAt = (existing.totalAt ?? 0) + (nextCard.totalAt ?? 0);
     const mergedTotalSt = (existing.totalSt ?? 0) + (nextCard.totalSt ?? 0);
     const mergedHasPt = mergedTotalPt > 0;
-    const mergedHasAt = mergedTotalAt > 0;
     const mergedHasSt = mergedTotalSt > 0;
-    const mergedStatus = mergedHasSt ? 'ST' : mergedHasAt ? 'AT' : mergedHasPt ? 'PT' : 'NONE';
+    const mergedStatus = mergedHasSt ? 'ST' : mergedHasPt ? 'PT' : 'NONE';
 
     const merged = {
       ...existing,
@@ -735,10 +734,9 @@ if (variantBuckets.length === 0) return;
         const totalAt = getTotalForOrderQuantity(processSummary?.processes || [], 'at', quantity);
         const totalSt = getTotalStForOrderQuantity(processSummary?.processes || [], quantity);
         const hasSt = totalSt > 0;
-        const hasAt = totalAt > 0;
         const hasPt = totalPt > 0;
-        const status = hasSt ? 'ST' : hasAt ? 'AT' : hasPt ? 'PT' : 'NONE';
-        const totalSeconds = hasSt ? totalSt : hasAt ? totalAt : totalPt;
+        const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
+        const totalSeconds = hasSt ? totalSt : totalPt;
 
         upsertCard({
           id: createCardId(
@@ -799,24 +797,23 @@ const getDayCapacitySeconds = (dayIndex, lineId, days, lineCapacityById = null) 
 };
 
 const hasPt = (card) => Number(card.totalPt) > 0;
-const hasAt = (card) => Number(card.totalAt) > 0;
 const hasSt = (card) =>
   Number(card?.totalSt) > 0 || String(card?.status || '').trim().toUpperCase() === 'ST';
 
 const getCardBasis = (card) => {
   if (hasSt(card)) return 'ST';
-  if (!hasPt(card) && !hasAt(card)) return 'NONE';
-  if (hasAt(card)) return 'AT';
+  const legacyStatus = String(card?.status || '').trim().toUpperCase();
+  if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
+  if (!hasPt(card)) return 'NONE';
   return 'PT';
 };
 
-const resolveCardStatus = (_card, nextPt, nextAt, nextSt = null) => {
+const resolveCardStatus = (_card, nextPt, _nextAt, nextSt = null) => {
   const stPresent = Number(nextSt) > 0;
   const ptPresent = Number(nextPt) > 0;
-  const atPresent = Number(nextAt) > 0;
-  if (!ptPresent && !atPresent && !stPresent) return 'NONE';
+  if (!ptPresent && !stPresent) return 'NONE';
   if (stPresent) return 'ST';
-  return atPresent ? 'AT' : 'PT';
+  return 'PT';
 };
 
 const scaleValue = (value, ratio) => {
@@ -960,7 +957,6 @@ const resolveCardTotalSeconds = (card) => {
   if (Number(card?.totalSt) > 0) return card.totalSt;
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
-  if (basis === 'AT') return card.totalAt ?? card.totalSeconds ?? 0;
   return card.totalPt ?? card.totalSeconds ?? 0;
 };
 
@@ -4439,7 +4435,7 @@ const AssignBoard = () => {
       totalPt: basis === 'PT' ? assignment.totalSeconds ?? 0 : 0,
       totalAt: basis === 'AT' ? assignment.totalSeconds ?? 0 : 0,
       totalSt: basis === 'ST' ? assignment.totalSeconds ?? 0 : 0,
-      status: basis === 'AT' ? 'AT' : basis === 'ST' ? 'ST' : 'PT',
+      status: basis === 'ST' ? 'ST' : basis === 'PT' || basis === 'CT' ? 'PT' : 'NONE',
     };
   };
 

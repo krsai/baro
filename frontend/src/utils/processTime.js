@@ -59,6 +59,61 @@ const toNonNegativeInt = (value, fallback = 0) => {
   return parsed;
 };
 
+const normalizeProcessStValue = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const quantity = toPositiveInt(value.quantity, 0);
+  const seconds = toOptionalNumber(value.seconds);
+  if (quantity <= 0 || seconds === null) return null;
+  return {
+    quantity,
+    seconds,
+    setBy: typeof value.setBy === 'string' && value.setBy.trim() ? value.setBy.trim() : null,
+    setAt: typeof value.setAt === 'string' && value.setAt.trim() ? value.setAt.trim() : null,
+    updatedAt:
+      typeof value.updatedAt === 'string' && value.updatedAt.trim()
+        ? value.updatedAt.trim()
+        : null,
+  };
+};
+
+const normalizeProcessStValues = (values, legacyProcess = null) => {
+  const byQuantity = new Map();
+  (Array.isArray(values) ? values : []).forEach((value) => {
+    const normalized = normalizeProcessStValue(value);
+    if (!normalized) return;
+    byQuantity.set(normalized.quantity, normalized);
+  });
+
+  const legacyCt = toOptionalNumber(legacyProcess?.ct);
+  const legacyQuantity = toPositiveInt(
+    legacyProcess?.timeRefQuantity ?? legacyProcess?.referenceQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  if (
+    byQuantity.size === 0 &&
+    legacyProcess?.stManual === true &&
+    legacyCt !== null &&
+    legacyQuantity > 0
+  ) {
+    byQuantity.set(legacyQuantity, {
+      quantity: legacyQuantity,
+      seconds: legacyCt,
+      setBy: 'LEGACY',
+      setAt: null,
+      updatedAt: null,
+    });
+  }
+
+  return Array.from(byQuantity.values()).sort((left, right) => left.quantity - right.quantity);
+};
+
+const findExactProcessStValue = (stValues = [], orderQuantity = 1) => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  return (Array.isArray(stValues) ? stValues : []).find(
+    (value) => toPositiveInt(value?.quantity, 0) === resolvedOrderQuantity
+  ) || null;
+};
+
 const resolveObservationScore = (observationCount) => {
   const count = toNonNegativeInt(observationCount, 0);
   if (count <= 0) return 0;
@@ -109,9 +164,7 @@ const resolveAtParams = (process) => {
       return { a, b };
     }
   }
-  const legacyAt = toOptionalNumber(process.at);
-  if (legacyAt === null) return null;
-  return { a: legacyAt, b: 0 };
+  return null;
 };
 
 const resolveAtParamsMeta = (process) => {
@@ -360,14 +413,21 @@ export const normalizeProcess = (process = {}, index = 0) => {
     st: _legacySt,
     at: _legacyAt,
     atParams: _rawAtParams,
+    processQuantity: _legacyProcessQuantity,
     referenceQuantity: _legacyReferenceQuantity,
     ...safeProcess
   } = process || {};
-  const normalizedCt = toOptionalNumber(safeProcess.ct);
+  const normalizedStValues = normalizeProcessStValues(process?.stValues, process);
   const resolvedTimeRefQuantity = toPositiveInt(
-    process?.timeRefQuantity ?? process?.referenceQuantity,
+    process?.timeRefQuantity ??
+      process?.referenceQuantity ??
+      normalizedStValues[0]?.quantity,
     DEFAULT_TIME_REF_QUANTITY
   );
+  const exactStValue = findExactProcessStValue(normalizedStValues, resolvedTimeRefQuantity);
+  const legacyCt =
+    normalizedStValues.length === 0 ? toOptionalNumber(safeProcess.ct) : null;
+  const normalizedCt = exactStValue?.seconds ?? legacyCt;
   const normalizedAtParams = resolveAtParamsMeta(process);
   const normalizedAt =
     normalizedAtParams === null
@@ -380,9 +440,10 @@ export const normalizeProcess = (process = {}, index = 0) => {
     hasTime(normalizedAt) &&
     Math.abs(normalizedCt - normalizedAt) < 1e-4;
   const normalizedStManual =
-    typeof safeProcess.stManual === 'boolean'
+    exactStValue != null ||
+    (typeof safeProcess.stManual === 'boolean'
       ? safeProcess.stManual
-      : hasTime(normalizedCt) && !isLikelyAutoCt;
+      : hasTime(normalizedCt) && !isLikelyAutoCt);
 
   return {
     ...safeProcess,
@@ -390,11 +451,12 @@ export const normalizeProcess = (process = {}, index = 0) => {
       typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
         ? safeProcess.instanceId
         : `${safeProcess.code || 'PROC'}-${safeProcess.id || index}-${index}`,
-    quantity: toPositiveInt(safeProcess.quantity, 1),
+    quantity: toPositiveInt(safeProcess.quantity ?? _legacyProcessQuantity, 1),
     timeRefQuantity: resolvedTimeRefQuantity,
     stManual: normalizedStManual,
     pt: toOptionalNumber(safeProcess.pt),
     ...(normalizedAtParams ? { atParams: normalizedAtParams } : {}),
+    ...(normalizedStValues.length > 0 ? { stValues: normalizedStValues } : {}),
     ct: normalizedCt,
   };
 };
@@ -503,18 +565,34 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
   });
 };
 
+export const resolveProcessExactStPerPieceSeconds = (process, orderQuantity = 1) => {
+  const normalized = normalizeProcess(process);
+  const exactStValue = findExactProcessStValue(normalized?.stValues, orderQuantity);
+  if (exactStValue) return exactStValue.seconds;
+
+  if (Array.isArray(normalized?.stValues) && normalized.stValues.length > 0) {
+    return null;
+  }
+
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const legacyQuantity = toPositiveInt(
+    normalized?.timeRefQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  const legacyCt = toOptionalNumber(normalized?.ct);
+  if (normalized?.stManual === true && legacyCt !== null && legacyQuantity === resolvedOrderQuantity) {
+    return legacyCt;
+  }
+  return null;
+};
+
 export const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
-  const ct = toOptionalNumber(normalized?.ct);
-  if (normalized?.stManual === true && ct !== null) {
-    return ct;
-  }
+  const exactSt = resolveProcessExactStPerPieceSeconds(normalized, orderQuantity);
+  if (exactSt !== null) return exactSt;
 
   const pt = toOptionalNumber(normalized?.pt);
   if (pt !== null) return pt;
-
-  // Legacy fallback: keep existing ct when pt is empty.
-  if (ct !== null) return ct;
   return null;
 };
 
@@ -570,7 +648,10 @@ export const hasAnyProcessTime = (processes, key) =>
   });
 
 export const hasAnyCt = (processes) =>
-  normalizeProcesses(processes).some((process) => hasTime(process?.ct));
+  normalizeProcesses(processes).some(
+    (process) =>
+      (Array.isArray(process?.stValues) && process.stValues.length > 0) || hasTime(process?.ct)
+  );
 
 export const parseOptionalSecondsInput = (value) => {
   const parsed = toOptionalNumber(value);

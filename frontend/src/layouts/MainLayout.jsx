@@ -254,7 +254,7 @@ const MainLayout = () => {
         children: [
           { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
           { label: '작업 계획 협의', icon: <TimelineIcon />, path: '/production-plan' },
-          { label: 'ST 검토', icon: <FactCheckIcon />, path: '/st-review' },
+          { label: '표준 공임 검토', icon: <FactCheckIcon />, path: '/st-review' },
           { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
           { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
         ],

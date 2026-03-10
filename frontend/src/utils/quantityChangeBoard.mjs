@@ -96,8 +96,8 @@ export const reconcileBoardStateForQuantityChanges = ({
       const totalAt = hasProcessSummary
         ? calculateProcessTotalForOrderQuantity(processSummary.processes, 'at', nextQty)
         : fallbackUnitAt * nextQty;
-      const status = totalAt > 0 ? 'AT' : totalPt > 0 ? 'PT' : 'NONE';
-      const totalSeconds = totalAt > 0 ? totalAt : totalPt;
+      const status = totalPt > 0 ? 'PT' : 'NONE';
+      const totalSeconds = totalPt;
 
       return {
         ...previousCardBase,

@@ -6,17 +6,13 @@ const hasSt = (card) =>
   Number(card?.totalSt) > 0;
 const hasPt = (card) =>
   Number(card.totalPt) > 0;
-const hasAt = (card) =>
-  Number(card.totalAt) > 0;
 
 const getCardBasis = (card) => {
   if (hasSt(card)) return 'ST';
-  if (hasAt(card)) return 'AT';
   if (hasPt(card)) return 'PT';
 
   const legacyStatus = String(card?.status || '').trim().toUpperCase();
   if (legacyStatus === 'ST') return 'ST';
-  if (legacyStatus === 'AT') return 'AT';
   if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
   return 'NONE';
 };

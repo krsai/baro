@@ -35,6 +35,7 @@ import {
   parseOptionalSecondsInput,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
+  resolveProcessExactStPerPieceSeconds,
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
@@ -49,7 +50,6 @@ const createEmptyDraft = () => ({
   process: null,
   pt: '',
   st: '',
-  stManual: false,
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 
@@ -165,10 +165,42 @@ const toProcessOptionLabel = (process) => `[${process?.code || ''}] ${process?.n
 const compareProcessOptionTextAsc = (left, right) =>
   toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right), 'ko');
 
-const resolveDraftStInputValue = (draft, autoStTotalSeconds) => {
-  if (draft?.stManual) return draft.st;
-  return toDraftNumberText(autoStTotalSeconds);
+const normalizeStValues = (process) => {
+  const normalized = normalizeProcess(process);
+  return Array.isArray(normalized?.stValues) ? normalized.stValues : [];
 };
+
+const resolveExactStPerPiece = (process, quantity) =>
+  resolveProcessExactStPerPieceSeconds(process, quantity);
+
+const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => {
+  const normalized = normalizeProcess(process);
+  const resolvedQuantity = toPositiveInt(quantity, DEFAULT_TIME_REF_QUANTITY);
+  const nextSeconds = toOptionalSeconds(seconds);
+  const nextValues = normalizeStValues(normalized).filter(
+    (value) => toPositiveInt(value?.quantity, 0) !== resolvedQuantity
+  );
+  if (nextSeconds != null) {
+    nextValues.push({
+      quantity: resolvedQuantity,
+      seconds: roundToScale(nextSeconds, 4),
+      setBy,
+      setAt: null,
+      updatedAt: null,
+    });
+  }
+  nextValues.sort((left, right) => left.quantity - right.quantity);
+  return normalizeProcess({
+    ...normalized,
+    stValues: nextValues,
+    timeRefQuantity: normalized?.timeRefQuantity ?? DEFAULT_TIME_REF_QUANTITY,
+    ct: null,
+    stManual: false,
+  });
+};
+
+const resolveDraftStInputValue = (draft, autoStTotalSeconds) =>
+  String(draft?.st ?? '').trim() !== '' ? draft.st : toDraftNumberText(autoStTotalSeconds);
 
 const buildProcessPayload = (
   draft,
@@ -182,15 +214,36 @@ const buildProcessPayload = (
   const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
-  const stManual = draft.stManual === true;
   const ptPerPiece =
     ptTotalForDisplay == null
       ? null
       : roundToScale(ptTotalForDisplay / processQuantity, 4);
-  const ctPerPiece =
-    !stManual || stTotalForDisplay == null
+  const exactStPerPiece =
+    stTotalForDisplay == null
       ? null
       : roundToScale(stTotalForDisplay / processQuantity, 4);
+  const existingStValues = normalizeStValues(existingProcess);
+  const nextStValues = existingStValues.filter(
+    (value) => toPositiveInt(value?.quantity, 0) !== resolvedTimeRefQuantity
+  );
+  if (exactStPerPiece != null) {
+    nextStValues.push({
+      quantity: resolvedTimeRefQuantity,
+      seconds: exactStPerPiece,
+      setBy: 'MANUAL',
+      setAt: null,
+      updatedAt: null,
+    });
+  } else if (resolvedTimeRefQuantity === PT_REFERENCE_QUANTITY && ptPerPiece != null) {
+    nextStValues.push({
+      quantity: PT_REFERENCE_QUANTITY,
+      seconds: ptPerPiece,
+      setBy: 'PT_DERIVED',
+      setAt: null,
+      updatedAt: null,
+    });
+  }
+  nextStValues.sort((left, right) => left.quantity - right.quantity);
 
   return normalizeProcess({
     ...(existingProcess || {}),
@@ -200,9 +253,10 @@ const buildProcessPayload = (
     description: draft.process?.description ?? existingProcess?.description,
     quantity: processQuantity,
     timeRefQuantity: resolvedTimeRefQuantity,
-    stManual,
     pt: ptPerPiece,
-    ct: ctPerPiece,
+    stValues: nextStValues,
+    ct: null,
+    stManual: false,
     atParams: existingProcess?.atParams ?? null,
     instanceId: existingProcess?.instanceId || createInstanceId(draft.process),
   });
@@ -396,17 +450,6 @@ const StyleProcess = ({
     setTimeRefQuantity(nextValue);
     setTimeRefQuantityInput('');
     setIsTimeRefQuantityEditing(false);
-    if (safeProcesses.length === 0) return;
-    const needsSync = safeProcesses.some(
-      (process) =>
-        toPositiveInt(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY) !== nextValue
-    );
-    if (!needsSync) return;
-    onProcessesChange(
-      safeProcesses.map((process) =>
-        normalizeProcess({ ...process, timeRefQuantity: nextValue })
-      )
-    );
   };
 
   const handleTimeRefQuantityBlur = () => {
@@ -431,10 +474,6 @@ const StyleProcess = ({
       return getProcessIdentity(process) === identity;
     });
     if (duplicated) return '이미 등록된 공정입니다.';
-    if (draft.stManual === true && parseOptionalSecondsInput(draft.st) == null) {
-      return 'ST 값을 입력해주세요.';
-    }
-
     return '';
   };
 
@@ -467,10 +506,26 @@ const StyleProcess = ({
     if (field === 'pt') {
       const parsed = parseOptionalSecondsInput(rawValue);
       updatedProcess = normalizeProcess({ ...process, pt: parsed });
+      if (
+        toPositiveInt(displayOrderQuantity, DEFAULT_TIME_REF_QUANTITY) === PT_REFERENCE_QUANTITY &&
+        resolveExactStPerPiece(process, PT_REFERENCE_QUANTITY) == null &&
+        parsed != null
+      ) {
+        updatedProcess = upsertProcessStValues(
+          updatedProcess,
+          PT_REFERENCE_QUANTITY,
+          parsed,
+          'PT_DERIVED'
+        );
+      }
     } else if (field === 'st') {
       const parsed = parseOptionalSecondsInput(rawValue);
-      const hasValue = parsed != null;
-      updatedProcess = normalizeProcess({ ...process, ct: hasValue ? parsed : null, stManual: hasValue });
+      updatedProcess = upsertProcessStValues(
+        process,
+        displayOrderQuantity,
+        parsed,
+        'MANUAL'
+      );
     } else {
       return;
     }
@@ -707,12 +762,9 @@ const StyleProcess = ({
                               addPreviewStTotalSeconds
                             )}
                             onChange={(event) => {
-                              const nextValue = event.target.value;
-                              const hasManualValue = String(nextValue).trim() !== '';
                               setAddDraft((prev) => ({
                                 ...prev,
-                                stManual: hasManualValue,
-                                st: nextValue,
+                                st: event.target.value,
                               }));
                             }}
                             onWheel={(e) => e.target.blur()}
@@ -820,7 +872,16 @@ const StyleProcess = ({
                                       key={process.instanceId + '_st'}
                                       size="small"
                                       type="number"
-                                      defaultValue={process.stManual ? toDraftNumberText(process.ct) : ''}
+                                      defaultValue={
+                                        resolveExactStPerPiece(process, displayOrderQuantity) == null
+                                          ? ''
+                                          : toDraftNumberText(
+                                              resolveExactStPerPiece(
+                                                process,
+                                                displayOrderQuantity
+                                              )
+                                            )
+                                      }
                                       onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
                                       onWheel={(e) => e.target.blur()}
                                       inputProps={{ min: 0 }}
@@ -829,7 +890,15 @@ const StyleProcess = ({
                                           ? '-'
                                           : toDraftNumberText(previewStTotalSeconds)
                                       }
-                                      sx={{ width: 86, '& input': { fontWeight: process?.stManual ? 700 : 400 } }}
+                                      sx={{
+                                        width: 86,
+                                        '& input': {
+                                          fontWeight:
+                                            resolveExactStPerPiece(process, displayOrderQuantity) != null
+                                              ? 700
+                                              : 400,
+                                        },
+                                      }}
                                     />
                                   </TableCell>
                                   <TableCell align="center">

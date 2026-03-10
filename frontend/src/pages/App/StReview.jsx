@@ -8,10 +8,10 @@ const StReview = () => {
       header={
         <Stack spacing={0.5}>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            ST 검토
+            표준 공임 검토
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            ST 기준점 간 충돌과 검토 경고를 모아보는 메뉴입니다.
+            표준 공임 기준점 간 충돌과 검토 경고를 모아보는 메뉴입니다.
           </Typography>
         </Stack>
       }
@@ -19,7 +19,7 @@ const StReview = () => {
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
         <Stack spacing={2}>
           <Alert severity="info">
-            메뉴 자리만 먼저 만들었습니다. ST 검토 로직과 경고 목록은 다음 작업에서
+            메뉴 자리만 먼저 만들었습니다. 표준 공임 검토 로직과 경고 목록은 다음 작업에서
             연결하면 됩니다.
           </Alert>
           <Typography variant="body2" color="text.secondary">

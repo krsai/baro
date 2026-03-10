@@ -1,18 +1,24 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Button,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
@@ -32,12 +38,44 @@ const formatNote = (note) => {
   return note;
 };
 
+const buildDateKey = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getMonthStart = (date) => {
+  const d = new Date(date);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const getMonthEnd = (date) => {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + 1);
+  d.setDate(0);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const addMonths = (date, amount) => {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + amount);
+  return getMonthStart(d);
+};
+
 const WorkList = () => {
   const { navigateToPath, showNotification } = useApp();
   const { activeOrgId } = useAuth();
   const [workLogs, setWorkLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [monthStart, setMonthStart] = useState(() => getMonthStart(new Date()));
+
+  const dateFrom = useMemo(() => buildDateKey(monthStart), [monthStart]);
+  const dateTo = useMemo(() => buildDateKey(getMonthEnd(monthStart)), [monthStart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +83,7 @@ const WorkList = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const rows = await loadWorkLogs({ orgId: activeOrgId });
+        const rows = await loadWorkLogs({ orgId: activeOrgId, dateFrom, dateTo });
         if (!cancelled) {
           setWorkLogs(Array.isArray(rows) ? rows : []);
         }
@@ -63,7 +101,7 @@ const WorkList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, showNotification]);
+  }, [activeOrgId, dateFrom, dateTo, showNotification]);
 
   const sortedLogs = useMemo(
     () =>
@@ -128,6 +166,31 @@ const WorkList = () => {
         />
       }
     >
+      <Box>
+        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1.5 }}>
+          <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} title="이전 달">
+            <ChevronLeftIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+          <CustomDatePicker
+            value={monthStart}
+            onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
+            slotProps={{ textField: { sx: { width: 140 } } }}
+          />
+          <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+          <CustomDatePicker
+            value={getMonthEnd(monthStart)}
+            onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
+            slotProps={{ textField: { sx: { width: 140 } } }}
+          />
+          <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} title="다음 달">
+            <ChevronRightIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+          <Stack sx={{ gap: '2px' }}>
+            <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M+</Button>
+            <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M-</Button>
+          </Stack>
+        </Stack>
+      </Box>
       <Box>
         <Paper variant="outlined" sx={{ width: '100%' }}>
           <TableContainer>

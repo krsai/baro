@@ -20,13 +20,13 @@
 이 섹션이 아래의 오래된 설명보다 우선한다.
 
 - `PT`는 스타일+공정별 `PT(1000)` 하나만 가진다.
-- `AT`는 스타일+공정별 함수 `atParams={a,b,...}`만 저장한다. 단순 숫자 `at`는 레거시이며 신규 정책에서 사용하지 않는다.
+- `AT`는 스타일+공정별 함수 `atParams={a,b,...}`만 저장한다. 단순 숫자 `at`는 삭제 대상 레거시이며 신규 정책에서 사용하지 않는다.
 - `ST`는 스타일+공정별 `ST(q)` 기준점을 수량별로 저장한다.
 - `CT`는 `AssignmentPlan.contractedSeconds`만 진짜 카드 단위 확정값으로 사용한다.
 - `AT(q)`는 `ST(q)`/`CT(q)`를 자동 결정하는 값이 아니라, 운영팀이 `ST(q)`를 검토할 때 참고하는 값이다.
 - 배정 카드 생성 시점에 해당 수량의 `ST(q)`가 없으면 기본값을 잡아 새 `ST(q)` 기준점을 만든다.
 - 라인장과 협의해 바뀐 `CT`는 그 배정 건에만 적용되며, 다른 배정은 다시 `ST(q)`를 기본값으로 사용한다.
-- `ST` 값의 증가/감소 방향은 시스템이 강제하지 않는다. 대신 나중에 `ST 검토` 메뉴에서 운영 검토 경고를 보여준다.
+- `ST` 값의 증가/감소 방향은 시스템이 강제하지 않는다. 대신 나중에 `표준 공임 검토` 메뉴에서 운영 검토 경고를 보여준다.
 - 이 문서 아래에서 `Style.processes[].ct`, `stManual`, `timeRefQuantity`, `Style.processes[].at`를 `ST/AT`의 저장 원본으로 설명하는 부분은 레거시 메모로 본다.
 
 ---
@@ -136,7 +136,7 @@
 - 현재 운영 구현은 **라인×일자 총시간(T_d)을 공정별 작업량(q×w_p)으로 비례배분**하고, 공정별 `t = a*q + b`를 반복 추정한다.
 - `w_p <- a_p`로 갱신하는 반복 수렴 루프를 수행한 뒤, 일자 단위 가중치(`w_day = max(w_mag, w_trend)`)를 적용한 최종 WLS를 1회 수행해 `a,b`를 확정한다.
 - 월간 급변 방지를 위해 `a`는 직전 값 대비 `±AT_MONTHLY_A_CLAMP_RATIO` 범위로 clamp한다.
-- 추정 결과는 `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`로 저장되며, `at` 필드는 `timeRefQuantity` 기준의 `a + b/q_ref`로 갱신된다.
+- 추정 결과는 `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`로 저장되며, `at` 필드는 더 이상 갱신하거나 사용하지 않는다.
 - 데이터가 부족하거나 회귀가 불안정한 경우에는 `b=0`(원점 통과 slope) 및 평균 단위시간 fallback을 사용한다.
 
 **ST(q) (Standard Time) — 정책 기준값 (충격 완충재)**
@@ -154,10 +154,10 @@
 - 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
 - CT는 함수가 아닌 카드(AssignmentPlan) 단위 고정값. **확정 후 ST/PT/AT 변경과 완전히 무관**
 - **급여 = CT × 수량** (단순)
-- `proposalSeconds`: 운영팀 제안 CT(초기 오퍼). **개당 초(per-piece)**
-- `contractedSeconds`: 최종 합의 CT(지급 기준). 제안 송부 시점에는 `null` 가능. **개당 초(per-piece)**
-- **모든 시간 단위(PT(q)/AT(q)/ST(q)/CT(q))는 개당 초(per-piece)** — 수량별로 개당 시간이 달라지므로 비교는 항상 개당 기준으로 한다
-- `totalSt`, `totalPt`, `totalAt`는 스케줄링 기간 계산용 총 초(`개당값 × 수량`)이며 협의 단가와 구분한다
+- `proposalSeconds`: 운영팀 제안 CT(초기 오퍼). **배정 건 전체 총시간(초)**
+- `contractedSeconds`: 최종 합의 CT(지급 기준). 제안 송부 시점에는 `null` 가능. **배정 건 전체 총시간(초)**
+- `proposalSeconds` / `contractedSeconds` / `totalSeconds`는 카드 1건 전체 총시간이다.
+- 스타일 레벨 `PT(1000)` / `AT(q)` / `ST(q)` 저장 구조와 카드 레벨 `CT` 스냅샷은 구분해서 본다.
 - **CT 제안 흐름은 스타일의 ST 기준점을 절대 수정하지 않는다.** CT는 해당 AssignmentPlan의 `proposalSeconds`/`contractedSeconds`에만 저장된다
 - **배정 화면에서 ST(q) 수정 불가** — ST(q)는 스타일 상세 화면에서만 변경한다
 - **라인마다 CT가 다를 수 있다**: 같은 스타일을 여러 라인에 배정하면 각 라인이 협의한 CT가 독립적으로 저장되며 서로 영향을 주지 않는다
@@ -221,8 +221,8 @@ AGREED (확정)
 
 | 용도 | 사용 시간 | 이유 |
 |------|-----------|------|
-| **배정 예상 기간** (endIndex 계산) | **ST(q)** (없으면 AT(q) → PT(q) 순 fallback) | ST(q)가 현재 공식 기준값. ST=0이면 AT, 그것도 없으면 PT로 fallback |
-| **CT 제안값** (라인장 협의 출발점) | 동일 q 기존 ST 제안값, 없으면 수동 ST → PT(q) → AT(q) | 충격 완충 + 재협의 연속성 |
+| **배정 예상 기간** (endIndex 계산) | **ST(q)** (없으면 PT(1000)을 참고해 ST(q) 생성 후 사용) | ST(q)가 현재 공식 기준값이며, AT는 참고용일 뿐 자동 fallback이 아니다 |
+| **CT 제안값** (라인장 협의 출발점) | 현재 ST(q) | 충격 완충 + 재협의 연속성 |
 | **급여 확정값** | CT (contractedSeconds 스냅샷) | 합의된 계약값, 이후 변경 없음 |
 
 > ST(q)는 AT(q)가 추출된 뒤 운영자가 스타일 상세에서 수동 조정하는 현장 기준값이다.
@@ -230,9 +230,9 @@ AGREED (확정)
 > CT 합의/거부는 배정 기간(totalSeconds)에 영향을 주지 않는다 — contractedSeconds만 변경된다.
 
 #### ST/CT 운영 흐름
-1. **스타일 최초 등록**: atParams = null → ST = PT. 배정 예상 기간도 PT(q) 기준
-2. **AT(q) 산출 시작**: atParams 갱신됨. 배정 예상 기간은 AT(q)로 전환. ST는 아직 PT 기반 유지
-3. **AT(q) vs ST 차이 기준 이상**: "ST 조정 필요" 경고 → 운영팀이 ST 점진 조정. 단번에 AT로 맞추지 않음
+1. **스타일 최초 등록**: `PT(1000)` 입력. 새로운 수량 `q`가 처음 필요해질 때 `PT(1000)`을 참고해 `ST(q)`를 만든다.
+2. **AT(q) 산출 시작**: `atParams`가 갱신되어도 배정/CT 기본값은 자동으로 AT로 바뀌지 않는다.
+3. **AT(q) vs ST(q) 차이 기준 이상**: "ST 조정 필요" 경고 → 운영팀이 `ST(q)`를 검토/수정한다. 단번에 AT로 맞추지 않음
 4. **배정 시 CT 협의**: 시스템이 현재 ST(q)를 제안값으로 표시
    - 제안 송부 시 `proposalSeconds` 저장, `contractedSeconds`는 비움(null)
    - 라인장 동의 → `contractedSeconds = proposalSeconds`로 확정 (ctStatus=AGREED)
@@ -390,7 +390,7 @@ Organization (MANUFACTURER | BRAND)
 7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
 8. 초과 공정(WorkRecord 누적 > finalQuantity)도 **급여 지급 대상에 포함**한다.
 9. 회계 관리의 `생산 결과` 메뉴는 연결만 되어 있으며, 세부 로직은 추후 구현한다.
-10. **ST(q) = Style.processes[].ct (+ stManual + timeRefQuantity)** — AT 데이터 없으면 PT가 ST 역할
+10. **ST(q)는 `StyleProcessStandard(styleProcessId, quantity)` 기준점** — `Style.processes[].ct`, `stManual`, `timeRefQuantity`는 레거시 마이그레이션 전 임시 호환 모델
 11. **ST 변경 절차**: AT(q)와 현재 ST 차이가 기준 이상이면 "ST 조정 필요" 안내 → 운영팀 검토 후 ST 값을 재설정
 12. **구독 상태 SUSPENDED 조직**: API 호출 403 차단. 로그인 자체는 허용되나 데이터 접근 불가
 
@@ -418,16 +418,19 @@ Organization (MANUFACTURER | BRAND)
 ### 1) ST/PT/AT(q) 반영 상태
 - 스타일 공정 입력에서 공통 q(`timeRefQuantity`)를 먼저 지정하고 `PT(q) / AT(q, 자동) / ST(q)`를 표시/입력한다.
   - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`
-- 저장 모델은 `Style.processes[].pt/at/ct + stManual + timeRefQuantity`를 사용한다.
-  - `pt`, `ct`는 내부적으로 개당 초(per-piece) 값으로 저장되고, 화면에서는 q 기준 총시간으로 환산해 보여준다.
-  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`, `frontend/src/utils/processTime.js`, `backend/src/index.ts`
+- 저장 모델은 `StyleProcess + StyleProcessStandard + Style.processes(호환용 미러)`를 사용한다.
+  - `StyleProcess`는 `PT(1000)`과 `atParams`를 저장한다.
+  - `StyleProcessStandard`는 `q`별 `ST(q)` 기준점을 저장한다.
+  - `Style.processes`는 레거시/화면 호환용 미러로만 유지한다.
+  - 파일: `backend/prisma/schema.prisma`, `backend/src/index.ts`
 - 배정 협의 ST 시드 계산 규칙(코드 기준):
   - 동일 q의 이전 제안 ST(`operatorCtProposal.stSeconds`) 우선
-  - 없으면 `stManual=true` + `ct` (수동 ST)
-  - 없으면 `PT(q)`, 없으면 `AT(q)`
+  - 없으면 해당 q의 저장된 `ST(q)` exact match
+  - 없으면 `PT(1000)`을 참고해 `ST(q)`를 생성한 뒤 사용
+  - `AT(q)`는 참고용으로만 사용하고 자동 fallback하지 않음
   - 파일: `frontend/src/pages/App/assign/AssignBoard.jsx`, `frontend/src/pages/App/production/ProductionPlanBoard.jsx`
-- 중요: 자동 ST 상태였다가도 사용자가 언제든 다시 `수동 ST`로 전환해서 값을 수정/재수정 가능하다.
-  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`
+- 중요: 스타일 화면에서 입력하는 ST는 현재 q에 대한 `stValues[q]`를 직접 수정하는 방식이다.
+  - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`, `frontend/src/utils/processTime.js`
 - 구버전/혼합 데이터 보정:
   - `stManual`이 비어 있고 `ct≈at`이면 자동 ST로 추정한다(수동 오판 방지).
   - 파일: `frontend/src/utils/processTime.js`, `backend/src/index.ts`
@@ -495,7 +498,7 @@ Organization (MANUFACTURER | BRAND)
   - 제약: `a >= 0`, `b >= 0`; 데이터 부족 시 `b=0` 및 평균 단위시간 fallback
 - 저장/반영:
   - `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`
-  - `Style.processes[].at = a + b / timeRefQuantity`
+  - `Style.processes[].at` 필드는 삭제 대상 레거시이며, AT sync는 `atParams`만 갱신한다.
   - `stManual=false` 공정은 AT 동기화 시 `ct`를 PT(`pt`) 기준으로 유지 (AT 신뢰도가 충분해지면 운영자가 수동으로 ST 조정), `stManual=true` 공정은 수동 ST(`ct`) 유지
 - 실행 경로:
   - 이벤트 트리거(출퇴근/작업기록 저장)
@@ -533,14 +536,14 @@ Organization (MANUFACTURER | BRAND)
 - `PT(q)`는 정확히 같은 q가 아니면 `ref q=...` 라벨로 fallback 사실을 노출한다.
 - `AT(q)` 데이터가 없으면 `수집중`으로 표시한다.
 - AT 학습에 비례배분 반복 수렴 루프, 방향성 가중치(`w_trend`), 월간 변경폭 clamp를 반영했다.
-- 운영팀 제안 송부 시 PT를 갱신하지 않고 ST(`ct`, `stManual=true`)를 갱신한다.
+- 운영팀 제안 송부/합의는 `AssignmentPlan`만 갱신하며, 스타일 ST에는 역방향 기록하지 않는다.
 - CT 저장 정책:
   - 제안 송부(`SENT`): `proposalSeconds` 저장, `contractedSeconds=null`
   - 요청 동의(`REJECTED -> AGREED`): `proposalSeconds`는 보존, `contractedSeconds`만 최종값으로 확정
 - ST는 CT 합의 결과로 자동 갱신되지 않는다.
 - CT는 카드 단위 스냅샷이므로 `ctVersion`, `ctUpdatedAt` 별도 필드/전용 UI를 두지 않는다.
 - 서버 시작 시 DB 연결 재시도(`STARTUP_DB_MAX_RETRIES`, `STARTUP_DB_RETRY_DELAY_MS`)를 추가했다.
-- ST 관리 정책은 **최신값 유지(덮어쓰기)** 로 확정한다. 제안 송부 시 최신 ST(`Style.processes[].ct`, `stManual=true`)를 갱신하며, ST 변경 이력/버전은 별도 저장하지 않는다.
+- CT 제안/합의는 `AssignmentPlan`에만 기록한다. `Style.processes[]` 또는 향후 `StyleProcessStandard`에 CT 결과를 역반영하지 않는다.
 - 라인장 작업 계획 협의 화면의 `완료 처리` 기능(UI/클라이언트 로직)은 제거하고, 해당 화면은 CT 협의에만 집중한다.
 
 ## 문서 정합성 교정 우선본 (2026-02-23)
