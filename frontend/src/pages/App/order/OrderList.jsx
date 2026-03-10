@@ -44,6 +44,12 @@ import {
   GENDER_CODES,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
+import {
+  ORDER_STATUS_OPTIONS,
+  getOrderStatusLabel as getOrderStatusLabelFromConst,
+  isOrderDeletableStatus as isOrderDeletableStatusFromConst,
+  normalizeOrderStatus as normalizeOrderStatusFromConst,
+} from '../../../constants/orderStatus';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import {
   fetchOrders as fetchOrdersFromApi,
@@ -58,19 +64,7 @@ import {
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_STATUSES = ['ORDER_RECEIVED', 'IN_PROGRESS', 'PRODUCTION_DONE', 'SHIPPED'];
-const ORDER_STATUS_LABELS = {
-  ORDER_RECEIVED: '주문접수',
-  IN_PROGRESS: '작업중',
-  PRODUCTION_DONE: '생산완료',
-  SHIPPED: '출고완료',
-};
-const ORDER_STATUS_LEGACY_MAP = {
-  주문접수: 'ORDER_RECEIVED',
-  작업중: 'IN_PROGRESS',
-  생산완료: 'PRODUCTION_DONE',
-  출고완료: 'SHIPPED',
-};
+const ORDER_STATUSES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
@@ -107,20 +101,18 @@ const GENDER_PASTEL_STYLES = {
   U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
   default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
 };
-const normalizeOrderStatus = (status) => {
-  const normalized = String(status || '').replace(/\s+/g, '').trim();
-  if (!normalized) return '';
-  const upper = normalized.toUpperCase();
-  if (ORDER_STATUS_LABELS[upper]) return upper;
-  return ORDER_STATUS_LEGACY_MAP[normalized] || normalized;
-};
+const normalizeOrderStatus = (status) => normalizeOrderStatusFromConst(status);
 const getOrderStatusLabel = (status) =>
-  ORDER_STATUS_LABELS[normalizeOrderStatus(status)] || String(status || '').trim() || '-';
-const isOrderDeletable = (status) => normalizeOrderStatus(status) === 'ORDER_RECEIVED';
+  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-');
+const isOrderDeletable = (status) => isOrderDeletableStatusFromConst(status);
 const buildOrderTabLabel = (order) => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `주문: ${orderNumber}` : '주문';
 };
+const ORDER_MODIFICATION_LOCK_NOTICE =
+  '\uB3D9\uC758 \uC774\uD6C4 \uC8FC\uBB38 \uBCC0\uACBD \uAE08\uC9C0 > \uACE0\uAC1D \uC694\uCCAD\uC73C\uB85C \uBCC0\uACBD\uC774 \uD544\uC694\uD558\uBA74 \uC5B4\uB5BB\uAC8C \uD560 \uAC83\uC778\uC9C0 \uC5C5\uB370\uC774\uD2B8 \uD544\uC694';
+const ORDER_MODIFICATION_LOCK_MESSAGE =
+  '\uC81C\uC548/\uD655\uC815 \uC9C4\uD589 \uC911\uC778 \uC8FC\uBB38\uC740 \uD604\uC7AC \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -364,6 +356,9 @@ const hasDuplicateOrderNumberByCustomer = ({
 };
 const resolveOrderSaveErrorMessage = (error) => {
   const message = String(error?.message || '').trim();
+  if (message.includes('order modification is locked')) {
+    return ORDER_MODIFICATION_LOCK_MESSAGE;
+  }
   if (message === 'order number already exists for this customer') {
     return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
   }
@@ -1091,6 +1086,10 @@ const OrderList = () => {
     return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
   }, [currentDetailOrder, fixedSellerOrg, formData, isNewOrder]);
 
+  const isCurrentOrderModificationLocked = Boolean(
+    !isNewOrder && currentDetailOrder?.isModificationLocked
+  );
+
   const handleAdd = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
   };
@@ -1104,6 +1103,10 @@ const OrderList = () => {
 
   const handleDeleteOrder = async (order) => {
     if (!order?.id) return;
+    if (order?.isModificationLocked) {
+      showNotification(ORDER_MODIFICATION_LOCK_MESSAGE, 'warning');
+      return;
+    }
     if (!isOrderDeletable(order.status)) {
       showNotification('주문접수 상태의 주문만 삭제할 수 있습니다.', 'warning');
       return;
@@ -1477,6 +1480,10 @@ const OrderList = () => {
   };
 
   const handleSave = async () => {
+    if (isCurrentOrderModificationLocked) {
+      showNotification(ORDER_MODIFICATION_LOCK_MESSAGE, 'warning');
+      return;
+    }
     if (!isNewOrder && !hasFormChanges) {
       showNotification('변경된 내용이 없습니다.', 'info');
       return;
@@ -1677,7 +1684,7 @@ const OrderList = () => {
                 <MenuItem value={ORDER_FILTER_ALL}>전체 상태</MenuItem>
                 {ORDER_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {ORDER_STATUS_LABELS[status] || status}
+                    {getOrderStatusLabel(status)}
                   </MenuItem>
                 ))}
               </Select>
@@ -1746,7 +1753,8 @@ const OrderList = () => {
                   </TableRow>
                 )}
                 {filteredOrders.map((order) => {
-                  const deletable = isOrderDeletable(order.status);
+                  const deletable =
+                    !order?.isModificationLocked && isOrderDeletable(order.status);
                   return (
                     <TableRow
                       key={order.id}
@@ -1799,14 +1807,23 @@ const OrderList = () => {
   return (
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">{isNewOrder ? '신규 주문 등록' : '주문 정보 수정'}</Typography>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h6">{isNewOrder ? '신규 주문 등록' : '주문 정보 수정'}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {ORDER_MODIFICATION_LOCK_NOTICE}
+          </Typography>
+        </Box>
         <Stack direction="row" spacing={1}>
           {isNewOrder && (
             <Button onClick={handleClearDraft} color="inherit">
               임시 저장 삭제
             </Button>
           )}
-          <Button onClick={handleSave} variant="contained" disabled={!isNewOrder && !hasFormChanges}>
+          <Button
+            onClick={handleSave}
+            variant="contained"
+            disabled={!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked)}
+          >
             저장
           </Button>
         </Stack>
@@ -1818,7 +1835,18 @@ const OrderList = () => {
         </Alert>
       )}
 
+      {isCurrentOrderModificationLocked && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {ORDER_MODIFICATION_LOCK_MESSAGE}
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
+        <Box
+          component="fieldset"
+          disabled={isCurrentOrderModificationLocked}
+          sx={{ border: 0, m: 0, p: 0, minWidth: 0 }}
+        >
         <Grid container spacing={2} sx={{ mt: 1 }}>
           <Grid item xs={12} sm={6}>
             <TextField
@@ -1886,7 +1914,7 @@ const OrderList = () => {
               >
                 {ORDER_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {ORDER_STATUS_LABELS[status] || status}
+                    {getOrderStatusLabel(status)}
                   </MenuItem>
                 ))}
               </Select>
@@ -2183,6 +2211,7 @@ const OrderList = () => {
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
             주문 합계 수량: {getOrderTotal().toLocaleString()}
           </Typography>
+        </Box>
         </Box>
       </Paper>
     </AppPageContainer>

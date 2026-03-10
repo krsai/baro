@@ -48,12 +48,17 @@ import {
 } from '../../../utils/processTime';
 import { loadHolidays } from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
+import {
+  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
+  getAssignmentCtStatusLabel,
+  normalizeAssignmentCtStatus,
+} from '../../../constants/assignmentStatus';
 
 const STATUS_META = {
-  PENDING:  { label: '대기', color: 'default' },
-  SENT:     { label: '제안', color: 'info' },
-  AGREED:   { label: '확정', color: 'success' },
-  REJECTED: { label: '요청', color: 'warning' },
+  PENDING:  { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.PENDING, color: 'default' },
+  SENT:     { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.SENT, color: 'info' },
+  AGREED:   { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.AGREED, color: 'success' },
+  REJECTED: { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.REJECTED, color: 'warning' },
 };
 const CALENDAR_CT_STATUS_META = {
   PENDING:  { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
@@ -75,10 +80,7 @@ const resolveCtStatusChipSx = (status) => {
   };
 };
 const CT_INPUT_REGEX = /^\d*(?:\.\d{0,2})?$/;
-const normalizeCtStatus = (value) => {
-  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
-  return 'PENDING';
-};
+const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
 const isAssignmentVersionConflictError = (error) => {
   const status = Number(error?.status);
   const message = String(error?.message || '').toLowerCase();
@@ -1199,10 +1201,10 @@ const ProductionPlanBoard = () => {
 
   const calendarLegend = useMemo(
     () => [
-      { label: '대기', status: 'PENDING' },
-      { label: '제안', status: 'SENT' },
-      { label: '요청', status: 'REJECTED' },
-      { label: '확정', status: 'AGREED' },
+      { label: getAssignmentCtStatusLabel('PENDING'), status: 'PENDING' },
+      { label: getAssignmentCtStatusLabel('SENT'), status: 'SENT' },
+      { label: getAssignmentCtStatusLabel('REJECTED'), status: 'REJECTED' },
+      { label: getAssignmentCtStatusLabel('AGREED'), status: 'AGREED' },
     ],
     []
   );
@@ -2343,10 +2345,26 @@ const ProductionPlanBoard = () => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Chip label={`대기 ${statusSummary.pending}`} variant="outlined" sx={resolveCtStatusChipSx('PENDING')} />
-            <Chip label={`제안 ${statusSummary.sent}`} variant="outlined" sx={resolveCtStatusChipSx('SENT')} />
-            <Chip label={`요청 ${statusSummary.rejected}`} variant="outlined" sx={resolveCtStatusChipSx('REJECTED')} />
-            <Chip label={`확정 ${statusSummary.agreed}`} variant="outlined" sx={resolveCtStatusChipSx('AGREED')} />
+            <Chip
+              label={`${getAssignmentCtStatusLabel('PENDING')} ${statusSummary.pending}`}
+              variant="outlined"
+              sx={resolveCtStatusChipSx('PENDING')}
+            />
+            <Chip
+              label={`${getAssignmentCtStatusLabel('SENT')} ${statusSummary.sent}`}
+              variant="outlined"
+              sx={resolveCtStatusChipSx('SENT')}
+            />
+            <Chip
+              label={`${getAssignmentCtStatusLabel('REJECTED')} ${statusSummary.rejected}`}
+              variant="outlined"
+              sx={resolveCtStatusChipSx('REJECTED')}
+            />
+            <Chip
+              label={`${getAssignmentCtStatusLabel('AGREED')} ${statusSummary.agreed}`}
+              variant="outlined"
+              sx={resolveCtStatusChipSx('AGREED')}
+            />
             <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
             <Chip label={`완료 ${workStatusSummary.completed}`} color="success" variant="outlined" />
           </Stack>

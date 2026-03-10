@@ -125,6 +125,9 @@ const WORK_ORDER_STATUS_CODES = new Set([
   "PRODUCTION_DONE",
   "SHIPPED",
 ]);
+const ORDER_MODIFICATION_LOCK_CT_STATUSES = ["SENT", "AGREED"] as const;
+const ORDER_MODIFICATION_LOCK_ERROR =
+  "order modification is locked once assignment proposal/agreement has started";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["주문접수", "ORDER_RECEIVED"],
   ["작업중", "IN_PROGRESS"],
@@ -2840,7 +2843,12 @@ const workOrderItemToItemShape = (row: any) => ({
   totalQuantity: row.totalQuantity ?? 0,
 });
 
-const toOrderResponse = (order: any) => {
+const toOrderResponse = (
+  order: any,
+  options: {
+    isModificationLocked?: boolean;
+  } = {}
+) => {
   const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
     ? [...order.workOrderItems]
         .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
@@ -2863,6 +2871,7 @@ const toOrderResponse = (order: any) => {
     status: resolveWorkOrderStatus(order.status, "ORDER_RECEIVED"),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
+    isModificationLocked: Boolean(options.isModificationLocked),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -4797,6 +4806,73 @@ const parseAssignmentCardIdentity = (
     colorKey: normalizeAssignmentDisplayKey(parts[2]),
     gender: normalizeAssignmentDisplayGender(parts[3]),
   };
+};
+const extractOrderIdFromAssignmentCardText = (value: any): string | null =>
+  resolveOptionalString(parseAssignmentCardIdentity(value)?.orderId, null);
+const getOrderRelatedOrgIds = (order: any): number[] =>
+  Array.from(
+    new Set(
+      [order?.orgId, order?.buyerOrgId, order?.sellerOrgId]
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, boolean>> => {
+  const safeOrders = ensureArray(orders).filter((order) => order && typeof order === "object");
+  const orderIds = Array.from(
+    new Set(
+      safeOrders
+        .map((order) => resolveOptionalString(order?.orderId ?? order?.id, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const lockMap = new Map<string, boolean>();
+  if (orderIds.length === 0) return lockMap;
+
+  const orderIdSet = new Set(orderIds);
+  const orgIds = Array.from(
+    new Set(safeOrders.flatMap((order) => getOrderRelatedOrgIds(order)))
+  );
+  if (orgIds.length === 0) return lockMap;
+
+  const lockedPlans = await prisma.assignmentPlan.findMany({
+    where: {
+      orgId: { in: orgIds },
+      ctStatus: { in: [...ORDER_MODIFICATION_LOCK_CT_STATUSES] },
+    },
+    select: {
+      originOrderId: true,
+      cardId: true,
+    },
+  });
+  lockedPlans.forEach((plan) => {
+    const orderId =
+      extractOrderIdFromAssignmentCardText(plan?.originOrderId) ??
+      extractOrderIdFromAssignmentCardText(plan?.cardId);
+    if (!orderId || !orderIdSet.has(orderId)) return;
+    lockMap.set(orderId, true);
+  });
+  return lockMap;
+};
+const isOrderModificationLocked = async (order: any): Promise<boolean> => {
+  const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
+  if (!orderId) return false;
+  const orgIds = getOrderRelatedOrgIds(order);
+  if (orgIds.length === 0) return false;
+
+  const prefix = `${orderId}::`;
+  const lockedPlan = await prisma.assignmentPlan.findFirst({
+    where: {
+      orgId: { in: orgIds },
+      ctStatus: { in: [...ORDER_MODIFICATION_LOCK_CT_STATUSES] },
+      OR: [
+        { originOrderId: { startsWith: prefix } },
+        { cardId: { startsWith: prefix } },
+      ],
+    },
+    select: { id: true },
+  });
+  return Boolean(lockedPlan);
 };
 const loadAssignmentDisplayReferenceMaps = async (
   orgId: number
@@ -8263,7 +8339,17 @@ app.get("/orders", async (req, res) => {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
   });
-  res.json(orders.map(toOrderResponse));
+  const lockMap = await loadOrderModificationLockMap(orders);
+  res.json(
+    orders.map((order) =>
+      {
+        const orderKey = resolveOptionalString(order?.orderId ?? order?.id, null) ?? "";
+        return toOrderResponse(order, {
+          isModificationLocked: Boolean(lockMap.get(orderKey)),
+        });
+      }
+    )
+  );
 });
 
 app.post("/orders", async (req, res) => {
@@ -8305,7 +8391,11 @@ app.post("/orders", async (req, res) => {
 
   const { order, created } = await createOrReuseSharedOrder({ normalized });
   await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
-  res.status(created ? 201 : 200).json(toOrderResponse(order));
+  res.status(created ? 201 : 200).json(
+    toOrderResponse(order, {
+      isModificationLocked: await isOrderModificationLocked(order),
+    })
+  );
 });
 
 app.put("/orders/:orderId", async (req, res) => {
@@ -8331,6 +8421,12 @@ app.put("/orders/:orderId", async (req, res) => {
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
+  }
+  if (await isOrderModificationLocked(existing)) {
+    return res.status(409).json({
+      ok: false,
+      error: ORDER_MODIFICATION_LOCK_ERROR,
+    });
   }
 
   const normalized = normalizeOrderPayload(req.body ?? {}, existing);
@@ -8415,7 +8511,11 @@ app.put("/orders/:orderId", async (req, res) => {
     buyer.id,
     seller.id,
   ]);
-  res.json(toOrderResponse(updated));
+  res.json(
+    toOrderResponse(updated, {
+      isModificationLocked: await isOrderModificationLocked(updated),
+    })
+  );
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
@@ -8441,6 +8541,12 @@ app.delete("/orders/:orderId", async (req, res) => {
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
+  }
+  if (await isOrderModificationLocked(existing)) {
+    return res.status(409).json({
+      ok: false,
+      error: ORDER_MODIFICATION_LOCK_ERROR,
+    });
   }
   const ownerOrgId = existing.buyerOrgId ?? existing.orgId;
   if (ownerOrgId !== organization.id) {

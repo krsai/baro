@@ -18,25 +18,23 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import {
+  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
+  ASSIGNMENT_CT_STATUS_SORT_ORDER,
+  getAssignmentCtStatusLabel,
+  normalizeAssignmentCtStatus,
+} from '../../../constants/assignmentStatus';
 
 const STATUS_META = {
-  PENDING:  { label: '대기',  color: 'default' },
-  SENT:     { label: '제안',  color: 'info' },
-  REJECTED: { label: '요청',  color: 'warning' },
-  AGREED:   { label: '확정',  color: 'success' },
+  PENDING:  { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.PENDING, color: 'default' },
+  SENT:     { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.SENT, color: 'info' },
+  REJECTED: { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.REJECTED, color: 'warning' },
+  AGREED:   { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.AGREED, color: 'success' },
 };
 
-const STATUS_ORDER = {
-  REJECTED: 0,
-  SENT: 1,
-  PENDING: 2,
-  AGREED: 3,
-};
+const STATUS_ORDER = ASSIGNMENT_CT_STATUS_SORT_ORDER;
 
-const normalizeCtStatus = (value) => {
-  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
-  return 'PENDING';
-};
+const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
 
 const toNonNegativeInt = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -275,10 +273,10 @@ const CtReviewBoard = () => {
           </Box>
           <Stack direction="row" spacing={1}>
             <Chip label={`전체 ${statusSummary.total}`} variant="outlined" />
-            <Chip label={`대기 ${statusSummary.PENDING}`} variant="outlined" />
-            <Chip label={`제안 ${statusSummary.SENT}`} color="info" variant="outlined" />
-            <Chip label={`요청 ${statusSummary.REJECTED}`} color="warning" variant="outlined" />
-            <Chip label={`확정 ${statusSummary.AGREED}`} color="success" variant="outlined" />
+            <Chip label={`${getAssignmentCtStatusLabel('PENDING')} ${statusSummary.PENDING}`} variant="outlined" />
+            <Chip label={`${getAssignmentCtStatusLabel('SENT')} ${statusSummary.SENT}`} color="info" variant="outlined" />
+            <Chip label={`${getAssignmentCtStatusLabel('REJECTED')} ${statusSummary.REJECTED}`} color="warning" variant="outlined" />
+            <Chip label={`${getAssignmentCtStatusLabel('AGREED')} ${statusSummary.AGREED}`} color="success" variant="outlined" />
           </Stack>
         </Box>
       }

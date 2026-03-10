@@ -54,6 +54,11 @@ import {
   resolveProcessExactStPerPieceSeconds,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import {
+  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
+  isAssignmentCtStatusLocked,
+  normalizeAssignmentCtStatus,
+} from '../../../constants/assignmentStatus';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -144,16 +149,8 @@ const calcDivergencePercent = (current, base) => {
   }
   return ((currentValue - baseValue) / baseValue) * 100;
 };
-const normalizeCtStatus = (value) => {
-  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
-  return 'PENDING';
-};
-const CT_STATUS_LABEL = {
-  PENDING: '대기',
-  SENT: '제안',
-  AGREED: '확정',
-  REJECTED: '요청',
-};
+const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
+const CT_STATUS_LABEL = ASSIGNMENT_CT_STATUS_DEFAULT_LABELS;
 const resolveProcessPtInfo = (process, orderQuantity = 1) => {
   const ptSeconds = toOptionalPositiveNumber(process?.pt);
   const referenceQuantity = DEFAULT_TIME_REF_QUANTITY;
@@ -182,8 +179,7 @@ const resolveProcessStSeedSeconds = ({
 
   return { seconds: 0, source: 'NONE' };
 };
-const isAssignmentLockedStatus = (value) =>
-  ['SENT', 'AGREED'].includes(normalizeCtStatus(value));
+const isAssignmentLockedStatus = (value) => isAssignmentCtStatusLocked(value);
 
 const buildAssignableLines = ({ factories, lines, workers }) => {
   const safeFactories = Array.isArray(factories) ? factories : [];

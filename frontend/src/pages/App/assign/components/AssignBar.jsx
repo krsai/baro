@@ -1,6 +1,10 @@
 import React, { useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import {
+  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
+  normalizeAssignmentCtStatus,
+} from '../../../../constants/assignmentStatus';
 
 const getDurationDays = (assignment) => {
   const startPercent = (assignment.startDayPercent ?? 100) / 100;
@@ -21,16 +25,13 @@ const formatDuration = (daysValue) => {
 // 색상 세트: 밝고 부드러운 파스텔
 // 확정(AGREED)만 progressBg(진행 오버레이용 약간 짙은 색) 추가
 const CT_STATUS_META = {
-  PENDING:  { label: '대기', cardBg: '#EBEBF0', labelColor: '#888898' },
-  SENT:     { label: '제안', cardBg: '#BFEAD0', labelColor: '#3A9858' },
-  AGREED:   { label: '확정', cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8' },
-  REJECTED: { label: '요청', cardBg: '#F7DCC8', labelColor: '#C07838' },
+  PENDING:  { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.PENDING, cardBg: '#EBEBF0', labelColor: '#888898' },
+  SENT:     { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.SENT, cardBg: '#BFEAD0', labelColor: '#3A9858' },
+  AGREED:   { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.AGREED, cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8' },
+  REJECTED: { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.REJECTED, cardBg: '#F7DCC8', labelColor: '#C07838' },
 };
 
-const normalizeCtStatus = (value) => {
-  if (value === 'SENT' || value === 'AGREED' || value === 'REJECTED') return value;
-  return 'PENDING';
-};
+const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
 
 // 잘린 방향에 따른 border-radius: 잘린 쪽은 각짐, 나머지는 둥금
 const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
