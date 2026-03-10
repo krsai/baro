@@ -9379,14 +9379,8 @@ app.get("/attributes", async (req, res) => {
 });
 
 app.post("/attributes/colors", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
 
   const name = resolveOptionalString(req.body?.name, null);
   const code = resolveOptionalString(req.body?.code, null);
@@ -9417,11 +9411,10 @@ app.post("/attributes/colors", async (req, res) => {
 });
 
 app.put("/attributes", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
+
+  const organization = await getOrganizationByQuery(req);
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }

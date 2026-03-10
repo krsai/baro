@@ -611,7 +611,9 @@ const OrderList = () => {
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
   const { showNotification, navigateToPath } = useApp();
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeProfile } = useAuth();
+  const canCreateColorAttribute =
+    activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
 
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
@@ -938,7 +940,7 @@ const OrderList = () => {
   const filterColorAutocompleteOptions = (options, params) => {
     const filtered = filterColorOptions(options, params);
     const inputValue = String(params?.inputValue || '').trim();
-    if (!inputValue) return filtered;
+    if (!inputValue || !canCreateColorAttribute) return filtered;
     const normalizedInputName = normalizeColorNameKey(inputValue);
     const normalizedInputCode = normalizeColorCode(inputValue);
     if (
@@ -1289,6 +1291,9 @@ const OrderList = () => {
   const handleCreateColorOption = async (itemId, rawName, options = {}) => {
     const colorName = String(rawName || '').trim();
     if (!colorName) {
+      return;
+    }
+    if (!canCreateColorAttribute) {
       return;
     }
 
@@ -2125,10 +2130,16 @@ const OrderList = () => {
                               selectOnFocus
                               clearOnBlur
                               handleHomeEndKeys
-                              noOptionsText="입력한 이름으로 새 색상을 추가할 수 있습니다."
+                              noOptionsText={
+                                canCreateColorAttribute
+                                  ? '입력한 이름으로 새 색상을 추가할 수 있습니다.'
+                                  : '등록된 색상을 찾을 수 없습니다.'
+                              }
                               textFieldProps={{
                                 size: 'small',
-                                placeholder: '색상 검색 또는 추가',
+                                placeholder: canCreateColorAttribute
+                                  ? '색상 검색 또는 추가'
+                                  : '색상 검색',
                                 inputRef: (node) =>
                                   setInputElementInMap(colorInputRefs, item.id, node),
                               }}

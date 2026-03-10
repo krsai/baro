@@ -9,6 +9,9 @@ This file is the source-of-truth snapshot for the test reset target.
 
 ## Rules
 
+- Test account baseline initialization must use only
+  `backend/scripts/reset-to-baseline.js`.
+- Do not add or revive separate test-account seed/reset scripts.
 - Roles are hardcoded and resolved from `OrgMembership.role`.
 - Line assignment candidates must be `WORKER` only.
 - System admin account is not part of reset deletion.
@@ -136,6 +139,8 @@ Baseline styles:
 
 ## Notes
 
+- Single entry point for test account reset:
+  `backend/scripts/reset-to-baseline.js`
 - If future changes are intended as a new reset target, update this file first.
 - Reset scripts should be implemented to match this baseline exactly.
 - This baseline is a living snapshot and should be updated continuously as

@@ -306,7 +306,6 @@ const MainLayout = () => {
         isOpen: basicInfoOpen,
         setOpen: setBasicInfoOpen,
         children: [
-          { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
           { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
           { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
         ],
@@ -318,6 +317,7 @@ const MainLayout = () => {
         isOpen: systemOpen,
         setOpen: setSystemOpen,
         children: [
+          { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
           {
             label: '가입 요청',
             icon: <GroupIcon />,

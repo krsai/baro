@@ -51,7 +51,6 @@ const MANUFACTURER_FEATURES = new Set([
   FEATURE_KEYS.LINE,
   FEATURE_KEYS.EMPLOYEE,
   FEATURE_KEYS.CUSTOMER,
-  FEATURE_KEYS.ATTRIBUTE,
   FEATURE_KEYS.PERMISSION,
   FEATURE_KEYS.HOLIDAY,
 ]);
@@ -142,7 +141,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   if (context.entryType === 'SYSTEM') {
     return (
       context.systemRole === 'SYSTEM_ADMIN' &&
-      (featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
+      (featureKey === FEATURE_KEYS.ATTRIBUTE ||
+        featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
         featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING)
     );
   }
@@ -179,12 +179,13 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.LINE:
     case FEATURE_KEYS.EMPLOYEE:
     case FEATURE_KEYS.CUSTOMER:
-    case FEATURE_KEYS.ATTRIBUTE:
     case FEATURE_KEYS.HOLIDAY:
       return (
         isManufacturer &&
         hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
       );
+    case FEATURE_KEYS.ATTRIBUTE:
+      return false;
     case FEATURE_KEYS.PRODUCTION_PLAN:
       return (
         isManufacturer &&
@@ -274,11 +275,11 @@ const ACCESS_PATH_PRIORITY = [
   '/employee',
   '/customer',
   '/profile',
-  '/attribute',
   '/permission',
   '/holiday',
   '/system-onboarding',
   '/system-setting',
+  '/attribute',
 ];
 
 export const resolveFirstAccessiblePath = (authState, options = {}) => {

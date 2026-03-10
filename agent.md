@@ -1040,6 +1040,8 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 
 #### 단일 진입점
 - 초기화 스크립트는 무조건 `backend/scripts/reset-to-baseline.js` 하나만 사용한다. 분할 스크립트 추가 금지.
+- 테스트 계정 기본 데이터 초기화도 동일하게 `backend/scripts/reset-to-baseline.js` 하나만 유지한다.
+- 테스트 계정 전용 seed/reset/bootstrap 스크립트는 새로 만들지 않는다.
 - 테스트 baseline은 계정/조직/라인/스타일/공통 색상까지만 재구성하고, 주문/작업 배정 더미 데이터는 재생성하지 않는다.
 - 분리돼 있던 테스트 계정 전용 스크립트 `backend/scripts/seed-test-accounts.js`는 제거되었다.
 - 실행 커맨드:
