@@ -13,6 +13,7 @@ const ORG_ROLES = {
 const FEATURE_KEYS = {
   ORDER: 'ORDER',
   STYLE: 'STYLE',
+  ST_REVIEW: 'ST_REVIEW',
   ASSIGNMENT: 'ASSIGNMENT',
   PRODUCTION_PLAN: 'PRODUCTION_PLAN',
   CT_REVIEW: 'CT_REVIEW',
@@ -37,6 +38,7 @@ const MANUFACTURER_FEATURES = new Set([
   FEATURE_KEYS.PROFILE,
   FEATURE_KEYS.ORDER,
   FEATURE_KEYS.STYLE,
+  FEATURE_KEYS.ST_REVIEW,
   FEATURE_KEYS.ASSIGNMENT,
   FEATURE_KEYS.PRODUCTION_PLAN,
   FEATURE_KEYS.CT_REVIEW,
@@ -164,6 +166,11 @@ const canAccessFeatureByContext = (featureKey, context) => {
         isOrgMember &&
         hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
       );
+    case FEATURE_KEYS.ST_REVIEW:
+      return (
+        isManufacturer &&
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
+      );
     case FEATURE_KEYS.ASSIGNMENT:
     case FEATURE_KEYS.INVENTORY:
     case FEATURE_KEYS.ATTENDANCE:
@@ -213,6 +220,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path === '/') return null;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
+  if (path.startsWith('/st-review')) return FEATURE_KEYS.ST_REVIEW;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
   if (path.startsWith('/production-plan')) return FEATURE_KEYS.PRODUCTION_PLAN;
   if (path.startsWith('/ct-review')) return FEATURE_KEYS.CT_REVIEW;
@@ -252,6 +260,7 @@ export const canAccessFeature = (featureKey, authState) => {
 const ACCESS_PATH_PRIORITY = [
   '/order',
   '/style',
+  '/st-review',
   '/assignment',
   '/production-plan',
   '/ct-review',

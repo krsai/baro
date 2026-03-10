@@ -102,17 +102,33 @@ const resolveLowSensitivityPenalty = ({ setupShare, observationCount }) => {
 const resolveAtParams = (process) => {
   if (!process || typeof process !== 'object') return null;
   const raw = process.atParams;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const a = toOptionalNumber(raw.a);
-  const b = toOptionalNumber(raw.b);
-  if (a === null || b === null) return null;
-  return { a, b };
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const a = toOptionalNumber(raw.a);
+    const b = toOptionalNumber(raw.b);
+    if (a !== null && b !== null) {
+      return { a, b };
+    }
+  }
+  const legacyAt = toOptionalNumber(process.at);
+  if (legacyAt === null) return null;
+  return { a: legacyAt, b: 0 };
 };
 
 const resolveAtParamsMeta = (process) => {
   if (!process || typeof process !== 'object') return null;
   const raw = process.atParams;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    const legacyParams = resolveAtParams(process);
+    if (!legacyParams) return null;
+    return {
+      ...legacyParams,
+      version: 1,
+      trainedPeriod: null,
+      attendanceCoverage: null,
+      attendanceFallbackShare: null,
+      observationCount: null,
+    };
+  }
   const params = resolveAtParams(process);
   if (!params) return null;
 
@@ -340,9 +356,25 @@ export const resolveStyleAtReliability = (processes = []) => {
 };
 
 export const normalizeProcess = (process = {}, index = 0) => {
-  const { st: _legacySt, ...safeProcess } = process || {};
+  const {
+    st: _legacySt,
+    at: _legacyAt,
+    atParams: _rawAtParams,
+    referenceQuantity: _legacyReferenceQuantity,
+    ...safeProcess
+  } = process || {};
   const normalizedCt = toOptionalNumber(safeProcess.ct);
-  const normalizedAt = toOptionalNumber(safeProcess.at);
+  const resolvedTimeRefQuantity = toPositiveInt(
+    process?.timeRefQuantity ?? process?.referenceQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  const normalizedAtParams = resolveAtParamsMeta(process);
+  const normalizedAt =
+    normalizedAtParams === null
+      ? null
+      : toOptionalNumber(
+          normalizedAtParams.a + normalizedAtParams.b / resolvedTimeRefQuantity
+        );
   const isLikelyAutoCt =
     hasTime(normalizedCt) &&
     hasTime(normalizedAt) &&
@@ -359,13 +391,10 @@ export const normalizeProcess = (process = {}, index = 0) => {
         ? safeProcess.instanceId
         : `${safeProcess.code || 'PROC'}-${safeProcess.id || index}-${index}`,
     quantity: toPositiveInt(safeProcess.quantity, 1),
-    timeRefQuantity: toPositiveInt(
-      safeProcess.timeRefQuantity ?? safeProcess.referenceQuantity,
-      DEFAULT_TIME_REF_QUANTITY
-    ),
+    timeRefQuantity: resolvedTimeRefQuantity,
     stManual: normalizedStManual,
     pt: toOptionalNumber(safeProcess.pt),
-    at: normalizedAt,
+    ...(normalizedAtParams ? { atParams: normalizedAtParams } : {}),
     ct: normalizedCt,
   };
 };
@@ -386,6 +415,17 @@ export const resolveProcessActualTime = ({ existingAt = null, workStats = null }
 
 export const calculateProcessLineTotal = (process, key) => {
   if (!process || (key !== 'pt' && key !== 'at' && key !== 'ct')) return null;
+  if (key === 'at') {
+    const normalized = normalizeProcess(process);
+    const referenceQuantity = toPositiveInt(
+      normalized?.timeRefQuantity,
+      DEFAULT_TIME_REF_QUANTITY
+    );
+    const atPerPiece = resolveProcessAtPerPieceSeconds(normalized, referenceQuantity);
+    if (atPerPiece === null) return null;
+    const quantity = toPositiveInt(normalized.quantity, 1);
+    return quantity * atPerPiece;
+  }
   const time = toOptionalNumber(process[key]);
   if (time === null) return null;
   const quantity = toPositiveInt(process.quantity, 1);
@@ -394,20 +434,15 @@ export const calculateProcessLineTotal = (process, key) => {
 
 // Calculate total seconds for an order quantity.
 // - pt/ct: linear (processTime * process.quantity * orderQuantity)
-// - at: if atParams({a,b}) exists, use a*q + b model; otherwise linear AT fallback
+// - at: always use atParams({a,b}) with a*q + b
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
   const processQuantity = toPositiveInt(normalized?.quantity, 1);
 
   const atParams = resolveAtParams(normalized);
-  if (atParams) {
-    return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
-  }
-
-  const at = toOptionalNumber(normalized?.at);
-  if (at === null) return null;
-  return processQuantity * at * resolvedOrderQuantity;
+  if (!atParams) return null;
+  return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
 };
 
 export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
@@ -529,7 +564,10 @@ export const calculateProcessTotal = (processes, key) =>
   }, 0);
 
 export const hasAnyProcessTime = (processes, key) =>
-  normalizeProcesses(processes).some((process) => hasTime(process?.[key]));
+  normalizeProcesses(processes).some((process) => {
+    if (key === 'at') return resolveAtParams(process) !== null;
+    return hasTime(process?.[key]);
+  });
 
 export const hasAnyCt = (processes) =>
   normalizeProcesses(processes).some((process) => hasTime(process?.ct));

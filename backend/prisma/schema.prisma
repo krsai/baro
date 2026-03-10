@@ -96,7 +96,6 @@ model Organization {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  colors                    AttrColor[]
   categories                AttrCategory[]
   roles                     AttrRole[]
   processes                 AttrProcess[]
@@ -110,6 +109,7 @@ model Organization {
   workLogs                  WorkLog[]
   workRecords               WorkRecord[]
   assignmentBoardState      AssignmentBoardState?
+  assignmentCards           AssignmentCard[]
   assignmentPlans           AssignmentPlan[]
   payrollSnapshots          PayrollSnapshot[]
   attendanceEntries         AttendanceEntry[]
@@ -321,18 +321,13 @@ model OrgRelationship {
 }
 
 model AttrColor {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
+  id   Int    @id @default(autoincrement())
+  code String @unique
+  name String
 
-  organization    Organization     @relation(fields: [orgId], references: [id])
   workOrderItems  WorkOrderItem[]
   workRecords     WorkRecord[]
   assignmentPlans AssignmentPlan[]
-
-  @@unique([orgId, code])
-  @@index([orgId])
 }
 
 model AttrCategory {
@@ -433,9 +428,9 @@ model WorkOrder {
 }
 
 model WorkOrderItem {
-  id             Int      @id @default(autoincrement())
+  id             Int                  @id @default(autoincrement())
   workOrderId    Int
-  itemId         String   @default("")
+  itemId         String               @default("")
   styleId        String?
   styleUid       Int?
   styleName      String?
@@ -444,10 +439,10 @@ model WorkOrderItem {
   colorCode      String?
   gender         WorkOrderItemGender?
   sizeQuantities Json?
-  totalQuantity  Int      @default(0)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  totalQuantity  Int                  @default(0)
+  sortOrder      Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   style     Style?     @relation(fields: [styleUid], references: [uid], onDelete: SetNull)
@@ -593,4 +588,19 @@ model AssignmentBoardState {
   organization Organization @relation(fields: [orgId], references: [id])
 
   @@index([orgId])
+}
+
+model AssignmentCard {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  cardId    String
+  sortOrder Int      @default(0)
+  payload   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, cardId])
+  @@index([orgId, sortOrder, id])
 }

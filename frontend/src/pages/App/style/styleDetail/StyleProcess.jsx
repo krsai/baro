@@ -33,7 +33,6 @@ import {
   normalizeProcess,
   normalizeProcesses,
   parseOptionalSecondsInput,
-  resolveProcessActualTime,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveStyleAtReliability,
@@ -204,12 +203,7 @@ const buildProcessPayload = (
     stManual,
     pt: ptPerPiece,
     ct: ctPerPiece,
-    at: resolveProcessActualTime({
-      existingAt: existingProcess?.at ?? null,
-      workStats: {
-        actualTime: draft.process?.actualTime ?? existingProcess?.actualTime ?? null,
-      },
-    }),
+    atParams: existingProcess?.atParams ?? null,
     instanceId: existingProcess?.instanceId || createInstanceId(draft.process),
   });
 };

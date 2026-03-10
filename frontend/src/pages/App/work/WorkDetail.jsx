@@ -20,6 +20,10 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { fetchAttributes } from '../../../utils/attributeApi';
+import {
+  DEFAULT_TIME_REF_QUANTITY,
+  resolveProcessAtPerPieceSeconds,
+} from '../../../utils/processTime';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import WorkerLog from './WorkerLog';
@@ -343,13 +347,24 @@ const resolveFirstPositiveSeconds = (...values) => {
   return 0;
 };
 
+const resolveProcessAtReferenceSeconds = (process) => {
+  if (!process) return 0;
+  const referenceQuantity = Math.max(
+    1,
+    Math.round(Number(process?.timeRefQuantity) || DEFAULT_TIME_REF_QUANTITY)
+  );
+  const atPerPiece = resolveProcessAtPerPieceSeconds(process, referenceQuantity);
+  if (!Number.isFinite(atPerPiece) || atPerPiece <= 0) return 0;
+  return Math.round(atPerPiece);
+};
+
 const resolveCtSeconds = (process) => {
   if (!process) return 0;
   return resolveFirstPositiveSeconds(
     process.ctSeconds,
     process.contractedSeconds,
     process.ct,
-    process.at,
+    resolveProcessAtReferenceSeconds(process),
     process.pt
   );
 };
@@ -362,7 +377,7 @@ const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null)
     process.ct,
     process.ctSeconds,
     process.contractedSeconds,
-    process.at,
+    resolveProcessAtReferenceSeconds(process),
     process.pt
   );
   return {
@@ -371,7 +386,7 @@ const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null)
     code: process.code || '',
     name: process.name || agreedSnapshotEntry?.name || '공정',
     pt: process.pt,
-    at: process.at,
+    at: resolveProcessAtReferenceSeconds(process),
     ctSeconds,
     contractedSeconds: resolveFirstPositiveSeconds(ctSeconds, process.contractedSeconds),
   };

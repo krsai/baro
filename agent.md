@@ -15,6 +15,20 @@
 - 사용자 요청 범위를 벗어난 **불필요한 기능/옵션/추상화는 추가하지 않는다.**
 - 기본 원칙은 **"지금 필요한 것만 구현(YAGNI)"** 이다.
 
+## 2026-03-10 확정 정책 (우선 적용)
+
+이 섹션이 아래의 오래된 설명보다 우선한다.
+
+- `PT`는 스타일+공정별 `PT(1000)` 하나만 가진다.
+- `AT`는 스타일+공정별 함수 `atParams={a,b,...}`만 저장한다. 단순 숫자 `at`는 레거시이며 신규 정책에서 사용하지 않는다.
+- `ST`는 스타일+공정별 `ST(q)` 기준점을 수량별로 저장한다.
+- `CT`는 `AssignmentPlan.contractedSeconds`만 진짜 카드 단위 확정값으로 사용한다.
+- `AT(q)`는 `ST(q)`/`CT(q)`를 자동 결정하는 값이 아니라, 운영팀이 `ST(q)`를 검토할 때 참고하는 값이다.
+- 배정 카드 생성 시점에 해당 수량의 `ST(q)`가 없으면 기본값을 잡아 새 `ST(q)` 기준점을 만든다.
+- 라인장과 협의해 바뀐 `CT`는 그 배정 건에만 적용되며, 다른 배정은 다시 `ST(q)`를 기본값으로 사용한다.
+- `ST` 값의 증가/감소 방향은 시스템이 강제하지 않는다. 대신 나중에 `ST 검토` 메뉴에서 운영 검토 경고를 보여준다.
+- 이 문서 아래에서 `Style.processes[].ct`, `stManual`, `timeRefQuantity`, `Style.processes[].at`를 `ST/AT`의 저장 원본으로 설명하는 부분은 레거시 메모로 본다.
+
 ---
 
 ## 핵심 도메인 개념
@@ -24,12 +38,11 @@
 #### 핵심 개념 정의
 
 **PT (Planned Time) — 인간 추정 기준점**
-- 공장장/매니저가 주문 수량을 보고 경험적으로 입력하는 개당 예상 시간
-- 스타일 공정 정보에 직접 입력하며, ST(q) 산정의 기본 후보값으로 사용
-- 배정 협의 화면에서는 `PT(q)`가 없으면 `데이터 없음`으로 표기
-- 배정 협의의 ST(q) 시드 우선순위: `동일 q의 기존 ST 제안값` → `수동 ST(ct)` → `PT(q)` → `AT(q)`
-- PT 변경은 이미 저장된 제안 ST/최종 CT를 자동 덮어쓰지 않음
-- 실무적으로 매니저는 주문 수량을 감안해 PT를 입력함. 다음 주문 수량이 크게 달라지면 PT를 다시 입력
+- 스타일+공정별 `PT(1000)` 하나만 가진다.
+- 공장장/매니저가 스타일 최초 등록 시 입력하는 기본 가이드라인이다.
+- 다른 q값의 `PT(q)`는 따로 두지 않는다.
+- 새로운 `ST(q)` 기준점이 처음 필요할 때 초기 참고값으로만 사용한다.
+- PT 변경은 이미 저장된 `ST(q)`나 카드별 `CT`를 자동으로 덮어쓰지 않는다.
 
 **AT(q) (Actual Time) 정의**
 - AT(q)는 WorkRecord 누적으로 자동 산출되는 “수량 q에 대한 개당 평균 시간 함수”이며, 운영자가 직접 입력하지 않는다.
@@ -44,7 +57,7 @@
   - `b_p`: **공정 단위 시작 오버헤드**로 정의하며, 하루에 해당 공정을 수행하면 1회 발생하는 고정 시간으로 모델링한다.
 - **저장 위치**:
   ```json
-  Style.processes[].atParams = {
+  atParams = {
     "a": number,
     "b": number,
     "version": number,
@@ -52,6 +65,7 @@
     "trainedPeriod": "YYYY-MM"
   }
   ```
+- 단순 숫자 `at`는 더 이상 정책상 원본 필드가 아니다.
 - 데이터가 부족하여 파라미터를 추정할 수 없는 경우 `atParams`는 `null`일 수 있다.
 - 배정/협의 화면에서 AT가 없으면 `수집중`으로 표시한다.
 
@@ -129,16 +143,12 @@
 - PT → AT로 기준이 전환될 때 급격한 변화를 막기 위한 완충 구간
 - AT(q)가 나왔다고 ST를 바로 AT로 맞추지 않음 — 현장 충격(파업 등) 방지
 - 운영팀이 AT(q)를 참고해 ST를 점진적으로 조정
-- AT 데이터 없으면 ST = PT (현재 스타일에 입력된 PT값)
-- 스타일 공정 입력 시 **공통 기준 수량 q(`timeRefQuantity`)를 먼저 지정**하고 PT(q) / ST(q)를 입력한다.
-- **코드상**: `Style.processes[].ct`(ST 값), `Style.processes[].stManual`(수동 여부), `Style.processes[].timeRefQuantity`(공통 q)로 관리
-- 배정 협의 화면에서 ST(q) 시드 우선순위:
-  - 동일 수량 q의 이전 제안 ST(`operatorCtProposal.processes[].stSeconds`)
-  - 스타일 수동 ST(`stManual=true` + `ct`)
-  - PT(q)
-  - AT(q)
-- ST는 CT 합의 결과로 자동 갱신되지 않으며, 운영팀이 제안/재제안 시 명시적으로 갱신된다.
-- ST는 "이 스타일 이 공정의 현재 공식 단가"이며, 라인과 협의하는 출발점
+- ST는 스타일+공정별 `q` 기준점으로 저장한다.
+- 같은 공정명이라도 스타일이 다르면 다른 ST 집합이다.
+- 새로운 수량 q가 처음 필요하면 초기값은 `PT(1000)`을 참고해 만든다.
+- 이후 운영팀이 수동으로 수정한 `ST(q)`는 그 스타일+공정+수량의 반복 사용 기준이 된다.
+- ST는 CT 합의 결과로 자동 갱신되지 않는다.
+- ST 값의 증가/감소 방향은 시스템이 강제하지 않고, 추후 `ST 검토` 메뉴에서 경고만 제공한다.
 
 **CT (Contracted Time) — 카드 단위 확정 스냅샷**
 - 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
@@ -148,7 +158,7 @@
 - `contractedSeconds`: 최종 합의 CT(지급 기준). 제안 송부 시점에는 `null` 가능. **개당 초(per-piece)**
 - **모든 시간 단위(PT(q)/AT(q)/ST(q)/CT(q))는 개당 초(per-piece)** — 수량별로 개당 시간이 달라지므로 비교는 항상 개당 기준으로 한다
 - `totalSt`, `totalPt`, `totalAt`는 스케줄링 기간 계산용 총 초(`개당값 × 수량`)이며 협의 단가와 구분한다
-- **CT 제안 흐름은 Style의 ST(processes[].ct)를 절대 수정하지 않는다.** CT는 해당 AssignmentPlan의 `proposalSeconds`/`contractedSeconds`에만 저장된다
+- **CT 제안 흐름은 스타일의 ST 기준점을 절대 수정하지 않는다.** CT는 해당 AssignmentPlan의 `proposalSeconds`/`contractedSeconds`에만 저장된다
 - **배정 화면에서 ST(q) 수정 불가** — ST(q)는 스타일 상세 화면에서만 변경한다
 - **라인마다 CT가 다를 수 있다**: 같은 스타일을 여러 라인에 배정하면 각 라인이 협의한 CT가 독립적으로 저장되며 서로 영향을 주지 않는다
 
@@ -322,10 +332,11 @@ Organization (MANUFACTURER | BRAND)
        ※ 공정별 quantity 필드 있음 (processQuantity로 CT 계산 시 반영)
   └─ WorkOrder
        └─ WorkOrderItem (styleId, colorId→AttrColor FK, colorCode, colorName, gender, sizeQuantities, sortOrder)
+  └─ AssignmentCard (cardId, sortOrder, payload: JSON) — 미배정 카드 저장 테이블
   └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
-  └─ AssignmentBoardState (cards: JSON, assignments: JSON) — 수동 저장 스냅샷(upsert)
+  └─ AssignmentBoardState (assignments: JSON) — 수동 저장 보드 스냅샷(upsert)
        ※ assignments: 라인 타임라인에 배정된 카드 배열 (AssignmentPlan의 프론트엔드 표현)
-       ※ cards: 미배정 풀 카드 배열 (일반 카드 + DELTA 카드 공존)
+       ※ cards 컬럼은 레거시 호환/이관용으로만 유지, 현재 소스 오브 트루스는 `AssignmentCard`
   └─ PayrollSnapshot (orgId, month, data: JSON, lockedAt, lockedBy)
   └─ SystemUser (email, systemRole)
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
@@ -340,15 +351,18 @@ Organization (MANUFACTURER | BRAND)
 - `PUT /assignment-board-state`와 `PATCH /assignment-board-state/ct`는 assignment 단위 optimistic concurrency를 사용하며, stale version이면 `409 assignment version conflict`를 반환한다.
 - UI는 로컬 undo/redo(최대 30단계)만 제공한다. 서버가 과거 스냅샷을 보관해 복원해 주지는 않는다.
 - **cards vs assignments 구분**:
-  - `cards`: 미배정 풀 (일반 카드 + DELTA 카드). 라인에 아직 배정되지 않은 것.
+  - `cards`: 미배정 풀 (일반 카드 + DELTA 카드). 라인에 아직 배정되지 않은 것. 현재는 `AssignmentCard` 테이블에 저장된다.
   - `assignments`: 라인 타임라인에 배정된 카드. ctStatus, contractedSeconds 등 협의 정보 포함.
-- `cards`에는 `operatorCtProposal`, `pendingCtProposal`, `ctAgreedSnapshot`, `ctAgreementHistory` 같은 협의 스냅샷/이력 값이 함께 저장될 수 있다.
-- DELTA 카드(type='DELTA')는 cards 배열 안에만 존재, assignments에는 없음
+- `cards` payload에는 `operatorCtProposal`, `pendingCtProposal`, `ctAgreedSnapshot`, `ctAgreementHistory` 같은 협의 스냅샷/이력 값이 함께 저장될 수 있다.
+- DELTA 카드(type='DELTA')는 `AssignmentCard`에만 존재, assignments에는 없음
+- `AssignmentBoardState.cards`는 레거시 JSON 필드로 남아 있지만 신규 로직의 읽기 소스로 사용하지 않는다.
 
 ### 카드(Card) 개념
 - **(수주 × 스타일 × 색상 × 성별) 조합으로 자동 생성되는 배정 단위**
 - 같은 스타일·색상이라도 수주가 다르면 별개의 카드로 인식
 - 미배정(unassigned pool)과 배정(line timeline) 상태로 구분
+- 미배정 카드는 `AssignmentCard` 테이블에 영속 저장되고, 배정 카드는 `AssignmentBoardState.assignments` + `AssignmentPlan`으로 관리된다.
+- `GET /assignment-cards`는 `AssignmentCard` 테이블만 읽는다. 조회 시 재계산하지 않는다.
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
 - 분할 시 새 카드 id가 생겨도 `originOrderId`는 유지한다.
 - 병합은 `originOrderId`가 같은 카드/배정끼리만 허용된다.
@@ -359,7 +373,7 @@ Organization (MANUFACTURER | BRAND)
 - 수주 수량 변경 시 **해당 수주의 기존 배정은 취소**하고, 변경된 수량 기준으로 **미배정 카드로 재생성**한다.
 - 수량이 `0`이면 해당 카드는 제거한다.
 - 동일 주문에 매달린 DELTA 카드는 함께 정리하고, 다른 주문의 DELTA 카드는 유지한다.
-- 이 동기화는 주문 저장 후 프론트(`OrderList.jsx`)에서 현재 보드를 읽어 `reconcileBoardStateForQuantityChanges` 결과를 다시 저장하는 방식이다.
+- 주문 저장 후 서버는 즉시 `AssignmentCard`를 재생성한다. 배정 보드에 이미 올려둔 카드 취소/DELTA 정리는 현재 프론트(`OrderList.jsx`)의 `reconcileBoardStateForQuantityChanges` 저장 흐름과 함께 동작한다.
 - 즉, 수량 변경 시 기존 배정 카드의 기간을 늘이거나 줄여 유지하지 않는다.
 - 결과적으로 변경분 반영 이후에는 운영자가 다시 배정(라인/시작일 지정)하도록 한다.
 
@@ -759,7 +773,7 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 
 #### 배경
 - 기존 `WorkOrder.items`는 `Json?` 필드로 색상/스타일/수량 데이터를 저장해 `AttrColor`와 실질적 FK 관계가 없었다.
-- 색상 코드/이름을 수정해도 기존 주문 데이터에 반영되지 않아 일관성 문제 발생.
+- 색상 코드/이름을 수정해도 기존 주문 데이터에 반영되지 않아 일관성 문제 발생했다.
 - `WorkRecord`도 `colorId`, `processCode`를 단순 값으로 저장해 동일한 문제.
 
 #### 변경 내용
@@ -780,7 +794,10 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - `GET /orders`: `include: { workOrderItems: { orderBy: { sortOrder: 'asc' } } }` 추가
 - `POST /orders` (`createOrReuseSharedOrder`): WorkOrder 생성 후 `workOrderItem.createMany()` 병렬 저장
 - `PUT /orders/:orderId`: 트랜잭션 내에서 `workOrderItem.deleteMany()` + `createMany()` 전체 교체
-- `GET /assignment-cards`, `loadAssignmentDisplayReferenceMaps`, `buildAssignmentCardsFromOrders`: `workOrderItems` 우선 사용
+- `POST /orders`, `PUT /orders/:orderId`, `DELETE /orders/:orderId` 후 관련 조직의 `AssignmentCard`를 즉시 재생성
+- `POST /styles`, `PUT /styles/:styleId`, `POST /styles/import` 후 관련 조직의 `AssignmentCard`를 즉시 재생성
+- `GET /assignment-cards`: `AssignmentCard` 테이블만 조회
+- `loadAssignmentDisplayReferenceMaps`, `buildAssignmentCardsFromOrders`: `workOrderItems` 우선 사용
 - `DELETE /styles/:styleId`: `WorkOrder.items` JSON 순회 → `WorkOrderItem.findFirst({ where: { styleId } })` 쿼리로 교체
 - `POST/PUT /work-logs`: `processCode` 목록으로 `AttrProcess` 일괄 조회 → `processId` Map 생성 → `WorkRecord.createMany` 시 `processId` 자동 채우기
 
@@ -790,7 +807,7 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 
 **DEFAULT_ATTRIBUTES 초기화 방지**
 - `backend/src/index.ts`의 `DEFAULT_ATTRIBUTES.colors`를 빈 배열 `[]`로 변경 → `GET /attributes` 시 색상 재시드 방지
-- 기존 하드코딩 BLK/WHT/RED/BLU 4개 색상(orgId=1,2)은 사용되지 않아 DB에서 직접 삭제
+- 색상은 더 이상 조직별 기본값이 아니라 DB 공통 마스터(`AttrColor`)로만 관리
 
 ## 오늘 반영 메모 (2026-03-04)
 
@@ -815,6 +832,20 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - POST/PUT/DELETE 시 `getResponseCache.clear()` → `invalidateCacheByPath(path)` 교체
 - 효과: 보드 저장(PUT /assignment-board-state) 후 /factories, /lines, /line-workers 등 무관 캐시 유지
 - 파일: `frontend/src/utils/apiClient.js`
+
+## 오늘 반영 메모 (2026-03-10)
+
+### 작업 카드 저장 구조 단순화
+- `AssignmentCard` 테이블을 추가해 미배정 카드의 소스 오브 트루스를 JSON이 아닌 테이블로 분리했다.
+- `PUT /assignment-board-state`, `PATCH /assignment-board-state/ct`, `DELETE /assignment-board-state/assignment/:assignmentId`는 카드 변경분을 `AssignmentCard`에 동기화한다.
+- `GET /assignment-board-view`, `GET /assignment-board-state`, `GET /assignment-plans`는 카드 조회 시 `AssignmentCard`를 사용한다.
+- `GET /assignment-cards`는 조회만 수행한다. 카드 재생성은 주문/스타일/색상 변경 시점에 즉시 실행한다.
+- `AssignmentBoardState.cards`는 더 이상 읽기 소스로 사용하지 않는다. 레거시 컬럼으로만 남겨둔다.
+
+### 공통 색상 마스터
+- `AttrColor`는 조직별 속성이 아니라 전 조직이 함께 쓰는 공통 마스터다.
+- `/attributes`의 `colors`는 조직 구분 없이 동일한 목록을 반환한다.
+- 색상 수정 시 `WorkOrderItem.colorCode`, `WorkRecord.colorCode`, `AssignmentCard`를 같이 맞춘다.
 
 ### 직원 관리 규칙 정리
 
@@ -1005,7 +1036,8 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 ### 초기화 스크립트 운영 규칙 (2026-03-05)
 
 #### 단일 진입점
-- 테스트 계정/조직/라인/스타일/주문/배정 시드는 `backend/scripts/reset-to-baseline.js` 하나에서 처리한다.
+- 초기화 스크립트는 무조건 `backend/scripts/reset-to-baseline.js` 하나만 사용한다. 분할 스크립트 추가 금지.
+- 테스트 baseline은 계정/조직/라인/스타일/공통 색상까지만 재구성하고, 주문/작업 배정 더미 데이터는 재생성하지 않는다.
 - 분리돼 있던 테스트 계정 전용 스크립트 `backend/scripts/seed-test-accounts.js`는 제거되었다.
 - 실행 커맨드:
   - 루트: `npm run reset:baseline`

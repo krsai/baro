@@ -50,9 +50,12 @@ async function main() {
     console.log('\n스타일:', style.name, '(' + style.styleId + ')');
     procs.forEach(p => {
       const pt = p.pt;
-      const at = p.at;
       const atParams = p.atParams;
       const q = p.timeRefQuantity || 1000;
+      const at =
+        atParams && Number.isFinite(Number(atParams.a)) && Number.isFinite(Number(atParams.b))
+          ? Number(atParams.a) + Number(atParams.b) / Number(q)
+          : null;
       if (pt == null && at == null) return;
       const ptQ = pt != null ? (pt * q).toFixed(0) + '초' : 'null';
       const atQ = at != null ? (at * q).toFixed(0) + '초' : '수집중';

@@ -4,8 +4,8 @@ This file is the source-of-truth snapshot for the test reset target.
 
 ## Baseline ID
 
-- `test-baseline-v1.8`
-- Captured on: `2026-03-06`
+- `test-baseline-v1.9`
+- Captured on: `2026-03-10`
 
 ## Rules
 
@@ -90,9 +90,9 @@ recreates the active assignments below.
 - `Line.managerEmployeeId` points to `line1-worker01` for line 1 and
   `line2-worker01` for line 2
 
-## Attributes (TSMF only)
+## Attributes
 
-Colors:
+Global colors:
 
 - `WHITE` -> `White`
 - `BLACK` -> `Black`
@@ -102,7 +102,7 @@ Colors:
 - `MID-BLUE` -> `Mid Blue`
 - `INDIGO` -> `Indigo`
 
-Processes:
+Manufacturer-only processes:
 
 - `P01` -> `Test Process 01`
 - `P02` -> `Test Process 02`
@@ -126,23 +126,13 @@ Baseline styles:
 - `S-2025FW-J003` / `25FW-J003` / `Urban Corduroy Pants`
   season `2025FW`, collection `Urban Premium`, `10` processes, total PT `6,000`
 
-## Work Orders (reset baseline)
+## Orders And Assignment Data
 
-Baseline work orders:
-
-- `ORD-2025SS-001`
-  status `ORDER_RECEIVED`, total quantity `5,000`
-  includes `Daily Round T-Shirt` and `Slim Collar Hero Polo`
-- `ORD-2025FW-001`
-  status `ORDER_RECEIVED`, total quantity `2,500`
-  includes `Urban Corduroy Pants`
-
-## Assignment Seed
-
-- Reset rebuilds baseline assignment board cards and agreed assignment plans.
-- Baseline assignment schedules are split across `Sample Line 1` and
-  `Sample Line 2`.
-- Headcount assumption for those schedules is `20 workers per line`.
+- Reset deletes all dummy `WorkOrder`, `AssignmentCard`, `AssignmentPlan`,
+  and `AssignmentBoardState` rows.
+- Reset also detaches `WorkRecord.assignmentPlanId` before deleting assignment
+  plans.
+- Reset does not recreate baseline work orders or assignment cards.
 
 ## Notes
 

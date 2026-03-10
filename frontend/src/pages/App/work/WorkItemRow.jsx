@@ -4,6 +4,10 @@ import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import {
+  DEFAULT_TIME_REF_QUANTITY,
+  resolveProcessAtPerPieceSeconds,
+} from '../../../utils/processTime';
 
 const isAgreedAssignmentPlan = (plan) =>
   String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
@@ -24,12 +28,23 @@ const formatProcessOptionLabel = (option) => {
   return code || name || '공정';
 };
 
+const resolveProcessAtReferenceSeconds = (process) => {
+  if (!process) return 0;
+  const referenceQuantity = Math.max(
+    1,
+    Math.round(Number(process?.timeRefQuantity) || DEFAULT_TIME_REF_QUANTITY)
+  );
+  const atPerPiece = resolveProcessAtPerPieceSeconds(process, referenceQuantity);
+  if (!Number.isFinite(atPerPiece) || atPerPiece <= 0) return 0;
+  return Math.round(atPerPiece);
+};
+
 const resolveRowCtSeconds = (process) => {
   const candidates = [
     process?.ctSeconds,
     process?.contractedSeconds,
     process?.ct,
-    process?.at,
+    resolveProcessAtReferenceSeconds(process),
     process?.pt,
   ];
   for (const value of candidates) {

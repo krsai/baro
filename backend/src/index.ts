@@ -94,6 +94,12 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("WorkRecord", "styleUid")) {
     staleSignals.push("WorkRecord.styleUid missing");
   }
+  if (!hasField("Organization", "assignmentCards")) {
+    staleSignals.push("Organization.assignmentCards missing");
+  }
+  if (!hasField("AssignmentCard", "payload")) {
+    staleSignals.push("AssignmentCard.payload missing");
+  }
   if (hasField("WorkRecord", "processName")) {
     staleSignals.push("WorkRecord.processName still present");
   }
@@ -621,6 +627,62 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
   };
 };
 
+const toStyleAtParamsFromLegacyScalar = (value: any): StyleAtParams | null => {
+  const a = toOptionalSeconds(value);
+  if (a === null) return null;
+  return {
+    a,
+    b: 0,
+    version: 1,
+    updatedAt: null,
+    trainedPeriod: null,
+    attendanceCoverage: null,
+    attendanceFallbackShare: null,
+    observationCount: null,
+  };
+};
+
+const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
+  process: any,
+  orderQuantity = 1
+) => {
+  if (!process || typeof process !== "object" || Array.isArray(process)) {
+    return null;
+  }
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const processQuantity = toPositiveInt((process as any).quantity, 1);
+  const atParams =
+    toStyleAtParams((process as any).atParams) ??
+    toStyleAtParamsFromLegacyScalar((process as any).at);
+  if (!atParams) return null;
+  return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
+};
+
+const resolveStyleProcessAtPerPieceSecondsForOrderQuantity = (
+  process: any,
+  orderQuantity = 1
+) => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const processQuantity = toPositiveInt((process as any)?.quantity, 1);
+  const totalAt = resolveStyleProcessAtTotalSecondsForOrderQuantity(
+    process,
+    resolvedOrderQuantity
+  );
+  if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
+  return totalAt / (processQuantity * resolvedOrderQuantity);
+};
+
+const resolveStyleProcessAtPerPieceSecondsForReferenceQuantity = (process: any) => {
+  const referenceQuantity = toPositiveInt(
+    (process as any)?.timeRefQuantity ?? (process as any)?.referenceQuantity,
+    DEFAULT_TIME_REF_QUANTITY
+  );
+  return resolveStyleProcessAtPerPieceSecondsForOrderQuantity(
+    process,
+    referenceQuantity
+  );
+};
+
 const isSameStyleAtParams = (
   left: StyleAtParams | null,
   right: StyleAtParams | null
@@ -814,24 +876,29 @@ const normalizeStyleProcess = (process: any) => {
   const { st: _legacySt, ...rest } = process;
   const next = { ...rest };
   if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
-  if ("at" in next) next.at = toOptionalSeconds(next.at);
   if ("ct" in next) next.ct = toOptionalSeconds(next.ct);
-  const normalizedAtParams = toStyleAtParams((next as any).atParams);
+  const normalizedAtParams =
+    toStyleAtParams((next as any).atParams) ??
+    toStyleAtParamsFromLegacyScalar((next as any).at);
   if (normalizedAtParams) {
     (next as any).atParams = normalizedAtParams;
   } else if ("atParams" in next) {
     delete (next as any).atParams;
+  }
+  if ("at" in next) {
+    delete (next as any).at;
   }
   next.timeRefQuantity = toPositiveInt(
     (next as any).timeRefQuantity ?? (next as any).referenceQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
   const hasCt = next.ct !== null && next.ct !== undefined;
-  const hasAt = next.at !== null && next.at !== undefined;
+  const atPerPiece = resolveStyleProcessAtPerPieceSecondsForReferenceQuantity(next);
+  const hasAt = atPerPiece !== null;
   const isLikelyAutoCt =
     hasCt &&
     hasAt &&
-    Math.abs(Number(next.ct) - Number(next.at)) < 1e-4;
+    Math.abs(Number(next.ct) - Number(atPerPiece)) < 1e-4;
   next.stManual =
     typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt;
   if (next.stManual !== true && next.ct == null) {
@@ -1231,7 +1298,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     if (!matched) return null;
     return (
       toOptionalSeconds((matched as any).pt) ??
-      toOptionalSeconds((matched as any).at) ??
+      resolveStyleProcessAtPerPieceSecondsForReferenceQuantity(matched) ??
       toOptionalSeconds((matched as any).ct)
     );
   };
@@ -1465,9 +1532,8 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       if (clampedA !== fittedRaw.a) {
         clampAdjustedProcesses += 1;
       }
-      const nextAt = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
-      const currentAt = toOptionalSeconds((process as any).at);
-      if (nextAt === null) return process;
+      const nextAtPerPiece = toOptionalSeconds(fitted.a + fitted.b / referenceQuantity);
+      if (nextAtPerPiece === null) return process;
       const hasAtParamDelta =
         currentAtParams === null ||
         currentAtParams.a !== fitted.a ||
@@ -1509,14 +1575,12 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       const pt = toOptionalSeconds((process as any).pt);
       const nextCt = !isStManual ? (pt ?? currentCt) : currentCt;
       const ctChanged = (currentCt ?? null) !== (nextCt ?? null);
-      const atChanged = currentAt !== nextAt;
-      if (!atChanged && !ctChanged && !atParamsChanged) return process;
+      if (!ctChanged && !atParamsChanged) return process;
 
       changed = true;
       updatedProcesses += 1;
       return {
         ...(process as any),
-        at: nextAt,
         ...(atParamsChanged ? { atParams: nextAtParams } : {}),
         ...(ctChanged ? { ct: nextCt } : {}),
       };
@@ -2659,7 +2723,6 @@ const syncWorkRecordRefs = async ({
     colorIds.length > 0 || colorCodes.length > 0 || colorNames.length > 0
       ? prisma.attrColor.findMany({
           where: {
-            orgId,
             OR: [
               ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
               ...(colorCodes.length > 0 ? [{ code: { in: colorCodes } }] : []),
@@ -3706,26 +3769,16 @@ const resolveAssignmentCardAtTotalSecondsForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const normalized = normalizeStyleProcess(process);
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt(normalized?.quantity, 1);
-  const atParams = toStyleAtParams((normalized as any)?.atParams);
-  if (atParams) {
-    return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
-  }
-  const at = toOptionalSeconds(normalized?.at);
-  if (at == null) return null;
-  return processQuantity * at * resolvedOrderQuantity;
+  return resolveStyleProcessAtTotalSecondsForOrderQuantity(normalized, orderQuantity);
 };
 const resolveAssignmentCardAtPerPieceSeconds = (process: any, orderQuantity = 1) => {
   const normalized = normalizeStyleProcess(process);
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt(normalized?.quantity, 1);
   const totalAt = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
     normalized,
-    resolvedOrderQuantity
+    orderQuantity
   );
   if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
-  return totalAt / (processQuantity * resolvedOrderQuantity);
+  return resolveStyleProcessAtPerPieceSecondsForOrderQuantity(normalized, orderQuantity);
 };
 const resolveAssignmentCardStSeedSeconds = ({
   process,
@@ -3983,6 +4036,8 @@ const buildAssignmentCardsFromOrders = ({
 const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
   const merged: any[] = [];
   const indexById = new Map<string, number>();
+  const isDeltaCard = (card: any) =>
+    (resolveOptionalString(card?.type, "") ?? "").toUpperCase() === "DELTA";
 
   ensureArray(baseCards).forEach((card) => {
     if (!card?.id) return;
@@ -3995,6 +4050,7 @@ const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
     const key = String(card.id);
     const existingIndex = indexById.get(key);
     if (existingIndex == null) {
+      if (!isDeltaCard(card)) return;
       indexById.set(key, merged.length);
       merged.push(card);
       return;
@@ -4009,6 +4065,199 @@ const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
   });
 
   return merged;
+};
+type AssignmentCardStoreClient = Prisma.TransactionClient | typeof prisma;
+const normalizeAssignmentCardsForStore = (cards: any): any[] => {
+  const seen = new Set<string>();
+  const normalized: any[] = [];
+  ensureArray(cards).forEach((card) => {
+    if (!card || typeof card !== "object" || Array.isArray(card)) return;
+    const cardId = resolveOptionalString((card as any)?.id, null);
+    if (!cardId || seen.has(cardId)) return;
+    seen.add(cardId);
+    normalized.push({
+      ...(card as Record<string, unknown>),
+      id: cardId,
+      originOrderId: resolveOptionalString((card as any)?.originOrderId, null) ?? cardId,
+    });
+  });
+  return normalized;
+};
+const toAssignmentCardFromStoreRow = (row: any): any | null => {
+  if (!row || typeof row !== "object") return null;
+  const payload =
+    row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+      ? row.payload
+      : null;
+  if (!payload) return null;
+  const cardId =
+    resolveOptionalString((payload as any)?.id, null) ??
+    resolveOptionalString(row.cardId, null);
+  if (!cardId) return null;
+  return {
+    ...(payload as Record<string, unknown>),
+    id: cardId,
+    originOrderId:
+      resolveOptionalString((payload as any)?.originOrderId, null) ?? cardId,
+  };
+};
+const syncAssignmentCardsForOrg = async ({
+  orgId,
+  cards,
+  db = prisma,
+}: {
+  orgId: number;
+  cards: any;
+  db?: AssignmentCardStoreClient;
+}): Promise<any[]> => {
+  const normalizedCards = normalizeAssignmentCardsForStore(cards);
+  const existingRows = await db.assignmentCard.findMany({
+    where: { orgId },
+    select: { id: true, cardId: true },
+  });
+  const existingByCardId = new Map(
+    existingRows.map((row) => [String(row.cardId), row.id])
+  );
+  const nextCardIdSet = new Set(normalizedCards.map((card) => String(card.id)));
+
+  const createRows = normalizedCards
+    .map((card, index) => ({
+      card,
+      index,
+      existingId: existingByCardId.get(String(card.id)),
+    }))
+    .filter((row) => !row.existingId);
+  const updateRows = normalizedCards
+    .map((card, index) => ({
+      card,
+      index,
+      existingId: existingByCardId.get(String(card.id)),
+    }))
+    .filter((row) => Boolean(row.existingId)) as Array<{
+    card: any;
+    index: number;
+    existingId: number;
+  }>;
+  const deleteIds = existingRows
+    .filter((row) => !nextCardIdSet.has(String(row.cardId)))
+    .map((row) => row.id);
+
+  if (deleteIds.length > 0) {
+    await db.assignmentCard.deleteMany({
+      where: { id: { in: deleteIds } },
+    });
+  }
+  if (createRows.length > 0) {
+    await db.assignmentCard.createMany({
+      data: createRows.map((row) => ({
+        orgId,
+        cardId: String(row.card.id),
+        sortOrder: row.index,
+        payload: row.card,
+      })),
+    });
+  }
+  if (updateRows.length > 0) {
+    await Promise.all(
+      updateRows.map((row) =>
+        db.assignmentCard.update({
+          where: { id: row.existingId },
+          data: {
+            sortOrder: row.index,
+            payload: row.card,
+          },
+        })
+      )
+    );
+  }
+
+  return normalizedCards;
+};
+const loadAssignmentCardsForOrg = async ({
+  orgId,
+  db = prisma,
+}: {
+  orgId: number;
+  db?: AssignmentCardStoreClient;
+}): Promise<any[]> => {
+  const rows = await db.assignmentCard.findMany({
+    where: { orgId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: { cardId: true, payload: true },
+  });
+  const cards = rows
+    .map((row) => toAssignmentCardFromStoreRow(row))
+    .filter((row): row is Record<string, unknown> => Boolean(row));
+  return cards;
+};
+const buildAssignmentCardColorNameMap = async () => {
+  const colors = await prisma.attrColor.findMany({
+    select: { code: true, name: true },
+    orderBy: { id: "asc" },
+  });
+  return colors.reduce((map, row) => {
+    const key = normalizeAssignmentCardColorKey(row?.code);
+    if (!key || map.has(key)) return map;
+    map.set(key, resolveOptionalString(row?.name, null) || key);
+    return map;
+  }, new Map<string, string>());
+};
+const rebuildAssignmentCardsForOrg = async (orgId: number) => {
+  const organization = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { id: true, type: true },
+  });
+  if (!organization) return [];
+
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  const [styles, orders, savedCards, colorNameByCode] = await Promise.all([
+    prisma.style.findMany({
+      where: { orgId: { in: accessibleOwnerOrgIds } },
+      orderBy: { uid: "asc" },
+      select: {
+        orgId: true,
+        styleId: true,
+        styleCode: true,
+        name: true,
+        customer: true,
+        imageUrls: true,
+        processes: true,
+      },
+    }),
+    prisma.workOrder.findMany({
+      where: { OR: getOrderAccessWhere(orgId) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        orderId: true,
+        orderNumber: true,
+        dueDate: true,
+        customerName: true,
+        buyerOrgName: true,
+        items: true,
+        workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
+      },
+    }),
+    loadAssignmentCardsForOrg({ orgId }),
+    buildAssignmentCardColorNameMap(),
+  ]);
+
+  const baseCards = buildAssignmentCardsFromOrders({
+    orders,
+    styles,
+    colorNameByCode,
+  });
+  const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
+  return syncAssignmentCardsForOrg({ orgId, cards });
+};
+const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | undefined>) => {
+  const uniqueOrgIds = Array.from(
+    new Set(
+      orgIds
+        .map((orgId) => toPositiveIntOrNull(orgId))
+        .filter((orgId): orgId is number => orgId !== null)
+    )
+  );
+  await Promise.all(uniqueOrgIds.map((orgId) => rebuildAssignmentCardsForOrg(orgId)));
 };
 const hasCorruptedAssignmentDisplayText = (value: any): boolean => {
   const text = resolveOptionalString(value, null);
@@ -4494,7 +4743,6 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
 
   const colors = await prisma.attrColor.findMany({
     where: {
-      orgId,
       OR: [
         ...(colorIds.length > 0 ? [{ id: { in: colorIds } }] : []),
         ...(colorNames.length > 0 ? [{ name: { in: colorNames } }] : []),
@@ -4562,14 +4810,18 @@ const toAssignmentPlanWriteData = (item: any) => ({
     item.completedAt === undefined ? undefined : item.completedAt ?? null,
   updatedAt: item.updatedAt ?? new Date(),
 });
-const toAssignmentBoardStateResponse = (state: any, assignmentPlans: any[] | null = null) => {
+const toAssignmentBoardStateResponse = (
+  state: any,
+  assignmentPlans: any[] | null = null,
+  cards: any[] | null = null
+) => {
   const stateAssignments = normalizeStateAssignments(state?.assignments);
   const mergedAssignments =
     Array.isArray(assignmentPlans) && assignmentPlans.length > 0
       ? mergeAssignmentPlanResponsesWithState(assignmentPlans, stateAssignments)
       : stateAssignments;
   return {
-    cards: ensureArray(state?.cards),
+    cards: Array.isArray(cards) ? cards : ensureArray(state?.cards),
     assignments: normalizeStateAssignments(mergedAssignments),
     createdAt: state?.createdAt ?? null,
     updatedAt: state?.updatedAt ?? null,
@@ -4607,7 +4859,8 @@ const buildReadOnlyAssignmentBoardStateResponse = async (orgId: number, state: a
     orgId,
     nextState?.assignments
   );
-  return toAssignmentBoardStateResponse(nextState, assignmentPlans);
+  const cards = await loadAssignmentCardsForOrg({ orgId });
+  return toAssignmentBoardStateResponse(nextState, assignmentPlans, cards);
 };
 
 const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = new Date()) => {
@@ -4643,7 +4896,7 @@ const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = ne
 const seedAttributesIfEmpty = async (orgId: number) => {
   await prisma.$transaction([
     prisma.attrColor.createMany({
-      data: DEFAULT_ATTRIBUTES.colors.map((item) => ({ ...item, orgId })),
+      data: DEFAULT_ATTRIBUTES.colors,
       skipDuplicates: true,
     }),
     prisma.attrCategory.createMany({
@@ -5033,6 +5286,137 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
   }
 
   return model.findMany({ where: { orgId }, orderBy: { id: "asc" } });
+};
+const syncGlobalColorSection = async (items: any) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const incomingIds = safeItems
+    .filter((item) => isNumericId(item.id))
+    .map((item) => toId(item.id));
+
+  const existing = await prisma.attrColor.findMany({
+    select: { id: true, code: true, name: true },
+    orderBy: { id: "asc" },
+  });
+  const existingIds = existing.map((item) => item.id);
+  const incomingIdSet = new Set(incomingIds);
+  const deleteIds = existingIds.filter((id) => !incomingIdSet.has(id));
+  const deleteIdSet = new Set(deleteIds);
+  if (deleteIds.length > 0) {
+    await prisma.attrColor.deleteMany({ where: { id: { in: deleteIds } } });
+  }
+
+  const existingById = existing.reduce(
+    (map: Map<number, { code: string; name: string }>, item) => {
+      map.set(item.id, {
+        code: String(item.code ?? "").trim(),
+        name: String(item.name ?? "").trim(),
+      });
+      return map;
+    },
+    new Map<number, { code: string; name: string }>()
+  );
+  const usedCodes = existing.reduce((set: Set<string>, item) => {
+    if (deleteIdSet.has(item.id)) return set;
+    const trackedCode = normalizeManagedAttributeCode(item.code);
+    if (trackedCode) set.add(trackedCode);
+    return set;
+  }, new Set<string>());
+
+  const creates: Array<{ code: string; name: string }> = [];
+  const updates: Array<{ id: number; code: string; name: string }> = [];
+  const changedCodes: Array<{ id: number; code: string }> = [];
+  const changedNames: Array<{ id: number; name: string }> = [];
+
+  for (const item of safeItems) {
+    const itemId = isNumericId(item.id) ? toId(item.id) : null;
+    const existingRow = itemId
+      ? existingById.get(itemId) ?? { code: "", name: "" }
+      : { code: "", name: "" };
+    const trackedExistingCode = normalizeManagedAttributeCode(existingRow.code);
+    if (trackedExistingCode) {
+      usedCodes.delete(trackedExistingCode);
+    }
+
+    const name = String(item?.name ?? "").trim();
+    const code = resolveColorAttributeCode({
+      code: String(item?.code ?? "").trim(),
+      name,
+      usedCodes,
+    });
+
+    if (!code && !name) {
+      if (trackedExistingCode) {
+        usedCodes.add(trackedExistingCode);
+      }
+      continue;
+    }
+
+    if (itemId) {
+      updates.push({
+        id: itemId,
+        code,
+        name,
+      });
+      if (existingRow.code !== code) {
+        changedCodes.push({ id: itemId, code });
+      }
+      if (existingRow.name !== name) {
+        changedNames.push({ id: itemId, name });
+      }
+    } else {
+      creates.push({ code, name });
+    }
+
+    const trackedNextCode = normalizeManagedAttributeCode(code);
+    if (trackedNextCode) {
+      usedCodes.add(trackedNextCode);
+    }
+  }
+
+  if (creates.length > 0) {
+    await prisma.attrColor.createMany({ data: creates, skipDuplicates: true });
+  }
+
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((row) =>
+        prisma.attrColor.update({
+          where: { id: row.id },
+          data: { code: row.code, name: row.name },
+        })
+      )
+    );
+  }
+
+  if (changedCodes.length > 0) {
+    await prisma.$transaction([
+      ...changedCodes.map((row) =>
+        prisma.workOrderItem.updateMany({
+          where: { colorId: row.id },
+          data: { colorCode: row.code },
+        })
+      ),
+      ...changedCodes.map((row) =>
+        prisma.workRecord.updateMany({
+          where: { colorId: row.id },
+          data: { colorCode: row.code },
+        })
+      ),
+    ]);
+  }
+
+  if (changedNames.length > 0) {
+    await prisma.$transaction(
+      changedNames.map((row) =>
+        prisma.assignmentPlan.updateMany({
+          where: { colorId: row.id },
+          data: { colorName: row.name },
+        })
+      )
+    );
+  }
+
+  return prisma.attrColor.findMany({ orderBy: { id: "asc" } });
 };
 
 const syncRoleSection = async (orgId: number, items: any) => {
@@ -5724,31 +6108,42 @@ app.get("/assignment-plans", async (req, res) => {
 
   let boardState = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
-    select: { id: true, cards: true, assignments: true },
+    select: { id: true, assignments: true },
   });
+  let boardCards = await loadAssignmentCardsForOrg({ orgId: organization.id });
   let assignmentDisplayRefs: AssignmentDisplayReferenceMaps | null = null;
   if (boardState) {
     const repairedBoardState = await repairAssignmentBoardDisplayState({
       orgId: organization.id,
-      cards: boardState.cards,
+      cards: boardCards,
       assignments: boardState.assignments,
     });
     assignmentDisplayRefs = repairedBoardState.refs;
     if (repairedBoardState.changed) {
-      boardState = await prisma.assignmentBoardState.update({
-        where: { id: boardState.id },
-        data: {
-          cards: repairedBoardState.cards,
-          assignments: repairedBoardState.assignments,
-        },
-        select: { id: true, cards: true, assignments: true },
+      const nextCards = repairedBoardState.cards;
+      const nextAssignments = repairedBoardState.assignments;
+      const updatedBoardState = await prisma.$transaction(async (tx) => {
+        await syncAssignmentCardsForOrg({
+          orgId: organization.id,
+          cards: nextCards,
+          db: tx,
+        });
+        return tx.assignmentBoardState.update({
+          where: { id: boardState!.id },
+          data: {
+            assignments: nextAssignments,
+          },
+          select: { id: true, assignments: true },
+        });
       });
+      boardState = updatedBoardState;
+      boardCards = nextCards;
     } else {
       boardState = {
         ...boardState,
-        cards: repairedBoardState.cards,
         assignments: repairedBoardState.assignments,
       };
+      boardCards = repairedBoardState.cards;
     }
   }
   const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
@@ -5776,7 +6171,6 @@ app.get("/assignment-plans", async (req, res) => {
     plans = repairedPlans.plans;
   }
 
-  const boardCards = ensureArray(boardState?.cards);
   const cardById = boardCards.reduce((map, card) => {
     const key = resolveOptionalString(card?.id, null);
     if (!key || map.has(key)) return map;
@@ -6621,20 +7015,7 @@ app.get("/assignment-cards", async (req, res) => {
   }
 
   const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const [orders, styles, colors, state] = await Promise.all([
-    prisma.workOrder.findMany({
-      where: { OR: getOrderAccessWhere(organization.id) },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: {
-        orderId: true,
-        orderNumber: true,
-        dueDate: true,
-        customerName: true,
-        buyerOrgName: true,
-        items: true,
-        workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
-      },
-    }),
+  const [styles, state, cards] = await Promise.all([
     prisma.style.findMany({
       where: { orgId: { in: accessibleOwnerOrgIds } },
       orderBy: { uid: "asc" },
@@ -6648,34 +7029,16 @@ app.get("/assignment-cards", async (req, res) => {
         processes: true,
       },
     }),
-    prisma.attrColor.findMany({
-      where: { orgId: organization.id },
-      select: { code: true, name: true },
-      orderBy: { id: "asc" },
-    }),
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
-      select: { cards: true, updatedAt: true },
+      select: { updatedAt: true },
     }),
+    loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
-
-  const colorNameByCode = colors.reduce((map, row) => {
-    const key = normalizeAssignmentCardColorKey(row?.code);
-    if (!key || map.has(key)) return map;
-    map.set(key, resolveOptionalString(row?.name, null) || key);
-    return map;
-  }, new Map<string, string>());
-
-  const baseCards = buildAssignmentCardsFromOrders({
-    orders,
-    styles,
-    colorNameByCode,
-  });
-  const mergedCards = mergeAssignmentCardsWithSaved(baseCards, state?.cards);
   const includeProcesses = isManufacturerOrg(organization);
 
   res.json({
-    cards: mergedCards,
+    cards,
     styles: styles.map((style) =>
       toStyleResponse(style, {
         includeProcesses,
@@ -6695,6 +7058,7 @@ app.get("/assignment-board-state", async (req, res) => {
   let state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
+  let cards = await loadAssignmentCardsForOrg({ orgId: organization.id });
   if (state) {
     const {
       assignments: escalatedAssignments,
@@ -6708,23 +7072,34 @@ app.get("/assignment-board-state", async (req, res) => {
     }
     const repairedState = await repairAssignmentBoardDisplayState({
       orgId: organization.id,
-      cards: state.cards,
+      cards,
       assignments: state.assignments,
     });
     if (repairedState.changed) {
-      state = await prisma.assignmentBoardState.update({
-        where: { id: state.id },
-        data: {
-          cards: repairedState.cards,
-          assignments: repairedState.assignments,
-        },
+      const nextCards = repairedState.cards;
+      const nextAssignments = repairedState.assignments;
+      const updated = await prisma.$transaction(async (tx) => {
+        await syncAssignmentCardsForOrg({
+          orgId: organization.id,
+          cards: nextCards,
+          db: tx,
+        });
+        const nextState = await tx.assignmentBoardState.update({
+          where: { id: state!.id },
+          data: {
+            assignments: nextAssignments,
+          },
+        });
+        return { nextState, nextCards };
       });
+      state = updated.nextState;
+      cards = updated.nextCards;
     } else {
       state = {
         ...state,
-        cards: repairedState.cards,
         assignments: repairedState.assignments,
       };
+      cards = repairedState.cards;
     }
   }
   const activeExternalIds = resolveAssignmentPlanExternalIds(state?.assignments);
@@ -6747,7 +7122,7 @@ app.get("/assignment-board-state", async (req, res) => {
     assignmentPlans = repairedPlans.plans;
   }
 
-  res.json(toAssignmentBoardStateResponse(state, assignmentPlans));
+  res.json(toAssignmentBoardStateResponse(state, assignmentPlans, cards));
 });
 
 // CT 상태 변경 전용 경량 엔드포인트
@@ -6773,12 +7148,15 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
 
   const existingState = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
-    select: { id: true, cards: true, assignments: true },
+    select: { id: true, assignments: true },
   });
   if (!existingState) {
     return res.status(404).json({ ok: false, error: "board state not found" });
   }
 
+  let currentCards = await loadAssignmentCardsForOrg({
+    orgId: organization.id,
+  });
   const currentAssignments = normalizeStateAssignments(existingState.assignments);
   const targetAssignment = currentAssignments.find(
     (a: any) => String(a?.id) === assignmentId
@@ -6820,7 +7198,6 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
   );
   const { assignments: assignmentsForState } = applySentTimeoutEscalation(nextAssignments);
 
-  let currentCards = ensureArray(existingState.cards);
   let patchedCard: any = null;
   if (cardId && cardPatch) {
     currentCards = currentCards.map((card: any) => {
@@ -6830,10 +7207,19 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
     });
   }
 
-  const updatedState = await prisma.assignmentBoardState.update({
-    where: { id: existingState.id },
-    data: { cards: currentCards, assignments: assignmentsForState },
-    select: { updatedAt: true },
+  const updatedState = await prisma.$transaction(async (tx) => {
+    if (cardId && cardPatch) {
+      await syncAssignmentCardsForOrg({
+        orgId: organization.id,
+        cards: currentCards,
+        db: tx,
+      });
+    }
+    return tx.assignmentBoardState.update({
+      where: { id: existingState.id },
+      data: { assignments: assignmentsForState },
+      select: { updatedAt: true },
+    });
   });
 
   // assignment plan 동기화 (변경된 assignment 1건만)
@@ -6902,12 +7288,15 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
 
   const existingState = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
-    select: { id: true, cards: true, assignments: true },
+    select: { id: true, assignments: true },
   });
   if (!existingState) {
     return res.status(404).json({ ok: false, error: "board state not found" });
   }
 
+  let currentCards = await loadAssignmentCardsForOrg({
+    orgId: organization.id,
+  });
   const currentAssignments = normalizeStateAssignments(existingState.assignments);
   const targetAssignment = currentAssignments.find(
     (a: any) => String(a?.id) === assignmentId
@@ -6920,7 +7309,6 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
     (a: any) => String(a?.id) !== assignmentId
   );
 
-  let currentCards = ensureArray(existingState.cards);
   let patchedCard: any = null;
   if (cardId && cardPatch) {
     currentCards = currentCards.map((card: any) => {
@@ -6930,9 +7318,18 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
     });
   }
 
-  await prisma.assignmentBoardState.update({
-    where: { id: existingState.id },
-    data: { cards: currentCards, assignments: nextAssignments },
+  await prisma.$transaction(async (tx) => {
+    if (cardId && cardPatch) {
+      await syncAssignmentCardsForOrg({
+        orgId: organization.id,
+        cards: currentCards,
+        db: tx,
+      });
+    }
+    await tx.assignmentBoardState.update({
+      where: { id: existingState.id },
+      data: { assignments: nextAssignments },
+    });
   });
 
   // 해당 assignment의 plan 레코드 제거
@@ -6968,6 +7365,7 @@ app.delete("/assignment-board-state", async (req, res) => {
         data: { assignments: [], cards: [] },
       });
     }
+    await tx.assignmentCard.deleteMany({ where: { orgId: organization.id } });
     await tx.assignmentPlan.deleteMany({ where: { orgId: organization.id } });
   });
 
@@ -7021,7 +7419,7 @@ app.put("/assignment-board-state", async (req, res) => {
   const updated = await prisma.$transaction(async (tx) => {
     const existingState = await tx.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
-      select: { id: true, cards: true, assignments: true },
+      select: { id: true, assignments: true },
     });
     const {
       assignments: currentAssignments,
@@ -7152,13 +7550,17 @@ app.put("/assignment-board-state", async (req, res) => {
     const {
       assignments: assignmentsForState,
     } = applySentTimeoutEscalation(versionedAssignments);
+    const savedCards = await syncAssignmentCardsForOrg({
+      orgId: organization.id,
+      cards: cardsForSave,
+      db: tx,
+    });
 
     let state: any = null;
     if (!existingState) {
       state = await tx.assignmentBoardState.create({
         data: {
           orgId: organization.id,
-          cards: cardsForSave,
           assignments: assignmentsForState,
         },
       });
@@ -7166,7 +7568,6 @@ app.put("/assignment-board-state", async (req, res) => {
       state = await tx.assignmentBoardState.update({
         where: { id: existingState.id },
         data: {
-          cards: cardsForSave,
           assignments: assignmentsForState,
         },
       });
@@ -7180,11 +7581,13 @@ app.put("/assignment-board-state", async (req, res) => {
 
     return {
       state,
+      savedCards,
       changedPlanTargetAssignments,
       removedExternalIdList,
     };
   }, { timeout: 90000 });
   const updatedState = updated?.state ?? null;
+  const updatedCards = ensureArray(updated?.savedCards);
   const changedPlanTargetAssignments = ensureArray(
     updated?.changedPlanTargetAssignments
   );
@@ -7289,7 +7692,7 @@ app.put("/assignment-board-state", async (req, res) => {
       }
     }
   }
-  res.json(toAssignmentBoardStateResponse(updatedState));
+  res.json(toAssignmentBoardStateResponse(updatedState, null, updatedCards));
 });
 
 app.get("/customers", async (req, res) => {
@@ -7420,6 +7823,7 @@ app.post("/orders", async (req, res) => {
   );
 
   const { order, created } = await createOrReuseSharedOrder({ normalized });
+  await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
   res.status(created ? 201 : 200).json(toOrderResponse(order));
 });
 
@@ -7524,6 +7928,12 @@ app.put("/orders/:orderId", async (req, res) => {
     });
   }, { timeout: 30000 });
 
+  await rebuildAssignmentCardsForOrgIds([
+    existing.buyerOrgId,
+    existing.sellerOrgId,
+    buyer.id,
+    seller.id,
+  ]);
   res.json(toOrderResponse(updated));
 });
 
@@ -7566,6 +7976,10 @@ app.delete("/orders/:orderId", async (req, res) => {
   }
 
   await prisma.workOrder.delete({ where: { id: existing.id } });
+  await rebuildAssignmentCardsForOrgIds([
+    existing.buyerOrgId,
+    existing.sellerOrgId,
+  ]);
   res.status(204).send();
 });
 
@@ -7945,6 +8359,9 @@ app.post("/styles", async (req, res) => {
     },
   });
 
+  await rebuildAssignmentCardsForOrgIds(
+    await resolveStyleSyncTargetOrgIds(owner.ownerOrgId)
+  );
   res.status(201).json(toStyleResponse(created, { includeProcesses }));
 });
 
@@ -8041,6 +8458,9 @@ app.put("/styles/:styleId", async (req, res) => {
     },
   });
 
+  await rebuildAssignmentCardsForOrgIds(
+    await resolveStyleSyncTargetOrgIds(existing.orgId)
+  );
   res.json(toStyleResponse(updated, { includeProcesses }));
 });
 
@@ -8265,6 +8685,10 @@ app.post("/styles/import", async (req, res) => {
     orderBy: { uid: "asc" },
   });
 
+  const syncTargetOrgIds = (
+    await Promise.all(uniqueOwnerOrgIds.map((orgId) => resolveStyleSyncTargetOrgIds(orgId)))
+  ).flat();
+  await rebuildAssignmentCardsForOrgIds(syncTargetOrgIds);
   res.status(201).json(imported.map((style) => toStyleResponse(style, { includeProcesses })));
 });
 
@@ -8278,7 +8702,6 @@ app.get("/attributes", async (req, res) => {
 
   const [colors, categories, roles, processes] = await Promise.all([
     prisma.attrColor.findMany({
-      where: { orgId: organization.id },
       orderBy: { id: "asc" },
     }),
     prisma.attrCategory.findMany({
@@ -8322,7 +8745,6 @@ app.post("/attributes/colors", async (req, res) => {
   }
 
   const existingCodes = await prisma.attrColor.findMany({
-    where: { orgId: organization.id },
     select: { code: true },
   });
   const usedCodes = existingCodes.reduce((set: Set<string>, item) => {
@@ -8336,7 +8758,6 @@ app.post("/attributes/colors", async (req, res) => {
   const nextCode = resolveColorAttributeCode({ code, name, usedCodes });
   const created = await prisma.attrColor.create({
     data: {
-      orgId: organization.id,
       code: nextCode,
       name,
     },
@@ -8367,11 +8788,17 @@ app.put("/attributes", async (req, res) => {
 
   if (payload.colors) {
     tasks.push(
-      syncSection(prisma.attrColor, organization.id, payload.colors, {
-        resolveCode: resolveColorAttributeCode,
-        trackCode: normalizeManagedAttributeCode,
-      }).then((data) => {
+      syncGlobalColorSection(payload.colors).then(async (data) => {
         response.colors = data;
+        const assignmentOrgIds = (
+          await prisma.organization.findMany({
+            where: {
+              type: { in: ["MANUFACTURER", "BRAND"] },
+            },
+            select: { id: true },
+          })
+        ).map((item) => item.id);
+        await rebuildAssignmentCardsForOrgIds(assignmentOrgIds);
       })
     );
   }
@@ -8500,6 +8927,9 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const hasAttributeCodeTargetFields =
     prismaErrorTarget.includes("orgId") &&
     prismaErrorTarget.includes("code");
+  const hasGlobalColorCodeTargetField =
+    prismaErrorTarget.includes("code") &&
+    !prismaErrorTarget.includes("orgId");
   const isOrderNumberByPairUniqueError =
     prismaErrorCode === "P2002" &&
     (hasSharedOrderTargetFields ||
@@ -8524,11 +8954,21 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: "order number already exists for this customer",
     });
   }
+  const isGlobalColorCodeUniqueError =
+    prismaErrorCode === "P2002" &&
+    (hasGlobalColorCodeTargetField ||
+      prismaErrorTarget.some((item) => /AttrColor_code_key/i.test(item)));
+  if (isGlobalColorCodeUniqueError) {
+    return res.status(409).json({
+      ok: false,
+      error: "color code already exists",
+    });
+  }
   const isAttributeCodeUniqueError =
     prismaErrorCode === "P2002" &&
     (hasAttributeCodeTargetFields ||
       prismaErrorTarget.some((item) =>
-        /Attr(Color|Category|Role|Process)_orgId_code_key/i.test(item)
+        /Attr(Category|Role|Process)_orgId_code_key/i.test(item)
       ));
   if (isAttributeCodeUniqueError) {
     return res.status(409).json({
