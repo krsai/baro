@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  TextField,
   Paper,
+  TextField,
   Typography,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageSectionHeader from '../../components/PageSectionHeader';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 
 const buildProfileInfo = (data = {}) => ({
@@ -19,29 +20,61 @@ const buildProfileInfo = (data = {}) => ({
   bankAccountNumber: data.bankAccountNumber ?? '',
 });
 
+const TEXT = {
+  title: '\uAC1C\uC778 \uC815\uBCF4',
+  save: '\uC800\uC7A5',
+  email: '\uC774\uBA54\uC77C',
+  name: '\uC774\uB984',
+  phone: '\uC5F0\uB77D\uCC98',
+  bankName: '\uC740\uD589',
+  bankAccountNumber: '\uACC4\uC88C\uBC88\uD638',
+  readOnly: '(\uC218\uC815 \uBD88\uAC00)',
+  saveSuccess: '\uAC1C\uC778 \uC815\uBCF4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.',
+  saveError: '\uC800\uC7A5 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.',
+};
+
 const MyProfile = () => {
   const { showNotification } = useApp();
+  const { updateActiveProfile } = useAuth();
   const [formData, setFormData] = useState(buildProfileInfo());
+  const [savedFormData, setSavedFormData] = useState(buildProfileInfo());
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    let active = true;
+
     const fetchProfile = async () => {
       try {
         const data = await requestJSON('/employees/me');
-        if (!data) return;
-        setFormData(buildProfileInfo(data));
+        if (!active || !data) return;
+        const nextFormData = buildProfileInfo(data);
+        setFormData(nextFormData);
+        setSavedFormData(nextFormData);
       } catch (_error) {
         // ignore fetch errors
       }
     };
+
     fetchProfile();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
+  const isDirty = useMemo(
+    () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
+    [formData, savedFormData]
+  );
+
+  const handleInputChange = (event) => {
+    const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSave = async () => {
+    if (!isDirty || isSaving) return;
+
+    setIsSaving(true);
     try {
       const payload = {
         name: formData.name?.trim(),
@@ -54,10 +87,17 @@ const MyProfile = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      setFormData(buildProfileInfo(saved));
-      showNotification('개인 정보가 저장되었습니다.', 'success');
+      const nextFormData = buildProfileInfo(saved);
+      setFormData(nextFormData);
+      setSavedFormData(nextFormData);
+      updateActiveProfile({
+        employeeName: nextFormData.name?.trim() || null,
+      });
+      showNotification(TEXT.saveSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || '저장 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || TEXT.saveError, 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -67,45 +107,43 @@ const MyProfile = () => {
         {label}
         {disabled && (
           <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.disabled' }}>
-            (수정 불가)
+            {TEXT.readOnly}
           </Typography>
         )}
       </Typography>
-      {disabled ? (
-        <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {value || '-'}
-        </Typography>
-      ) : (
-        <TextField
-          variant="standard"
-          fullWidth
-          name={name}
-          value={value}
-          onChange={handleInputChange}
-          slotProps={{ input: { disableUnderline: false } }}
-          sx={{ '& .MuiInputBase-input': { fontWeight: 500, fontSize: '1rem', py: 0.25 } }}
-        />
-      )}
+      <TextField
+        fullWidth
+        name={name}
+        value={value}
+        onChange={disabled ? undefined : handleInputChange}
+        InputProps={{ readOnly: disabled }}
+        sx={{ '& .MuiInputBase-input': { fontWeight: 500 } }}
+      />
     </Box>
   );
 
   return (
     <AppPageContainer
-      header={
+      header={(
         <PageSectionHeader
-          title="개인 정보"
-          actionLabel="저장"
+          title={TEXT.title}
+          actionLabel={TEXT.save}
           actionIcon={<SaveIcon />}
           onAction={handleSave}
+          actionDisabled={!isDirty || isSaving}
         />
-      }
+      )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
-        <InfoRow label="이메일" value={formData.email} disabled />
-        <InfoRow label="이름" name="name" value={formData.name} />
-        <InfoRow label="연락처" name="phone" value={formData.phone} />
-        <InfoRow label="은행" name="bankName" value={formData.bankName} />
-        <InfoRow label="계좌번호" name="bankAccountNumber" value={formData.bankAccountNumber} />
+        <InfoRow label={TEXT.email} value={formData.email} disabled />
+        <InfoRow label={TEXT.name} name="name" value={formData.name} />
+        <InfoRow label={TEXT.phone} name="phone" value={formData.phone} />
+        <InfoRow label={TEXT.bankName} name="bankName" value={formData.bankName} />
+        <InfoRow
+          label={TEXT.bankAccountNumber}
+          name="bankAccountNumber"
+          value={formData.bankAccountNumber}
+        />
       </Paper>
     </AppPageContainer>
   );

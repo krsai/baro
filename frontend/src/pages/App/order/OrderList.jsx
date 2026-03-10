@@ -25,11 +25,16 @@ import {
 } from '@mui/material';
 import { createFilterOptions } from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteIcon from '@mui/icons-material/Delete';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
+import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
+import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -45,6 +50,7 @@ import {
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
 import {
+  ORDER_STATUS_KEYS,
   ORDER_STATUS_OPTIONS,
   getOrderStatusLabel as getOrderStatusLabelFromConst,
   isOrderDeletableStatus as isOrderDeletableStatusFromConst,
@@ -66,10 +72,36 @@ import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityCh
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_STATUSES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_FILTER_ALL = 'ALL';
+const ORDER_FILTER_NOT_SHIPPED = 'NOT_SHIPPED';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const ORDER_DELETABLE_STATUS_LABEL = getOrderStatusLabelFromConst(
+  ORDER_STATUS_KEYS.ORDER_RECEIVED,
+  '주문접수'
+);
+const ORDER_STATUS_FILTER_OPTIONS = [
+  {
+    value: ORDER_FILTER_NOT_SHIPPED,
+    label: `${getOrderStatusLabelFromConst(ORDER_STATUS_KEYS.SHIPPED, '출고 완료')} 제외`,
+  },
+  {
+    value: ORDER_FILTER_ALL,
+    label: '전체 상태',
+  },
+  ...ORDER_STATUS_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+  })),
+];
+const ORDER_FILTER_DATE_PICKER_SLOT_PROPS = {
+  textField: {
+    sx: {
+      width: { xs: 132, sm: 140 },
+    },
+  },
+};
 const GENDER_OPTION_LABELS = {
   M: '남성',
   W: '여성',
@@ -105,6 +137,40 @@ const normalizeOrderStatus = (status) => normalizeOrderStatusFromConst(status);
 const getOrderStatusLabel = (status) =>
   getOrderStatusLabelFromConst(status, String(status || '').trim() || '-');
 const isOrderDeletable = (status) => isOrderDeletableStatusFromConst(status);
+const normalizeFilterDate = (value) => {
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+const buildDateKey = (value) => {
+  const date = normalizeFilterDate(value);
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const normalizeDateKey = (value) => {
+  const trimmed = String(value || '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : '';
+};
+const getMonthStart = (value) => {
+  const date = normalizeFilterDate(value) || new Date();
+  date.setDate(1);
+  return date;
+};
+const getMonthEnd = (value) => {
+  const date = getMonthStart(value);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(0);
+  return date;
+};
+const addMonths = (value, amount) => {
+  const date = getMonthStart(value);
+  date.setMonth(date.getMonth() + amount);
+  return getMonthStart(date);
+};
 const buildOrderTabLabel = (order) => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `주문: ${orderNumber}` : '주문';
@@ -627,7 +693,9 @@ const OrderList = () => {
   const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
+  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_NOT_SHIPPED);
+  const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
+  const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
@@ -635,6 +703,14 @@ const OrderList = () => {
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
   const sizeInputRefs = useRef(new Map());
+  const dueDateFilterStartKey = useMemo(
+    () => buildDateKey(dueDateFilterStart),
+    [dueDateFilterStart]
+  );
+  const dueDateFilterEndKey = useMemo(
+    () => buildDateKey(dueDateFilterEnd),
+    [dueDateFilterEnd]
+  );
   const fixedSellerOrg = useMemo(() => {
     if (partyRoleHint !== 'MANUFACTURER') return null;
     const currentOrgId = toOrgId(currentOrgOption?.id);
@@ -834,10 +910,23 @@ const OrderList = () => {
   const filteredOrders = useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
+      const normalizedStatus = normalizeOrderStatus(order.status);
       const matchesStatus =
-        statusFilter === ORDER_FILTER_ALL ||
-        normalizeOrderStatus(order.status) === normalizeOrderStatus(statusFilter);
+        statusFilter === ORDER_FILTER_ALL
+          ? true
+          : statusFilter === ORDER_FILTER_NOT_SHIPPED
+            ? normalizedStatus !== ORDER_STATUS_KEYS.SHIPPED
+            : normalizedStatus === normalizeOrderStatus(statusFilter);
       if (!matchesStatus) return false;
+
+      const dueDateKey = normalizeDateKey(order.dueDate);
+      if (
+        !dueDateKey ||
+        dueDateKey < dueDateFilterStartKey ||
+        dueDateKey > dueDateFilterEndKey
+      ) {
+        return false;
+      }
 
       if (!searchTerm) return true;
 
@@ -854,7 +943,7 @@ const OrderList = () => {
         styleNames.toLowerCase().includes(lowerTerm)
       );
     });
-  }, [orders, searchTerm, statusFilter]);
+  }, [dueDateFilterEndKey, dueDateFilterStartKey, orders, searchTerm, statusFilter]);
 
   const styleOptions = useMemo(
     () =>
@@ -1096,6 +1185,34 @@ const OrderList = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
   };
 
+  const handleDueDateFilterStartChange = (value) => {
+    if (!value?.isValid?.()) return;
+    const nextStart = normalizeFilterDate(value.toDate());
+    if (!nextStart) return;
+    setDueDateFilterStart(nextStart);
+    setDueDateFilterEnd((prev) => {
+      const currentEnd = normalizeFilterDate(prev);
+      return currentEnd && currentEnd >= nextStart ? currentEnd : nextStart;
+    });
+  };
+
+  const handleDueDateFilterEndChange = (value) => {
+    if (!value?.isValid?.()) return;
+    const nextEnd = normalizeFilterDate(value.toDate());
+    if (!nextEnd) return;
+    setDueDateFilterEnd(nextEnd);
+    setDueDateFilterStart((prev) => {
+      const currentStart = normalizeFilterDate(prev);
+      return currentStart && currentStart <= nextEnd ? currentStart : nextEnd;
+    });
+  };
+
+  const shiftDueDateFilterMonth = (amount) => {
+    const nextMonthStart = addMonths(dueDateFilterStart, amount);
+    setDueDateFilterStart(nextMonthStart);
+    setDueDateFilterEnd(getMonthEnd(nextMonthStart));
+  };
+
   const handleEdit = (order) => {
     if (!order?.id) return;
     navigateToPath(`/order/${order.id}`, {
@@ -1110,7 +1227,7 @@ const OrderList = () => {
       return;
     }
     if (!isOrderDeletable(order.status)) {
-      showNotification('주문접수 상태의 주문만 삭제할 수 있습니다.', 'warning');
+      showNotification(`${ORDER_DELETABLE_STATUS_LABEL} 상태의 주문만 삭제할 수 있습니다.`, 'warning');
       return;
     }
 
@@ -1651,58 +1768,119 @@ const OrderList = () => {
 
   if (!isDetailMode) {
     return (
-      <AppPageContainer>
+      <AppPageContainer
+        header={
+          <PageSectionHeader
+            title="주문"
+            actionLabel="주문 추가"
+            actionIcon={<AddIcon />}
+            onAction={handleAdd}
+          />
+        }
+      >
         <Box
           sx={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', md: 'center' },
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 1.5,
+            alignItems: { xs: 'stretch', xl: 'center' },
+            flexDirection: { xs: 'column', xl: 'row' },
+            gap: 1,
             mb: 2,
           }}
         >
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            sx={{ alignItems: { xs: 'stretch', sm: 'center' }, flex: 1, minWidth: 0 }}
+          <SearchInput
+            placeholder="주문번호, 발주자, 수주자, 스타일 검색.."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            sx={{
+              width: { xs: '100%', sm: 'auto' },
+              minWidth: { sm: 320 },
+              maxWidth: { lg: 640 },
+              flex: 1,
+            }}
+          />
+          <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
+            <InputLabel id="order-status-filter-label">상태</InputLabel>
+            <Select
+              labelId="order-status-filter-label"
+              value={statusFilter}
+              label="상태"
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              {ORDER_STATUS_FILTER_OPTIONS.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: { xs: 'stretch', sm: 'center' },
+              justifyContent: { xs: 'flex-start', xl: 'flex-end' },
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 1,
+              flexShrink: 0,
+              ml: { xl: 'auto' },
+            }}
           >
-            <SearchInput
-              placeholder="주문번호, 발주자, 수주자, 스타일 검색.."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+            <Stack
+              direction="row"
+              spacing={1}
               sx={{
-                width: { xs: '100%', sm: 'auto' },
-                minWidth: { sm: 320 },
-                maxWidth: { lg: 640 },
-                flex: 1,
+                alignItems: 'center',
+                justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                flexWrap: 'wrap',
+                flexShrink: 0,
               }}
-            />
-            <FormControl size="small" sx={{ width: { xs: '100%', sm: 160 }, flexShrink: 0 }}>
-              <InputLabel id="order-status-filter-label">상태</InputLabel>
-              <Select
-                labelId="order-status-filter-label"
-                value={statusFilter}
-                label="상태"
-                onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <IconButton
+                size="small"
+                onClick={() => shiftDueDateFilterMonth(-1)}
+                title="이전 달"
               >
-                <MenuItem value={ORDER_FILTER_ALL}>전체 상태</MenuItem>
-                {ORDER_STATUSES.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {getOrderStatusLabel(status)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Stack>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAdd}
-            sx={{ minWidth: 144, alignSelf: { xs: 'stretch', md: 'auto' }, flexShrink: 0 }}
-          >
-            주문 추가
-          </Button>
+                <ChevronLeftIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+              <CustomDatePicker
+                value={dueDateFilterStart}
+                onChange={handleDueDateFilterStartChange}
+                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+              />
+              <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>
+                ~
+              </Typography>
+              <CustomDatePicker
+                value={dueDateFilterEnd}
+                onChange={handleDueDateFilterEndChange}
+                slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
+              />
+              <IconButton
+                size="small"
+                onClick={() => shiftDueDateFilterMonth(1)}
+                title="다음 달"
+              >
+                <ChevronRightIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+              <Stack sx={{ gap: '2px' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => shiftDueDateFilterMonth(1)}
+                  sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                >
+                  M+
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => shiftDueDateFilterMonth(-1)}
+                  sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                >
+                  M-
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
         </Box>
         <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
           <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
@@ -1750,57 +1928,64 @@ const OrderList = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredOrders.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                      등록된 주문이 없습니다.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {filteredOrders.map((order) => {
-                  const deletable =
-                    !order?.isModificationLocked && isOrderDeletable(order.status);
-                  return (
-                    <TableRow
-                      key={order.id}
-                      hover
-                      onDoubleClick={() => handleEdit(order)}
-                      sx={{ cursor: 'pointer' }}
-                    >
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                        {order.buyerOrgName || order.customerName || order.customer || '-'}
-                      </TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                        {order.sellerOrgName || '-'}
-                      </TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                        {formatStyleSummary(order.items)}
-                      </TableCell>
-                      <TableCell sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                        {order.totalQuantity != null ? order.totalQuantity.toLocaleString() : '-'}
-                      </TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.dueDate || '-'}</TableCell>
-                      <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                        {getOrderStatusLabel(order.status)}
-                      </TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}>
-                        <IconButton
-                          size="small"
-                          color="error"
-                          disabled={!deletable}
-                          title={deletable ? '주문 삭제' : '주문접수 상태에서만 삭제 가능합니다.'}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleDeleteOrder(order);
-                          }}
+                {!ordersLoaded ? (
+                  <TableStatusRow colSpan={8} message="주문 목록을 불러오는 중입니다." />
+                ) : filteredOrders.length === 0 ? (
+                  <TableStatusRow colSpan={8} message="조건에 맞는 주문이 없습니다." />
+                ) : (
+                  filteredOrders.map((order) => {
+                    const deletable =
+                      !order?.isModificationLocked && isOrderDeletable(order.status);
+                    return (
+                      <TableRow
+                        key={order.id}
+                        hover
+                        onDoubleClick={() => handleEdit(order)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {order.buyerOrgName || order.customerName || order.customer || '-'}
+                        </TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {order.sellerOrgName || '-'}
+                        </TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {formatStyleSummary(order.items)}
+                        </TableCell>
+                        <TableCell
+                          sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                          {order.totalQuantity != null ? order.totalQuantity.toLocaleString() : '-'}
+                        </TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {order.dueDate || '-'}
+                        </TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {getOrderStatusLabel(order.status)}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={!deletable}
+                            title={
+                              deletable
+                                ? '주문 삭제'
+                                : `${ORDER_DELETABLE_STATUS_LABEL} 상태에서만 삭제 가능합니다.`
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteOrder(order);
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </TableContainer>

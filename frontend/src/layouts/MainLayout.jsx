@@ -28,8 +28,6 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import BusinessIcon from '@mui/icons-material/Business';
 import GroupIcon from '@mui/icons-material/Group';
-import SecurityIcon from '@mui/icons-material/Security';
-import InfoIcon from '@mui/icons-material/Info';
 import TuneIcon from '@mui/icons-material/Tune';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
@@ -56,6 +54,106 @@ import { RequestScopeBoundary } from '../context/RequestScopeContext';
 
 const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
+const LANGUAGE_BUTTONS = [
+  { code: 'ko', label: 'Korean' },
+  { code: 'en', label: 'English' },
+  { code: 'vi', label: 'Vietnamese' },
+];
+const FLAG_ICON_SX = {
+  display: 'block',
+  width: 28,
+  height: 19,
+  borderRadius: 0.5,
+};
+
+const LanguageFlagIcon = ({ code }) => {
+  if (code === 'ko') {
+    // 태극기: white background + taeguk (S-curve yin-yang) + 4 trigrams (건·감·이·곤)
+    // viewBox 28×19, flag centered at (14, 9.5)
+    // Taeguk: R=4.5 (outer), r=2.25 (inner half-circles)
+    // Red (양): top half; Blue (음): bottom half
+    // Trigrams: stroke-width 0.9, gap 0.5 between lines, broken lines have gap in center
+    const cx = 14, cy = 9.5, R = 4.5, r = 2.25;
+    // Taeguk S-curve: red base circle, blue S-path overlay
+    // Red circle at (cx, cy-r), blue circle at (cx, cy+r), then S divider
+    return (
+      <Box component="svg" viewBox="0 0 28 19" sx={FLAG_ICON_SX}>
+        {/* White background */}
+        <rect width="28" height="19" rx="2" fill="#FFFFFF" />
+        {/* Taeguk — rotated -45° so red is top-right, blue is bottom-left */}
+        <g transform={`rotate(-45, ${cx}, ${cy})`}>
+          <circle cx={cx} cy={cy} r={R} fill="#CD2E3A" />
+          <path
+            d={`M${cx},${cy - R} A${R},${R} 0 0,0 ${cx},${cy + R} A${r},${r} 0 0,0 ${cx},${cy} A${r},${r} 0 0,1 ${cx},${cy - R}Z`}
+            fill="#0047A0"
+          />
+        </g>
+        {/* 건(乾) top-left — 3 solid lines, rotated -45° */}
+        <g transform="translate(5.5,4) rotate(-45,0,0)">
+          <rect x="-3" y="-1.4" width="6" height="0.9" fill="#000000" />
+          <rect x="-3" y="-0.15" width="6" height="0.9" fill="#000000" />
+          <rect x="-3" y="1.1" width="6" height="0.9" fill="#000000" />
+        </g>
+        {/* 곤(坤) bottom-right — 3 broken lines, rotated -45° */}
+        <g transform="translate(22.5,15) rotate(-45,0,0)">
+          <rect x="-3" y="-1.4" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="-1.4" width="2.5" height="0.9" fill="#000000" />
+          <rect x="-3" y="-0.15" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="-0.15" width="2.5" height="0.9" fill="#000000" />
+          <rect x="-3" y="1.1" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="1.1" width="2.5" height="0.9" fill="#000000" />
+        </g>
+        {/* 감(坎) top-right — broken/solid/broken, rotated 45° */}
+        <g transform="translate(22.5,4) rotate(45,0,0)">
+          <rect x="-3" y="-1.4" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="-1.4" width="2.5" height="0.9" fill="#000000" />
+          <rect x="-3" y="-0.15" width="6" height="0.9" fill="#000000" />
+          <rect x="-3" y="1.1" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="1.1" width="2.5" height="0.9" fill="#000000" />
+        </g>
+        {/* 이(離) bottom-left — solid/broken/solid, rotated 45° */}
+        <g transform="translate(5.5,15) rotate(45,0,0)">
+          <rect x="-3" y="-1.4" width="6" height="0.9" fill="#000000" />
+          <rect x="-3" y="-0.15" width="2.5" height="0.9" fill="#000000" />
+          <rect x="0.5" y="-0.15" width="2.5" height="0.9" fill="#000000" />
+          <rect x="-3" y="1.1" width="6" height="0.9" fill="#000000" />
+        </g>
+        {/* Subtle border */}
+        <rect width="28" height="19" rx="2" fill="none" stroke="rgba(15,23,42,0.08)" strokeWidth="0.5" />
+      </Box>
+    );
+  }
+
+  if (code === 'en') {
+    return (
+      <Box
+        component="svg"
+        viewBox="0 0 24 16"
+        sx={FLAG_ICON_SX}
+      >
+        <rect width="24" height="16" rx="2" fill="#0A3A8A" />
+        <path d="M0 1.5 0 0h2.2L24 13.8V16h-2.2zM24 1.5V0h-2.2L0 13.8V16h2.2z" fill="#FFFFFF" />
+        <path d="M0 2.5V0h1.2L24 13.5V16h-1.2zM24 2.5V0h-1.2L0 13.5V16h1.2z" fill="#D81E34" />
+        <path d="M10 0h4v16h-4zM0 6h24v4H0z" fill="#FFFFFF" />
+        <path d="M10.8 0h2.4v16h-2.4zM0 6.8h24v2.4H0z" fill="#D81E34" />
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 24 16"
+      sx={FLAG_ICON_SX}
+    >
+      <rect width="24" height="16" rx="2" fill="#DA251D" />
+      <path
+        d="m12 3.2 1.25 3.55h3.75l-3.05 2.18 1.15 3.65L12 10.4 8.9 12.6l1.15-3.65L7 6.75h3.75L12 3.2z"
+        fill="#FFDE00"
+      />
+    </Box>
+  );
+};
 
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
@@ -114,7 +212,6 @@ const MainLayout = () => {
   });
 
   const [adminOpen, setAdminOpen] = useState(false);
-  const [basicInfoOpen, setBasicInfoOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
@@ -296,18 +393,8 @@ const MainLayout = () => {
             badgeCount: pendingEmployeeCount,
           },
           { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
-          { label: '개인 정보', icon: <AccountCircleIcon />, path: '/profile' },
-        ],
-      },
-      {
-        label: '기본 정보',
-        icon: <InfoIcon />,
-        isParent: true,
-        isOpen: basicInfoOpen,
-        setOpen: setBasicInfoOpen,
-        children: [
-          { label: '권한 관리', icon: <SecurityIcon />, path: '/permission' },
           { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
+          { label: '개인 정보', icon: <AccountCircleIcon />, path: '/profile' },
         ],
       },
       {
@@ -347,7 +434,6 @@ const MainLayout = () => {
   }, [
     accountingOpen,
     adminOpen,
-    basicInfoOpen,
     hasPathAccess,
     inventoryOpen,
     orderOpen,
@@ -616,6 +702,7 @@ const MainLayout = () => {
       navigate('/login', { replace: true });
     }
   };
+  const handleLanguageButtonClick = React.useCallback((_languageCode) => {}, []);
 
   const handleMenuItemClick = (path) => {
     handleNavigation(path); // Use the centralized handler
@@ -867,6 +954,32 @@ const MainLayout = () => {
           >
             {activeUserSummary}
           </Typography>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            {LANGUAGE_BUTTONS.map((language) => (
+              <Button
+                key={language.code}
+                type="button"
+                variant="text"
+                color="inherit"
+                aria-label={`${language.label} language`}
+                onClick={() => handleLanguageButtonClick(language.code)}
+                sx={{
+                  minWidth: 'auto',
+                  p: 0.15,
+                  minHeight: 'auto',
+                  borderRadius: 0,
+                  lineHeight: 1,
+                  textTransform: 'none',
+                  '&:hover': {
+                    backgroundColor: 'transparent',
+                  },
+                }}
+              >
+                <LanguageFlagIcon code={language.code} />
+              </Button>
+            ))}
+          </Box>
 
         </Toolbar>
       </AppBar>

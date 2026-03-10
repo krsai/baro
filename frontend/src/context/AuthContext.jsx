@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { buildQueryString, requestJSON, setRequestContext } from '../utils/apiClient';
 
@@ -580,6 +580,42 @@ export const AuthProvider = ({ children }) => {
     !!effectiveProfile &&
     normalizeUpper(effectiveProfile.entryType) === 'ONBOARDING';
 
+  const updateActiveProfile = useCallback(
+    (patch = {}) => {
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+
+      setAccessProfile((prev) => {
+        const baseProfile =
+          prev && typeof prev === 'object'
+            ? prev
+            : effectiveProfile && typeof effectiveProfile === 'object'
+              ? effectiveProfile
+              : null;
+        if (!baseProfile) return prev;
+        return normalizeAccessProfile({ ...baseProfile, ...patch });
+      });
+
+      if (!devBypass) return;
+
+      setDevProfile((prev) => {
+        const baseProfile =
+          prev && typeof prev === 'object'
+            ? prev
+            : devProfile && typeof devProfile === 'object'
+              ? devProfile
+              : null;
+        if (!baseProfile) return prev;
+
+        const nextProfile = normalizeDevProfile({ ...baseProfile, ...patch });
+        if (nextProfile) {
+          writeAuthStorage(DEV_PROFILE_KEY, JSON.stringify(nextProfile));
+        }
+        return nextProfile;
+      });
+    },
+    [devBypass, devProfile, effectiveProfile]
+  );
+
   const value = useMemo(
     () => ({
       session,
@@ -600,6 +636,7 @@ export const AuthProvider = ({ children }) => {
       signInWithGoogle,
       signOut,
       enableDevBypass,
+      updateActiveProfile,
     }),
     [
       session,
@@ -615,6 +652,7 @@ export const AuthProvider = ({ children }) => {
       loadingState,
       hasWorkspaceAccess,
       requiresOnboarding,
+      updateActiveProfile,
     ]
   );
 
