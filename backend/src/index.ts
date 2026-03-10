@@ -324,6 +324,7 @@ const ONBOARDING_COUNTRY_OPTIONS = new Set(["KR", "VN"]);
 const ONBOARDING_COMPANY_NAME_MIN_LENGTH = 2;
 const ONBOARDING_COMPANY_NAME_MAX_LENGTH = 120;
 const ONBOARDING_COMPANY_ADDRESS_MAX_LENGTH = 240;
+const ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH = 80;
 const ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH = 40;
 const ONBOARDING_KR_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{3}-\d{2}-\d{5})$/;
 const ONBOARDING_VN_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{13}|\d{10}-\d{3})$/;
@@ -710,7 +711,64 @@ const resolveOnboardingCountry = (value: unknown): "KR" | "VN" | null => {
 const normalizeOnboardingBusinessNumber = (value: unknown) =>
   String(resolveOptionalString(value, "") || "")
     .trim()
-    .replace(/\s+/g, "");
+    .replace(/[\s-]+/g, "");
+
+const getOnboardingBusinessNumberIdentity = (value: unknown) =>
+  normalizeOnboardingBusinessNumber(value).replace(/\D+/g, "");
+
+const findOrganizationByBusinessNumberIdentity = async (
+  businessNumberIdentity: string
+) => {
+  if (!businessNumberIdentity) return null;
+  const organizations = await prisma.organization.findMany({
+    where: {
+      businessNumber: {
+        not: null,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      businessNumber: true,
+    },
+    orderBy: { id: "asc" },
+  });
+  return (
+    organizations.find(
+      (organization) =>
+        getOnboardingBusinessNumberIdentity(organization.businessNumber) ===
+        businessNumberIdentity
+    ) ?? null
+  );
+};
+
+const findPendingOnboardingRequestByBusinessNumberIdentity = async (
+  businessNumberIdentity: string,
+  options: { excludeRequestId?: number } = {}
+) => {
+  if (!businessNumberIdentity) return null;
+  const pendingRequests = await prisma.onboardingRequest.findMany({
+    where: {
+      status: "PENDING",
+      requestType: "REGISTER_ORG",
+      ...(options.excludeRequestId ? { NOT: { id: options.excludeRequestId } } : {}),
+    },
+    select: {
+      id: true,
+      requesterEmail: true,
+      organizationNameEn: true,
+      businessNumber: true,
+    },
+    orderBy: { id: "desc" },
+  });
+  return (
+    pendingRequests.find(
+      (request) =>
+        getOnboardingBusinessNumberIdentity(request.businessNumber) ===
+        businessNumberIdentity
+    ) ?? null
+  );
+};
 
 const isValidOnboardingBusinessNumber = (
   country: "KR" | "VN",
@@ -733,6 +791,7 @@ const toOnboardingRequestSummary = (request: any) => ({
   country: request.country ?? null,
   companyAddress: request.companyAddress ?? null,
   businessNumber: request.businessNumber,
+  contactName: request.contactName ?? null,
   contactEmail: request.contactEmail,
   contactPhone: request.contactPhone,
   status: request.status,
@@ -5257,6 +5316,21 @@ app.post("/onboarding/company-requests", async (req, res) => {
           : "invalid VN businessNumber format (10 digits or 13 digits)",
     });
   }
+  const businessNumberIdentity = getOnboardingBusinessNumberIdentity(businessNumber);
+
+  const contactName = resolveOptionalString(
+    req.body?.representativeName ?? req.body?.contactName,
+    null
+  );
+  if (
+    !contactName ||
+    contactName.length > ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: `contactName is required (max ${ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH} chars)`,
+    });
+  }
 
   const contactEmail = normalizeEmail(req.body?.representativeEmail ?? req.body?.contactEmail);
   if (!contactEmail || !contactEmail.includes("@")) {
@@ -5299,6 +5373,30 @@ app.post("/onboarding/company-requests", async (req, res) => {
     orderBy: { id: "desc" },
   });
 
+  const [existingOrganization, duplicatePendingRequest] = await Promise.all([
+    findOrganizationByBusinessNumberIdentity(businessNumberIdentity),
+    findPendingOnboardingRequestByBusinessNumberIdentity(
+      businessNumberIdentity,
+      existingPendingRequest?.id
+        ? { excludeRequestId: existingPendingRequest.id }
+        : {}
+    ),
+  ]);
+
+  if (existingOrganization) {
+    return res.status(409).json({
+      ok: false,
+      error: "organization already exists for this businessNumber",
+    });
+  }
+
+  if (duplicatePendingRequest) {
+    return res.status(409).json({
+      ok: false,
+      error: "pending company request already exists for this businessNumber",
+    });
+  }
+
   const savedRequest = existingPendingRequest
     ? await prisma.onboardingRequest.update({
         where: { id: existingPendingRequest.id },
@@ -5308,6 +5406,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
           country,
           companyAddress,
           businessNumber,
+          contactName,
           contactEmail,
           contactPhone,
         },
@@ -5321,6 +5420,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
           country,
           companyAddress,
           businessNumber,
+          contactName,
           contactEmail,
           contactPhone,
           status: "PENDING",
@@ -5405,6 +5505,19 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   }
 
   const now = new Date();
+  const businessNumberIdentity = getOnboardingBusinessNumberIdentity(
+    companyRequest.businessNumber
+  );
+  const existingOrganization = await findOrganizationByBusinessNumberIdentity(
+    businessNumberIdentity
+  );
+  if (existingOrganization) {
+    return res.status(409).json({
+      ok: false,
+      error: "organization already exists for this businessNumber",
+    });
+  }
+
   const organizationType =
     resolveOnboardingOrganizationType(companyRequest.organizationType) ??
     ORGANIZATION_TYPE_KEYS.MANUFACTURER;
@@ -5412,6 +5525,7 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
     data: {
       name: companyRequest.organizationNameEn,
       businessNumber: companyRequest.businessNumber,
+      representative: companyRequest.contactName || null,
       address: companyRequest.companyAddress || null,
       email: companyRequest.contactEmail,
       phone: companyRequest.contactPhone,

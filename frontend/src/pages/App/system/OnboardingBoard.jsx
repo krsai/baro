@@ -1,11 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
   CircularProgress,
+  Divider,
+  Drawer,
   Grid,
+  IconButton,
+  Menu,
   MenuItem,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -14,6 +19,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
@@ -23,10 +29,27 @@ import {
   ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS,
 } from '../../../constants/organizationAccess';
 
+const toDateOnlyText = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('ko-KR');
+};
+
 const toDateTimeText = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString('ko-KR');
+};
+
+const toCountryLabel = (countryCode) => {
+  if (countryCode === 'VN') return '베트남';
+  if (countryCode === 'KR') return '한국';
+  return '-';
+};
+
+const toDisplayText = (value) => {
+  const text = String(value ?? '').trim();
+  return text || '-';
 };
 
 const OnboardingBoard = () => {
@@ -37,6 +60,13 @@ const OnboardingBoard = () => {
   const [processingKey, setProcessingKey] = useState('');
   const [pendingCompanyRequests, setPendingCompanyRequests] = useState([]);
   const [companySubscriptionStatuses, setCompanySubscriptionStatuses] = useState({});
+  const [contextMenuState, setContextMenuState] = useState(null);
+  const [detailRequestId, setDetailRequestId] = useState(null);
+
+  const detailRow = useMemo(() => {
+    if (!detailRequestId) return null;
+    return pendingCompanyRequests.find((row) => Number(row.id) === Number(detailRequestId)) || null;
+  }, [detailRequestId, pendingCompanyRequests]);
 
   const fetchRequests = async ({ isRefresh = false } = {}) => {
     if (isRefresh) {
@@ -72,6 +102,12 @@ const OnboardingBoard = () => {
     fetchRequests();
   }, []);
 
+  useEffect(() => {
+    if (!detailRequestId) return;
+    if (detailRow) return;
+    setDetailRequestId(null);
+  }, [detailRequestId, detailRow]);
+
   const handleCompanySubscriptionChange = (requestId, value) => {
     setCompanySubscriptionStatuses((prev) => ({
       ...prev,
@@ -93,7 +129,7 @@ const OnboardingBoard = () => {
             ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
         }),
       });
-      showNotification('신규 회사 등록 요청을 승인했습니다.', 'success');
+      showNotification('신규 가입 요청을 승인했습니다.', 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
       showNotification(error?.message || '승인 처리 중 오류가 발생했습니다.', 'error');
@@ -111,7 +147,7 @@ const OnboardingBoard = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
       });
-      showNotification('신규 회사 등록 요청을 거절했습니다.', 'success');
+      showNotification('신규 가입 요청을 거절했습니다.', 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
       showNotification(error?.message || '거절 처리 중 오류가 발생했습니다.', 'error');
@@ -120,15 +156,62 @@ const OnboardingBoard = () => {
     }
   };
 
+  const handleRowContextMenu = (event, row) => {
+    event.preventDefault();
+    setContextMenuState({
+      requestId: row.id,
+      mouseX: event.clientX,
+      mouseY: event.clientY,
+    });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenuState(null);
+  };
+
+  const handleOpenDetailFromContextMenu = () => {
+    if (!contextMenuState?.requestId) return;
+    setDetailRequestId(contextMenuState.requestId);
+    setContextMenuState(null);
+  };
+
+  const handleCloseDetailDrawer = () => {
+    setDetailRequestId(null);
+  };
+
+  const detailItems = useMemo(() => {
+    if (!detailRow) return [];
+    return [
+      { label: '요청 ID', value: detailRow.id },
+      { label: '상태', value: detailRow.status },
+      { label: '요청일시', value: toDateTimeText(detailRow.createdAt) },
+      { label: '요청자 이메일', value: detailRow.requesterEmail },
+      { label: '업종', value: getOrganizationTypeLabel(detailRow.organizationType) },
+      { label: '국가', value: toCountryLabel(detailRow.country) },
+      { label: '회사명', value: detailRow.organizationNameEn },
+      { label: '회사 주소', value: detailRow.companyAddress },
+      { label: '사업자등록번호', value: detailRow.businessNumber },
+      { label: '담당자 이름', value: detailRow.contactName },
+      { label: '대표 연락처', value: detailRow.contactPhone },
+      { label: '대표 이메일', value: detailRow.contactEmail },
+      { label: '승인 조직 ID', value: detailRow.organizationId },
+      { label: '승인자', value: detailRow.approvedBy },
+      { label: '승인일시', value: toDateTimeText(detailRow.approvedAt) },
+      { label: '거절자', value: detailRow.rejectedBy },
+      { label: '거절일시', value: toDateTimeText(detailRow.rejectedAt) },
+      { label: '거절 사유', value: detailRow.rejectionReason },
+    ];
+  }, [detailRow]);
+
   return (
     <AppPageContainer
       header={
         <>
           <Typography component="h1" variant="h4">
-            신규 가입 요청
+            신규 가입 승인
           </Typography>
           <Typography sx={{ mt: 1, color: 'text.secondary' }}>
-            신규 회사 등록 요청을 승인합니다.
+            신규 가입 요청을 검토하고 승인 또는 거절할 수 있습니다.
           </Typography>
         </>
       }
@@ -144,7 +227,7 @@ const OnboardingBoard = () => {
                 mb: 2,
               }}
             >
-              <Typography variant="h6">신규 회사 등록 요청</Typography>
+              <Typography variant="h6">신규 가입 요청 목록</Typography>
               <Button
                 variant="outlined"
                 size="small"
@@ -165,30 +248,22 @@ const OnboardingBoard = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell>요청일</TableCell>
-                    <TableCell>요청자 이메일</TableCell>
-                    <TableCell>회사명</TableCell>
                     <TableCell>업종</TableCell>
-                    <TableCell>국가</TableCell>
-                    <TableCell>회사 주소</TableCell>
-                    <TableCell>사업자등록번호</TableCell>
+                    <TableCell>회사명</TableCell>
+                    <TableCell>이름</TableCell>
                     <TableCell>대표 연락처</TableCell>
-                    <TableCell>대표 이메일</TableCell>
                     <TableCell>구독 상태</TableCell>
                     <TableCell align="right">처리</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {pendingCompanyRequests.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell>{toDateTimeText(row.createdAt)}</TableCell>
-                      <TableCell>{row.requesterEmail}</TableCell>
-                      <TableCell>{row.organizationNameEn}</TableCell>
+                    <TableRow key={row.id} onContextMenu={(event) => handleRowContextMenu(event, row)}>
+                      <TableCell>{toDateOnlyText(row.createdAt)}</TableCell>
                       <TableCell>{getOrganizationTypeLabel(row.organizationType)}</TableCell>
-                      <TableCell>{row.country === 'VN' ? '베트남' : '한국'}</TableCell>
-                      <TableCell>{row.companyAddress || '-'}</TableCell>
-                      <TableCell>{row.businessNumber}</TableCell>
-                      <TableCell>{row.contactPhone || '-'}</TableCell>
-                      <TableCell>{row.contactEmail || '-'}</TableCell>
+                      <TableCell>{toDisplayText(row.organizationNameEn)}</TableCell>
+                      <TableCell>{toDisplayText(row.contactName)}</TableCell>
+                      <TableCell>{toDisplayText(row.contactPhone)}</TableCell>
                       <TableCell sx={{ minWidth: 170 }}>
                         <TextField
                           fullWidth
@@ -235,8 +310,8 @@ const OnboardingBoard = () => {
                   ))}
                   {pendingCompanyRequests.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={11} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        대기 중인 신규 회사 등록 요청이 없습니다.
+                      <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                        대기 중인 신규 가입 요청이 없습니다.
                       </TableCell>
                     </TableRow>
                   )}
@@ -246,6 +321,50 @@ const OnboardingBoard = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      <Menu
+        open={Boolean(contextMenuState)}
+        onClose={handleCloseContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenuState
+            ? { top: contextMenuState.mouseY, left: contextMenuState.mouseX }
+            : undefined
+        }
+      >
+        <MenuItem onClick={handleOpenDetailFromContextMenu}>상세보기</MenuItem>
+      </Menu>
+
+      <Drawer
+        anchor="right"
+        open={Boolean(detailRow)}
+        onClose={handleCloseDetailDrawer}
+        PaperProps={{
+          sx: {
+            width: { xs: '100%', sm: 460 },
+            p: 2.5,
+            overflowY: 'auto',
+          },
+        }}
+      >
+        <Stack spacing={1.5}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">신규 가입 요청 상세</Typography>
+            <IconButton onClick={handleCloseDetailDrawer} aria-label="닫기">
+              <CloseRoundedIcon />
+            </IconButton>
+          </Box>
+          <Divider />
+          {detailItems.map((item) => (
+            <Box key={item.label} sx={{ display: 'flex', flexDirection: 'column', gap: 0.4 }}>
+              <Typography variant="caption" color="text.secondary">
+                {item.label}
+              </Typography>
+              <Typography variant="body2">{toDisplayText(item.value)}</Typography>
+            </Box>
+          ))}
+        </Stack>
+      </Drawer>
     </AppPageContainer>
   );
 };

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -120,6 +120,7 @@ const MainLayout = () => {
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
+  const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
@@ -158,6 +159,7 @@ const MainLayout = () => {
     [authState]
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
+  const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
   const activeOrgName = useMemo(() => {
     const orgName =
       typeof activeProfile?.orgName === 'string' ? activeProfile.orgName.trim() : '';
@@ -210,6 +212,24 @@ const MainLayout = () => {
       // ignore fetch errors for badge
     }
   }, [activeOrgId, canViewEmployeeMenu]);
+
+  const fetchPendingOnboardingCount = React.useCallback(async () => {
+    if (!canViewSystemOnboardingMenu) {
+      setPendingOnboardingCount(0);
+      return;
+    }
+    try {
+      const data = await requestJSON('/system/onboarding-requests', {
+        skipGlobalLoading: true,
+      });
+      const rows = Array.isArray(data?.pendingCompanyRequests)
+        ? data.pendingCompanyRequests
+        : [];
+      setPendingOnboardingCount(rows.length);
+    } catch (_error) {
+      // ignore fetch errors for badge
+    }
+  }, [canViewSystemOnboardingMenu]);
 
   const menuItems = useMemo(() => {
     const baseItems = [
@@ -296,7 +316,12 @@ const MainLayout = () => {
         isOpen: systemOpen,
         setOpen: setSystemOpen,
         children: [
-          { label: '가입 요청', icon: <GroupIcon />, path: '/system-onboarding' },
+          {
+            label: '가입 요청',
+            icon: <GroupIcon />,
+            path: '/system-onboarding',
+            badgeLabel: pendingOnboardingCount > 0 ? '신규' : '',
+          },
           { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
         ],
       },
@@ -325,6 +350,7 @@ const MainLayout = () => {
     inventoryOpen,
     orderOpen,
     pendingEmployeeCount,
+    pendingOnboardingCount,
     productionOpen,
     systemOpen,
   ]);
@@ -387,6 +413,15 @@ const MainLayout = () => {
     const intervalId = setInterval(fetchPendingEmployeeCount, 30000);
     return () => clearInterval(intervalId);
   }, [canViewEmployeeMenu, fetchPendingEmployeeCount]);
+  useEffect(() => {
+    if (!canViewSystemOnboardingMenu) {
+      setPendingOnboardingCount(0);
+      return () => {};
+    }
+    fetchPendingOnboardingCount();
+    const intervalId = setInterval(fetchPendingOnboardingCount, 30000);
+    return () => clearInterval(intervalId);
+  }, [canViewSystemOnboardingMenu, fetchPendingOnboardingCount]);
 
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
@@ -725,10 +760,10 @@ const MainLayout = () => {
                         primary={
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <span>{child.label}</span>
-                            {child.badgeCount > 0 && (
+                            {(Boolean(child.badgeLabel) || Number(child.badgeCount) > 0) && (
                               <Badge
-                                color="error"
-                                badgeContent={child.badgeCount}
+                                color={child.badgeLabel ? 'warning' : 'error'}
+                                badgeContent={child.badgeLabel || child.badgeCount}
                                 sx={{
                                   '& .MuiBadge-badge': {
                                     position: 'static',

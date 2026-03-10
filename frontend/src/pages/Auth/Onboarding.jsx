@@ -39,6 +39,7 @@ const HIDDEN_ONBOARDING_ORG_NAMES = new Set(['baro', '테스트수주자', '테�
 
 const ONBOARDING_COMPANY_NAME_MIN_LENGTH = 2;
 const ONBOARDING_COMPANY_NAME_MAX_LENGTH = 120;
+const ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH = 80;
 const ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH = 40;
 const KR_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{3}-\d{2}-\d{5})$/;
 const VN_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{13}|\d{10}-\d{3})$/;
@@ -92,6 +93,7 @@ const buildRegisterFormDefault = (requesterEmail = '') => ({
   country: 'KR',
   companyAddress: '',
   businessNumber: '',
+  representativeName: '',
   representativeContact: '',
   representativeEmail: requesterEmail || '',
 });
@@ -242,7 +244,6 @@ const Onboarding = () => {
 
   const handleCloseRegisterDrawer = (_event, reason) => {
     if (registerSubmitting) return;
-    if (reason === 'backdropClick') return;
     setRegisterDrawerOpen(false);
   };
 
@@ -262,6 +263,7 @@ const Onboarding = () => {
     const country = normalizeUpper(registerForm.country || 'KR');
     const companyAddress = String(registerForm.companyAddress || '').trim();
     const businessNumber = normalizeBusinessNumber(registerForm.businessNumber);
+    const representativeName = String(registerForm.representativeName || '').trim();
     const representativeContact = String(registerForm.representativeContact || '').trim();
     const representativeEmail = normalizeEmail(registerForm.representativeEmail);
 
@@ -294,6 +296,15 @@ const Onboarding = () => {
       return;
     }
     if (
+      !representativeName ||
+      representativeName.length > ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH
+    ) {
+      setRegisterErrorMessage(
+        `담당자 이름을 입력해 주세요. (최대 ${ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH}자)`
+      );
+      return;
+    }
+    if (
       !representativeContact ||
       representativeContact.length > ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH
     ) {
@@ -316,6 +327,7 @@ const Onboarding = () => {
           country,
           companyAddress,
           businessNumber,
+          contactName: representativeName,
           contactPhone: representativeContact,
           contactEmail: representativeEmail,
         }),
@@ -561,6 +573,15 @@ const Onboarding = () => {
               label="사업자등록번호"
               name="businessNumber"
               value={registerForm.businessNumber}
+              onChange={handleRegisterChange}
+              disabled={registerSubmitting}
+            />
+            <TextField
+              fullWidth
+              required
+              label="담당자 이름"
+              name="representativeName"
+              value={registerForm.representativeName}
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             />

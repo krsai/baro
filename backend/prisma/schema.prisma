@@ -127,6 +127,7 @@ model OnboardingRequest {
   country            String                  @default("KR")
   companyAddress     String                  @default("")
   businessNumber     String
+  contactName        String                  @default("")
   contactEmail       String
   contactPhone       String
   status             OnboardingRequestStatus @default(PENDING)
