@@ -19,6 +19,11 @@ export const ORDER_CONFIRMATION_STATUS_OPTIONS = [
   },
 ];
 
+export const ORDER_CONFIRMATION_TEXT = {
+  fieldLabel: '확정 여부',
+  filterAllLabel: '전체',
+};
+
 const normalizeOrderConfirmationStatusToken = (value) =>
   String(value || '')
     .replace(/\s+/g, '')
@@ -42,6 +47,15 @@ export const getOrderConfirmationStatusLabel = (value, fallback = '-') => {
   const normalized = normalizeOrderConfirmationStatus(value);
   return ORDER_CONFIRMATION_STATUS_DEFAULT_LABELS[normalized] || fallback;
 };
+
+export const getOrderConfirmationDeleteTooltip = (value) =>
+  `${getOrderConfirmationStatusLabel(value, value || '-')}일 때만 삭제 가능합니다.`;
+
+export const getOrderConfirmationDeleteOnlyMessage = (value) =>
+  `${getOrderConfirmationStatusLabel(value, value || '-')}일 때만 주문을 삭제할 수 있습니다.`;
+
+export const hasOrderProgressStage = (value) =>
+  normalizeOrderConfirmationStatus(value) === ORDER_CONFIRMATION_STATUS_KEYS.CONFIRMED;
 
 export const isOrderConfirmationPlanned = (value) =>
   normalizeOrderConfirmationStatus(value) === ORDER_CONFIRMATION_STATUS_KEYS.PLANNED;

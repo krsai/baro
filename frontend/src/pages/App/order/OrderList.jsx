@@ -16,6 +16,7 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
+  FormHelperText,
   Typography,
   IconButton,
   Divider,
@@ -50,12 +51,22 @@ import {
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
 import {
+  ORDER_CONFIRMATION_TEXT,
   ORDER_CONFIRMATION_STATUS_KEYS,
   ORDER_CONFIRMATION_STATUS_OPTIONS,
+  getOrderConfirmationDeleteOnlyMessage,
+  getOrderConfirmationDeleteTooltip,
   getOrderConfirmationStatusLabel as getOrderConfirmationStatusLabelFromConst,
+  hasOrderProgressStage,
   isOrderConfirmationPlanned,
   normalizeOrderConfirmationStatus as normalizeOrderConfirmationStatusFromConst,
 } from '../../../constants/orderConfirmationStatus';
+import {
+  ORDER_STATUS_OPTIONS,
+  ORDER_STATUS_TEXT,
+  getOrderStatusLabel as getOrderStatusLabelFromConst,
+  normalizeOrderStatus as normalizeOrderStatusFromConst,
+} from '../../../constants/orderStatus';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import {
   fetchOrders as fetchOrdersFromApi,
@@ -70,40 +81,37 @@ import {
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_STATUS_KEYS = ORDER_CONFIRMATION_STATUS_KEYS;
-const ORDER_STATUS_OPTIONS = ORDER_CONFIRMATION_STATUS_OPTIONS;
-const getOrderStatusLabelFromConst = getOrderConfirmationStatusLabelFromConst;
-const ORDER_FILTER_NOT_SHIPPED = ORDER_CONFIRMATION_STATUS_KEYS.PLANNED;
-const ORDER_STATUSES = ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => option.value);
+const ORDER_CONFIRMATION_STATUSES = ORDER_CONFIRMATION_STATUS_OPTIONS.map(
+  (option) => option.value
+);
+const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
+const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
+const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
 const ORDER_FILTER_ALL = 'ALL';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
-const ORDER_DELETABLE_STATUS_LABEL = getOrderConfirmationStatusLabelFromConst(
-  ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
-  '주문접수'
-);
-const ORDER_STATUS_FILTER_OPTIONS = [
-  {
-    value: ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
-    label: `${getOrderStatusLabelFromConst(ORDER_STATUS_KEYS.SHIPPED, '출고 완료')} 제외`,
-  },
+const ORDER_CONFIRMATION_FILTER_OPTIONS = [
   {
     value: ORDER_FILTER_ALL,
-    label: '전체 상태',
+    label: ORDER_CONFIRMATION_TEXT.filterAllLabel,
   },
   ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
     value: option.value,
     label: option.label,
   })),
 ];
-const ORDER_CONFIRMATION_FILTER_OPTIONS = [
+const ORDER_PROGRESS_FILTER_OPTIONS = [
   {
     value: ORDER_FILTER_ALL,
-    label: '전체 상태',
+    label: ORDER_STATUS_TEXT.filterAllLabel,
   },
-  ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
+  {
+    value: ORDER_PROGRESS_STAGE_NONE,
+    label: ORDER_STATUS_TEXT.noneLabel,
+  },
+  ...ORDER_STATUS_OPTIONS.map((option) => ({
     value: option.value,
     label: option.label,
   })),
@@ -146,10 +154,14 @@ const GENDER_PASTEL_STYLES = {
   U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
   default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
 };
-const normalizeOrderStatus = (status) => normalizeOrderConfirmationStatusFromConst(status);
-const getOrderStatusLabel = (status) =>
+const normalizeOrderConfirmation = (status) =>
+  normalizeOrderConfirmationStatusFromConst(status);
+const getOrderConfirmationLabel = (status) =>
   getOrderConfirmationStatusLabelFromConst(status, String(status || '').trim() || '-');
-const isOrderDeletable = (status) => isOrderConfirmationPlanned(status);
+const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
+const getOrderProgressStageLabel = (status) =>
+  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-');
+const isOrderDeletable = (confirmationStatus) => isOrderConfirmationPlanned(confirmationStatus);
 const normalizeFilterDate = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -189,9 +201,9 @@ const buildOrderTabLabel = (order) => {
   return orderNumber ? `주문: ${orderNumber}` : '주문';
 };
 const ORDER_MODIFICATION_LOCK_NOTICE =
-  '\uBE0C\uB79C\uB4DC\uAC00 \uD655\uC815\uD558\uBA74 \uC8FC\uBB38\uC740 \uC7A0\uAE41\uB2C8\uB2E4. \uD655\uC815 \uD6C4 \uC218\uC815 \uBC29\uC2DD\uC740 \uBCC4\uB3C4\uB85C \uC815\uD574\uC57C \uD569\uB2C8\uB2E4.';
+  '\uBE0C\uB79C\uB4DC\uAC00 \uD655\uC815\uD558\uBA74 \uC8FC\uBB38 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
 const ORDER_MODIFICATION_LOCK_MESSAGE =
-  '\uD655\uC815\uB41C \uC8FC\uBB38\uC740 \uD604\uC7AC \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
+  '\uD655\uC815\uB41C \uC8FC\uBB38\uC740 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC218\uC815\uD560 \uC218 \uC5C6\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -580,7 +592,8 @@ const buildInitialFormData = () => ({
   customerId: '',
   customerName: '',
   dueDate: '',
-  status: ORDER_STATUSES[0],
+  confirmationStatus: ORDER_CONFIRMATION_STATUSES[0],
+  status: ORDER_PROGRESS_STAGE_DEFAULT,
   items: [createOrderItem()],
 });
 
@@ -600,7 +613,8 @@ const normalizeOrderForm = (order) => {
     customerName:
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
     items: items.map(normalizeOrderItem),
-    status: normalizeOrderStatus(order.confirmationStatus ?? order.status) || base.status,
+    confirmationStatus: normalizeOrderConfirmation(order.confirmationStatus) || base.confirmationStatus,
+    status: normalizeOrderProgressStage(order.status) || base.status,
   };
 };
 const toStableJsonText = (value) => {
@@ -618,6 +632,8 @@ const toStableJsonText = (value) => {
 const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
   const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? source?.sellerOrgId);
   const resolvedSellerOrgName = String(fixedSellerOrg?.name || source?.sellerOrgName || '').trim();
+  const normalizedConfirmationStatus =
+    normalizeOrderConfirmation(source?.confirmationStatus) || ORDER_CONFIRMATION_STATUSES[0];
   const normalizedItems = (Array.isArray(source?.items) ? source.items : []).map((item) => {
     const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
     const sizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
@@ -646,7 +662,10 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgId: resolvedSellerOrgId,
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
-    status: normalizeOrderStatus(source?.confirmationStatus ?? source?.status) || ORDER_STATUSES[0],
+    confirmationStatus: normalizedConfirmationStatus,
+    status: hasOrderProgressStage(normalizedConfirmationStatus)
+      ? normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT
+      : '',
     items: normalizedItems,
   };
 };
@@ -692,7 +711,7 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const { showNotification, navigateToPath } = useApp();
+  const { showNotification, navigateToPath, styleCatalogVersion } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
@@ -710,7 +729,8 @@ const OrderList = () => {
   const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
+  const [confirmationFilter, setConfirmationFilter] = useState(ORDER_FILTER_ALL);
+  const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
@@ -751,7 +771,7 @@ const OrderList = () => {
 
   useEffect(() => {
     refreshStyles(activeOrgId);
-  }, [activeOrgId]);
+  }, [activeOrgId, styleCatalogVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -924,15 +944,43 @@ const OrderList = () => {
     saveOrderDraft(formData);
   }, [formData, isDetailMode, isNewOrder]);
 
+  useEffect(() => {
+    if (
+      confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.PLANNED &&
+      progressFilter !== ORDER_PROGRESS_STAGE_NONE
+    ) {
+      setProgressFilter(ORDER_PROGRESS_STAGE_NONE);
+    }
+    if (
+      confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.CONFIRMED &&
+      progressFilter === ORDER_PROGRESS_STAGE_NONE
+    ) {
+      setProgressFilter(ORDER_FILTER_ALL);
+    }
+  }, [confirmationFilter, progressFilter]);
+
   const filteredOrders = useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
-      const normalizedStatus = normalizeOrderStatus(order.confirmationStatus);
+      const normalizedConfirmation = normalizeOrderConfirmation(order.confirmationStatus);
       const matchesStatus =
-        statusFilter === ORDER_FILTER_ALL
+        confirmationFilter === ORDER_FILTER_ALL
           ? true
-          : normalizedStatus === normalizeOrderStatus(statusFilter);
+          : normalizedConfirmation === normalizeOrderConfirmation(confirmationFilter);
       if (!matchesStatus) return false;
+
+      const orderHasProgressStage = hasOrderProgressStage(order.confirmationStatus);
+      const normalizedProgressStage = orderHasProgressStage
+        ? normalizeOrderProgressStage(order.status)
+        : '';
+      const matchesProgress =
+        progressFilter === ORDER_FILTER_ALL
+          ? true
+          : progressFilter === ORDER_PROGRESS_STAGE_NONE
+            ? !orderHasProgressStage
+          : orderHasProgressStage &&
+            normalizedProgressStage === normalizeOrderProgressStage(progressFilter);
+      if (!matchesProgress) return false;
 
       const dueDateKey = normalizeDateKey(order.dueDate);
       if (
@@ -958,7 +1006,14 @@ const OrderList = () => {
         styleNames.toLowerCase().includes(lowerTerm)
       );
     });
-  }, [dueDateFilterEndKey, dueDateFilterStartKey, orders, searchTerm, statusFilter]);
+  }, [
+    confirmationFilter,
+    dueDateFilterEndKey,
+    dueDateFilterStartKey,
+    orders,
+    progressFilter,
+    searchTerm,
+  ]);
 
   const styleOptions = useMemo(
     () =>
@@ -1195,6 +1250,7 @@ const OrderList = () => {
   const isCurrentOrderModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isModificationLocked
   );
+  const hasProgressStage = hasOrderProgressStage(formData.confirmationStatus);
 
   const handleAdd = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
@@ -1242,7 +1298,10 @@ const OrderList = () => {
       return;
     }
     if (!isOrderDeletable(order.confirmationStatus)) {
-      showNotification(`${ORDER_DELETABLE_STATUS_LABEL} 상태의 주문만 삭제할 수 있습니다.`, 'warning');
+      showNotification(
+        getOrderConfirmationDeleteOnlyMessage(ORDER_CONFIRMATION_STATUS_KEYS.PLANNED),
+        'warning'
+      );
       return;
     }
 
@@ -1682,7 +1741,10 @@ const OrderList = () => {
       customerId: toOrgId(formData.buyerOrgId),
       customerName: formData.buyerOrgName,
       customer: formData.buyerOrgName,
-      confirmationStatus: formData.status,
+      confirmationStatus: formData.confirmationStatus,
+      status: hasOrderProgressStage(formData.confirmationStatus)
+        ? normalizeOrderProgressStage(formData.status) || ORDER_PROGRESS_STAGE_DEFAULT
+        : undefined,
       items: sanitizedItems,
       totalQuantity,
       updatedAt: new Date().toISOString(),
@@ -1815,15 +1877,42 @@ const OrderList = () => {
             }}
           />
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
-            <InputLabel id="order-status-filter-label">상태</InputLabel>
+            <InputLabel id="order-confirmation-filter-label">
+              {ORDER_CONFIRMATION_TEXT.fieldLabel}
+            </InputLabel>
             <Select
-              labelId="order-status-filter-label"
-              value={statusFilter}
-              label="상태"
-              onChange={(event) => setStatusFilter(event.target.value)}
+              labelId="order-confirmation-filter-label"
+              value={confirmationFilter}
+              label={ORDER_CONFIRMATION_TEXT.fieldLabel}
+              onChange={(event) => setConfirmationFilter(event.target.value)}
             >
               {ORDER_CONFIRMATION_FILTER_OPTIONS.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
+            <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
+            <Select
+              labelId="order-progress-filter-label"
+              value={progressFilter}
+              label={ORDER_STATUS_TEXT.fieldLabel}
+              onChange={(event) => setProgressFilter(event.target.value)}
+            >
+              {ORDER_PROGRESS_FILTER_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={
+                    (confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.PLANNED &&
+                      option.value !== ORDER_FILTER_ALL &&
+                      option.value !== ORDER_PROGRESS_STAGE_NONE) ||
+                    (confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.CONFIRMED &&
+                      option.value === ORDER_PROGRESS_STAGE_NONE)
+                  }
+                >
                   {option.label}
                 </MenuItem>
               ))}
@@ -1930,7 +2019,7 @@ const OrderList = () => {
                     납기일
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.status }}>
-                    상태
+                    {ORDER_CONFIRMATION_TEXT.fieldLabel}
                   </TableCell>
                   <TableCell
                     sx={{
@@ -1978,7 +2067,7 @@ const OrderList = () => {
                           {order.dueDate || '-'}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {getOrderStatusLabel(order.confirmationStatus)}
+                          {getOrderConfirmationLabel(order.confirmationStatus)}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton
@@ -1988,7 +2077,9 @@ const OrderList = () => {
                             title={
                               deletable
                                 ? '주문 삭제'
-                                : `${ORDER_DELETABLE_STATUS_LABEL} 상태에서만 삭제 가능합니다.`
+                                : getOrderConfirmationDeleteTooltip(
+                                    ORDER_CONFIRMATION_STATUS_KEYS.PLANNED
+                                  )
                             }
                             onClick={(event) => {
                               event.stopPropagation();
@@ -2053,6 +2144,33 @@ const OrderList = () => {
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
+        <Grid container spacing={2} sx={{ mb: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth disabled>
+              <InputLabel>{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
+              <Select
+                value={hasProgressStage ? formData.status : ORDER_PROGRESS_STAGE_NONE}
+                label={ORDER_STATUS_TEXT.fieldLabel}
+              >
+                {!hasProgressStage && (
+                  <MenuItem value={ORDER_PROGRESS_STAGE_NONE}>
+                    {ORDER_STATUS_TEXT.noneLabel}
+                  </MenuItem>
+                )}
+                {ORDER_PROGRESS_STAGES.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {getOrderProgressStageLabel(status)}
+                  </MenuItem>
+                ))}
+              </Select>
+              <FormHelperText>
+                {hasProgressStage
+                  ? ORDER_STATUS_TEXT.autoUpdateHelper
+                  : ORDER_STATUS_TEXT.confirmedOnlyHelper}
+              </FormHelperText>
+            </FormControl>
+          </Grid>
+        </Grid>
         <Box
           component="fieldset"
           disabled={isCurrentOrderModificationLocked}
@@ -2116,17 +2234,17 @@ const OrderList = () => {
           </Grid>
           <Grid item xs={12} sm={6}>
             <FormControl fullWidth>
-              <InputLabel>상태</InputLabel>
+              <InputLabel>{ORDER_CONFIRMATION_TEXT.fieldLabel}</InputLabel>
               <Select
-                name="status"
-                value={formData.status}
+                name="confirmationStatus"
+                value={formData.confirmationStatus}
                 onChange={handleInputChange}
                 disabled={!canConfirmOrder}
-                label="상태"
+                label={ORDER_CONFIRMATION_TEXT.fieldLabel}
               >
-                {ORDER_STATUSES.map((status) => (
+                {ORDER_CONFIRMATION_STATUSES.map((status) => (
                   <MenuItem key={status} value={status}>
-                    {getOrderStatusLabel(status)}
+                    {getOrderConfirmationLabel(status)}
                   </MenuItem>
                 ))}
               </Select>

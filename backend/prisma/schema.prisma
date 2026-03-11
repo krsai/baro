@@ -54,6 +54,7 @@ enum WorkOrderStatus {
   IN_PROGRESS
   PRODUCTION_DONE
   SHIPPED
+  SETTLED
 }
 
 enum WorkOrderConfirmationStatus {

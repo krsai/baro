@@ -124,6 +124,7 @@ const WORK_ORDER_STATUS_CODES = new Set([
   "IN_PROGRESS",
   "PRODUCTION_DONE",
   "SHIPPED",
+  "SETTLED",
 ]);
 const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set(["PLANNED", "CONFIRMED"]);
 const ORDER_MODIFICATION_LOCK_CT_STATUSES = ["SENT", "AGREED"] as const;
@@ -131,9 +132,13 @@ const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["주문접수", "ORDER_RECEIVED"],
+  ["접수", "ORDER_RECEIVED"],
   ["작업중", "IN_PROGRESS"],
-  ["생산완료", "PRODUCTION_DONE"],
+  ["제작", "IN_PROGRESS"],
+  ["생산완료", "SHIPPED"],
   ["출고완료", "SHIPPED"],
+  ["출고", "SHIPPED"],
+  ["정산", "SETTLED"],
 ]);
 const WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["계획", "PLANNED"],
@@ -233,8 +238,9 @@ const resolveWorkOrderStatus = (
     | "ORDER_RECEIVED"
     | "IN_PROGRESS"
     | "PRODUCTION_DONE"
-    | "SHIPPED" = "ORDER_RECEIVED"
-): "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" => {
+    | "SHIPPED"
+    | "SETTLED" = "ORDER_RECEIVED"
+): "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" | "SETTLED" => {
   if (value === "" || value === null || value === undefined) return fallback;
   const normalized = String(value).replace(/\s+/g, "").trim();
   if (!normalized) return fallback;
@@ -244,14 +250,16 @@ const resolveWorkOrderStatus = (
       | "ORDER_RECEIVED"
       | "IN_PROGRESS"
       | "PRODUCTION_DONE"
-      | "SHIPPED";
+      | "SHIPPED"
+      | "SETTLED";
   }
   return (WORK_ORDER_STATUS_LEGACY_CODE_MAP.get(normalized) ??
     fallback) as
     | "ORDER_RECEIVED"
     | "IN_PROGRESS"
     | "PRODUCTION_DONE"
-    | "SHIPPED";
+    | "SHIPPED"
+    | "SETTLED";
 };
 const resolveWorkOrderConfirmationStatus = (
   value: unknown,
@@ -2656,6 +2664,23 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   );
   const resolvedCustomerName = customerName ?? buyerOrgName;
   const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
+  const previousConfirmationStatus = resolveWorkOrderConfirmationStatus(
+    fallback?.confirmationStatus,
+    "PLANNED"
+  );
+  const confirmationStatus = resolveWorkOrderConfirmationStatus(
+    payload?.confirmationStatus !== undefined
+      ? payload?.confirmationStatus
+      : fallback?.confirmationStatus,
+    "PLANNED"
+  );
+  let status = resolveWorkOrderStatus(
+    payload?.status !== undefined ? payload?.status : fallback?.status,
+    "ORDER_RECEIVED"
+  );
+  if (confirmationStatus === "CONFIRMED" && previousConfirmationStatus !== "CONFIRMED") {
+    status = "ORDER_RECEIVED";
+  }
 
   return {
     orderId,
@@ -2674,16 +2699,8 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     customerId: resolvedCustomerId,
     customerName: resolvedCustomerName,
     dueDate: resolveOptionalString(payload?.dueDate, fallback?.dueDate ?? null),
-    status: resolveWorkOrderStatus(
-      payload?.status !== undefined ? payload?.status : fallback?.status,
-      "ORDER_RECEIVED"
-    ),
-    confirmationStatus: resolveWorkOrderConfirmationStatus(
-      payload?.confirmationStatus !== undefined
-        ? payload?.confirmationStatus
-        : fallback?.confirmationStatus,
-      "PLANNED"
-    ),
+    status,
+    confirmationStatus,
     items,
     totalQuantity: toNonNegativeInt(
       payload?.totalQuantity !== undefined
@@ -3390,6 +3407,48 @@ const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
         .filter((planId): planId is number => planId !== null)
     )
   );
+const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
+  orgId,
+  records,
+}: {
+  orgId: number;
+  records: any;
+}) => {
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(records);
+  if (assignmentPlanIds.length === 0) return;
+
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId, id: { in: assignmentPlanIds } },
+    select: {
+      originOrderId: true,
+      cardId: true,
+    },
+  });
+  const orderIds = Array.from(
+    new Set(
+      plans
+        .map(
+          (plan) =>
+            extractOrderIdFromAssignmentCardText(plan?.originOrderId) ??
+            extractOrderIdFromAssignmentCardText(plan?.cardId)
+        )
+        .filter((orderId): orderId is string => Boolean(orderId))
+    )
+  );
+  if (orderIds.length === 0) return;
+
+  await prisma.workOrder.updateMany({
+    where: {
+      orderId: { in: orderIds },
+      OR: getOrderAccessWhere(orgId),
+      confirmationStatus: "CONFIRMED",
+      status: "ORDER_RECEIVED",
+    },
+    data: {
+      status: "IN_PROGRESS",
+    },
+  });
+};
 const toAssignmentProcessBucketKey = (
   assignmentPlanId: number,
   processMetricKey: string
@@ -7418,6 +7477,10 @@ app.post("/work-logs", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
+  await syncConfirmedOrdersToInProgressFromWorkRecords({
+    orgId: organization.id,
+    records: normalized.records,
+  });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
   triggerAtSyncFromEvent(organization.id, "worklog_post");
 });
@@ -7564,6 +7627,10 @@ app.put("/work-logs/:id", async (req, res) => {
     include: {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
+  });
+  await syncConfirmedOrdersToInProgressFromWorkRecords({
+    orgId: organization.id,
+    records: normalized.records,
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
   triggerAtSyncFromEvent(organization.id, "worklog_put");

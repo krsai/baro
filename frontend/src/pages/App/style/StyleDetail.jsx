@@ -94,7 +94,7 @@ const StyleDetail = () => {
     processInfo: false,
     bom: false,
   });
-  const { showNotification, navigateToPath } = useApp();
+  const { showNotification, navigateToPath, bumpStyleCatalogVersion } = useApp();
 
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
@@ -271,6 +271,7 @@ const StyleDetail = () => {
         showNotification('신규 스타일이 생성되었습니다.', 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
+        bumpStyleCatalogVersion();
         navigateToPath('/style', {
           label: '스타일',
           closeTabId: '/style/new',

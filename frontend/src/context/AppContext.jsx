@@ -23,6 +23,7 @@ export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [styleCatalogVersion, setStyleCatalogVersion] = useState(0);
 
   // --- Tab State ---
   const [openTabs, setOpenTabs] = useState([]);
@@ -115,6 +116,9 @@ export const AppProvider = ({ children }) => {
   const [factories, setFactories] = useState([]);
 
   const [roles, setRoles] = useState([]);
+  const bumpStyleCatalogVersion = useCallback(() => {
+    setStyleCatalogVersion((prev) => prev + 1);
+  }, []);
 
   // Keep navigation handler in a ref to avoid function identity churn across renders.
   const navigateToPathRef = useRef((..._args) => {
@@ -158,6 +162,10 @@ export const AppProvider = ({ children }) => {
       roles,
       setRoles,
 
+      // Style catalog signal
+      styleCatalogVersion,
+      bumpStyleCatalogVersion,
+
       // Centralized navigation
       navigateToPath,
       setNavigateToPath,
@@ -174,8 +182,10 @@ export const AppProvider = ({ children }) => {
       resetWorkspace,
       roles,
       setNavigateToPath,
+      styleCatalogVersion,
       showNotification,
       sidebarOpen,
+      bumpStyleCatalogVersion,
       toggleSidebar,
     ]
   );
