@@ -11,12 +11,10 @@ import {
   Paper,
   Button,
   TextField,
-  Grid,
   Select,
   MenuItem,
   InputLabel,
   FormControl,
-  FormHelperText,
   Typography,
   IconButton,
   Divider,
@@ -129,13 +127,14 @@ const GENDER_OPTION_LABELS = {
   U: '공용',
 };
 const ORDER_LIST_COLUMN_WIDTHS = {
-  orderNumber: '12%',
-  buyer: '18%',
-  seller: '18%',
-  style: '20%',
+  confirmation: '8%',
+  progress: '8%',
+  orderNumber: '10%',
+  buyer: '16%',
+  seller: '16%',
+  style: '18%',
   totalQuantity: '10%',
   dueDate: '10%',
-  status: '8%',
   actions: '4%',
 };
 const ORDER_LIST_TEXT_ELLIPSIS_SX = {
@@ -715,8 +714,6 @@ const OrderList = () => {
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
-  const canConfirmOrder = activeOrgType === 'BRAND';
-
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
   const [colorOptions, setColorOptions] = useState([]);
@@ -1188,11 +1185,18 @@ const OrderList = () => {
     });
 
     const sortedGroups = Array.from(groupMap.values()).sort((a, b) => {
-      const styleA = String(a.styleName || a.styleCode || a.styleId || '').toLowerCase();
-      const styleB = String(b.styleName || b.styleCode || b.styleId || '').toLowerCase();
+      const styleA = String(a.styleName || a.styleCode || a.styleId || '').trim().toLowerCase();
+      const styleB = String(b.styleName || b.styleCode || b.styleId || '').trim().toLowerCase();
+      const isEmptyA = !styleA;
+      const isEmptyB = !styleB;
+      if (isEmptyA !== isEmptyB) {
+        return isEmptyA ? 1 : -1;
+      }
       const styleDiff = styleA.localeCompare(styleB);
       if (styleDiff !== 0) return styleDiff;
-      return String(a.key).localeCompare(String(b.key));
+      const firstSourceIndexA = a.rows[0]?.sourceIndex ?? 0;
+      const firstSourceIndexB = b.rows[0]?.sourceIndex ?? 0;
+      return firstSourceIndexA - firstSourceIndexB;
     });
 
     let nextDisplayNo = 1;
@@ -1250,8 +1254,6 @@ const OrderList = () => {
   const isCurrentOrderModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isModificationLocked
   );
-  const hasProgressStage = hasOrderProgressStage(formData.confirmationStatus);
-
   const handleAdd = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
   };
@@ -1993,6 +1995,14 @@ const OrderList = () => {
               <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                 <TableRow>
                   <TableCell
+                    sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.confirmation }}
+                  >
+                    {ORDER_CONFIRMATION_TEXT.fieldLabel}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
+                    {ORDER_STATUS_TEXT.fieldLabel}
+                  </TableCell>
+                  <TableCell
                     sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderNumber }}
                   >
                     주문번호
@@ -2018,9 +2028,6 @@ const OrderList = () => {
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.dueDate }}>
                     납기일
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.status }}>
-                    {ORDER_CONFIRMATION_TEXT.fieldLabel}
-                  </TableCell>
                   <TableCell
                     sx={{
                       fontWeight: 'bold',
@@ -2034,13 +2041,16 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={8} message="주문 목록을 불러오는 중입니다." />
+                  <TableStatusRow colSpan={9} message="주문 목록을 불러오는 중입니다." />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={8} message="조건에 맞는 주문이 없습니다." />
+                  <TableStatusRow colSpan={9} message="조건에 맞는 주문이 없습니다." />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable =
                       !order?.isModificationLocked && isOrderDeletable(order.confirmationStatus);
+                    const progressStageLabel = hasOrderProgressStage(order.confirmationStatus)
+                      ? getOrderProgressStageLabel(order.status)
+                      : ORDER_STATUS_TEXT.noneLabel;
                     return (
                       <TableRow
                         key={order.id}
@@ -2048,6 +2058,12 @@ const OrderList = () => {
                         onDoubleClick={() => handleEdit(order)}
                         sx={{ cursor: 'pointer' }}
                       >
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {getOrderConfirmationLabel(order.confirmationStatus)}
+                        </TableCell>
+                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
+                          {progressStageLabel}
+                        </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.buyerOrgName || order.customerName || order.customer || '-'}
@@ -2065,9 +2081,6 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.dueDate || '-'}
-                        </TableCell>
-                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {getOrderConfirmationLabel(order.confirmationStatus)}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton
@@ -2137,47 +2150,26 @@ const OrderList = () => {
           {ORDER_MODIFICATION_LOCK_MESSAGE}
         </Alert>
       )}
-      {!canConfirmOrder && !isCurrentOrderModificationLocked && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          공장은 주문을 입력할 수 있지만 확정으로 바꿀 수는 없습니다.
-        </Alert>
-      )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <Grid container spacing={2} sx={{ mb: 1 }}>
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth disabled>
-              <InputLabel>{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
-              <Select
-                value={hasProgressStage ? formData.status : ORDER_PROGRESS_STAGE_NONE}
-                label={ORDER_STATUS_TEXT.fieldLabel}
-              >
-                {!hasProgressStage && (
-                  <MenuItem value={ORDER_PROGRESS_STAGE_NONE}>
-                    {ORDER_STATUS_TEXT.noneLabel}
-                  </MenuItem>
-                )}
-                {ORDER_PROGRESS_STAGES.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {getOrderProgressStageLabel(status)}
-                  </MenuItem>
-                ))}
-              </Select>
-              <FormHelperText>
-                {hasProgressStage
-                  ? ORDER_STATUS_TEXT.autoUpdateHelper
-                  : ORDER_STATUS_TEXT.confirmedOnlyHelper}
-              </FormHelperText>
-            </FormControl>
-          </Grid>
-        </Grid>
         <Box
           component="fieldset"
           disabled={isCurrentOrderModificationLocked}
           sx={{ border: 0, m: 0, p: 0, minWidth: 0 }}
         >
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12} sm={6}>
+          <Box
+            sx={{
+              mt: 1,
+              display: 'grid',
+              gap: 2,
+              gridTemplateColumns: {
+                xs: '1fr',
+                md: 'repeat(2, minmax(0, 1fr))',
+                lg: 'minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(240px, 1.2fr) minmax(180px, 0.9fr)',
+              },
+              alignItems: 'start',
+            }}
+          >
             <TextField
               name="orderNumber"
               label="주문번호"
@@ -2185,43 +2177,43 @@ const OrderList = () => {
               onChange={handleInputChange}
               fullWidth
             />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Autocomplete
-              options={buyerOptions}
-              value={buyerValue}
-              onChange={handleBuyerChange}
-              getOptionLabel={(option) => option?.name || ''}
-              isOptionEqualToValue={(option, value) => option?.id === value?.id}
-              loading={loadingParties}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="발주자(Brand)"
-                  placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택해 주세요'}
-                />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Autocomplete
-              options={sellerOptions}
-              value={sellerValue}
-              onChange={handleSellerChange}
-              disabled={loadingParties || isSellerLocked}
-              getOptionLabel={(option) => option?.name || ''}
-              isOptionEqualToValue={(option, value) => option?.id === value?.id}
-              loading={loadingParties}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="수주자(Manufacturer)"
-                  placeholder={loadingParties ? '불러오는 중...' : '수주자를 선택해 주세요'}
-                />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
+            <Box sx={{ minWidth: 0 }}>
+              <Autocomplete
+                options={buyerOptions}
+                value={buyerValue}
+                onChange={handleBuyerChange}
+                getOptionLabel={(option) => option?.name || ''}
+                isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                loading={loadingParties}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="발주자(Brand)"
+                    placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택해 주세요'}
+                    fullWidth
+                  />
+                )}
+              />
+            </Box>
+            <Box sx={{ minWidth: 0 }}>
+              <Autocomplete
+                options={sellerOptions}
+                value={sellerValue}
+                onChange={handleSellerChange}
+                disabled={loadingParties || isSellerLocked}
+                getOptionLabel={(option) => option?.name || ''}
+                isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                loading={loadingParties}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="수주자(Manufacturer)"
+                    placeholder={loadingParties ? '불러오는 중...' : '수주자를 선택해 주세요'}
+                    fullWidth
+                  />
+                )}
+              />
+            </Box>
             <TextField
               name="dueDate"
               label="납기일"
@@ -2231,65 +2223,46 @@ const OrderList = () => {
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>{ORDER_CONFIRMATION_TEXT.fieldLabel}</InputLabel>
-              <Select
-                name="confirmationStatus"
-                value={formData.confirmationStatus}
-                onChange={handleInputChange}
-                disabled={!canConfirmOrder}
-                label={ORDER_CONFIRMATION_TEXT.fieldLabel}
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+              스타일 구성
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                startIcon={<OpenInNewIcon />}
+                onClick={handleOpenStyleRegistration}
               >
-                {ORDER_CONFIRMATION_STATUSES.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {getOrderConfirmationLabel(status)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+                스타일 등록
+              </Button>
+              <Button
+                ref={styleAddButtonRef}
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={handleAddItem}
+              >
+                스타일 추가
+              </Button>
+            </Stack>
+          </Box>
 
-        <Divider sx={{ my: 3 }} />
-
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-            스타일 구성
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<OpenInNewIcon />}
-              onClick={handleOpenStyleRegistration}
-            >
-              스타일 등록
-            </Button>
-            <Button
-              ref={styleAddButtonRef}
-              variant="outlined"
-              startIcon={<AddIcon />}
-              onClick={handleAddItem}
-            >
-              스타일 추가
-            </Button>
-          </Stack>
-        </Box>
-
-        <Paper variant="outlined" sx={{ mb: 2 }}>
-          <TableContainer sx={{ width: '100%', overflowX: 'hidden' }}>
-            <Table
-              size="small"
-              sx={{
-                width: '100%',
-                tableLayout: 'fixed',
-                '& .MuiTableCell-root': {
-                  px: 0.75,
-                  py: 0.75,
-                },
-              }}
-            >
+          <Paper variant="outlined" sx={{ mb: 2 }}>
+            <TableContainer sx={{ width: '100%', overflowX: 'hidden' }}>
+              <Table
+                size="small"
+                sx={{
+                  width: '100%',
+                  tableLayout: 'fixed',
+                  '& .MuiTableCell-root': {
+                    px: 0.75,
+                    py: 0.75,
+                  },
+                }}
+              >
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>

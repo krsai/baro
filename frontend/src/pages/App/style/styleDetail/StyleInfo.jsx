@@ -135,7 +135,7 @@ const StyleInfo = ({
   };
 
   const handleImageDelete = (indexToDelete) => {
-    if (window.confirm('???대?吏瑜???젣?섏떆寃좎뒿?덇퉴?')) {
+    if (window.confirm('이 이미지를 삭제하시겠습니까?')) {
       const newImageUrls = imageUrls.filter((_, index) => index !== indexToDelete);
 
       handleInputChange({
@@ -208,7 +208,7 @@ const StyleInfo = ({
     <Box>
       <Stack direction="row" spacing={3}>
         <Paper sx={{ p: 2, width: sectionWidth }}>
-          <Typography variant="h6" gutterBottom>?ㅽ????ъ쭊</Typography>
+          <Typography variant="h6" gutterBottom>스타일 사진</Typography>
           <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
             <Box
               sx={{
@@ -234,7 +234,7 @@ const StyleInfo = ({
               ) : (
                 <Stack alignItems="center" spacing={1} color="grey.500">
                   <ImageIcon sx={{ fontSize: 60 }} />
-                  <Typography variant="body2">?ъ쭊???낅줈?쒗븯?몄슂</Typography>
+                  <Typography variant="body2">사진을 업로드해 주세요</Typography>
                 </Stack>
               )}
             </Box>
@@ -318,17 +318,17 @@ const StyleInfo = ({
             />
             <label htmlFor="raised-button-file">
               <Button variant="contained" component="span" startIcon={<PhotoCamera />}>
-                ?ъ쭊 ?щ━湲?
+                사진 올리기
               </Button>
             </label>
           </Stack>
         </Paper>
 
         <Paper sx={{ p: 2, width: sectionWidth }}>
-          <Typography variant="h6" gutterBottom>?ㅽ????뺣낫</Typography>
+          <Typography variant="h6" gutterBottom>스타일 정보</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">怨좉컼??</Typography>
+              <Typography variant="body2" color="text.secondary">고객사</Typography>
               <Select
                 name="customer"
                 value={resolvedCustomerValue}
@@ -338,19 +338,19 @@ const StyleInfo = ({
                 sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">?좏깮</Typography>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
                 </MenuItem>
                 {isBrandOrg && resolvedCustomerValue && (
                   <MenuItem value={resolvedCustomerValue}>{resolvedCustomerValue}</MenuItem>
                 )}
                 {!isBrandOrg && loadingCustomers && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">遺덈윭?ㅻ뒗 以?..</Typography>
+                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
                   </MenuItem>
                 )}
                 {!isBrandOrg && !loadingCustomers && customers.length === 0 && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">?깅줉??怨좉컼?ш? ?놁뒿?덈떎</Typography>
+                    <Typography variant="body2" color="text.secondary">등록된 고객사가 없습니다</Typography>
                   </MenuItem>
                 )}
                 {!isBrandOrg && customers.map((customer) => (
@@ -361,7 +361,7 @@ const StyleInfo = ({
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">移댄뀒怨좊━</Typography>
+              <Typography variant="body2" color="text.secondary">카테고리</Typography>
               <Select
                 name="collection"
                 value={formData.collection || ''}
@@ -369,15 +369,17 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
                 {loadingCategories && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">遺덈윭?ㅻ뒗 以?..</Typography>
+                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
                   </MenuItem>
                 )}
                 {!loadingCategories && categories.length === 0 && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">?깅줉??移댄뀒怨좊━媛 ?놁뒿?덈떎</Typography>
+                    <Typography variant="body2" color="text.secondary">등록된 카테고리가 없습니다</Typography>
                   </MenuItem>
                 )}
                 {categories.map((category) => (
@@ -388,7 +390,7 @@ const StyleInfo = ({
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">?ㅽ??쇰챸</Typography>
+              <Typography variant="body2" color="text.secondary">스타일명</Typography>
               <TextField
                 name="name"
                 value={formData.name || ''}
@@ -397,17 +399,17 @@ const StyleInfo = ({
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">?ㅽ???肄붾뱶</Typography>
+              <Typography variant="body2" color="text.secondary">스타일 코드</Typography>
               <TextField
                 name="styleCode"
                 value={formData.styleCode || ''}
                 onChange={handleInputChange}
-                placeholder={formData.name || '?ㅽ??쇰챸怨??숈씪'}
+                placeholder={formData.name || '스타일명과 동일'}
                 sx={{ width: '70%' }}
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">?깅줉?쇱옄</Typography>
+              <Typography variant="body2" color="text.secondary">등록일자</Typography>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
                   value={formData.registrationDate ? dayjs(formData.registrationDate) : dayjs()}
@@ -430,7 +432,7 @@ const StyleInfo = ({
 
           <Divider sx={{ my: 4 }} />
 
-          <Typography variant="h6" gutterBottom>?몃? ?뺣낫</Typography>
+          <Typography variant="h6" gutterBottom>세부 정보</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Fabric</Typography>
@@ -441,7 +443,9 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
                 <MenuItem value="Cotton">Cotton</MenuItem>
                 <MenuItem value="Polyester">Polyester</MenuItem>
                 <MenuItem value="Linen">Linen</MenuItem>
@@ -457,7 +461,9 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
                 {sizeSpecOptions.map((option) => (
                   <MenuItem key={option} value={option}>
                     {option}
@@ -474,7 +480,9 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
                 {GENDER_CODES.map((code) => (
                   <MenuItem key={code} value={code}>
                     {code}
@@ -491,7 +499,9 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
+                <MenuItem value="" disabled>
+                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                </MenuItem>
                 <MenuItem value="Basic">Basic</MenuItem>
                 <MenuItem value="Pastel">Pastel</MenuItem>
                 <MenuItem value="Vivid">Vivid</MenuItem>

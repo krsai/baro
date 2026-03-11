@@ -66,7 +66,7 @@ const GlobalLoadingOverlay = ({
       sx={{
         position: fullscreen ? 'fixed' : 'absolute',
         inset: 0,
-        zIndex: fullscreen ? 1500 : 10,
+        zIndex: fullscreen ? 1500 : (theme) => theme.zIndex.modal - 1,
         pointerEvents: 'auto',
       }}
     >
