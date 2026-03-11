@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Paper,
@@ -121,7 +121,7 @@ const StyleBoard = () => {
   }
 
   const { activeOrgId, activeOrgType } = useAuth();
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification, activePath, refreshSignals, markPathForRefresh } = useApp();
   const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');
@@ -130,12 +130,14 @@ const StyleBoard = () => {
   const [loading, setLoading] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
+  const handledStyleRefreshRef = useRef(0);
+  const styleRefreshSignal = refreshSignals['/style'] || 0;
 
-  const refreshStyles = async () => {
+  const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
     setLoading(true);
     try {
       const [items, factories] = await Promise.all([
-        fetchStylesFromApi({ orgId: activeOrgId }),
+        fetchStylesFromApi({ orgId: activeOrgId, forceRefresh }),
         canViewProcessSummary
           ? requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`)
           : Promise.resolve([]),
@@ -149,11 +151,19 @@ const StyleBoard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeOrgId, canViewProcessSummary, showNotification]);
 
   useEffect(() => {
+    handledStyleRefreshRef.current = styleRefreshSignal;
     refreshStyles();
-  }, [activeOrgId, canViewProcessSummary]);
+  }, [refreshStyles]);
+
+  useEffect(() => {
+    if (activePath !== '/style') return;
+    if (styleRefreshSignal <= handledStyleRefreshRef.current) return;
+    handledStyleRefreshRef.current = styleRefreshSignal;
+    refreshStyles({ forceRefresh: true });
+  }, [activePath, refreshStyles, styleRefreshSignal]);
 
   const handleRowDoubleClick = (style) => {
     const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
@@ -185,6 +195,7 @@ const StyleBoard = () => {
         ownerOrgId: toOrgId(styleToDelete?.ownerOrgId ?? styleToDelete?.customerOrgId),
       });
       setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
+      markPathForRefresh('/order/styles');
       showNotification('스타일이 삭제되었습니다.', 'success');
     } catch (error) {
       showNotification(error?.message || '스타일 삭제에 실패했습니다.', 'error');

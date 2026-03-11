@@ -94,7 +94,7 @@ const StyleDetail = () => {
     processInfo: false,
     bom: false,
   });
-  const { showNotification, navigateToPath, bumpStyleCatalogVersion } = useApp();
+  const { showNotification, navigateToPath, markPathForRefresh } = useApp();
 
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
@@ -271,7 +271,8 @@ const StyleDetail = () => {
         showNotification('신규 스타일이 생성되었습니다.', 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
-        bumpStyleCatalogVersion();
+        markPathForRefresh('/style');
+        markPathForRefresh('/order/styles');
         navigateToPath('/style', {
           label: '스타일',
           closeTabId: '/style/new',
@@ -318,6 +319,8 @@ const StyleDetail = () => {
       setOriginalData(saved);
       setStyleFormData(saved);
       setConfirmOpen(false);
+      markPathForRefresh('/style');
+      markPathForRefresh('/order/styles');
       navigateToPath('/style', {
         label: 'style',
         closeTabId: `/style/${styleId}${ownerOrgQuery}`,

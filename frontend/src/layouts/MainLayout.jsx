@@ -201,6 +201,7 @@ const MainLayout = () => {
     openTab,
     closeTab,
     resetWorkspace,
+    setActivePath,
     setNavigateToPath,
     notification,
   } = useApp();
@@ -229,6 +230,10 @@ const MainLayout = () => {
   useEffect(() => {
     currentPathRef.current = currentPath;
   }, [currentPath]);
+
+  useEffect(() => {
+    setActivePath(currentPath);
+  }, [currentPath, setActivePath]);
 
   const schedulePendingNavigationCleanup = React.useCallback((sourcePath, nextPathname) => {
     window.setTimeout(() => {

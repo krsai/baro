@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
@@ -710,7 +710,8 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const { showNotification, navigateToPath, styleCatalogVersion } = useApp();
+  const currentOrderRoutePath = isDetailMode ? `/order/${orderId}` : '/order';
+  const { showNotification, navigateToPath, activePath, refreshSignals, markPathForRefresh } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
@@ -737,6 +738,10 @@ const OrderList = () => {
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
   const sizeInputRefs = useRef(new Map());
+  const handledOrderRefreshRef = useRef(0);
+  const handledOrderStylesRefreshRef = useRef(0);
+  const orderRefreshSignal = refreshSignals['/order'] || 0;
+  const orderStylesRefreshSignal = refreshSignals['/order/styles'] || 0;
   const dueDateFilterStartKey = useMemo(
     () => buildDateKey(dueDateFilterStart),
     [dueDateFilterStart]
@@ -756,19 +761,27 @@ const OrderList = () => {
   }, [partyRoleHint, currentOrgOption]);
   const isSellerLocked = Boolean(fixedSellerOrg);
 
-  const refreshStyles = async (orgId = null) => {
+  const refreshStyles = useCallback(async (orgId = null, { forceRefresh = false } = {}) => {
     try {
-      const items = await fetchStylesFromApi({ orgId, compact: true });
+      const items = await fetchStylesFromApi({ orgId, compact: true, forceRefresh });
       setStyles(items);
     } catch (error) {
       setStyles([]);
       showNotification(error?.message || '스타일 목록을 불러오지 못했습니다.', 'error');
     }
-  };
+  }, [showNotification]);
 
   useEffect(() => {
+    handledOrderStylesRefreshRef.current = orderStylesRefreshSignal;
     refreshStyles(activeOrgId);
-  }, [activeOrgId, styleCatalogVersion]);
+  }, [activeOrgId, refreshStyles]);
+
+  useEffect(() => {
+    if (activePath !== currentOrderRoutePath) return;
+    if (orderStylesRefreshSignal <= handledOrderStylesRefreshRef.current) return;
+    handledOrderStylesRefreshRef.current = orderStylesRefreshSignal;
+    refreshStyles(activeOrgId, { forceRefresh: true });
+  }, [activePath, activeOrgId, currentOrderRoutePath, orderStylesRefreshSignal, refreshStyles]);
 
   useEffect(() => {
     let cancelled = false;
@@ -789,43 +802,54 @@ const OrderList = () => {
     };
   }, [activeOrgId]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadOrdersFromDb = async () => {
-      if (!cancelled) {
-        setOrdersLoaded(false);
+  const loadOrdersFromDb = useCallback(async ({ forceRefresh = false, cancelledRef = null } = {}) => {
+    if (!cancelledRef?.current) {
+      setOrdersLoaded(false);
+    }
+    try {
+      const items = await fetchOrdersFromApi({ orgId: activeOrgId, forceRefresh });
+      if (!cancelledRef?.current) {
+        setOrders(Array.isArray(items) ? items : []);
       }
-      try {
-        const items = await fetchOrdersFromApi({ orgId: activeOrgId });
-        if (!cancelled) {
-          setOrders(Array.isArray(items) ? items : []);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setOrders([]);
-          showNotification(error?.message || '주문 목록을 불러오지 못했습니다.', 'error');
-        }
+    } catch (error) {
+      if (!cancelledRef?.current) {
+        setOrders([]);
+        showNotification(error?.message || '주문 목록을 불러오지 못했습니다.', 'error');
       }
-      finally {
-        if (!cancelled) {
-          setOrdersLoaded(true);
-        }
+    } finally {
+      if (!cancelledRef?.current) {
+        setOrdersLoaded(true);
       }
-    };
-
-    loadOrdersFromDb();
-    return () => {
-      cancelled = true;
-    };
+    }
   }, [activeOrgId, showNotification]);
 
   useEffect(() => {
+    const cancelledRef = { current: false };
+    handledOrderRefreshRef.current = orderRefreshSignal;
+    loadOrdersFromDb({ cancelledRef });
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [activeOrgId, loadOrdersFromDb]);
+
+  useEffect(() => {
+    if (activePath !== '/order') return;
+    if (orderRefreshSignal <= handledOrderRefreshRef.current) return;
+    handledOrderRefreshRef.current = orderRefreshSignal;
+    loadOrdersFromDb({ forceRefresh: true });
+  }, [activePath, loadOrdersFromDb, orderRefreshSignal]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const fetchOrderParties = async () => {
-      setLoadingParties(true);
+      if (!cancelled) {
+        setLoadingParties(true);
+      }
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const data = await requestJSON('/order-parties' + query);
+        if (cancelled) return;
         setBuyerOptions(Array.isArray(data?.buyerOrgOptions) ? data.buyerOrgOptions : []);
         setSellerOptions(Array.isArray(data?.sellerOrgOptions) ? data.sellerOrgOptions : []);
         setRelationshipPairs(
@@ -834,6 +858,7 @@ const OrderList = () => {
         setCurrentOrgOption(data?.currentOrg || null);
         setPartyRoleHint(data?.roleHint || '');
       } catch (error) {
+        if (cancelled) return;
         setBuyerOptions([]);
         setSellerOptions([]);
         setRelationshipPairs([]);
@@ -841,11 +866,16 @@ const OrderList = () => {
         setPartyRoleHint('');
         showNotification(error?.message || '주문 파트너 정보를 불러오지 못했습니다.', 'error');
       } finally {
-        setLoadingParties(false);
+        if (!cancelled) {
+          setLoadingParties(false);
+        }
       }
     };
 
     fetchOrderParties();
+    return () => {
+      cancelled = true;
+    };
   }, [activeOrgId, showNotification]);
 
   useEffect(() => {
@@ -1839,6 +1869,7 @@ const OrderList = () => {
       }
 
       clearOrderDraft();
+      markPathForRefresh('/order');
       showNotification('주문 정보가 저장되었습니다.', 'success');
       closeDetailAndGoList();
     } catch (error) {

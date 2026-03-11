@@ -1,8 +1,10 @@
 import { buildQueryString, requestJSON } from './apiClient';
 
-export const fetchOrders = async ({ orgId = null } = {}) => {
+export const fetchOrders = async ({ orgId = null, forceRefresh = false } = {}) => {
   const query = buildQueryString({ orgId });
-  const data = await requestJSON('/orders' + query);
+  const data = await requestJSON('/orders' + query, {
+    forceRefresh: Boolean(forceRefresh),
+  });
   return Array.isArray(data) ? data : [];
 };
 

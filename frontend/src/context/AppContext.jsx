@@ -18,12 +18,21 @@ const TOAST_DURATION = {
   info: 3000,
 };
 
+const normalizeAppPath = (path) => {
+  const raw = typeof path === 'string' ? path.trim() : '';
+  if (!raw) return '/';
+  const withoutHash = raw.split('#')[0];
+  const pathname = withoutHash.split('?')[0];
+  return pathname || '/';
+};
+
 // AppProvider component
 export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [styleCatalogVersion, setStyleCatalogVersion] = useState(0);
+  const [activePath, setActivePathState] = useState('/');
+  const [refreshSignals, setRefreshSignals] = useState({});
 
   // --- Tab State ---
   const [openTabs, setOpenTabs] = useState([]);
@@ -116,8 +125,16 @@ export const AppProvider = ({ children }) => {
   const [factories, setFactories] = useState([]);
 
   const [roles, setRoles] = useState([]);
-  const bumpStyleCatalogVersion = useCallback(() => {
-    setStyleCatalogVersion((prev) => prev + 1);
+  const setActivePath = useCallback((path) => {
+    const normalizedPath = normalizeAppPath(path);
+    setActivePathState((prev) => (prev === normalizedPath ? prev : normalizedPath));
+  }, []);
+  const markPathForRefresh = useCallback((path) => {
+    const normalizedPath = normalizeAppPath(path);
+    setRefreshSignals((prev) => ({
+      ...prev,
+      [normalizedPath]: (prev[normalizedPath] || 0) + 1,
+    }));
   }, []);
 
   // Keep navigation handler in a ref to avoid function identity churn across renders.
@@ -162,9 +179,11 @@ export const AppProvider = ({ children }) => {
       roles,
       setRoles,
 
-      // Style catalog signal
-      styleCatalogVersion,
-      bumpStyleCatalogVersion,
+      // Active path and explicit refresh signals
+      activePath,
+      setActivePath,
+      refreshSignals,
+      markPathForRefresh,
 
       // Centralized navigation
       navigateToPath,
@@ -179,13 +198,15 @@ export const AppProvider = ({ children }) => {
       notification,
       openTab,
       openTabs,
+      activePath,
+      refreshSignals,
       resetWorkspace,
       roles,
       setNavigateToPath,
-      styleCatalogVersion,
       showNotification,
       sidebarOpen,
-      bumpStyleCatalogVersion,
+      setActivePath,
+      markPathForRefresh,
       toggleSidebar,
     ]
   );

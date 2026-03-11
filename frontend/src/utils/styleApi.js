@@ -95,6 +95,7 @@ const fetchStylesFromServer = async (options = {}) => {
       compact: options.compact ? 1 : undefined,
     })}`,
     {
+      forceRefresh: Boolean(options?.forceRefresh),
       skipGlobalLoading: Boolean(options?.skipGlobalLoading),
     }
   );
@@ -158,6 +159,7 @@ export const fetchStyles = async (options = {}) => {
     orgId: hasOrgFilter ? orgIdNum : null,
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     compact: Boolean(options?.compact),
+    forceRefresh: Boolean(options?.forceRefresh),
     skipGlobalLoading: Boolean(options?.skipGlobalLoading),
   });
   styles.forEach((style) => {
