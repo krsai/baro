@@ -125,14 +125,19 @@ const WORK_ORDER_STATUS_CODES = new Set([
   "PRODUCTION_DONE",
   "SHIPPED",
 ]);
+const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set(["PLANNED", "CONFIRMED"]);
 const ORDER_MODIFICATION_LOCK_CT_STATUSES = ["SENT", "AGREED"] as const;
 const ORDER_MODIFICATION_LOCK_ERROR =
-  "order modification is locked once assignment proposal/agreement has started";
+  "order modification is locked";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["주문접수", "ORDER_RECEIVED"],
   ["작업중", "IN_PROGRESS"],
   ["생산완료", "PRODUCTION_DONE"],
   ["출고완료", "SHIPPED"],
+]);
+const WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
+  ["계획", "PLANNED"],
+  ["확정", "CONFIRMED"],
 ]);
 const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
 const DEFAULT_EMPLOYEE_ROLES = [
@@ -248,8 +253,24 @@ const resolveWorkOrderStatus = (
     | "PRODUCTION_DONE"
     | "SHIPPED";
 };
+const resolveWorkOrderConfirmationStatus = (
+  value: unknown,
+  fallback: "PLANNED" | "CONFIRMED" = "PLANNED"
+): "PLANNED" | "CONFIRMED" => {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const normalized = String(value).replace(/\s+/g, "").trim();
+  if (!normalized) return fallback;
+  const upper = normalized.toUpperCase();
+  if (WORK_ORDER_CONFIRMATION_STATUS_CODES.has(upper)) {
+    return upper as "PLANNED" | "CONFIRMED";
+  }
+  return (WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP.get(normalized) ??
+    fallback) as "PLANNED" | "CONFIRMED";
+};
+const isWorkOrderConfirmed = (value: unknown) =>
+  resolveWorkOrderConfirmationStatus(value, "PLANNED") === "CONFIRMED";
 const isWorkOrderDeletableStatus = (value: unknown) =>
-  resolveWorkOrderStatus(value) === "ORDER_RECEIVED";
+  resolveWorkOrderConfirmationStatus(value, "PLANNED") === "PLANNED";
 const toSortOrder = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -1586,9 +1607,10 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
   );
 
   const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
-  await ensureStyleProcessStorageForStyles(styles);
+  await ensureStyleProcessStorageForStyles(styles, { processOrgId: orgId });
   const processRowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-    styles.map((style) => style.uid)
+    styles.map((style) => style.uid),
+    { processOrgId: orgId }
   );
 
   let updatedStyles = 0;
@@ -1693,7 +1715,9 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
 
     if (!changed) continue;
     updatedStyles += 1;
-    await refreshStyleProcessMirrorForStyleUids([style.uid]);
+    await refreshStyleProcessMirrorForStyleUids([style.uid], {
+      processOrgId: orgId,
+    });
   }
 
   if (clampAdjustedProcesses > 0) {
@@ -2051,8 +2075,13 @@ const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
 
 const loadStyleProcessRowsByStyleUid = async (
   styleUids: number[],
-  db: StyleStorageClient = prisma
+  options: {
+    processOrgId?: number | null;
+    db?: StyleStorageClient;
+  } = {}
 ) => {
+  const db = options.db ?? prisma;
+  const processOrgId = toPositiveIntOrNull(options.processOrgId);
   const normalizedStyleUids = Array.from(
     new Set(
       ensureArray(styleUids)
@@ -2062,7 +2091,10 @@ const loadStyleProcessRowsByStyleUid = async (
   );
   if (normalizedStyleUids.length === 0) return new Map<number, any[]>();
   const rows = await db.styleProcess.findMany({
-    where: { styleUid: { in: normalizedStyleUids } },
+    where: {
+      styleUid: { in: normalizedStyleUids },
+      ...(processOrgId !== null ? { orgId: processOrgId } : {}),
+    },
     include: STYLE_PROCESS_STANDARD_INCLUDE,
     orderBy: [{ styleUid: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
   });
@@ -2076,31 +2108,11 @@ const loadStyleProcessRowsByStyleUid = async (
 
 const refreshStyleProcessMirrorForStyleUids = async (
   styleUids: number[],
-  db: StyleStorageClient = prisma
-) => {
-  const normalizedStyleUids = Array.from(
-    new Set(
-      ensureArray(styleUids)
-        .map((styleUid) => toPositiveIntOrNull(styleUid))
-        .filter((styleUid): styleUid is number => styleUid !== null)
-    )
-  );
-  if (normalizedStyleUids.length === 0) return new Map<number, any[]>();
-  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, db);
-  await Promise.all(
-    normalizedStyleUids.map((styleUid) =>
-      db.style.update({
-        where: { uid: styleUid },
-        data: {
-          processes: buildStyleProcessMirrorFromRows(
-            rowsByStyleUid.get(styleUid) || []
-          ),
-        },
-      })
-    )
-  );
-  return rowsByStyleUid;
-};
+  options: {
+    processOrgId?: number | null;
+    db?: StyleStorageClient;
+  } = {}
+) => loadStyleProcessRowsByStyleUid(styleUids, options);
 
 const syncStyleProcessStorageForStyle = async ({
   styleUid,
@@ -2113,9 +2125,13 @@ const syncStyleProcessStorageForStyle = async ({
   processes: any;
   db?: StyleStorageClient;
 }) => {
+  const processOrgId = toPositiveIntOrNull(orgId);
+  if (processOrgId === null) {
+    throw createHttpError(400, "invalid style process orgId");
+  }
   const drafts = buildStyleProcessStorageDrafts(processes);
   const existingRows = await db.styleProcess.findMany({
-    where: { styleUid },
+    where: { styleUid, orgId: processOrgId },
     select: { id: true, processCode: true },
   });
   const existingByCode = new Map(
@@ -2151,7 +2167,7 @@ const syncStyleProcessStorageForStyle = async ({
         })
       : await db.styleProcess.create({
           data: {
-            orgId,
+            orgId: processOrgId,
             styleUid,
             processCode: draft.processCode,
             processName: draft.processName,
@@ -2169,7 +2185,7 @@ const syncStyleProcessStorageForStyle = async ({
     if (draft.stValues.length > 0) {
       await db.styleProcessStandard.createMany({
         data: draft.stValues.map((stValue: StyleStValue) => ({
-          orgId,
+          orgId: processOrgId,
           styleProcessId: row.id,
           quantity: stValue.quantity,
           stSeconds: stValue.seconds,
@@ -2180,14 +2196,22 @@ const syncStyleProcessStorageForStyle = async ({
     }
   }
 
-  const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids([styleUid], db);
+  const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids([styleUid], {
+    processOrgId,
+    db,
+  });
   return buildStyleProcessMirrorFromRows(rowsByStyleUid.get(styleUid) || []);
 };
 
 const ensureStyleProcessStorageForStyles = async (
   styles: any[],
-  db: StyleStorageClient = prisma
+  options: {
+    processOrgId?: number | null;
+    db?: StyleStorageClient;
+  } = {}
 ) => {
+  const db = options.db ?? prisma;
+  const processOrgId = toPositiveIntOrNull(options.processOrgId);
   const styleRows = ensureArray(styles).filter(
     (style) => style && typeof style === "object" && Number.isFinite(Number(style?.uid))
   );
@@ -2195,7 +2219,7 @@ const ensureStyleProcessStorageForStyles = async (
 
   let rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
     styleRows.map((style) => Number(style.uid)),
-    db
+    { processOrgId, db }
   );
   const missingStyles = styleRows.filter((style) => {
     if ((rowsByStyleUid.get(Number(style.uid)) || []).length > 0) return false;
@@ -2203,9 +2227,11 @@ const ensureStyleProcessStorageForStyles = async (
   });
 
   for (const style of missingStyles) {
+    const seedOrgId = processOrgId ?? Number(style.orgId);
+    if (!Number.isFinite(seedOrgId) || seedOrgId <= 0) continue;
     await syncStyleProcessStorageForStyle({
       styleUid: Number(style.uid),
-      orgId: Number(style.orgId),
+      orgId: seedOrgId,
       processes: style.processes,
       db,
     });
@@ -2214,7 +2240,7 @@ const ensureStyleProcessStorageForStyles = async (
   if (missingStyles.length > 0) {
     rowsByStyleUid = await loadStyleProcessRowsByStyleUid(
       styleRows.map((style) => Number(style.uid)),
-      db
+      { processOrgId, db }
     );
   }
 
@@ -2223,7 +2249,11 @@ const ensureStyleProcessStorageForStyles = async (
     const rows = rowsByStyleUid.get(styleUid) || [];
     map.set(
       styleUid,
-      rows.length > 0 ? buildStyleProcessMirrorFromRows(rows) : normalizeStyleProcesses(style.processes)
+      rows.length > 0
+        ? buildStyleProcessMirrorFromRows(rows)
+        : processOrgId !== null && Number(style.orgId) !== processOrgId
+          ? []
+          : normalizeStyleProcesses(style.processes)
     );
     return map;
   }, new Map<number, any[]>());
@@ -2278,19 +2308,24 @@ const collectStyleQuantityRequirementsFromOrders = ({
 const ensureStyleStandardsForQuantities = async ({
   styles,
   quantityByStyleUid,
+  processOrgId = null,
   db = prisma,
 }: {
   styles: any[];
   quantityByStyleUid: Map<number, Set<number>>;
+  processOrgId?: number | null;
   db?: StyleStorageClient;
 }) => {
   const styleUids = Array.from(quantityByStyleUid.keys());
   if (styleUids.length === 0) {
-    return ensureStyleProcessStorageForStyles(styles, db);
+    return ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
   }
 
-  await ensureStyleProcessStorageForStyles(styles, db);
-  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, db);
+  await ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
+  const rowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, {
+    processOrgId,
+    db,
+  });
   const touchedStyleUids = new Set<number>();
 
   for (const styleUid of styleUids) {
@@ -2322,10 +2357,13 @@ const ensureStyleStandardsForQuantities = async ({
   }
 
   if (touchedStyleUids.size > 0) {
-    await refreshStyleProcessMirrorForStyleUids(Array.from(touchedStyleUids), db);
+    await refreshStyleProcessMirrorForStyleUids(Array.from(touchedStyleUids), {
+      processOrgId,
+      db,
+    });
   }
 
-  return ensureStyleProcessStorageForStyles(styles, db);
+  return ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
 };
 
 const toStyleResponse = (
@@ -2640,6 +2678,12 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
       payload?.status !== undefined ? payload?.status : fallback?.status,
       "ORDER_RECEIVED"
     ),
+    confirmationStatus: resolveWorkOrderConfirmationStatus(
+      payload?.confirmationStatus !== undefined
+        ? payload?.confirmationStatus
+        : fallback?.confirmationStatus,
+      "PLANNED"
+    ),
     items,
     totalQuantity: toNonNegativeInt(
       payload?.totalQuantity !== undefined
@@ -2707,6 +2751,22 @@ const resolveOrderPartiesOrThrow = async ({
   }
 
   return { buyer, seller };
+};
+const assertOrderConfirmationStatusChangeAllowed = ({
+  organization,
+  requestedStatus,
+  existingStatus = null,
+}: {
+  organization: any;
+  requestedStatus: unknown;
+  existingStatus?: unknown;
+}) => {
+  if (!isManufacturerOrg(organization)) return;
+  const currentStatus = resolveWorkOrderConfirmationStatus(existingStatus, "PLANNED");
+  const nextStatus = resolveWorkOrderConfirmationStatus(requestedStatus, currentStatus);
+  if (nextStatus !== currentStatus) {
+    throw createHttpError(403, "manufacturer cannot change confirmation status");
+  }
 };
 
 const findSharedOrderConflict = async ({
@@ -2869,6 +2929,10 @@ const toOrderResponse = (
     customer: order.customerName ?? order.buyerOrgName ?? "",
     dueDate: order.dueDate ?? "",
     status: resolveWorkOrderStatus(order.status, "ORDER_RECEIVED"),
+    confirmationStatus: resolveWorkOrderConfirmationStatus(
+      order.confirmationStatus,
+      "PLANNED"
+    ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     isModificationLocked: Boolean(options.isModificationLocked),
@@ -4695,7 +4759,9 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
     loadAssignmentCardsForOrg({ orgId }),
     buildAssignmentCardColorNameMap(),
   ]);
-  const initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles);
+  const initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
+    processOrgId: orgId,
+  });
   const stylesWithProcesses = styles.map((style) => ({
     ...style,
     processes:
@@ -4709,6 +4775,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const processMirrorMap = await ensureStyleStandardsForQuantities({
     styles,
     quantityByStyleUid,
+    processOrgId: orgId,
   });
   const hydratedStyles = styles.map((style) => ({
     ...style,
@@ -4829,6 +4896,14 @@ const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, 
   const lockMap = new Map<string, boolean>();
   if (orderIds.length === 0) return lockMap;
 
+  safeOrders.forEach((order) => {
+    const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
+    if (!orderId) return;
+    if (isWorkOrderConfirmed(order?.confirmationStatus)) {
+      lockMap.set(orderId, true);
+    }
+  });
+
   const orderIdSet = new Set(orderIds);
   const orgIds = Array.from(
     new Set(safeOrders.flatMap((order) => getOrderRelatedOrgIds(order)))
@@ -4855,6 +4930,9 @@ const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, 
   return lockMap;
 };
 const isOrderModificationLocked = async (order: any): Promise<boolean> => {
+  if (isWorkOrderConfirmed(order?.confirmationStatus)) {
+    return true;
+  }
   const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
   if (!orderId) return false;
   const orgIds = getOrderRelatedOrgIds(order);
@@ -7590,7 +7668,9 @@ app.get("/assignment-cards", async (req, res) => {
   ]);
   const includeProcesses = isManufacturerOrg(organization);
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles(styles)
+    ? await ensureStyleProcessStorageForStyles(styles, {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   res.json({
@@ -8366,6 +8446,17 @@ app.post("/orders", async (req, res) => {
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
   }
+  try {
+    assertOrderConfirmationStatusChangeAllowed({
+      organization,
+      requestedStatus: normalized.confirmationStatus,
+    });
+  } catch (error) {
+    return res.status(403).json({
+      ok: false,
+      error: getErrorMessage(error, "manufacturer cannot change confirmation status"),
+    });
+  }
   const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
   const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);
   const { buyer, seller } = await resolveOrderPartiesOrThrow({
@@ -8432,6 +8523,18 @@ app.put("/orders/:orderId", async (req, res) => {
   const normalized = normalizeOrderPayload(req.body ?? {}, existing);
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
+  }
+  try {
+    assertOrderConfirmationStatusChangeAllowed({
+      organization,
+      requestedStatus: normalized.confirmationStatus,
+      existingStatus: (existing as any).confirmationStatus,
+    });
+  } catch (error) {
+    return res.status(403).json({
+      ok: false,
+      error: getErrorMessage(error, "manufacturer cannot change confirmation status"),
+    });
   }
   const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
   const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);
@@ -8555,10 +8658,10 @@ app.delete("/orders/:orderId", async (req, res) => {
       error: "only order owner can delete",
     });
   }
-  if (!isWorkOrderDeletableStatus(existing.status)) {
+  if (!isWorkOrderDeletableStatus((existing as any).confirmationStatus)) {
     return res.status(409).json({
       ok: false,
-      error: "only 주문접수 orders can be deleted",
+      error: "only planned orders can be deleted",
     });
   }
 
@@ -8862,7 +8965,9 @@ app.get("/styles", async (req, res) => {
       : {}),
   });
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles(styles)
+    ? await ensureStyleProcessStorageForStyles(styles, {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   res.json(
@@ -8895,7 +9000,9 @@ app.get("/styles/:styleId", async (req, res) => {
   }
 
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles([style])
+    ? await ensureStyleProcessStorageForStyles([style], {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   res.json(toStyleResponse(style, { includeProcesses, processMirrorMap }));
@@ -8962,7 +9069,7 @@ app.post("/styles", async (req, res) => {
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
         styleUid: createdStyle.uid,
-        orgId: owner.ownerOrgId,
+        orgId: organization.id,
         processes: payload.processes,
         db: tx,
       });
@@ -8972,7 +9079,9 @@ app.post("/styles", async (req, res) => {
     });
   });
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles([created])
+    ? await ensureStyleProcessStorageForStyles([created], {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
@@ -9079,7 +9188,7 @@ app.put("/styles/:styleId", async (req, res) => {
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
         styleUid: existing.uid,
-        orgId: existing.orgId,
+        orgId: organization.id,
         processes: normalized.processes,
         db: tx,
       });
@@ -9089,7 +9198,9 @@ app.put("/styles/:styleId", async (req, res) => {
     });
   });
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles([updated])
+    ? await ensureStyleProcessStorageForStyles([updated], {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   await rebuildAssignmentCardsForOrgIds(
@@ -9315,7 +9426,7 @@ app.post("/styles/import", async (req, res) => {
       if (includeProcesses) {
         await syncStyleProcessStorageForStyle({
           styleUid: upserted.uid,
-          orgId: ownerOrgId,
+          orgId: organization.id,
           processes: stylePayload.processes,
           db: tx,
         });
@@ -9328,7 +9439,9 @@ app.post("/styles/import", async (req, res) => {
     orderBy: { uid: "asc" },
   });
   const processMirrorMap = includeProcesses
-    ? await ensureStyleProcessStorageForStyles(imported)
+    ? await ensureStyleProcessStorageForStyles(imported, {
+        processOrgId: organization.id,
+      })
     : new Map<number, any[]>();
 
   const syncTargetOrgIds = (

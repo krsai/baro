@@ -14,6 +14,7 @@ import {
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import StyleInfo from './styleDetail/StyleInfo';
+import StyleAnalysis from './styleDetail/StyleAnalysis';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -89,6 +90,7 @@ const StyleDetail = () => {
   const [currentTab, setCurrentTab] = useState('basicInfo');
   const [loadedTabs, setLoadedTabs] = useState({
     basicInfo: true,
+    styleAnalysis: false,
     processInfo: false,
     bom: false,
   });
@@ -198,7 +200,9 @@ const StyleDetail = () => {
   useUnsavedChanges(isDirty);
 
   const handleChange = (_event, newValue) => {
-    if (newValue === 'processInfo' && !canViewProcessInfo) return;
+    if ((newValue === 'styleAnalysis' || newValue === 'processInfo') && !canViewProcessInfo) {
+      return;
+    }
     if (newValue !== null) {
       setCurrentTab(newValue);
       setLoadedTabs((prev) =>
@@ -335,6 +339,7 @@ const StyleDetail = () => {
           onChange={handleChange}
           aria-label="style management toggle"
         >
+          {canViewProcessInfo ? <ToggleButton value="styleAnalysis">스타일 분석</ToggleButton> : null}
           <ToggleButton value="basicInfo">기본 정보</ToggleButton>
           {canViewProcessInfo ? <ToggleButton value="processInfo">공정 정보</ToggleButton> : null}
           <ToggleButton value="bom">BOM</ToggleButton>
@@ -362,10 +367,16 @@ const StyleDetail = () => {
                   isNew={isNew}
                   formData={styleFormData}
                   handleInputChange={handleStyleInputChange}
-                  canViewProcessSummary={canViewProcessInfo}
                   isBrandOrg={isBrandOrg}
                   defaultCustomerName={defaultBrandCustomerName}
                 />
+              </Box>
+            </RequestScopeBoundary>
+          )}
+          {canViewProcessInfo && loadedTabs.styleAnalysis && (
+            <RequestScopeBoundary scopeId="styleAnalysis" active={currentTab === 'styleAnalysis'}>
+              <Box sx={{ display: currentTab === 'styleAnalysis' ? 'block' : 'none' }}>
+                <StyleAnalysis processes={styleFormData.processes} />
               </Box>
             </RequestScopeBoundary>
           )}

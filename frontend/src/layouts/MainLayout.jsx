@@ -406,7 +406,7 @@ const MainLayout = () => {
         children: [
           { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
           {
-            label: '가입 요청',
+            label: '가입 승인',
             icon: <GroupIcon />,
             path: '/system-onboarding',
             badgeLabel: pendingOnboardingCount > 0 ? '신규' : '',
@@ -613,6 +613,19 @@ const MainLayout = () => {
     const label = resolveTabLabel(currentPath);
     openTab({ id: currentPath, label, path: currentRoutePath });
   }, [closeTab, currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
+
+  useEffect(() => {
+    openTabs.forEach((tab) => {
+      const matchedMenu = flattenedMenuItems.find((item) => item.path === tab.id);
+      if (!matchedMenu) return;
+      if (tab.label === matchedMenu.label) return;
+      openTab({
+        ...tab,
+        label: matchedMenu.label,
+        path: tab.path || tab.id,
+      });
+    });
+  }, [flattenedMenuItems, openTab, openTabs]);
 
   useEffect(() => {
     if (

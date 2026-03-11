@@ -56,6 +56,11 @@ enum WorkOrderStatus {
   SHIPPED
 }
 
+enum WorkOrderConfirmationStatus {
+  PLANNED
+  CONFIRMED
+}
+
 enum CtStatus {
   PENDING
   SENT
@@ -420,7 +425,7 @@ model StyleProcess {
   style        Style                 @relation(fields: [styleUid], references: [uid], onDelete: Cascade)
   standards    StyleProcessStandard[]
 
-  @@unique([styleUid, processCode])
+  @@unique([styleUid, orgId, processCode])
   @@index([orgId])
   @@index([styleUid])
 }
@@ -456,6 +461,7 @@ model WorkOrder {
   customerName  String?
   dueDate       String?
   status        WorkOrderStatus @default(ORDER_RECEIVED)
+  confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
   items         Json?
   totalQuantity Int             @default(0)
   createdAt     DateTime        @default(now())

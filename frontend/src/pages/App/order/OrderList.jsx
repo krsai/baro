@@ -50,12 +50,12 @@ import {
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
 import {
-  ORDER_STATUS_KEYS,
-  ORDER_STATUS_OPTIONS,
-  getOrderStatusLabel as getOrderStatusLabelFromConst,
-  isOrderDeletableStatus as isOrderDeletableStatusFromConst,
-  normalizeOrderStatus as normalizeOrderStatusFromConst,
-} from '../../../constants/orderStatus';
+  ORDER_CONFIRMATION_STATUS_KEYS,
+  ORDER_CONFIRMATION_STATUS_OPTIONS,
+  getOrderConfirmationStatusLabel as getOrderConfirmationStatusLabelFromConst,
+  isOrderConfirmationPlanned,
+  normalizeOrderConfirmationStatus as normalizeOrderConfirmationStatusFromConst,
+} from '../../../constants/orderConfirmationStatus';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import {
   fetchOrders as fetchOrdersFromApi,
@@ -70,27 +70,40 @@ import {
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_STATUSES = ORDER_STATUS_OPTIONS.map((option) => option.value);
+const ORDER_STATUS_KEYS = ORDER_CONFIRMATION_STATUS_KEYS;
+const ORDER_STATUS_OPTIONS = ORDER_CONFIRMATION_STATUS_OPTIONS;
+const getOrderStatusLabelFromConst = getOrderConfirmationStatusLabelFromConst;
+const ORDER_FILTER_NOT_SHIPPED = ORDER_CONFIRMATION_STATUS_KEYS.PLANNED;
+const ORDER_STATUSES = ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_FILTER_ALL = 'ALL';
-const ORDER_FILTER_NOT_SHIPPED = 'NOT_SHIPPED';
 const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
-const ORDER_DELETABLE_STATUS_LABEL = getOrderStatusLabelFromConst(
-  ORDER_STATUS_KEYS.ORDER_RECEIVED,
+const ORDER_DELETABLE_STATUS_LABEL = getOrderConfirmationStatusLabelFromConst(
+  ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
   '주문접수'
 );
 const ORDER_STATUS_FILTER_OPTIONS = [
   {
-    value: ORDER_FILTER_NOT_SHIPPED,
+    value: ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
     label: `${getOrderStatusLabelFromConst(ORDER_STATUS_KEYS.SHIPPED, '출고 완료')} 제외`,
   },
   {
     value: ORDER_FILTER_ALL,
     label: '전체 상태',
   },
-  ...ORDER_STATUS_OPTIONS.map((option) => ({
+  ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+  })),
+];
+const ORDER_CONFIRMATION_FILTER_OPTIONS = [
+  {
+    value: ORDER_FILTER_ALL,
+    label: '전체 상태',
+  },
+  ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
     value: option.value,
     label: option.label,
   })),
@@ -133,10 +146,10 @@ const GENDER_PASTEL_STYLES = {
   U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
   default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
 };
-const normalizeOrderStatus = (status) => normalizeOrderStatusFromConst(status);
+const normalizeOrderStatus = (status) => normalizeOrderConfirmationStatusFromConst(status);
 const getOrderStatusLabel = (status) =>
-  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-');
-const isOrderDeletable = (status) => isOrderDeletableStatusFromConst(status);
+  getOrderConfirmationStatusLabelFromConst(status, String(status || '').trim() || '-');
+const isOrderDeletable = (status) => isOrderConfirmationPlanned(status);
 const normalizeFilterDate = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -176,9 +189,9 @@ const buildOrderTabLabel = (order) => {
   return orderNumber ? `주문: ${orderNumber}` : '주문';
 };
 const ORDER_MODIFICATION_LOCK_NOTICE =
-  '\uB3D9\uC758 \uC774\uD6C4 \uC8FC\uBB38 \uBCC0\uACBD \uAE08\uC9C0 > \uACE0\uAC1D \uC694\uCCAD\uC73C\uB85C \uBCC0\uACBD\uC774 \uD544\uC694\uD558\uBA74 \uC5B4\uB5BB\uAC8C \uD560 \uAC83\uC778\uC9C0 \uC5C5\uB370\uC774\uD2B8 \uD544\uC694';
+  '\uBE0C\uB79C\uB4DC\uAC00 \uD655\uC815\uD558\uBA74 \uC8FC\uBB38\uC740 \uC7A0\uAE41\uB2C8\uB2E4. \uD655\uC815 \uD6C4 \uC218\uC815 \uBC29\uC2DD\uC740 \uBCC4\uB3C4\uB85C \uC815\uD574\uC57C \uD569\uB2C8\uB2E4.';
 const ORDER_MODIFICATION_LOCK_MESSAGE =
-  '\uC81C\uC548/\uD655\uC815 \uC9C4\uD589 \uC911\uC778 \uC8FC\uBB38\uC740 \uD604\uC7AC \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
+  '\uD655\uC815\uB41C \uC8FC\uBB38\uC740 \uD604\uC7AC \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -425,6 +438,9 @@ const resolveOrderSaveErrorMessage = (error) => {
   if (message.includes('order modification is locked')) {
     return ORDER_MODIFICATION_LOCK_MESSAGE;
   }
+  if (message.includes('manufacturer cannot change confirmation status')) {
+    return '공장은 주문을 확정할 수 없습니다.';
+  }
   if (message === 'order number already exists for this customer') {
     return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
   }
@@ -584,7 +600,7 @@ const normalizeOrderForm = (order) => {
     customerName:
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
     items: items.map(normalizeOrderItem),
-    status: normalizeOrderStatus(order.status) || base.status,
+    status: normalizeOrderStatus(order.confirmationStatus ?? order.status) || base.status,
   };
 };
 const toStableJsonText = (value) => {
@@ -630,7 +646,7 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgId: resolvedSellerOrgId,
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
-    status: normalizeOrderStatus(source?.status) || ORDER_STATUSES[0],
+    status: normalizeOrderStatus(source?.confirmationStatus ?? source?.status) || ORDER_STATUSES[0],
     items: normalizedItems,
   };
 };
@@ -677,9 +693,10 @@ const OrderList = () => {
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
   const { showNotification, navigateToPath } = useApp();
-  const { activeOrgId, activeProfile } = useAuth();
+  const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
+  const canConfirmOrder = activeOrgType === 'BRAND';
 
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
@@ -693,7 +710,7 @@ const OrderList = () => {
   const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_NOT_SHIPPED);
+  const [statusFilter, setStatusFilter] = useState(ORDER_FILTER_ALL);
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
@@ -910,13 +927,11 @@ const OrderList = () => {
   const filteredOrders = useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
-      const normalizedStatus = normalizeOrderStatus(order.status);
+      const normalizedStatus = normalizeOrderStatus(order.confirmationStatus);
       const matchesStatus =
         statusFilter === ORDER_FILTER_ALL
           ? true
-          : statusFilter === ORDER_FILTER_NOT_SHIPPED
-            ? normalizedStatus !== ORDER_STATUS_KEYS.SHIPPED
-            : normalizedStatus === normalizeOrderStatus(statusFilter);
+          : normalizedStatus === normalizeOrderStatus(statusFilter);
       if (!matchesStatus) return false;
 
       const dueDateKey = normalizeDateKey(order.dueDate);
@@ -1226,7 +1241,7 @@ const OrderList = () => {
       showNotification(ORDER_MODIFICATION_LOCK_MESSAGE, 'warning');
       return;
     }
-    if (!isOrderDeletable(order.status)) {
+    if (!isOrderDeletable(order.confirmationStatus)) {
       showNotification(`${ORDER_DELETABLE_STATUS_LABEL} 상태의 주문만 삭제할 수 있습니다.`, 'warning');
       return;
     }
@@ -1667,6 +1682,7 @@ const OrderList = () => {
       customerId: toOrgId(formData.buyerOrgId),
       customerName: formData.buyerOrgName,
       customer: formData.buyerOrgName,
+      confirmationStatus: formData.status,
       items: sanitizedItems,
       totalQuantity,
       updatedAt: new Date().toISOString(),
@@ -1806,7 +1822,7 @@ const OrderList = () => {
               label="상태"
               onChange={(event) => setStatusFilter(event.target.value)}
             >
-              {ORDER_STATUS_FILTER_OPTIONS.map((option) => (
+              {ORDER_CONFIRMATION_FILTER_OPTIONS.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
@@ -1935,7 +1951,7 @@ const OrderList = () => {
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable =
-                      !order?.isModificationLocked && isOrderDeletable(order.status);
+                      !order?.isModificationLocked && isOrderDeletable(order.confirmationStatus);
                     return (
                       <TableRow
                         key={order.id}
@@ -1962,7 +1978,7 @@ const OrderList = () => {
                           {order.dueDate || '-'}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {getOrderStatusLabel(order.status)}
+                          {getOrderStatusLabel(order.confirmationStatus)}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton
@@ -2028,6 +2044,11 @@ const OrderList = () => {
       {isCurrentOrderModificationLocked && (
         <Alert severity="warning" sx={{ mb: 2 }}>
           {ORDER_MODIFICATION_LOCK_MESSAGE}
+        </Alert>
+      )}
+      {!canConfirmOrder && !isCurrentOrderModificationLocked && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          공장은 주문을 입력할 수 있지만 확정으로 바꿀 수는 없습니다.
         </Alert>
       )}
 
@@ -2100,6 +2121,7 @@ const OrderList = () => {
                 name="status"
                 value={formData.status}
                 onChange={handleInputChange}
+                disabled={!canConfirmOrder}
                 label="상태"
               >
                 {ORDER_STATUSES.map((status) => (

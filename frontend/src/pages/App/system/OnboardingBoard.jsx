@@ -5,7 +5,6 @@ import {
   CircularProgress,
   Divider,
   Drawer,
-  Grid,
   IconButton,
   Menu,
   MenuItem,
@@ -14,6 +13,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TextField,
@@ -129,7 +129,7 @@ const OnboardingBoard = () => {
             ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
         }),
       });
-      showNotification('신규 가입 요청을 승인했습니다.', 'success');
+      showNotification('가입 요청을 승인했습니다.', 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
       showNotification(error?.message || '승인 처리 중 오류가 발생했습니다.', 'error');
@@ -147,7 +147,7 @@ const OnboardingBoard = () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
       });
-      showNotification('신규 가입 요청을 거절했습니다.', 'success');
+      showNotification('가입 요청을 거절했습니다.', 'success');
       await fetchRequests({ isRefresh: true });
     } catch (error) {
       showNotification(error?.message || '거절 처리 중 오류가 발생했습니다.', 'error');
@@ -208,17 +208,16 @@ const OnboardingBoard = () => {
       header={
         <>
           <Typography component="h1" variant="h4">
-            신규 가입 승인
+            가입 승인
           </Typography>
           <Typography sx={{ mt: 1, color: 'text.secondary' }}>
-            신규 가입 요청을 검토하고 승인 또는 거절할 수 있습니다.
+            가입 요청을 검토하고 승인 또는 거절할 수 있습니다.
           </Typography>
         </>
       }
     >
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 3 }}>
+      <Box sx={{ width: '100%' }}>
+        <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
             <Box
               sx={{
                 display: 'flex',
@@ -227,7 +226,7 @@ const OnboardingBoard = () => {
                 mb: 2,
               }}
             >
-              <Typography variant="h6">신규 가입 요청 목록</Typography>
+              <Typography variant="h6">가입 요청 목록</Typography>
               <Button
                 variant="outlined"
                 size="small"
@@ -244,7 +243,8 @@ const OnboardingBoard = () => {
                 <CircularProgress size={24} />
               </Box>
             ) : (
-              <Table size="small">
+              <TableContainer sx={{ width: '100%', overflowX: 'auto' }}>
+                <Table size="small" sx={{ width: '100%' }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>요청일</TableCell>
@@ -311,16 +311,16 @@ const OnboardingBoard = () => {
                   {pendingCompanyRequests.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        대기 중인 신규 가입 요청이 없습니다.
+                        대기 중인 가입 요청이 없습니다.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
-              </Table>
+                </Table>
+              </TableContainer>
             )}
-          </Paper>
-        </Grid>
-      </Grid>
+        </Paper>
+      </Box>
 
       <Menu
         open={Boolean(contextMenuState)}
@@ -349,7 +349,7 @@ const OnboardingBoard = () => {
       >
         <Stack spacing={1.5}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">신규 가입 요청 상세</Typography>
+            <Typography variant="h6">가입 요청 상세</Typography>
             <IconButton onClick={handleCloseDetailDrawer} aria-label="닫기">
               <CloseRoundedIcon />
             </IconButton>

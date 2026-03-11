@@ -42,9 +42,25 @@ export const AppProvider = ({ children }) => {
         }
       }
 
-      // Add the new tab only if it does not already exist.
-      const tabExists = tabs.some((t) => t.id === tab.id);
-      if (!tabExists) {
+      const existingIndex = tabs.findIndex((t) => t.id === tab.id);
+      if (existingIndex >= 0) {
+        const existingTab = tabs[existingIndex];
+        const nextPath = tab.path ?? existingTab.path;
+        const nextLabel = tab.label ?? existingTab.label;
+        if (existingTab.path !== nextPath || existingTab.label !== nextLabel) {
+          changed = true;
+          tabs = tabs.map((item, index) =>
+            index === existingIndex
+              ? {
+                  ...item,
+                  ...tab,
+                  path: nextPath,
+                  label: nextLabel,
+                }
+              : item
+          );
+        }
+      } else {
         changed = true;
         tabs = [...tabs, tab];
       }

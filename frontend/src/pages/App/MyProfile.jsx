@@ -12,9 +12,34 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 
-const buildProfileInfo = (data = {}) => ({
+const resolveNameFromEmail = (email) => {
+  const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!normalized || !normalized.includes('@')) return '';
+  return normalized.split('@')[0];
+};
+
+const resolveFallbackProfileName = ({ employeeName, userMetadata, email }) => {
+  const profileName = typeof employeeName === 'string' ? employeeName.trim() : '';
+  if (profileName) return profileName;
+
+  const metadataCandidates = [
+    userMetadata?.name,
+    userMetadata?.full_name,
+    userMetadata?.nickname,
+  ];
+  const metadataName = metadataCandidates.find(
+    (candidate) => typeof candidate === 'string' && candidate.trim()
+  );
+  if (typeof metadataName === 'string' && metadataName.trim()) {
+    return metadataName.trim();
+  }
+
+  return resolveNameFromEmail(email);
+};
+
+const buildProfileInfo = (data = {}, fallbackName = '') => ({
   email: data.email ?? '',
-  name: data.name ?? '',
+  name: data.name ?? fallbackName,
   phone: data.phone ?? '',
   bankName: data.bankName ?? '',
   bankAccountNumber: data.bankAccountNumber ?? '',
@@ -35,10 +60,19 @@ const TEXT = {
 
 const MyProfile = () => {
   const { showNotification } = useApp();
-  const { updateActiveProfile } = useAuth();
+  const { updateActiveProfile, user, activeProfile } = useAuth();
   const [formData, setFormData] = useState(buildProfileInfo());
   const [savedFormData, setSavedFormData] = useState(buildProfileInfo());
   const [isSaving, setIsSaving] = useState(false);
+  const fallbackProfileName = useMemo(
+    () =>
+      resolveFallbackProfileName({
+        employeeName: activeProfile?.employeeName,
+        userMetadata: user?.user_metadata,
+        email: activeProfile?.email || user?.email || '',
+      }),
+    [activeProfile?.email, activeProfile?.employeeName, user?.email, user?.user_metadata]
+  );
 
   useEffect(() => {
     let active = true;
@@ -47,7 +81,7 @@ const MyProfile = () => {
       try {
         const data = await requestJSON('/employees/me');
         if (!active || !data) return;
-        const nextFormData = buildProfileInfo(data);
+        const nextFormData = buildProfileInfo(data, fallbackProfileName);
         setFormData(nextFormData);
         setSavedFormData(nextFormData);
       } catch (_error) {
@@ -59,7 +93,13 @@ const MyProfile = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [fallbackProfileName]);
+
+  useEffect(() => {
+    if (!fallbackProfileName) return;
+    setFormData((prev) => (prev.name ? prev : { ...prev, name: fallbackProfileName }));
+    setSavedFormData((prev) => (prev.name ? prev : { ...prev, name: fallbackProfileName }));
+  }, [fallbackProfileName]);
 
   const isDirty = useMemo(
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
@@ -87,7 +127,7 @@ const MyProfile = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const nextFormData = buildProfileInfo(saved);
+      const nextFormData = buildProfileInfo(saved, fallbackProfileName);
       setFormData(nextFormData);
       setSavedFormData(nextFormData);
       updateActiveProfile({

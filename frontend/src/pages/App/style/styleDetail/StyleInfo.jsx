@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, TextField, Typography, Card, CardMedia, Button, CardContent, Stack, Divider, Grid, Paper, FormControl, InputLabel, Select, MenuItem, IconButton } from '@mui/material';
+import {
+  Box,
+  TextField,
+  Typography,
+  CardMedia,
+  Button,
+  Stack,
+  Divider,
+  Paper,
+  Select,
+  MenuItem,
+  IconButton,
+} from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
 import { Close as CloseIcon } from '@mui/icons-material';
@@ -8,15 +20,8 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
-import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
-import {
-  calculateProcessTotalForOrderQuantity,
-  formatSeconds,
-  hasAnyProcessTime,
-  normalizeProcesses,
-} from '../../../../utils/processTime';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
 
@@ -49,21 +54,13 @@ const loadCustomersOnce = async () => {
   return customersInFlight;
 };
 
-const parseCurrencyValue = (value) => {
-  const normalized = String(value ?? '').replace(/[^\d.-]/g, '');
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const StyleInfo = ({
   formData = {},
   handleInputChange,
-  isNew,
-  canViewProcessSummary = true,
   isBrandOrg = false,
   defaultCustomerName = '',
 }) => {
-  const { imageUrls = [], processes = [] } = formData; // Use image URLs and processes from props
+  const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -129,18 +126,8 @@ const StyleInfo = ({
     };
   }, []);
 
-  // TODO: Implement adding new images, which involves creating blob URLs,
-  // uploading them, and then updating the parent state.
-  const handleImageChange = (event) => {
-    console.log("Image selection not implemented yet.");
-    // const files = Array.from(event.target.files);
-    // if (files.length > 0) {
-    //   const newImageFiles = [...(formData.newImageFiles || []), ...files];
-    //   const newImageUrls = newImageFiles.map(file => URL.createObjectURL(file));
-      
-    //   handleInputChange({ target: { name: 'newImageFiles', value: newImageFiles } });
-    //   // Visually, you might want to combine existing and new blob URLs for preview
-    // }
+  const handleImageChange = () => {
+    console.log('Image selection not implemented yet.');
   };
 
   const handleThumbnailClick = (index) => {
@@ -148,10 +135,9 @@ const StyleInfo = ({
   };
 
   const handleImageDelete = (indexToDelete) => {
-    if (window.confirm('이 이미지를 삭제하시겠습니까?')) {
+    if (window.confirm('???대?吏瑜???젣?섏떆寃좎뒿?덇퉴?')) {
       const newImageUrls = imageUrls.filter((_, index) => index !== indexToDelete);
-      
-      // Notify parent component of the change
+
       handleInputChange({
         target: {
           name: 'imageUrls',
@@ -159,7 +145,6 @@ const StyleInfo = ({
         },
       });
 
-      // Adjust mainImageIndex after deletion
       if (newImageUrls.length === 0) {
         setMainImageIndex(0);
       } else if (mainImageIndex >= indexToDelete && mainImageIndex > 0) {
@@ -168,14 +153,12 @@ const StyleInfo = ({
     }
   };
 
-  const [styleDetailsData, setStyleDetailsData] = useState(
-    {
-      Fabric: '',
-      Gender: '',
-      'Size Spec': '',
-      Colorway: '',
-    }
-  );
+  const [styleDetailsData, setStyleDetailsData] = useState({
+    Fabric: '',
+    Gender: '',
+    'Size Spec': '',
+    Colorway: '',
+  });
   const sizeSpecOptions = useMemo(
     () => [
       SIZE_CODES.slice(1, 5).join(', '),
@@ -188,7 +171,7 @@ const StyleInfo = ({
 
   const handleDetailsChange = (event) => {
     const { name, value } = event.target;
-    setStyleDetailsData(prev => ({ ...prev, [name]: value }));
+    setStyleDetailsData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleCustomerChange = (event) => {
@@ -218,49 +201,14 @@ const StyleInfo = ({
       },
     });
   };
-  
-  const costData = [];
-  const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
-  const perJobOrderQuantity = 1;
-  const totalPT = useMemo(
-    () =>
-      calculateProcessTotalForOrderQuantity(
-        normalizedProcesses,
-        'pt',
-        perJobOrderQuantity
-      ),
-    [normalizedProcesses]
-  );
-  const totalAT = useMemo(
-    () =>
-      calculateProcessTotalForOrderQuantity(
-        normalizedProcesses,
-        'at',
-        perJobOrderQuantity
-      ),
-    [normalizedProcesses]
-  );
-  const hasTotalPT = useMemo(
-    () => hasAnyProcessTime(normalizedProcesses, 'pt'),
-    [normalizedProcesses]
-  );
-  const hasTotalAT = useMemo(
-    () => hasAnyProcessTime(normalizedProcesses, 'at'),
-    [normalizedProcesses]
-  );
 
-  const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
-  const overhead = subtotal * 0.1;
-  const totalCost = subtotal + overhead;
-  const sectionWidth = canViewProcessSummary ? '33.33%' : '50%';
-  // --- End of Dummy Data ---
+  const sectionWidth = '50%';
 
   return (
     <Box>
       <Stack direction="row" spacing={3}>
-        {/* Section 1: Image Uploader */}
         <Paper sx={{ p: 2, width: sectionWidth }}>
-          <Typography variant="h6" gutterBottom>스타일 사진</Typography>
+          <Typography variant="h6" gutterBottom>?ㅽ????ъ쭊</Typography>
           <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
             <Box
               sx={{
@@ -286,11 +234,11 @@ const StyleInfo = ({
               ) : (
                 <Stack alignItems="center" spacing={1} color="grey.500">
                   <ImageIcon sx={{ fontSize: 60 }} />
-                  <Typography variant="body2">사진을 업로드하세요</Typography>
+                  <Typography variant="body2">?ъ쭊???낅줈?쒗븯?몄슂</Typography>
                 </Stack>
               )}
             </Box>
-            
+
             {imageUrls.length > 0 && (
               <Stack direction="row" spacing={1.5} sx={{ width: '100%', overflowX: 'auto', p: 1 }}>
                 {imageUrls.map((url, index) => (
@@ -370,18 +318,17 @@ const StyleInfo = ({
             />
             <label htmlFor="raised-button-file">
               <Button variant="contained" component="span" startIcon={<PhotoCamera />}>
-                사진 올리기
+                ?ъ쭊 ?щ━湲?
               </Button>
             </label>
           </Stack>
         </Paper>
 
-        {/* Section 2: Style Info & Details */}
         <Paper sx={{ p: 2, width: sectionWidth }}>
-          <Typography variant="h6" gutterBottom>스타일 정보</Typography>
+          <Typography variant="h6" gutterBottom>?ㅽ????뺣낫</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">고객사</Typography>
+              <Typography variant="body2" color="text.secondary">怨좉컼??</Typography>
               <Select
                 name="customer"
                 value={resolvedCustomerValue}
@@ -391,19 +338,19 @@ const StyleInfo = ({
                 sx={{ width: '70%' }}
               >
                 <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
+                  <Typography variant="body2" color="text.secondary">?좏깮</Typography>
                 </MenuItem>
                 {isBrandOrg && resolvedCustomerValue && (
                   <MenuItem value={resolvedCustomerValue}>{resolvedCustomerValue}</MenuItem>
                 )}
                 {!isBrandOrg && loadingCustomers && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
+                    <Typography variant="body2" color="text.secondary">遺덈윭?ㅻ뒗 以?..</Typography>
                   </MenuItem>
                 )}
                 {!isBrandOrg && !loadingCustomers && customers.length === 0 && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">등록된 고객사가 없습니다</Typography>
+                    <Typography variant="body2" color="text.secondary">?깅줉??怨좉컼?ш? ?놁뒿?덈떎</Typography>
                   </MenuItem>
                 )}
                 {!isBrandOrg && customers.map((customer) => (
@@ -414,7 +361,7 @@ const StyleInfo = ({
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">카테고리</Typography>
+              <Typography variant="body2" color="text.secondary">移댄뀒怨좊━</Typography>
               <Select
                 name="collection"
                 value={formData.collection || ''}
@@ -422,15 +369,15 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
                 {loadingCategories && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
+                    <Typography variant="body2" color="text.secondary">遺덈윭?ㅻ뒗 以?..</Typography>
                   </MenuItem>
                 )}
                 {!loadingCategories && categories.length === 0 && (
                   <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">등록된 카테고리가 없습니다</Typography>
+                    <Typography variant="body2" color="text.secondary">?깅줉??移댄뀒怨좊━媛 ?놁뒿?덈떎</Typography>
                   </MenuItem>
                 )}
                 {categories.map((category) => (
@@ -441,7 +388,7 @@ const StyleInfo = ({
               </Select>
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">스타일명</Typography>
+              <Typography variant="body2" color="text.secondary">?ㅽ??쇰챸</Typography>
               <TextField
                 name="name"
                 value={formData.name || ''}
@@ -450,17 +397,17 @@ const StyleInfo = ({
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">스타일 코드</Typography>
+              <Typography variant="body2" color="text.secondary">?ㅽ???肄붾뱶</Typography>
               <TextField
                 name="styleCode"
                 value={formData.styleCode || ''}
                 onChange={handleInputChange}
-                placeholder={formData.name || '스타일명과 동일'}
+                placeholder={formData.name || '?ㅽ??쇰챸怨??숈씪'}
                 sx={{ width: '70%' }}
               />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">등록일자</Typography>
+              <Typography variant="body2" color="text.secondary">?깅줉?쇱옄</Typography>
               <LocalizationProvider dateAdapter={AdapterDayjs}>
                 <DatePicker
                   value={formData.registrationDate ? dayjs(formData.registrationDate) : dayjs()}
@@ -482,19 +429,19 @@ const StyleInfo = ({
           </Stack>
 
           <Divider sx={{ my: 4 }} />
-          
-          <Typography variant="h6" gutterBottom>세부 정보</Typography>
+
+          <Typography variant="h6" gutterBottom>?몃? ?뺣낫</Typography>
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Fabric</Typography>
               <Select
                 name="Fabric"
-                value={styleDetailsData['Fabric']}
+                value={styleDetailsData.Fabric}
                 onChange={handleDetailsChange}
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
                 <MenuItem value="Cotton">Cotton</MenuItem>
                 <MenuItem value="Polyester">Polyester</MenuItem>
                 <MenuItem value="Linen">Linen</MenuItem>
@@ -510,7 +457,7 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
                 {sizeSpecOptions.map((option) => (
                   <MenuItem key={option} value={option}>
                     {option}
@@ -527,7 +474,7 @@ const StyleInfo = ({
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
                 {GENDER_CODES.map((code) => (
                   <MenuItem key={code} value={code}>
                     {code}
@@ -539,12 +486,12 @@ const StyleInfo = ({
               <Typography variant="body2" color="text.secondary">Colorway</Typography>
               <Select
                 name="Colorway"
-                value={styleDetailsData['Colorway']}
+                value={styleDetailsData.Colorway}
                 onChange={handleDetailsChange}
                 displayEmpty
                 sx={{ width: '70%' }}
               >
-                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">선택</Typography></MenuItem>
+                <MenuItem value="" disabled><Typography variant="body2" color="text.secondary">?좏깮</Typography></MenuItem>
                 <MenuItem value="Basic">Basic</MenuItem>
                 <MenuItem value="Pastel">Pastel</MenuItem>
                 <MenuItem value="Vivid">Vivid</MenuItem>
@@ -553,91 +500,6 @@ const StyleInfo = ({
             </Box>
           </Stack>
         </Paper>
-
-        {/* Section 3: Process Summary & Cost */}
-        {canViewProcessSummary ? (
-        <Paper sx={{ p: 2, width: '33.33%' }}>
-          <Typography variant="h6" gutterBottom>공정 정보 요약</Typography>
-          <Stack spacing={2} sx={{ mt: 2.5, mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">총 공정 수</Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>
-                    {formatNumberWithCommas(processes.length, {
-                      fallback: '0',
-                      maximumFractionDigits: 0,
-                    })}{' '}
-                    개
-                  </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    총 PT
-                  </Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>
-                    {hasTotalPT ? formatSeconds(totalPT) : '-'}
-                  </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    총 AT
-                  </Typography>
-                  <Typography variant="body2" sx={{fontWeight: '500'}}>
-                    {hasTotalAT ? formatSeconds(totalAT) : '-'}
-                  </Typography>
-              </Box>
-          </Stack>
-
-          <Divider sx={{ my: 4 }} />
-          
-          <Typography variant="h6" gutterBottom>예상 비용 (동)</Typography>
-          <Paper elevation={2} sx={{ p: 2, mt: 2.5, bgcolor: 'grey.50' }}>
-            <Stack spacing={2}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
-                <Typography variant="body2">항목</Typography>
-                <Typography variant="body2">금액</Typography>
-              </Box>
-              <Divider />
-              {costData.map((row) => (
-                <Box key={row.item} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">{row.item}</Typography>
-                  <Typography variant="body2">{row.cost}</Typography>
-                </Box>
-              ))}
-              <Divider sx={{ my: 1 }} />
-              <Stack spacing={1}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body1">소계</Typography>
-                  <Typography variant="body1">
-                    {`${formatNumberWithCommas(subtotal, {
-                      fallback: '0',
-                      maximumFractionDigits: 2,
-                    })} 동`}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">추가비용 (10%)</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {`${formatNumberWithCommas(overhead, {
-                      fallback: '0',
-                      maximumFractionDigits: 2,
-                    })} 동`}
-                  </Typography>
-                </Box>
-              </Stack>
-              <Divider sx={{ my: 1 }} />
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>총 비용</Typography>
-                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                  {`${formatNumberWithCommas(totalCost, {
-                    fallback: '0',
-                    maximumFractionDigits: 2,
-                  })} 동`}
-                </Typography>
-              </Box>
-            </Stack>
-          </Paper>
-        </Paper>
-        ) : null}
       </Stack>
     </Box>
   );
