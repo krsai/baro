@@ -1,4 +1,5 @@
 import { buildQueryString, getRequestContext, requestJSON } from './apiClient';
+import { buildAttributeSearchText, resolveLocalizedAttributeName } from './appLanguage';
 
 const ATTRIBUTE_CACHE_TTL_MS = 30 * 1000;
 const attributesCache = new Map();
@@ -27,32 +28,34 @@ const normalizeAttributeItem = (item = {}) => ({
   id: item.id ?? null,
   code: String(item.code ?? '').trim(),
   name: String(item.name ?? '').trim(),
+  nameKo: String(item.nameKo ?? '').trim(),
+  nameEn: String(item.nameEn ?? '').trim(),
+  displayName: resolveLocalizedAttributeName(item),
+  searchText: buildAttributeSearchText(item),
   defaultPayType: normalizePayType(item.defaultPayType),
   sortOrder: normalizeSortOrder(item.sortOrder),
 });
 
 const mergeAttributeItem = (items = [], nextItem) => {
-  const normalizedNextItem = normalizeAttributeItem(nextItem);
-  const nextId = Number(normalizedNextItem.id);
-  const nextCode = String(normalizedNextItem.code || '').trim();
+  const nextId = Number(nextItem?.id);
+  const nextCode = String(nextItem?.code || '').trim();
   let replaced = false;
 
   const mergedItems = normalizeArray(items).map((item) => {
-    const normalizedItem = normalizeAttributeItem(item);
-    const itemId = Number(normalizedItem.id);
+    const itemId = Number(item?.id);
     const sameId =
       Number.isInteger(nextId) &&
       nextId > 0 &&
       Number.isInteger(itemId) &&
       itemId === nextId;
-    const sameCode = Boolean(nextCode) && normalizedItem.code === nextCode;
-    if (!sameId && !sameCode) return normalizedItem;
+    const sameCode = Boolean(nextCode) && String(item?.code || '').trim() === nextCode;
+    if (!sameId && !sameCode) return item;
     replaced = true;
-    return normalizedNextItem;
+    return { ...item, ...nextItem };
   });
 
   if (replaced) return mergedItems;
-  return [...mergedItems, normalizedNextItem];
+  return [...mergedItems, nextItem];
 };
 
 const normalizeAttributes = (data = {}) => ({
@@ -92,6 +95,8 @@ const normalizeAttributePayload = (payload = {}) => {
       id: item.id ?? undefined,
       code: String(item.code ?? '').trim(),
       name: String(item.name ?? '').trim(),
+      nameKo: String(item.nameKo ?? '').trim(),
+      nameEn: String(item.nameEn ?? '').trim(),
       ...(key === 'roles'
         ? {
             defaultPayType: normalizePayType(item.defaultPayType) ?? 'FIXED',
@@ -118,7 +123,7 @@ const readFreshAttributesCache = (cacheKey) => {
 
 const writeAttributesCache = (cacheKey, data) => {
   attributesCache.set(cacheKey, {
-    data: normalizeAttributes(data),
+    data,
     timestamp: Date.now(),
   });
 };
@@ -139,7 +144,7 @@ export const fetchAttributes = async (options = {}) => {
 
   if (!forceRefresh) {
     const cached = readFreshAttributesCache(cacheKey);
-    if (cached) return cached;
+    if (cached) return normalizeAttributes(cached);
     const inflight = attributesInFlight.get(inFlightKey);
     if (inflight) return inflight;
   }
@@ -151,9 +156,8 @@ export const fetchAttributes = async (options = {}) => {
       })}`,
       { skipGlobalLoading, requestScheduler }
     );
-    const normalized = normalizeAttributes(data);
-    writeAttributesCache(cacheKey, normalized);
-    return normalized;
+    writeAttributesCache(cacheKey, data);
+    return normalizeAttributes(data);
   })();
 
   attributesInFlight.set(inFlightKey, requestPromise);
@@ -184,7 +188,7 @@ export const updateAttributes = async (payload, options = {}) => {
   if (previous) {
     const merged = {
       ...previous,
-      ...normalizedPartial,
+      ...data,
     };
     writeAttributesCache(cacheKey, merged);
   } else {
@@ -201,6 +205,8 @@ export const createColorAttribute = async (payload, options = {}) => {
   const body = {
     code: String(payload?.code ?? '').trim(),
     name: String(payload?.name ?? '').trim(),
+    nameKo: String(payload?.nameKo ?? '').trim(),
+    nameEn: String(payload?.nameEn ?? '').trim(),
   };
   const data = await requestJSON(
     `/attributes/colors${buildQueryString({
@@ -217,7 +223,7 @@ export const createColorAttribute = async (payload, options = {}) => {
   if (previous) {
     writeAttributesCache(cacheKey, {
       ...previous,
-      colors: mergeAttributeItem(previous.colors, normalizedColor),
+      colors: mergeAttributeItem(previous.colors, data),
     });
   } else {
     attributesCache.delete(cacheKey);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   AppBar,
   Toolbar,
@@ -205,6 +206,7 @@ const MainLayout = () => {
     setNavigateToPath,
     notification,
   } = useApp();
+  const { languageCode, setLanguageCode } = useLanguage();
   const networkLoading = useNetworkLoading();
 
   const [mountedTabOutlets, setMountedTabOutlets] = useState(() => {
@@ -721,7 +723,9 @@ const MainLayout = () => {
       navigate('/login', { replace: true });
     }
   };
-  const handleLanguageButtonClick = React.useCallback((_languageCode) => {}, []);
+  const handleLanguageButtonClick = React.useCallback((nextLanguageCode) => {
+    setLanguageCode(nextLanguageCode);
+  }, [setLanguageCode]);
 
   const handleMenuItemClick = (path) => {
     handleNavigation(path); // Use the centralized handler
@@ -987,11 +991,17 @@ const MainLayout = () => {
                   minWidth: 'auto',
                   p: 0.15,
                   minHeight: 'auto',
-                  borderRadius: 0,
+                  borderRadius: 0.75,
                   lineHeight: 1,
                   textTransform: 'none',
+                  opacity: languageCode === language.code ? 1 : 0.55,
+                  boxShadow:
+                    languageCode === language.code
+                      ? 'inset 0 0 0 1px rgba(25, 118, 210, 0.65)'
+                      : 'none',
                   '&:hover': {
-                    backgroundColor: 'transparent',
+                    backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                    opacity: 1,
                   },
                 }}
               >

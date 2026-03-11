@@ -33,30 +33,27 @@ const initialData = {
   processes: [],
 };
 
+const MULTILINGUAL_NAME_COLUMNS = [
+  { field: 'name', label: '기본명', width: '22%' },
+  { field: 'nameKo', label: '한국어명', width: '25%' },
+  { field: 'nameEn', label: '영문명', width: '25%' },
+];
+
 const sectionConfigs = [
   {
     key: 'colors',
     title: '색상 (Color)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '색상명', width: '60%' },
-    ],
+    columns: [{ field: 'code', label: '코드', width: '18%' }, ...MULTILINGUAL_NAME_COLUMNS],
   },
   {
     key: 'categories',
     title: '카테고리 (Category)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '카테고리명', width: '60%' },
-    ],
+    columns: [{ field: 'code', label: '코드', width: '18%' }, ...MULTILINGUAL_NAME_COLUMNS],
   },
   {
     key: 'processes',
     title: '공정 (Process)',
-    columns: [
-      { field: 'code', label: '코드', width: '30%' },
-      { field: 'name', label: '공정명', width: '60%' },
-    ],
+    columns: [{ field: 'code', label: '코드', width: '18%' }, ...MULTILINGUAL_NAME_COLUMNS],
   },
 ];
 
@@ -67,6 +64,8 @@ const normalizeRows = (rows) =>
     id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     code: String(item.code ?? '').trim(),
     name: String(item.name ?? '').trim(),
+    nameKo: String(item.nameKo ?? '').trim(),
+    nameEn: String(item.nameEn ?? '').trim(),
   }));
 
 const normalizeData = (data) => ({
@@ -90,7 +89,6 @@ const AttrBoard = () => {
   const [originalData, setOriginalData] = useState(() => cloneDeep(initialData));
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState([]);
 
@@ -109,11 +107,10 @@ const AttrBoard = () => {
         setFormData(normalized);
         setOriginalData(cloneDeep(normalized));
       } catch (_error) {
-        if (!cancelled) {
-          setCanManageProcesses(true);
-          setFormData(cloneDeep(initialData));
-          setOriginalData(cloneDeep(initialData));
-        }
+        if (cancelled) return;
+        setCanManageProcesses(true);
+        setFormData(cloneDeep(initialData));
+        setOriginalData(cloneDeep(initialData));
       }
     };
 
@@ -145,6 +142,8 @@ const AttrBoard = () => {
           id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           code: '',
           name: '',
+          nameKo: '',
+          nameEn: '',
         },
       ],
     }));
@@ -165,24 +164,26 @@ const AttrBoard = () => {
       const beforeRows = originalData[sectionKey] || [];
       const afterRows = formData[sectionKey] || [];
       const title = section.title.split(' (')[0];
+      const fields = section.columns.map((column) => column.field);
 
       afterRows.forEach((row) => {
         if (!beforeRows.find((before) => String(before.id) === String(row.id))) {
-          results.push(`[${title}] 추가: ${row.name || row.code || '새 항목'}`);
+          results.push(`[${title}] 추가: ${row.name || row.nameKo || row.nameEn || row.code || '새 항목'}`);
         }
       });
 
       beforeRows.forEach((row) => {
         if (!afterRows.find((after) => String(after.id) === String(row.id))) {
-          results.push(`[${title}] 삭제: ${row.name || row.code || '항목'}`);
+          results.push(`[${title}] 삭제: ${row.name || row.nameKo || row.nameEn || row.code || '항목'}`);
         }
       });
 
       afterRows.forEach((row) => {
         const before = beforeRows.find((item) => String(item.id) === String(row.id));
         if (!before) return;
-        if (before.code !== row.code || before.name !== row.name) {
-          results.push(`[${title}] 수정: ${row.name || row.code || '항목'}`);
+        const hasChanged = fields.some((field) => String(before[field] ?? '') !== String(row[field] ?? ''));
+        if (hasChanged) {
+          results.push(`[${title}] 수정: ${row.name || row.nameKo || row.nameEn || row.code || '항목'}`);
         }
       });
     });
@@ -242,9 +243,14 @@ const AttrBoard = () => {
       sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
-          {config.title}
-        </Typography>
+        <Box>
+          <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+            {config.title}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            기본명은 기존 화면 호환용이고, 한국어명/영문명은 다국어 표시용입니다.
+          </Typography>
+        </Box>
         <Button
           size="small"
           variant="outlined"
@@ -255,7 +261,7 @@ const AttrBoard = () => {
         </Button>
       </Box>
 
-      <TableContainer sx={{ maxHeight: 374, overflow: 'auto' }}>
+      <TableContainer sx={{ maxHeight: 420, overflow: 'auto' }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
@@ -274,8 +280,8 @@ const AttrBoard = () => {
                   <TableCell key={col.field}>
                     <TextField
                       value={row[col.field] || ''}
-                      onChange={(e) =>
-                        handleRowChange(config.key, row.id, col.field, e.target.value)
+                      onChange={(event) =>
+                        handleRowChange(config.key, row.id, col.field, event.target.value)
                       }
                       fullWidth
                       size="small"
@@ -297,7 +303,7 @@ const AttrBoard = () => {
                   colSpan={config.columns.length + 1}
                   sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}
                 >
-                  데이터 없음
+                  데이터가 없습니다.
                 </TableCell>
               </TableRow>
             )}
@@ -316,7 +322,7 @@ const AttrBoard = () => {
               속성 관리
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              사이즈/성별은 공통 코드로 고정되어 있어 이 화면에서 관리하지 않습니다.
+              사이즈와 성별은 공통 코드로 고정되어 있어 이 화면에서 관리하지 않습니다.
             </Typography>
           </Box>
 
@@ -337,7 +343,7 @@ const AttrBoard = () => {
 
         <Grid container spacing={3}>
           {visibleSectionConfigs.map((config) => (
-            <Grid item xs={12} md={6} key={config.key}>
+            <Grid item xs={12} key={config.key}>
               {renderSection(config)}
             </Grid>
           ))}

@@ -24,6 +24,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SearchableSelect from '../../../../components/SearchableSelect';
+import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
   AT_RELIABILITY_STATUS,
@@ -132,11 +133,14 @@ const normalizeProcessOption = (item) => {
     .trim()
     .toUpperCase();
   const name = String(item?.name ?? '').trim();
+  const displayName = String(item?.displayName ?? name ?? code).trim();
   if (!code && !name) return null;
   return {
     id: item?.id ?? null,
     code: code || name,
     name: name || code,
+    displayName: displayName || name || code,
+    searchText: String(item?.searchText || '').trim(),
     description: String(item?.description ?? '').trim(),
     actualTime: item?.actualTime ?? null,
   };
@@ -161,9 +165,10 @@ const createInstanceId = (process) =>
   `${process?.code || process?.name || 'PROC'}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-const toProcessOptionLabel = (process) => `[${process?.code || ''}] ${process?.name || ''}`.trim();
+const toProcessOptionLabel = (process) =>
+  `[${process?.code || ''}] ${process?.displayName || process?.name || ''}`.trim();
 const compareProcessOptionTextAsc = (left, right) =>
-  toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right), 'ko');
+  toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right));
 
 const normalizeStValues = (process) => {
   const normalized = normalizeProcess(process);
@@ -272,6 +277,7 @@ const StyleProcess = ({
   processes = [],
   onProcessesChange,
 }) => {
+  const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [timeRefQuantity, setTimeRefQuantity] = useState(() =>
     resolveCommonTimeRefQuantity(safeProcesses)
@@ -308,7 +314,7 @@ const StyleProcess = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [languageCode]);
 
   const normalizedAttributeOptions = useMemo(
     () => attributeProcesses.map((item) => normalizeProcessOption(item)).filter(Boolean),
@@ -726,7 +732,9 @@ const StyleProcess = ({
                               setAddDraft((prev) => ({ ...prev, process: value }));
                               setAddError('');
                             }}
-                            getOptionLabel={(option) => `[${option.code}] ${option.name}`}
+                            getOptionLabel={(option) =>
+                              `[${option.code}] ${option.displayName || option.name}`
+                            }
                             isOptionEqualToValue={(option, value) =>
                               option.id === value?.id || option.code === value?.code
                             }

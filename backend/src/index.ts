@@ -5636,6 +5636,21 @@ const toAttrRoleResponse = (role: any) => ({
   sortOrder: toSortOrder(role?.sortOrder, 0),
 });
 
+const resolveManagedAttributeNameData = (item: any) => {
+  const nameKo = resolveOptionalString(item?.nameKo, null);
+  const nameEn = resolveOptionalString(item?.nameEn, null);
+  const name =
+    resolveOptionalString(item?.name, null) ??
+    nameKo ??
+    nameEn ??
+    "";
+  return {
+    name,
+    nameKo,
+    nameEn,
+  };
+};
+
 const ensureDefaultEmployeeRoles = async (orgId: number) => {
   const existingRoles = await prisma.attrRole.findMany({
     where: { orgId },
@@ -5927,7 +5942,7 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
     }
 
     let code = (item.code ?? "").trim();
-    const name = (item.name ?? "").trim();
+    const { name, nameKo, nameEn } = resolveManagedAttributeNameData(item);
     if (typeof options.resolveCode === "function") {
       code = options.resolveCode({
         code,
@@ -5950,11 +5965,11 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
       updates.push(
         model.updateMany({
           where: { id: itemId, orgId },
-          data: { code, name },
+          data: { code, name, nameKo, nameEn },
         })
       );
     } else {
-      creates.push({ orgId, code, name });
+      creates.push({ orgId, code, name, nameKo, nameEn });
     }
 
     const trackedNextCode =
@@ -6011,8 +6026,19 @@ const syncGlobalColorSection = async (items: any) => {
     return set;
   }, new Set<string>());
 
-  const creates: Array<{ code: string; name: string }> = [];
-  const updates: Array<{ id: number; code: string; name: string }> = [];
+  const creates: Array<{
+    code: string;
+    name: string;
+    nameKo: string | null;
+    nameEn: string | null;
+  }> = [];
+  const updates: Array<{
+    id: number;
+    code: string;
+    name: string;
+    nameKo: string | null;
+    nameEn: string | null;
+  }> = [];
   const changedCodes: Array<{ id: number; code: string }> = [];
   const changedNames: Array<{ id: number; name: string }> = [];
 
@@ -6026,7 +6052,7 @@ const syncGlobalColorSection = async (items: any) => {
       usedCodes.delete(trackedExistingCode);
     }
 
-    const name = String(item?.name ?? "").trim();
+    const { name, nameKo, nameEn } = resolveManagedAttributeNameData(item);
     const code = resolveColorAttributeCode({
       code: String(item?.code ?? "").trim(),
       name,
@@ -6045,6 +6071,8 @@ const syncGlobalColorSection = async (items: any) => {
         id: itemId,
         code,
         name,
+        nameKo,
+        nameEn,
       });
       if (existingRow.code !== code) {
         changedCodes.push({ id: itemId, code });
@@ -6053,7 +6081,7 @@ const syncGlobalColorSection = async (items: any) => {
         changedNames.push({ id: itemId, name });
       }
     } else {
-      creates.push({ code, name });
+      creates.push({ code, name, nameKo, nameEn });
     }
 
     const trackedNextCode = normalizeManagedAttributeCode(code);
@@ -6071,7 +6099,12 @@ const syncGlobalColorSection = async (items: any) => {
       updates.map((row) =>
         prisma.attrColor.update({
           where: { id: row.id },
-          data: { code: row.code, name: row.name },
+          data: {
+            code: row.code,
+            name: row.name,
+            nameKo: row.nameKo,
+            nameEn: row.nameEn,
+          },
         })
       )
     );
@@ -9586,7 +9619,7 @@ app.post("/attributes/colors", async (req, res) => {
   const systemAdmin = await requireSystemAdmin(req, res);
   if (!systemAdmin) return;
 
-  const name = resolveOptionalString(req.body?.name, null);
+  const { name, nameKo, nameEn } = resolveManagedAttributeNameData(req.body ?? {});
   const code = resolveOptionalString(req.body?.code, null);
   if (!name) {
     return res.status(400).json({ ok: false, error: "name is required" });
@@ -9608,6 +9641,8 @@ app.post("/attributes/colors", async (req, res) => {
     data: {
       code: nextCode,
       name,
+      nameKo,
+      nameEn,
     },
   });
 

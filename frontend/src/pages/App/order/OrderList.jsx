@@ -36,6 +36,7 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import {
   loadOrderDraft,
   saveOrderDraft,
@@ -48,6 +49,7 @@ import {
   GENDER_CODES,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
+import { collectAttributeTextCandidates } from '../../../utils/appLanguage';
 import {
   ORDER_CONFIRMATION_TEXT,
   ORDER_CONFIRMATION_STATUS_KEYS,
@@ -365,6 +367,12 @@ const mergeColorOption = (items = [], nextItem) => {
     id: nextItem?.id ?? null,
     code: normalizeColorCode(nextItem?.code),
     name: String(nextItem?.name || nextItem?.code || '').trim(),
+    nameKo: String(nextItem?.nameKo || '').trim(),
+    nameEn: String(nextItem?.nameEn || '').trim(),
+    displayName: String(
+      nextItem?.displayName || nextItem?.name || nextItem?.nameKo || nextItem?.nameEn || nextItem?.code || ''
+    ).trim(),
+    searchText: String(nextItem?.searchText || collectAttributeTextCandidates(nextItem).join(' ')).trim(),
   };
   if (!normalizedNextItem.code) return items;
 
@@ -375,6 +383,12 @@ const mergeColorOption = (items = [], nextItem) => {
       id: item?.id ?? null,
       code: normalizeColorCode(item?.code),
       name: String(item?.name || item?.code || '').trim(),
+      nameKo: String(item?.nameKo || '').trim(),
+      nameEn: String(item?.nameEn || '').trim(),
+      displayName: String(
+        item?.displayName || item?.name || item?.nameKo || item?.nameEn || item?.code || ''
+      ).trim(),
+      searchText: String(item?.searchText || collectAttributeTextCandidates(item).join(' ')).trim(),
     };
     const sameId = nextId && toPositiveColorId(normalizedItem.id) === nextId;
     const sameCode = normalizedItem.code && normalizedItem.code === normalizedNextItem.code;
@@ -405,7 +419,9 @@ const focusInputElementInMap = (mapRef, key) => {
   });
 };
 const normalizeTextKey = (value) => String(value || '').trim().toLowerCase();
-const filterColorOptions = createFilterOptions();
+const filterColorOptions = createFilterOptions({
+  stringify: (option) => option?.searchText || option?.displayName || option?.name || option?.code || '',
+});
 const hasDuplicateOrderNumberByCustomer = ({
   orders = [],
   currentOrderId = '',
@@ -713,6 +729,7 @@ const OrderList = () => {
   const currentOrderRoutePath = isDetailMode ? `/order/${orderId}` : '/order';
   const { showNotification, navigateToPath, activePath, refreshSignals, markPathForRefresh } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
+  const { languageCode } = useLanguage();
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
   const [orders, setOrders] = useState([]);
@@ -800,7 +817,7 @@ const OrderList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId]);
+  }, [activeOrgId, languageCode]);
 
   const loadOrdersFromDb = useCallback(async ({ forceRefresh = false, cancelledRef = null } = {}) => {
     if (!cancelledRef?.current) {
@@ -1065,12 +1082,19 @@ const OrderList = () => {
           id: item?.id ?? null,
           code: normalizeColorCode(item?.code),
           name: String(item?.name || item?.code || '').trim(),
+          nameKo: String(item?.nameKo || '').trim(),
+          nameEn: String(item?.nameEn || '').trim(),
+          displayName: String(item?.displayName || item?.name || item?.code || '').trim(),
+          searchText: String(item?.searchText || collectAttributeTextCandidates(item).join(' ')).trim(),
         }))
         .filter((item) => item.code)
         .sort((a, b) =>
-          String(a.name || a.code).localeCompare(String(b.name || b.code), 'ko')
+          String(a.displayName || a.name || a.code).localeCompare(
+            String(b.displayName || b.name || b.code),
+            languageCode === 'ko' ? 'ko' : undefined
+          )
         ),
-    [colorOptions]
+    [colorOptions, languageCode]
   );
   const colorOptionById = useMemo(
     () =>
@@ -1086,19 +1110,19 @@ const OrderList = () => {
       new Map(
         normalizedColorOptions.map((item) => [
           item.code,
-          { id: item.id, code: item.code, name: item.name },
+          { ...item },
         ])
       ),
     [normalizedColorOptions]
   );
   const colorOptionByNameKey = useMemo(
     () =>
-      new Map(
-        normalizedColorOptions.map((item) => [
-          normalizeColorNameKey(item.name || item.code),
-          item,
-        ])
-      ),
+      normalizedColorOptions.reduce((map, item) => {
+        collectAttributeTextCandidates(item).forEach((candidate) => {
+          map.set(normalizeColorNameKey(candidate), item);
+        });
+        return map;
+      }, new Map()),
     [normalizedColorOptions]
   );
   const genderSelectOptions = useMemo(
@@ -1486,7 +1510,9 @@ const OrderList = () => {
   const applyColorSelection = (itemId, selectedColor, options = {}) => {
     const nextColorId = toPositiveColorId(selectedColor?.id);
     const nextColorCode = normalizeColorCode(selectedColor?.code);
-    const nextColorName = String(selectedColor?.name || selectedColor?.code || '').trim();
+    const nextColorName = String(
+      selectedColor?.displayName || selectedColor?.name || selectedColor?.code || ''
+    ).trim();
     const previewItems = formData.items.map((item) =>
       item.id === itemId
         ? {
@@ -1533,14 +1559,24 @@ const OrderList = () => {
 
     setCreatingColorItemId(itemId);
     try {
+      const createPayload =
+        languageCode === 'ko'
+          ? { name: colorName, nameKo: colorName }
+          : languageCode === 'en'
+            ? { name: colorName, nameEn: colorName }
+            : { name: colorName };
       const createdColor = await createColorAttribute(
-        { name: colorName },
+        createPayload,
         { orgId: activeOrgId }
       );
       const normalizedCreatedColor = {
         id: createdColor?.id ?? null,
         code: normalizeColorCode(createdColor?.code),
         name: String(createdColor?.name || createdColor?.code || '').trim(),
+        nameKo: String(createdColor?.nameKo || '').trim(),
+        nameEn: String(createdColor?.nameEn || '').trim(),
+        displayName: String(createdColor?.displayName || createdColor?.name || createdColor?.code || '').trim(),
+        searchText: String(createdColor?.searchText || collectAttributeTextCandidates(createdColor).join(' ')).trim(),
       };
       setColorOptions((prev) => mergeColorOption(prev, normalizedCreatedColor));
       const applied = applyColorSelection(itemId, normalizedCreatedColor, options);
@@ -2438,7 +2474,7 @@ const OrderList = () => {
                                 if (option?.isCreateOption) {
                                   return option.inputValue || option.name || '';
                                 }
-                                return option?.name || option?.code || '';
+                                return option?.displayName || option?.name || option?.code || '';
                               }}
                               isOptionEqualToValue={(option, value) => {
                                 const optionId = toPositiveColorId(option?.id);
@@ -2452,7 +2488,7 @@ const OrderList = () => {
                                 <li {...props}>
                                   {option?.isCreateOption
                                     ? `새 색상 추가: ${option.inputValue || option.name || ''}`
-                                    : option?.name || option?.code || ''}
+                                    : option?.displayName || option?.name || option?.code || ''}
                                 </li>
                               )}
                               autoHighlight

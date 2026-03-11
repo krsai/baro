@@ -20,6 +20,7 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
+import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
 
@@ -60,6 +61,7 @@ const StyleInfo = ({
   isBrandOrg = false,
   defaultCustomerName = '',
 }) => {
+  const { languageCode } = useLanguage();
   const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [customers, setCustomers] = useState([]);
@@ -124,7 +126,7 @@ const StyleInfo = ({
     return () => {
       active = false;
     };
-  }, []);
+  }, [languageCode]);
 
   const handleImageChange = () => {
     console.log('Image selection not implemented yet.');
@@ -384,7 +386,7 @@ const StyleInfo = ({
                 )}
                 {categories.map((category) => (
                   <MenuItem key={category.id || category.code || category.name} value={category.name}>
-                    {category.name}
+                    {category.displayName || category.name}
                   </MenuItem>
                 ))}
               </Select>

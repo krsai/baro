@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { buildQueryString, requestJSON, setRequestContext } from '../utils/apiClient';
+import { clearLanguageOverride } from '../utils/appLanguage';
 
 const AuthContext = createContext(null);
 
@@ -492,6 +493,7 @@ export const AuthProvider = ({ children }) => {
     setAccessProfile(null);
     setAccessLoading(false);
     setRequestContext({ userEmail: '', orgId: null });
+    clearLanguageOverride();
     removeAuthStorage(DEV_BYPASS_KEY);
     removeAuthStorage(DEV_PROFILE_KEY);
   };

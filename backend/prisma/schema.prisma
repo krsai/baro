@@ -329,9 +329,11 @@ model OrgRelationship {
 }
 
 model AttrColor {
-  id   Int    @id @default(autoincrement())
-  code String @unique
-  name String
+  id     Int     @id @default(autoincrement())
+  code   String  @unique
+  name   String
+  nameKo String?
+  nameEn String?
 
   workOrderItems  WorkOrderItem[]
   workRecords     WorkRecord[]
@@ -339,10 +341,12 @@ model AttrColor {
 }
 
 model AttrCategory {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
+  id     Int     @id @default(autoincrement())
+  orgId  Int
+  code   String
+  name   String
+  nameKo String?
+  nameEn String?
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -367,10 +371,12 @@ model AttrRole {
 }
 
 model AttrProcess {
-  id    Int    @id @default(autoincrement())
-  orgId Int
-  code  String
-  name  String
+  id     Int     @id @default(autoincrement())
+  orgId  Int
+  code   String
+  name   String
+  nameKo String?
+  nameEn String?
 
   organization Organization @relation(fields: [orgId], references: [id])
   workRecords  WorkRecord[]

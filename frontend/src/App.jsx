@@ -4,6 +4,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
 import { AppProvider } from './context/AppContext';
+import { LanguageProvider } from './context/LanguageContext';
 import router from './router';
 import theme from './theme';
 import { DndProvider } from 'react-dnd';
@@ -35,9 +36,11 @@ const App = () => {
       <AppProvider>
         <DndProvider backend={HTML5Backend}>
           <AuthProvider>
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <RouterProvider router={router} />
-            </Suspense>
+            <LanguageProvider>
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <RouterProvider router={router} />
+              </Suspense>
+            </LanguageProvider>
           </AuthProvider>
         </DndProvider>
       </AppProvider>

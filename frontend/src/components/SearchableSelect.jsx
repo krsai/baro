@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Autocomplete, TextField } from '@mui/material';
+import { createFilterOptions } from '@mui/material/Autocomplete';
 
 /**
  * A reusable search-enabled select dropdown component.
@@ -29,6 +30,7 @@ const SearchableSelect = ({
   getOptionDisabled,
   isOptionEqualToValue = (option, selectedValue) => option === selectedValue,
   slotProps,
+  filterOptions,
   ...props
 }) => {
   const {
@@ -84,6 +86,17 @@ const SearchableSelect = ({
     value == null || Array.isArray(value)
       ? value
       : options.find((option) => isOptionEqualToValue(option, value)) ?? value;
+  const resolvedFilterOptions =
+    filterOptions ||
+    createFilterOptions({
+      stringify: (option) => {
+        if (typeof option === 'string') return option;
+        if (typeof option?.searchText === 'string' && option.searchText.trim()) {
+          return option.searchText;
+        }
+        return getOptionLabel(option);
+      },
+    });
 
   return (
     <Autocomplete
@@ -91,6 +104,7 @@ const SearchableSelect = ({
       onChange={onChange}
       options={options}
       getOptionLabel={getOptionLabel}
+      filterOptions={resolvedFilterOptions}
       disabled={disabled}
       autoSelect={autoSelect}
       isOptionEqualToValue={isOptionEqualToValue}

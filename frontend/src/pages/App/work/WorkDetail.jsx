@@ -12,10 +12,16 @@ import {
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { koKR as datePickerKoKR } from '@mui/x-date-pickers/locales';
+import {
+  enUS as datePickerEnUS,
+  koKR as datePickerKoKR,
+  viVN as datePickerViVN,
+} from '@mui/x-date-pickers/locales';
 import CloseIcon from '@mui/icons-material/Close';
 import dayjs from 'dayjs';
+import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
+import 'dayjs/locale/vi';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
@@ -25,7 +31,9 @@ import {
   resolveProcessAtPerPieceSeconds,
 } from '../../../utils/processTime';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { matchesAttributeText } from '../../../utils/appLanguage';
 import WorkerLog from './WorkerLog';
 
 const buildLogId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -178,7 +186,7 @@ const findProcessValue = (record, styleValue, fallbackIndex) => {
     if (byCode) return byCode;
   }
   if (record?.processName) {
-    const byName = processes.find((process) => equalsText(process?.name, record.processName));
+    const byName = processes.find((process) => matchesAttributeText(process, record.processName));
     if (byName) return byName;
   }
 
@@ -209,7 +217,7 @@ const findColorValue = (colors, record, fallbackIndex) => {
   }
 
   if (colorName) {
-    const byName = colors.find((color) => equalsText(color?.name, colorName));
+    const byName = colors.find((color) => matchesAttributeText(color, colorName));
     if (byName) return byName;
   }
 
@@ -276,7 +284,7 @@ const resolvePlanColorValue = ({ plan, colors, fallbackIndex }) => {
   const matchedColor =
     colors.find(
       (color) =>
-        equalsText(color?.name, plan?.colorName) ||
+        matchesAttributeText(color, plan?.colorName) ||
         equalsText(color?.code, plan?.color) ||
         equalsText(color?.code, plan?.colorName)
     ) || null;
@@ -437,7 +445,7 @@ const resolveProcessForRecord = ({ record, card, style, fallbackIndex }) => {
     if (byCode) return byCode;
   }
   if (record?.processName) {
-    const byName = processOptions.find((process) => equalsText(process?.name, record.processName));
+    const byName = processOptions.find((process) => matchesAttributeText(process, record.processName));
     if (byName) return byName;
   }
   if (processOptions.length === 1) return processOptions[0];
@@ -844,6 +852,7 @@ const WorkDetail = ({
   initialLog = null,
 }) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
+  const { languageCode } = useLanguage();
   const [workDate, setWorkDate] = useState(() => buildInitialWorkDateValue(initialLog));
   const [factories, setFactories] = useState([]);
   const [selectedFactory, setSelectedFactory] = useState(() => buildInitialFactorySelection(initialLog));
@@ -968,7 +977,7 @@ const WorkDetail = ({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id]);
+  }, [activeOrgId, activeOrgRole, activeFactoryId, initialLog?.id, languageCode]);
 
   useEffect(() => {
     if (!selectedFactory?.id) {
@@ -1835,8 +1844,15 @@ const WorkDetail = ({
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
           <LocalizationProvider
             dateAdapter={AdapterDayjs}
-            adapterLocale="ko"
-            localeText={datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText}
+            adapterLocale={languageCode}
+            localeText={
+              (languageCode === 'ko'
+                ? datePickerKoKR
+                : languageCode === 'vi'
+                  ? datePickerViVN
+                  : datePickerEnUS
+              ).components.MuiLocalizationProvider.defaultProps.localeText
+            }
           >
             <DatePicker
               label="작업일자"
