@@ -335,6 +335,7 @@ export const createLineRouter = ({
     const hasFactoryFilter = Number.isFinite(factoryId);
     const lineId = Number(req.query.lineId);
     const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
+    const summaryOnly = req.query.summary === "1" || req.query.summary === "true";
     const workDateInput = resolveOptionalString(req.query.workDate, null);
     const hasWorkDateFilter = Boolean(workDateInput);
     const normalizedWorkDate = hasWorkDateFilter ? normalizeDateKey(workDateInput) : null;
@@ -391,6 +392,13 @@ export const createLineRouter = ({
       const employeeIds = Array.from(
         new Set(assignments.map((assignment) => assignment.employeeId))
       );
+      if (summaryOnly) {
+        return res.json(
+          employeeIds.length > 0
+            ? [{ lineId: line.id, workerCount: employeeIds.length }]
+            : []
+        );
+      }
       if (employeeIds.length === 0) {
         return res.json([]);
       }
@@ -426,6 +434,41 @@ export const createLineRouter = ({
       return res.status(400).json({ ok: false, error: "invalid workDate" });
     }
 
+    const assignmentWhere: Prisma.LineAssignmentWhereInput = {
+      line: {
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+      },
+      ...(dateRange
+        ? {
+            startAt: { lte: dateRange.endAt },
+            OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+          }
+        : { endAt: null }),
+    };
+
+    if (summaryOnly) {
+      const assignments = await prisma.lineAssignment.findMany({
+        where: assignmentWhere,
+        select: { employeeId: true, lineId: true },
+      });
+      const employeeIdsByLine = assignments.reduce((map, assignment) => {
+        const key = Number(assignment.lineId);
+        const current = map.get(key) ?? new Set<number>();
+        current.add(Number(assignment.employeeId));
+        map.set(key, current);
+        return map;
+      }, new Map<number, Set<number>>());
+      return res.json(
+        Array.from(employeeIdsByLine.entries())
+          .map(([currentLineId, employeeIds]) => ({
+            lineId: currentLineId,
+            workerCount: employeeIds.size,
+          }))
+          .sort((a, b) => a.lineId - b.lineId)
+      );
+    }
+
     const [workers, assignments] = await Promise.all([
       prisma.employee.findMany({
         where: {
@@ -437,18 +480,7 @@ export const createLineRouter = ({
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
       }),
       prisma.lineAssignment.findMany({
-        where: {
-          line: {
-            orgId: organization.id,
-            ...(hasFactoryFilter ? { factoryId } : {}),
-          },
-          ...(dateRange
-            ? {
-                startAt: { lte: dateRange.endAt },
-                OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
-              }
-            : { endAt: null }),
-        },
+        where: assignmentWhere,
         select: { employeeId: true, lineId: true },
       }),
     ]);

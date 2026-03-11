@@ -39,6 +39,7 @@ import {
   ASSIGN_TIMELINE_CELL_WIDTH,
 } from './constants';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { fetchStyleById } from '../../../utils/styleApi';
 import {
   HOLIDAY_UPDATED_EVENT,
   STORAGE_KEYS,
@@ -181,17 +182,18 @@ const resolveProcessStSeedSeconds = ({
 };
 const isAssignmentLockedStatus = (value) => isAssignmentCtStatusLocked(value);
 
-const buildAssignableLines = ({ factories, lines, workers }) => {
+const buildAssignableLines = ({ factories, lines, lineHeadcounts }) => {
   const safeFactories = Array.isArray(factories) ? factories : [];
   const safeLines = Array.isArray(lines) ? lines : [];
-  const safeWorkers = Array.isArray(workers) ? workers : [];
+  const safeLineHeadcounts = Array.isArray(lineHeadcounts) ? lineHeadcounts : [];
   const factoryById = new Map(
     safeFactories.map((factory, index) => [normalizeKey(factory?.id), { ...factory, __order: index }])
   );
-  const lineHeadcountMap = safeWorkers.reduce((map, worker) => {
-    const key = normalizeKey(worker?.currentLineId);
-    if (!key) return map;
-    map.set(key, (map.get(key) || 0) + 1);
+  const lineHeadcountMap = safeLineHeadcounts.reduce((map, item) => {
+    const key = normalizeKey(item?.lineId);
+    const workerCount = Number(item?.workerCount);
+    if (!key || !Number.isFinite(workerCount) || workerCount <= 0) return map;
+    map.set(key, Math.max(0, Math.trunc(workerCount)));
     return map;
   }, new Map());
 
@@ -1781,6 +1783,7 @@ const AssignBoard = () => {
   const [persistReady, setPersistReady] = useState(false);
   const hasLoadedSourceDataRef = useRef(false);
   const lastLoadedOrgIdRef = useRef(null);
+  const detailStyleFetchAttemptRef = useRef(new Set());
   const startDateRef = useRef(getMonthStartDate());
   const splitCounterRef = useRef(1);
   const lastSavedSnapshotRef = useRef('');
@@ -2294,25 +2297,26 @@ const AssignBoard = () => {
     const loadSourceData = async () => {
       setPersistReady(false);
       setLoading(true);
+      detailStyleFetchAttemptRef.current = new Set();
       let appliedSavedBoardState = false;
       let loadedSuccessfully = false;
       try {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
-        let assignmentCardsSettled = false;
-        let assignmentCardsResponseCache = null;
-        const assignmentCardsPromise = requestJSON('/assignment-cards' + orgQuery, {
+        const assignmentCardsQuery = buildQueryString({
+          orgId: activeOrgId,
+          includeProcesses: 0,
+        });
+        const boardViewQuery = buildQueryString({
+          orgId: activeOrgId,
+          includeCards: 0,
+        });
+        const lineHeadcountQuery = buildQueryString({
+          orgId: activeOrgId,
+          summary: 1,
+        });
+        const assignmentCardsPromise = requestJSON('/assignment-cards' + assignmentCardsQuery, {
           forceRefresh: true,
-        })
-          .then((response) => {
-            assignmentCardsSettled = true;
-            assignmentCardsResponseCache = response;
-            return response;
-          })
-          .catch(() => {
-            assignmentCardsSettled = true;
-            assignmentCardsResponseCache = null;
-            return null;
-          });
+        }).catch(() => null);
 
         const applyAssignmentCardsResponse = (assignmentCardsResponse, nextLines, boardState) => {
           const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
@@ -2330,11 +2334,13 @@ const AssignBoard = () => {
           });
         };
 
-        const [factories, lines, workers, boardState] = await Promise.all([
+        const [factories, lines, lineHeadcounts, boardState] = await Promise.all([
           requestJSON('/factories' + orgQuery).catch(() => []),
           requestJSON('/lines' + orgQuery).catch(() => []),
-          requestJSON('/line-workers' + orgQuery).catch(() => []),
-          requestJSON('/assignment-board-view' + orgQuery, { forceRefresh: true }).catch(() => null),
+          requestJSON('/line-workers' + lineHeadcountQuery).catch(() => []),
+          requestJSON('/assignment-board-view' + boardViewQuery, {
+            forceRefresh: true,
+          }).catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -2342,39 +2348,22 @@ const AssignBoard = () => {
         const nextLines = buildAssignableLines({
           factories: safeFactories,
           lines,
-          workers,
+          lineHeadcounts,
         });
-        const savedCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
-
-        if (assignmentCardsSettled && assignmentCardsResponseCache) {
-          applyAssignmentCardsResponse(assignmentCardsResponseCache, nextLines, boardState);
-          appliedSavedBoardState = true;
-          loadedSuccessfully = true;
-          return;
-        }
-
-        applyLoadedBoardData({
-          nextStyles: [],
-          nextLines,
-          baseCards: savedCards,
-          boardState,
-          markPersistReady: assignmentCardsSettled,
-        });
-        appliedSavedBoardState = true;
-        loadedSuccessfully = true;
-
-        if (assignmentCardsSettled) {
-          return;
-        }
 
         const assignmentCardsResponse = await assignmentCardsPromise;
         if (cancelled) return;
         if (!assignmentCardsResponse) {
+          setStyles([]);
+          setLines(nextLines);
+          setCards([]);
+          setAssignments([]);
           setPersistReady(true);
           return;
         }
 
         applyAssignmentCardsResponse(assignmentCardsResponse, nextLines, boardState);
+        appliedSavedBoardState = true;
         loadedSuccessfully = true;
       } catch (_error) {
         if (!cancelled) {
@@ -2551,7 +2540,9 @@ const AssignBoard = () => {
     assignmentsRef,
   ]);
 
-  const navigationBlocker = useBlocker(persistReady && isDirty && !persisting);
+  const navigationBlocker = useBlocker(
+    isAssignmentRouteActive && persistReady && isDirty && !persisting
+  );
 
   useEffect(() => {
     if (navigationBlocker.state !== 'blocked') return;
@@ -2776,6 +2767,54 @@ const AssignBoard = () => {
     if (!styleId) return null;
     return styleById.get(styleId) || null;
   }, [detailCard, styleById]);
+  useEffect(() => {
+    const styleId = String(detailCard?.styleId || '').trim();
+    if (!styleId || !activeOrgId) return undefined;
+    const attemptKey = `${activeOrgId}:${styleId}`;
+    const currentStyle = styleById.get(styleId) || null;
+    if (
+      Array.isArray(currentStyle?.processes) &&
+      currentStyle.processes.length > 0
+    ) {
+      return undefined;
+    }
+    if (detailStyleFetchAttemptRef.current.has(attemptKey)) {
+      return undefined;
+    }
+
+    detailStyleFetchAttemptRef.current.add(attemptKey);
+    let cancelled = false;
+
+    const loadStyleDetail = async () => {
+      try {
+        const loadedStyle = await fetchStyleById(styleId, {
+          orgId: activeOrgId,
+          ownerOrgId: currentStyle?.ownerOrgId ?? null,
+          skipGlobalLoading: true,
+        });
+        if (cancelled || !loadedStyle) return;
+        setStyles((prev) => {
+          const next = Array.isArray(prev) ? [...prev] : [];
+          const existingIndex = next.findIndex(
+            (item) => String(item?.id || '').trim() === styleId
+          );
+          if (existingIndex >= 0) {
+            next[existingIndex] = loadedStyle;
+          } else {
+            next.push(loadedStyle);
+          }
+          return next;
+        });
+      } catch (_error) {
+        // Keep the attempt consumed to avoid repeated background fetches for missing styles.
+      }
+    };
+
+    loadStyleDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrgId, detailCard, styleById]);
   const detailLine = useMemo(() => {
     if (!detailAssignment) return null;
     return lineById.get(String(detailAssignment.lineId)) || null;

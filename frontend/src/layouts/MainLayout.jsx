@@ -240,6 +240,7 @@ const MainLayout = () => {
       if (pendingNavigationPathRef.current !== nextPathname) return;
       const browserPath = toPathname(window.location.pathname || '/');
       if (browserPath !== sourcePath) return;
+      if (pendingCloseTabRef.current) return;
       pendingNavigationPathRef.current = null;
       pendingCloseTabRef.current = null;
     }, 0);

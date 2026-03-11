@@ -196,7 +196,9 @@ export const fetchStyleById = async (styleId, options = {}) => {
       orgId: toPositiveOrgId(options?.orgId),
       ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     });
-    const data = await requestJSON(`/styles/${encodeURIComponent(key)}${query}`);
+    const data = await requestJSON(`/styles/${encodeURIComponent(key)}${query}`, {
+      skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+    });
     const normalized = normalizeStyle(data);
     writeStyleToCache(normalized, {
       orgId: toPositiveOrgId(options?.orgId),

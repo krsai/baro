@@ -19,14 +19,15 @@ let activeRequestScopeEntrySequence = 0;
 // mutation 경로가 어떤 GET 캐시 prefix를 무효화하는지 정의
 // 매핑되지 않은 경로는 fallback으로 전체 캐시 삭제
 const CACHE_INVALIDATION_MAP = {
-  '/assignment-board-state': ['/assignment-board'],
+  '/assignment-board-state': ['/assignment-board', '/assignment-cards'],
   '/assignment-plans': ['/assignment-plans', '/assignment-board', '/assignment-plan-progress'],
   '/assignment-cards': ['/assignment-cards', '/assignment-board'],
   '/assignment-board-lines': ['/assignment-board'],
+  '/line-assignments': ['/lines', '/line-workers'],
   '/line-workers': ['/line-workers'],
   '/lines': ['/lines', '/line-workers'],
-  '/orders': ['/orders', '/order-parties'],
-  '/styles': ['/styles'],
+  '/orders': ['/orders', '/order-parties', '/assignment-cards'],
+  '/styles': ['/styles', '/assignment-cards'],
   '/work-orders': ['/work-orders', '/assignment-cards'],
 };
 

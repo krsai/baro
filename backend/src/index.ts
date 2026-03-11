@@ -5526,7 +5526,16 @@ const loadAssignmentPlansForBoardState = async (
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
 };
-const buildReadOnlyAssignmentBoardStateResponse = async (orgId: number, state: any) => {
+const buildReadOnlyAssignmentBoardStateResponse = async (
+  orgId: number,
+  state: any,
+  options: {
+    includeCards?: boolean;
+    includePlans?: boolean;
+  } = {}
+) => {
+  const includeCards = options.includeCards !== false;
+  const includePlans = options.includePlans !== false;
   const escalatedAssignments = state
     ? applySentTimeoutEscalation(state.assignments).assignments
     : [];
@@ -5536,11 +5545,10 @@ const buildReadOnlyAssignmentBoardStateResponse = async (orgId: number, state: a
         assignments: escalatedAssignments,
       }
     : null;
-  const assignmentPlans = await loadAssignmentPlansForBoardState(
-    orgId,
-    nextState?.assignments
-  );
-  const cards = await loadAssignmentCardsForOrg({ orgId });
+  const assignmentPlans = includePlans
+    ? await loadAssignmentPlansForBoardState(orgId, nextState?.assignments)
+    : null;
+  const cards = includeCards ? await loadAssignmentCardsForOrg({ orgId }) : [];
   return toAssignmentBoardStateResponse(nextState, assignmentPlans, cards);
 };
 
@@ -7667,13 +7675,17 @@ app.get("/assignment-board-view", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeCards = !(
+    req.query.includeCards === "0" || req.query.includeCards === "false"
+  );
 
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
   const response = await buildReadOnlyAssignmentBoardStateResponse(
     organization.id,
-    state
+    state,
+    { includeCards }
   );
   res.json(response);
 });
@@ -7692,16 +7704,13 @@ app.get("/assignment-board-versions", async (req, res) => {
       updatedAt: true,
     },
   });
-  const response = await buildReadOnlyAssignmentBoardStateResponse(
-    organization.id,
-    state
-  );
+  const escalatedAssignments = applySentTimeoutEscalation(state?.assignments).assignments;
 
   res.json({
-    assignments: response.assignments,
-    createdAt: response.createdAt ?? null,
-    updatedAt: response.updatedAt ?? null,
-    serverNow: response.serverNow ?? new Date().toISOString(),
+    assignments: normalizeStateAssignments(escalatedAssignments),
+    createdAt: state?.createdAt ?? null,
+    updatedAt: state?.updatedAt ?? null,
+    serverNow: new Date().toISOString(),
   });
 });
 
@@ -7711,29 +7720,44 @@ app.get("/assignment-cards", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const [styles, state, cards] = await Promise.all([
-    prisma.style.findMany({
-      where: { orgId: { in: accessibleOwnerOrgIds } },
-      orderBy: { uid: "asc" },
-      select: {
-        uid: true,
-        orgId: true,
-        styleId: true,
-        styleCode: true,
-        name: true,
-        customer: true,
-        imageUrls: true,
-        processes: true,
-      },
-    }),
+  const includeProcesses = isManufacturerOrg(organization) && !(
+    req.query.includeProcesses === "0" || req.query.includeProcesses === "false"
+  );
+  const [accessibleOwnerOrgIds, state, cards] = await Promise.all([
+    getAccessibleStyleOwnerOrgIds(organization),
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },
       select: { updatedAt: true },
     }),
     loadAssignmentCardsForOrg({ orgId: organization.id }),
   ]);
-  const includeProcesses = isManufacturerOrg(organization);
+  const cardStyleIds = Array.from(
+    new Set(
+      cards
+        .map((card) => resolveOptionalString(card?.styleId, null))
+        .filter((styleId): styleId is string => Boolean(styleId))
+    )
+  );
+  const styleSelect = {
+    uid: true,
+    orgId: true,
+    styleId: true,
+    styleCode: true,
+    name: true,
+    customer: true,
+    ...(includeProcesses ? { processes: true } : {}),
+  };
+  const styles =
+    cardStyleIds.length > 0
+      ? await prisma.style.findMany({
+          where: {
+            orgId: { in: accessibleOwnerOrgIds },
+            styleId: { in: cardStyleIds },
+          },
+          orderBy: { uid: "asc" },
+          select: styleSelect,
+        })
+      : [];
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
