@@ -104,11 +104,13 @@ export const resolveLocalizedAttributeName = (item, languageCode = currentLangua
   const name = toTrimmedText(item?.name);
   const nameKo = toTrimmedText(item?.nameKo);
   const nameEn = toTrimmedText(item?.nameEn);
+  const nameVi = toTrimmedText(item?.nameVi);
   const attributeCode = toTrimmedText(item?.code);
 
-  if (code === 'ko') return nameKo || name || nameEn || attributeCode;
-  if (code === 'en') return nameEn || name || nameKo || attributeCode;
-  return name || nameEn || nameKo || attributeCode;
+  if (code === 'ko') return nameKo || nameEn || name || nameVi || attributeCode;
+  if (code === 'en') return nameEn || name || nameKo || nameVi || attributeCode;
+  if (code === 'vi') return nameVi || nameEn || name || nameKo || attributeCode;
+  return nameEn || name || nameKo || nameVi || attributeCode;
 };
 
 export const collectAttributeTextCandidates = (item, languageCode = currentLanguageCode) =>
@@ -119,6 +121,7 @@ export const collectAttributeTextCandidates = (item, languageCode = currentLangu
         toTrimmedText(item?.name),
         toTrimmedText(item?.nameKo),
         toTrimmedText(item?.nameEn),
+        toTrimmedText(item?.nameVi),
         toTrimmedText(item?.code),
       ].filter(Boolean)
     )

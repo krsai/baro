@@ -27,6 +27,7 @@ import { getOrganizationTypeLabel } from '../../../constants/organizationType';
 import {
   ORGANIZATION_SUBSCRIPTION_STATUS_KEYS,
   ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS,
+  getOrganizationSubscriptionStatusDescription,
 } from '../../../constants/organizationAccess';
 
 const toDateOnlyText = (value) => {
@@ -60,6 +61,7 @@ const OnboardingBoard = () => {
   const [processingKey, setProcessingKey] = useState('');
   const [pendingCompanyRequests, setPendingCompanyRequests] = useState([]);
   const [companySubscriptionStatuses, setCompanySubscriptionStatuses] = useState({});
+  const [companyActiveEndDates, setCompanyActiveEndDates] = useState({});
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailRequestId, setDetailRequestId] = useState(null);
 
@@ -85,7 +87,7 @@ const OnboardingBoard = () => {
         const next = { ...prev };
         companyRows.forEach((row) => {
           if (!next[row.id]) {
-            next[row.id] = ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED;
+            next[row.id] = ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL;
           }
         });
         return next;
@@ -115,6 +117,13 @@ const OnboardingBoard = () => {
     }));
   };
 
+  const handleCompanyActiveEndDateChange = (requestId, value) => {
+    setCompanyActiveEndDates((prev) => ({
+      ...prev,
+      [requestId]: value,
+    }));
+  };
+
   const handleApproveCompany = async (requestRow) => {
     if (!requestRow?.id) return;
     const key = `company-approve-${requestRow.id}`;
@@ -126,7 +135,12 @@ const OnboardingBoard = () => {
         body: JSON.stringify({
           subscriptionStatus:
             companySubscriptionStatuses[requestRow.id] ||
-            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
+            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL,
+          activeEndsAt:
+            (companySubscriptionStatuses[requestRow.id] || '') ===
+            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE
+              ? companyActiveEndDates[requestRow.id] || null
+              : null,
         }),
       });
       showNotification('가입 요청을 승인했습니다.', 'success');
@@ -271,7 +285,7 @@ const OnboardingBoard = () => {
                           select
                           value={
                             companySubscriptionStatuses[row.id] ||
-                            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED
+                            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL
                           }
                           onChange={(event) =>
                             handleCompanySubscriptionChange(row.id, event.target.value)
@@ -284,6 +298,30 @@ const OnboardingBoard = () => {
                             </MenuItem>
                           ))}
                         </TextField>
+                        {(
+                          companySubscriptionStatuses[row.id] ||
+                          ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL
+                        ) === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            type="date"
+                            value={companyActiveEndDates[row.id] || ''}
+                            onChange={(event) =>
+                              handleCompanyActiveEndDateChange(row.id, event.target.value)
+                            }
+                            disabled={processingKey !== ''}
+                            sx={{ mt: 1 }}
+                            helperText="활성 종료일, 비우면 무기한"
+                            InputLabelProps={{ shrink: true }}
+                          />
+                        ) : null}
+                        <Typography variant="caption" color="text.secondary">
+                          {getOrganizationSubscriptionStatusDescription(
+                            companySubscriptionStatuses[row.id] ||
+                              ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.TRIAL
+                          )}
+                        </Typography>
                       </TableCell>
                       <TableCell align="right">
                         <Box sx={{ display: 'inline-flex', gap: 1 }}>

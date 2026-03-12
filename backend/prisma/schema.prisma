@@ -96,8 +96,11 @@ model Organization {
   representative String?
   industry       String?
   address        String?
+  countryCode    String?
   phone          String?
   email          String?
+  targetMonthlyWage Float?
+  wagePerSecond     Float?
   type           OrganizationType @default(MANUFACTURER)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -164,6 +167,7 @@ model OrganizationSubscription {
   trialStartedAt  DateTime?
   trialEndsAt     DateTime?
   activatedAt     DateTime?
+  activeEndsAt    DateTime?
   suspendedAt     DateTime?
   createdAt       DateTime                       @default(now())
   updatedAt       DateTime                       @updatedAt
@@ -334,6 +338,7 @@ model AttrColor {
   name   String
   nameKo String?
   nameEn String?
+  nameVi String?
 
   workOrderItems  WorkOrderItem[]
   workRecords     WorkRecord[]
@@ -347,6 +352,7 @@ model AttrCategory {
   name   String
   nameKo String?
   nameEn String?
+  nameVi String?
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -377,6 +383,7 @@ model AttrProcess {
   name   String
   nameKo String?
   nameEn String?
+  nameVi String?
 
   organization Organization @relation(fields: [orgId], references: [id])
   workRecords  WorkRecord[]

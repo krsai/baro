@@ -262,9 +262,12 @@ const EmployeeRow = React.memo(
   }
 );
 
-const EmployeeBoard = () => {
-  const { user, activeOrgId, activeOrgType, activeOrgRole, activeFactoryId } = useAuth();
+const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
+  const { user, activeOrgId: authOrgId, activeOrgType: authOrgType, activeOrgRole, activeFactoryId } = useAuth();
   const { showNotification } = useApp();
+
+  const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
+  const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;
 
   const [factories, setFactories] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
@@ -288,7 +291,7 @@ const EmployeeBoard = () => {
     () => getRoleOptionsByOrgType(activeOrgType),
     [activeOrgType]
   );
-  const isAdmin = isAdminOrgRole(activeOrgRole);
+  const isAdmin = overrideOrgId != null ? true : isAdminOrgRole(activeOrgRole);
   const operatorFactoryId =
     !isAdmin && Number.isInteger(Number(activeFactoryId)) && Number(activeFactoryId) > 0
       ? String(activeFactoryId)

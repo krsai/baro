@@ -2376,7 +2376,7 @@ const ProductionPlanBoard = () => {
         {/* 좌측 컬럼 (목록 + 달력) - 항상 전체 폭 */}
         <Box>
           <Stack spacing={1.5}>
-            <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
+            <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden', order: 2 }}>
               <Box
                 sx={{
                   px: 2,
@@ -2572,7 +2572,7 @@ const ProductionPlanBoard = () => {
 
             {/* 미배정 풀 - 수량 변경 차이 카드 */}
             {deltaCards.length > 0 && (
-              <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden' }}>
+              <Paper variant="outlined" sx={{ p: 0, overflow: 'hidden', order: 3 }}>
                 <Box
                   sx={{
                     px: 2,
@@ -2645,7 +2645,7 @@ const ProductionPlanBoard = () => {
               </Paper>
             )}
 
-            <Paper variant="outlined" sx={{ p: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2, order: 1 }}>
               <Box
                 sx={{
                   display: 'flex',
@@ -2722,12 +2722,6 @@ const ProductionPlanBoard = () => {
                     />
                   );
                 })}
-                <Chip
-                  size="small"
-                  label="<< / >> 연속"
-                  variant="outlined"
-                  sx={{ fontWeight: 700 }}
-                />
               </Stack>
 
               <Box

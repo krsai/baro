@@ -143,7 +143,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
       context.systemRole === 'SYSTEM_ADMIN' &&
       (featureKey === FEATURE_KEYS.ATTRIBUTE ||
         featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
-        featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING)
+        featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING ||
+        featureKey === FEATURE_KEYS.EMPLOYEE)
     );
   }
 

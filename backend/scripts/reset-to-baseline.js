@@ -30,12 +30,12 @@ const BASELINE_PROCESSES = Array.from({ length: 10 }, (_, index) => ({
 }));
 
 const BASELINE_ROLES = [
-  { code: 'WORKER_CUTTING', name: '재단', defaultPayType: 'FIXED', sortOrder: 1 },
-  { code: 'WORKER_SEWING', name: '봉제', defaultPayType: 'CT', sortOrder: 2 },
-  { code: 'WORKER_IRONING', name: '다림', defaultPayType: 'FIXED', sortOrder: 3 },
-  { code: 'WORKER_INSPECTION', name: '검수', defaultPayType: 'FIXED', sortOrder: 4 },
-  { code: 'WORKER_PACKING', name: '포장', defaultPayType: 'FIXED', sortOrder: 5 },
-  { code: 'WORKER_OTHER', name: '기타', defaultPayType: 'FIXED', sortOrder: 6 },
+  { code: 'WORKER_CUTTING', name: '\uC7AC\uB2E8', defaultPayType: 'FIXED', sortOrder: 1 },
+  { code: 'WORKER_SEWING', name: '\uBD09\uC81C', defaultPayType: 'CT', sortOrder: 2 },
+  { code: 'WORKER_IRONING', name: '\uB2E4\uB9BC', defaultPayType: 'FIXED', sortOrder: 3 },
+  { code: 'WORKER_INSPECTION', name: '\uAC80\uC218', defaultPayType: 'FIXED', sortOrder: 4 },
+  { code: 'WORKER_PACKING', name: '\uD3EC\uC7A5', defaultPayType: 'FIXED', sortOrder: 5 },
+  { code: 'WORKER_OTHER', name: '\uAE30\uD0C0', defaultPayType: 'FIXED', sortOrder: 6 },
 ];
 
 const TARGET_MONTHLY_WAGE = 8000000;
@@ -143,8 +143,24 @@ async function upsertOrganization(data) {
 async function ensureSubscription(orgId, membershipEmail) {
   return prisma.organizationSubscription.upsert({
     where: { orgId },
-    update: { membershipEmail },
-    create: { orgId, membershipEmail, status: 'TRIAL' },
+    update: {
+      status: 'ACTIVE',
+      membershipEmail,
+      billingEmail: membershipEmail,
+      trialStartedAt: null,
+      trialEndsAt: null,
+      activatedAt: new Date(),
+      activeEndsAt: null,
+      suspendedAt: null,
+    },
+    create: {
+      orgId,
+      membershipEmail,
+      billingEmail: membershipEmail,
+      status: 'ACTIVE',
+      activatedAt: new Date(),
+      activeEndsAt: null,
+    },
   });
 }
 
@@ -456,3 +472,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

@@ -2,6 +2,10 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { isSupabaseConfigured, supabase } from '../lib/supabaseClient';
 import { buildQueryString, requestJSON, setRequestContext } from '../utils/apiClient';
 import { clearLanguageOverride } from '../utils/appLanguage';
+import {
+  canUseWorkspaceForOrganizationSubscriptionStatus,
+  normalizeOrganizationSubscriptionStatus,
+} from '../constants/organizationAccess';
 
 const AuthContext = createContext(null);
 
@@ -230,6 +234,26 @@ const toPositiveOrgId = (value) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const normalizeSubscription = (subscription) => {
+  if (!subscription || typeof subscription !== 'object' || Array.isArray(subscription)) {
+    return null;
+  }
+
+  return {
+    status: normalizeOrganizationSubscriptionStatus(subscription.status),
+    membershipEmail:
+      typeof subscription.membershipEmail === 'string' ? subscription.membershipEmail.trim() : '',
+    billingEmail:
+      typeof subscription.billingEmail === 'string' ? subscription.billingEmail.trim() : '',
+    trialStartedAt: subscription.trialStartedAt ?? null,
+    trialEndsAt: subscription.trialEndsAt ?? null,
+    activatedAt: subscription.activatedAt ?? null,
+    activeEndsAt: subscription.activeEndsAt ?? null,
+    graceEndsAt: subscription.graceEndsAt ?? null,
+    suspendedAt: subscription.suspendedAt ?? null,
+  };
+};
+
 const normalizeAccessProfile = (profile) => {
   if (!profile || typeof profile !== 'object') return null;
 
@@ -244,6 +268,11 @@ const normalizeAccessProfile = (profile) => {
       orgName: null,
       employeeName: null,
       email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
+      subscription: normalizeSubscription(profile.subscription),
+      systemAdminContactEmail:
+        typeof profile.systemAdminContactEmail === 'string'
+          ? profile.systemAdminContactEmail.trim().toLowerCase()
+          : '',
       label:
         typeof profile.label === 'string' && profile.label.trim()
           ? profile.label.trim()
@@ -279,6 +308,10 @@ const normalizeAccessProfile = (profile) => {
       pendingMembershipCount,
       latestRegistrationRequest,
       onboardingRequired: true,
+      systemAdminContactEmail:
+        typeof profile.systemAdminContactEmail === 'string'
+          ? profile.systemAdminContactEmail.trim().toLowerCase()
+          : '',
       label: email || '\uC2E0\uADDC \uACC4\uC815',
     };
   }
@@ -295,6 +328,10 @@ const normalizeAccessProfile = (profile) => {
 
   const factoryId =
     typeof profile.factoryId === 'number' && profile.factoryId > 0 ? profile.factoryId : null;
+  const subscription = normalizeSubscription(profile.subscription);
+  const subscriptionStatus = normalizeOrganizationSubscriptionStatus(subscription?.status);
+  const subscriptionBlocked = Boolean(subscriptionStatus) &&
+    !canUseWorkspaceForOrganizationSubscriptionStatus(subscriptionStatus);
 
   return {
     entryType: 'ORG',
@@ -305,6 +342,13 @@ const normalizeAccessProfile = (profile) => {
     orgName,
     employeeName,
     factoryId,
+    subscription,
+    subscriptionStatus,
+    subscriptionBlocked,
+    systemAdminContactEmail:
+      typeof profile.systemAdminContactEmail === 'string'
+        ? profile.systemAdminContactEmail.trim().toLowerCase()
+        : '',
     email: typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '',
     label:
       typeof profile.label === 'string' && profile.label.trim()
@@ -527,6 +571,8 @@ export const AuthProvider = ({ children }) => {
 
   const normalizedCurrentUserEmail =
     typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
+  const normalizedDevProfileEmail =
+    typeof devProfile?.email === 'string' ? devProfile.email.trim().toLowerCase() : '';
   const normalizedAccessProfileEmail =
     typeof accessProfile?.email === 'string' ? accessProfile.email.trim().toLowerCase() : '';
   const isAccessProfileForCurrentUser =
@@ -534,11 +580,17 @@ export const AuthProvider = ({ children }) => {
     !!normalizedCurrentUserEmail &&
     !!accessProfile &&
     normalizedAccessProfileEmail === normalizedCurrentUserEmail;
+  const isAccessProfileForDevBypass =
+    devBypass &&
+    !!normalizedDevProfileEmail &&
+    !!accessProfile &&
+    normalizedAccessProfileEmail === normalizedDevProfileEmail;
+  const normalizedDevAccessProfile = devBypass ? normalizeAccessProfile(devProfile) : null;
 
   // In devBypass mode, prefer DB-fetched accessProfile; fall back to hardcoded devProfile.
   // In normal mode, ignore stale accessProfile rows from previous sessions.
   const effectiveProfile = devBypass
-    ? (accessProfile || devProfile)
+    ? (isAccessProfileForDevBypass ? accessProfile : normalizedDevAccessProfile)
     : (isAccessProfileForCurrentUser ? accessProfile : null);
   const activeOrgId = toPositiveOrgId(effectiveProfile?.orgId);
   const activeOrgType = normalizeUpper(effectiveProfile?.orgType);
@@ -564,23 +616,32 @@ export const AuthProvider = ({ children }) => {
     });
   }, [activeOrgId, devBypass, effectiveProfile?.email, user?.email]);
 
+  const expectedAccessProfileEmail = devBypass
+    ? normalizedDevProfileEmail
+    : normalizedCurrentUserEmail;
   const loadingState =
     loading ||
-    (!devBypass &&
-      !!user &&
-      isSupabaseConfigured &&
-      (accessLoading || accessLookupEmail !== normalizedCurrentUserEmail));
+    ((devBypass && !!normalizedDevProfileEmail) ||
+      (!devBypass && !!user && isSupabaseConfigured)) &&
+      (accessLoading || accessLookupEmail !== expectedAccessProfileEmail);
   const hasWorkspaceAccess =
-    devBypass ||
-    (!devBypass &&
-      !!user &&
+    (!!(user || devBypass) &&
       !!effectiveProfile &&
-      normalizeUpper(effectiveProfile.entryType) !== 'ONBOARDING');
+      normalizeUpper(effectiveProfile.entryType) !== 'ONBOARDING' &&
+      normalizeUpper(effectiveProfile.entryType) !== 'ORG') ||
+    (!!(user || devBypass) &&
+      !!effectiveProfile &&
+      normalizeUpper(effectiveProfile.entryType) === 'ORG' &&
+      canUseWorkspaceForOrganizationSubscriptionStatus(effectiveProfile.subscriptionStatus));
   const requiresOnboarding =
-    !devBypass &&
-    !!user &&
+    !!(user || devBypass) &&
     !!effectiveProfile &&
     normalizeUpper(effectiveProfile.entryType) === 'ONBOARDING';
+  const requiresSubscriptionContact =
+    !!(user || devBypass) &&
+    !!effectiveProfile &&
+    normalizeUpper(effectiveProfile.entryType) === 'ORG' &&
+    !canUseWorkspaceForOrganizationSubscriptionStatus(effectiveProfile.subscriptionStatus);
 
   const updateActiveProfile = useCallback(
     (patch = {}) => {
@@ -633,6 +694,7 @@ export const AuthProvider = ({ children }) => {
       loading: loadingState,
       hasWorkspaceAccess,
       requiresOnboarding,
+      requiresSubscriptionContact,
       isAuthenticated: !!user || devBypass,
       isSupabaseConfigured,
       signInWithGoogle,
@@ -654,6 +716,7 @@ export const AuthProvider = ({ children }) => {
       loadingState,
       hasWorkspaceAccess,
       requiresOnboarding,
+      requiresSubscriptionContact,
       updateActiveProfile,
     ]
   );

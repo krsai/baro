@@ -420,6 +420,7 @@ const MainLayout = () => {
             badgeLabel: pendingOnboardingCount > 0 ? '신규' : '',
           },
           { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
+          { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
         ],
       },
     ];

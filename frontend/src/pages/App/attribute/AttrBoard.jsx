@@ -34,9 +34,9 @@ const initialData = {
 };
 
 const MULTILINGUAL_NAME_COLUMNS = [
-  { field: 'name', label: '기본명', width: '22%' },
-  { field: 'nameKo', label: '한국어명', width: '25%' },
-  { field: 'nameEn', label: '영문명', width: '25%' },
+  { field: 'nameEn', label: '영어명', width: '24%' },
+  { field: 'nameKo', label: '한국어명', width: '24%' },
+  { field: 'nameVi', label: '베트남어명', width: '24%' },
 ];
 
 const sectionConfigs = [
@@ -59,13 +59,31 @@ const sectionConfigs = [
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
 
+const toTrimmedText = (value) => String(value ?? '').trim();
+
+const resolveBaseAttributeName = (item = {}) => {
+  const name = toTrimmedText(item?.name);
+  const nameEn = toTrimmedText(item?.nameEn);
+  const nameKo = toTrimmedText(item?.nameKo);
+  const nameVi = toTrimmedText(item?.nameVi);
+  return nameEn || name || nameKo || nameVi || '';
+};
+
+const getRowLabel = (row = {}) =>
+  resolveBaseAttributeName(row) ||
+  toTrimmedText(row?.nameKo) ||
+  toTrimmedText(row?.nameVi) ||
+  toTrimmedText(row?.code) ||
+  '항목';
+
 const normalizeRows = (rows) =>
   (Array.isArray(rows) ? rows : []).map((item = {}) => ({
     id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    code: String(item.code ?? '').trim(),
-    name: String(item.name ?? '').trim(),
-    nameKo: String(item.nameKo ?? '').trim(),
-    nameEn: String(item.nameEn ?? '').trim(),
+    code: toTrimmedText(item.code),
+    name: resolveBaseAttributeName(item),
+    nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
+    nameKo: toTrimmedText(item.nameKo),
+    nameVi: toTrimmedText(item.nameVi),
   }));
 
 const normalizeData = (data) => ({
@@ -142,8 +160,9 @@ const AttrBoard = () => {
           id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           code: '',
           name: '',
-          nameKo: '',
           nameEn: '',
+          nameKo: '',
+          nameVi: '',
         },
       ],
     }));
@@ -168,13 +187,13 @@ const AttrBoard = () => {
 
       afterRows.forEach((row) => {
         if (!beforeRows.find((before) => String(before.id) === String(row.id))) {
-          results.push(`[${title}] 추가: ${row.name || row.nameKo || row.nameEn || row.code || '새 항목'}`);
+          results.push(`[${title}] 추가: ${getRowLabel(row)}`);
         }
       });
 
       beforeRows.forEach((row) => {
         if (!afterRows.find((after) => String(after.id) === String(row.id))) {
-          results.push(`[${title}] 삭제: ${row.name || row.nameKo || row.nameEn || row.code || '항목'}`);
+          results.push(`[${title}] 삭제: ${getRowLabel(row)}`);
         }
       });
 
@@ -183,7 +202,7 @@ const AttrBoard = () => {
         if (!before) return;
         const hasChanged = fields.some((field) => String(before[field] ?? '') !== String(row[field] ?? ''));
         if (hasChanged) {
-          results.push(`[${title}] 수정: ${row.name || row.nameKo || row.nameEn || row.code || '항목'}`);
+          results.push(`[${title}] 수정: ${getRowLabel(row)}`);
         }
       });
     });
@@ -248,7 +267,7 @@ const AttrBoard = () => {
             {config.title}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            기본명은 기존 화면 호환용이고, 한국어명/영문명은 다국어 표시용입니다.
+            영어명을 기본값으로 사용하고, 한국어명/베트남어명은 다국어 표시용입니다.
           </Typography>
         </Box>
         <Button

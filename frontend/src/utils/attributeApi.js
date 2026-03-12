@@ -24,17 +24,34 @@ const normalizeSortOrder = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeAttributeItem = (item = {}) => ({
-  id: item.id ?? null,
-  code: String(item.code ?? '').trim(),
-  name: String(item.name ?? '').trim(),
-  nameKo: String(item.nameKo ?? '').trim(),
-  nameEn: String(item.nameEn ?? '').trim(),
-  displayName: resolveLocalizedAttributeName(item),
-  searchText: buildAttributeSearchText(item),
-  defaultPayType: normalizePayType(item.defaultPayType),
-  sortOrder: normalizeSortOrder(item.sortOrder),
-});
+const toTrimmedText = (value) => String(value ?? '').trim();
+
+const resolveAttributeBaseName = (item = {}) => {
+  const name = toTrimmedText(item?.name);
+  const nameEn = toTrimmedText(item?.nameEn);
+  const nameKo = toTrimmedText(item?.nameKo);
+  const nameVi = toTrimmedText(item?.nameVi);
+  return nameEn || name || nameKo || nameVi || '';
+};
+
+const normalizeAttributeItem = (item = {}) => {
+  const normalized = {
+    id: item.id ?? null,
+    code: toTrimmedText(item.code),
+    name: resolveAttributeBaseName(item),
+    nameKo: toTrimmedText(item.nameKo),
+    nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
+    nameVi: toTrimmedText(item.nameVi),
+    defaultPayType: normalizePayType(item.defaultPayType),
+    sortOrder: normalizeSortOrder(item.sortOrder),
+  };
+
+  return {
+    ...normalized,
+    displayName: resolveLocalizedAttributeName(normalized),
+    searchText: buildAttributeSearchText(normalized),
+  };
+};
 
 const mergeAttributeItem = (items = [], nextItem) => {
   const nextId = Number(nextItem?.id);
@@ -93,10 +110,11 @@ const normalizeAttributePayload = (payload = {}) => {
     if (!Array.isArray(payload?.[key])) return;
     normalized[key] = payload[key].map((item = {}) => ({
       id: item.id ?? undefined,
-      code: String(item.code ?? '').trim(),
-      name: String(item.name ?? '').trim(),
-      nameKo: String(item.nameKo ?? '').trim(),
-      nameEn: String(item.nameEn ?? '').trim(),
+      code: toTrimmedText(item.code),
+      name: resolveAttributeBaseName(item),
+      nameKo: toTrimmedText(item.nameKo),
+      nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
+      nameVi: toTrimmedText(item.nameVi),
       ...(key === 'roles'
         ? {
             defaultPayType: normalizePayType(item.defaultPayType) ?? 'FIXED',
@@ -203,10 +221,11 @@ export const createColorAttribute = async (payload, options = {}) => {
   const hasOrgScope = orgId !== null;
   const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const body = {
-    code: String(payload?.code ?? '').trim(),
-    name: String(payload?.name ?? '').trim(),
-    nameKo: String(payload?.nameKo ?? '').trim(),
-    nameEn: String(payload?.nameEn ?? '').trim(),
+    code: toTrimmedText(payload?.code),
+    name: resolveAttributeBaseName(payload),
+    nameKo: toTrimmedText(payload?.nameKo),
+    nameEn: toTrimmedText(payload?.nameEn) || toTrimmedText(payload?.name),
+    nameVi: toTrimmedText(payload?.nameVi),
   };
   const data = await requestJSON(
     `/attributes/colors${buildQueryString({

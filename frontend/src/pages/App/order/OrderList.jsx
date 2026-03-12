@@ -49,7 +49,7 @@ import {
   GENDER_CODES,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
-import { collectAttributeTextCandidates } from '../../../utils/appLanguage';
+import { collectAttributeTextCandidates, resolveLocalizedAttributeName } from '../../../utils/appLanguage';
 import {
   ORDER_CONFIRMATION_TEXT,
   ORDER_CONFIRMATION_STATUS_KEYS,
@@ -362,34 +362,33 @@ const hasDuplicateStyleColorGender = (items = []) => {
   }
   return false;
 };
-const mergeColorOption = (items = [], nextItem) => {
-  const normalizedNextItem = {
-    id: nextItem?.id ?? null,
-    code: normalizeColorCode(nextItem?.code),
-    name: String(nextItem?.name || nextItem?.code || '').trim(),
-    nameKo: String(nextItem?.nameKo || '').trim(),
-    nameEn: String(nextItem?.nameEn || '').trim(),
-    displayName: String(
-      nextItem?.displayName || nextItem?.name || nextItem?.nameKo || nextItem?.nameEn || nextItem?.code || ''
-    ).trim(),
-    searchText: String(nextItem?.searchText || collectAttributeTextCandidates(nextItem).join(' ')).trim(),
+const normalizeLocalizedColorOption = (item = {}) => {
+  const normalized = {
+    id: item?.id ?? null,
+    code: normalizeColorCode(item?.code),
+    name: String(item?.nameEn || item?.name || item?.nameKo || item?.nameVi || item?.code || '').trim(),
+    nameKo: String(item?.nameKo || '').trim(),
+    nameEn: String(item?.nameEn || item?.name || '').trim(),
+    nameVi: String(item?.nameVi || '').trim(),
   };
+
+  return {
+    ...normalized,
+    displayName: String(item?.displayName || resolveLocalizedAttributeName(normalized) || normalized.code).trim(),
+    searchText: String(
+      item?.searchText || collectAttributeTextCandidates(normalized).join(' ')
+    ).trim(),
+  };
+};
+
+const mergeColorOption = (items = [], nextItem) => {
+  const normalizedNextItem = normalizeLocalizedColorOption(nextItem);
   if (!normalizedNextItem.code) return items;
 
   const nextId = toPositiveColorId(normalizedNextItem.id);
   let replaced = false;
   const merged = (Array.isArray(items) ? items : []).map((item) => {
-    const normalizedItem = {
-      id: item?.id ?? null,
-      code: normalizeColorCode(item?.code),
-      name: String(item?.name || item?.code || '').trim(),
-      nameKo: String(item?.nameKo || '').trim(),
-      nameEn: String(item?.nameEn || '').trim(),
-      displayName: String(
-        item?.displayName || item?.name || item?.nameKo || item?.nameEn || item?.code || ''
-      ).trim(),
-      searchText: String(item?.searchText || collectAttributeTextCandidates(item).join(' ')).trim(),
-    };
+    const normalizedItem = normalizeLocalizedColorOption(item);
     const sameId = nextId && toPositiveColorId(normalizedItem.id) === nextId;
     const sameCode = normalizedItem.code && normalizedItem.code === normalizedNextItem.code;
     if (!sameId && !sameCode) return normalizedItem;
@@ -1078,15 +1077,7 @@ const OrderList = () => {
   const normalizedColorOptions = useMemo(
     () =>
       colorOptions
-        .map((item) => ({
-          id: item?.id ?? null,
-          code: normalizeColorCode(item?.code),
-          name: String(item?.name || item?.code || '').trim(),
-          nameKo: String(item?.nameKo || '').trim(),
-          nameEn: String(item?.nameEn || '').trim(),
-          displayName: String(item?.displayName || item?.name || item?.code || '').trim(),
-          searchText: String(item?.searchText || collectAttributeTextCandidates(item).join(' ')).trim(),
-        }))
+        .map((item) => normalizeLocalizedColorOption(item))
         .filter((item) => item.code)
         .sort((a, b) =>
           String(a.displayName || a.name || a.code).localeCompare(
@@ -1561,23 +1552,15 @@ const OrderList = () => {
     try {
       const createPayload =
         languageCode === 'ko'
-          ? { name: colorName, nameKo: colorName }
+          ? { nameKo: colorName }
           : languageCode === 'en'
-            ? { name: colorName, nameEn: colorName }
-            : { name: colorName };
+            ? { nameEn: colorName }
+            : { nameVi: colorName };
       const createdColor = await createColorAttribute(
         createPayload,
         { orgId: activeOrgId }
       );
-      const normalizedCreatedColor = {
-        id: createdColor?.id ?? null,
-        code: normalizeColorCode(createdColor?.code),
-        name: String(createdColor?.name || createdColor?.code || '').trim(),
-        nameKo: String(createdColor?.nameKo || '').trim(),
-        nameEn: String(createdColor?.nameEn || '').trim(),
-        displayName: String(createdColor?.displayName || createdColor?.name || createdColor?.code || '').trim(),
-        searchText: String(createdColor?.searchText || collectAttributeTextCandidates(createdColor).join(' ')).trim(),
-      };
+      const normalizedCreatedColor = normalizeLocalizedColorOption(createdColor);
       setColorOptions((prev) => mergeColorOption(prev, normalizedCreatedColor));
       const applied = applyColorSelection(itemId, normalizedCreatedColor, options);
       if (applied) {

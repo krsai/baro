@@ -13,6 +13,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TableContainer,
   Chip,
   Collapse,
   IconButton,
@@ -32,6 +33,7 @@ import {
   getOrgMembershipStatusLabel,
   getOrgRoleLabel,
   getOrganizationSubscriptionStatusChipColor,
+  getOrganizationSubscriptionStatusDescription,
   getOrganizationSubscriptionStatusLabel,
   isOrgMembershipStatusFilled,
   isOrganizationSubscriptionStatusFilled,
@@ -51,6 +53,13 @@ const SubscriptionChip = ({ status }) => (
   />
 );
 
+const toDateInputValue = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
+
 const OrgMembership = () => {
   const { showNotification } = useApp();
 
@@ -63,6 +72,7 @@ const OrgMembership = () => {
     subscriptionStatus: '',
     membershipEmail: '',
     billingEmail: '',
+    activeEndsAt: '',
   });
   const [savingSubscription, setSavingSubscription] = useState(false);
 
@@ -76,6 +86,7 @@ const OrgMembership = () => {
     subscriptionStatus: ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
     membershipEmail: '',
     billingEmail: '',
+    activeEndsAt: '',
     representative: '',
     address: '',
     phone: '',
@@ -143,6 +154,7 @@ const OrgMembership = () => {
         org.subscription?.status ?? ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
       membershipEmail: org.subscription?.membershipEmail ?? '',
       billingEmail: org.subscription?.billingEmail ?? '',
+      activeEndsAt: toDateInputValue(org.subscription?.activeEndsAt),
     });
   };
 
@@ -169,6 +181,10 @@ const OrgMembership = () => {
           subscriptionStatus: subEditForm.subscriptionStatus,
           membershipEmail: subEditForm.membershipEmail.trim(),
           billingEmail: subEditForm.billingEmail.trim(),
+          activeEndsAt:
+            subEditForm.subscriptionStatus === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE
+              ? subEditForm.activeEndsAt || null
+              : null,
         }),
       });
       setOrganizations((prev) =>
@@ -214,6 +230,10 @@ const OrgMembership = () => {
         subscriptionStatus: orgForm.subscriptionStatus,
         membershipEmail: orgForm.membershipEmail.trim(),
         billingEmail: orgForm.billingEmail.trim(),
+        activeEndsAt:
+          orgForm.subscriptionStatus === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE
+            ? orgForm.activeEndsAt || null
+            : null,
         representative: orgForm.representative.trim(),
         address: orgForm.address.trim(),
         phone: orgForm.phone.trim(),
@@ -248,6 +268,7 @@ const OrgMembership = () => {
         subscriptionStatus: ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED,
         membershipEmail: '',
         billingEmail: '',
+        activeEndsAt: '',
         representative: '',
         address: '',
         phone: '',
@@ -318,11 +339,11 @@ const OrgMembership = () => {
         </>
       }
     >
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
 
         {/* ── 1. 조직 목록 ── */}
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 3 }}>
+        <Grid item xs={12} sx={{ width: '100%' }}>
+          <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
               <Typography variant="h6">조직 목록</Typography>
               <Button
@@ -339,7 +360,8 @@ const OrgMembership = () => {
                 <CircularProgress size={24} />
               </Box>
             ) : (
-              <Table size="small">
+              <TableContainer sx={{ width: '100%' }}>
+                <Table size="small" sx={{ width: '100%' }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>ID</TableCell>
@@ -395,7 +417,7 @@ const OrgMembership = () => {
                                 {org.name} — 구독 상태 편집
                               </Typography>
                               <Grid container spacing={2} alignItems="center">
-                                <Grid item xs={12} sm={3}>
+                                <Grid item xs={12} sm={4}>
                                   <TextField
                                     fullWidth
                                     select
@@ -410,7 +432,30 @@ const OrgMembership = () => {
                                         {opt.label}
                                       </MenuItem>
                                     ))}
-                                  </TextField>
+                                    </TextField>
+                                </Grid>
+                                {subEditForm.subscriptionStatus ===
+                                ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE ? (
+                                  <Grid item xs={12} sm={4}>
+                                    <TextField
+                                      fullWidth
+                                      size="small"
+                                      type="date"
+                                      label="활성 종료일"
+                                      name="activeEndsAt"
+                                      value={subEditForm.activeEndsAt}
+                                      onChange={handleSubEditChange}
+                                      InputLabelProps={{ shrink: true }}
+                                      helperText="비우면 무기한"
+                                    />
+                                  </Grid>
+                                ) : null}
+                                <Grid item xs={12} sm={4}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {getOrganizationSubscriptionStatusDescription(
+                                      subEditForm.subscriptionStatus
+                                    )}
+                                  </Typography>
                                 </Grid>
                                 <Grid item xs={12} sm={3}>
                                   <TextField
@@ -473,7 +518,8 @@ const OrgMembership = () => {
                     </TableRow>
                   )}
                 </TableBody>
-              </Table>
+                </Table>
+              </TableContainer>
             )}
 
             {/* 조직 등록 폼 (토글) */}
@@ -542,6 +588,25 @@ const OrgMembership = () => {
                       </MenuItem>
                     ))}
                   </TextField>
+                </Grid>
+                {orgForm.subscriptionStatus === ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.ACTIVE ? (
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="활성 종료일"
+                      name="activeEndsAt"
+                      value={orgForm.activeEndsAt}
+                      onChange={handleOrgChange}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="비우면 무기한"
+                    />
+                  </Grid>
+                ) : null}
+                <Grid item xs={12} sm={4}>
+                  <Typography variant="caption" color="text.secondary">
+                    {getOrganizationSubscriptionStatusDescription(orgForm.subscriptionStatus)}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField

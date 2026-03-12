@@ -50,6 +50,7 @@ const Login = () => {
     isAuthenticated,
     hasWorkspaceAccess,
     requiresOnboarding,
+    requiresSubscriptionContact,
     loading,
     isSupabaseConfigured,
     enableDevBypass,
@@ -66,10 +67,21 @@ const Login = () => {
       navigate(WORKSPACE_PATH, { replace: true });
       return;
     }
+    if (requiresSubscriptionContact) {
+      navigate('/subscription-required', { replace: true });
+      return;
+    }
     if (requiresOnboarding) {
       navigate('/onboarding', { replace: true });
     }
-  }, [hasWorkspaceAccess, isAuthenticated, loading, navigate, requiresOnboarding]);
+  }, [
+    hasWorkspaceAccess,
+    isAuthenticated,
+    loading,
+    navigate,
+    requiresOnboarding,
+    requiresSubscriptionContact,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +187,7 @@ const Login = () => {
                   orgName: org?.name ?? null,
                   employeeName: `${org?.name || '\uC870\uC9C1'} ${roleLabel} \uD14C\uC2A4\uD2B8`,
                   email: membership?.email || '',
+                  subscription: org?.subscription ?? null,
                   isLineLeader,
                   managedLineNames,
                   lineLeaderStartAt: isLineLeader ? lineLeaderStartAt : null,

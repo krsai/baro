@@ -18,6 +18,7 @@ import {
   attachOrganizationSubscription,
   ensureOrganizationSubscription,
   getHardCodedSystemAdminEmail,
+  getSystemAdminContactEmail,
   getOrganizationByQuery,
   getRequestedOrgIdText,
   getRequesterEmail,
@@ -337,6 +338,8 @@ const SUBSCRIPTION_STATUSES = new Set([
   "SUSPENDED",
 ]);
 const TRIAL_DAYS = 30;
+const GRACE_DAYS = 30;
+const SUBSCRIPTION_NULL_DATE_CUTOFF_MS = Date.UTC(1971, 0, 1);
 const ORGANIZATION_TYPE_KEYS = {
   MANUFACTURER: "MANUFACTURER",
   BRAND: "BRAND",
@@ -379,6 +382,37 @@ const isBrandOrg = (org: { type?: string | null } | null | undefined) =>
 const addDays = (date: Date, days: number): Date =>
   new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
+const normalizeSubscriptionDateOrNull = (value: unknown): Date | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const date = new Date(value as any);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.getTime() < SUBSCRIPTION_NULL_DATE_CUTOFF_MS ? null : date;
+};
+
+const buildSubscriptionResponse = (subscription: any) => {
+  if (!subscription || typeof subscription !== "object") return null;
+  const trialStartedAt = normalizeSubscriptionDateOrNull(subscription.trialStartedAt);
+  const trialEndsAt = normalizeSubscriptionDateOrNull(subscription.trialEndsAt);
+  const activatedAt = normalizeSubscriptionDateOrNull(subscription.activatedAt);
+  const activeEndsAt = normalizeSubscriptionDateOrNull(subscription.activeEndsAt);
+  const suspendedAt = normalizeSubscriptionDateOrNull(subscription.suspendedAt);
+  const graceEndsAt = activeEndsAt ? addDays(new Date(activeEndsAt), GRACE_DAYS) : null;
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    membershipEmail: subscription.membershipEmail ?? null,
+    billingEmail: subscription.billingEmail ?? null,
+    trialStartedAt,
+    trialEndsAt,
+    activatedAt,
+    activeEndsAt,
+    graceEndsAt,
+    suspendedAt,
+    updatedAt: subscription.updatedAt ?? null,
+    createdAt: subscription.createdAt ?? null,
+  };
+};
+
 const normalizeSubscriptionEmailInput = (
   value: unknown,
   fieldName: string,
@@ -404,10 +438,11 @@ const normalizeDateInput = (
 ) => {
   if (value === undefined) return { value: fallback };
   if (value === null || value === "") return { value: null };
-  const date = new Date(value as any);
-  if (Number.isNaN(date.getTime())) {
+  const rawDate = new Date(value as any);
+  if (Number.isNaN(rawDate.getTime())) {
     return { error: `${fieldName} is invalid` };
   }
+  const date = normalizeSubscriptionDateOrNull(value);
   return { value: date };
 };
 
@@ -416,20 +451,7 @@ const toOrganizationResponse = (organization: any) => {
   const { subscription, ...rest } = organization;
   return {
     ...rest,
-    subscription: subscription
-      ? {
-          id: subscription.id,
-          status: subscription.status,
-          membershipEmail: subscription.membershipEmail ?? null,
-          billingEmail: subscription.billingEmail ?? null,
-          trialStartedAt: subscription.trialStartedAt ?? null,
-          trialEndsAt: subscription.trialEndsAt ?? null,
-          activatedAt: subscription.activatedAt ?? null,
-          suspendedAt: subscription.suspendedAt ?? null,
-          updatedAt: subscription.updatedAt ?? null,
-          createdAt: subscription.createdAt ?? null,
-        }
-      : null,
+    subscription: buildSubscriptionResponse(subscription),
   };
 };
 
@@ -439,7 +461,8 @@ const hasSubscriptionPayload = (payload: any = {}) =>
   payload.membershipEmail !== undefined ||
   payload.billingEmail !== undefined ||
   payload.trialStartedAt !== undefined ||
-  payload.trialEndsAt !== undefined;
+  payload.trialEndsAt !== undefined ||
+  payload.activeEndsAt !== undefined;
 
 const applySubscriptionPayload = async (organization: any, payload: any = {}) => {
   const current = await ensureOrganizationSubscription(organization);
@@ -493,6 +516,14 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   if (trialEndsAtResolved.error) {
     throw createHttpError(400, trialEndsAtResolved.error);
   }
+  const activeEndsAtResolved = normalizeDateInput(
+    payload.activeEndsAt,
+    "activeEndsAt",
+    current.activeEndsAt
+  );
+  if (activeEndsAtResolved.error) {
+    throw createHttpError(400, activeEndsAtResolved.error);
+  }
 
   const now = new Date();
   let membershipEmail = membershipEmailResolved.value;
@@ -500,6 +531,7 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   let trialStartedAt = trialStartedAtResolved.value;
   let trialEndsAt = trialEndsAtResolved.value;
   let activatedAt = current.activatedAt;
+  let activeEndsAt = activeEndsAtResolved.value;
   let suspendedAt = current.suspendedAt;
 
   if (nextStatus === "TRIAL") {
@@ -509,6 +541,8 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
     if (!trialEndsAt) {
       trialEndsAt = addDays(trialStartedAt, TRIAL_DAYS);
     }
+    activeEndsAt = null;
+    suspendedAt = null;
   }
 
   if (nextStatus === "ACTIVE") {
@@ -521,11 +555,24 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
     if (!activatedAt) {
       activatedAt = now;
     }
+    if (rawStatus !== undefined && current.status !== "ACTIVE" && payload.activeEndsAt === undefined) {
+      activeEndsAt = null;
+    }
+    suspendedAt = null;
+  }
+
+  if (nextStatus === "GRACE") {
+    if (!activeEndsAt) {
+      activeEndsAt = current.activeEndsAt ?? now;
+    }
     suspendedAt = null;
   }
 
   if (nextStatus === "SUSPENDED") {
     suspendedAt = now;
+  } else if (nextStatus === "NOT_SUBSCRIBED") {
+    suspendedAt = null;
+    activeEndsAt = null;
   } else if (rawStatus !== undefined) {
     suspendedAt = null;
   }
@@ -533,6 +580,7 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   const updateData: any = {
     status: nextStatus,
     activatedAt,
+    activeEndsAt,
     suspendedAt,
     ...(membershipEmail !== undefined ? { membershipEmail } : {}),
     ...(billingEmail !== undefined ? { billingEmail } : {}),
@@ -556,19 +604,114 @@ const ensureHardcodedSystemAdmin = async () => {
   });
 };
 
+const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
+
+const combineOrganizationPhone = (countryCode: unknown, phoneNumber: unknown) => {
+  const normalizedCountryCode = resolveOptionalString(countryCode, null);
+  const normalizedPhoneNumber = resolveOptionalString(phoneNumber, null);
+  return [normalizedCountryCode, normalizedPhoneNumber].filter(Boolean).join(" ");
+};
+
+const resolveSharedOrganizationWageFields = (
+  targetMonthlyWageInput: unknown,
+  wagePerSecondInput: unknown,
+  fallback: { targetMonthlyWage?: unknown; wagePerSecond?: unknown } = {}
+) => {
+  const hasTargetMonthlyWageInput = targetMonthlyWageInput !== undefined;
+  const hasWagePerSecondInput = wagePerSecondInput !== undefined;
+  if (!hasTargetMonthlyWageInput && !hasWagePerSecondInput) {
+    return {
+      targetMonthlyWage: toNumberOrNull(fallback.targetMonthlyWage),
+      wagePerSecond: toNumberOrNull(fallback.wagePerSecond),
+    };
+  }
+
+  const targetMonthlyWage = toNumberOrNull(targetMonthlyWageInput);
+  if (targetMonthlyWage !== null) {
+    return {
+      targetMonthlyWage,
+      wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
+    };
+  }
+
+  return {
+    targetMonthlyWage: hasTargetMonthlyWageInput
+      ? null
+      : toNumberOrNull(fallback.targetMonthlyWage),
+    wagePerSecond: hasWagePerSecondInput
+      ? toNumberOrNull(wagePerSecondInput)
+      : hasTargetMonthlyWageInput
+        ? null
+        : toNumberOrNull(fallback.wagePerSecond),
+  };
+};
+
+const buildSharedCustomerOrganizationData = (
+  payload: any = {},
+  fallbackOrganization: any = null
+) => {
+  const wageFields = resolveSharedOrganizationWageFields(
+    payload?.targetMonthlyWage,
+    payload?.wagePerSecond,
+    fallbackOrganization
+  );
+
+  return {
+    code:
+      payload?.code !== undefined
+        ? normalizeOrgCode(payload.code)
+        : normalizeOrgCode(fallbackOrganization?.code),
+    name:
+      payload?.name !== undefined
+        ? resolveOptionalString(payload.name, null)
+        : resolveOptionalString(fallbackOrganization?.name, null),
+    address:
+      payload?.address !== undefined
+        ? resolveOptionalString(payload.address, null)
+        : resolveOptionalString(fallbackOrganization?.address, null),
+    countryCode:
+      payload?.countryCode !== undefined
+        ? resolveOptionalString(payload.countryCode, null)
+        : resolveOptionalString((fallbackOrganization as any)?.countryCode, null),
+    phone:
+      payload?.phoneNumber !== undefined || payload?.phone !== undefined
+        ? resolveOptionalString(payload.phoneNumber ?? payload.phone, null)
+        : resolveOptionalString(fallbackOrganization?.phone, null),
+    representative:
+      payload?.manager !== undefined || payload?.representative !== undefined
+        ? resolveOptionalString(payload.manager ?? payload.representative, null)
+        : resolveOptionalString(fallbackOrganization?.representative, null),
+    email:
+      payload?.email !== undefined
+        ? resolveOptionalString(payload.email, null)
+        : resolveOptionalString(fallbackOrganization?.email, null),
+    targetMonthlyWage: wageFields.targetMonthlyWage,
+    wagePerSecond: wageFields.wagePerSecond,
+  };
+};
+
 const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTURER") => {
   const targetOrg =
     perspective === "BRAND" ? relationship.manufacturer ?? {} : relationship.brand ?? {};
   const targetCode = targetOrg.code ?? relationship.customerCode ?? "";
+  const phone = combineOrganizationPhone(
+    (targetOrg as any)?.countryCode ?? null,
+    targetOrg.phone ?? relationship.managerPhone ?? null
+  );
   return {
     id: relationship.id,
     brandOrgId: relationship.brandOrgId,
     manufacturerOrgId: relationship.manufacturerOrgId,
     code: targetCode,
     name: targetOrg.name ?? "",
-    manager: relationship.managerName ?? targetOrg.representative ?? "",
-    phone: relationship.managerPhone ?? targetOrg.phone ?? "",
-    email: relationship.managerEmail ?? targetOrg.email ?? "",
+    address: targetOrg.address ?? "",
+    countryCode: (targetOrg as any)?.countryCode ?? null,
+    phoneNumber: targetOrg.phone ?? relationship.managerPhone ?? "",
+    phone,
+    manager: targetOrg.representative ?? relationship.managerName ?? "",
+    email: targetOrg.email ?? relationship.managerEmail ?? "",
+    targetMonthlyWage: (targetOrg as any)?.targetMonthlyWage ?? null,
+    wagePerSecond: (targetOrg as any)?.wagePerSecond ?? null,
     registeredAt: relationship.createdAt,
     brand: relationship.brand ?? null,
     manufacturer: relationship.manufacturer ?? null,
@@ -5585,15 +5728,26 @@ const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = ne
 const seedAttributesIfEmpty = async (orgId: number) => {
   await prisma.$transaction([
     prisma.attrColor.createMany({
-      data: DEFAULT_ATTRIBUTES.colors,
+      data: DEFAULT_ATTRIBUTES.colors.map((item) => ({
+        ...item,
+        nameEn: item.name,
+      })),
       skipDuplicates: true,
     }),
     prisma.attrCategory.createMany({
-      data: DEFAULT_ATTRIBUTES.categories.map((item) => ({ ...item, orgId })),
+      data: DEFAULT_ATTRIBUTES.categories.map((item) => ({
+        ...item,
+        orgId,
+        nameEn: item.name,
+      })),
       skipDuplicates: true,
     }),
     prisma.attrProcess.createMany({
-      data: DEFAULT_ATTRIBUTES.processes.map((item) => ({ ...item, orgId })),
+      data: DEFAULT_ATTRIBUTES.processes.map((item) => ({
+        ...item,
+        orgId,
+        nameEn: item.name,
+      })),
       skipDuplicates: true,
     }),
   ]);
@@ -5637,17 +5791,16 @@ const toAttrRoleResponse = (role: any) => ({
 });
 
 const resolveManagedAttributeNameData = (item: any) => {
+  const fallbackName = resolveOptionalString(item?.name, null);
   const nameKo = resolveOptionalString(item?.nameKo, null);
-  const nameEn = resolveOptionalString(item?.nameEn, null);
-  const name =
-    resolveOptionalString(item?.name, null) ??
-    nameKo ??
-    nameEn ??
-    "";
+  const nameEn = resolveOptionalString(item?.nameEn, null) ?? fallbackName;
+  const nameVi = resolveOptionalString(item?.nameVi, null);
+  const name = nameEn ?? fallbackName ?? nameKo ?? nameVi ?? "";
   return {
     name,
     nameKo,
     nameEn,
+    nameVi,
   };
 };
 
@@ -5942,7 +6095,7 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
     }
 
     let code = (item.code ?? "").trim();
-    const { name, nameKo, nameEn } = resolveManagedAttributeNameData(item);
+    const { name, nameKo, nameEn, nameVi } = resolveManagedAttributeNameData(item);
     if (typeof options.resolveCode === "function") {
       code = options.resolveCode({
         code,
@@ -5965,11 +6118,11 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
       updates.push(
         model.updateMany({
           where: { id: itemId, orgId },
-          data: { code, name, nameKo, nameEn },
+          data: { code, name, nameKo, nameEn, nameVi },
         })
       );
     } else {
-      creates.push({ orgId, code, name, nameKo, nameEn });
+      creates.push({ orgId, code, name, nameKo, nameEn, nameVi });
     }
 
     const trackedNextCode =
@@ -6031,6 +6184,7 @@ const syncGlobalColorSection = async (items: any) => {
     name: string;
     nameKo: string | null;
     nameEn: string | null;
+    nameVi: string | null;
   }> = [];
   const updates: Array<{
     id: number;
@@ -6038,6 +6192,7 @@ const syncGlobalColorSection = async (items: any) => {
     name: string;
     nameKo: string | null;
     nameEn: string | null;
+    nameVi: string | null;
   }> = [];
   const changedCodes: Array<{ id: number; code: string }> = [];
   const changedNames: Array<{ id: number; name: string }> = [];
@@ -6052,7 +6207,7 @@ const syncGlobalColorSection = async (items: any) => {
       usedCodes.delete(trackedExistingCode);
     }
 
-    const { name, nameKo, nameEn } = resolveManagedAttributeNameData(item);
+    const { name, nameKo, nameEn, nameVi } = resolveManagedAttributeNameData(item);
     const code = resolveColorAttributeCode({
       code: String(item?.code ?? "").trim(),
       name,
@@ -6073,6 +6228,7 @@ const syncGlobalColorSection = async (items: any) => {
         name,
         nameKo,
         nameEn,
+        nameVi,
       });
       if (existingRow.code !== code) {
         changedCodes.push({ id: itemId, code });
@@ -6081,7 +6237,7 @@ const syncGlobalColorSection = async (items: any) => {
         changedNames.push({ id: itemId, name });
       }
     } else {
-      creates.push({ code, name, nameKo, nameEn });
+      creates.push({ code, name, nameKo, nameEn, nameVi });
     }
 
     const trackedNextCode = normalizeManagedAttributeCode(code);
@@ -6104,6 +6260,7 @@ const syncGlobalColorSection = async (items: any) => {
             name: row.name,
             nameKo: row.nameKo,
             nameEn: row.nameEn,
+            nameVi: row.nameVi,
           },
         })
       )
@@ -6263,6 +6420,8 @@ app.get("/auth/context", async (req, res) => {
       orgType: organization?.type ?? null,
       orgRole: null,
       employeeName: null,
+      subscription: buildSubscriptionResponse(organization?.subscription),
+      systemAdminContactEmail: getSystemAdminContactEmail(),
     });
   }
 
@@ -6286,16 +6445,19 @@ app.get("/auth/context", async (req, res) => {
       include: { organization: true, employee: true },
     });
     if (membership && membership.status === "ACTIVE" && membership.organization) {
+      const organization = await attachOrganizationSubscription(membership.organization);
       return res.json({
         email: requesterEmail,
         entryType: "ORG",
         systemRole: "USER",
-        orgId: membership.organization.id,
-        orgName: membership.organization.name ?? null,
-        orgType: membership.organization.type ?? null,
+        orgId: organization?.id ?? membership.organization.id,
+        orgName: organization?.name ?? membership.organization.name ?? null,
+        orgType: organization?.type ?? membership.organization.type ?? null,
         orgRole: membership.role,
         factoryId: membership.employee?.factoryId ?? null,
         employeeName: membership.employee?.name ?? null,
+        subscription: buildSubscriptionResponse(organization?.subscription),
+        systemAdminContactEmail: getSystemAdminContactEmail(),
       });
     }
     // If requested org is stale/unauthorized, fall through and resolve by user's actual access.
@@ -6340,19 +6502,23 @@ app.get("/auth/context", async (req, res) => {
       latestRegistrationRequest: latestRegistrationRequest
         ? toOnboardingRequestSummary(latestRegistrationRequest)
         : null,
+      systemAdminContactEmail: getSystemAdminContactEmail(),
     });
   }
 
+  const organization = await attachOrganizationSubscription(membership.organization);
   res.json({
     email: requesterEmail,
     entryType: "ORG",
     systemRole: "USER",
-    orgId: membership.organization.id,
-    orgName: membership.organization.name ?? null,
-    orgType: membership.organization.type ?? null,
+    orgId: organization?.id ?? membership.organization.id,
+    orgName: organization?.name ?? membership.organization.name ?? null,
+    orgType: organization?.type ?? membership.organization.type ?? null,
     orgRole: membership.role,
     factoryId: membership.employee?.factoryId ?? null,
     employeeName: membership.employee?.name ?? null,
+    subscription: buildSubscriptionResponse(organization?.subscription),
+    systemAdminContactEmail: getSystemAdminContactEmail(),
   });
 });
 
@@ -6593,14 +6759,14 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   const normalizedMembershipEmail = normalizeEmail(req.body?.membershipEmail);
   const normalizedBillingEmail = normalizeEmail(req.body?.billingEmail);
   const subscriptionPayload: Record<string, unknown> = {};
-  if (normalizedSubscriptionStatus) {
-    subscriptionPayload.subscriptionStatus = normalizedSubscriptionStatus;
-  }
+  subscriptionPayload.subscriptionStatus =
+    normalizedSubscriptionStatus ?? "TRIAL";
   if (normalizedSubscriptionStatus === "ACTIVE") {
     subscriptionPayload.membershipEmail =
       normalizedMembershipEmail || companyRequest.contactEmail;
     subscriptionPayload.billingEmail =
       normalizedBillingEmail || companyRequest.contactEmail;
+    subscriptionPayload.activeEndsAt = req.body?.activeEndsAt ?? null;
   } else {
     if (normalizedMembershipEmail) {
       subscriptionPayload.membershipEmail = normalizedMembershipEmail;
@@ -8813,16 +8979,9 @@ app.post("/customers", async (req, res) => {
     });
   }
 
-  const {
-    brandOrgId,
-    name,
-    code,
-    manager,
-    phone,
-    email,
-    memo,
-  } = req.body ?? {};
-  const normalizedCode = normalizeOrgCode(code);
+  const { brandOrgId, memo } = req.body ?? {};
+  const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {});
+  const normalizedCode = sharedOrganizationData.code;
   if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
     return res.status(400).json({
       ok: false,
@@ -8831,8 +8990,8 @@ app.post("/customers", async (req, res) => {
   }
 
   let brand = null;
-  const brandOrgIdNum = Number(brandOrgId);
-  if (Number.isFinite(brandOrgIdNum)) {
+  const brandOrgIdNum = toPositiveIntOrNull(brandOrgId);
+  if (brandOrgIdNum) {
     brand = await prisma.organization.findUnique({
       where: { id: brandOrgIdNum },
     });
@@ -8850,32 +9009,71 @@ app.post("/customers", async (req, res) => {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
-    if (brand.code !== normalizedCode) {
-      await prisma.organization.update({
-        where: { id: brand.id },
-        data: { code: normalizedCode },
-      });
-    }
-  } else {
-    const trimmedName = typeof name === "string" ? name.trim() : "";
-    if (!trimmedName) {
+    const nextBrandData = buildSharedCustomerOrganizationData(req.body ?? {}, brand);
+    if (!nextBrandData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
-
+    brand = await prisma.organization.update({
+      where: { id: brand.id },
+      data: {
+        name: nextBrandData.name,
+        code: normalizedCode,
+        address: nextBrandData.address,
+        countryCode: nextBrandData.countryCode,
+        phone: nextBrandData.phone,
+        representative: nextBrandData.representative,
+        email: nextBrandData.email,
+        targetMonthlyWage: nextBrandData.targetMonthlyWage,
+        wagePerSecond: nextBrandData.wagePerSecond,
+      },
+    });
+  } else {
     const existingCodeOwner = await prisma.organization.findFirst({
       where: { code: normalizedCode },
     });
-    if (existingCodeOwner) {
+    if (existingCodeOwner && !isBrandOrg(existingCodeOwner)) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
-    brand = await prisma.organization.create({
-      data: {
-        name: trimmedName,
-        code: normalizedCode,
-        type: "BRAND",
-      },
-    });
+    const nextBrandData = buildSharedCustomerOrganizationData(
+      req.body ?? {},
+      existingCodeOwner ?? null
+    );
+    if (!nextBrandData.name) {
+      return res.status(400).json({ ok: false, error: "name is required" });
+    }
+
+    if (existingCodeOwner && isBrandOrg(existingCodeOwner)) {
+      brand = await prisma.organization.update({
+        where: { id: existingCodeOwner.id },
+        data: {
+          name: nextBrandData.name,
+          code: normalizedCode,
+          address: nextBrandData.address,
+          countryCode: nextBrandData.countryCode,
+          phone: nextBrandData.phone,
+          representative: nextBrandData.representative,
+          email: nextBrandData.email,
+          targetMonthlyWage: nextBrandData.targetMonthlyWage,
+          wagePerSecond: nextBrandData.wagePerSecond,
+        },
+      });
+    } else {
+      brand = await prisma.organization.create({
+        data: {
+          name: nextBrandData.name,
+          code: normalizedCode,
+          address: nextBrandData.address,
+          countryCode: nextBrandData.countryCode,
+          phone: nextBrandData.phone,
+          representative: nextBrandData.representative,
+          email: nextBrandData.email,
+          targetMonthlyWage: nextBrandData.targetMonthlyWage,
+          wagePerSecond: nextBrandData.wagePerSecond,
+          type: "BRAND",
+        },
+      });
+    }
   }
 
   if (!isBrandOrg(brand)) {
@@ -8898,18 +9096,18 @@ app.post("/customers", async (req, res) => {
     },
     update: {
       customerCode: normalizedCode,
-      managerName: resolveOptionalString(manager, null),
-      managerPhone: resolveOptionalString(phone, null),
-      managerEmail: resolveOptionalString(email, null),
+      managerName: resolveOptionalString(sharedOrganizationData.representative, null),
+      managerPhone: resolveOptionalString(sharedOrganizationData.phone, null),
+      managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
       memo: resolveOptionalString(memo, null),
     },
     create: {
       manufacturerOrgId: organization.id,
       brandOrgId: brand.id,
       customerCode: normalizedCode,
-      managerName: resolveOptionalString(manager, null),
-      managerPhone: resolveOptionalString(phone, null),
-      managerEmail: resolveOptionalString(email, null),
+      managerName: resolveOptionalString(sharedOrganizationData.representative, null),
+      managerPhone: resolveOptionalString(sharedOrganizationData.phone, null),
+      managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
       memo: resolveOptionalString(memo, null),
     },
     include: { brand: true },
@@ -8948,7 +9146,8 @@ app.put("/customers/:id", async (req, res) => {
     return res.status(404).json({ ok: false, error: "customer not found" });
   }
 
-  const { name, code, manager, phone, email, memo } = req.body ?? {};
+  const { name, code, memo } = req.body ?? {};
+  const nextBrandData = buildSharedCustomerOrganizationData(req.body ?? {}, existing.brand);
   const normalizedCode =
     code !== undefined ? normalizeOrgCode(code) : undefined;
 
@@ -8977,24 +9176,25 @@ app.put("/customers/:id", async (req, res) => {
     }
   }
 
-  if (name !== undefined) {
-    await prisma.organization.update({
-      where: { id: existing.brandOrgId },
-      data: { name: name.trim() },
-    });
-  }
-
-  if (code !== undefined && normalizedCode) {
-    await prisma.organization.update({
-      where: { id: existing.brandOrgId },
-      data: { code: normalizedCode },
-    });
-  }
+  await prisma.organization.update({
+    where: { id: existing.brandOrgId },
+    data: {
+      name: nextBrandData.name ?? existing.brand?.name ?? "",
+      ...(normalizedCode ? { code: normalizedCode } : {}),
+      address: nextBrandData.address,
+      countryCode: nextBrandData.countryCode,
+      phone: nextBrandData.phone,
+      representative: nextBrandData.representative,
+      email: nextBrandData.email,
+      targetMonthlyWage: nextBrandData.targetMonthlyWage,
+      wagePerSecond: nextBrandData.wagePerSecond,
+    },
+  });
 
   const relationshipUpdateData: any = {
-    managerName: resolveOptionalString(manager, existing.managerName),
-    managerPhone: resolveOptionalString(phone, existing.managerPhone),
-    managerEmail: resolveOptionalString(email, existing.managerEmail),
+    managerName: resolveOptionalString(nextBrandData.representative, existing.managerName),
+    managerPhone: resolveOptionalString(nextBrandData.phone, existing.managerPhone),
+    managerEmail: resolveOptionalString(nextBrandData.email, existing.managerEmail),
     memo: resolveOptionalString(memo, existing.memo),
     ...(code !== undefined ? { customerCode: normalizedCode } : {}),
   };
@@ -9619,7 +9819,7 @@ app.post("/attributes/colors", async (req, res) => {
   const systemAdmin = await requireSystemAdmin(req, res);
   if (!systemAdmin) return;
 
-  const { name, nameKo, nameEn } = resolveManagedAttributeNameData(req.body ?? {});
+  const { name, nameKo, nameEn, nameVi } = resolveManagedAttributeNameData(req.body ?? {});
   const code = resolveOptionalString(req.body?.code, null);
   if (!name) {
     return res.status(400).json({ ok: false, error: "name is required" });
@@ -9643,6 +9843,7 @@ app.post("/attributes/colors", async (req, res) => {
       name,
       nameKo,
       nameEn,
+      nameVi,
     },
   });
 

@@ -17,6 +17,10 @@ const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "WORKER",
 ];
 const BARO_SUBSCRIPTION_EMAIL = "baro.garment@gmail.com";
+const TRIAL_DAYS = 30;
+const GRACE_DAYS = 30;
+const SUBSCRIPTION_NULL_DATE_CUTOFF_MS = Date.UTC(1971, 0, 1);
+const WORKSPACE_SUBSCRIPTION_STATUSES = new Set(["TRIAL", "ACTIVE", "GRACE"]);
 
 type OrganizationAccessOptions = {
   allowSuspended?: boolean;
@@ -57,6 +61,103 @@ const isBaroOrganization = (organization: any) => {
 
 export const getHardCodedSystemAdminEmail = () =>
   normalizeEmail(process.env.SYSTEM_ADMIN_EMAIL || "krsailer82@gmail.com");
+
+export const getSystemAdminContactEmail = () => getHardCodedSystemAdminEmail();
+
+const addDays = (date: Date, days: number) =>
+  new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+
+const toDateOrNull = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
+  const date = new Date(value as any);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toSubscriptionDateOrNull = (value: unknown) => {
+  const date = toDateOrNull(value);
+  if (!date) return null;
+  return date.getTime() < SUBSCRIPTION_NULL_DATE_CUTOFF_MS ? null : date;
+};
+
+const buildSubscriptionLifecyclePatch = (subscription: any) => {
+  if (!subscription || typeof subscription !== "object") return {};
+
+  const now = new Date();
+  const patch: Record<string, unknown> = {};
+  const status =
+    typeof subscription.status === "string"
+      ? subscription.status.trim().toUpperCase()
+      : "";
+  const trialStartedAt = toSubscriptionDateOrNull(subscription.trialStartedAt);
+  const trialEndsAt = toSubscriptionDateOrNull(subscription.trialEndsAt);
+  const activatedAt = toSubscriptionDateOrNull(subscription.activatedAt);
+  const activeEndsAt = toSubscriptionDateOrNull(subscription.activeEndsAt);
+  const suspendedAt = toSubscriptionDateOrNull(subscription.suspendedAt);
+
+  if (subscription.activeEndsAt !== null && subscription.activeEndsAt !== undefined && !activeEndsAt) {
+    patch.activeEndsAt = null;
+  }
+
+  if (status === "TRIAL") {
+    const effectiveTrialStart = trialStartedAt ?? now;
+    const effectiveTrialEnd = trialEndsAt ?? addDays(effectiveTrialStart, TRIAL_DAYS);
+    if (!trialStartedAt) {
+      patch.trialStartedAt = effectiveTrialStart;
+    }
+    if (!trialEndsAt) {
+      patch.trialEndsAt = effectiveTrialEnd;
+    }
+    if (effectiveTrialEnd.getTime() < now.getTime()) {
+      patch.status = "SUSPENDED";
+      patch.suspendedAt = suspendedAt ?? now;
+    } else if (suspendedAt) {
+      patch.suspendedAt = null;
+    }
+    return patch;
+  }
+
+  if (status === "ACTIVE") {
+    if (!activatedAt) {
+      patch.activatedAt = now;
+    }
+    if (activeEndsAt && activeEndsAt.getTime() < now.getTime()) {
+      patch.status = "GRACE";
+      patch.suspendedAt = null;
+    } else if (suspendedAt) {
+      patch.suspendedAt = null;
+    }
+    return patch;
+  }
+
+  if (status === "GRACE") {
+    if (!activeEndsAt) {
+      patch.status = "ACTIVE";
+      patch.suspendedAt = null;
+      return patch;
+    }
+
+    const graceEndsAt = addDays(activeEndsAt, GRACE_DAYS);
+    if (graceEndsAt.getTime() < now.getTime()) {
+      patch.status = "SUSPENDED";
+      patch.suspendedAt = suspendedAt ?? now;
+    } else if (suspendedAt) {
+      patch.suspendedAt = null;
+    }
+    return patch;
+  }
+
+  if (status === "SUSPENDED") {
+    if (!suspendedAt) {
+      patch.suspendedAt = now;
+    }
+    return patch;
+  }
+
+  if (suspendedAt) {
+    patch.suspendedAt = null;
+  }
+  return patch;
+};
 
 const getRequestOrganizationAccessCache = (req: Request) => {
   const typedRequest = req as RequestWithOrganizationAccessCache;
@@ -112,18 +213,29 @@ export const ensureOrganizationSubscription = async (organization: any) => {
     where: { orgId: organization.id },
   });
   if (existing) {
-    if (!isBaroOrganization(organization)) return existing;
-
     const patch: any = {};
-    if (!existing.membershipEmail) {
-      patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
+    if (isBaroOrganization(organization)) {
+      if (existing.status !== "ACTIVE") {
+        patch.status = "ACTIVE";
+      }
+      if (!existing.membershipEmail) {
+        patch.membershipEmail = BARO_SUBSCRIPTION_EMAIL;
+      }
+      if (!existing.billingEmail) {
+        patch.billingEmail = BARO_SUBSCRIPTION_EMAIL;
+      }
+      if (!existing.activatedAt) {
+        patch.activatedAt = new Date();
+      }
+      if (existing.activeEndsAt) {
+        patch.activeEndsAt = null;
+      }
+      if (existing.suspendedAt) {
+        patch.suspendedAt = null;
+      }
     }
-    if (!existing.billingEmail) {
-      patch.billingEmail = BARO_SUBSCRIPTION_EMAIL;
-    }
-    if (existing.status === "ACTIVE" && !existing.activatedAt) {
-      patch.activatedAt = new Date();
-    }
+
+    Object.assign(patch, buildSubscriptionLifecyclePatch({ ...existing, ...patch }));
 
     if (Object.keys(patch).length === 0) return existing;
     return prisma.organizationSubscription.update({
@@ -140,6 +252,7 @@ export const ensureOrganizationSubscription = async (organization: any) => {
         membershipEmail: BARO_SUBSCRIPTION_EMAIL,
         billingEmail: BARO_SUBSCRIPTION_EMAIL,
         activatedAt: new Date(),
+        activeEndsAt: null,
       },
     });
   }
@@ -161,8 +274,12 @@ export const attachOrganizationSubscription = async (organization: any) => {
 const ensureOrganizationAccessible = (organization: any, options: OrganizationAccessOptions = {}) => {
   if (!organization) return organization;
   if (options.allowSuspended) return organization;
-  if (organization.subscription?.status === "SUSPENDED") {
-    throw createHttpError(403, "organization is suspended");
+  const subscriptionStatus =
+    typeof organization.subscription?.status === "string"
+      ? organization.subscription.status.trim().toUpperCase()
+      : "";
+  if (!WORKSPACE_SUBSCRIPTION_STATUSES.has(subscriptionStatus)) {
+    throw createHttpError(403, "organization subscription is inactive");
   }
   return organization;
 };

@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import GlobalLoadingOverlay from './components/GlobalLoadingOverlay';
 import { canAccessPath, resolveFirstAccessiblePath } from './utils/accessControl';
 import Login from './pages/Auth/Login';
+import SubscriptionRequired from './pages/Auth/SubscriptionRequired';
 
 const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
 const SignUp = React.lazy(() => import('./pages/Auth/SignUp'));
@@ -36,6 +37,41 @@ const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
 const WorkspaceShell = () => null;
 const WORKSPACE_PATH = '/workspace';
 
+const AuthOnlyRoute = () => {
+  const {
+    isAuthenticated,
+    loading,
+    hasWorkspaceAccess,
+    requiresOnboarding,
+    requiresSubscriptionContact,
+  } = useAuth();
+
+  if (loading) {
+    return (
+      <GlobalLoadingOverlay
+        open
+        fullscreen
+        startedAt={Date.now()}
+        activeRequestCount={1}
+      />
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  if (hasWorkspaceAccess) {
+    return <Navigate to={WORKSPACE_PATH} replace />;
+  }
+  if (requiresOnboarding) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  if (requiresSubscriptionContact) {
+    return <Outlet />;
+  }
+  return <Navigate to="/login" replace />;
+};
+
 const OAuthCallbackRedirect = () => {
   const location = useLocation();
   const nextPath = `/login${location.search || ''}${location.hash || ''}`;
@@ -59,6 +95,7 @@ const ProtectedRoute = () => {
     isAuthenticated,
     loading,
     hasWorkspaceAccess,
+    requiresSubscriptionContact,
     devBypass,
     devProfile,
     accessProfile,
@@ -95,6 +132,9 @@ const ProtectedRoute = () => {
   }
 
   if (!hasWorkspaceAccess) {
+    if (requiresSubscriptionContact) {
+      return <Navigate to="/subscription-required" replace />;
+    }
     return <Navigate to="/onboarding" replace />;
   }
 
@@ -118,6 +158,15 @@ const router = createBrowserRouter([
   {
     path: '/signup',
     element: <SignUp />,
+  },
+  {
+    element: <AuthOnlyRoute />,
+    children: [
+      {
+        path: '/subscription-required',
+        element: <SubscriptionRequired />,
+      },
+    ],
   },
   {
     path: '/onboarding',
