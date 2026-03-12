@@ -305,6 +305,7 @@ const AttrBoard = () => {
                       fullWidth
                       size="small"
                       placeholder={col.label}
+
                     />
                   </TableCell>
                 ))}
@@ -346,9 +347,6 @@ const AttrBoard = () => {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button variant="outlined" onClick={handleRevert} disabled={!isDirty || isSaving}>
-              되돌리기
-            </Button>
             <Button
               variant="contained"
               onClick={handleSaveClick}

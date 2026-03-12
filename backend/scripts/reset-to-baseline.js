@@ -101,15 +101,63 @@ const BASELINE_STYLES = [
 ];
 
 const STAFF_MEMBERSHIPS = [
-  { email: 'manufacturer-admin@test.local', role: 'ADMIN', name: 'Manager', payType: 'FIXED' },
-  { email: 'manufacturer-operator@test.local', role: 'OPERATOR', name: 'Operator', payType: 'FIXED' },
-  { email: 'manufacturer-accountant@test.local', role: 'ACCOUNTANT', name: 'Accountant', payType: 'FIXED' },
+  {
+    email: 'manufacturer-admin@test.local',
+    role: 'ADMIN',
+    name: 'Manager',
+    payType: 'FIXED',
+    position: 'ADMIN',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSMF-ADMIN-0001',
+  },
+  {
+    email: 'manufacturer-operator@test.local',
+    role: 'OPERATOR',
+    name: 'Operator',
+    payType: 'FIXED',
+    position: 'OPERATOR',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSMF-OPER-0002',
+  },
+  {
+    email: 'manufacturer-accountant@test.local',
+    role: 'ACCOUNTANT',
+    name: 'Accountant',
+    payType: 'FIXED',
+    position: 'ACCOUNTANT',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSMF-ACCT-0003',
+  },
 ];
 
 const BRAND_MEMBERSHIPS = [
-  { email: 'brand-admin@test.local', role: 'ADMIN' },
-  { email: 'brand-operator@test.local', role: 'OPERATOR' },
-  { email: 'brand-accountant@test.local', role: 'ACCOUNTANT' },
+  {
+    email: 'brand-admin@test.local',
+    role: 'ADMIN',
+    name: 'Brand Admin',
+    payType: 'FIXED',
+    position: 'ADMIN',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSBR-ADMIN-0001',
+  },
+  {
+    email: 'brand-operator@test.local',
+    role: 'OPERATOR',
+    name: 'Brand Operator',
+    payType: 'FIXED',
+    position: 'OPERATOR',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSBR-OPER-0002',
+  },
+  {
+    email: 'brand-accountant@test.local',
+    role: 'ACCOUNTANT',
+    name: 'Brand Accountant',
+    payType: 'FIXED',
+    position: 'ACCOUNTANT',
+    bankName: 'Test Bank',
+    bankAccountNumber: 'TSBR-ACCT-0003',
+  },
 ];
 
 const LINE_CONFIGS = [
@@ -264,7 +312,19 @@ async function syncManufacturerAttributes(orgId) {
   }
 }
 
-async function ensureEmployee({ orgId, orgMembershipId, factoryId, roleId, payType, name, lineName, position }) {
+async function ensureEmployee({
+  orgId,
+  orgMembershipId,
+  factoryId,
+  roleId,
+  payType,
+  name,
+  lineName,
+  position,
+  phone,
+  bankName,
+  bankAccountNumber,
+}) {
   const existing = await prisma.employee.findUnique({ where: { orgMembershipId } });
   const data = {
     orgId,
@@ -275,6 +335,9 @@ async function ensureEmployee({ orgId, orgMembershipId, factoryId, roleId, payTy
     name,
     lineName,
     position,
+    phone: phone ?? null,
+    bankName: bankName ?? null,
+    bankAccountNumber: bankAccountNumber ?? null,
   };
   if (existing) {
     return prisma.employee.update({ where: { id: existing.id }, data });
@@ -395,12 +458,26 @@ async function main() {
       payType: membership.payType,
       name: membership.name,
       lineName: null,
-      position: membership.role,
+      position: membership.position ?? membership.role,
+      bankName: membership.bankName,
+      bankAccountNumber: membership.bankAccountNumber,
     });
   }
 
   for (const membership of BRAND_MEMBERSHIPS) {
-    await ensureMembership(brand.id, membership);
+    const createdMembership = await ensureMembership(brand.id, membership);
+    await ensureEmployee({
+      orgId: brand.id,
+      orgMembershipId: createdMembership.id,
+      factoryId: null,
+      roleId: null,
+      payType: membership.payType,
+      name: membership.name,
+      lineName: null,
+      position: membership.position ?? membership.role,
+      bankName: membership.bankName,
+      bankAccountNumber: membership.bankAccountNumber,
+    });
   }
 
   const workerEmployeeIdsByLine = new Map();

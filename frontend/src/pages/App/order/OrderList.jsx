@@ -67,6 +67,12 @@ import {
   getOrderStatusLabel as getOrderStatusLabelFromConst,
   normalizeOrderStatus as normalizeOrderStatusFromConst,
 } from '../../../constants/orderStatus';
+import {
+  getOrderPartyRoleLabel,
+  getOrderPartyRoleLabelWithType,
+  getOrderPartyText,
+  ORDER_PARTY_ROLE_KEYS,
+} from '../../../constants/orderPartyRole';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import {
   fetchOrders as fetchOrdersFromApi,
@@ -729,6 +735,41 @@ const OrderList = () => {
   const { showNotification, navigateToPath, activePath, refreshSignals, markPathForRefresh } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const orderPartyText = useMemo(
+    () => ({
+      buyer: getOrderPartyRoleLabel(ORDER_PARTY_ROLE_KEYS.BUYER, 'Buyer', languageCode),
+      seller: getOrderPartyRoleLabel(ORDER_PARTY_ROLE_KEYS.SELLER, 'Seller', languageCode),
+      buyerWithType: getOrderPartyRoleLabelWithType(
+        ORDER_PARTY_ROLE_KEYS.BUYER,
+        'Buyer (Brand)',
+        languageCode
+      ),
+      sellerWithType: getOrderPartyRoleLabelWithType(
+        ORDER_PARTY_ROLE_KEYS.SELLER,
+        'Seller (Manufacturer)',
+        languageCode
+      ),
+      searchPlaceholder: getOrderPartyText(
+        'searchPlaceholder',
+        'Search order no., buyer, seller, style..',
+        languageCode
+      ),
+      loadingPlaceholder: getOrderPartyText('loadingPlaceholder', 'Loading...', languageCode),
+      selectBuyer: getOrderPartyText('selectBuyer', 'Select a buyer.', languageCode),
+      selectSeller: getOrderPartyText('selectSeller', 'Select a seller.', languageCode),
+      selectBuyerFirst: getOrderPartyText(
+        'selectBuyerFirst',
+        'Select a buyer first.',
+        languageCode
+      ),
+      linkedPairOnly: getOrderPartyText(
+        'linkedPairOnly',
+        'Only linked buyer/seller pairs can be selected.',
+        languageCode
+      ),
+    }),
+    [languageCode]
+  );
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
   const [orders, setOrders] = useState([]);
@@ -1450,7 +1491,7 @@ const OrderList = () => {
 
   const handleStyleChange = (itemIdOrIds, style, options = {}) => {
     if (!selectedBuyerName) {
-      showNotification('발주자를 먼저 선택해 주세요.', 'warning');
+      showNotification(orderPartyText.selectBuyerFirst, 'warning');
       return;
     }
 
@@ -1674,6 +1715,24 @@ const OrderList = () => {
   const validateOrder = () => {
     const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
     const resolvedSellerOrgName = fixedSellerOrg?.name || formData.sellerOrgName;
+    const partyValidationMessage = (() => {
+      if (!formData.orderNumber.trim()) {
+        return '';
+      }
+      if (!formData.buyerOrgName || !toOrgId(formData.buyerOrgId)) {
+        return orderPartyText.selectBuyer;
+      }
+      if (!resolvedSellerOrgName || !resolvedSellerOrgId) {
+        return orderPartyText.selectSeller;
+      }
+      if (!hasRelationshipPair(relationshipPairs, formData.buyerOrgId, resolvedSellerOrgId)) {
+        return orderPartyText.linkedPairOnly;
+      }
+      return '';
+    })();
+    if (partyValidationMessage) {
+      return partyValidationMessage;
+    }
     if (!formData.orderNumber.trim()) {
       return '주문번호를 입력해 주세요.';
     }
@@ -1918,8 +1977,8 @@ const OrderList = () => {
           }}
         >
           <SearchInput
-            placeholder="주문번호, 발주자, 수주자, 스타일 검색.."
             value={searchTerm}
+            placeholder={orderPartyText.searchPlaceholder}
             onChange={(e) => setSearchTerm(e.target.value)}
             sx={{
               width: { xs: '100%', sm: 'auto' },
@@ -2057,10 +2116,16 @@ const OrderList = () => {
                   >
                     주문번호
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.buyer }}>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.buyer, fontSize: 0 }}>
+                    <Box component="span" sx={{ fontSize: '0.875rem' }}>
+                      {orderPartyText.buyerWithType}
+                    </Box>
                     발주자(브랜드)
                   </TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.seller }}>
+                  <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.seller, fontSize: 0 }}>
+                    <Box component="span" sx={{ fontSize: '0.875rem' }}>
+                      {orderPartyText.sellerWithType}
+                    </Box>
                     수주자(제조사)
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.style }}>
@@ -2238,6 +2303,12 @@ const OrderList = () => {
                 renderInput={(params) => (
                   <TextField
                     {...params}
+                    {...{
+                      label: orderPartyText.buyerWithType,
+                      placeholder: loadingParties
+                        ? orderPartyText.loadingPlaceholder
+                        : orderPartyText.selectBuyer,
+                    }}
                     label="발주자(Brand)"
                     placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택해 주세요'}
                     fullWidth
@@ -2257,6 +2328,12 @@ const OrderList = () => {
                 renderInput={(params) => (
                   <TextField
                     {...params}
+                    {...{
+                      label: orderPartyText.sellerWithType,
+                      placeholder: loadingParties
+                        ? orderPartyText.loadingPlaceholder
+                        : orderPartyText.selectSeller,
+                    }}
                     label="수주자(Manufacturer)"
                     placeholder={loadingParties ? '불러오는 중...' : '수주자를 선택해 주세요'}
                     fullWidth

@@ -8941,13 +8941,6 @@ app.delete("/orders/:orderId", async (req, res) => {
       error: ORDER_MODIFICATION_LOCK_ERROR,
     });
   }
-  const ownerOrgId = existing.buyerOrgId ?? existing.orgId;
-  if (ownerOrgId !== organization.id) {
-    return res.status(403).json({
-      ok: false,
-      error: "only order owner can delete",
-    });
-  }
   if (!isWorkOrderDeletableStatus((existing as any).confirmationStatus)) {
     return res.status(409).json({
       ok: false,

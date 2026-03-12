@@ -403,6 +403,7 @@ const MainLayout = () => {
           { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
           { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
           { label: '개인 정보', icon: <AccountCircleIcon />, path: '/profile' },
+          { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
         ],
       },
       {
@@ -419,8 +420,6 @@ const MainLayout = () => {
             path: '/system-onboarding',
             badgeLabel: pendingOnboardingCount > 0 ? '신규' : '',
           },
-          { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
-          { label: '직원 관리', icon: <GroupIcon />, path: '/employee' },
         ],
       },
     ];
