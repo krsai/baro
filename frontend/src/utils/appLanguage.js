@@ -1,10 +1,21 @@
 const SUPPORTED_LANGUAGE_CODES = ['ko', 'en', 'vi'];
-const DEFAULT_LANGUAGE_CODE = 'ko';
+const DEFAULT_LANGUAGE_CODE = 'en';
 const LANGUAGE_OVERRIDE_STORAGE_KEY = 'baro_language_override';
 
 let currentLanguageCode = DEFAULT_LANGUAGE_CODE;
 
 const getStorage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch (_error) {
+    return null;
+  }
+};
+
+export const getDefaultLanguageCode = () => DEFAULT_LANGUAGE_CODE;
+
+const getLegacyStorage = () => {
   if (typeof window === 'undefined') return null;
   try {
     return window.sessionStorage;
@@ -65,9 +76,20 @@ export const resolveLanguageCodeFromUser = (user) => {
 
 export const readLanguageOverride = () => {
   const storage = getStorage();
-  if (!storage) return '';
+  const legacyStorage = getLegacyStorage();
   try {
-    return normalizeLanguageCode(storage.getItem(LANGUAGE_OVERRIDE_STORAGE_KEY), '');
+    const persistedValue = normalizeLanguageCode(storage?.getItem(LANGUAGE_OVERRIDE_STORAGE_KEY), '');
+    if (persistedValue) return persistedValue;
+
+    const legacyValue = normalizeLanguageCode(
+      legacyStorage?.getItem(LANGUAGE_OVERRIDE_STORAGE_KEY),
+      ''
+    );
+    if (!legacyValue) return '';
+
+    storage?.setItem(LANGUAGE_OVERRIDE_STORAGE_KEY, legacyValue);
+    legacyStorage?.removeItem(LANGUAGE_OVERRIDE_STORAGE_KEY);
+    return legacyValue;
   } catch (_error) {
     return '';
   }

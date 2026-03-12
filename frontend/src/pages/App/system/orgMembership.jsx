@@ -23,19 +23,15 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useApp } from '../../../context/AppContext';
-import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { requestJSON } from '../../../utils/apiClient';
 import {
   ORG_ROLE_KEYS,
   ORG_ROLE_OPTIONS,
   ORGANIZATION_SUBSCRIPTION_STATUS_KEYS,
   ORGANIZATION_SUBSCRIPTION_STATUS_OPTIONS,
-  getOrgMembershipStatusChipColor,
-  getOrgMembershipStatusLabel,
-  getOrgRoleLabel,
   getOrganizationSubscriptionStatusChipColor,
   getOrganizationSubscriptionStatusDescription,
   getOrganizationSubscriptionStatusLabel,
-  isOrgMembershipStatusFilled,
   isOrganizationSubscriptionStatusFilled,
 } from '../../../constants/organizationAccess';
 import {
@@ -64,7 +60,6 @@ const OrgMembership = () => {
   const { showNotification } = useApp();
 
   const [organizations, setOrganizations] = useState([]);
-  const [members, setMembers] = useState([]);
 
   // 구독 편집
   const [editingOrgId, setEditingOrgId] = useState(null);
@@ -94,16 +89,8 @@ const OrgMembership = () => {
     initialMemberRole: ORG_ROLE_KEYS.ADMIN,
   });
 
-  // 멤버 할당 폼
-  const [assignForm, setAssignForm] = useState({
-    orgId: '',
-    email: '',
-    role: ORG_ROLE_KEYS.OPERATOR,
-  });
-
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [savingOrg, setSavingOrg] = useState(false);
-  const [assigning, setAssigning] = useState(false);
 
   const fetchOrganizations = async () => {
     setLoadingOrgs(true);
@@ -111,9 +98,6 @@ const OrgMembership = () => {
       const data = await requestJSON('/organizations');
       const list = Array.isArray(data) ? data : [];
       setOrganizations(list);
-      if (!assignForm.orgId && list.length > 0) {
-        setAssignForm((prev) => ({ ...prev, orgId: String(list[0].id) }));
-      }
     } catch (_error) {
       // ignore
     } finally {
@@ -121,25 +105,9 @@ const OrgMembership = () => {
     }
   };
 
-  const fetchMembers = async (orgId) => {
-    if (!orgId) return;
-    try {
-      const data = await requestJSON(`/org-memberships${buildQueryString({ orgId })}`);
-      setMembers(Array.isArray(data) ? data : []);
-    } catch (_error) {
-      // ignore
-    }
-  };
-
   useEffect(() => {
     fetchOrganizations();
   }, []);
-
-  useEffect(() => {
-    if (assignForm.orgId) {
-      fetchMembers(assignForm.orgId);
-    }
-  }, [assignForm.orgId]);
 
   // --- 구독 편집 ---
 
@@ -259,7 +227,6 @@ const OrgMembership = () => {
       }
 
       setOrganizations((prev) => [...prev, data]);
-      setAssignForm((prev) => ({ ...prev, orgId: String(data.id) }));
       setOrgForm({
         name: '',
         code: '',
@@ -287,45 +254,6 @@ const OrgMembership = () => {
     }
   };
 
-  // --- 멤버 할당 ---
-
-  const handleAssignChange = (e) => {
-    const { name, value } = e.target;
-    setAssignForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAssignOperator = async () => {
-    if (assigning) return;
-    if (!assignForm.orgId) {
-      showNotification('조직을 선택해주세요.', 'error');
-      return;
-    }
-    const email = assignForm.email.trim();
-    if (!email) {
-      showNotification('이메일을 입력해주세요.', 'error');
-      return;
-    }
-    setAssigning(true);
-    try {
-      await requestJSON('/org-memberships/assign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orgId: Number(assignForm.orgId),
-          email,
-          role: assignForm.role,
-        }),
-      });
-      setAssignForm((prev) => ({ ...prev, email: '' }));
-      await fetchMembers(assignForm.orgId);
-      showNotification('역할이 할당되었습니다.', 'success');
-    } catch (error) {
-      showNotification(error?.message || '역할 할당 중 오류가 발생했습니다.', 'error');
-    } finally {
-      setAssigning(false);
-    }
-  };
-
   return (
     <AppPageContainer
       header={
@@ -334,7 +262,7 @@ const OrgMembership = () => {
             조직 · 구독 · 멤버 관리
           </Typography>
           <Typography sx={{ mt: 1, color: 'text.secondary' }}>
-            시스템 관리자 전용 — 조직을 등록하고 구독 상태와 사용자 접근 권한을 설정합니다.
+            시스템 관리자 전용 — 조직을 등록하고 구독 상태를 관리합니다.
           </Typography>
         </>
       }
@@ -704,126 +632,6 @@ const OrgMembership = () => {
           </Paper>
         </Grid>
 
-        {/* ── 2. 멤버 할당 ── */}
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              사용자 접근 권한 할당
-            </Typography>
-            <Grid container spacing={2} alignItems="flex-end">
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  select
-                  label="조직 선택"
-                  name="orgId"
-                  value={assignForm.orgId}
-                  onChange={handleAssignChange}
-                  disabled={loadingOrgs || organizations.length === 0}
-                >
-                  {organizations.map((org) => (
-                    <MenuItem key={org.id} value={String(org.id)}>
-                      {org.name}
-                      <Box
-                        component="span"
-                        sx={{ ml: 1, fontSize: '0.75rem', color: 'text.secondary' }}
-                      >
-                        (
-                        {getOrganizationSubscriptionStatusLabel(
-                          org.subscription?.status ??
-                            ORGANIZATION_SUBSCRIPTION_STATUS_KEYS.NOT_SUBSCRIBED
-                        )}
-                        )
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="사용자 이메일 (Google 계정)"
-                  name="email"
-                  value={assignForm.email}
-                  onChange={handleAssignChange}
-                  placeholder="user@gmail.com"
-                />
-              </Grid>
-              <Grid item xs={12} sm={2}>
-                <TextField
-                  fullWidth
-                  select
-                  label="역할"
-                  name="role"
-                  value={assignForm.role}
-                  onChange={handleAssignChange}
-                >
-                  {ORG_ROLE_OPTIONS.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-              <Grid item xs={12} sm={2}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleAssignOperator}
-                  disabled={assigning || organizations.length === 0}
-                  startIcon={assigning ? <CircularProgress size={16} color="inherit" /> : null}
-                >
-                  {assigning ? '할당 중...' : '할당'}
-                </Button>
-              </Grid>
-            </Grid>
-
-            <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                할당된 멤버 —{' '}
-                {organizations.find((o) => String(o.id) === assignForm.orgId)?.name ?? ''}
-              </Typography>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>이메일</TableCell>
-                    <TableCell>역할</TableCell>
-                    <TableCell>상태</TableCell>
-                    <TableCell>승인일</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {members.map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{getOrgRoleLabel(member.role, member.role || '—')}</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={getOrgMembershipStatusLabel(member.status, member.status || '—')}
-                          size="small"
-                          color={getOrgMembershipStatusChipColor(member.status)}
-                          variant={
-                            isOrgMembershipStatusFilled(member.status) ? 'filled' : 'outlined'
-                          }
-                        />
-                      </TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                        {member.approvedAt ? new Date(member.approvedAt).toLocaleDateString('ko-KR') : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {members.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        할당된 멤버가 없습니다.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </Box>
-          </Paper>
-        </Grid>
       </Grid>
     </AppPageContainer>
   );

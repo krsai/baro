@@ -3,41 +3,35 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
-import { useAuth } from './AuthContext';
 import {
   clearLanguageOverride,
+  getDefaultLanguageCode,
   getCurrentLanguageCode,
   normalizeLanguageCode,
   readLanguageOverride,
-  resolveLanguageCodeFromNavigator,
-  resolveLanguageCodeFromUser,
   setCurrentLanguageCode,
   writeLanguageOverride,
 } from '../utils/appLanguage';
 
 const LanguageContext = createContext(null);
 
-const resolveDetectedLanguageCode = (user) =>
-  normalizeLanguageCode(resolveLanguageCodeFromUser(user) || resolveLanguageCodeFromNavigator());
+const resolveDefaultLanguageCode = () => normalizeLanguageCode(getDefaultLanguageCode());
 
-const resolvePreferredLanguageCode = (user) =>
-  normalizeLanguageCode(readLanguageOverride() || resolveDetectedLanguageCode(user));
+const resolvePreferredLanguageCode = () =>
+  normalizeLanguageCode(readLanguageOverride() || resolveDefaultLanguageCode());
 
 export const LanguageProvider = ({ children }) => {
-  const { user } = useAuth();
   const [languageCode, setLanguageCodeState] = useState(() => {
-    const initialCode = resolvePreferredLanguageCode(null);
+    const initialCode = resolvePreferredLanguageCode();
     setCurrentLanguageCode(initialCode);
     return initialCode;
   });
 
   useEffect(() => {
-    const hasOverride = Boolean(readLanguageOverride());
-    if (hasOverride) return;
-    const nextCode = resolveDetectedLanguageCode(user);
+    const nextCode = resolvePreferredLanguageCode();
     setCurrentLanguageCode(nextCode);
     setLanguageCodeState((prev) => (prev === nextCode ? prev : nextCode));
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     const nextCode = setCurrentLanguageCode(languageCode);
@@ -56,21 +50,21 @@ export const LanguageProvider = ({ children }) => {
 
   const resetLanguageCode = useCallback(() => {
     clearLanguageOverride();
-    const nextCode = resolveDetectedLanguageCode(user);
+    const nextCode = resolveDefaultLanguageCode();
     setCurrentLanguageCode(nextCode);
     setLanguageCodeState((prev) => (prev === nextCode ? prev : nextCode));
-  }, [user]);
+  }, []);
 
   const value = useMemo(
     () => ({
       languageCode,
-      defaultLanguageCode: resolveDetectedLanguageCode(user),
+      defaultLanguageCode: resolveDefaultLanguageCode(),
       hasLanguageOverride: Boolean(readLanguageOverride()),
       setLanguageCode,
       resetLanguageCode,
       currentLanguageCode: getCurrentLanguageCode(),
     }),
-    [languageCode, resetLanguageCode, setLanguageCode, user]
+    [languageCode, resetLanguageCode, setLanguageCode]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

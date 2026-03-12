@@ -69,13 +69,6 @@ const resolveBaseAttributeName = (item = {}) => {
   return nameEn || name || nameKo || nameVi || '';
 };
 
-const getRowLabel = (row = {}) =>
-  resolveBaseAttributeName(row) ||
-  toTrimmedText(row?.nameKo) ||
-  toTrimmedText(row?.nameVi) ||
-  toTrimmedText(row?.code) ||
-  '항목';
-
 const normalizeRows = (rows) =>
   (Array.isArray(rows) ? rows : []).map((item = {}) => ({
     id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -108,7 +101,6 @@ const AttrBoard = () => {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
-  const [changes, setChanges] = useState([]);
 
   useUnsavedChanges(isDirty);
 
@@ -175,44 +167,8 @@ const AttrBoard = () => {
     }));
   };
 
-  const detectedChanges = useMemo(() => {
-    const results = [];
-
-    visibleSectionConfigs.forEach((section) => {
-      const sectionKey = section.key;
-      const beforeRows = originalData[sectionKey] || [];
-      const afterRows = formData[sectionKey] || [];
-      const title = section.title.split(' (')[0];
-      const fields = section.columns.map((column) => column.field);
-
-      afterRows.forEach((row) => {
-        if (!beforeRows.find((before) => String(before.id) === String(row.id))) {
-          results.push(`[${title}] 추가: ${getRowLabel(row)}`);
-        }
-      });
-
-      beforeRows.forEach((row) => {
-        if (!afterRows.find((after) => String(after.id) === String(row.id))) {
-          results.push(`[${title}] 삭제: ${getRowLabel(row)}`);
-        }
-      });
-
-      afterRows.forEach((row) => {
-        const before = beforeRows.find((item) => String(item.id) === String(row.id));
-        if (!before) return;
-        const hasChanged = fields.some((field) => String(before[field] ?? '') !== String(row[field] ?? ''));
-        if (hasChanged) {
-          results.push(`[${title}] 수정: ${getRowLabel(row)}`);
-        }
-      });
-    });
-
-    return results;
-  }, [formData, originalData, visibleSectionConfigs]);
-
   const handleSaveClick = () => {
     if (isSaving) return;
-    setChanges(detectedChanges);
     setConfirmOpen(true);
   };
 
@@ -370,20 +326,7 @@ const AttrBoard = () => {
       <Dialog open={isConfirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>변경사항 저장</DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            다음 변경사항을 저장하시겠습니까?
-          </DialogContentText>
-          <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, maxHeight: 300, overflow: 'auto' }}>
-            {changes.length > 0 ? (
-              changes.map((message, index) => (
-                <Typography key={`${index}-${message}`} variant="body2" sx={{ mb: 0.5 }}>
-                  - {message}
-                </Typography>
-              ))
-            ) : (
-              <Typography variant="body2">변경사항이 감지되지 않았습니다.</Typography>
-            )}
-          </Box>
+          <DialogContentText>변경사항을 저장하시겠습니까?</DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmOpen(false)} disabled={isSaving}>
