@@ -26,9 +26,7 @@ const formatDuration = (daysValue) => {
 // 확정(AGREED)만 progressBg(진행 오버레이용 약간 짙은 색) 추가
 const CT_STATUS_META = {
   PENDING:  { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.PENDING, cardBg: '#EBEBF0', labelColor: '#888898' },
-  SENT:     { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.SENT, cardBg: '#BFEAD0', labelColor: '#3A9858' },
   AGREED:   { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.AGREED, cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8' },
-  REJECTED: { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.REJECTED, cardBg: '#F7DCC8', labelColor: '#C07838' },
 };
 
 const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);

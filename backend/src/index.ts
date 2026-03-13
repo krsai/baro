@@ -1,7 +1,7 @@
 ﻿import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import "./config/env";
-import { Prisma, type OrgUserRole } from "@prisma/client";
+import { Prisma, type CtStatus, type OrgUserRole } from "@prisma/client";
 import { prisma } from "./db";
 import {
   normalizePayType,
@@ -128,7 +128,7 @@ const WORK_ORDER_STATUS_CODES = new Set([
   "SETTLED",
 ]);
 const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set(["PLANNED", "CONFIRMED"]);
-const ORDER_MODIFICATION_LOCK_CT_STATUSES = ["SENT", "AGREED"] as const;
+const ORDER_MODIFICATION_LOCK_CT_STATUSES = ["AGREED"] as const;
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
@@ -3744,7 +3744,7 @@ const validateWorkLogAssignmentPlanCtAgreement = async ({
       nonAgreedPlans.length > 3 ? ` (+${nonAgreedPlans.length - 3} more)` : "";
     return {
       status: 400,
-      error: `ct agreement required before work log (${preview}${extraText})`,
+      error: `ct confirmation required before work log (${preview}${extraText})`,
     };
   }
 
@@ -4017,7 +4017,7 @@ const translateWorkLogErrorMessage = (error: any) => {
     return "선택한 라인과 맞지 않는 배정카드가 포함되어 있습니다.";
   }
   if (text.startsWith("ct agreement required before work log")) {
-    return "CT 동의가 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
+    return "CT 확정이 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
   }
   if (text.startsWith("process quantity exceeds allowed range")) {
     return "배정카드 공정 수량이 허용 범위를 초과했습니다. 수량을 확인해 주세요.";
@@ -4115,10 +4115,7 @@ const toWorkLogResponse = (workLog: any) => {
     updatedAt: workLog.updatedAt,
   };
 };
-const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "SENT", "AGREED", "REJECTED"]);
-const ASSIGNMENT_SENT_TIMEOUT_HOURS = 48;
-const ASSIGNMENT_SENT_TIMEOUT_MS = ASSIGNMENT_SENT_TIMEOUT_HOURS * 60 * 60 * 1000;
-const ASSIGNMENT_SENT_TIMEOUT_ESCALATION_REASON = "SENT_TIMEOUT_48H";
+const ASSIGNMENT_CT_STATUSES = new Set(["PENDING", "AGREED"]);
 const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
   if (value === null || value === "") return null;
@@ -4140,8 +4137,27 @@ const toOptionalDateValue = (value: any, fallback: any = null) => {
   if (Number.isNaN(date.getTime())) return fallback;
   return date;
 };
-const resolveAssignmentCtStatus = (value: any) =>
-  ASSIGNMENT_CT_STATUSES.has(value) ? value : "PENDING";
+const resolveAssignmentCtStatus = (value: any): CtStatus => {
+  const normalized = resolveOptionalString(value, "PENDING") ?? "PENDING";
+  return ASSIGNMENT_CT_STATUSES.has(normalized)
+    ? (normalized as CtStatus)
+    : "PENDING";
+};
+const resolveAssignmentContractedSeconds = (
+  item: any,
+  fallbackStatus: CtStatus = "PENDING"
+) => {
+  const ctStatus = resolveAssignmentCtStatus(
+    resolveOptionalString(item?.ctStatus, fallbackStatus) ?? fallbackStatus
+  );
+  if (ctStatus !== "AGREED") return null;
+  const contractedSeconds = toOptionalNonNegativeInt(item?.contractedSeconds, null);
+  if (contractedSeconds != null) return contractedSeconds;
+  return toOptionalNonNegativeInt(
+    item?.proposalSeconds ?? item?.totalSeconds,
+    null
+  );
+};
 const toIsoDateStringOrNull = (value: any): string | null => {
   const raw = resolveOptionalString(value, null);
   if (!raw) return null;
@@ -4171,28 +4187,29 @@ const normalizeStateAssignmentItem = (item: any): any => {
   const ctStatus = resolveAssignmentCtStatus(
     resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
   );
+  const contractedSeconds = resolveAssignmentContractedSeconds(item, ctStatus);
+  const totalSeconds =
+    ctStatus === "AGREED" && contractedSeconds != null
+      ? contractedSeconds
+      : toOptionalNonNegativeInt(item?.totalSeconds, null);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
-  const ctSentAt = resolveAssignmentSentAtIso(item);
-  const ctEscalatedAt = toIsoDateStringOrNull(item?.ctEscalatedAt);
-  const ctEscalationReason = resolveOptionalString(item?.ctEscalationReason, null);
-  const ctEscalationTargetRole = resolveOptionalString(
-    item?.ctEscalationTargetRole,
-    null
-  );
-  const ctEscalationStatus = resolveOptionalString(item?.ctEscalationStatus, null);
 
   return {
     ...item,
     ...(externalId ? { id: externalId } : {}),
+    proposalSeconds: null,
+    contractedSeconds,
     ctStatus,
+    ctOverride: false,
+    totalSeconds,
     version,
     versionUpdatedAt,
-    ctSentAt: ctStatus === "SENT" ? ctSentAt : null,
-    ctEscalatedAt: ctStatus === "SENT" ? ctEscalatedAt : null,
-    ctEscalationReason: ctStatus === "SENT" ? ctEscalationReason : null,
-    ctEscalationTargetRole: ctStatus === "SENT" ? ctEscalationTargetRole : null,
-    ctEscalationStatus: ctStatus === "SENT" ? ctEscalationStatus : null,
+    ctSentAt: null,
+    ctEscalatedAt: null,
+    ctEscalationReason: null,
+    ctEscalationTargetRole: null,
+    ctEscalationStatus: null,
   };
 };
 const normalizeStateAssignments = (items: any): any[] =>
@@ -4238,23 +4255,17 @@ const withIncrementedAssignmentVersions = (
     const nextStatus = resolveAssignmentCtStatus(
       resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
     );
-    const nextSentAt =
-      nextStatus === "SENT" ? resolveAssignmentSentAtIso(item) ?? nowIso : null;
     return normalizeStateAssignmentItem({
       ...item,
       id: externalId,
       ctStatus: nextStatus,
-      ctSentAt: nextSentAt,
       version: currentVersion + 1,
       versionUpdatedAt: nowIso,
-      ...(nextStatus !== "SENT"
-        ? {
-            ctEscalatedAt: null,
-            ctEscalationReason: null,
-            ctEscalationTargetRole: null,
-            ctEscalationStatus: null,
-          }
-        : {}),
+      ctSentAt: null,
+      ctEscalatedAt: null,
+      ctEscalationReason: null,
+      ctEscalationTargetRole: null,
+      ctEscalationStatus: null,
     });
   });
 const toStableJsonText = (value: any): string => {
@@ -4307,47 +4318,30 @@ const buildAssignmentByExternalId = (items: any[]) =>
   }, new Map<string, any>());
 const applySentTimeoutEscalation = (
   assignments: any,
-  nowDate: Date = new Date()
+  _nowDate: Date = new Date()
 ): { assignments: any[]; changed: boolean } => {
-  const nowMs = nowDate.getTime();
   const normalized = normalizeStateAssignments(assignments);
   let changed = false;
   const nextAssignments = normalized.map((item) => {
     if (!item || typeof item !== "object") return item;
-    const ctStatus = resolveAssignmentCtStatus(item?.ctStatus);
-    if (ctStatus !== "SENT") {
-      if (
-        item?.ctEscalatedAt != null ||
-        item?.ctEscalationReason != null ||
-        item?.ctEscalationTargetRole != null ||
-        item?.ctEscalationStatus != null
-      ) {
-        changed = true;
-        return {
-          ...item,
-          ctEscalatedAt: null,
-          ctEscalationReason: null,
-          ctEscalationTargetRole: null,
-          ctEscalationStatus: null,
-        };
-      }
-      return item;
+    if (
+      item?.ctSentAt != null ||
+      item?.ctEscalatedAt != null ||
+      item?.ctEscalationReason != null ||
+      item?.ctEscalationTargetRole != null ||
+      item?.ctEscalationStatus != null
+    ) {
+      changed = true;
+      return {
+        ...item,
+        ctSentAt: null,
+        ctEscalatedAt: null,
+        ctEscalationReason: null,
+        ctEscalationTargetRole: null,
+        ctEscalationStatus: null,
+      };
     }
-    const sentAtIso = resolveAssignmentSentAtIso(item);
-    if (!sentAtIso) return item;
-    const sentAtMs = new Date(sentAtIso).getTime();
-    if (!Number.isFinite(sentAtMs)) return item;
-    if (nowMs - sentAtMs < ASSIGNMENT_SENT_TIMEOUT_MS) return item;
-    if (resolveOptionalString(item?.ctEscalatedAt, null)) return item;
-    changed = true;
-    return {
-      ...item,
-      ctSentAt: sentAtIso,
-      ctEscalatedAt: nowDate.toISOString(),
-      ctEscalationReason: ASSIGNMENT_SENT_TIMEOUT_ESCALATION_REASON,
-      ctEscalationTargetRole: "ADMIN",
-      ctEscalationStatus: "OPEN",
-    };
+    return item;
   });
   return { assignments: nextAssignments, changed };
 };
@@ -4373,7 +4367,7 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
       ...base,
       id: base.id,
       lineId: String(base.lineId),
-      ctOverride: Boolean(stateItem.ctOverride),
+      ctOverride: false,
     };
     const stateStartIndex = toNumberOrNull(stateItem?.startIndex);
     const stateEndIndex = toNumberOrNull(stateItem?.endIndex);
@@ -4787,18 +4781,30 @@ const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
   return merged;
 };
 type AssignmentCardStoreClient = Prisma.TransactionClient | typeof prisma;
+const stripLegacyAssignmentCardPayload = (card: any) => {
+  if (!card || typeof card !== "object" || Array.isArray(card)) return card;
+  const {
+    operatorCtProposal: _operatorCtProposal,
+    pendingCtProposal: _pendingCtProposal,
+    ...rest
+  } = card as Record<string, unknown>;
+  return rest;
+};
+
 const normalizeAssignmentCardsForStore = (cards: any): any[] => {
   const seen = new Set<string>();
   const normalized: any[] = [];
   ensureArray(cards).forEach((card) => {
     if (!card || typeof card !== "object" || Array.isArray(card)) return;
-    const cardId = resolveOptionalString((card as any)?.id, null);
+    const sanitizedCard = stripLegacyAssignmentCardPayload(card);
+    const cardId = resolveOptionalString((sanitizedCard as any)?.id, null);
     if (!cardId || seen.has(cardId)) return;
     seen.add(cardId);
     normalized.push({
-      ...(card as Record<string, unknown>),
+      ...(sanitizedCard as Record<string, unknown>),
       id: cardId,
-      originOrderId: resolveOptionalString((card as any)?.originOrderId, null) ?? cardId,
+      originOrderId:
+        resolveOptionalString((sanitizedCard as any)?.originOrderId, null) ?? cardId,
     });
   });
   return normalized;
@@ -4814,11 +4820,12 @@ const toAssignmentCardFromStoreRow = (row: any): any | null => {
     resolveOptionalString((payload as any)?.id, null) ??
     resolveOptionalString(row.cardId, null);
   if (!cardId) return null;
+  const sanitizedPayload = stripLegacyAssignmentCardPayload(payload);
   return {
-    ...(payload as Record<string, unknown>),
+    ...(sanitizedPayload as Record<string, unknown>),
     id: cardId,
     originOrderId:
-      resolveOptionalString((payload as any)?.originOrderId, null) ?? cardId,
+      resolveOptionalString((sanitizedPayload as any)?.originOrderId, null) ?? cardId,
   };
 };
 const syncAssignmentCardsForOrg = async ({
@@ -5453,8 +5460,11 @@ const toAssignmentPlanResponse = (plan: any) => ({
   originOrderId: plan.originOrderId ?? "",
   basis: plan.basis ?? "",
   proposalBasis: plan.proposalBasis ?? "",
-  proposalSeconds: plan.proposalSeconds ?? null,
-  contractedSeconds: plan.contractedSeconds ?? null,
+  proposalSeconds: null,
+  contractedSeconds: resolveAssignmentContractedSeconds(
+    plan,
+    resolveAssignmentCtStatus(plan.ctStatus)
+  ),
   ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
   ctSource: plan.ctSource ?? "",
   ctAgreedBy: plan.ctAgreedBy ?? "",
@@ -5462,7 +5472,17 @@ const toAssignmentPlanResponse = (plan: any) => ({
   ctNote: plan.ctNote ?? "",
   color: plan.color ?? "",
   stripeColor: plan.stripeColor ?? "",
-  totalSeconds: plan.totalSeconds ?? null,
+  totalSeconds:
+    resolveAssignmentCtStatus(plan.ctStatus) === "AGREED" &&
+    resolveAssignmentContractedSeconds(
+      plan,
+      resolveAssignmentCtStatus(plan.ctStatus)
+    ) != null
+      ? resolveAssignmentContractedSeconds(
+          plan,
+          resolveAssignmentCtStatus(plan.ctStatus)
+        )
+      : plan.totalSeconds ?? null,
   startIndex: plan.startIndex,
   endIndex: plan.endIndex,
   startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
@@ -5493,6 +5513,11 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       const ctStatus = resolveAssignmentCtStatus(
         resolveOptionalString(item.ctStatus, "PENDING") ?? "PENDING"
       );
+      const contractedSeconds = resolveAssignmentContractedSeconds(item, ctStatus);
+      const totalSeconds =
+        ctStatus === "AGREED" && contractedSeconds != null
+          ? contractedSeconds
+          : toOptionalNonNegativeInt(item.totalSeconds, null);
       const isCompleted = Boolean(item.isCompleted);
       const finalQuantity = isCompleted
         ? toOptionalNonNegativeInt(item.finalQuantity, undefined)
@@ -5517,8 +5542,8 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         originOrderId: resolveOptionalString(item.originOrderId, null),
         basis: resolveOptionalString(item.basis, null),
         proposalBasis: resolveOptionalString(item.proposalBasis, null),
-        proposalSeconds: toOptionalNonNegativeInt(item.proposalSeconds, null),
-        contractedSeconds: toOptionalNonNegativeInt(item.contractedSeconds, null),
+        proposalSeconds: null,
+        contractedSeconds,
         ctStatus,
         ctSource: resolveOptionalString(item.ctSource, null),
         ctAgreedBy: resolveOptionalString(item.ctAgreedBy, null),
@@ -5526,7 +5551,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         ctNote: resolveOptionalString(item.ctNote, null),
         color: resolveOptionalString(item.color, null),
         stripeColor: resolveOptionalString(item.stripeColor, null),
-        totalSeconds: toOptionalNonNegativeInt(item.totalSeconds, null),
+        totalSeconds,
         startIndex,
         endIndex,
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
@@ -5597,43 +5622,50 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
     };
   });
 };
-const toAssignmentPlanWriteData = (item: any) => ({
-  lineId: item.lineId,
-  cardId: item.cardId ?? null,
-  orderNo: item.orderNo ?? null,
-  customer: item.customer ?? null,
-  label: item.label ?? null,
-  colorId: item.colorId ?? null,
-  colorName: item.colorName ?? null,
-  previewUrl: item.previewUrl ?? null,
-  imageUrl: item.imageUrl ?? null,
-  thumbnailUrl: item.thumbnailUrl ?? null,
-  quantity: item.quantity ?? null,
-  originOrderId: item.originOrderId ?? null,
-  basis: item.basis ?? null,
-  proposalBasis: item.proposalBasis ?? null,
-  proposalSeconds: item.proposalSeconds ?? null,
-  contractedSeconds: item.contractedSeconds ?? null,
-  ctStatus: item.ctStatus,
-  ctSource: item.ctSource ?? null,
-  ctAgreedBy: item.ctAgreedBy ?? null,
-  ctAgreedAt: item.ctAgreedAt ?? null,
-  ctNote: item.ctNote ?? null,
-  color: item.color ?? null,
-  stripeColor: item.stripeColor ?? null,
-  totalSeconds: item.totalSeconds ?? null,
-  startIndex: item.startIndex,
-  endIndex: item.endIndex,
-  startDayOffsetPercent: item.startDayOffsetPercent ?? null,
-  startDayPercent: item.startDayPercent ?? null,
-  endDayPercent: item.endDayPercent ?? null,
-  isCompleted: item.isCompleted ?? false,
-  finalQuantity:
-    item.finalQuantity === undefined ? undefined : item.finalQuantity ?? null,
-  completedAt:
-    item.completedAt === undefined ? undefined : item.completedAt ?? null,
-  updatedAt: item.updatedAt ?? new Date(),
-});
+const toAssignmentPlanWriteData = (item: any) => {
+  const ctStatus = resolveAssignmentCtStatus(item?.ctStatus);
+  const contractedSeconds = resolveAssignmentContractedSeconds(item, ctStatus);
+  return {
+    lineId: item.lineId,
+    cardId: item.cardId ?? null,
+    orderNo: item.orderNo ?? null,
+    customer: item.customer ?? null,
+    label: item.label ?? null,
+    colorId: item.colorId ?? null,
+    colorName: item.colorName ?? null,
+    previewUrl: item.previewUrl ?? null,
+    imageUrl: item.imageUrl ?? null,
+    thumbnailUrl: item.thumbnailUrl ?? null,
+    quantity: item.quantity ?? null,
+    originOrderId: item.originOrderId ?? null,
+    basis: item.basis ?? null,
+    proposalBasis: item.proposalBasis ?? null,
+    proposalSeconds: null,
+    contractedSeconds,
+    ctStatus,
+    ctSource: item.ctSource ?? null,
+    ctAgreedBy: item.ctAgreedBy ?? null,
+    ctAgreedAt: item.ctAgreedAt ?? null,
+    ctNote: item.ctNote ?? null,
+    color: item.color ?? null,
+    stripeColor: item.stripeColor ?? null,
+    totalSeconds:
+      ctStatus === "AGREED" && contractedSeconds != null
+        ? contractedSeconds
+        : item.totalSeconds ?? null,
+    startIndex: item.startIndex,
+    endIndex: item.endIndex,
+    startDayOffsetPercent: item.startDayOffsetPercent ?? null,
+    startDayPercent: item.startDayPercent ?? null,
+    endDayPercent: item.endDayPercent ?? null,
+    isCompleted: item.isCompleted ?? false,
+    finalQuantity:
+      item.finalQuantity === undefined ? undefined : item.finalQuantity ?? null,
+    completedAt:
+      item.completedAt === undefined ? undefined : item.completedAt ?? null,
+    updatedAt: item.updatedAt ?? new Date(),
+  };
+};
 const toAssignmentBoardStateResponse = (
   state: any,
   assignmentPlans: any[] | null = null,
@@ -7090,7 +7122,10 @@ app.get("/assignment-plans", async (req, res) => {
         colorName: resolveAssignmentPlanColorName(plan),
         color: plan.color ?? "",
         quantity: plan.quantity ?? null,
-        contractedSeconds: plan.contractedSeconds ?? null,
+        contractedSeconds: resolveAssignmentContractedSeconds(
+          plan,
+          resolveAssignmentCtStatus(plan.ctStatus)
+        ),
         ctStatus: resolveAssignmentCtStatus(plan.ctStatus),
         ctAgreedSnapshot:
           matchedCard?.ctAgreedSnapshot && typeof matchedCard.ctAgreedSnapshot === "object"
@@ -8097,27 +8132,18 @@ app.patch("/assignment-board-state/ct", async (req, res) => {
   const nextCtStatus = resolveAssignmentCtStatus(
     resolveOptionalString(assignmentPatch?.ctStatus, "PENDING") ?? "PENDING"
   );
-  const nextSentAt =
-    nextCtStatus === "SENT"
-      ? resolveAssignmentSentAtIso(assignmentPatch) ?? nowIso
-      : null;
-
   const patchedAssignment = normalizeStateAssignmentItem({
     ...targetAssignment,
     ...assignmentPatch,
     id: assignmentId,
     ctStatus: nextCtStatus,
-    ctSentAt: nextSentAt,
     version: currentVersion + 1,
     versionUpdatedAt: nowIso,
-    ...(nextCtStatus !== "SENT"
-      ? {
-          ctEscalatedAt: null,
-          ctEscalationReason: null,
-          ctEscalationTargetRole: null,
-          ctEscalationStatus: null,
-        }
-      : {}),
+    ctSentAt: null,
+    ctEscalatedAt: null,
+    ctEscalationReason: null,
+    ctEscalationTargetRole: null,
+    ctEscalationStatus: null,
   });
 
   const nextAssignments = currentAssignments.map((a: any) =>
@@ -8455,23 +8481,17 @@ app.put("/assignment-board-state", async (req, res) => {
       const nextStatus = resolveAssignmentCtStatus(
         resolveOptionalString(item?.ctStatus, "PENDING") ?? "PENDING"
       );
-      const nextSentAt =
-        nextStatus === "SENT" ? resolveAssignmentSentAtIso(item) ?? nowIso : null;
       return normalizeStateAssignmentItem({
         ...item,
         id: externalId,
         ctStatus: nextStatus,
-        ctSentAt: nextSentAt,
         version: currentVersion + 1,
         versionUpdatedAt: nowIso,
-        ...(nextStatus !== "SENT"
-          ? {
-              ctEscalatedAt: null,
-              ctEscalationReason: null,
-              ctEscalationTargetRole: null,
-              ctEscalationStatus: null,
-            }
-          : {}),
+        ctSentAt: null,
+        ctEscalatedAt: null,
+        ctEscalationReason: null,
+        ctEscalationTargetRole: null,
+        ctEscalationStatus: null,
       });
     });
     const {

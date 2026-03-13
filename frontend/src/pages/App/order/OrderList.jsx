@@ -198,6 +198,20 @@ const getMonthEnd = (value) => {
   date.setDate(0);
   return date;
 };
+const getOrderDueDateBounds = (orders = []) => {
+  let minDate = null;
+  let maxDate = null;
+
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    const dueDate = normalizeFilterDate(order?.dueDate);
+    if (!dueDate) return;
+    if (!minDate || dueDate < minDate) minDate = dueDate;
+    if (!maxDate || dueDate > maxDate) maxDate = dueDate;
+  });
+
+  if (!minDate || !maxDate) return null;
+  return { minDate, maxDate };
+};
 const addMonths = (value, amount) => {
   const date = getMonthStart(value);
   date.setMonth(date.getMonth() + amount);
@@ -791,6 +805,7 @@ const OrderList = () => {
   const [formData, setFormData] = useState(buildInitialFormData);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
+  const hasTouchedDueDateFilterRef = useRef(false);
   const styleAddButtonRef = useRef(null);
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
@@ -888,6 +903,33 @@ const OrderList = () => {
       cancelledRef.current = true;
     };
   }, [activeOrgId, loadOrdersFromDb]);
+
+  useEffect(() => {
+    hasTouchedDueDateFilterRef.current = false;
+    setDueDateFilterStart(getMonthStart(new Date()));
+    setDueDateFilterEnd(getMonthEnd(new Date()));
+  }, [activeOrgId]);
+
+  useEffect(() => {
+    if (!ordersLoaded || hasTouchedDueDateFilterRef.current) return;
+    if (!Array.isArray(orders) || orders.length === 0) return;
+
+    const hasOrderInCurrentRange = orders.some((order) => {
+      const dueDateKey = normalizeDateKey(order?.dueDate);
+      return (
+        dueDateKey &&
+        dueDateKey >= dueDateFilterStartKey &&
+        dueDateKey <= dueDateFilterEndKey
+      );
+    });
+    if (hasOrderInCurrentRange) return;
+
+    const bounds = getOrderDueDateBounds(orders);
+    if (!bounds) return;
+
+    setDueDateFilterStart(bounds.minDate);
+    setDueDateFilterEnd(bounds.maxDate);
+  }, [orders, ordersLoaded, dueDateFilterStartKey, dueDateFilterEndKey]);
 
   useEffect(() => {
     if (activePath !== '/order') return;
@@ -1348,6 +1390,7 @@ const OrderList = () => {
     if (!value?.isValid?.()) return;
     const nextStart = normalizeFilterDate(value.toDate());
     if (!nextStart) return;
+    hasTouchedDueDateFilterRef.current = true;
     setDueDateFilterStart(nextStart);
     setDueDateFilterEnd((prev) => {
       const currentEnd = normalizeFilterDate(prev);
@@ -1359,6 +1402,7 @@ const OrderList = () => {
     if (!value?.isValid?.()) return;
     const nextEnd = normalizeFilterDate(value.toDate());
     if (!nextEnd) return;
+    hasTouchedDueDateFilterRef.current = true;
     setDueDateFilterEnd(nextEnd);
     setDueDateFilterStart((prev) => {
       const currentStart = normalizeFilterDate(prev);
@@ -1367,6 +1411,7 @@ const OrderList = () => {
   };
 
   const shiftDueDateFilterMonth = (amount) => {
+    hasTouchedDueDateFilterRef.current = true;
     const nextMonthStart = addMonths(dueDateFilterStart, amount);
     setDueDateFilterStart(nextMonthStart);
     setDueDateFilterEnd(getMonthEnd(nextMonthStart));

@@ -1744,7 +1744,7 @@ const WorkDetail = ({
     }
     if (hasAssignmentPlans) {
       if (hasOnlyUnagreedAssignmentPlans) {
-        setSaveErrorMessage('이 라인에는 CT 동의된 배정카드가 없습니다.');
+        setSaveErrorMessage('이 라인에는 CT 확정된 배정카드가 없습니다.');
         return;
       }
       const agreedAssignmentPlanIdSet = new Set(
@@ -1766,7 +1766,7 @@ const WorkDetail = ({
       });
       if (unagreedAssignmentRecord) {
         setSaveErrorMessage(
-          'CT 동의가 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.'
+          'CT 확정이 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.'
         );
         return;
       }

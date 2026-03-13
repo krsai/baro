@@ -1,8 +1,58 @@
-﻿const normalizeBoardKey = (value) => String(value ?? '').trim();
+const normalizeBoardKey = (value) => String(value ?? '').trim();
 
 const toNumber = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const DEFAULT_TIME_REF_QUANTITY = 1000;
+
+const findExactStSeconds = (values, orderQuantity) => {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
+  const matched = values.find((value) => {
+    const quantity = Math.max(0, Math.trunc(toNumber(value?.quantity, 0)));
+    return quantity === resolvedOrderQuantity;
+  });
+  const seconds = toNumber(matched?.seconds, NaN);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+};
+
+const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
+  const exactSt = findExactStSeconds(process?.stValues, orderQuantity);
+  if (exactSt != null) return exactSt;
+
+  const pt = toNumber(process?.pt, NaN);
+  if (Number.isFinite(pt) && pt > 0) return pt;
+
+  if (Array.isArray(process?.stValues) && process.stValues.length > 0) {
+    return null;
+  }
+
+  const legacyCt = toNumber(process?.ct, NaN);
+  const legacyQuantity = Math.max(
+    1,
+    Math.trunc(toNumber(process?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY))
+  );
+  const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
+  if (
+    process?.stManual === true &&
+    Number.isFinite(legacyCt) &&
+    legacyCt > 0 &&
+    legacyQuantity === resolvedOrderQuantity
+  ) {
+    return legacyCt;
+  }
+
+  return null;
+};
+
+const resolveProcessStTotalSeconds = (process, orderQuantity = 1) => {
+  const processQuantity = Math.max(1, Math.trunc(toNumber(process?.quantity, 1)));
+  const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
+  const stPerPiece = resolveProcessStPerPieceSeconds(process, resolvedOrderQuantity);
+  if (stPerPiece == null) return 0;
+  return processQuantity * stPerPiece * resolvedOrderQuantity;
 };
 
 const resolveCardOriginId = (card) => normalizeBoardKey(card?.originOrderId || card?.id);
@@ -76,7 +126,8 @@ export const reconcileBoardStateForQuantityChanges = ({
       if (nextQty <= 0) return null;
 
       const previousCard = resolvePreviousCard(currentCards, originId);
-      const { type: _legacyType, deltaType: _legacyDeltaType, ...previousCardBase } = previousCard || {};
+      const { type: _legacyType, deltaType: _legacyDeltaType, ...previousCardBase } =
+        previousCard || {};
       const styleId = normalizeBoardKey(nextVariant?.styleId);
 
       const previousQty = toNumber(previousCardBase.quantity, 0);
@@ -84,6 +135,8 @@ export const reconcileBoardStateForQuantityChanges = ({
         previousQty > 0 ? toNumber(previousCardBase.totalPt, 0) / previousQty : 0;
       const fallbackUnitAt =
         previousQty > 0 ? toNumber(previousCardBase.totalAt, 0) / previousQty : 0;
+      const fallbackUnitSt =
+        previousQty > 0 ? toNumber(previousCardBase.totalSt, 0) / previousQty : 0;
 
       const processSummary = styleSummaryMap.get(styleId) || null;
       const hasProcessSummary =
@@ -96,8 +149,17 @@ export const reconcileBoardStateForQuantityChanges = ({
       const totalAt = hasProcessSummary
         ? calculateProcessTotalForOrderQuantity(processSummary.processes, 'at', nextQty)
         : fallbackUnitAt * nextQty;
-      const status = totalPt > 0 ? 'PT' : 'NONE';
-      const totalSeconds = totalPt;
+      const totalSt = hasProcessSummary
+        ? processSummary.processes.reduce(
+            (sum, process) =>
+              sum + toNumber(resolveProcessStTotalSeconds(process, nextQty), 0),
+            0
+          )
+        : fallbackUnitSt * nextQty;
+      const hasSt = totalSt > 0;
+      const hasPt = totalPt > 0;
+      const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
+      const totalSeconds = hasSt ? totalSt : totalPt;
 
       return {
         ...previousCardBase,
@@ -129,11 +191,11 @@ export const reconcileBoardStateForQuantityChanges = ({
         totalSeconds,
         totalPt,
         totalAt,
+        totalSt,
         previewUrl:
           (hasProcessSummary ? processSummary.previewUrl : '') ||
           previousCardBase.previewUrl ||
           '',
-        pendingCtProposal: null,
       };
     })
     .filter(Boolean);
@@ -145,4 +207,3 @@ export const reconcileBoardStateForQuantityChanges = ({
     rebuiltCardsCount: rebuiltCards.length,
   };
 };
-

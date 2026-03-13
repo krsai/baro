@@ -165,10 +165,10 @@ const resolveProcessPtInfo = (process, orderQuantity = 1) => {
 const resolveProcessStSeedSeconds = ({
   process,
   orderQuantity = 1,
-  proposalStSeconds = null,
+  stSeedSeconds = null,
 }) => {
-  const proposal = toOptionalPositiveNumber(proposalStSeconds);
-  if (proposal != null) return { seconds: proposal, source: 'ST' };
+  const seedSeconds = toOptionalPositiveNumber(stSeedSeconds);
+  if (seedSeconds != null) return { seconds: seedSeconds, source: 'ST' };
 
   const manualSt = toOptionalPositiveNumber(
     resolveProcessExactStPerPieceSeconds(process, orderQuantity)
@@ -312,14 +312,6 @@ const normalizeAssignmentLayout = (assignment) => {
     typeof assignment.versionUpdatedAt === 'string' && assignment.versionUpdatedAt.trim()
       ? assignment.versionUpdatedAt
       : null;
-  const ctSentAt =
-    typeof assignment.ctSentAt === 'string' && assignment.ctSentAt.trim()
-      ? assignment.ctSentAt
-      : null;
-  const ctEscalatedAt =
-    typeof assignment.ctEscalatedAt === 'string' && assignment.ctEscalatedAt.trim()
-      ? assignment.ctEscalatedAt
-      : null;
 
   return {
     ...assignment,
@@ -331,8 +323,6 @@ const normalizeAssignmentLayout = (assignment) => {
     endDayPercent,
     version,
     versionUpdatedAt,
-    ctSentAt,
-    ctEscalatedAt,
   };
 };
 
@@ -965,6 +955,12 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return assignment;
 
   const basis = getCardBasis(card);
+  const assignmentStatus = normalizeCtStatus(assignment?.ctStatus);
+  const contractedSeconds = toNonNegativeInt(assignment?.contractedSeconds, 0);
+  const nextTotalSeconds =
+    assignmentStatus === 'AGREED' && contractedSeconds > 0
+      ? contractedSeconds
+      : totalSeconds;
   const next = {
     ...assignment,
     orderNo: card.orderNo ?? assignment.orderNo,
@@ -977,18 +973,16 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
     quantity: card.quantity ?? assignment.quantity,
     basis,
-    proposalBasis: basis,
-    totalSeconds,
-    proposalSeconds: totalSeconds,
+    totalSeconds: nextTotalSeconds,
     contractedSeconds:
       assignment.contractedSeconds != null ? assignment.contractedSeconds : null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
   const currentTotalSeconds = toNonNegativeInt(assignment?.totalSeconds, 0);
-  if (hasAbsoluteScheduleKeys && currentTotalSeconds === Math.round(totalSeconds)) {
+  if (hasAbsoluteScheduleKeys && currentTotalSeconds === Math.round(nextTotalSeconds)) {
     return next;
   }
-  const range = recomputeAssignmentRange(next, totalSeconds, days, lineCapacityById);
+  const range = recomputeAssignmentRange(next, nextTotalSeconds, days, lineCapacityById);
   return {
     ...next,
     ...range,
@@ -1241,9 +1235,6 @@ const resolveAssignmentPlannedSeconds = (assignment, days, lineCapacityById = nu
 
   const contractedTotal = Number(assignment?.contractedSeconds);
   if (Number.isFinite(contractedTotal) && contractedTotal > 0) return contractedTotal;
-
-  const proposalTotal = Number(assignment?.proposalSeconds);
-  if (Number.isFinite(proposalTotal) && proposalTotal > 0) return proposalTotal;
 
   return getAssignmentTotalSeconds(assignment, days, lineCapacityById);
 };
@@ -2461,7 +2452,7 @@ const AssignBoard = () => {
       )
     );
 
-    // 저장 전 날짜 중첩 제거: 잠금 카드(SENT/AGREED) 위치 고정, 나머지 재배치
+    // 저장 전 날짜 중첩 제거: 확정 카드 위치 고정, 나머지 재배치
     let candidatePersistDays = persistDays;
     let reflowResult = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -2834,68 +2825,6 @@ const AssignBoard = () => {
     () => detailStDraftsByTarget[detailTargetKey] || {},
     [detailStDraftsByTarget, detailTargetKey]
   );
-  const detailOperatorProposalByProcess = useMemo(() => {
-    const map = new Map();
-    const proposal = detailCard?.operatorCtProposal;
-    const processes = Array.isArray(proposal?.processes) ? proposal.processes : [];
-    const orderQuantity = Math.max(
-      1,
-      toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
-    );
-    const proposalQuantity = Math.max(
-      1,
-      toPositiveInt(proposal?.quantity ?? orderQuantity, orderQuantity)
-    );
-    if (proposalQuantity !== orderQuantity) return map;
-    processes.forEach((item) => {
-      const processKey = String(item?.processKey || '').trim();
-      const proposedSeconds = toOptionalPositiveNumber(item?.proposedSeconds);
-      const stSeconds = toOptionalPositiveNumber(
-        item?.stSeconds ?? item?.suggestedSeconds ?? item?.baseSeconds
-      );
-      const seedSeconds = stSeconds ?? proposedSeconds;
-      if (!processKey || seedSeconds == null) return;
-      map.set(processKey, {
-        stSeconds: seedSeconds,
-        proposedSeconds: proposedSeconds ?? seedSeconds,
-      });
-    });
-    return map;
-  }, [detailCard?.operatorCtProposal, detailAssignment?.quantity, detailCard?.quantity]);
-  const detailLineRequestByProcess = useMemo(() => {
-    const map = new Map();
-    const proposal = detailCard?.pendingCtProposal;
-    if (!proposal || typeof proposal !== 'object') return map;
-    if (
-      detailAssignment?.id &&
-      proposal?.sourceAssignmentId &&
-      String(proposal.sourceAssignmentId) !== String(detailAssignment.id)
-    ) {
-      return map;
-    }
-    const processes = Array.isArray(proposal?.processes) ? proposal.processes : [];
-    processes.forEach((item) => {
-      const processKey = String(item?.processKey || '').trim();
-      const requestedSeconds = toOptionalPositiveNumber(
-        item?.requestedSeconds ?? item?.proposedSeconds
-      );
-      if (!processKey || requestedSeconds == null) return;
-      map.set(processKey, requestedSeconds);
-    });
-    return map;
-  }, [detailCard?.pendingCtProposal, detailAssignment?.id]);
-  const detailPendingLineRequestProposal = useMemo(() => {
-    const proposal = detailCard?.pendingCtProposal;
-    if (!proposal || typeof proposal !== 'object') return null;
-    if (
-      detailAssignment?.id &&
-      proposal?.sourceAssignmentId &&
-      String(proposal.sourceAssignmentId) !== String(detailAssignment.id)
-    ) {
-      return null;
-    }
-    return proposal;
-  }, [detailCard?.pendingCtProposal, detailAssignment?.id]);
   const detailProcessRows = useMemo(() => {
     const orderQuantity = Math.max(
       1,
@@ -2963,11 +2892,9 @@ const AssignBoard = () => {
       const ptInfo = resolveProcessPtInfo(process, orderQuantity);
       const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
       const atReliability = resolveProcessAtReliability(process, orderQuantity);
-      const operatorProposal = detailOperatorProposalByProcess.get(processKey) ?? null;
       const baseStSeedInfo = resolveProcessStSeedSeconds({
         process,
         orderQuantity,
-        proposalStSeconds: operatorProposal?.stSeconds ?? null,
       });
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
       const baseSeconds = stDraftSeconds ?? baseStSeedInfo.seconds;
@@ -2978,23 +2905,14 @@ const AssignBoard = () => {
       const agreedSnapshotSeconds = agreedSnapshotEntry?.agreedSeconds ?? null;
       const agreedSnapshotRequestedSeconds = agreedSnapshotEntry?.requestedSeconds ?? null;
       const agreedSnapshotProposedSeconds = agreedSnapshotEntry?.proposedSeconds ?? null;
-      const proposedSeedSeconds =
-        operatorProposal?.proposedSeconds ?? agreedSnapshotProposedSeconds ?? baseSeconds;
+      const proposedSeedSeconds = agreedSnapshotProposedSeconds ?? baseSeconds;
       const proposedDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
       const proposedSeconds = proposedDraftSeconds ?? proposedSeedSeconds;
-      const lineRequestedSeconds =
-        detailLineRequestByProcess.get(processKey) ??
-        (isAgreedAssignment ? agreedSnapshotRequestedSeconds : null);
       const confirmedSeconds = isAgreedAssignment
         ? agreedSnapshotSeconds ??
-          lineRequestedSeconds ??
-          toOptionalPositiveNumber(operatorProposal?.proposedSeconds ?? proposedSeconds) ??
           toOptionalPositiveNumber(proposedSeconds) ??
           toOptionalPositiveNumber(proposedSeedSeconds)
         : null;
-      const hasLineRequestedChange =
-        lineRequestedSeconds != null &&
-        Math.abs(lineRequestedSeconds - proposedSeedSeconds) > 1e-6;
       const basePerPieceSeconds = baseSeconds * processQuantity;
       const proposedPerPieceSeconds = proposedSeconds * processQuantity;
       const confirmedPerPieceSeconds =
@@ -3015,8 +2933,8 @@ const AssignBoard = () => {
         proposedSeedSeconds,
         requestedSeconds: proposedSeconds,
         proposedSeconds,
-        lineRequestedSeconds,
-        hasLineRequestedChange,
+        lineRequestedSeconds: isAgreedAssignment ? agreedSnapshotRequestedSeconds ?? null : null,
+        hasLineRequestedChange: false,
         basePerPieceSeconds,
         requestedPerPieceSeconds: proposedPerPieceSeconds,
         proposedPerPieceSeconds,
@@ -3026,7 +2944,7 @@ const AssignBoard = () => {
         totalRequestedSeconds: totalProposedSeconds,
         totalProposedSeconds,
         proposedUnitCost: resolveCtUnitCost(proposedSeconds, wagePerSecond),
-        requestedUnitCost: resolveCtUnitCost(lineRequestedSeconds, wagePerSecond),
+        requestedUnitCost: null,
         confirmedUnitCost: resolveCtUnitCost(confirmedSeconds, wagePerSecond),
         perPieceCost: wagePerSecond == null ? null : proposedPerPieceSeconds * wagePerSecond,
         expectedCost: wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond,
@@ -3043,8 +2961,6 @@ const AssignBoard = () => {
     detailStyle?.processes,
     detailDraftByProcess,
     detailStDraftByProcess,
-    detailOperatorProposalByProcess,
-    detailLineRequestByProcess,
     detailCard?.ctAgreedSnapshot,
     detailLine?.factoryWagePerSecond,
     detailLine?.wagePerSecond,
@@ -3070,18 +2986,21 @@ const AssignBoard = () => {
     const totalRequestedPerPieceSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.requestedPerPieceSeconds, 0)
-        : Number(detailAssignment?.proposalSeconds || detailCard?.totalSeconds || 0) / orderQuantity;
+        : Number(detailAssignment?.totalSeconds || detailCard?.totalSeconds || 0) / orderQuantity;
     const totalConfirmedPerPieceSeconds =
       isAgreedAssignment && detailProcessRows.length > 0
         ? detailProcessRows.reduce(
             (sum, row) => sum + (Number(row?.confirmedPerPieceSeconds) || 0),
             0
           )
-        : null;
+        : isAgreedAssignment
+          ? Number(detailAssignment?.contractedSeconds || detailAssignment?.totalSeconds || 0) /
+            orderQuantity
+          : null;
     const totalRequestedSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.totalRequestedSeconds, 0)
-        : Number(detailAssignment?.proposalSeconds || detailCard?.totalSeconds || 0);
+        : Number(detailAssignment?.totalSeconds || detailCard?.totalSeconds || 0);
     const totalBaseSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0)
@@ -3133,38 +3052,13 @@ const AssignBoard = () => {
     [detailAssignment, isAssignmentLocked]
   );
   const detailCtStatus = normalizeCtStatus(detailAssignment?.ctStatus);
-  const detailRequestedPerPieceSeconds = useMemo(() => {
-    const pendingRequested = Number(detailPendingLineRequestProposal?.totalProposedPerPieceSeconds);
-    if (Number.isFinite(pendingRequested) && pendingRequested > 0) {
-      return pendingRequested;
-    }
-    if (detailCtStatus !== 'AGREED' || detailProcessRows.length === 0) {
-      return null;
-    }
-    const requestedRows = detailProcessRows
-      .map((row) => Number(row?.lineRequestedSeconds))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    if (requestedRows.length === 0) return null;
-    return requestedRows.reduce((sum, value) => sum + value, 0);
-  }, [detailPendingLineRequestProposal, detailCtStatus, detailProcessRows]);
   const isAdminUser = useMemo(
     () => String(activeOrgRole || '').trim().toUpperCase() === 'ADMIN',
     [activeOrgRole]
   );
-  const detailIsEscalated = Boolean(
-    detailAssignment &&
-      detailCtStatus === 'SENT' &&
-      String(detailAssignment?.ctEscalatedAt || '').trim()
-  );
   const canReopenAgreedAssignment = Boolean(
     detailAssignment && detailCtStatus === 'AGREED' && isAdminUser
   );
-  const detailInLineRequestFlow = Boolean(
-    detailAssignment &&
-      detailCtStatus === 'REJECTED' &&
-      detailPendingLineRequestProposal
-  );
-  const detailNeedsProposalResend = detailCtStatus === 'SENT' || detailInLineRequestFlow;
   const detailHasProposalChange = useMemo(
     () =>
       detailProcessRows.some(
@@ -3174,13 +3068,9 @@ const AssignBoard = () => {
       ),
     [detailProcessRows]
   );
-  const canAgreeLineRequest = Boolean(
-    detailInLineRequestFlow && !detailIsLocked && !detailHasProposalChange
+  const canConfirmAssignment = Boolean(
+    detailAssignment && detailProcessRows.length > 0 && detailCtStatus !== 'AGREED'
   );
-  const canSendProposal = Boolean(detailAssignment && detailProcessRows.length > 0 && detailCtStatus !== 'AGREED');
-  const canResendProposal = detailNeedsProposalResend
-    ? canSendProposal && detailHasProposalChange
-    : canSendProposal;
   const contextMenuTargetAssignment = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return null;
     return assignmentById.get(String(contextMenuState.id)) || null;
@@ -3277,7 +3167,7 @@ const AssignBoard = () => {
         },
       };
     });
-    // ST 변경 시 제안 CT 초안도 동일 값으로 맞춰 즉시 오퍼 기준에 반영한다.
+    // ST를 바꾸면 현재 입력 CT 초안도 같은 값으로 맞춰 화면 기준을 바로 동기화한다.
     setDetailDraftsByTarget((prev) => {
       const currentForTarget = prev[detailTargetKey] || {};
       if (value === '') {
@@ -3465,8 +3355,6 @@ const AssignBoard = () => {
         quantity: card.quantity,
         originOrderId: getCardOriginId(card) ?? cardId,
         basis,
-        proposalBasis: basis,
-        proposalSeconds: totalSeconds,
         contractedSeconds: null,
         ctStatus: 'PENDING',
         ctSource: basis,
@@ -3693,7 +3581,7 @@ const AssignBoard = () => {
   const handleSplitAssignment = useCallback((assignmentId) => {
     const target = assignmentById.get(assignmentId);
     if (target && isAssignmentLocked(target)) {
-      showNotification('제안 송부된 작업은 잠금 상태라 수량 분할할 수 없습니다.', 'warning');
+      showNotification('확정된 작업은 잠금 상태라 수량 분할할 수 없습니다.', 'warning');
       return;
     }
     if (!target?.cardId) return;
@@ -3712,7 +3600,6 @@ const AssignBoard = () => {
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
 
     const scaledSeconds = scaleValue(target.totalSeconds, remainRatio) || 1;
-    const scaledProposal = scaleValue(target.proposalSeconds ?? target.totalSeconds, remainRatio) || 1;
     const scaledContracted =
       target.contractedSeconds == null
         ? target.contractedSeconds
@@ -3730,7 +3617,6 @@ const AssignBoard = () => {
               ...item,
               quantity: remainQty,
               totalSeconds: scaledSeconds,
-              proposalSeconds: scaledProposal,
               contractedSeconds: scaledContracted,
               ...range,
             }
@@ -3756,227 +3642,15 @@ const AssignBoard = () => {
     }
     setContextMenuState(null);
   }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
-  const handleSendProposalToLineLeader = useCallback(async () => {
+  const handleConfirmAssignment = useCallback(async () => {
     if (sendingProposal) return;
-    if (!detailAssignment) return;
+    if (!detailAssignment || !detailCard) return;
     if (detailCtStatus === 'AGREED') {
-      showNotification('확정 완료된 작업은 재제안할 수 없습니다.', 'warning');
-      return;
-    }
-    if (detailNeedsProposalResend && !detailHasProposalChange) {
-      showNotification('다시 제안은 제안 CT를 수정한 뒤에 가능합니다.', 'warning');
+      showNotification('이미 확정된 작업입니다.', 'warning');
       return;
     }
     if (!detailSummary || !Number.isFinite(detailSummary.totalRequestedSeconds) || detailSummary.totalRequestedSeconds <= 0) {
-      showNotification('송부할 CT 값이 유효하지 않습니다.', 'error');
-      return;
-    }
-
-    const assignmentId = String(detailAssignment.id);
-    const nextTotalSeconds = Math.max(1, Math.round(detailSummary.totalRequestedSeconds));
-    const schedulePatch = buildAssignmentSchedulePatch(detailAssignment, startDateRef.current);
-    const nowIso = new Date().toISOString();
-    const nextCards = cards;
-
-    try {
-      setSendingProposal(true);
-
-      const operatorProposalPayload = {
-        sentAt: nowIso,
-        sentBy: 'OPERATOR',
-        sourceAssignmentId: assignmentId,
-        lineId: detailAssignment?.lineId ?? null,
-        schedule: schedulePatch,
-        quantity: detailSummary.orderQuantity,
-        totalStPerPieceSeconds: detailSummary.totalBasePerPieceSeconds,
-        totalProposedPerPieceSeconds: detailSummary.totalRequestedPerPieceSeconds,
-        totalProposedSeconds: detailSummary.totalRequestedSeconds,
-        processes: detailProcessRows.map((row) => ({
-          processKey: row.processKey,
-          name: row.processName,
-          quantity: row.processQuantity,
-          basis: row.basis,
-          ptSeconds: row.ptSeconds,
-          ptReferenceQuantity: row.ptReferenceQuantity,
-          atSeconds: row.atSeconds,
-          stSeconds: row.baseSeconds,
-          proposedSeconds: row.requestedSeconds,
-          proposedPerPieceSeconds: row.requestedPerPieceSeconds,
-        })),
-      };
-      const nextCardsWithProposal = detailAssignment?.cardId
-        ? nextCards.map((card) =>
-            String(card?.id) === String(detailAssignment.cardId)
-              ? {
-                  ...card,
-                  operatorCtProposal: operatorProposalPayload,
-                  pendingCtProposal: null,
-                }
-              : card
-          )
-        : nextCards;
-
-      const nextAssignments = assignments.map((item) => {
-        if (String(item?.id) === assignmentId) {
-          // totalSeconds는 ST(q) 기반 배정 기간 — CT 제안값(proposalSeconds)과 무관하게 유지
-          return {
-            ...item,
-            ...(schedulePatch || {}),
-            proposalSeconds: nextTotalSeconds,
-            contractedSeconds: null,
-            ctStatus: 'SENT',
-            ctOverride: false,
-            ctSource: 'OPERATOR_PROPOSAL',
-            ctAgreedBy: null,
-            ctAgreedAt: null,
-            ctSentAt: nowIso,
-            ctEscalatedAt: null,
-            ctEscalationReason: null,
-            ctEscalationTargetRole: null,
-            ctEscalationStatus: null,
-            ctNote: `제안 송부 ${nowIso}`,
-          };
-        }
-        return item;
-      });
-      const normalizedAssignments = nextAssignments.map((item) =>
-        normalizeAssignmentLayout(item)
-      );
-      const query = buildQueryString({ orgId: activeOrgId });
-      const ctAssignmentPatch = {
-        ...(schedulePatch || {}),
-        proposalSeconds: nextTotalSeconds,
-        contractedSeconds: null,
-        ctStatus: 'SENT',
-        ctOverride: false,
-        ctSource: 'OPERATOR_PROPOSAL',
-        ctAgreedBy: null,
-        ctAgreedAt: null,
-        ctSentAt: nowIso,
-        ctEscalatedAt: null,
-        ctEscalationReason: null,
-        ctEscalationTargetRole: null,
-        ctEscalationStatus: null,
-        ctNote: `제안 송부 ${nowIso}`,
-      };
-      let persistedCards;
-      let persistedAssignments;
-      const persistProposalWithBoardPut = async () => {
-        const preparedAssignmentsForPut = normalizedAssignments.map((assignment) =>
-          syncAssignmentDateKeys(assignment, startDateRef.current)
-        );
-        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
-        const putResponse = await requestJSON('/assignment-board-state' + query, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCardsWithProposal, assignments: assignmentsForPut }),
-          skipGlobalLoading: true,
-        });
-        return resolvePersistedBoardState(
-          putResponse,
-          nextCardsWithProposal,
-          assignmentsForPut
-        );
-      };
-      const shouldUseFullPut = shouldUseFullBoardPutForCtAction(assignmentId);
-      if (!shouldUseFullPut) {
-        try {
-          const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              assignmentId,
-              assignmentPatch: ctAssignmentPatch,
-              cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
-              cardPatch: detailAssignment?.cardId
-                ? { operatorCtProposal: operatorProposalPayload, pendingCtProposal: null }
-                : null,
-            }),
-            skipGlobalLoading: true,
-          });
-          persistedAssignments = patchResponse?.assignment
-            ? normalizedAssignments.map((a) =>
-                String(a.id) === assignmentId ? { ...a, ...patchResponse.assignment } : a
-              )
-            : normalizedAssignments;
-          persistedCards = patchResponse?.card
-            ? nextCardsWithProposal.map((c) =>
-                String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
-              )
-            : nextCardsWithProposal;
-        } catch (error) {
-          if (!isAssignmentNotFoundError(error)) {
-            throw error;
-          }
-          ({ persistedCards, persistedAssignments } = await persistProposalWithBoardPut());
-        }
-      } else {
-        ({ persistedCards, persistedAssignments } = await persistProposalWithBoardPut());
-      }
-
-      let nextDays = days;
-      const maxEndIndex = persistedAssignments.reduce(
-        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
-        0
-      );
-      if (maxEndIndex + 10 > nextDays.length) {
-        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
-      }
-      if (nextDays.length > days.length) {
-        setDays(nextDays);
-      }
-      setCards(persistedCards);
-      setAssignments(persistedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(
-        persistedCards,
-        persistedAssignments
-      );
-      lastSavedSnapshotRef.current = persistedSnapshot;
-      resetBoardHistory(persistedCards, persistedAssignments);
-      showNotification('제안 송부 완료. 해당 작업은 잠금 처리되었습니다.', 'success');
-      blurActiveElement();
-      setDetailState(null);
-    } catch (error) {
-      showNotification(
-        resolveBoardSaveErrorMessage(error, '제안 송부 처리에 실패했습니다.'),
-        'error'
-      );
-    } finally {
-      setSendingProposal(false);
-    }
-  }, [
-    sendingProposal,
-    detailAssignment,
-    detailSummary,
-    detailProcessRows,
-    detailInLineRequestFlow,
-    detailNeedsProposalResend,
-    detailHasProposalChange,
-    showNotification,
-    cards,
-    assignments,
-    activeOrgId,
-    days,
-    holidaySet,
-    createPersistSnapshotText,
-    resetBoardHistory,
-    resolvePersistedBoardState,
-    resolveBoardSaveErrorMessage,
-    alignAssignmentsForBoardPut,
-    syncAssignmentDateKeys,
-    shouldUseFullBoardPutForCtAction,
-    isAssignmentNotFoundError,
-    blurActiveElement,
-  ]);
-  const handleAgreeLineRequest = useCallback(async () => {
-    if (sendingProposal) return;
-    if (!detailAssignment || !detailCard) return;
-    if (!canAgreeLineRequest || !detailPendingLineRequestProposal) {
-      if (detailHasProposalChange) {
-        showNotification('제안 CT를 수정한 상태에서는 요청 동의를 할 수 없습니다.', 'warning');
-      } else {
-        showNotification('요청 동의는 요청 상태에서만 가능합니다.', 'warning');
-      }
+      showNotification('확정할 CT 값이 유효하지 않습니다.', 'error');
       return;
     }
 
@@ -3989,70 +3663,68 @@ const AssignBoard = () => {
         detailSummary?.orderQuantity ??
           detailAssignment?.quantity ??
           detailCard?.quantity ??
-          detailPendingLineRequestProposal?.quantity ??
           1,
         1
       )
     );
-    let nextCards = cards;
+    const agreedBy =
+      String(
+        activeProfile?.employeeName ||
+          activeProfile?.name ||
+          activeProfile?.email ||
+          activeProfile?.label ||
+          ''
+      ).trim() || 'OPERATOR';
 
     try {
       setSendingProposal(true);
 
-      const agreedProcessRows = detailProcessRows.map((row) => {
+      const confirmedProcessRows = detailProcessRows.map((row) => {
         const proposedSeconds = toOptionalPositiveNumber(
-          detailOperatorProposalByProcess.get(row.processKey)?.proposedSeconds ??
-            row.proposedSeedSeconds ??
-            row.proposedSeconds ??
-            row.baseSeconds
+          row.proposedSeconds ?? row.proposedSeedSeconds ?? row.baseSeconds
         );
-        const requestedSeconds = toOptionalPositiveNumber(
-          detailLineRequestByProcess.get(row.processKey) ?? row.lineRequestedSeconds
-        );
-        const agreedSeconds = requestedSeconds ?? proposedSeconds ?? toOptionalPositiveNumber(row.baseSeconds);
+        const agreedSeconds = proposedSeconds ?? toOptionalPositiveNumber(row.baseSeconds);
         const normalizedAgreedSeconds = agreedSeconds ?? 0;
         const agreedPerPieceSeconds = normalizedAgreedSeconds * row.processQuantity;
         return {
           ...row,
           proposedSeconds: proposedSeconds ?? row.baseSeconds,
-          requestedSeconds,
+          requestedSeconds: proposedSeconds ?? row.baseSeconds,
           agreedSeconds: normalizedAgreedSeconds,
           agreedPerPieceSeconds,
           agreedTotalSeconds: agreedPerPieceSeconds * orderQuantity,
         };
       });
 
-      let agreedTotalSeconds = agreedProcessRows.reduce(
+      let agreedTotalSeconds = confirmedProcessRows.reduce(
         (sum, row) => sum + row.agreedTotalSeconds,
         0
       );
       if (!Number.isFinite(agreedTotalSeconds) || agreedTotalSeconds <= 0) {
         agreedTotalSeconds = Number(
-          detailPendingLineRequestProposal?.totalProposedSeconds ??
-            detailSummary?.totalRequestedSeconds ??
-            detailAssignment?.proposalSeconds ??
+          detailSummary?.totalRequestedSeconds ??
             detailAssignment?.totalSeconds ??
             0
         );
       }
       if (!Number.isFinite(agreedTotalSeconds) || agreedTotalSeconds <= 0) {
-        showNotification('동의할 요청 CT 값이 유효하지 않습니다.', 'error');
+        showNotification('확정할 CT 값이 유효하지 않습니다.', 'error');
         return;
       }
 
       const nextTotalSeconds = Math.max(1, Math.round(agreedTotalSeconds));
       const totalStPerPieceSeconds =
-        agreedProcessRows.length > 0
-          ? agreedProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
+        confirmedProcessRows.length > 0
+          ? confirmedProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
           : nextTotalSeconds / orderQuantity;
       const totalAgreedPerPieceSeconds =
-        agreedProcessRows.length > 0
-          ? agreedProcessRows.reduce((sum, row) => sum + row.agreedPerPieceSeconds, 0)
+        confirmedProcessRows.length > 0
+          ? confirmedProcessRows.reduce((sum, row) => sum + row.agreedPerPieceSeconds, 0)
           : nextTotalSeconds / orderQuantity;
 
       const agreementSnapshot = {
         agreedAt: nowIso,
-        agreedBy: 'OPERATOR',
+        agreedBy,
         sourceAssignmentId: assignmentId,
         lineId: detailAssignment?.lineId ?? null,
         schedule: schedulePatch,
@@ -4060,7 +3732,7 @@ const AssignBoard = () => {
         totalStPerPieceSeconds,
         totalAgreedPerPieceSeconds,
         totalAgreedSeconds: nextTotalSeconds,
-        processes: agreedProcessRows.map((row) => ({
+        processes: confirmedProcessRows.map((row) => ({
           processKey: row.processKey,
           name: row.processName,
           quantity: row.processQuantity,
@@ -4072,46 +3744,54 @@ const AssignBoard = () => {
           agreedPerPieceSeconds: row.agreedPerPieceSeconds,
         })),
       };
+      const nextRange = recomputeAssignmentRange(
+        detailAssignment,
+        nextTotalSeconds,
+        days,
+        lineCapacityById
+      );
+      const nextSchedule =
+        nextRange == null
+          ? schedulePatch
+          : buildAssignmentSchedulePatch(
+              syncAssignmentDateKeys(
+                {
+                  ...detailAssignment,
+                  ...nextRange,
+                  totalSeconds: nextTotalSeconds,
+                },
+                startDateRef.current
+              ),
+              startDateRef.current
+            ) || nextRange;
       const nextCardsWithAgreement = detailAssignment?.cardId
-        ? nextCards.map((card) =>
+        ? cards.map((card) =>
             String(card?.id) === String(detailAssignment.cardId)
               ? {
                   ...card,
                   ctAgreedSnapshot: agreementSnapshot,
-                  pendingCtProposal: null,
                 }
               : card
           )
-        : nextCards;
+        : cards;
 
-      const targetAssignmentForAgree = assignments.find((item) => String(item?.id) === assignmentId);
-      const preservedProposalSeconds =
-        toNonNegativeInt(targetAssignmentForAgree?.proposalSeconds, 0) > 0
-          ? toNonNegativeInt(targetAssignmentForAgree?.proposalSeconds, 0)
-          : Math.max(1, Math.round(detailSummary?.totalRequestedSeconds || 0));
-      const ctAgreePatch = {
-        ...(schedulePatch || {}),
-        proposalSeconds: preservedProposalSeconds,
+      const ctConfirmPatch = {
+        ...(nextSchedule || {}),
+        totalSeconds: nextTotalSeconds,
         contractedSeconds: nextTotalSeconds,
         ctStatus: 'AGREED',
-        ctOverride: false,
-        ctSource: 'LINE_LEADER_PROPOSAL',
-        ctAgreedBy: 'OPERATOR',
+        ctSource: detailAssignment?.basis ?? detailAssignment?.proposalBasis ?? 'OPERATOR_CONFIRMED',
+        ctAgreedBy: agreedBy,
         ctAgreedAt: nowIso,
-        ctSentAt: null,
-        ctEscalatedAt: null,
-        ctEscalationReason: null,
-        ctEscalationTargetRole: null,
-        ctEscalationStatus: null,
-        ctNote: `요청 동의 ${nowIso}`,
+        ctNote: `확정 ${nowIso}`,
       };
-      const nextAssignments = assignments.map((a) =>
-        String(a.id) === assignmentId
-          ? normalizeAssignmentLayout({ ...a, ...ctAgreePatch })
-          : normalizeAssignmentLayout(a)
+      const nextAssignments = assignments.map((item) =>
+        String(item.id) === assignmentId
+          ? normalizeAssignmentLayout({ ...item, ...ctConfirmPatch })
+          : normalizeAssignmentLayout(item)
       );
       const query = buildQueryString({ orgId: activeOrgId });
-      const persistAgreementWithBoardPut = async () => {
+      const persistConfirmWithBoardPut = async () => {
         const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
           syncAssignmentDateKeys(assignment, startDateRef.current)
         );
@@ -4137,156 +3817,49 @@ const AssignBoard = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               assignmentId,
-              assignmentPatch: ctAgreePatch,
+              assignmentPatch: ctConfirmPatch,
               cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
               cardPatch: detailAssignment?.cardId
-                ? { ctAgreedSnapshot: agreementSnapshot, pendingCtProposal: null }
+                ? { ctAgreedSnapshot: agreementSnapshot }
                 : null,
             }),
             skipGlobalLoading: true,
           });
           persistedAssignments = patchResponse?.assignment
-            ? nextAssignments.map((a) =>
-                String(a.id) === assignmentId
-                  ? normalizeAssignmentLayout({ ...a, ...patchResponse.assignment })
-                  : a
+            ? nextAssignments.map((assignment) =>
+                String(assignment.id) === assignmentId
+                  ? normalizeAssignmentLayout({ ...assignment, ...patchResponse.assignment })
+                  : assignment
               )
             : nextAssignments;
           persistedCards = patchResponse?.card
-            ? nextCardsWithAgreement.map((c) =>
-                String(c.id) === String(detailAssignment?.cardId) ? { ...c, ...patchResponse.card } : c
+            ? nextCardsWithAgreement.map((card) =>
+                String(card.id) === String(detailAssignment?.cardId)
+                  ? { ...card, ...patchResponse.card }
+                  : card
               )
             : nextCardsWithAgreement;
         } catch (error) {
           if (!isAssignmentNotFoundError(error)) {
             throw error;
           }
-          ({ persistedCards, persistedAssignments } = await persistAgreementWithBoardPut());
+          ({ persistedCards, persistedAssignments } = await persistConfirmWithBoardPut());
         }
       } else {
-        ({ persistedCards, persistedAssignments } = await persistAgreementWithBoardPut());
+        ({ persistedCards, persistedAssignments } = await persistConfirmWithBoardPut());
       }
 
-      setCards(persistedCards);
-      setAssignments(persistedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(
-        persistedCards,
-        persistedAssignments
+      let nextDays = days;
+      const maxEndIndex = persistedAssignments.reduce(
+        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
+        0
       );
-      lastSavedSnapshotRef.current = persistedSnapshot;
-      resetBoardHistory(persistedCards, persistedAssignments);
-      showNotification('요청 동의 완료. 해당 작업이 확정 상태로 전환되었습니다.', 'success');
-      blurActiveElement();
-      setDetailState(null);
-    } catch (error) {
-      showNotification(
-        resolveBoardSaveErrorMessage(error, '요청 동의 처리에 실패했습니다.'),
-        'error'
-      );
-    } finally {
-      setSendingProposal(false);
-    }
-  }, [
-    sendingProposal,
-    detailAssignment,
-    detailCard,
-    canAgreeLineRequest,
-    detailHasProposalChange,
-    detailPendingLineRequestProposal,
-    detailSummary?.orderQuantity,
-    detailSummary?.totalRequestedSeconds,
-    detailProcessRows,
-    detailLineRequestByProcess,
-    detailOperatorProposalByProcess,
-    cards,
-    assignments,
-    activeOrgId,
-    days,
-    lineCapacityById,
-    holidaySet,
-    createPersistSnapshotText,
-    resetBoardHistory,
-    resolvePersistedBoardState,
-    resolveBoardSaveErrorMessage,
-    alignAssignmentsForBoardPut,
-    syncAssignmentDateKeys,
-    shouldUseFullBoardPutForCtAction,
-    isAssignmentNotFoundError,
-    blurActiveElement,
-    showNotification,
-  ]);
-  const handleCancelAssignmentFromLineRequest = useCallback(async () => {
-    if (sendingProposal) return;
-    if (!detailAssignment || !detailCard) return;
-    if (!detailInLineRequestFlow) {
-      showNotification('배정 취소는 요청 검토 단계에서만 가능합니다.', 'warning');
-      return;
-    }
-    const confirmed = window.confirm(
-      '해당 작업 배정을 취소하면 미배정 카드로 돌아갑니다. 계속하시겠습니까?'
-    );
-    if (!confirmed) return;
-
-    const assignmentId = String(detailAssignment.id);
-    const cardId = detailAssignment?.cardId ? String(detailAssignment.cardId) : null;
-
-    const nextAssignments = assignments
-      .filter((item) => String(item?.id) !== assignmentId)
-      .map((item) => normalizeAssignmentLayout(item));
-    const nextCards = cardId
-      ? cards.map((card) =>
-          String(card?.id) === cardId ? { ...card, pendingCtProposal: null } : card
-        )
-      : cards;
-
-    try {
-      setSendingProposal(true);
-      const query = buildQueryString({ orgId: activeOrgId });
-      const persistCancelWithBoardPut = async () => {
-        const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
-          syncAssignmentDateKeys(assignment, startDateRef.current)
-        );
-        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
-        const putResponse = await requestJSON('/assignment-board-state' + query, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCards, assignments: assignmentsForPut }),
-          skipGlobalLoading: true,
-        });
-        return resolvePersistedBoardState(putResponse, nextCards, assignmentsForPut);
-      };
-      let persistedAssignments;
-      let persistedCards;
-      if (!shouldUseFullBoardPutForCtAction(assignmentId)) {
-        try {
-          const response = await requestJSON(
-            `/assignment-board-state/assignment/${assignmentId}${query}`,
-            {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                cardId,
-                cardPatch: cardId ? { pendingCtProposal: null } : null,
-              }),
-              skipGlobalLoading: true,
-            }
-          );
-          persistedAssignments = nextAssignments;
-          persistedCards = response?.card && cardId
-            ? cards.map((card) =>
-                String(card?.id) === cardId ? { ...card, ...response.card } : card
-              )
-            : nextCards;
-        } catch (error) {
-          if (!isAssignmentNotFoundError(error)) {
-            throw error;
-          }
-          ({ persistedCards, persistedAssignments } = await persistCancelWithBoardPut());
-        }
-      } else {
-        ({ persistedCards, persistedAssignments } = await persistCancelWithBoardPut());
+      if (maxEndIndex + 10 > nextDays.length) {
+        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
       }
-
+      if (nextDays.length > days.length) {
+        setDays(nextDays);
+      }
       setCards(persistedCards);
       setAssignments(persistedAssignments);
       lastSavedSnapshotRef.current = createPersistSnapshotText(
@@ -4296,10 +3869,10 @@ const AssignBoard = () => {
       resetBoardHistory(persistedCards, persistedAssignments);
       blurActiveElement();
       setDetailState(null);
-      showNotification('배정을 취소했습니다. 해당 작업은 미배정으로 전환되었습니다.', 'info');
+      showNotification('작업이 확정되었습니다.', 'success');
     } catch (error) {
       showNotification(
-        resolveBoardSaveErrorMessage(error, '배정 취소 처리에 실패했습니다.'),
+        resolveBoardSaveErrorMessage(error, '작업 확정 처리에 실패했습니다.'),
         'error'
       );
     } finally {
@@ -4309,10 +3882,19 @@ const AssignBoard = () => {
     sendingProposal,
     detailAssignment,
     detailCard,
-    detailInLineRequestFlow,
-    assignments,
+    detailCtStatus,
+    detailSummary,
+    detailProcessRows,
+    activeProfile?.employeeName,
+    activeProfile?.name,
+    activeProfile?.email,
+    activeProfile?.label,
     cards,
+    assignments,
     activeOrgId,
+    days,
+    lineCapacityById,
+    holidaySet,
     createPersistSnapshotText,
     resetBoardHistory,
     resolvePersistedBoardState,
@@ -4351,11 +3933,6 @@ const AssignBoard = () => {
         ctSource: 'REOPENED_BY_ADMIN',
         ctAgreedBy: null,
         ctAgreedAt: null,
-        ctSentAt: null,
-        ctEscalatedAt: null,
-        ctEscalationReason: null,
-        ctEscalationTargetRole: null,
-        ctEscalationStatus: null,
         ctNote: `재협의 개시 ${nowIso}`,
       });
     });
@@ -4368,7 +3945,6 @@ const AssignBoard = () => {
       previous: {
         ctStatus: detailAssignment?.ctStatus || 'AGREED',
         contractedSeconds: detailAssignment?.contractedSeconds ?? null,
-        proposalSeconds: detailAssignment?.proposalSeconds ?? null,
         ctSource: detailAssignment?.ctSource ?? null,
         ctAgreedBy: detailAssignment?.ctAgreedBy ?? null,
         ctAgreedAt: detailAssignment?.ctAgreedAt ?? null,
@@ -4384,7 +3960,6 @@ const AssignBoard = () => {
             : [];
           return {
             ...card,
-            pendingCtProposal: null,
             ctAgreementHistory: [...previousHistory, historyEntry],
           };
         })
@@ -4458,7 +4033,7 @@ const AssignBoard = () => {
   const buildCardFromAssignment = (assignment) => {
     const card = cardById.get(assignment.cardId);
     if (card) return card;
-    const basis = assignment.proposalBasis || assignment.basis;
+    const basis = assignment.basis || assignment.proposalBasis;
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
@@ -4498,7 +4073,6 @@ const AssignBoard = () => {
 
     const addedSeconds = resolveCardTotalSeconds(sourceCard);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
-    const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
     const mergedContractedSeconds =
       target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
@@ -4516,7 +4090,6 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         totalSeconds: mergedSeconds,
-        proposalSeconds: mergedProposalSeconds,
         contractedSeconds: mergedContractedSeconds,
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
@@ -4561,7 +4134,6 @@ const AssignBoard = () => {
     const sourceCard = buildCardFromAssignment(source);
     const addedSeconds = resolveCardTotalSeconds(sourceCard);
     const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
-    const mergedProposalSeconds = (target.proposalSeconds ?? target.totalSeconds ?? 0) + addedSeconds;
     const mergedContractedSeconds =
       target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
@@ -4579,7 +4151,6 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         totalSeconds: mergedSeconds,
-        proposalSeconds: mergedProposalSeconds,
         contractedSeconds: mergedContractedSeconds,
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);
@@ -5021,16 +4592,11 @@ const AssignBoard = () => {
                         <Chip
                           size="small"
                           label={CT_STATUS_LABEL[normalizeCtStatus(detailAssignment.ctStatus)] || CT_STATUS_LABEL.PENDING}
-                          color={detailIsLocked ? 'primary' : normalizeCtStatus(detailAssignment.ctStatus) === 'REJECTED' ? 'warning' : 'default'}
+                          color={detailIsLocked ? 'primary' : 'default'}
                           variant="outlined"
                           sx={{ height: 20 }}
                         />
                       </Typography>
-                    )}
-                    {detailIsEscalated && (
-                      <Alert severity="warning" sx={{ mt: 0.5 }}>
-                        제안 상태가 48시간을 초과해 관리자 검토 대상으로 에스컬레이션되었습니다.
-                      </Alert>
                     )}
                   </Stack>
                 </Paper>
@@ -5045,11 +4611,11 @@ const AssignBoard = () => {
                       {formatSecondsLabel(detailSummary?.totalBasePerPieceSeconds)}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>공정 제안 CT 합 (한 벌):</strong>{' '}
+                      <strong>공정 입력 CT 합 (한 벌):</strong>{' '}
                       {formatSecondsLabel(detailSummary?.totalRequestedPerPieceSeconds)}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>공정 제안 CT 합 (전체):</strong>{' '}
+                      <strong>공정 입력 CT 합 (전체):</strong>{' '}
                       {formatSecondsLabel(detailSummary?.totalRequestedSeconds)}
                     </Typography>
                     <Typography variant="body2">
@@ -5088,8 +4654,7 @@ const AssignBoard = () => {
                             <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`제안 CT(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`요청 CT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`입력 CT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`확정 CT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">단가(동)</TableCell>
                           </TableRow>
@@ -5178,20 +4743,6 @@ const AssignBoard = () => {
                                   sx={{ width: 90 }}
                                 />
                               </TableCell>
-                              <TableCell
-                                align="right"
-                                sx={{
-                                  fontWeight: row.hasLineRequestedChange ? 700 : 400,
-                                  color: row.hasLineRequestedChange ? 'warning.dark' : 'text.secondary',
-                                }}
-                              >
-                                {row.lineRequestedSeconds == null
-                                  ? '-'
-                                  : formatNumberWithCommas(row.lineRequestedSeconds, {
-                                      fallback: '0',
-                                      maximumFractionDigits: 2,
-                                    })}
-                              </TableCell>
                               <TableCell align="right">
                                 {detailCtStatus !== 'AGREED' || row.confirmedSeconds == null
                                   ? '-'
@@ -5210,22 +4761,9 @@ const AssignBoard = () => {
                                     formatCurrencyDong(row.confirmedUnitCost)
                                   )
                                 ) : (
-                                  <Stack spacing={0.1} alignItems="flex-end">
-                                    <Typography variant="caption" color="text.secondary">
-                                      {`제안 ${
-                                        row.proposedUnitCost == null
-                                          ? '-'
-                                          : formatCurrencyDong(row.proposedUnitCost)
-                                      }`}
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      {`요청 ${
-                                        row.requestedUnitCost == null
-                                          ? '-'
-                                          : formatCurrencyDong(row.requestedUnitCost)
-                                      }`}
-                                    </Typography>
-                                  </Stack>
+                                  row.proposedUnitCost == null
+                                    ? '-'
+                                    : formatCurrencyDong(row.proposedUnitCost)
                                 )}
                               </TableCell>
                             </TableRow>
@@ -5251,14 +4789,6 @@ const AssignBoard = () => {
                                   })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {detailRequestedPerPieceSeconds != null
-                                ? formatNumberWithCommas(detailRequestedPerPieceSeconds, {
-                                    fallback: '0',
-                                    maximumFractionDigits: 2,
-                                  })
-                                : '-'}
-                            </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {detailCtStatus === 'AGREED' &&
                               detailSummary?.totalConfirmedPerPieceSeconds != null
                                 ? formatNumberWithCommas(detailSummary.totalConfirmedPerPieceSeconds, {
@@ -5277,24 +4807,10 @@ const AssignBoard = () => {
                                     detailSummary.wagePerSecond
                                 )
                               ) : (
-                                <Stack spacing={0.1} alignItems="flex-end">
-                                  <Typography variant="caption" color="text.secondary">
-                                    {`제안 ${formatCurrencyDong(
-                                      detailSummary.totalRequestedPerPieceSeconds *
-                                        detailSummary.wagePerSecond
-                                    )}`}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary">
-                                    {`요청 ${
-                                      detailRequestedPerPieceSeconds != null
-                                        ? formatCurrencyDong(
-                                            detailRequestedPerPieceSeconds *
-                                              detailSummary.wagePerSecond
-                                          )
-                                        : '-'
-                                    }`}
-                                  </Typography>
-                                </Stack>
+                                formatCurrencyDong(
+                                  detailSummary.totalRequestedPerPieceSeconds *
+                                    detailSummary.wagePerSecond
+                                )
                               )}
                             </TableCell>
                           </TableRow>
@@ -5303,17 +4819,9 @@ const AssignBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {detailInLineRequestFlow
-                      ? detailHasProposalChange
-                        ? '라인장 변경 요청을 확인했습니다. 요청 동의/다시 제안/배정 취소 중 하나를 선택하세요.'
-                        : '라인장 변경 요청을 확인했습니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
-                      : detailCtStatus === 'SENT'
-                        ? detailHasProposalChange
-                          ? '이미 제안된 작업입니다. 변경된 제안 CT로 다시 송부할 수 있습니다.'
-                          : '이미 제안된 작업입니다. 다시 제안하려면 제안 CT를 먼저 수정하세요.'
-                      : detailCtStatus === 'AGREED' && !isAdminUser
-                        ? '확정 상태의 재협의 개시는 관리자 권한이 필요합니다.'
-                        : '제안 CT 미입력 시 ST를 사용하며, 요청 CT는 라인장 변경 요청이 있을 때 표시됩니다.'}
+                    {detailCtStatus === 'AGREED' && !isAdminUser
+                      ? '확정 상태를 다시 열려면 관리자 권한이 필요합니다.'
+                      : '입력 CT를 비우면 ST 기준값으로 확정되며, 확정은 운영자가 직접 처리합니다.'}
                   </Typography>
                   <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
                     {detailCtStatus === 'AGREED' && (
@@ -5327,42 +4835,14 @@ const AssignBoard = () => {
                         재협의 개시
                       </Button>
                     )}
-                    {detailInLineRequestFlow && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="success"
-                        onClick={handleAgreeLineRequest}
-                        disabled={controlsDisabled || sendingProposal || !canAgreeLineRequest}
-                      >
-                        요청 동의
-                      </Button>
-                    )}
                     <Button
                       size="small"
                       variant="contained"
-                      onClick={handleSendProposalToLineLeader}
-                      disabled={controlsDisabled || !canResendProposal || sendingProposal}
+                      onClick={handleConfirmAssignment}
+                      disabled={controlsDisabled || !canConfirmAssignment || sendingProposal}
                     >
-                      {sendingProposal
-                        ? detailNeedsProposalResend
-                          ? '처리 중...'
-                          : '송부 중...'
-                        : detailNeedsProposalResend
-                          ? '다시 제안'
-                          : '제안 송부'}
+                      {sendingProposal ? '확정 중...' : '확정'}
                     </Button>
-                    {detailInLineRequestFlow && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={handleCancelAssignmentFromLineRequest}
-                        disabled={controlsDisabled || sendingProposal}
-                      >
-                        배정 취소
-                      </Button>
-                    )}
                   </Stack>
                 </Paper>
               </>

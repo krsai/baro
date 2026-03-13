@@ -112,10 +112,6 @@ export const LanguageSwitcher = ({
         sx={{
           ...defaultSx,
           opacity: languageCode === language.code ? 1 : 0.55,
-          boxShadow:
-            languageCode === language.code
-              ? 'inset 0 0 0 1px rgba(25, 118, 210, 0.65)'
-              : 'none',
           '&:hover': {
             backgroundColor: 'rgba(25, 118, 210, 0.08)',
             opacity: 1,
