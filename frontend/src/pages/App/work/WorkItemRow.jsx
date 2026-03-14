@@ -8,9 +8,9 @@ import {
   DEFAULT_TIME_REF_QUANTITY,
   resolveProcessAtPerPieceSeconds,
 } from '../../../utils/processTime';
+import { hasAssignmentCtSnapshot } from '../../../utils/assignmentCt';
 
-const isAgreedAssignmentPlan = (plan) =>
-  String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
+const hasSavedCtSnapshot = (plan) => hasAssignmentCtSnapshot(plan);
 
 const formatCardOptionLabel = (option) => {
   const customer = String(option?.customer || '').trim() || '고객사 미지정';
@@ -156,7 +156,7 @@ const WorkItemRow = ({
           autoHighlight
           getOptionLabel={formatCardOptionLabel}
           isOptionEqualToValue={(option, value) => option?.dbId === value?.dbId}
-          getOptionDisabled={(option) => !isAgreedAssignmentPlan(option)}
+          getOptionDisabled={(option) => !hasSavedCtSnapshot(option)}
           textFieldProps={{
             size: 'small',
             placeholder:

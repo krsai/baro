@@ -8,6 +8,7 @@ import {
   Toolbar,
   Button,
   Box,
+  CircularProgress,
   Drawer,
   List,
   ListItem,
@@ -49,7 +50,6 @@ import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
-import GlobalLoadingOverlay from '../components/GlobalLoadingOverlay';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 import { RequestScopeBoundary } from '../context/RequestScopeContext';
@@ -401,6 +401,19 @@ const MainLayout = () => {
       },
     ];
   }, [currentPath, currentRoutePath, openTabs, resolveTabLabel]);
+  const tabLoadingCounts = useMemo(() => {
+    const next = new Map();
+    (networkLoading.scopes || []).forEach((entry) => {
+      if (entry?.groupId !== 'workspace') return;
+      const rootScopeId = String(entry?.scopeId || '').split('::')[0];
+      const tabId = toPathname(rootScopeId);
+      if (!tabId || tabId === '/' || tabId === EMPTY_WORKSPACE_PATH) return;
+      const activeRequestCount = Number(entry?.activeRequestCount) || 0;
+      if (activeRequestCount <= 0) return;
+      next.set(tabId, (next.get(tabId) || 0) + activeRequestCount);
+    });
+    return next;
+  }, [networkLoading.scopes]);
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);
@@ -965,6 +978,11 @@ const MainLayout = () => {
                 label={
                   <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                     {tab.label}
+                    {tabLoadingCounts.get(tab.id) > 0 && (
+                      <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
+                        <CircularProgress size={13} thickness={5} color="inherit" />
+                      </Box>
+                    )}
                     {!tab.isOptimistic && (
                       <IconButton
                         component="span"
@@ -1028,11 +1046,6 @@ const MainLayout = () => {
             </RequestScopeBoundary>
           ) : null}
           {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
-          <GlobalLoadingOverlay
-            open={networkLoading.isLoading}
-            startedAt={networkLoading.startedAt}
-            activeRequestCount={networkLoading.activeRequestCount}
-          />
         </Box>
       </Box>
     </Box>

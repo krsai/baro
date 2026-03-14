@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import { activateRequestScope, deactivateRequestScope } from '../utils/apiClient';
 
 const DEFAULT_GROUP_ID = 'workspace';
@@ -38,7 +38,7 @@ export const RequestScopeBoundary = ({
   }, [normalizedScopeId, parentScope.scopeId]);
   const depth = normalizedScopeId ? parentScope.depth + 1 : parentScope.depth;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!resolvedActive || !combinedScopeId) {
       deactivateRequestScope(resolvedGroupId, boundaryTokenRef.current);
       return () => {
@@ -76,4 +76,3 @@ export const RequestScopeBoundary = ({
 };
 
 export const useRequestScopeContext = () => useContext(RequestScopeContext);
-

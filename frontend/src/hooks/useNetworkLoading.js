@@ -10,6 +10,7 @@ export const useNetworkLoading = () => {
     isLoading: false,
     activeRequestCount: 0,
     startedAt: null,
+    scopes: [],
     updatedAt: Date.now(),
   });
   const [visible, setVisible] = useState(false);

@@ -34,6 +34,10 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { matchesAttributeText } from '../../../utils/appLanguage';
+import {
+  hasAssignmentCtSnapshot,
+  resolveAssignmentCtSnapshot,
+} from '../../../utils/assignmentCt';
 import WorkerLog from './WorkerLog';
 
 const buildLogId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -297,25 +301,11 @@ const resolvePlanColorValue = ({ plan, colors, fallbackIndex }) => {
     name: plan?.colorName || plan?.color || '색상',
   };
 };
-const buildAgreedSnapshotByProcess = (plan) => {
-  const assignmentStatus = String(plan?.ctStatus || '').trim().toUpperCase();
-  const agreedSnapshot = plan?.ctAgreedSnapshot;
-  const orderQuantity = Math.max(1, resolveAssignmentPlanBaselineQuantity(plan) ?? 1);
-  const agreedSnapshotQuantity = Math.max(
-    1,
-    toPositiveIdOrNull(agreedSnapshot?.quantity) ?? orderQuantity
-  );
-  const canUseAgreedSnapshot =
-    assignmentStatus === 'AGREED' &&
-    agreedSnapshot &&
-    agreedSnapshotQuantity === orderQuantity &&
-    (!plan?.id ||
-      !agreedSnapshot?.sourceAssignmentId ||
-      String(agreedSnapshot.sourceAssignmentId) === String(plan.id));
-
+const buildCtSnapshotByProcess = (plan) => {
+  const ctSnapshot = resolveAssignmentCtSnapshot(plan);
   const sourceRows =
-    canUseAgreedSnapshot && Array.isArray(agreedSnapshot?.processes)
-      ? agreedSnapshot.processes
+    ctSnapshot && Array.isArray(ctSnapshot?.processes)
+      ? ctSnapshot.processes
       : [];
 
   return sourceRows.reduce((map, item) => {
@@ -376,12 +366,13 @@ const resolveCtSeconds = (process) => {
     process.pt
   );
 };
-const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null) => {
+const toResolvedProcessShape = (process, fallbackId, snapshotEntry = null) => {
   if (!process || typeof process !== 'object') return null;
   const ctSeconds = resolveFirstPositiveSeconds(
-    agreedSnapshotEntry?.agreedSeconds,
-    agreedSnapshotEntry?.requestedSeconds,
-    agreedSnapshotEntry?.proposedSeconds,
+    snapshotEntry?.ctSeconds,
+    snapshotEntry?.agreedSeconds,
+    snapshotEntry?.requestedSeconds,
+    snapshotEntry?.proposedSeconds,
     process.ct,
     process.ctSeconds,
     process.contractedSeconds,
@@ -392,7 +383,7 @@ const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null)
     id: process.instanceId || process.id || fallbackId,
     processKey: process.instanceId || process.id || process.code || fallbackId,
     code: process.code || '',
-    name: process.name || agreedSnapshotEntry?.name || '공정',
+    name: process.name || snapshotEntry?.name || '공정',
     pt: process.pt,
     at: resolveProcessAtReferenceSeconds(process),
     ctSeconds,
@@ -401,18 +392,18 @@ const toResolvedProcessShape = (process, fallbackId, agreedSnapshotEntry = null)
 };
 const buildProcessOptionsForAssignmentCard = ({ card, style }) => {
   const styleProcesses = Array.isArray(style?.processes) ? style.processes : [];
-  const agreedSnapshotByProcess = buildAgreedSnapshotByProcess(card);
+  const snapshotByProcess = buildCtSnapshotByProcess(card);
   const options = styleProcesses
     .map((process, index) =>
       toResolvedProcessShape(
         process,
         `style-process-${style?.id || card?.dbId || 'item'}-${index}`,
-        agreedSnapshotByProcess.get(buildProcessKey(process, index)) ?? null
+        snapshotByProcess.get(buildProcessKey(process, index)) ?? null
       )
     )
     .filter(Boolean);
 
-  agreedSnapshotByProcess.forEach((snapshotEntry, processKey) => {
+  snapshotByProcess.forEach((snapshotEntry, processKey) => {
     if (options.some((option) => option.processKey === processKey)) return;
     options.push({
       id: processKey,
@@ -422,11 +413,13 @@ const buildProcessOptionsForAssignmentCard = ({ card, style }) => {
       pt: null,
       at: null,
       ctSeconds: resolveFirstPositiveSeconds(
+        snapshotEntry.ctSeconds,
         snapshotEntry.agreedSeconds,
         snapshotEntry.requestedSeconds,
         snapshotEntry.proposedSeconds
       ),
       contractedSeconds: resolveFirstPositiveSeconds(
+        snapshotEntry.ctSeconds,
         snapshotEntry.agreedSeconds,
         snapshotEntry.requestedSeconds,
         snapshotEntry.proposedSeconds
@@ -561,8 +554,7 @@ const filterRecordsByEmployees = (records, employees = []) => {
     return workerName ? eligibleWorkerNames.has(workerName) : false;
   });
 };
-const isAgreedAssignmentPlan = (plan) =>
-  String(plan?.ctStatus || '').trim().toUpperCase() === 'AGREED';
+const hasSavedCtSnapshot = (plan) => hasAssignmentCtSnapshot(plan);
 const resolveAssignmentPlanBaselineQuantity = (plan) => {
   const finalQuantity = Number(plan?.finalQuantity);
   if (Number.isFinite(finalQuantity) && finalQuantity > 0) {
@@ -1429,13 +1421,13 @@ const WorkDetail = ({
     selectedLineId,
     workDateKey,
   ]);
-  const agreedAssignmentPlans = useMemo(
-    () => assignmentPlans.filter((plan) => isAgreedAssignmentPlan(plan)),
+  const ctSnapshotAssignmentPlans = useMemo(
+    () => assignmentPlans.filter((plan) => hasSavedCtSnapshot(plan)),
     [assignmentPlans]
   );
   const hasAssignmentPlans = assignmentPlans.length > 0;
-  const hasOnlyUnagreedAssignmentPlans =
-    hasAssignmentPlans && agreedAssignmentPlans.length === 0;
+  const hasOnlyUnsavedCtAssignments =
+    hasAssignmentPlans && ctSnapshotAssignmentPlans.length === 0;
 
   const applyWorkerLogsWithDuplicateCheck = (updater) => {
     let duplicateDetected = false;
@@ -1743,12 +1735,12 @@ const WorkDetail = ({
       return;
     }
     if (hasAssignmentPlans) {
-      if (hasOnlyUnagreedAssignmentPlans) {
-        setSaveErrorMessage('이 라인에는 CT 확정된 배정카드가 없습니다.');
+      if (hasOnlyUnsavedCtAssignments) {
+        setSaveErrorMessage('이 라인에는 CT가 저장된 배정카드가 없습니다.');
         return;
       }
       const agreedAssignmentPlanIdSet = new Set(
-        agreedAssignmentPlans
+        ctSnapshotAssignmentPlans
           .map((plan) => toPositiveIdOrNull(plan?.dbId))
           .filter((planId) => planId !== null)
       );
@@ -1766,7 +1758,7 @@ const WorkDetail = ({
       });
       if (unagreedAssignmentRecord) {
         setSaveErrorMessage(
-          'CT 확정이 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.'
+          'CT snapshot이 저장된 배정 카드만 작업 기록으로 저장할 수 있습니다.'
         );
         return;
       }

@@ -46,28 +46,34 @@ import {
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
 } from '../../../utils/processTime';
-import { loadHolidays } from '../../../utils/localData';
+import {
+  HOLIDAY_UPDATED_EVENT,
+  STORAGE_KEYS,
+  loadHolidays,
+} from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 import {
-  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
-  getAssignmentCtStatusLabel,
-  normalizeAssignmentCtStatus,
-} from '../../../constants/assignmentStatus';
+  hasAssignmentCtSnapshot,
+  resolveAssignmentCtSnapshot,
+  resolveAssignmentCtTotalSeconds,
+  resolveAssignmentCtUpdatedAt,
+  resolveAssignmentCtUpdatedBy,
+} from '../../../utils/assignmentCt';
 
 const STATUS_META = {
-  PENDING:  { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.PENDING, color: 'default' },
-  AGREED:   { label: ASSIGNMENT_CT_STATUS_DEFAULT_LABELS.AGREED, color: 'success' },
+  UNSAVED: { label: 'CT 미저장', color: 'default' },
+  SAVED: { label: 'CT 저장', color: 'success' },
 };
 const CALENDAR_CT_STATUS_META = {
-  PENDING:  { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
-  AGREED:   { cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8', borderColor: 'rgba(74, 136, 200, 0.4)' },
+  UNSAVED: { cardBg: '#EBEBF0', labelColor: '#888898', borderColor: 'rgba(136, 136, 152, 0.35)' },
+  SAVED: { cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8', borderColor: 'rgba(74, 136, 200, 0.4)' },
 };
 const CALENDAR_BAR_HEIGHT = 64;
 const CALENDAR_BAR_GAP = 6;
 const CALENDAR_LANE_EPSILON = 1e-4;
 const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const resolveCtStatusChipSx = (status) => {
-  const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.PENDING;
+  const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.UNSAVED;
   return {
     bgcolor: meta.cardBg,
     color: meta.labelColor,
@@ -75,7 +81,8 @@ const resolveCtStatusChipSx = (status) => {
     fontWeight: 700,
   };
 };
-const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
+const resolveAssignmentSnapshotState = (assignment) =>
+  hasAssignmentCtSnapshot(assignment) ? 'SAVED' : 'UNSAVED';
 const isAssignmentVersionConflictError = (error) => {
   const status = Number(error?.status);
   const message = String(error?.message || '').toLowerCase();
@@ -180,11 +187,7 @@ const resolveCurrentCtSeconds = (assignment) => {
   return 0;
 };
 
-const resolveAgreedSeconds = (assignment) => {
-  const contractedSeconds = Number(assignment?.contractedSeconds);
-  if (Number.isFinite(contractedSeconds) && contractedSeconds > 0) return contractedSeconds;
-  return resolveCurrentCtSeconds(assignment);
-};
+const resolveSavedSeconds = (assignment) => resolveAssignmentCtTotalSeconds(assignment);
 
 const resolveCardCtBasis = (card) => {
   const status = String(card?.status || '').trim().toUpperCase();
@@ -496,14 +499,14 @@ const CalendarAssignmentBar = ({
   isClippedRight,
   onClick,
 }) => {
-  const ctStatus = normalizeCtStatus(assignment?.status ?? assignment?.ctStatus);
-  const ctLabel = STATUS_META[ctStatus]?.label || STATUS_META.PENDING.label;
+  const snapshotState = resolveAssignmentSnapshotState(assignment);
+  const ctLabel = STATUS_META[snapshotState]?.label || STATUS_META.UNSAVED.label;
   const previewUrl =
     assignment?.previewUrl ||
     assignment?.imageUrl ||
     assignment?.thumbnailUrl ||
     '';
-  const progressPercent = ctStatus === 'AGREED'
+  const progressPercent = snapshotState === 'SAVED'
     ? Math.min(100, Math.max(0, Number(assignment?.progress?.progressPercent) || 0))
     : 0;
   const spanUnits = Math.max(0, endUnit - startUnit);
@@ -583,7 +586,7 @@ const CalendarAssignmentBar = ({
         },
       }}
     >
-      {ctStatus === 'AGREED' && (
+      {snapshotState === 'SAVED' && (
         <Box
           sx={{
             position: 'absolute',
@@ -836,7 +839,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 
 const ProductionPlanBoard = () => {
   const { showNotification } = useApp();
-  const { activeOrgId, activeOrgRole } = useAuth();
+  const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
@@ -848,7 +851,8 @@ const ProductionPlanBoard = () => {
   const [assignmentProgressById, setAssignmentProgressById] = useState(() => new Map());
   const [lineWorkers, setLineWorkers] = useState([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
-  const holidaySet = useMemo(() => new Set(loadHolidays()), []);
+  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
+  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
   const [baseDate] = useState(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -917,13 +921,13 @@ const ProductionPlanBoard = () => {
         const fallbackHeadcount = Number(line?.headcount || line?.manpower || 0);
         const headcount = Math.max(1, currentHeadcount > 0 ? currentHeadcount : fallbackHeadcount);
         const lineDailyCapacitySeconds = resolveLineDailyCapacitySeconds(line, headcount);
-        const status = normalizeCtStatus(assignment?.ctStatus);
+        const status = resolveAssignmentSnapshotState(assignment);
         const assignedSeconds = resolveCurrentCtSeconds(assignment);
         const perPieceSeconds =
           assignedSeconds > 0
             ? assignedSeconds / Math.max(1, toPositiveInt(assignment?.quantity, 1))
             : null;
-        const agreedSeconds = resolveAgreedSeconds(assignment);
+        const agreedSeconds = resolveSavedSeconds(assignment);
         const wagePerSecond = Number(factory?.wagePerSecond);
         const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
         const perPieceCost =
@@ -931,7 +935,7 @@ const ProductionPlanBoard = () => {
             ? perPieceSeconds * wagePerSecond
             : null;
         const expectedCost = validWage ? assignedSeconds * wagePerSecond : null;
-        const agreedCost = validWage && status === 'AGREED' ? agreedSeconds * wagePerSecond : null;
+        const agreedCost = validWage && status === 'SAVED' ? agreedSeconds * wagePerSecond : null;
         const workingDays = getAssignmentWorkingDays(assignment, baseDate, holidaySet);
         const expectedPerPerson = expectedCost == null ? null : expectedCost / headcount;
         const monthlyPerPerson =
@@ -1005,8 +1009,8 @@ const ProductionPlanBoard = () => {
     () =>
       assignmentsForView.reduce(
         (acc, assignment) => {
-          const status = normalizeCtStatus(assignment?.status);
-          if (status === 'AGREED') acc.agreed += 1;
+          const status = resolveAssignmentSnapshotState(assignment);
+          if (status === 'SAVED') acc.agreed += 1;
           else acc.pending += 1;
           return acc;
         },
@@ -1019,7 +1023,7 @@ const ProductionPlanBoard = () => {
     () =>
       assignmentsForView.reduce(
         (acc, assignment) => {
-          if (normalizeCtStatus(assignment?.status) !== 'AGREED') {
+          if (resolveAssignmentSnapshotState(assignment) !== 'SAVED') {
             acc.notReady += 1;
             return acc;
           }
@@ -1035,7 +1039,7 @@ const ProductionPlanBoard = () => {
   const actionableAssignments = useMemo(
     () =>
       assignmentsForView.filter(
-        (assignment) => normalizeCtStatus(assignment?.status) !== 'AGREED'
+        (assignment) => resolveAssignmentSnapshotState(assignment) !== 'SAVED'
       ),
     [assignmentsForView]
   );
@@ -1043,10 +1047,10 @@ const ProductionPlanBoard = () => {
   const reviewAssignments = useMemo(() => {
     const nextAssignments = [...assignmentsForView];
     nextAssignments.sort((left, right) => {
-      const leftStatus = normalizeCtStatus(left?.status);
-      const rightStatus = normalizeCtStatus(right?.status);
-      const leftIsAgreed = leftStatus === 'AGREED';
-      const rightIsAgreed = rightStatus === 'AGREED';
+      const leftStatus = resolveAssignmentSnapshotState(left);
+      const rightStatus = resolveAssignmentSnapshotState(right);
+      const leftIsAgreed = leftStatus === 'SAVED';
+      const rightIsAgreed = rightStatus === 'SAVED';
       if (leftIsAgreed !== rightIsAgreed) {
         return leftIsAgreed ? 1 : -1;
       }
@@ -1107,7 +1111,7 @@ const ProductionPlanBoard = () => {
       )}
     </Box>
   );
-  const selectedCtStatus = normalizeCtStatus(selectedAssignment?.status ?? selectedAssignment?.ctStatus);
+  const selectedCtStatus = resolveAssignmentSnapshotState(selectedAssignment);
 
   const assignmentViewById = useMemo(
     () => new Map(assignmentsForView.map((item) => [String(item.id), item])),
@@ -1152,6 +1156,25 @@ const ProductionPlanBoard = () => {
     return rows;
   }, [calendarDays]);
 
+  useEffect(() => {
+    const syncHolidays = () => {
+      setHolidayKeys(loadHolidays());
+    };
+
+    const handleStorage = (event) => {
+      if (event?.key && event.key !== STORAGE_KEYS.holidays) return;
+      syncHolidays();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
+    };
+  }, []);
+
   const calendarBarData = useMemo(() => {
     return weekRows.map((weekDays) => {
       const weekStartDate = weekDays[0];
@@ -1192,8 +1215,8 @@ const ProductionPlanBoard = () => {
 
   const calendarLegend = useMemo(
     () => [
-      { label: getAssignmentCtStatusLabel('PENDING'), status: 'PENDING' },
-      { label: getAssignmentCtStatusLabel('AGREED'), status: 'AGREED' },
+      { label: 'CT 미저장', status: 'UNSAVED' },
+      { label: 'CT 저장', status: 'SAVED' },
     ],
     []
   );
@@ -1226,34 +1249,26 @@ const ProductionPlanBoard = () => {
 
       const orderQuantity = Math.max(1, toPositiveInt(assignmentView?.quantity, 1));
       const wagePerSecond = toOptionalPositiveNumber(assignmentView?.wagePerSecond);
-      const assignmentStatus = normalizeCtStatus(
-        assignmentView?.status ?? assignmentView?.ctStatus
-      );
-      const isAgreedAssignment = assignmentStatus === 'AGREED';
-      const agreedSnapshot = assignmentView?.card?.ctAgreedSnapshot;
-      const agreedSnapshotQuantity = Math.max(
-        1,
-        toPositiveInt(agreedSnapshot?.quantity ?? orderQuantity, orderQuantity)
-      );
-      const canUseAgreedSnapshot =
-        isAgreedAssignment &&
-        agreedSnapshot &&
-        agreedSnapshotQuantity === orderQuantity &&
-        (!assignmentView?.id ||
-          !agreedSnapshot?.sourceAssignmentId ||
-          String(agreedSnapshot.sourceAssignmentId) === String(assignmentView.id));
+      const isAgreedAssignment = hasAssignmentCtSnapshot(assignmentView);
+      const agreedSnapshot = resolveAssignmentCtSnapshot(assignmentView);
       const agreedSnapshotByProcess = (
-        canUseAgreedSnapshot && Array.isArray(agreedSnapshot?.processes)
+        isAgreedAssignment && Array.isArray(agreedSnapshot?.processes)
           ? agreedSnapshot.processes
           : []
       ).reduce((map, item) => {
         const processKey = String(item?.processKey || '').trim();
         if (!processKey) return map;
         const assignedSeconds = toOptionalPositiveNumber(
-          item?.proposedSeconds ?? item?.requestedSeconds ?? item?.agreedSeconds
+          item?.ctSeconds ??
+            item?.agreedSeconds ??
+            item?.requestedSeconds ??
+            item?.proposedSeconds
         );
         const confirmedSeconds = toOptionalPositiveNumber(
-          item?.agreedSeconds ?? item?.requestedSeconds ?? item?.proposedSeconds
+          item?.ctSeconds ??
+            item?.agreedSeconds ??
+            item?.requestedSeconds ??
+            item?.proposedSeconds
         );
         map.set(processKey, {
           assignedSeconds,
@@ -1309,7 +1324,7 @@ const ProductionPlanBoard = () => {
       );
       const totalAssignedPerPieceSeconds = resolveCurrentCtSeconds(assignmentView) / orderQuantity;
       const totalConfirmedPerPieceSeconds = isAgreedAssignment
-        ? resolveAgreedSeconds(assignmentView) / orderQuantity
+        ? resolveSavedSeconds(assignmentView) / orderQuantity
         : null;
 
       return baseRows.map((row) => {
@@ -1363,8 +1378,7 @@ const ProductionPlanBoard = () => {
   const selectedCostSummary = useMemo(() => {
     if (!selectedAssignment) return null;
 
-    const assignmentStatus = normalizeCtStatus(selectedAssignment?.status);
-    const isAgreedAssignment = assignmentStatus === 'AGREED';
+    const isAgreedAssignment = hasAssignmentCtSnapshot(selectedAssignment);
     const orderQuantity = Math.max(1, toPositiveInt(selectedAssignment.quantity, 1));
     const headcount = Math.max(1, toPositiveInt(selectedAssignment.headcount, 1));
     const workingDays = Number(selectedAssignment.workingDays) > 0 ? Number(selectedAssignment.workingDays) : 0;
@@ -1374,7 +1388,7 @@ const ProductionPlanBoard = () => {
     if (selectedProcessRows.length === 0) {
       const fallbackAssignedSeconds = resolveCurrentCtSeconds(selectedAssignment);
       const fallbackConfirmedSeconds = isAgreedAssignment
-        ? resolveAgreedSeconds(selectedAssignment)
+        ? resolveSavedSeconds(selectedAssignment)
         : null;
       const fallbackTotalCost = wagePerSecond == null ? null : fallbackAssignedSeconds * wagePerSecond;
       const fallbackPerPieceCost = fallbackTotalCost == null ? null : fallbackTotalCost / orderQuantity;
@@ -1587,9 +1601,110 @@ const ProductionPlanBoard = () => {
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
       const query = buildQueryString({ orgId: activeOrgId });
-      const assignmentsForSave = (Array.isArray(nextAssignments) ? nextAssignments : []).map((assignment) =>
-        syncAssignmentScheduleDateKeys(assignment, baseDate)
+      const nextCardById = new Map(
+        (Array.isArray(nextCards) ? nextCards : [])
+          .filter((card) => card?.id)
+          .map((card) => [String(card.id), card])
       );
+      const updatedBy =
+        String(
+          activeProfile?.employeeName ||
+            activeProfile?.name ||
+            activeProfile?.email ||
+            activeProfile?.label ||
+            ''
+        ).trim() || 'OPERATOR';
+      const updatedAt = new Date().toISOString();
+      const assignmentsForSave = (Array.isArray(nextAssignments) ? nextAssignments : []).map((assignment) => {
+        const syncedAssignment = syncAssignmentScheduleDateKeys(assignment, baseDate);
+        const linkedCard = nextCardById.get(String(syncedAssignment?.cardId || '')) || null;
+        const style = styleById.get(String(linkedCard?.styleId || '')) || null;
+        const orderQuantity = Math.max(1, toPositiveInt(syncedAssignment?.quantity, 1));
+        const currentCtSeconds = Math.max(0, Math.round(resolveCurrentCtSeconds(syncedAssignment)));
+        const currentCtPerPieceSeconds = currentCtSeconds > 0 ? currentCtSeconds / orderQuantity : 0;
+        const existingSnapshot = resolveAssignmentCtSnapshot(syncedAssignment);
+        const processes = normalizeProcesses(style?.processes);
+        const baseRows = processes.map((process) => {
+          const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+          const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
+          const baseSeconds = stSeedInfo.seconds;
+          const basePerPieceSeconds = baseSeconds * processQuantity;
+          return {
+            processKey: String(process?.instanceId || process?.id || process?.code || '').trim(),
+            name: process?.name || process?.processName || process?.code || '공정',
+            processQuantity,
+            baseSeconds,
+            basePerPieceSeconds,
+            basis: stSeedInfo.source,
+          };
+        });
+        const totalBasePerPieceSeconds = baseRows.reduce(
+          (sum, row) => sum + (Number(row?.basePerPieceSeconds) || 0),
+          0
+        );
+        const snapshotProcesses = baseRows
+          .map((row) => {
+            if (!row.processKey) return null;
+            const ctSeconds =
+              resolveDistributedSeconds({
+                totalPerPieceSeconds: currentCtPerPieceSeconds,
+                totalBasePerPieceSeconds,
+                basePerPieceSeconds: row.basePerPieceSeconds,
+                processQuantity: row.processQuantity,
+                processCount: baseRows.length,
+              }) ?? row.baseSeconds;
+            return {
+              processKey: row.processKey,
+              name: row.name,
+              quantity: row.processQuantity,
+              basis: row.basis,
+              stSeconds: row.baseSeconds,
+              ctSeconds,
+              ctPerPieceSeconds: ctSeconds * row.processQuantity,
+            };
+          })
+          .filter(Boolean);
+        const totalStPerPieceSeconds =
+          snapshotProcesses.length > 0
+            ? snapshotProcesses.reduce(
+                (sum, row) =>
+                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.quantity) || 1)),
+                0
+              )
+            : Number(existingSnapshot?.totalStPerPieceSeconds) || currentCtPerPieceSeconds;
+        const totalCtPerPieceSeconds =
+          snapshotProcesses.length > 0
+            ? snapshotProcesses.reduce(
+                (sum, row) => sum + (Number(row?.ctPerPieceSeconds) || 0),
+                0
+              )
+            : Number(existingSnapshot?.totalCtPerPieceSeconds) || currentCtPerPieceSeconds;
+
+        return {
+          ...syncedAssignment,
+          contractedSeconds: currentCtSeconds > 0 ? currentCtSeconds : null,
+          ctSnapshot: {
+            sourceAssignmentId: String(syncedAssignment?.id || '').trim() || null,
+            lineId: syncedAssignment?.lineId ?? null,
+            quantity: orderQuantity,
+            schedule: {
+              startIndex: toNonNegativeInt(syncedAssignment?.startIndex, 0),
+              endIndex: Math.max(
+                toNonNegativeInt(syncedAssignment?.startIndex, 0),
+                toNonNegativeInt(syncedAssignment?.endIndex, 0)
+              ),
+              startDateKey: syncedAssignment?.startDateKey || null,
+              endDateKey: syncedAssignment?.endDateKey || syncedAssignment?.startDateKey || null,
+            },
+            totalStPerPieceSeconds,
+            totalCtPerPieceSeconds,
+            totalCtSeconds: currentCtSeconds,
+            processes: snapshotProcesses,
+            updatedBy,
+            updatedAt,
+          },
+        };
+      });
       try {
         const boardState = await requestJSON('/assignment-board-state' + query, {
           method: 'PUT',
@@ -1614,7 +1729,7 @@ const ProductionPlanBoard = () => {
         throw error;
       }
     },
-    [activeOrgId, baseDate, cards, refreshBoardState]
+    [activeOrgId, activeProfile?.email, activeProfile?.employeeName, activeProfile?.label, activeProfile?.name, baseDate, cards, refreshBoardState, styleById]
   );
 
   const handleToggleCompletion = useCallback(async (assignment) => {
@@ -1797,8 +1912,7 @@ const ProductionPlanBoard = () => {
       basis,
       totalSeconds: currentCtSeconds,
       contractedSeconds: null,
-      ctStatus: 'PENDING',
-      ctSource: basis,
+      ctSnapshot: null,
       label: deltaCard.label,
       customer: deltaCard.customer,
       colorName: deltaCard.colorName,
@@ -1914,19 +2028,19 @@ const ProductionPlanBoard = () => {
           <Box>
             <Typography variant="h6">작업 계획 현황</Typography>
             <Typography variant="body2" color="text.secondary">
-              CT 확정 상태와 작업 진행 현황을 한 화면에서 조회합니다.
+              CT 저장 여부와 작업 진행 현황을 한 화면에서 조회합니다.
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
             <Chip
-              label={`${getAssignmentCtStatusLabel('PENDING')} ${statusSummary.pending}`}
+              label={`CT 미저장 ${statusSummary.pending}`}
               variant="outlined"
-              sx={resolveCtStatusChipSx('PENDING')}
+              sx={resolveCtStatusChipSx('UNSAVED')}
             />
             <Chip
-              label={`${getAssignmentCtStatusLabel('AGREED')} ${statusSummary.agreed}`}
+              label={`CT 저장 ${statusSummary.agreed}`}
               variant="outlined"
-              sx={resolveCtStatusChipSx('AGREED')}
+              sx={resolveCtStatusChipSx('SAVED')}
             />
             <Chip label={`진행 ${workStatusSummary.inProgress}`} color="default" variant="outlined" />
             <Chip label={`완료 ${workStatusSummary.completed}`} color="success" variant="outlined" />
@@ -1961,7 +2075,7 @@ const ProductionPlanBoard = () => {
                 <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>CT 상태</TableCell>
+                    <TableCell>CT 저장</TableCell>
                     <TableCell>라인</TableCell>
                     <TableCell>고객</TableCell>
                     <TableCell>스타일</TableCell>
@@ -1980,9 +2094,10 @@ const ProductionPlanBoard = () => {
                     <TableStatusRow colSpan={10} message="표시할 배정 작업이 없습니다." sx={{ py: 2 }} />
                   ) : (
                     reviewAssignments.map((assignment) => {
-                      const statusMeta = STATUS_META[assignment.status] || STATUS_META.PENDING;
+                      const snapshotState = resolveAssignmentSnapshotState(assignment);
+                      const statusMeta = STATUS_META[snapshotState] || STATUS_META.UNSAVED;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
-                      const isAgreed = assignment.status === 'AGREED';
+                      const isAgreed = snapshotState === 'SAVED';
                       const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
 
                       return (
@@ -2002,7 +2117,7 @@ const ProductionPlanBoard = () => {
                               size="small"
                               label={statusMeta.label}
                               variant="outlined"
-                              sx={resolveCtStatusChipSx(assignment.status)}
+                              sx={resolveCtStatusChipSx(snapshotState)}
                             />
                           </TableCell>
                           <TableCell>
@@ -2335,6 +2450,14 @@ const ProductionPlanBoard = () => {
                           const isToday = dateKey === todayKey;
                           const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
                           const isSunday = dayIndex === 0;
+                          const isHoliday = isSunday || holidaySet.has(dateKey);
+                          const cellBackgroundColor = inSelectedRange
+                            ? (isHoliday ? 'rgba(180, 35, 52, 0.12)' : 'rgba(25, 118, 210, 0.10)')
+                            : isHoliday
+                              ? '#FCECEF'
+                              : inCurrentMonth
+                                ? 'background.paper'
+                                : 'grey.50';
 
                           return (
                             <Box
@@ -2344,11 +2467,7 @@ const ProductionPlanBoard = () => {
                                 py: 0.5,
                                 borderRight: dayIndex < 6 ? '1px solid' : 'none',
                                 borderColor: 'divider',
-                                bgcolor: inSelectedRange
-                                  ? 'rgba(25, 118, 210, 0.10)'
-                                  : inCurrentMonth
-                                    ? 'background.paper'
-                                    : 'grey.50',
+                                bgcolor: cellBackgroundColor,
                                 opacity: inCurrentMonth ? 1 : 0.55,
                               }}
                             >
@@ -2367,7 +2486,7 @@ const ProductionPlanBoard = () => {
                                   variant="caption"
                                   sx={{
                                     fontWeight: isToday || inSelectedRange ? 700 : 500,
-                                    color: isToday ? 'white' : isSunday ? 'error.main' : 'inherit',
+                                    color: isToday ? 'white' : isHoliday ? '#B42334' : 'inherit',
                                   }}
                                 >
                                   {date.getDate()}
@@ -2394,17 +2513,21 @@ const ProductionPlanBoard = () => {
                           const dateKey = buildDateKey(date);
                           const inCurrentMonth = isSameMonth(date, calendarMonth);
                           const inSelectedRange = selectedAssignmentDateKeys.has(dateKey);
+                          const isHoliday = dayIndex === 0 || holidaySet.has(dateKey);
+                          const cellBackgroundColor = inSelectedRange
+                            ? (isHoliday ? 'rgba(180, 35, 52, 0.08)' : 'rgba(25, 118, 210, 0.05)')
+                            : isHoliday
+                              ? '#FCECEF'
+                              : inCurrentMonth
+                                ? 'background.paper'
+                                : 'grey.50';
                           return (
                             <Box
                               key={dateKey}
                               sx={{
                                 borderRight: dayIndex < 6 ? '1px solid' : 'none',
                                 borderColor: 'divider',
-                                bgcolor: inSelectedRange
-                                  ? 'rgba(25, 118, 210, 0.05)'
-                                  : inCurrentMonth
-                                    ? 'background.paper'
-                                    : 'grey.50',
+                                bgcolor: cellBackgroundColor,
                                 opacity: inCurrentMonth ? 1 : 0.55,
                               }}
                             />
@@ -2415,7 +2538,9 @@ const ProductionPlanBoard = () => {
                         {segments.map(({ assignment, startUnit, endUnit, laneIndex, isClippedLeft, isClippedRight }) => {
                           const segKey = `${assignment.id}-${weekIndex}-${laneIndex}`;
                           const isSelected = String(assignment.id) === String(selectedAssignment?.id);
-                          const statusMeta = CALENDAR_CT_STATUS_META[normalizeCtStatus(assignment?.status ?? assignment?.ctStatus)] || CALENDAR_CT_STATUS_META.PENDING;
+                          const statusMeta =
+                            CALENDAR_CT_STATUS_META[resolveAssignmentSnapshotState(assignment)] ||
+                            CALENDAR_CT_STATUS_META.UNSAVED;
 
                           return (
                             <CalendarAssignmentBar
@@ -2537,7 +2662,7 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        공정 확정 CT 합 (한 벌)
+                        공정 저장 CT 합 (한 벌)
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
                         {selectedCostSummary?.totalConfirmedPerPieceSeconds == null
@@ -2650,22 +2775,32 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        확정 CT(전체)
+                        저장 CT(전체)
                       </Typography>
                       <Typography variant="body2">
-                          {selectedCtStatus === 'AGREED'
+                          {selectedCtStatus === 'SAVED'
                             ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0초')
                             : '-'}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        확정자
+                        최근 저장자
                       </Typography>
                       <Typography variant="body2">
-                        {selectedCtStatus === 'AGREED'
-                          ? selectedAssignment.ctAgreedBy || '-'
+                        {selectedCtStatus === 'SAVED'
+                          ? resolveAssignmentCtUpdatedBy(selectedAssignment) || '-'
                           : '-'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        최근 저장 시각
+                      </Typography>
+                      <Typography variant="body2">
+                        {selectedCtStatus !== 'SAVED' || !resolveAssignmentCtUpdatedAt(selectedAssignment)
+                          ? '-'
+                          : new Date(resolveAssignmentCtUpdatedAt(selectedAssignment)).toLocaleString('ko-KR')}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2683,10 +2818,10 @@ const ProductionPlanBoard = () => {
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2" color="text.secondary">
-                        확정 비용
+                        저장 CT 비용
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {selectedCtStatus !== 'AGREED' || selectedAssignment.agreedCost == null
+                        {selectedCtStatus !== 'SAVED' || selectedAssignment.agreedCost == null
                           ? '-'
                           : formatCurrencyDong(selectedAssignment.agreedCost)}
                       </Typography>
@@ -2701,7 +2836,7 @@ const ProductionPlanBoard = () => {
                     공정 CT 상세
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    현재 CT와 확정 CT를 공정별로 확인합니다.
+                    현재 CT와 저장된 CT를 공정별로 확인합니다.
                   </Typography>
                   <Divider sx={{ my: 1 }} />
                   {selectedProcessRows.length === 0 ? (
@@ -2717,7 +2852,7 @@ const ProductionPlanBoard = () => {
                             <TableCell align="right">{`AT(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`현재 CT(${selectedQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`확정 CT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`저장 CT(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">단가(동)</TableCell>
                           </TableRow>
                         </TableHead>
@@ -2786,7 +2921,7 @@ const ProductionPlanBoard = () => {
                                 })}
                               </TableCell>
                               <TableCell align="right">
-                                {selectedCtStatus !== 'AGREED' || row.confirmedSeconds == null
+                                {selectedCtStatus !== 'SAVED' || row.confirmedSeconds == null
                                   ? '-'
                                   : formatNumberWithCommas(row.confirmedSeconds, {
                                       fallback: '0',
@@ -2796,13 +2931,13 @@ const ProductionPlanBoard = () => {
                               <TableCell align="right">
                                 {selectedAssignment.wagePerSecond == null ? (
                                   '-'
-                                ) : selectedCtStatus === 'AGREED' && row.confirmedUnitCost == null ? (
+                                ) : selectedCtStatus === 'SAVED' && row.confirmedUnitCost == null ? (
                                   '-'
-                                ) : selectedCtStatus !== 'AGREED' && row.assignedUnitCost == null ? (
+                                ) : selectedCtStatus !== 'SAVED' && row.assignedUnitCost == null ? (
                                   '-'
                                 ) : (
                                   formatCurrencyDong(
-                                    selectedCtStatus === 'AGREED' && row.confirmedUnitCost != null
+                                    selectedCtStatus === 'SAVED' && row.confirmedUnitCost != null
                                       ? row.confirmedUnitCost
                                       : row.assignedUnitCost
                                   )
@@ -2831,7 +2966,7 @@ const ProductionPlanBoard = () => {
                                   })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {selectedCtStatus === 'AGREED' &&
+                              {selectedCtStatus === 'SAVED' &&
                               selectedCostSummary?.totalConfirmedPerPieceSeconds != null
                                 ? formatNumberWithCommas(
                                     selectedCostSummary.totalConfirmedPerPieceSeconds,
@@ -2845,7 +2980,7 @@ const ProductionPlanBoard = () => {
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {selectedAssignment.wagePerSecond == null ? (
                                 '-'
-                              ) : selectedCtStatus === 'AGREED' &&
+                              ) : selectedCtStatus === 'SAVED' &&
                                 selectedCostSummary?.totalConfirmedPerPieceSeconds != null ? (
                                 formatCurrencyDong(
                                   selectedCostSummary.totalConfirmedPerPieceSeconds *
@@ -2864,9 +2999,9 @@ const ProductionPlanBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {selectedCtStatus === 'AGREED'
-                      ? '확정된 작업은 확정 CT 기준으로 표시됩니다.'
-                      : '미확정 작업은 현재 CT 기준으로 표시됩니다.'}
+                    {selectedCtStatus === 'SAVED'
+                      ? '저장된 배정은 저장 CT 기준으로 표시됩니다.'
+                      : '아직 저장되지 않은 배정은 현재 CT 기준으로 표시됩니다.'}
                   </Typography>
                 </Paper>
               </Stack>

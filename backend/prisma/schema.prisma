@@ -62,13 +62,6 @@ enum WorkOrderConfirmationStatus {
   CONFIRMED
 }
 
-enum CtStatus {
-  PENDING
-  SENT
-  AGREED
-  REJECTED
-}
-
 enum WorkOrderItemGender {
   M
   W
@@ -534,14 +527,8 @@ model AssignmentPlan {
   quantity              Int?
   originOrderId         String?
   basis                 String?
-  proposalBasis         String?
-  proposalSeconds       Int?
   contractedSeconds     Int?
-  ctStatus              CtStatus  @default(PENDING)
-  ctSource              String?
-  ctAgreedBy            String?
-  ctAgreedAt            DateTime?
-  ctNote                String?
+  ctSnapshot            Json?
   color                 String?
   stripeColor           String?
   totalSeconds          Int?

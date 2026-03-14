@@ -6,7 +6,6 @@ const requestContext = {
   orgId: null,
 };
 const DEFAULT_REQUEST_SCOPE_GROUP = 'workspace';
-const REQUEST_SCOPE_PREEMPTION_REASON = 'request_scope_preempted';
 const DEFAULT_GET_CACHE_TTL_MS = 45_000;
 const getResponseCache = new Map();
 const inFlightGetRequests = new Map();
@@ -50,7 +49,7 @@ const invalidateCacheByPath = (mutationPath) => {
 };
 
 const networkLoadingListeners = new Set();
-const activeNetworkRequestIds = new Set();
+const activeNetworkRequests = new Map();
 const trackedRequestAbortControllers = new Map();
 let networkRequestSequence = 0;
 let networkLoadingStartedAt = null;
@@ -105,10 +104,6 @@ const recomputeActiveRequestScope = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
   activeRequestScopeByGroup.delete(normalizedGroupId);
 };
 
-const isRequestScopePreemptionError = (error) =>
-  error?.status === 499 &&
-  error?.details?.reason === REQUEST_SCOPE_PREEMPTION_REASON;
-
 const cleanupRequestScopeSchedulerState = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
   const normalizedGroupId = normalizeRequestScopeGroup(groupId);
   const state = requestScopeSchedulerByGroup.get(normalizedGroupId);
@@ -119,73 +114,34 @@ const cleanupRequestScopeSchedulerState = (groupId = DEFAULT_REQUEST_SCOPE_GROUP
   requestScopeSchedulerByGroup.delete(normalizedGroupId);
 };
 
-const getNextPendingRequestScope = (state) => {
-  let nextTask = null;
-  state.pending.forEach((task) => {
-    if (!nextTask || task.sequence < nextTask.sequence) {
-      nextTask = task;
-    }
-  });
-  return nextTask?.scopeId || '';
-};
-
 const pumpRequestScopeScheduler = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
   const normalizedGroupId = normalizeRequestScopeGroup(groupId);
   const state = requestScopeSchedulerByGroup.get(normalizedGroupId);
   if (!state) return;
+  const tasksToStart = state.pending.splice(0);
+  tasksToStart.forEach((task) => {
+    state.running.set(task.id, task);
 
-  const startTasksForScope = (scopeId) => {
-    if (!scopeId) return;
-    const tasksToStart = state.pending.filter((task) => task.scopeId === scopeId);
-    tasksToStart.forEach((task) => {
-      const pendingIndex = state.pending.findIndex((candidate) => candidate.id === task.id);
-      if (pendingIndex === -1) return;
-      state.pending.splice(pendingIndex, 1);
-      state.running.set(task.id, task);
+    const controller = new AbortController();
+    task.controller = controller;
 
-      const controller = new AbortController();
-      task.controller = controller;
-
-      Promise.resolve()
-        .then(() => task.run(controller.signal))
-        .then((result) => {
-          task.resolve(result);
-        })
-        .catch((error) => {
-          if (isRequestScopePreemptionError(error)) {
-            state.pending.push(task);
-            return;
-          }
-          task.reject(error);
-        })
-        .finally(() => {
-          if (state.running.get(task.id) === task) {
-            state.running.delete(task.id);
-          }
-          task.controller = null;
-          pumpRequestScopeScheduler(normalizedGroupId);
-          cleanupRequestScopeSchedulerState(normalizedGroupId);
-        });
-    });
-  };
-
-  const activeScopeId = getActiveRequestScope(normalizedGroupId);
-  const hasActiveDemand =
-    Boolean(activeScopeId) &&
-    (state.pending.some((task) => task.scopeId === activeScopeId) ||
-      Array.from(state.running.values()).some((task) => task.scopeId === activeScopeId));
-
-  if (hasActiveDemand) {
-    state.running.forEach((task) => {
-      if (task.scopeId === activeScopeId) return;
-      if (!task.controller || task.controller.signal.aborted) return;
-      task.controller.abort(REQUEST_SCOPE_PREEMPTION_REASON);
-    });
-    startTasksForScope(activeScopeId);
-    return;
-  }
-
-  startTasksForScope(getNextPendingRequestScope(state));
+    Promise.resolve()
+      .then(() => task.run(controller.signal))
+      .then((result) => {
+        task.resolve(result);
+      })
+      .catch((error) => {
+        task.reject(error);
+      })
+      .finally(() => {
+        if (state.running.get(task.id) === task) {
+          state.running.delete(task.id);
+        }
+        task.controller = null;
+        pumpRequestScopeScheduler(normalizedGroupId);
+        cleanupRequestScopeSchedulerState(normalizedGroupId);
+      });
+  });
 };
 
 const scheduleScopedRequest = ({
@@ -291,10 +247,32 @@ export const getRequestContext = () => ({
   orgId: requestContext.orgId,
 });
 
+const getNetworkLoadingScopesSnapshot = () => {
+  const scopeCounts = new Map();
+  activeNetworkRequests.forEach(({ groupId, scopeId }) => {
+    const normalizedGroupId = normalizeRequestScopeGroup(groupId);
+    const normalizedScopeId = normalizeRequestScopeValue(scopeId);
+    if (!normalizedScopeId) return;
+    const key = `${normalizedGroupId}::${normalizedScopeId}`;
+    const current = scopeCounts.get(key);
+    if (current) {
+      current.activeRequestCount += 1;
+      return;
+    }
+    scopeCounts.set(key, {
+      groupId: normalizedGroupId,
+      scopeId: normalizedScopeId,
+      activeRequestCount: 1,
+    });
+  });
+  return Array.from(scopeCounts.values());
+};
+
 const getNetworkLoadingSnapshot = () => ({
-  isLoading: activeNetworkRequestIds.size > 0,
-  activeRequestCount: activeNetworkRequestIds.size,
+  isLoading: activeNetworkRequests.size > 0,
+  activeRequestCount: activeNetworkRequests.size,
   startedAt: networkLoadingStartedAt,
+  scopes: getNetworkLoadingScopesSnapshot(),
   updatedAt: Date.now(),
 });
 
@@ -309,10 +287,13 @@ const emitNetworkLoadingChange = () => {
   });
 };
 
-const beginTrackedRequest = () => {
+const beginTrackedRequest = ({ groupId = '', scopeId = '' } = {}) => {
   const nextId = ++networkRequestSequence;
-  activeNetworkRequestIds.add(nextId);
-  if (activeNetworkRequestIds.size === 1) {
+  activeNetworkRequests.set(nextId, {
+    groupId: normalizeRequestScopeGroup(groupId),
+    scopeId: normalizeRequestScopeValue(scopeId),
+  });
+  if (activeNetworkRequests.size === 1) {
     networkLoadingStartedAt = Date.now();
   }
   emitNetworkLoadingChange();
@@ -321,9 +302,9 @@ const beginTrackedRequest = () => {
 
 const endTrackedRequest = (requestId) => {
   trackedRequestAbortControllers.delete(requestId);
-  if (!activeNetworkRequestIds.has(requestId)) return;
-  activeNetworkRequestIds.delete(requestId);
-  if (activeNetworkRequestIds.size === 0) {
+  if (!activeNetworkRequests.has(requestId)) return;
+  activeNetworkRequests.delete(requestId);
+  if (activeNetworkRequests.size === 0) {
     networkLoadingStartedAt = null;
   }
   emitNetworkLoadingChange();
@@ -360,8 +341,8 @@ export const cancelAllTrackedRequests = (reason = 'cancelled') => {
     }
   });
   trackedRequestAbortControllers.clear();
-  if (activeNetworkRequestIds.size > 0) {
-    activeNetworkRequestIds.clear();
+  if (activeNetworkRequests.size > 0) {
+    activeNetworkRequests.clear();
     networkLoadingStartedAt = null;
     emitNetworkLoadingChange();
   }
@@ -474,7 +455,12 @@ export const requestJSON = async (path, options = {}) => {
   }
 
   const execute = async (schedulerSignal = null) => {
-    const trackedRequestId = skipGlobalLoading ? null : beginTrackedRequest();
+    const trackedRequestId = skipGlobalLoading
+      ? null
+      : beginTrackedRequest({
+          groupId: schedulerGroupId,
+          scopeId: schedulerScopeId,
+        });
     const timeoutMsRaw = Number(requestTimeoutMs);
     const timeoutMs =
       Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0

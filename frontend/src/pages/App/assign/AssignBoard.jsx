@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CloseIcon from '@mui/icons-material/Close';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
@@ -56,10 +57,12 @@ import {
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
-  ASSIGNMENT_CT_STATUS_DEFAULT_LABELS,
-  isAssignmentCtStatusLocked,
-  normalizeAssignmentCtStatus,
-} from '../../../constants/assignmentStatus';
+  hasAssignmentCtSnapshot,
+  resolveAssignmentCtSnapshot,
+  resolveAssignmentCtTotalSeconds,
+  resolveAssignmentCtUpdatedAt,
+  resolveAssignmentCtUpdatedBy,
+} from '../../../utils/assignmentCt';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -118,6 +121,11 @@ const formatDaysLabel = (value, fallback = '-') => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}일`;
 };
+const formatDateTimeLabel = (value, fallback = '-') => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  return parsed.toLocaleString('ko-KR');
+};
 const AT_RELIABILITY_COLOR = {
   [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
   [AT_RELIABILITY_STATUS.UNRELIABLE]: 'error',
@@ -150,8 +158,6 @@ const calcDivergencePercent = (current, base) => {
   }
   return ((currentValue - baseValue) / baseValue) * 100;
 };
-const normalizeCtStatus = (value) => normalizeAssignmentCtStatus(value);
-const CT_STATUS_LABEL = ASSIGNMENT_CT_STATUS_DEFAULT_LABELS;
 const resolveProcessPtInfo = (process, orderQuantity = 1) => {
   const ptSeconds = toOptionalPositiveNumber(process?.pt);
   const referenceQuantity = DEFAULT_TIME_REF_QUANTITY;
@@ -180,7 +186,7 @@ const resolveProcessStSeedSeconds = ({
 
   return { seconds: 0, source: 'NONE' };
 };
-const isAssignmentLockedStatus = (value) => isAssignmentCtStatusLocked(value);
+const hasSavedCtSnapshot = (assignment) => hasAssignmentCtSnapshot(assignment);
 
 const buildAssignableLines = ({ factories, lines, lineHeadcounts }) => {
   const safeFactories = Array.isArray(factories) ? factories : [];
@@ -948,6 +954,246 @@ const resolveCardTotalSeconds = (card) => {
   return card.totalPt ?? card.totalSeconds ?? 0;
 };
 
+const toComparableCtSnapshot = (snapshot) => {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return null;
+  }
+  const {
+    updatedAt: _updatedAt,
+    updatedBy: _updatedBy,
+    ...rest
+  } = snapshot;
+  return rest;
+};
+
+const buildAssignmentCtSnapshotForSave = ({
+  assignment,
+  card = null,
+  style = null,
+  draftByProcess = {},
+  stDraftByProcess = {},
+  baseDate = null,
+  updatedAt = null,
+  updatedBy = null,
+}) => {
+  if (!assignment || typeof assignment !== 'object') return null;
+
+  const orderQuantity = Math.max(
+    1,
+    toPositiveInt(assignment?.quantity ?? card?.quantity ?? 1, 1)
+  );
+  const existingSnapshot = resolveAssignmentCtSnapshot(assignment);
+  const existingProcessMap = new Map(
+    (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
+      (process) => [String(process?.processKey || '').trim(), process]
+    )
+  );
+  const styleProcesses = normalizeProcesses(style?.processes);
+  const processSeeds =
+    styleProcesses.length > 0
+      ? styleProcesses.map((process, index) => ({
+          source: 'STYLE',
+          process,
+          processKey: String(
+            process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
+          ).trim(),
+          processName:
+            process?.name || process?.processName || process?.code || `공정 ${index + 1}`,
+          processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
+        }))
+      : (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
+          (process, index) => ({
+            source: 'SNAPSHOT',
+            process,
+            processKey: String(process?.processKey || `PROCESS-${index + 1}`).trim(),
+            processName:
+              process?.name || process?.processName || process?.processKey || `공정 ${index + 1}`,
+            processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
+          })
+        );
+
+  const processes = processSeeds
+    .map((seed, index) => {
+      const processKey = seed.processKey;
+      if (!processKey) return null;
+
+      const snapshotProcess = existingProcessMap.get(processKey) ?? null;
+      const stDraftSeconds = toOptionalPositiveNumber(stDraftByProcess?.[processKey]);
+      const ctDraftSeconds = toOptionalPositiveNumber(draftByProcess?.[processKey]);
+      const stSeedInfo =
+        seed.source === 'STYLE'
+          ? resolveProcessStSeedSeconds({
+              process: seed.process,
+              orderQuantity,
+            })
+          : {
+              seconds: toOptionalPositiveNumber(snapshotProcess?.stSeconds),
+              source: seed.process?.basis || snapshotProcess?.basis || 'CT',
+            };
+      const stSeconds =
+        stDraftSeconds ??
+        toOptionalPositiveNumber(snapshotProcess?.stSeconds) ??
+        toOptionalPositiveNumber(stSeedInfo?.seconds);
+      const ctSeconds =
+        ctDraftSeconds ??
+        toOptionalPositiveNumber(snapshotProcess?.ctSeconds) ??
+        stSeconds;
+
+      if (ctSeconds == null && stSeconds == null) return null;
+
+      const resolvedCtSeconds = ctSeconds ?? stSeconds ?? 0;
+      const resolvedStSeconds = stSeconds ?? resolvedCtSeconds;
+      return {
+        processKey,
+        name: seed.processName || `공정 ${index + 1}`,
+        quantity: seed.processQuantity,
+        basis:
+          ctDraftSeconds != null
+            ? 'CT'
+            : stDraftSeconds != null
+              ? 'ST'
+              : snapshotProcess?.basis || stSeedInfo?.source || seed.process?.basis || null,
+        stSeconds: resolvedStSeconds,
+        ctSeconds: resolvedCtSeconds,
+        ctPerPieceSeconds: resolvedCtSeconds * seed.processQuantity,
+      };
+    })
+    .filter(Boolean);
+
+  const fallbackTotalSeconds = Math.max(
+    0,
+    Math.round(
+      Number(
+        resolveAssignmentCtTotalSeconds(assignment) ||
+          resolveCardTotalSeconds(card) ||
+          assignment?.totalSeconds ||
+          0
+      ) || 0
+    )
+  );
+  const totalStPerPieceSeconds =
+    processes.length > 0
+      ? processes.reduce(
+          (sum, process) =>
+            sum + ((Number(process?.stSeconds) || 0) * (Number(process?.quantity) || 1)),
+          0
+        )
+      : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackTotalSeconds / orderQuantity;
+  const totalCtPerPieceSeconds =
+    processes.length > 0
+      ? processes.reduce(
+          (sum, process) => sum + (Number(process?.ctPerPieceSeconds) || 0),
+          0
+        )
+      : Number(existingSnapshot?.totalCtPerPieceSeconds) || fallbackTotalSeconds / orderQuantity;
+  const totalCtSeconds = Math.max(
+    0,
+    Math.round(
+      totalCtPerPieceSeconds > 0
+        ? totalCtPerPieceSeconds * orderQuantity
+        : fallbackTotalSeconds
+    )
+  );
+  const snapshotCore = {
+    sourceAssignmentId: String(assignment?.id || '').trim() || null,
+    lineId: assignment?.lineId ?? null,
+    quantity: orderQuantity,
+    schedule: buildAssignmentSchedulePatch(assignment, baseDate),
+    totalStPerPieceSeconds,
+    totalCtPerPieceSeconds,
+    totalCtSeconds,
+    processes,
+  };
+  const currentComparable = toComparableCtSnapshot(snapshotCore);
+  const previousComparable = toComparableCtSnapshot(existingSnapshot);
+  const keepPreviousUpdateMeta =
+    previousComparable != null &&
+    toStableJsonText(previousComparable) === toStableJsonText(currentComparable);
+
+  return {
+    ...snapshotCore,
+    updatedAt:
+      (keepPreviousUpdateMeta ? existingSnapshot?.updatedAt : updatedAt) || updatedAt || null,
+    updatedBy:
+      (keepPreviousUpdateMeta ? existingSnapshot?.updatedBy : updatedBy) || updatedBy || null,
+  };
+};
+
+const applyAssignmentCtSnapshotForSave = ({
+  assignment,
+  card = null,
+  style = null,
+  draftByProcess = {},
+  stDraftByProcess = {},
+  baseDate = null,
+  updatedAt = null,
+  updatedBy = null,
+}) => {
+  const ctSnapshot = buildAssignmentCtSnapshotForSave({
+    assignment,
+    card,
+    style,
+    draftByProcess,
+    stDraftByProcess,
+    baseDate,
+    updatedAt,
+    updatedBy,
+  });
+  const nextTotalSeconds = Math.max(
+    0,
+    Math.round(
+      Number(
+        ctSnapshot?.totalCtSeconds ??
+          resolveCardTotalSeconds(card) ??
+          assignment?.totalSeconds ??
+          0
+      ) || 0
+    )
+  );
+
+  return normalizeAssignmentLayout({
+    ...assignment,
+    totalSeconds: nextTotalSeconds,
+    contractedSeconds: nextTotalSeconds > 0 ? nextTotalSeconds : null,
+    ctSnapshot,
+  });
+};
+
+const hasAssignmentCtDraftChange = ({
+  assignment,
+  card = null,
+  style = null,
+  draftByProcess = {},
+  stDraftByProcess = {},
+  baseDate = null,
+}) => {
+  if (!hasSavedCtSnapshot(assignment)) return false;
+  const hasDraftInput =
+    Object.keys(draftByProcess || {}).length > 0 ||
+    Object.keys(stDraftByProcess || {}).length > 0;
+  if (!hasDraftInput) return false;
+
+  const savedSnapshotComparable = toComparableCtSnapshot(
+    resolveAssignmentCtSnapshot(assignment)
+  );
+  const nextSnapshotComparable = toComparableCtSnapshot(
+    buildAssignmentCtSnapshotForSave({
+      assignment,
+      card,
+      style,
+      draftByProcess,
+      stDraftByProcess,
+      baseDate,
+      updatedAt: resolveAssignmentCtUpdatedAt(assignment),
+      updatedBy: resolveAssignmentCtUpdatedBy(assignment),
+    })
+  );
+  return (
+    toStableJsonText(savedSnapshotComparable) !==
+    toStableJsonText(nextSnapshotComparable)
+  );
+};
+
 const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
   if (!assignment || !card) return assignment;
 
@@ -955,11 +1201,9 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return assignment;
 
   const basis = getCardBasis(card);
-  const assignmentStatus = normalizeCtStatus(assignment?.ctStatus);
-  const contractedSeconds = toNonNegativeInt(assignment?.contractedSeconds, 0);
   const nextTotalSeconds =
-    assignmentStatus === 'AGREED' && contractedSeconds > 0
-      ? contractedSeconds
+    hasSavedCtSnapshot(assignment)
+      ? resolveAssignmentCtTotalSeconds(assignment)
       : totalSeconds;
   const next = {
     ...assignment,
@@ -968,14 +1212,13 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
     label: card.styleName,
     colorName: card.colorName ?? assignment.colorName,
     gender: card.gender ?? assignment.gender,
-    previewUrl: card.previewUrl ?? assignment.previewUrl,
-    imageUrl: card.imageUrl ?? assignment.imageUrl,
-    thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
-    quantity: card.quantity ?? assignment.quantity,
-    basis,
-    totalSeconds: nextTotalSeconds,
-    contractedSeconds:
-      assignment.contractedSeconds != null ? assignment.contractedSeconds : null,
+        previewUrl: card.previewUrl ?? assignment.previewUrl,
+        imageUrl: card.imageUrl ?? assignment.imageUrl,
+        thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
+        quantity: card.quantity ?? assignment.quantity,
+        basis,
+        totalSeconds: nextTotalSeconds,
+        contractedSeconds: assignment.contractedSeconds ?? null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
   const currentTotalSeconds = toNonNegativeInt(assignment?.totalSeconds, 0);
@@ -1804,11 +2047,14 @@ const AssignBoard = () => {
   const [detailState, setDetailState] = useState(null);
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
   const [detailStDraftsByTarget, setDetailStDraftsByTarget] = useState({});
-  const [sendingProposal, setSendingProposal] = useState(false);
+  const [detailStyleLoadingKey, setDetailStyleLoadingKey] = useState('');
+  const stylesRef = useRef(styles);
   const cardsRef = useRef(cards);
   const linesRef = useRef(lines);
   const assignmentsRef = useRef(assignments);
   const daysRef = useRef(days);
+  const detailDraftsRef = useRef(detailDraftsByTarget);
+  const detailStDraftsRef = useRef(detailStDraftsByTarget);
   const { sensors, handleDragStart, handleDragCancel } = useAssignBoardDnd({
     persistReady,
     loading,
@@ -1830,6 +2076,10 @@ const AssignBoard = () => {
   }, []);
 
   useEffect(() => {
+    stylesRef.current = styles;
+  }, [styles]);
+
+  useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
 
@@ -1844,6 +2094,14 @@ const AssignBoard = () => {
   useEffect(() => {
     daysRef.current = days;
   }, [days]);
+
+  useEffect(() => {
+    detailDraftsRef.current = detailDraftsByTarget;
+  }, [detailDraftsByTarget]);
+
+  useEffect(() => {
+    detailStDraftsRef.current = detailStDraftsByTarget;
+  }, [detailStDraftsByTarget]);
 
   const syncHistoryStatus = useCallback(() => {
     setHistoryStatus({
@@ -1873,18 +2131,41 @@ const AssignBoard = () => {
   }, []);
 
   const createBoardSnapshotText = useCallback(
-    (nextCards, nextAssignments) =>
+    (
+      nextCards,
+      nextAssignments,
+      nextDetailDraftsByTarget = detailDraftsRef.current,
+      nextDetailStDraftsByTarget = detailStDraftsRef.current
+    ) =>
       JSON.stringify({
         cards: Array.isArray(nextCards) ? nextCards : [],
         assignments: serializeAssignmentsForSnapshot(nextAssignments),
+        detailDraftsByTarget:
+          nextDetailDraftsByTarget && typeof nextDetailDraftsByTarget === 'object'
+            ? nextDetailDraftsByTarget
+            : {},
+        detailStDraftsByTarget:
+          nextDetailStDraftsByTarget && typeof nextDetailStDraftsByTarget === 'object'
+            ? nextDetailStDraftsByTarget
+            : {},
       }),
     [serializeAssignmentsForSnapshot]
   );
   const resetBoardHistory = useCallback(
-    (nextCards, nextAssignments) => {
+    (
+      nextCards,
+      nextAssignments,
+      nextDetailDraftsByTarget = detailDraftsRef.current,
+      nextDetailStDraftsByTarget = detailStDraftsRef.current
+    ) => {
       historyPastRef.current = [];
       historyFutureRef.current = [];
-      historySnapshotRef.current = createBoardSnapshotText(nextCards, nextAssignments);
+      historySnapshotRef.current = createBoardSnapshotText(
+        nextCards,
+        nextAssignments,
+        nextDetailDraftsByTarget,
+        nextDetailStDraftsByTarget
+      );
       historyApplyingRef.current = false;
       syncHistoryStatus();
     },
@@ -1892,17 +2173,42 @@ const AssignBoard = () => {
   );
 
   const createPersistSnapshotText = useCallback(
-    (nextCards, nextAssignments) =>
+    (
+      nextCards,
+      nextAssignments,
+      nextDetailDraftsByTarget = detailDraftsRef.current,
+      nextDetailStDraftsByTarget = detailStDraftsRef.current
+    ) =>
       JSON.stringify({
         cards: Array.isArray(nextCards) ? nextCards : [],
         assignments: serializeAssignmentsForSnapshot(nextAssignments),
+        detailDraftsByTarget:
+          nextDetailDraftsByTarget && typeof nextDetailDraftsByTarget === 'object'
+            ? nextDetailDraftsByTarget
+            : {},
+        detailStDraftsByTarget:
+          nextDetailStDraftsByTarget && typeof nextDetailStDraftsByTarget === 'object'
+            ? nextDetailStDraftsByTarget
+            : {},
       }),
     [serializeAssignmentsForSnapshot]
   );
 
   const currentPersistSnapshot = useMemo(
-    () => createPersistSnapshotText(cards, assignments),
-    [assignments, cards, createPersistSnapshotText]
+    () =>
+      createPersistSnapshotText(
+        cards,
+        assignments,
+        detailDraftsByTarget,
+        detailStDraftsByTarget
+      ),
+    [
+      assignments,
+      cards,
+      createPersistSnapshotText,
+      detailDraftsByTarget,
+      detailStDraftsByTarget,
+    ]
   );
   const isDirty = persistReady && currentPersistSnapshot !== lastSavedSnapshotRef.current;
   const resolvePersistedBoardState = useCallback(
@@ -2005,29 +2311,24 @@ const AssignBoard = () => {
     }
     return raw || fallbackMessage;
   }, []);
-  const isAssignmentNotFoundError = useCallback(
-    (error) => String(error?.message || '').trim().toLowerCase().includes('assignment not found'),
-    []
-  );
-  const hasPersistedAssignmentSnapshot = useCallback(
-    (assignmentId) => {
-      const targetId = String(assignmentId || '').trim();
-      if (!targetId) return false;
-      const savedAssignments = parsePersistSnapshotAssignments(lastSavedSnapshotRef.current);
-      return savedAssignments.some((item) => String(item?.id || '').trim() === targetId);
-    },
-    [parsePersistSnapshotAssignments]
-  );
-  const shouldUseFullBoardPutForCtAction = useCallback(
-    (assignmentId) => isDirty || !hasPersistedAssignmentSnapshot(assignmentId),
-    [hasPersistedAssignmentSnapshot, isDirty]
-  );
 
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
       const parsed = JSON.parse(snapshotText || '{}');
       const snapshotCards = Array.isArray(parsed?.cards) ? parsed.cards : [];
       const snapshotAssignments = Array.isArray(parsed?.assignments) ? parsed.assignments : [];
+      const snapshotDetailDrafts =
+        parsed?.detailDraftsByTarget &&
+        typeof parsed.detailDraftsByTarget === 'object' &&
+        !Array.isArray(parsed.detailDraftsByTarget)
+          ? parsed.detailDraftsByTarget
+          : {};
+      const snapshotDetailStDrafts =
+        parsed?.detailStDraftsByTarget &&
+        typeof parsed.detailStDraftsByTarget === 'object' &&
+        !Array.isArray(parsed.detailStDraftsByTarget)
+          ? parsed.detailStDraftsByTarget
+          : {};
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         { cards: snapshotCards, assignments: snapshotAssignments },
         snapshotCards,
@@ -2039,6 +2340,8 @@ const AssignBoard = () => {
       );
       setCards(persistedCards);
       setAssignments(persistedAssignments);
+      setDetailDraftsByTarget(snapshotDetailDrafts);
+      setDetailStDraftsByTarget(snapshotDetailStDrafts);
       setSelectedCardId((prev) =>
         persistedCards.some((card) => String(card?.id) === String(prev)) ? prev : null
       );
@@ -2195,11 +2498,15 @@ const AssignBoard = () => {
       }, 0);
       const persistSnapshot = createPersistSnapshotText(
         restoredCards,
-        normalizedRestoredAssignments
+        normalizedRestoredAssignments,
+        {},
+        {}
       );
       const boardSnapshot = createBoardSnapshotText(
         restoredCards,
-        normalizedRestoredAssignments
+        normalizedRestoredAssignments,
+        {},
+        {}
       );
       const nextCardIdSet = new Set(restoredCards.map((card) => card.id));
 
@@ -2213,6 +2520,8 @@ const AssignBoard = () => {
           syncAssignmentDateKeys(assignment, startDateRef.current)
         )
       );
+      setDetailDraftsByTarget({});
+      setDetailStDraftsByTarget({});
       if (nextDayCount > normalizedRestoreDays.length) {
         setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
       } else if (normalizedRestoreDays.length > days.length) {
@@ -2424,7 +2733,15 @@ const AssignBoard = () => {
     historyFutureRef.current = [];
     historySnapshotRef.current = snapshot;
     syncHistoryStatus();
-  }, [assignments, cards, createBoardSnapshotText, persistReady, syncHistoryStatus]);
+  }, [
+    assignments,
+    cards,
+    createBoardSnapshotText,
+    detailDraftsByTarget,
+    detailStDraftsByTarget,
+    persistReady,
+    syncHistoryStatus,
+  ]);
 
   const handleSaveBoard = useCallback(async () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
@@ -2437,14 +2754,62 @@ const AssignBoard = () => {
       ? assignmentsRef.current
       : [];
     const currentDays = Array.isArray(daysRef.current) ? daysRef.current : [];
+    const currentStyles = Array.isArray(stylesRef.current) ? stylesRef.current : [];
+    const currentCardById = new Map(
+      currentCards
+        .filter((card) => card?.id)
+        .map((card) => [String(card.id), card])
+    );
+    const currentStyleById = new Map(
+      currentStyles
+        .filter((style) => style?.id)
+        .map((style) => [String(style.id), style])
+    );
+    const currentDetailDraftsByTarget =
+      detailDraftsRef.current && typeof detailDraftsRef.current === 'object'
+        ? detailDraftsRef.current
+        : {};
+    const currentDetailStDraftsByTarget =
+      detailStDraftsRef.current && typeof detailStDraftsRef.current === 'object'
+        ? detailStDraftsRef.current
+        : {};
+    const nowIso = new Date().toISOString();
+    const updatedBy =
+      String(
+        activeProfile?.employeeName ||
+          activeProfile?.name ||
+          activeProfile?.email ||
+          activeProfile?.label ||
+          ''
+      ).trim() || 'OPERATOR';
+    const applyCtSnapshotForPersistence = (assignment, baseDate = startDateRef.current) => {
+      const card = currentCardById.get(String(assignment?.cardId || '')) || null;
+      const styleId = String(card?.styleId || '').trim();
+      const style = styleId ? currentStyleById.get(styleId) || null : null;
+      return applyAssignmentCtSnapshotForSave({
+        assignment,
+        card,
+        style,
+        draftByProcess:
+          currentDetailDraftsByTarget[`assignment:${String(assignment?.id || '')}`] || {},
+        stDraftByProcess:
+          currentDetailStDraftsByTarget[`assignment:${String(assignment?.id || '')}`] || {},
+        baseDate,
+        updatedAt: nowIso,
+        updatedBy,
+      });
+    };
+    const assignmentsWithCtSnapshot = currentAssignments.map((item) =>
+      applyCtSnapshotForPersistence(item, startDateRef.current)
+    );
 
     const { baseDate: persistBaseDate, days: persistDays } = buildAssignmentPersistenceWindow({
-      assignments: currentAssignments,
+      assignments: assignmentsWithCtSnapshot,
       days: currentDays,
       baseDate: startDateRef.current,
       holidaySet,
     });
-    const assignmentsForPersistence = currentAssignments.map((item) =>
+    const assignmentsForPersistence = assignmentsWithCtSnapshot.map((item) =>
       remapAssignmentToDayWindow(
         syncAssignmentDateKeys(item, startDateRef.current),
         persistDays,
@@ -2475,7 +2840,10 @@ const AssignBoard = () => {
       : assignmentsForPersistence;
 
     const normalizedAssignments = assignmentsToSave.map((item) =>
-      syncAssignmentDateKeys(item, persistBaseDate)
+      applyCtSnapshotForPersistence(
+        syncAssignmentDateKeys(item, persistBaseDate),
+        persistBaseDate
+      )
     );
     try {
       const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
@@ -2497,10 +2865,15 @@ const AssignBoard = () => {
       historyApplyingRef.current = true;
       setCards(persistedCards);
       setAssignments(persistedAssignments);
+      setDetailDraftsByTarget({});
+      setDetailStDraftsByTarget({});
       lastSavedSnapshotRef.current = createPersistSnapshotText(
         persistedCards,
-        persistedAssignments
+        persistedAssignments,
+        {},
+        {}
       );
+      resetBoardHistory(persistedCards, persistedAssignments, {}, {});
       showNotification('작업 배정을 저장했습니다.', 'success');
     } catch (error) {
       showNotification(
@@ -2527,8 +2900,14 @@ const AssignBoard = () => {
     persisting,
     resolveBoardSaveErrorMessage,
     resolvePersistedBoardState,
+    resetBoardHistory,
     showNotification,
     assignmentsRef,
+    activeProfile?.employeeName,
+    activeProfile?.name,
+    activeProfile?.email,
+    activeProfile?.label,
+    stylesRef,
   ]);
 
   const navigationBlocker = useBlocker(
@@ -2660,10 +3039,42 @@ const AssignBoard = () => {
     () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
     [assignments]
   );
-  const isAssignmentLocked = useCallback(
-    (assignment) => isAssignmentLockedStatus(assignment?.ctStatus),
-    []
-  );
+  const isAssignmentLocked = useCallback(() => false, []);
+  const assignmentCtDisplayStateById = useMemo(() => {
+    const map = new Map();
+
+    assignments.forEach((assignment) => {
+      const assignmentId = String(assignment?.id || '').trim();
+      if (!assignmentId) return;
+      if (!hasSavedCtSnapshot(assignment)) {
+        map.set(assignmentId, 'UNSAVED');
+        return;
+      }
+
+      const card = cardById.get(String(assignment?.cardId || '')) || null;
+      const styleId = String(card?.styleId || '').trim();
+      const style = styleId ? styleById.get(styleId) || null : null;
+      const draftByProcess = detailDraftsByTarget[`assignment:${assignmentId}`] || {};
+      const stDraftByProcess = detailStDraftsByTarget[`assignment:${assignmentId}`] || {};
+      const hasDraftChange = hasAssignmentCtDraftChange({
+        assignment,
+        card,
+        style,
+        draftByProcess,
+        stDraftByProcess,
+        baseDate: startDateRef.current,
+      });
+      map.set(assignmentId, hasDraftChange ? 'UNSAVED' : 'SAVED');
+    });
+
+    return map;
+  }, [
+    assignments,
+    cardById,
+    styleById,
+    detailDraftsByTarget,
+    detailStDraftsByTarget,
+  ]);
 
   const assignmentsForRender = useMemo(() => {
     return assignments
@@ -2676,9 +3087,12 @@ const AssignBoard = () => {
           ...item,
           quantity: item.quantity ?? card.quantity,
           gender: item.gender ?? card.gender,
+          ctDisplayState:
+            assignmentCtDisplayStateById.get(String(item.id)) ||
+            (hasSavedCtSnapshot(item) ? 'SAVED' : 'UNSAVED'),
         };
       });
-  }, [assignments, cardById, dayCount]);
+  }, [assignments, assignmentCtDisplayStateById, cardById, dayCount]);
 
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
@@ -2758,15 +3172,24 @@ const AssignBoard = () => {
     if (!styleId) return null;
     return styleById.get(styleId) || null;
   }, [detailCard, styleById]);
+  const currentDetailStyleKey = useMemo(() => {
+    const styleId = String(detailCard?.styleId || '').trim();
+    if (!styleId || !activeOrgId) return '';
+    return `${activeOrgId}:${styleId}`;
+  }, [activeOrgId, detailCard?.styleId]);
   useEffect(() => {
     const styleId = String(detailCard?.styleId || '').trim();
-    if (!styleId || !activeOrgId) return undefined;
+    if (!styleId || !activeOrgId) {
+      setDetailStyleLoadingKey((prev) => (prev === currentDetailStyleKey ? '' : prev));
+      return undefined;
+    }
     const attemptKey = `${activeOrgId}:${styleId}`;
     const currentStyle = styleById.get(styleId) || null;
     if (
       Array.isArray(currentStyle?.processes) &&
       currentStyle.processes.length > 0
     ) {
+      setDetailStyleLoadingKey((prev) => (prev === attemptKey ? '' : prev));
       return undefined;
     }
     if (detailStyleFetchAttemptRef.current.has(attemptKey)) {
@@ -2774,6 +3197,7 @@ const AssignBoard = () => {
     }
 
     detailStyleFetchAttemptRef.current.add(attemptKey);
+    setDetailStyleLoadingKey(attemptKey);
     let cancelled = false;
 
     const loadStyleDetail = async () => {
@@ -2798,14 +3222,20 @@ const AssignBoard = () => {
         });
       } catch (_error) {
         // Keep the attempt consumed to avoid repeated background fetches for missing styles.
+      } finally {
+        if (!cancelled) {
+          setDetailStyleLoadingKey((prev) => (prev === attemptKey ? '' : prev));
+        }
       }
     };
 
     loadStyleDetail();
     return () => {
       cancelled = true;
+      setDetailStyleLoadingKey((prev) => (prev === attemptKey ? '' : prev));
     };
-  }, [activeOrgId, detailCard, styleById]);
+  }, [activeOrgId, currentDetailStyleKey, detailCard, styleById]);
+  const detailStyleLoading = Boolean(currentDetailStyleKey) && detailStyleLoadingKey === currentDetailStyleKey;
   const detailLine = useMemo(() => {
     if (!detailAssignment) return null;
     return lineById.get(String(detailAssignment.lineId)) || null;
@@ -2837,49 +3267,28 @@ const AssignBoard = () => {
         ? getLineCapacitySeconds(detailAssignment.lineId, lineCapacityById)
         : DAILY_CAPACITY_SECONDS
     );
-    const assignmentStatus = normalizeCtStatus(detailAssignment?.ctStatus);
-    const isAgreedAssignment = assignmentStatus === 'AGREED';
     const wagePerSecond = toOptionalPositiveNumber(
       detailLine?.factoryWagePerSecond ??
         detailLine?.wagePerSecond ??
         detailAssignment?.factoryWagePerSecond ??
         detailAssignment?.wagePerSecond
     );
-    const agreedSnapshot = detailCard?.ctAgreedSnapshot;
-    const agreedSnapshotQuantity = Math.max(
-      1,
-      toPositiveInt(agreedSnapshot?.quantity ?? orderQuantity, orderQuantity)
-    );
-    const canUseAgreedSnapshot =
-      isAgreedAssignment &&
-      agreedSnapshot &&
-      agreedSnapshotQuantity === orderQuantity &&
-      (!detailAssignment?.id ||
-        !agreedSnapshot?.sourceAssignmentId ||
-        String(agreedSnapshot.sourceAssignmentId) === String(detailAssignment.id));
-    const agreedSnapshotByProcess = (
-      canUseAgreedSnapshot && Array.isArray(agreedSnapshot?.processes)
-        ? agreedSnapshot.processes
+    const ctSnapshot = resolveAssignmentCtSnapshot(detailAssignment);
+    const canUseSnapshot = ctSnapshot && Array.isArray(ctSnapshot?.processes);
+    const savedSnapshotByProcess = (
+      canUseSnapshot && Array.isArray(ctSnapshot?.processes)
+        ? ctSnapshot.processes
         : []
     ).reduce((map, item) => {
       const processKey = String(item?.processKey || '').trim();
       if (!processKey) return map;
-      const agreedSeconds = toOptionalPositiveNumber(
-        item?.agreedSeconds ?? item?.requestedSeconds ?? item?.proposedSeconds
-      );
-      const requestedSeconds = toOptionalPositiveNumber(
-        item?.requestedSeconds ??
-          item?.lineRequestedSeconds ??
-          item?.proposedSeconds ??
-          item?.agreedSeconds
-      );
-      const proposedSeconds = toOptionalPositiveNumber(
-        item?.proposedSeconds ?? item?.stSeconds ?? item?.suggestedSeconds
-      );
       map.set(processKey, {
-        agreedSeconds,
-        requestedSeconds,
-        proposedSeconds,
+        ctSeconds: toOptionalPositiveNumber(
+          item?.ctSeconds ??
+            item?.agreedSeconds ??
+            item?.requestedSeconds ??
+            item?.proposedSeconds
+        ),
       });
       return map;
     }, new Map());
@@ -2901,22 +3310,16 @@ const AssignBoard = () => {
       const hasStDraftChange =
         stDraftSeconds != null &&
         Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
-      const agreedSnapshotEntry = agreedSnapshotByProcess.get(processKey) ?? null;
-      const agreedSnapshotSeconds = agreedSnapshotEntry?.agreedSeconds ?? null;
-      const agreedSnapshotRequestedSeconds = agreedSnapshotEntry?.requestedSeconds ?? null;
-      const agreedSnapshotProposedSeconds = agreedSnapshotEntry?.proposedSeconds ?? null;
-      const proposedSeedSeconds = agreedSnapshotProposedSeconds ?? baseSeconds;
+      const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
+      const savedSnapshotSeconds = savedSnapshotEntry?.ctSeconds ?? null;
+      const proposedSeedSeconds = savedSnapshotSeconds ?? baseSeconds;
       const proposedDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
       const proposedSeconds = proposedDraftSeconds ?? proposedSeedSeconds;
-      const confirmedSeconds = isAgreedAssignment
-        ? agreedSnapshotSeconds ??
-          toOptionalPositiveNumber(proposedSeconds) ??
-          toOptionalPositiveNumber(proposedSeedSeconds)
-        : null;
+      const savedSeconds = savedSnapshotSeconds ?? null;
       const basePerPieceSeconds = baseSeconds * processQuantity;
       const proposedPerPieceSeconds = proposedSeconds * processQuantity;
-      const confirmedPerPieceSeconds =
-        confirmedSeconds == null ? null : confirmedSeconds * processQuantity;
+      const savedPerPieceSeconds =
+        savedSeconds == null ? null : savedSeconds * processQuantity;
       const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
       return {
         processKey,
@@ -2933,19 +3336,16 @@ const AssignBoard = () => {
         proposedSeedSeconds,
         requestedSeconds: proposedSeconds,
         proposedSeconds,
-        lineRequestedSeconds: isAgreedAssignment ? agreedSnapshotRequestedSeconds ?? null : null,
-        hasLineRequestedChange: false,
         basePerPieceSeconds,
         requestedPerPieceSeconds: proposedPerPieceSeconds,
         proposedPerPieceSeconds,
-        confirmedSeconds,
-        confirmedPerPieceSeconds,
+        savedSeconds,
+        savedPerPieceSeconds,
         totalBaseSeconds: basePerPieceSeconds * orderQuantity,
         totalRequestedSeconds: totalProposedSeconds,
         totalProposedSeconds,
         proposedUnitCost: resolveCtUnitCost(proposedSeconds, wagePerSecond),
-        requestedUnitCost: null,
-        confirmedUnitCost: resolveCtUnitCost(confirmedSeconds, wagePerSecond),
+        savedUnitCost: resolveCtUnitCost(savedSeconds, wagePerSecond),
         perPieceCost: wagePerSecond == null ? null : proposedPerPieceSeconds * wagePerSecond,
         expectedCost: wagePerSecond == null ? null : totalProposedSeconds * wagePerSecond,
         expectedDays:
@@ -2961,15 +3361,13 @@ const AssignBoard = () => {
     detailStyle?.processes,
     detailDraftByProcess,
     detailStDraftByProcess,
-    detailCard?.ctAgreedSnapshot,
+    detailAssignment?.ctSnapshot,
     detailLine?.factoryWagePerSecond,
     detailLine?.wagePerSecond,
     lineCapacityById,
   ]);
   const detailSummary = useMemo(() => {
     if (!detailCard) return null;
-    const assignmentStatus = normalizeCtStatus(detailAssignment?.ctStatus);
-    const isAgreedAssignment = assignmentStatus === 'AGREED';
     const orderQuantity = Math.max(
       1,
       toPositiveInt(detailAssignment?.quantity ?? detailCard?.quantity ?? 1, 1)
@@ -2987,16 +3385,13 @@ const AssignBoard = () => {
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.requestedPerPieceSeconds, 0)
         : Number(detailAssignment?.totalSeconds || detailCard?.totalSeconds || 0) / orderQuantity;
-    const totalConfirmedPerPieceSeconds =
-      isAgreedAssignment && detailProcessRows.length > 0
+    const totalSavedPerPieceSeconds =
+      detailProcessRows.length > 0
         ? detailProcessRows.reduce(
-            (sum, row) => sum + (Number(row?.confirmedPerPieceSeconds) || 0),
+            (sum, row) => sum + (Number(row?.savedPerPieceSeconds) || 0),
             0
           )
-        : isAgreedAssignment
-          ? Number(detailAssignment?.contractedSeconds || detailAssignment?.totalSeconds || 0) /
-            orderQuantity
-          : null;
+        : Number(resolveAssignmentCtTotalSeconds(detailAssignment) || 0) / orderQuantity;
     const totalRequestedSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.totalRequestedSeconds, 0)
@@ -3023,7 +3418,7 @@ const AssignBoard = () => {
       orderQuantity,
       totalBasePerPieceSeconds,
       totalRequestedPerPieceSeconds,
-      totalConfirmedPerPieceSeconds,
+      totalSavedPerPieceSeconds,
       totalBaseSeconds,
       totalRequestedSeconds,
       divergencePercent: calcDivergencePercent(totalRequestedPerPieceSeconds, totalBasePerPieceSeconds),
@@ -3047,30 +3442,18 @@ const AssignBoard = () => {
       ),
     [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]
   );
-  const detailIsLocked = useMemo(
-    () => Boolean(detailAssignment && isAssignmentLocked(detailAssignment)),
-    [detailAssignment, isAssignmentLocked]
+  const detailHasSavedCtSnapshot = useMemo(
+    () => hasSavedCtSnapshot(detailAssignment),
+    [detailAssignment]
   );
-  const detailCtStatus = normalizeCtStatus(detailAssignment?.ctStatus);
-  const isAdminUser = useMemo(
-    () => String(activeOrgRole || '').trim().toUpperCase() === 'ADMIN',
-    [activeOrgRole]
-  );
-  const canReopenAgreedAssignment = Boolean(
-    detailAssignment && detailCtStatus === 'AGREED' && isAdminUser
-  );
-  const detailHasProposalChange = useMemo(
-    () =>
-      detailProcessRows.some(
-        (row) =>
-          row.hasStDraftChange === true ||
-          Math.abs(Number(row.proposedSeconds) - Number(row.proposedSeedSeconds)) > 1e-6
-      ),
-    [detailProcessRows]
-  );
-  const canConfirmAssignment = Boolean(
-    detailAssignment && detailProcessRows.length > 0 && detailCtStatus !== 'AGREED'
-  );
+  const detailCtDisplayState = useMemo(() => {
+    if (!detailAssignment) return 'UNSAVED';
+    return (
+      assignmentCtDisplayStateById.get(String(detailAssignment.id)) ||
+      (detailHasSavedCtSnapshot ? 'SAVED' : 'UNSAVED')
+    );
+  }, [assignmentCtDisplayStateById, detailAssignment, detailHasSavedCtSnapshot]);
+  const detailCtIsSaved = detailCtDisplayState === 'SAVED';
   const contextMenuTargetAssignment = useMemo(() => {
     if (!contextMenuState || contextMenuState.targetType !== 'assignment') return null;
     return assignmentById.get(String(contextMenuState.id)) || null;
@@ -3116,10 +3499,9 @@ const AssignBoard = () => {
     setContextMenuState(null);
   }, [contextMenuState]);
   const handleCloseDetail = useCallback(() => {
-    if (sendingProposal) return;
     blurActiveElement();
     setDetailState(null);
-  }, [blurActiveElement, sendingProposal]);
+  }, [blurActiveElement]);
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
     if (!CT_INPUT_REGEX.test(value)) return;
@@ -3199,12 +3581,6 @@ const AssignBoard = () => {
     if (!over) {
       if (String(active.id).startsWith('assign-')) {
         const assignmentId = String(active.id).replace('assign-', '');
-        const target = assignmentById.get(assignmentId);
-        if (normalizeCtStatus(target?.ctStatus) === 'AGREED') {
-          showNotification('확정된 작업은 라인에서 제외할 수 없습니다.', 'warning');
-          setActiveDrag(null);
-          return;
-        }
         setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
       }
       setActiveDrag(null);
@@ -3229,12 +3605,6 @@ const AssignBoard = () => {
       }
       if (activeId.startsWith('assign-')) {
         const assignmentId = activeId.replace('assign-', '');
-        const sourceAssignment = assignmentById.get(assignmentId);
-        if (normalizeCtStatus(sourceAssignment?.ctStatus) === 'AGREED') {
-          showNotification('확정된 작업은 라인에서 제외할 수 없습니다.', 'warning');
-          setActiveDrag(null);
-          return;
-        }
         if (mergeAssignmentIntoCardTarget(targetCardId, assignmentId)) {
           setActiveDrag(null);
           return;
@@ -3356,11 +3726,7 @@ const AssignBoard = () => {
         originOrderId: getCardOriginId(card) ?? cardId,
         basis,
         contractedSeconds: null,
-        ctStatus: 'PENDING',
-        ctSource: basis,
-        ctAgreedBy: null,
-        ctAgreedAt: null,
-        ctNote: '',
+        ctSnapshot: null,
         color: colors.color,
         stripeColor: colors.stripe,
         totalSeconds,
@@ -3426,15 +3792,6 @@ const AssignBoard = () => {
 
     if (activeId.startsWith('assign-')) {
       const assignmentId = activeId.replace('assign-', '');
-      const movingAssignmentForCheck = assignmentById.get(assignmentId);
-      if (
-        normalizeCtStatus(movingAssignmentForCheck?.ctStatus) === 'AGREED' &&
-        String(lineId) !== String(movingAssignmentForCheck?.lineId)
-      ) {
-        showNotification('확정된 작업은 다른 라인으로 이동할 수 없습니다.', 'warning');
-        setActiveDrag(null);
-        return;
-      }
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
@@ -3642,386 +3999,6 @@ const AssignBoard = () => {
     }
     setContextMenuState(null);
   }, [contextMenuState, handleSplitAssignment, handleSplitCard]);
-  const handleConfirmAssignment = useCallback(async () => {
-    if (sendingProposal) return;
-    if (!detailAssignment || !detailCard) return;
-    if (detailCtStatus === 'AGREED') {
-      showNotification('이미 확정된 작업입니다.', 'warning');
-      return;
-    }
-    if (!detailSummary || !Number.isFinite(detailSummary.totalRequestedSeconds) || detailSummary.totalRequestedSeconds <= 0) {
-      showNotification('확정할 CT 값이 유효하지 않습니다.', 'error');
-      return;
-    }
-
-    const assignmentId = String(detailAssignment.id);
-    const schedulePatch = buildAssignmentSchedulePatch(detailAssignment, startDateRef.current);
-    const nowIso = new Date().toISOString();
-    const orderQuantity = Math.max(
-      1,
-      toPositiveInt(
-        detailSummary?.orderQuantity ??
-          detailAssignment?.quantity ??
-          detailCard?.quantity ??
-          1,
-        1
-      )
-    );
-    const agreedBy =
-      String(
-        activeProfile?.employeeName ||
-          activeProfile?.name ||
-          activeProfile?.email ||
-          activeProfile?.label ||
-          ''
-      ).trim() || 'OPERATOR';
-
-    try {
-      setSendingProposal(true);
-
-      const confirmedProcessRows = detailProcessRows.map((row) => {
-        const proposedSeconds = toOptionalPositiveNumber(
-          row.proposedSeconds ?? row.proposedSeedSeconds ?? row.baseSeconds
-        );
-        const agreedSeconds = proposedSeconds ?? toOptionalPositiveNumber(row.baseSeconds);
-        const normalizedAgreedSeconds = agreedSeconds ?? 0;
-        const agreedPerPieceSeconds = normalizedAgreedSeconds * row.processQuantity;
-        return {
-          ...row,
-          proposedSeconds: proposedSeconds ?? row.baseSeconds,
-          requestedSeconds: proposedSeconds ?? row.baseSeconds,
-          agreedSeconds: normalizedAgreedSeconds,
-          agreedPerPieceSeconds,
-          agreedTotalSeconds: agreedPerPieceSeconds * orderQuantity,
-        };
-      });
-
-      let agreedTotalSeconds = confirmedProcessRows.reduce(
-        (sum, row) => sum + row.agreedTotalSeconds,
-        0
-      );
-      if (!Number.isFinite(agreedTotalSeconds) || agreedTotalSeconds <= 0) {
-        agreedTotalSeconds = Number(
-          detailSummary?.totalRequestedSeconds ??
-            detailAssignment?.totalSeconds ??
-            0
-        );
-      }
-      if (!Number.isFinite(agreedTotalSeconds) || agreedTotalSeconds <= 0) {
-        showNotification('확정할 CT 값이 유효하지 않습니다.', 'error');
-        return;
-      }
-
-      const nextTotalSeconds = Math.max(1, Math.round(agreedTotalSeconds));
-      const totalStPerPieceSeconds =
-        confirmedProcessRows.length > 0
-          ? confirmedProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
-          : nextTotalSeconds / orderQuantity;
-      const totalAgreedPerPieceSeconds =
-        confirmedProcessRows.length > 0
-          ? confirmedProcessRows.reduce((sum, row) => sum + row.agreedPerPieceSeconds, 0)
-          : nextTotalSeconds / orderQuantity;
-
-      const agreementSnapshot = {
-        agreedAt: nowIso,
-        agreedBy,
-        sourceAssignmentId: assignmentId,
-        lineId: detailAssignment?.lineId ?? null,
-        schedule: schedulePatch,
-        quantity: orderQuantity,
-        totalStPerPieceSeconds,
-        totalAgreedPerPieceSeconds,
-        totalAgreedSeconds: nextTotalSeconds,
-        processes: confirmedProcessRows.map((row) => ({
-          processKey: row.processKey,
-          name: row.processName,
-          quantity: row.processQuantity,
-          basis: row.basis,
-          stSeconds: row.baseSeconds,
-          proposedSeconds: row.proposedSeconds,
-          requestedSeconds: row.requestedSeconds,
-          agreedSeconds: row.agreedSeconds,
-          agreedPerPieceSeconds: row.agreedPerPieceSeconds,
-        })),
-      };
-      const nextRange = recomputeAssignmentRange(
-        detailAssignment,
-        nextTotalSeconds,
-        days,
-        lineCapacityById
-      );
-      const nextSchedule =
-        nextRange == null
-          ? schedulePatch
-          : buildAssignmentSchedulePatch(
-              syncAssignmentDateKeys(
-                {
-                  ...detailAssignment,
-                  ...nextRange,
-                  totalSeconds: nextTotalSeconds,
-                },
-                startDateRef.current
-              ),
-              startDateRef.current
-            ) || nextRange;
-      const nextCardsWithAgreement = detailAssignment?.cardId
-        ? cards.map((card) =>
-            String(card?.id) === String(detailAssignment.cardId)
-              ? {
-                  ...card,
-                  ctAgreedSnapshot: agreementSnapshot,
-                }
-              : card
-          )
-        : cards;
-
-      const ctConfirmPatch = {
-        ...(nextSchedule || {}),
-        totalSeconds: nextTotalSeconds,
-        contractedSeconds: nextTotalSeconds,
-        ctStatus: 'AGREED',
-        ctSource: detailAssignment?.basis ?? detailAssignment?.proposalBasis ?? 'OPERATOR_CONFIRMED',
-        ctAgreedBy: agreedBy,
-        ctAgreedAt: nowIso,
-        ctNote: `확정 ${nowIso}`,
-      };
-      const nextAssignments = assignments.map((item) =>
-        String(item.id) === assignmentId
-          ? normalizeAssignmentLayout({ ...item, ...ctConfirmPatch })
-          : normalizeAssignmentLayout(item)
-      );
-      const query = buildQueryString({ orgId: activeOrgId });
-      const persistConfirmWithBoardPut = async () => {
-        const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
-          syncAssignmentDateKeys(assignment, startDateRef.current)
-        );
-        const assignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
-        const putResponse = await requestJSON('/assignment-board-state' + query, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCardsWithAgreement, assignments: assignmentsForPut }),
-          skipGlobalLoading: true,
-        });
-        return resolvePersistedBoardState(
-          putResponse,
-          nextCardsWithAgreement,
-          assignmentsForPut
-        );
-      };
-      let persistedAssignments;
-      let persistedCards;
-      if (!shouldUseFullBoardPutForCtAction(assignmentId)) {
-        try {
-          const patchResponse = await requestJSON('/assignment-board-state/ct' + query, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              assignmentId,
-              assignmentPatch: ctConfirmPatch,
-              cardId: detailAssignment?.cardId ? String(detailAssignment.cardId) : null,
-              cardPatch: detailAssignment?.cardId
-                ? { ctAgreedSnapshot: agreementSnapshot }
-                : null,
-            }),
-            skipGlobalLoading: true,
-          });
-          persistedAssignments = patchResponse?.assignment
-            ? nextAssignments.map((assignment) =>
-                String(assignment.id) === assignmentId
-                  ? normalizeAssignmentLayout({ ...assignment, ...patchResponse.assignment })
-                  : assignment
-              )
-            : nextAssignments;
-          persistedCards = patchResponse?.card
-            ? nextCardsWithAgreement.map((card) =>
-                String(card.id) === String(detailAssignment?.cardId)
-                  ? { ...card, ...patchResponse.card }
-                  : card
-              )
-            : nextCardsWithAgreement;
-        } catch (error) {
-          if (!isAssignmentNotFoundError(error)) {
-            throw error;
-          }
-          ({ persistedCards, persistedAssignments } = await persistConfirmWithBoardPut());
-        }
-      } else {
-        ({ persistedCards, persistedAssignments } = await persistConfirmWithBoardPut());
-      }
-
-      let nextDays = days;
-      const maxEndIndex = persistedAssignments.reduce(
-        (max, item) => Math.max(max, toNonNegativeInt(item?.endIndex, 0)),
-        0
-      );
-      if (maxEndIndex + 10 > nextDays.length) {
-        nextDays = buildDays(startDateRef.current, maxEndIndex + 10, holidaySet);
-      }
-      if (nextDays.length > days.length) {
-        setDays(nextDays);
-      }
-      setCards(persistedCards);
-      setAssignments(persistedAssignments);
-      lastSavedSnapshotRef.current = createPersistSnapshotText(
-        persistedCards,
-        persistedAssignments
-      );
-      resetBoardHistory(persistedCards, persistedAssignments);
-      blurActiveElement();
-      setDetailState(null);
-      showNotification('작업이 확정되었습니다.', 'success');
-    } catch (error) {
-      showNotification(
-        resolveBoardSaveErrorMessage(error, '작업 확정 처리에 실패했습니다.'),
-        'error'
-      );
-    } finally {
-      setSendingProposal(false);
-    }
-  }, [
-    sendingProposal,
-    detailAssignment,
-    detailCard,
-    detailCtStatus,
-    detailSummary,
-    detailProcessRows,
-    activeProfile?.employeeName,
-    activeProfile?.name,
-    activeProfile?.email,
-    activeProfile?.label,
-    cards,
-    assignments,
-    activeOrgId,
-    days,
-    lineCapacityById,
-    holidaySet,
-    createPersistSnapshotText,
-    resetBoardHistory,
-    resolvePersistedBoardState,
-    resolveBoardSaveErrorMessage,
-    alignAssignmentsForBoardPut,
-    syncAssignmentDateKeys,
-    shouldUseFullBoardPutForCtAction,
-    isAssignmentNotFoundError,
-    blurActiveElement,
-    showNotification,
-  ]);
-  const handleReopenAgreedAssignment = useCallback(async () => {
-    if (sendingProposal) return;
-    if (!detailAssignment || !detailCard) return;
-    if (!canReopenAgreedAssignment) {
-      showNotification('재협의 개시는 관리자만 실행할 수 있습니다.', 'warning');
-      return;
-    }
-    const confirmed = window.confirm(
-      '확정된 작업을 재협의 상태로 되돌립니다. 기존 합의 이력을 보관하고 대기 상태로 전환할까요?'
-    );
-    if (!confirmed) return;
-
-    const assignmentId = String(detailAssignment.id);
-    const nowIso = new Date().toISOString();
-    const actor =
-      String(
-        activeProfile?.employeeName || activeProfile?.name || activeProfile?.email || activeProfile?.label || ''
-      ).trim() || 'ADMIN';
-
-    const nextAssignments = assignments.map((item) => {
-      if (String(item?.id) !== assignmentId) return item;
-      return normalizeAssignmentLayout({
-        ...item,
-        ctStatus: 'PENDING',
-        ctSource: 'REOPENED_BY_ADMIN',
-        ctAgreedBy: null,
-        ctAgreedAt: null,
-        ctNote: `재협의 개시 ${nowIso}`,
-      });
-    });
-
-    const historyEntry = {
-      archivedAt: nowIso,
-      archivedBy: actor,
-      reason: 'REOPEN_RENEGOTIATION',
-      assignmentId,
-      previous: {
-        ctStatus: detailAssignment?.ctStatus || 'AGREED',
-        contractedSeconds: detailAssignment?.contractedSeconds ?? null,
-        ctSource: detailAssignment?.ctSource ?? null,
-        ctAgreedBy: detailAssignment?.ctAgreedBy ?? null,
-        ctAgreedAt: detailAssignment?.ctAgreedAt ?? null,
-        ctNote: detailAssignment?.ctNote ?? null,
-      },
-    };
-
-    const nextCards = detailAssignment?.cardId
-      ? cards.map((card) => {
-          if (String(card?.id) !== String(detailAssignment.cardId)) return card;
-          const previousHistory = Array.isArray(card?.ctAgreementHistory)
-            ? card.ctAgreementHistory
-            : [];
-          return {
-            ...card,
-            ctAgreementHistory: [...previousHistory, historyEntry],
-          };
-        })
-      : cards;
-
-    try {
-      setSendingProposal(true);
-      const query = buildQueryString({ orgId: activeOrgId });
-      const preparedAssignmentsForPut = nextAssignments.map((assignment) =>
-        syncAssignmentDateKeys(assignment, startDateRef.current)
-      );
-      const nextAssignmentsForPut = await alignAssignmentsForBoardPut(preparedAssignmentsForPut);
-      const response = await requestJSON('/assignment-board-state' + query, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cards: nextCards, assignments: nextAssignmentsForPut }),
-        skipGlobalLoading: true,
-      });
-      const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
-        response,
-        nextCards,
-        nextAssignmentsForPut
-      );
-      setCards(persistedCards);
-      setAssignments(persistedAssignments);
-      const persistedSnapshot = createPersistSnapshotText(
-        persistedCards,
-        persistedAssignments
-      );
-      lastSavedSnapshotRef.current = persistedSnapshot;
-      resetBoardHistory(persistedCards, persistedAssignments);
-      blurActiveElement();
-      setDetailState(null);
-      showNotification('재협의가 시작되었습니다. 해당 작업이 대기 상태로 전환되었습니다.', 'info');
-    } catch (error) {
-      showNotification(
-        resolveBoardSaveErrorMessage(error, '재협의 개시 처리에 실패했습니다.'),
-        'error'
-      );
-    } finally {
-      setSendingProposal(false);
-    }
-  }, [
-    sendingProposal,
-    detailAssignment,
-    detailCard,
-    canReopenAgreedAssignment,
-    activeProfile?.employeeName,
-    activeProfile?.name,
-    activeProfile?.email,
-    activeProfile?.label,
-    assignments,
-    cards,
-    activeOrgId,
-    createPersistSnapshotText,
-    resetBoardHistory,
-    resolvePersistedBoardState,
-    resolveBoardSaveErrorMessage,
-    alignAssignmentsForBoardPut,
-    blurActiveElement,
-    showNotification,
-  ]);
 
   const getAssignmentOriginId = (assignment) => {
     if (!assignment) return null;
@@ -4033,7 +4010,7 @@ const AssignBoard = () => {
   const buildCardFromAssignment = (assignment) => {
     const card = cardById.get(assignment.cardId);
     if (card) return card;
-    const basis = assignment.basis || assignment.proposalBasis;
+    const basis = assignment.basis || 'PT';
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
@@ -4546,18 +4523,46 @@ const AssignBoard = () => {
           PaperProps={{ sx: { width: { xs: '100%', md: '80%' }, p: 2.5, overflowY: 'auto' } }}
         >
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box
+              sx={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 1,
+                py: 0.5,
+                backgroundColor: 'background.paper',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
               <Typography variant="subtitle2" color="text.secondary">
                 업무 상세
               </Typography>
-              <Button
-                size="small"
-                color="inherit"
-                onClick={handleCloseDetail}
-                disabled={controlsDisabled || sendingProposal}
-              >
-                닫기
-              </Button>
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Button
+                  size="small"
+                  color="inherit"
+                  onClick={handleCloseDetail}
+                  disabled={controlsDisabled}
+                >
+                  닫기
+                </Button>
+                <IconButton
+                  size="small"
+                  onClick={handleCloseDetail}
+                  disabled={controlsDisabled}
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1.5,
+                  }}
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Stack>
             </Box>
 
             {!detailCard ? (
@@ -4587,16 +4592,24 @@ const AssignBoard = () => {
                       <strong>라인:</strong> {detailLine?.name || '-'}
                     </Typography>
                     {detailAssignment && (
-                      <Typography variant="body2">
-                        <strong>CT 상태:</strong>{' '}
-                        <Chip
-                          size="small"
-                          label={CT_STATUS_LABEL[normalizeCtStatus(detailAssignment.ctStatus)] || CT_STATUS_LABEL.PENDING}
-                          color={detailIsLocked ? 'primary' : 'default'}
-                          variant="outlined"
-                          sx={{ height: 20 }}
-                        />
-                      </Typography>
+                      <>
+                        <Typography variant="body2">
+                          <strong>저장 CT:</strong>{' '}
+                          <Chip
+                            size="small"
+                            label={detailCtIsSaved ? '저장됨' : '미저장'}
+                            color={detailCtIsSaved ? 'primary' : 'default'}
+                            variant="outlined"
+                            sx={{ height: 20 }}
+                          />
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>최근 저장자:</strong>{' '}
+                          {resolveAssignmentCtUpdatedBy(detailAssignment) || '-'}
+                          {' · '}
+                          {formatDateTimeLabel(resolveAssignmentCtUpdatedAt(detailAssignment))}
+                        </Typography>
+                      </>
                     )}
                   </Stack>
                 </Paper>
@@ -4640,7 +4653,18 @@ const AssignBoard = () => {
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                     공정 CT 상세
                   </Typography>
-                  {detailProcessRows.length === 0 ? (
+                  {detailStyleLoading ? (
+                    <Box
+                      sx={{
+                        minHeight: 160,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <CircularProgress size={28} />
+                    </Box>
+                  ) : detailProcessRows.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
                       공정 정보가 없어 상세 CT를 표시할 수 없습니다.
                     </Typography>
@@ -4655,7 +4679,7 @@ const AssignBoard = () => {
                             <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`입력 CT(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`확정 CT(${detailQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`저장 CT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">단가(동)</TableCell>
                           </TableRow>
                         </TableHead>
@@ -4739,14 +4763,14 @@ const AssignBoard = () => {
                                   onChange={(event) =>
                                     handleDetailDraftInput(row.processKey, event.target.value)
                                   }
-                                  disabled={sendingProposal || detailCtStatus === 'AGREED'}
+                                  disabled={controlsDisabled}
                                   sx={{ width: 90 }}
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                {detailCtStatus !== 'AGREED' || row.confirmedSeconds == null
+                                {row.savedSeconds == null
                                   ? '-'
-                                  : formatNumberWithCommas(row.confirmedSeconds, {
+                                  : formatNumberWithCommas(row.savedSeconds, {
                                       fallback: '0',
                                       maximumFractionDigits: 2,
                                     })}
@@ -4754,16 +4778,10 @@ const AssignBoard = () => {
                               <TableCell align="right">
                                 {detailSummary?.wagePerSecond == null ? (
                                   '-'
-                                ) : detailCtStatus === 'AGREED' ? (
-                                  row.confirmedUnitCost == null ? (
-                                    '-'
-                                  ) : (
-                                    formatCurrencyDong(row.confirmedUnitCost)
-                                  )
                                 ) : (
-                                  row.proposedUnitCost == null
+                                  row.savedUnitCost == null
                                     ? '-'
-                                    : formatCurrencyDong(row.proposedUnitCost)
+                                    : formatCurrencyDong(row.savedUnitCost)
                                 )}
                               </TableCell>
                             </TableRow>
@@ -4789,9 +4807,9 @@ const AssignBoard = () => {
                                   })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {detailCtStatus === 'AGREED' &&
-                              detailSummary?.totalConfirmedPerPieceSeconds != null
-                                ? formatNumberWithCommas(detailSummary.totalConfirmedPerPieceSeconds, {
+                              {detailSummary?.totalSavedPerPieceSeconds != null &&
+                              detailSummary.totalSavedPerPieceSeconds > 0
+                                ? formatNumberWithCommas(detailSummary.totalSavedPerPieceSeconds, {
                                     fallback: '0',
                                     maximumFractionDigits: 2,
                                   })
@@ -4800,17 +4818,14 @@ const AssignBoard = () => {
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {detailSummary?.wagePerSecond == null ? (
                                 '-'
-                              ) : detailCtStatus === 'AGREED' &&
-                                detailSummary?.totalConfirmedPerPieceSeconds != null ? (
+                              ) : detailSummary?.totalSavedPerPieceSeconds != null &&
+                                detailSummary.totalSavedPerPieceSeconds > 0 ? (
                                 formatCurrencyDong(
-                                  detailSummary.totalConfirmedPerPieceSeconds *
+                                  detailSummary.totalSavedPerPieceSeconds *
                                     detailSummary.wagePerSecond
                                 )
                               ) : (
-                                formatCurrencyDong(
-                                  detailSummary.totalRequestedPerPieceSeconds *
-                                    detailSummary.wagePerSecond
-                                )
+                                '-'
                               )}
                             </TableCell>
                           </TableRow>
@@ -4819,31 +4834,8 @@ const AssignBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {detailCtStatus === 'AGREED' && !isAdminUser
-                      ? '확정 상태를 다시 열려면 관리자 권한이 필요합니다.'
-                      : '입력 CT를 비우면 ST 기준값으로 확정되며, 확정은 운영자가 직접 처리합니다.'}
+                    입력 CT를 비우면 ST(q) 값을 그대로 사용합니다. 현재 값은 작업 배정을 저장할 때 날짜/라인 정보와 함께 CT snapshot으로 저장됩니다.
                   </Typography>
-                  <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 1.5 }}>
-                    {detailCtStatus === 'AGREED' && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="warning"
-                        onClick={handleReopenAgreedAssignment}
-                        disabled={controlsDisabled || sendingProposal || !canReopenAgreedAssignment}
-                      >
-                        재협의 개시
-                      </Button>
-                    )}
-                    <Button
-                      size="small"
-                      variant="contained"
-                      onClick={handleConfirmAssignment}
-                      disabled={controlsDisabled || !canConfirmAssignment || sendingProposal}
-                    >
-                      {sendingProposal ? '확정 중...' : '확정'}
-                    </Button>
-                  </Stack>
                 </Paper>
               </>
             )}

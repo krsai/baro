@@ -180,8 +180,8 @@ const extractProcessCode = (process, index) => {
 };
 
 const buildPlanProcesses = (plan) => {
-  const snapshotProcesses = Array.isArray(plan?.ctAgreedSnapshot?.processes)
-    ? plan.ctAgreedSnapshot.processes
+  const snapshotProcesses = Array.isArray(plan?.ctSnapshot?.processes)
+    ? plan.ctSnapshot.processes
     : [];
 
   return snapshotProcesses
@@ -209,7 +209,7 @@ const buildPlanProcesses = (plan) => {
 };
 
 const buildDailyWeights = (plan) => {
-  const schedule = plan?.ctAgreedSnapshot?.schedule;
+  const schedule = plan?.ctSnapshot?.schedule;
   if (!schedule?.startDateKey || !schedule?.endDateKey) return [];
 
   const allDateKeys = listDateKeysInclusive(
@@ -278,7 +278,7 @@ const normalizePlan = (plan) => {
     targetQuantity,
     totalPerPieceSeconds: sum(processes, (process) => process.ctSeconds),
     processes,
-    schedule: plan?.ctAgreedSnapshot?.schedule ?? null,
+    schedule: plan?.ctSnapshot?.schedule ?? null,
     dailyRows: dailyWeights
       .map((weight, index) => ({
         dateKey: weight.dateKey,
@@ -391,7 +391,7 @@ const run = async () => {
   }
 
   const plans = (Array.isArray(rawPlans) ? rawPlans : [])
-    .filter((plan) => String(plan?.ctStatus || "").toUpperCase() === "AGREED")
+    .filter((plan) => Number(plan?.contractedSeconds) > 0)
     .map(normalizePlan)
     .filter(Boolean);
 

@@ -15,7 +15,7 @@
 - 사용자 요청 범위를 벗어난 **불필요한 기능/옵션/추상화는 추가하지 않는다.**
 - 기본 원칙은 **"지금 필요한 것만 구현(YAGNI)"** 이다.
 
-## 2026-03-13 현재 운영 기준 (최우선)
+## 2026-03-14 현재 운영 기준 (최우선)
 
 이 섹션이 아래의 오래된 CT/협의/주문 메모보다 우선한다.
 
@@ -31,25 +31,29 @@
 - `PT(1000)`: 최초 매니저/운영 기준 임시 공임
 - `AT(q)`: 실측 함수, `ST(q)` 조정 판단 참고값
 - `ST(q)`: 수량별 표준 기준값, 시작점은 `PT(1000)`
-- `CT(q)`: 배정 건별 확정 급여 스냅샷, 기본값은 `ST(q)`이며 건별 조정 가능
+- `CT(q)`: 배정 건별 저장 스냅샷, 기본값은 `ST(q)`이며 건별 조정 가능
 
-### 현재 배정/확정 흐름
+### 현재 배정 저장 흐름
 
 - 배정은 운영자 중심으로 처리한다.
-- 라인장의 시스템상 `요청 / 거부 / 동의` 흐름은 제거되었다.
+- 상태값(`PENDING/SENT/AGREED/REJECTED`) 개념은 신규 로직에서 사용하지 않는다.
+- 라인장의 시스템상 `요청 / 거부 / 동의 / 승인` 흐름은 제거되었다.
 - 현재 흐름:
   - 작업 배정
   - 필요 시 현재 CT 조정
-  - 운영자 확정
+  - 운영자 저장
+- 별도 `CT 확정` 버튼은 없다.
+- 저장 시점에 그 배정의 `수량 + 일정 + 공정별 CT(q)`를 한 번에 snapshot으로 만든다.
+- 입력 CT를 비우면 해당 공정은 `ST(q)` 값을 그대로 사용한다.
 - 라인장 화면은 읽기 전용 요약/현황 화면이다.
 
 ### 현재 저장 규칙
 
-- `AssignmentPlan.contractedSeconds`를 **카드 단위 확정 CT**로 사용한다.
-- `totalSeconds`는 현재 CT이자 계획/일정/라인 부하 계산 기준이다.
-- `AGREED` 상태에서는 `totalSeconds`와 `contractedSeconds`가 같게 유지되어야 한다.
-- 공정별 확정 스냅샷은 `ctAgreedSnapshot`으로 유지한다.
-- 신규 쓰기 기준 상태는 `PENDING`, `AGREED`만 사용한다.
+- 신규 쓰기 기준의 소스 오브 트루스는 `AssignmentPlan.ctSnapshot`이다.
+- `ctSnapshot`에는 공정별 `ctSeconds`, `schedule`, `quantity`, `updatedBy`, `updatedAt`만 남긴다.
+- `AssignmentPlan.contractedSeconds`는 조회/필터/합계 계산용 총 CT 요약값으로만 유지한다.
+- `totalSeconds`는 현재 배정의 총 CT이자 일정/라인 부하 계산 기준이다.
+- 신규 쓰기 기준 상태값(`ctStatus`)과 승인 메타(`confirmedAt`, `confirmedBy`, `ctAgreedAt`, `ctAgreedBy`)는 사용하지 않는다.
 
 ### 레거시 호환 규칙
 
@@ -57,21 +61,44 @@
   - `proposalSeconds`
   - `operatorCtProposal`
   - `pendingCtProposal`
-- 백엔드는 **기존 `AGREED` 데이터 호환용**으로만 `proposalSeconds`를 fallback으로 읽을 수 있다.
+  - `ctStatus`
+  - `ctSentAt`
+  - `ctEscalatedAt`
+  - `ctAgreementHistory`
+- 백엔드는 예전 데이터 호환용으로만 일부 legacy 필드를 fallback으로 읽을 수 있다.
 - 신규 로직은 `basis`를 우선 사용한다.
 - `proposalBasis`는 예전 데이터 읽기용 fallback 정도로만 취급한다.
 
 ### 현재 UI 기준
 
 - `/assignment`
-  - 운영자가 직접 확정한다.
+  - 운영자가 직접 배정하고 저장한다.
   - 입력 CT를 비우면 ST 기준값으로 다시 맞춘다.
+  - 상세 보기에서 CT 숫자를 수정했지만 아직 저장하지 않았으면 즉시 `CT 미저장`으로 보여야 한다.
+  - 상세 패널 상단에는 닫기 버튼이 있어야 한다.
+  - 상세 카드/스타일 비동기 로딩 중에는 안내 문구 대신 spinner를 보여준다.
 - `/production-plan`
   - 읽기 전용 현황판이다.
-  - `현재 CT`와 `확정 CT`만 보여준다.
+  - `CT 저장 / CT 미저장`만 보여준다.
+  - 휴일 설정에 포함된 날짜는 월간 캘린더에서 빨간 배경으로 표시한다.
 - 수량 변경/차이 카드 재구성 시
   - `totalSt`가 있으면 `totalSeconds = totalSt`
   - 없을 때만 `totalPt` fallback 사용
+
+### 현재 작업기록 기준
+
+- 작업기록은 `ctStatus`가 아니라 `ctSnapshot` 존재 여부를 기준으로 배정 카드를 사용한다.
+- 작업기록 저장 시 `WorkRecord.ctSeconds`에는 그 시점 배정 snapshot의 공정별 CT가 복사되어 저장된다.
+- 이후 스타일의 PT/AT/ST가 바뀌어도 기존 `WorkRecord.ctSeconds`에는 영향이 없다.
+
+### 운영/마이그레이션 메모
+
+- CT 단일 snapshot 구조 반영 마이그레이션:
+  - `backend/prisma/migrations/20260314120000_replace_assignment_ct_status_with_snapshot/migration.sql`
+- 새 환경이나 다른 작업 환경에서 pull 받은 뒤에는 아래 순서를 반드시 실행한다.
+  - `npm --prefix backend run prisma:prepare-client`
+  - `npx prisma migrate deploy` (`backend` 폴더)
+- `backend/.env`에는 `DATABASE_URL` 외에 `DIRECT_URL`도 필요하다.
 
 ### 주문 목록 주의사항
 
@@ -99,12 +126,54 @@
 - `PT`는 스타일+공정별 `PT(1000)` 하나만 가진다.
 - `AT`는 스타일+공정별 함수 `atParams={a,b,...}`만 저장한다. 단순 숫자 `at`는 삭제 대상 레거시이며 신규 정책에서 사용하지 않는다.
 - `ST`는 스타일+공정별 `ST(q)` 기준점을 수량별로 저장한다.
-- `CT`는 `AssignmentPlan.contractedSeconds`만 진짜 카드 단위 확정값으로 사용한다.
+- `CT`의 저장 원본은 `AssignmentPlan.ctSnapshot`이며, `contractedSeconds`는 총합 요약값으로 본다.
 - `AT(q)`는 `ST(q)`/`CT(q)`를 자동 결정하는 값이 아니라, 운영팀이 `ST(q)`를 검토할 때 참고하는 값이다.
 - 배정 카드 생성 시점에 해당 수량의 `ST(q)`가 없으면 기본값을 잡아 새 `ST(q)` 기준점을 만든다.
 - 라인장과 협의해 바뀐 `CT`는 그 배정 건에만 적용되며, 다른 배정은 다시 `ST(q)`를 기본값으로 사용한다.
 - `ST` 값의 증가/감소 방향은 시스템이 강제하지 않는다. 대신 나중에 `표준 공임 검토` 메뉴에서 운영 검토 경고를 보여준다.
 - 이 문서 아래에서 `Style.processes[].ct`, `stManual`, `timeRefQuantity`, `Style.processes[].at`를 `ST/AT`의 저장 원본으로 설명하는 부분은 레거시 메모로 본다.
+
+## 오늘 반영 메모 (2026-03-14)
+
+이 섹션이 아래의 오래된 CT 협의/상태 메모보다 우선한다.
+
+### CT 단일 snapshot 정책
+
+- CT는 더 이상 승인 상태 머신으로 관리하지 않는다.
+- 저장 단위는 `AssignmentPlan.ctSnapshot` 하나다.
+- `ST(q)`가 기본값이고, 협의 결과가 있으면 저장 전에 CT(q)를 직접 수정한다.
+- 별도 `확정`, `요청`, `거부`, `재협의`, `히스토리` UI는 신규 로직에서 제거한다.
+- snapshot 메타에는 `updatedBy`, `updatedAt`만 유지한다.
+
+### 저장 시점 정책
+
+- 작업을 날짜/라인에 배정하고 `저장`을 누르는 순간 해당 배정의 CT snapshot이 생성/갱신된다.
+- 저장 snapshot에는 최소 아래 정보가 들어간다.
+  - `quantity`
+  - `schedule`
+  - `processes[].ctSeconds`
+  - `updatedBy`
+  - `updatedAt`
+- `contractedSeconds`는 snapshot 총합을 빠르게 조회하기 위한 요약값으로 유지한다.
+
+### 작업기록 연동
+
+- 작업기록 화면은 저장된 `ctSnapshot`이 있는 배정만 사용한다.
+- `WorkRecord.ctSeconds`는 배정 snapshot 값을 복사해 저장한다.
+- 따라서 배정 저장 후의 CT와 작업기록 저장 시점 CT가 자연스럽게 연결된다.
+
+### UI/UX 반영
+
+- 작업 배정 상세에서 CT 입력값을 수정했지만 저장하지 않으면 즉시 `CT 미저장`으로 바뀐다.
+- 상세 패널 헤더에 닫기 버튼을 추가했다.
+- 상세에서 스타일/공정 정보가 아직 로딩 중이면 문구 대신 spinner를 보여준다.
+- 월간 생산계획 캘린더는 휴일 설정을 불러와 해당 날짜를 빨간 배경으로 표시한다.
+- 휴일 변경은 `HOLIDAY_UPDATED_EVENT`와 `storage` 이벤트로 동기화한다.
+
+### 운영 메모
+
+- 로컬 DB에는 `20260314120000_replace_assignment_ct_status_with_snapshot` 마이그레이션을 적용했다.
+- 다른 개발 환경도 pull 후 `backend`에서 `npx prisma migrate deploy`를 먼저 실행해야 한다.
 
 ## 오늘 반영 메모 (2026-03-11)
 
@@ -306,6 +375,9 @@
 - ST 값의 증가/감소 방향은 시스템이 강제하지 않고, 추후 `ST 검토` 메뉴에서 경고만 제공한다.
 
 **CT (Contracted Time) — 카드 단위 확정 스냅샷**
+
+> 아래 CT 협의 상태 흐름/버튼 규칙은 2026-03-14 이전의 레거시 메모다. 신규 개발 기준은 문서 상단 `2026-03-14 현재 운영 기준`과 `오늘 반영 메모 (2026-03-14)`를 따른다.
+
 - 주문 수량 q 확정 후, 시스템이 현재 ST(q)를 제안값으로 보여주고 라인장이 승인/조정하여 확정
 - CT는 함수가 아닌 카드(AssignmentPlan) 단위 고정값. **확정 후 ST/PT/AT 변경과 완전히 무관**
 - **급여 = CT × 수량** (단순)
@@ -488,7 +560,7 @@ Organization (MANUFACTURER | BRAND)
   └─ WorkOrder
        └─ WorkOrderItem (styleId, colorId→AttrColor FK, colorCode, colorName, gender, sizeQuantities, sortOrder)
   └─ AssignmentCard (cardId, sortOrder, payload: JSON) — 미배정 카드 저장 테이블
-  └─ AssignmentPlan (lineId, ctStatus, contractedSeconds, ctSource, ctAgreedBy, ctAgreedAt, ctNote, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
+  └─ AssignmentPlan (lineId, contractedSeconds, ctSnapshot, startIndex, endIndex, isCompleted, finalQuantity, completedAt)
   └─ AssignmentBoardState (assignments: JSON) — 수동 저장 보드 스냅샷(upsert)
        ※ assignments: 라인 타임라인에 배정된 카드 배열 (AssignmentPlan의 프론트엔드 표현)
        ※ cards 컬럼은 레거시 호환/이관용으로만 유지, 현재 소스 오브 트루스는 `AssignmentCard`
@@ -502,13 +574,13 @@ Organization (MANUFACTURER | BRAND)
 - 조직당 단 1개의 레코드 (upsert)
 - 작업 배정 보드는 **수동 저장 버튼**으로만 저장 (자동저장 없음)
 - 저장되지 않은 변경이 있으면 라우트 이동/탭 이탈/브라우저 종료 시 경고
-- `assignments`에는 `startDateKey`, `version`, `versionUpdatedAt`, `ctSentAt`, `ctEscalatedAt`, `ctEscalation*` 같은 보드 전용 필드가 포함된다.
-- `PUT /assignment-board-state`와 `PATCH /assignment-board-state/ct`는 assignment 단위 optimistic concurrency를 사용하며, stale version이면 `409 assignment version conflict`를 반환한다.
+- `assignments`에는 `startDateKey`, `version`, `versionUpdatedAt` 같은 보드 전용 필드가 포함된다.
+- 저장은 `PUT /assignment-board-state` 기준으로 assignment 단위 optimistic concurrency를 사용하며, stale version이면 `409 assignment version conflict`를 반환한다.
 - UI는 로컬 undo/redo(최대 30단계)만 제공한다. 서버가 과거 스냅샷을 보관해 복원해 주지는 않는다.
 - **cards vs assignments 구분**:
   - `cards`: 미배정 풀 (일반 카드 + DELTA 카드). 라인에 아직 배정되지 않은 것. 현재는 `AssignmentCard` 테이블에 저장된다.
-  - `assignments`: 라인 타임라인에 배정된 카드. ctStatus, contractedSeconds 등 협의 정보 포함.
-- `cards` payload에는 `operatorCtProposal`, `pendingCtProposal`, `ctAgreedSnapshot`, `ctAgreementHistory` 같은 협의 스냅샷/이력 값이 함께 저장될 수 있다.
+  - `assignments`: 라인 타임라인에 배정된 카드. 현재 CT 총합(`contractedSeconds`)과 원본 snapshot(`ctSnapshot`)을 함께 가진다.
+- 신규 로직은 카드 payload에 협의 이력/상태를 저장하지 않는다. 예전 데이터 호환용 legacy 필드는 읽기 단계에서만 정리해 흡수한다.
 - DELTA 카드(type='DELTA')는 `AssignmentCard`에만 존재, assignments에는 없음
 - `AssignmentBoardState.cards`는 레거시 JSON 필드로 남아 있지만 신규 로직의 읽기 소스로 사용하지 않는다.
 
@@ -521,7 +593,7 @@ Organization (MANUFACTURER | BRAND)
 - 카드는 수량 기준으로 분할(split) / 병합(merge) 가능
 - 분할 시 새 카드 id가 생겨도 `originOrderId`는 유지한다.
 - 병합은 `originOrderId`가 같은 카드/배정끼리만 허용된다.
-- `SENT`/`AGREED` 배정은 분할/병합 대상에서 제외된다.
+- 상태값 기반 잠금(`SENT/AGREED`)은 신규 로직에서 사용하지 않는다.
 - 카드에 배정된 수량과 수주 수량은 독립적 (수동 관리)
 
 ### 수주 수량 변경 시 배정 처리 (정책 확정)
@@ -536,13 +608,13 @@ Organization (MANUFACTURER | BRAND)
 
 ## 비즈니스 규칙
 
-1. CT(Contracted Time)는 합의 시점에 확정(snapshot)됨 — 이후 PT/AT/ST 변경과 완전히 무관
+1. CT(Contracted Time)는 배정 저장 시점의 snapshot으로 저장되며, 이후 PT/AT/ST 변경과 완전히 무관
 2. WorkLog/WorkRecord는 직원 퇴사 후에도 보존 (workerId nullable)
 3. 작업 배정 계획과 실제 작업 기록은 독립적으로 유지
 4. 수주 수량과 배정 카드 수량은 별도 관리 (카드는 수주를 쪼개서 배정)
 5. 급여 계산은 WorkRecord의 ctSeconds 기준 — Style.processes 변경 영향 없음
 6. 라인 인원 변경 시 해당 라인의 AssignmentBoard capacity 재계산 (트리거 방식)
-7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — CT 동의 후 라인장이 최종 수량 입력. 급여와 무관, 수량 초과 감지용. 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부 표시
+7. 카드 완료 처리: isCompleted 플래그 + finalQuantity 입력 — 저장된 CT snapshot과는 별개로 최종 수량만 관리한다. 급여와 무관하며, 완료 처리 시 WorkRecord 누적 수량과 비교하여 초과 여부를 표시한다.
 8. 초과 공정(WorkRecord 누적 > finalQuantity)도 **급여 지급 대상에 포함**한다.
 9. 회계 관리의 `생산 결과` 메뉴는 연결만 되어 있으며, 세부 로직은 추후 구현한다.
 10. **ST(q)는 `StyleProcessStandard(styleProcessId, quantity)` 기준점** — `Style.processes[].ct`, `stManual`, `timeRefQuantity`는 레거시 마이그레이션 전 임시 호환 모델
@@ -792,6 +864,7 @@ npm run dev
 ### backend/.env
 ```
 DATABASE_URL="postgresql://postgres.mqohhiufmjnfuhxpfwkn:DxAwGN7yXNhV0dqw@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true"
+DIRECT_URL="postgresql://postgres.mqohhiufmjnfuhxpfwkn:DxAwGN7yXNhV0dqw@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres"
 PORT=4000
 BUSINESS_TIME_ZONE=Asia/Seoul
 WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER=3
