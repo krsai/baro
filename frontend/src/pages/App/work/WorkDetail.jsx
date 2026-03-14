@@ -311,19 +311,15 @@ const buildCtSnapshotByProcess = (plan) => {
   return sourceRows.reduce((map, item) => {
     const processKey = String(item?.processKey || '').trim();
     if (!processKey) return map;
+    const ctSeconds = Number(item?.ctSeconds);
+    const stSeconds = Number(item?.stSeconds);
     map.set(processKey, {
       processKey,
       name: String(item?.name || '').trim() || '공정',
-      agreedSeconds: Number(item?.agreedSeconds) || 0,
-      requestedSeconds: Number(
-        item?.requestedSeconds ??
-          item?.lineRequestedSeconds ??
-          item?.proposedSeconds ??
-          item?.agreedSeconds
-      ) || 0,
-      proposedSeconds: Number(
-        item?.proposedSeconds ?? item?.stSeconds ?? item?.suggestedSeconds
-      ) || 0,
+      ctSeconds:
+        Number.isFinite(ctSeconds) && ctSeconds > 0 ? Math.round(ctSeconds) : 0,
+      stSeconds:
+        Number.isFinite(stSeconds) && stSeconds > 0 ? Math.round(stSeconds) : 0,
     });
     return map;
   }, new Map());
@@ -370,9 +366,7 @@ const toResolvedProcessShape = (process, fallbackId, snapshotEntry = null) => {
   if (!process || typeof process !== 'object') return null;
   const ctSeconds = resolveFirstPositiveSeconds(
     snapshotEntry?.ctSeconds,
-    snapshotEntry?.agreedSeconds,
-    snapshotEntry?.requestedSeconds,
-    snapshotEntry?.proposedSeconds,
+    snapshotEntry?.stSeconds,
     process.ct,
     process.ctSeconds,
     process.contractedSeconds,
@@ -414,20 +408,29 @@ const buildProcessOptionsForAssignmentCard = ({ card, style }) => {
       at: null,
       ctSeconds: resolveFirstPositiveSeconds(
         snapshotEntry.ctSeconds,
-        snapshotEntry.agreedSeconds,
-        snapshotEntry.requestedSeconds,
-        snapshotEntry.proposedSeconds
+        snapshotEntry.stSeconds
       ),
       contractedSeconds: resolveFirstPositiveSeconds(
         snapshotEntry.ctSeconds,
-        snapshotEntry.agreedSeconds,
-        snapshotEntry.requestedSeconds,
-        snapshotEntry.proposedSeconds
+        snapshotEntry.stSeconds
       ),
     });
   });
 
   return options;
+};
+const applyRecordedCtSeconds = (processOption, record) => {
+  if (!processOption) return null;
+  const recordedCtSeconds = Number(record?.ctSeconds);
+  if (!Number.isFinite(recordedCtSeconds) || recordedCtSeconds <= 0) {
+    return processOption;
+  }
+  const roundedCtSeconds = Math.round(recordedCtSeconds);
+  return {
+    ...processOption,
+    ctSeconds: roundedCtSeconds,
+    contractedSeconds: roundedCtSeconds,
+  };
 };
 const resolveProcessForRecord = ({ record, card, style, fallbackIndex }) => {
   if (!record?.processCode && !record?.processName) return null;
@@ -435,13 +438,15 @@ const resolveProcessForRecord = ({ record, card, style, fallbackIndex }) => {
   const processOptions = buildProcessOptionsForAssignmentCard({ card, style });
   if (record?.processCode) {
     const byCode = processOptions.find((process) => equalsText(process?.code, record.processCode));
-    if (byCode) return byCode;
+    if (byCode) return applyRecordedCtSeconds(byCode, record);
   }
   if (record?.processName) {
     const byName = processOptions.find((process) => matchesAttributeText(process, record.processName));
-    if (byName) return byName;
+    if (byName) return applyRecordedCtSeconds(byName, record);
   }
-  if (processOptions.length === 1) return processOptions[0];
+  if (processOptions.length === 1) {
+    return applyRecordedCtSeconds(processOptions[0], record);
+  }
 
   const ctSeconds = Number(record?.ctSeconds) || 0;
   return {

@@ -927,7 +927,7 @@ const ProductionPlanBoard = () => {
           assignedSeconds > 0
             ? assignedSeconds / Math.max(1, toPositiveInt(assignment?.quantity, 1))
             : null;
-        const agreedSeconds = resolveSavedSeconds(assignment);
+        const savedSeconds = resolveSavedSeconds(assignment);
         const wagePerSecond = Number(factory?.wagePerSecond);
         const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
         const perPieceCost =
@@ -935,7 +935,7 @@ const ProductionPlanBoard = () => {
             ? perPieceSeconds * wagePerSecond
             : null;
         const expectedCost = validWage ? assignedSeconds * wagePerSecond : null;
-        const agreedCost = validWage && status === 'SAVED' ? agreedSeconds * wagePerSecond : null;
+        const savedCost = validWage && status === 'SAVED' ? savedSeconds * wagePerSecond : null;
         const workingDays = getAssignmentWorkingDays(assignment, baseDate, holidaySet);
         const expectedPerPerson = expectedCost == null ? null : expectedCost / headcount;
         const monthlyPerPerson =
@@ -970,10 +970,10 @@ const ProductionPlanBoard = () => {
           assignedSeconds,
           perPieceSeconds,
           perPieceCost,
-          agreedSeconds,
+          savedSeconds,
           wagePerSecond: validWage ? wagePerSecond : null,
           expectedCost,
-          agreedCost,
+          savedCost,
           workingDays,
           expectedPerPerson,
           monthlyPerPerson,
@@ -1010,11 +1010,11 @@ const ProductionPlanBoard = () => {
       assignmentsForView.reduce(
         (acc, assignment) => {
           const status = resolveAssignmentSnapshotState(assignment);
-          if (status === 'SAVED') acc.agreed += 1;
-          else acc.pending += 1;
+          if (status === 'SAVED') acc.saved += 1;
+          else acc.unsaved += 1;
           return acc;
         },
-        { pending: 0, agreed: 0 }
+        { unsaved: 0, saved: 0 }
       ),
     [assignmentsForView]
   );
@@ -1049,10 +1049,10 @@ const ProductionPlanBoard = () => {
     nextAssignments.sort((left, right) => {
       const leftStatus = resolveAssignmentSnapshotState(left);
       const rightStatus = resolveAssignmentSnapshotState(right);
-      const leftIsAgreed = leftStatus === 'SAVED';
-      const rightIsAgreed = rightStatus === 'SAVED';
-      if (leftIsAgreed !== rightIsAgreed) {
-        return leftIsAgreed ? 1 : -1;
+      const leftIsSaved = leftStatus === 'SAVED';
+      const rightIsSaved = rightStatus === 'SAVED';
+      if (leftIsSaved !== rightIsSaved) {
+        return leftIsSaved ? 1 : -1;
       }
       return 0;
     });
@@ -1249,11 +1249,11 @@ const ProductionPlanBoard = () => {
 
       const orderQuantity = Math.max(1, toPositiveInt(assignmentView?.quantity, 1));
       const wagePerSecond = toOptionalPositiveNumber(assignmentView?.wagePerSecond);
-      const isAgreedAssignment = hasAssignmentCtSnapshot(assignmentView);
-      const agreedSnapshot = resolveAssignmentCtSnapshot(assignmentView);
-      const agreedSnapshotByProcess = (
-        isAgreedAssignment && Array.isArray(agreedSnapshot?.processes)
-          ? agreedSnapshot.processes
+      const hasSavedSnapshot = hasAssignmentCtSnapshot(assignmentView);
+      const savedSnapshot = resolveAssignmentCtSnapshot(assignmentView);
+      const savedSnapshotByProcess = (
+        hasSavedSnapshot && Array.isArray(savedSnapshot?.processes)
+          ? savedSnapshot.processes
           : []
       ).reduce((map, item) => {
         const processKey = String(item?.processKey || '').trim();
@@ -1264,7 +1264,7 @@ const ProductionPlanBoard = () => {
             item?.requestedSeconds ??
             item?.proposedSeconds
         );
-        const confirmedSeconds = toOptionalPositiveNumber(
+        const savedSeconds = toOptionalPositiveNumber(
           item?.ctSeconds ??
             item?.agreedSeconds ??
             item?.requestedSeconds ??
@@ -1272,7 +1272,7 @@ const ProductionPlanBoard = () => {
         );
         map.set(processKey, {
           assignedSeconds,
-          confirmedSeconds,
+          savedSeconds,
         });
         return map;
       }, new Map());
@@ -1323,12 +1323,12 @@ const ProductionPlanBoard = () => {
         0
       );
       const totalAssignedPerPieceSeconds = resolveCurrentCtSeconds(assignmentView) / orderQuantity;
-      const totalConfirmedPerPieceSeconds = isAgreedAssignment
+      const totalSavedPerPieceSeconds = hasSavedSnapshot
         ? resolveSavedSeconds(assignmentView) / orderQuantity
         : null;
 
       return baseRows.map((row) => {
-        const snapshotEntry = agreedSnapshotByProcess.get(row.processKey) ?? null;
+        const snapshotEntry = savedSnapshotByProcess.get(row.processKey) ?? null;
         const assignedSeconds =
           toOptionalPositiveNumber(snapshotEntry?.assignedSeconds) ??
           resolveDistributedSeconds({
@@ -1339,10 +1339,10 @@ const ProductionPlanBoard = () => {
             processCount: baseRows.length,
           }) ??
           row.baseSeconds;
-        const confirmedSeconds = isAgreedAssignment
-          ? toOptionalPositiveNumber(snapshotEntry?.confirmedSeconds) ??
+        const savedSeconds = hasSavedSnapshot
+          ? toOptionalPositiveNumber(snapshotEntry?.savedSeconds) ??
             resolveDistributedSeconds({
-              totalPerPieceSeconds: totalConfirmedPerPieceSeconds,
+              totalPerPieceSeconds: totalSavedPerPieceSeconds,
               totalBasePerPieceSeconds,
               basePerPieceSeconds: row.basePerPieceSeconds,
               processQuantity: row.processQuantity,
@@ -1351,19 +1351,19 @@ const ProductionPlanBoard = () => {
             assignedSeconds
           : null;
         const assignedPerPieceSeconds = assignedSeconds * row.processQuantity;
-        const confirmedPerPieceSeconds =
-          confirmedSeconds == null ? null : confirmedSeconds * row.processQuantity;
+        const savedPerPieceSeconds =
+          savedSeconds == null ? null : savedSeconds * row.processQuantity;
         const totalAssignedSeconds = assignedPerPieceSeconds * orderQuantity;
 
         return {
           ...row,
           assignedSeconds,
           assignedPerPieceSeconds,
-          confirmedSeconds,
-          confirmedPerPieceSeconds,
+          savedSeconds,
+          savedPerPieceSeconds,
           totalAssignedSeconds,
           assignedUnitCost: resolveCtUnitCost(assignedSeconds, wagePerSecond),
-          confirmedUnitCost: resolveCtUnitCost(confirmedSeconds, wagePerSecond),
+          savedUnitCost: resolveCtUnitCost(savedSeconds, wagePerSecond),
         };
       });
     },
@@ -1378,7 +1378,7 @@ const ProductionPlanBoard = () => {
   const selectedCostSummary = useMemo(() => {
     if (!selectedAssignment) return null;
 
-    const isAgreedAssignment = hasAssignmentCtSnapshot(selectedAssignment);
+    const hasSavedSnapshot = hasAssignmentCtSnapshot(selectedAssignment);
     const orderQuantity = Math.max(1, toPositiveInt(selectedAssignment.quantity, 1));
     const headcount = Math.max(1, toPositiveInt(selectedAssignment.headcount, 1));
     const workingDays = Number(selectedAssignment.workingDays) > 0 ? Number(selectedAssignment.workingDays) : 0;
@@ -1387,7 +1387,7 @@ const ProductionPlanBoard = () => {
 
     if (selectedProcessRows.length === 0) {
       const fallbackAssignedSeconds = resolveCurrentCtSeconds(selectedAssignment);
-      const fallbackConfirmedSeconds = isAgreedAssignment
+      const fallbackSavedSeconds = hasSavedSnapshot
         ? resolveSavedSeconds(selectedAssignment)
         : null;
       const fallbackTotalCost = wagePerSecond == null ? null : fallbackAssignedSeconds * wagePerSecond;
@@ -1401,15 +1401,15 @@ const ProductionPlanBoard = () => {
         fallbackPerPersonExpected == null || workingDays <= 0
           ? null
           : (fallbackPerPersonExpected / workingDays) * 26;
-      const fallbackConfirmedPerPieceSeconds =
-        isAgreedAssignment && Number(fallbackConfirmedSeconds) > 0
-          ? fallbackConfirmedSeconds / orderQuantity
+      const fallbackSavedPerPieceSeconds =
+        hasSavedSnapshot && Number(fallbackSavedSeconds) > 0
+          ? fallbackSavedSeconds / orderQuantity
           : null;
 
       return {
         totalBasePerPieceSeconds: fallbackAssignedSeconds / orderQuantity,
         totalAssignedPerPieceSeconds: fallbackAssignedSeconds / orderQuantity,
-        totalConfirmedPerPieceSeconds: fallbackConfirmedPerPieceSeconds,
+        totalSavedPerPieceSeconds: fallbackSavedPerPieceSeconds,
         totalBaseSeconds: fallbackAssignedSeconds,
         totalAssignedSeconds: fallbackAssignedSeconds,
         totalAtPerPieceSeconds: null,
@@ -1433,10 +1433,10 @@ const ProductionPlanBoard = () => {
       (sum, row) => sum + row.assignedPerPieceSeconds,
       0
     );
-    const totalConfirmedPerPieceSeconds =
-      isAgreedAssignment
+    const totalSavedPerPieceSeconds =
+      hasSavedSnapshot
         ? selectedProcessRows.reduce(
-            (sum, row) => sum + (Number(row?.confirmedPerPieceSeconds) || 0),
+            (sum, row) => sum + (Number(row?.savedPerPieceSeconds) || 0),
             0
           )
         : null;
@@ -1471,7 +1471,7 @@ const ProductionPlanBoard = () => {
     return {
       totalBasePerPieceSeconds,
       totalAssignedPerPieceSeconds,
-      totalConfirmedPerPieceSeconds,
+      totalSavedPerPieceSeconds,
       totalBaseSeconds,
       totalAssignedSeconds,
       totalAtPerPieceSeconds,
@@ -2033,12 +2033,12 @@ const ProductionPlanBoard = () => {
           </Box>
           <Stack direction="row" spacing={1}>
             <Chip
-              label={`CT 미저장 ${statusSummary.pending}`}
+              label={`CT 미저장 ${statusSummary.unsaved}`}
               variant="outlined"
               sx={resolveCtStatusChipSx('UNSAVED')}
             />
             <Chip
-              label={`CT 저장 ${statusSummary.agreed}`}
+              label={`CT 저장 ${statusSummary.saved}`}
               variant="outlined"
               sx={resolveCtStatusChipSx('SAVED')}
             />
@@ -2097,7 +2097,7 @@ const ProductionPlanBoard = () => {
                       const snapshotState = resolveAssignmentSnapshotState(assignment);
                       const statusMeta = STATUS_META[snapshotState] || STATUS_META.UNSAVED;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
-                      const isAgreed = snapshotState === 'SAVED';
+                      const isSaved = snapshotState === 'SAVED';
                       const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
 
                       return (
@@ -2198,7 +2198,7 @@ const ProductionPlanBoard = () => {
                             )}
                           </TableCell>
                           <TableCell sx={{ minWidth: 120 }}>
-                            {isAgreed ? (
+                            {isSaved ? (
                               <Chip
                                 size="small"
                                 label={assignment.isCompleted ? '완료' : '진행'}
@@ -2207,12 +2207,12 @@ const ProductionPlanBoard = () => {
                               />
                             ) : (
                               <Typography variant="caption" color="text.secondary">
-                                CT 미확정
+                                CT 미저장
                               </Typography>
                             )}
                           </TableCell>
                           <TableCell align="center" sx={{ minWidth: 104 }}>
-                            {isAgreed && !isLineLeaderView ? (
+                            {isSaved && !isLineLeaderView ? (
                               <Button
                                 size="small"
                                 variant={assignment.isCompleted ? 'outlined' : 'contained'}
@@ -2665,9 +2665,9 @@ const ProductionPlanBoard = () => {
                         공정 저장 CT 합 (한 벌)
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {selectedCostSummary?.totalConfirmedPerPieceSeconds == null
+                        {selectedCostSummary?.totalSavedPerPieceSeconds == null
                           ? '-'
-                          : formatSecondsLabel(selectedCostSummary.totalConfirmedPerPieceSeconds)}
+                          : formatSecondsLabel(selectedCostSummary.totalSavedPerPieceSeconds)}
                       </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2779,7 +2779,7 @@ const ProductionPlanBoard = () => {
                       </Typography>
                       <Typography variant="body2">
                           {selectedCtStatus === 'SAVED'
-                            ? formatSecondsLabel(selectedAssignment.agreedSeconds, '0초')
+                            ? formatSecondsLabel(selectedAssignment.savedSeconds, '0초')
                             : '-'}
                       </Typography>
                     </Box>
@@ -2821,9 +2821,9 @@ const ProductionPlanBoard = () => {
                         저장 CT 비용
                       </Typography>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {selectedCtStatus !== 'SAVED' || selectedAssignment.agreedCost == null
+                        {selectedCtStatus !== 'SAVED' || selectedAssignment.savedCost == null
                           ? '-'
-                          : formatCurrencyDong(selectedAssignment.agreedCost)}
+                          : formatCurrencyDong(selectedAssignment.savedCost)}
                       </Typography>
                     </Box>
                   </Stack>
@@ -2921,9 +2921,9 @@ const ProductionPlanBoard = () => {
                                 })}
                               </TableCell>
                               <TableCell align="right">
-                                {selectedCtStatus !== 'SAVED' || row.confirmedSeconds == null
+                                {selectedCtStatus !== 'SAVED' || row.savedSeconds == null
                                   ? '-'
-                                  : formatNumberWithCommas(row.confirmedSeconds, {
+                                  : formatNumberWithCommas(row.savedSeconds, {
                                       fallback: '0',
                                       maximumFractionDigits: 2,
                                     })}
@@ -2931,14 +2931,14 @@ const ProductionPlanBoard = () => {
                               <TableCell align="right">
                                 {selectedAssignment.wagePerSecond == null ? (
                                   '-'
-                                ) : selectedCtStatus === 'SAVED' && row.confirmedUnitCost == null ? (
+                                ) : selectedCtStatus === 'SAVED' && row.savedUnitCost == null ? (
                                   '-'
                                 ) : selectedCtStatus !== 'SAVED' && row.assignedUnitCost == null ? (
                                   '-'
                                 ) : (
                                   formatCurrencyDong(
-                                    selectedCtStatus === 'SAVED' && row.confirmedUnitCost != null
-                                      ? row.confirmedUnitCost
+                                    selectedCtStatus === 'SAVED' && row.savedUnitCost != null
+                                      ? row.savedUnitCost
                                       : row.assignedUnitCost
                                   )
                                 )}
@@ -2967,9 +2967,9 @@ const ProductionPlanBoard = () => {
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {selectedCtStatus === 'SAVED' &&
-                              selectedCostSummary?.totalConfirmedPerPieceSeconds != null
+                              selectedCostSummary?.totalSavedPerPieceSeconds != null
                                 ? formatNumberWithCommas(
-                                    selectedCostSummary.totalConfirmedPerPieceSeconds,
+                                    selectedCostSummary.totalSavedPerPieceSeconds,
                                     {
                                       fallback: '0',
                                       maximumFractionDigits: 2,
@@ -2981,9 +2981,9 @@ const ProductionPlanBoard = () => {
                               {selectedAssignment.wagePerSecond == null ? (
                                 '-'
                               ) : selectedCtStatus === 'SAVED' &&
-                                selectedCostSummary?.totalConfirmedPerPieceSeconds != null ? (
+                                selectedCostSummary?.totalSavedPerPieceSeconds != null ? (
                                 formatCurrencyDong(
-                                  selectedCostSummary.totalConfirmedPerPieceSeconds *
+                                  selectedCostSummary.totalSavedPerPieceSeconds *
                                     selectedAssignment.wagePerSecond
                                 )
                               ) : (

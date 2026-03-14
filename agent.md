@@ -170,6 +170,14 @@
 - 월간 생산계획 캘린더는 휴일 설정을 불러와 해당 날짜를 빨간 배경으로 표시한다.
 - 휴일 변경은 `HOLIDAY_UPDATED_EVENT`와 `storage` 이벤트로 동기화한다.
 
+### 런타임 레거시 정리
+
+- 작업기록 상세는 배정의 `ctSnapshot.processes[].ctSeconds`를 우선 사용한다. 저장된 CT가 있으면 ST로 되돌아가지 않도록 유지한다.
+- 기존 작업기록을 수정할 때도 `WorkRecord.ctSeconds`를 다시 공정 옵션에 덮어 써서 재저장 시 값이 오염되지 않게 한다.
+- 작업기록 서버 검증/오류 문구는 `CT agreement` 대신 `CT snapshot 저장` 기준으로 통일한다.
+- 생산계획 현황의 상태/문구는 `CT 저장`, `CT 미저장`으로만 표시한다.
+- 작업 배정 보드의 예전 잠금/확정 dead code와 경고 문구는 제거한다.
+
 ### 운영 메모
 
 - 로컬 DB에는 `20260314120000_replace_assignment_ct_status_with_snapshot` 마이그레이션을 적용했다.
@@ -421,12 +429,9 @@ AGREED (확정)
        기존 합의값은 card.ctAgreementHistory에 보관
 ```
 
-> ⚠️ 현재 구현의 잠금은 기능별로 다르다.
-> `SENT`/`AGREED`는 `isAssignmentLockedStatus` 대상이라 **수량 분할 / 카드·배정 병합 / 초기화**에서는 제외된다.
-> 다만 드래그 자체는 완전 잠금이 아니다. `AGREED`는 **다른 라인 이동 / 보드 밖 제거**만 막고, 같은 라인 내 날짜 이동은 현재 허용된다. `SENT`는 드래그 이동과 보드 밖 제거가 현재 코드상 가능하다.
-> `REJECTED`는 재협의 상태이며 운영팀 액션(요청 동의/다시 제안/배정 취소)이 열려 있고, 일반 배정처럼 저장/reflow 대상에도 포함된다.
-> 운영팀이 제안 CT를 수정한 상태에서는 **요청 동의가 비활성화**되며, 다시 제안으로만 진행 가능하다.
-> `SENT` 상태가 48시간을 초과하면 읽기/저장 과정에서 자동으로 관리자 검토 대상으로 에스컬레이션된다. (`ctEscalatedAt`, `ctEscalationReason='SENT_TIMEOUT_48H'`)
+> 이 블록은 2026-03-14 이전 CT 협의/잠금 정책 메모다.
+> 현재 구현은 `SENT`/`AGREED`/`REJECTED` 상태 흐름과 `isAssignmentLockedStatus`를 사용하지 않는다.
+> 최신 기준은 문서 상단 `오늘 반영 메모 (2026-03-14)`의 `CT 단일 snapshot 정책`과 `런타임 레거시 정리`를 따른다.
 
 #### CT 협의 UI 버튼 규칙 (ProductionPlanBoard)
 - **동의 버튼 활성**: 요청 CT 입력값이 없거나 제안 CT와 동일한 경우

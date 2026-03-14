@@ -2817,7 +2817,7 @@ const AssignBoard = () => {
       )
     );
 
-    // 저장 전 날짜 중첩 제거: 확정 카드 위치 고정, 나머지 재배치
+    // 저장 전 날짜 중첩 제거: 기존 배치를 기준으로 재배치
     let candidatePersistDays = persistDays;
     let reflowResult = null;
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -3039,7 +3039,6 @@ const AssignBoard = () => {
     () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
     [assignments]
   );
-  const isAssignmentLocked = useCallback(() => false, []);
   const assignmentCtDisplayStateById = useMemo(() => {
     const map = new Map();
 
@@ -3466,17 +3465,11 @@ const AssignBoard = () => {
     if (!contextMenuState) return true;
     if (contextMenuState.targetType === 'assignment') {
       if (!contextMenuTargetAssignment) return true;
-      if (isAssignmentLocked(contextMenuTargetAssignment)) return true;
       return Number(contextMenuTargetAssignment.quantity ?? 0) <= 1;
     }
     if (!contextMenuTargetCard) return true;
     return Number(contextMenuTargetCard.quantity ?? 0) <= 1;
-  }, [
-    contextMenuState,
-    contextMenuTargetAssignment,
-    contextMenuTargetCard,
-    isAssignmentLocked,
-  ]);
+  }, [contextMenuState, contextMenuTargetAssignment, contextMenuTargetCard]);
 
   const handleContextMenuOpen = useCallback((payload) => {
     if (!persistReady || loading) return;
@@ -3937,10 +3930,6 @@ const AssignBoard = () => {
 
   const handleSplitAssignment = useCallback((assignmentId) => {
     const target = assignmentById.get(assignmentId);
-    if (target && isAssignmentLocked(target)) {
-      showNotification('확정된 작업은 잠금 상태라 수량 분할할 수 없습니다.', 'warning');
-      return;
-    }
     if (!target?.cardId) return;
     const card = cardById.get(target.cardId);
     if (!card) return;
@@ -3987,7 +3976,6 @@ const AssignBoard = () => {
     buildSplitCard,
     days,
     lineCapacityById,
-    isAssignmentLocked,
     showNotification,
   ]);
   const handleContextSplit = useCallback(() => {
@@ -4045,7 +4033,6 @@ const AssignBoard = () => {
     const target = assignmentById.get(targetAssignmentId);
     const sourceCard = cardById.get(sourceCardId);
     if (!target || !sourceCard) return false;
-    if (isAssignmentLocked(target)) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
     const addedSeconds = resolveCardTotalSeconds(sourceCard);
@@ -4086,7 +4073,6 @@ const AssignBoard = () => {
     const targetCard = cardById.get(targetCardId);
     const sourceAssignment = assignmentById.get(sourceAssignmentId);
     if (!targetCard || !sourceAssignment) return false;
-    if (isAssignmentLocked(sourceAssignment)) return false;
     if (getCardOriginId(targetCard) !== getAssignmentOriginId(sourceAssignment)) return false;
 
     const sourceCard = buildCardFromAssignment(sourceAssignment);
@@ -4105,7 +4091,6 @@ const AssignBoard = () => {
     const target = assignmentById.get(targetAssignmentId);
     const source = assignmentById.get(sourceAssignmentId);
     if (!target || !source) return false;
-    if (isAssignmentLocked(target) || isAssignmentLocked(source)) return false;
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
     const sourceCard = buildCardFromAssignment(source);

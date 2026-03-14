@@ -3701,7 +3701,7 @@ const formatAssignmentPlanLabel = (plan: any) => {
   if (parts.length > 0) return parts.join(" · ");
   return resolveOptionalString(plan?.externalId, null) || `assignmentPlan#${plan?.id ?? "?"}`;
 };
-const validateWorkLogAssignmentPlanCtAgreement = async ({
+const validateWorkLogAssignmentPlanCtSnapshot = async ({
   orgId,
   lineId,
   records,
@@ -4037,8 +4037,11 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text.startsWith("assignment plan line mismatch")) {
     return "선택한 라인과 맞지 않는 배정카드가 포함되어 있습니다.";
   }
-  if (text.startsWith("ct agreement required before work log")) {
-    return "CT 확정이 완료된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
+  if (
+    text.startsWith("ct snapshot required before work log") ||
+    text.startsWith("ct agreement required before work log")
+  ) {
+    return "CT snapshot이 저장된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
   }
   if (text.startsWith("process quantity exceeds allowed range")) {
     return "배정카드 공정 수량이 허용 범위를 초과했습니다. 수량을 확인해 주세요.";
@@ -4431,7 +4434,6 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
       ...base,
       id: base.id,
       lineId: String(base.lineId),
-      ctOverride: false,
     };
     const stateStartIndex = toNumberOrNull(stateItem?.startIndex);
     const stateEndIndex = toNumberOrNull(stateItem?.endIndex);
@@ -7689,15 +7691,15 @@ app.post("/work-logs", async (req, res) => {
     orgId: organization.id,
     records: normalized.records,
   });
-  const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
+  const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
   });
-  if (ctAgreementValidation.error) {
+  if (ctSnapshotValidation.error) {
     return res
-      .status(ctAgreementValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(ctAgreementValidation.error) });
+      .status(ctSnapshotValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
     orgId: organization.id,
@@ -7835,15 +7837,15 @@ app.put("/work-logs/:id", async (req, res) => {
     orgId: organization.id,
     records: normalized.records,
   });
-  const ctAgreementValidation = await validateWorkLogAssignmentPlanCtAgreement({
+  const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
   });
-  if (ctAgreementValidation.error) {
+  if (ctSnapshotValidation.error) {
     return res
-      .status(ctAgreementValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(ctAgreementValidation.error) });
+      .status(ctSnapshotValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
     orgId: organization.id,
