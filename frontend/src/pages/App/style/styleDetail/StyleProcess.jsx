@@ -610,7 +610,7 @@ const StyleProcess = ({
       >
         <Stack direction="row" spacing={1.25} alignItems="center">
           <Typography variant="h6">스타일 공정 목록</Typography>
-          <Tooltip title="PT는 항상 1,000장 기준으로 입력하고, 기준 수량 q는 AT/ST 확인 문맥으로 사용합니다.">
+          <Tooltip title="PT는 항상 1,000장 주문 기준의 개당 시간으로 입력하고, 기준 수량 q는 AT/ST 확인 문맥으로 사용합니다.">
             <TextField
               size="small"
               type="text"
@@ -670,7 +670,7 @@ const StyleProcess = ({
                   <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
                     <Tooltip
-                      title={`PT(${ptTimeRefQuantityLabel}): 항상 1,000장 기준으로 입력하는 예상 시간(초)입니다.`}
+                      title={`PT(${ptTimeRefQuantityLabel}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.`}
                       placement="top"
                     >
                       <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
@@ -680,7 +680,7 @@ const StyleProcess = ({
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
-                      <Tooltip title={`AT(${timeRefQuantityLabel}): 실제 작업 기록 기반 자동 산출값입니다.`} placement="top">
+                      <Tooltip title={`AT(${timeRefQuantityLabel}): ${timeRefQuantityLabel}장 주문 기준의 개당 실측 시간(초)입니다.`} placement="top">
                         <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
@@ -700,7 +700,7 @@ const StyleProcess = ({
                   </TableCell>
                   <TableCell align="right" sx={{ width: 190 }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
-                      <Tooltip title={`ST(${timeRefQuantityLabel}): 배정 기준으로 사용하는 표준 시간입니다.`} placement="top">
+                      <Tooltip title={`ST(${timeRefQuantityLabel}): ${timeRefQuantityLabel}장 주문 기준의 개당 표준 시간(초)입니다.`} placement="top">
                         <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
                           {`ST(${timeRefQuantityLabel})`}
                         </Box>
@@ -927,7 +927,7 @@ const StyleProcess = ({
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={2} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    총 시간 합계
+                    개당 시간 합계
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}

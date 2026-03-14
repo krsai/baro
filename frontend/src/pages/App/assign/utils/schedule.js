@@ -1,6 +1,7 @@
-﻿export const calculateCardLoad = ({ totalSeconds, quantity }) => {
-  if (!totalSeconds || !quantity) return 0;
-  return totalSeconds * quantity;
+export const calculateCardLoad = ({ totalSeconds }) => {
+  const resolvedSeconds = Number(totalSeconds);
+  if (!Number.isFinite(resolvedSeconds) || resolvedSeconds <= 0) return 0;
+  return resolvedSeconds;
 };
 
 export const calculateRemainingCapacity = ({ capacitySeconds, usedSeconds }) => {

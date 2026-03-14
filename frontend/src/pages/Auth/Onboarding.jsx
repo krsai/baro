@@ -21,6 +21,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded';
 import { requestJSON } from '../../utils/apiClient';
+import { matchesAutocompleteSearch } from '../../utils/autocompleteSearch';
 import { useAuth } from '../../context/AuthContext';
 import SystemProviderFooter from '../../components/SystemProviderFooter';
 import {
@@ -178,13 +179,20 @@ const Onboarding = () => {
     };
   }, []);
 
-  const normalizedSearchText = normalizeCompactLower(companySearchText);
   const matchedOrganizations = useMemo(() => {
-    if (!normalizedSearchText) return [];
+    const searchText = String(companySearchText || '').trim();
+    if (!searchText) return [];
     return organizations.filter((organization) =>
-      getOrganizationSearchKey(organization).includes(normalizedSearchText)
+      matchesAutocompleteSearch(
+        {
+          ...organization,
+          searchText: getOrganizationSearchKey(organization),
+        },
+        searchText,
+        (option) => option?.name || ''
+      )
     );
-  }, [normalizedSearchText, organizations]);
+  }, [companySearchText, organizations]);
 
   const hasSearchInput = companySearchText.trim().length > 0;
   const hasMatchedOrganizations = matchedOrganizations.length > 0;

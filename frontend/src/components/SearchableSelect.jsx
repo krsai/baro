@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Autocomplete, TextField } from '@mui/material';
-import { createFilterOptions } from '@mui/material/Autocomplete';
+import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
 /**
  * A reusable search-enabled select dropdown component.
@@ -88,14 +88,8 @@ const SearchableSelect = ({
       : options.find((option) => isOptionEqualToValue(option, value)) ?? value;
   const resolvedFilterOptions =
     filterOptions ||
-    createFilterOptions({
-      stringify: (option) => {
-        if (typeof option === 'string') return option;
-        if (typeof option?.searchText === 'string' && option.searchText.trim()) {
-          return option.searchText;
-        }
-        return getOptionLabel(option);
-      },
+    createAutocompleteFilterOptions({
+      getOptionLabel,
     });
 
   return (

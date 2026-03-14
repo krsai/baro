@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Box, Divider, Paper, Stack, Typography } from '@mui/material';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
+  DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
   formatSeconds,
   hasAnyProcessTime,
@@ -18,11 +19,21 @@ const StyleAnalysis = ({ processes = [] }) => {
   const costData = [];
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const totalPT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'pt', 1),
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        normalizedProcesses,
+        'pt',
+        DEFAULT_TIME_REF_QUANTITY
+      ),
     [normalizedProcesses]
   );
   const totalAT = useMemo(
-    () => calculateProcessTotalForOrderQuantity(normalizedProcesses, 'at', 1),
+    () =>
+      calculateProcessTotalForOrderQuantity(
+        normalizedProcesses,
+        'at',
+        DEFAULT_TIME_REF_QUANTITY
+      ),
     [normalizedProcesses]
   );
   const hasTotalPT = useMemo(

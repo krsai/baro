@@ -1,4 +1,5 @@
 import { createTheme } from '@mui/material/styles';
+import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
 const theme = createTheme({
   palette: {
@@ -131,6 +132,11 @@ const theme = createTheme({
         root: {
           fontSize: '0.8125rem',
         },
+      },
+    },
+    MuiAutocomplete: {
+      defaultProps: {
+        filterOptions: createAutocompleteFilterOptions(),
       },
     },
     MuiTextField: {

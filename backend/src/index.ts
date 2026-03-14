@@ -5803,7 +5803,10 @@ const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = ne
 };
 
 const seedAttributesIfEmpty = async (orgId: number) => {
-  await prisma.$transaction([
+  const processCount = await prisma.attrProcess.count({
+    where: { orgId },
+  });
+  const tasks = [
     prisma.attrColor.createMany({
       data: DEFAULT_ATTRIBUTES.colors.map((item) => ({
         ...item,
@@ -5819,15 +5822,20 @@ const seedAttributesIfEmpty = async (orgId: number) => {
       })),
       skipDuplicates: true,
     }),
-    prisma.attrProcess.createMany({
-      data: DEFAULT_ATTRIBUTES.processes.map((item) => ({
-        ...item,
-        orgId,
-        nameEn: item.name,
-      })),
-      skipDuplicates: true,
-    }),
-  ]);
+  ];
+  if (processCount === 0) {
+    tasks.push(
+      prisma.attrProcess.createMany({
+        data: DEFAULT_ATTRIBUTES.processes.map((item) => ({
+          ...item,
+          orgId,
+          nameEn: item.name,
+        })),
+        skipDuplicates: true,
+      })
+    );
+  }
+  await prisma.$transaction(tasks);
   await ensureDefaultEmployeeRoles(orgId);
 };
 

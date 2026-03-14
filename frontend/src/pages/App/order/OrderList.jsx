@@ -22,7 +22,6 @@ import {
   Autocomplete,
   Stack,
 } from '@mui/material';
-import { createFilterOptions } from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -33,6 +32,7 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
+import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -438,8 +438,9 @@ const focusInputElementInMap = (mapRef, key) => {
   });
 };
 const normalizeTextKey = (value) => String(value || '').trim().toLowerCase();
-const filterColorOptions = createFilterOptions({
-  stringify: (option) => option?.searchText || option?.displayName || option?.name || option?.code || '',
+const filterColorOptions = createAutocompleteFilterOptions({
+  getOptionLabel: (option) =>
+    option?.searchText || option?.displayName || option?.name || option?.code || '',
 });
 const hasDuplicateOrderNumberByCustomer = ({
   orders = [],
