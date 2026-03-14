@@ -21,6 +21,9 @@ import {
   Alert,
   Autocomplete,
   Stack,
+  CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -222,9 +225,9 @@ const buildOrderTabLabel = (order) => {
   return orderNumber ? `주문: ${orderNumber}` : '주문';
 };
 const ORDER_MODIFICATION_LOCK_NOTICE =
-  '\uBE0C\uB79C\uB4DC\uAC00 \uD655\uC815\uD558\uBA74 \uC8FC\uBB38 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
+  '\uC8FC\uBB38\uC744 \uD655\uC815\uD558\uBA74 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
 const ORDER_MODIFICATION_LOCK_MESSAGE =
-  '\uD655\uC815\uB41C \uC8FC\uBB38\uC740 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC218\uC815\uD560 \uC218 \uC5C6\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
+  '\uC7A0\uAE34 \uC8FC\uBB38\uC740 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC218\uC815\uD560 \uC218 \uC5C6\uACE0, \uACC4\uD68D/\uD655\uC815 \uC804\uD658\uB9CC \uAC00\uB2A5\uD569\uB2C8\uB2E4.';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -1356,6 +1359,8 @@ const OrderList = () => {
     if (isNewOrder) return null;
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [pendingConfirmationStatus, setPendingConfirmationStatus] = useState('');
   useEffect(() => {
     if (!isDetailMode || isNewOrder || !currentDetailOrder?.id) return;
     navigateToPath(`/order/${currentDetailOrder.id}`, {
@@ -1379,10 +1384,25 @@ const OrderList = () => {
     const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
     return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
   }, [currentDetailOrder, fixedSellerOrg, formData, isNewOrder]);
+  const hasChangesForForm = (candidateFormData) => {
+    if (isNewOrder) return true;
+    if (!currentDetailOrder) return false;
+
+    const baselineSnapshot = toComparableOrderSnapshot(
+      normalizeOrderForm(currentDetailOrder),
+      fixedSellerOrg
+    );
+    const currentSnapshot = toComparableOrderSnapshot(candidateFormData, fixedSellerOrg);
+    return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
+  };
 
   const isCurrentOrderModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isModificationLocked
   );
+  const displayedConfirmationStatus =
+    pendingConfirmationStatus ||
+    normalizeOrderConfirmation(formData.confirmationStatus) ||
+    ORDER_CONFIRMATION_STATUSES[0];
   const handleAdd = () => {
     navigateToPath('/order/new', { label: '신규 주문' });
   };

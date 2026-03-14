@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -60,6 +60,7 @@ const sectionConfigs = [
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
 
 const toTrimmedText = (value) => String(value ?? '').trim();
+const sortRowsByCode = (left, right) => left.code.localeCompare(right.code);
 
 const resolveBaseAttributeName = (item = {}) => {
   const name = toTrimmedText(item?.name);
@@ -85,6 +86,130 @@ const normalizeData = (data) => ({
   processes: normalizeRows(data?.processes),
 });
 
+const areRowsEqual = (leftRows = [], rightRows = []) => {
+  if (leftRows.length !== rightRows.length) return false;
+
+  for (let index = 0; index < leftRows.length; index += 1) {
+    const left = leftRows[index] || {};
+    const right = rightRows[index] || {};
+    if (
+      left.id !== right.id ||
+      left.code !== right.code ||
+      left.name !== right.name ||
+      left.nameEn !== right.nameEn ||
+      left.nameKo !== right.nameKo ||
+      left.nameVi !== right.nameVi
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const AttributeRow = memo(function AttributeRow({
+  row,
+  columns,
+  sectionKey,
+  onRowChange,
+  onDeleteRow,
+}) {
+  return (
+    <TableRow hover>
+      {columns.map((col) => (
+        <TableCell key={col.field}>
+          <TextField
+            value={row[col.field] || ''}
+            onChange={(event) => onRowChange(sectionKey, row.id, col.field, event.target.value)}
+            fullWidth
+            size="small"
+            placeholder={col.label}
+          />
+        </TableCell>
+      ))}
+      <TableCell sx={{ textAlign: 'center' }}>
+        <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+const AttributeSection = memo(function AttributeSection({
+  config,
+  rows,
+  onAddRow,
+  onDeleteRow,
+  onRowChange,
+}) {
+  const sortedRows = useMemo(() => [...rows].sort(sortRowsByCode), [rows]);
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box>
+          <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+            {config.title}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            영어명을 기본값으로 사용하고, 한국어명/베트남어명은 다국어 표시용입니다.
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => onAddRow(config.key)}
+        >
+          추가
+        </Button>
+      </Box>
+
+      <TableContainer sx={{ maxHeight: 420, overflow: 'auto' }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              {config.columns.map((col) => (
+                <TableCell key={col.field} sx={{ fontWeight: 'bold', width: col.width }}>
+                  {col.label}
+                </TableCell>
+              ))}
+              <TableCell sx={{ width: '10%', textAlign: 'center' }}>삭제</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {sortedRows.map((row) => (
+              <AttributeRow
+                key={row.id}
+                row={row}
+                columns={config.columns}
+                sectionKey={config.key}
+                onRowChange={onRowChange}
+                onDeleteRow={onDeleteRow}
+              />
+            ))}
+
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={config.columns.length + 1}
+                  sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}
+                >
+                  데이터가 없습니다.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+});
+
 const AttrBoard = () => {
   const { showNotification } = useApp();
   const [canManageProcesses, setCanManageProcesses] = useState(true);
@@ -98,9 +223,15 @@ const AttrBoard = () => {
 
   const [formData, setFormData] = useState(() => cloneDeep(initialData));
   const [originalData, setOriginalData] = useState(() => cloneDeep(initialData));
-  const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
+  const isDirty = useMemo(
+    () =>
+      visibleSectionConfigs.some(
+        (section) => !areRowsEqual(formData[section.key], originalData[section.key])
+      ),
+    [formData, originalData, visibleSectionConfigs]
+  );
 
   useUnsavedChanges(isDirty);
 
@@ -130,20 +261,16 @@ const AttrBoard = () => {
     };
   }, []);
 
-  useEffect(() => {
-    setIsDirty(JSON.stringify(formData) !== JSON.stringify(originalData));
-  }, [formData, originalData]);
-
-  const handleRowChange = (sectionKey, id, field, value) => {
+  const handleRowChange = useCallback((sectionKey, id, field, value) => {
     setFormData((prev) => ({
       ...prev,
       [sectionKey]: prev[sectionKey].map((item) =>
         item.id === id ? { ...item, [field]: value } : item
       ),
     }));
-  };
+  }, []);
 
-  const handleAddRow = (sectionKey) => {
+  const handleAddRow = useCallback((sectionKey) => {
     setFormData((prev) => ({
       ...prev,
       [sectionKey]: [
@@ -158,14 +285,14 @@ const AttrBoard = () => {
         },
       ],
     }));
-  };
+  }, []);
 
-  const handleDeleteRow = (sectionKey, id) => {
+  const handleDeleteRow = useCallback((sectionKey, id) => {
     setFormData((prev) => ({
       ...prev,
       [sectionKey]: prev[sectionKey].filter((item) => item.id !== id),
     }));
-  };
+  }, []);
 
   const handleSaveClick = () => {
     if (isSaving) return;
@@ -183,7 +310,7 @@ const AttrBoard = () => {
         const sectionKey = section.key;
         const beforeRows = originalData[sectionKey] || [];
         const afterRows = formData[sectionKey] || [];
-        if (JSON.stringify(beforeRows) !== JSON.stringify(afterRows)) {
+        if (!areRowsEqual(beforeRows, afterRows)) {
           changedPayload[sectionKey] = afterRows;
         }
       });
@@ -206,88 +333,6 @@ const AttrBoard = () => {
       setIsSaving(false);
     }
   };
-
-  const handleRevert = () => {
-    if (!window.confirm('모든 변경사항을 취소하고 되돌리시겠습니까?')) return;
-    setFormData(cloneDeep(originalData));
-  };
-
-  const renderSection = (config) => (
-    <Paper
-      variant="outlined"
-      sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}
-    >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box>
-          <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
-            {config.title}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            영어명을 기본값으로 사용하고, 한국어명/베트남어명은 다국어 표시용입니다.
-          </Typography>
-        </Box>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AddIcon />}
-          onClick={() => handleAddRow(config.key)}
-        >
-          추가
-        </Button>
-      </Box>
-
-      <TableContainer sx={{ maxHeight: 420, overflow: 'auto' }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              {config.columns.map((col) => (
-                <TableCell key={col.field} sx={{ fontWeight: 'bold', width: col.width }}>
-                  {col.label}
-                </TableCell>
-              ))}
-              <TableCell sx={{ width: '10%', textAlign: 'center' }}>삭제</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {[...formData[config.key]].sort((a, b) => a.code.localeCompare(b.code)).map((row) => (
-              <TableRow key={row.id} hover>
-                {config.columns.map((col) => (
-                  <TableCell key={col.field}>
-                    <TextField
-                      value={row[col.field] || ''}
-                      onChange={(event) =>
-                        handleRowChange(config.key, row.id, col.field, event.target.value)
-                      }
-                      fullWidth
-                      size="small"
-                      placeholder={col.label}
-
-                    />
-                  </TableCell>
-                ))}
-                <TableCell sx={{ textAlign: 'center' }}>
-                  <IconButton size="small" onClick={() => handleDeleteRow(config.key, row.id)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {formData[config.key].length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={config.columns.length + 1}
-                  sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}
-                >
-                  데이터가 없습니다.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
-  );
 
   return (
     <AppPageContainer>
@@ -317,7 +362,13 @@ const AttrBoard = () => {
         <Grid container spacing={3}>
           {visibleSectionConfigs.map((config) => (
             <Grid item xs={12} key={config.key}>
-              {renderSection(config)}
+              <AttributeSection
+                config={config}
+                rows={formData[config.key] || []}
+                onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteRow}
+                onRowChange={handleRowChange}
+              />
             </Grid>
           ))}
         </Grid>
