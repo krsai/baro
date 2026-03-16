@@ -22,6 +22,7 @@ import {
   Autocomplete,
   Stack,
   CircularProgress,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -83,6 +84,7 @@ import {
   createOrder as createOrderToApi,
   updateOrder as updateOrderToApi,
   deleteOrder as deleteOrderToApi,
+  toggleOrderModificationLock as toggleOrderModificationLockToApi,
 } from '../../../utils/orderApi';
 import {
   calculateProcessTotalForOrderQuantity,
@@ -208,7 +210,7 @@ const buildOrderTabLabel = (order) => {
 const ORDER_MODIFICATION_LOCK_NOTICE =
   '\uC8FC\uBB38\uC744 \uD655\uC815\uD558\uBA74 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
 const ORDER_MODIFICATION_LOCK_MESSAGE =
-  '\uC7A0\uAE34 \uC8FC\uBB38\uC740 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC218\uC815\uD560 \uC218 \uC5C6\uACE0, \uACC4\uD68D/\uD655\uC815 \uC804\uD658\uB9CC \uAC00\uB2A5\uD569\uB2C8\uB2E4.';
+  '잠긴 주문은 수정하거나 삭제할 수 없습니다.';
 const toOrgId = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -476,6 +478,28 @@ const resolveOrderSaveErrorMessage = (error) => {
     return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
   }
   return message || '주문 저장 중 오류가 발생했습니다.';
+};
+const resolveOrderModificationLockToggleErrorMessage = (error) => {
+  const message = String(error?.message || '').trim();
+  if (message.includes('order modification lock cannot be changed')) {
+    return '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.';
+  }
+  if (message.includes('order modification is locked')) {
+    return ORDER_MODIFICATION_LOCK_MESSAGE;
+  }
+  return message || '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.';
+};
+const formatOrderLockTimestamp = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
@@ -1377,7 +1401,20 @@ const OrderList = () => {
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
   const [pendingConfirmationStatus, setPendingConfirmationStatus] = useState('');
+  const mergeOrderIntoState = useCallback((nextOrder) => {
+    if (!nextOrder?.id) return;
+    setOrders((prev) => {
+      let found = false;
+      const nextOrders = prev.map((order) => {
+        if (order.id !== nextOrder.id) return order;
+        found = true;
+        return nextOrder;
+      });
+      return found ? nextOrders : prev;
+    });
+  }, []);
   useEffect(() => {
     if (!isDetailMode || isNewOrder || !currentDetailOrder?.id) return;
     navigateToPath(`/order/${currentDetailOrder.id}`, {
@@ -1416,6 +1453,76 @@ const OrderList = () => {
   const isCurrentOrderModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isModificationLocked
   );
+  const isCurrentOrderManualModificationLocked = Boolean(
+    !isNewOrder && currentDetailOrder?.isManualModificationLocked
+  );
+  const isCurrentOrderConfirmedModificationLocked = Boolean(
+    !isNewOrder && currentDetailOrder?.isConfirmedModificationLocked
+  );
+  const isCurrentOrderAssignmentModificationLocked = Boolean(
+    !isNewOrder && currentDetailOrder?.isAssignmentModificationLocked
+  );
+  const canToggleCurrentOrderModificationLock = Boolean(
+    !isNewOrder && currentDetailOrder?.canToggleModificationLock
+  );
+  const currentOrderLockMetaText = useMemo(() => {
+    if (!currentDetailOrder) return '';
+    const parts = [
+      String(currentDetailOrder?.modificationLockedBy || '').trim(),
+      formatOrderLockTimestamp(currentDetailOrder?.modificationLockedAt),
+    ].filter(Boolean);
+    return parts.join(' · ');
+  }, [
+    currentDetailOrder?.modificationLockedAt,
+    currentDetailOrder?.modificationLockedBy,
+  ]);
+  const currentOrderLockHelperText = useMemo(() => {
+    if (isNewOrder) return '주문을 저장한 뒤 잠금 스위치를 사용할 수 있습니다.';
+    if (isCurrentOrderConfirmedModificationLocked) {
+      return '주문이 확정되어 자동 잠금 상태입니다.';
+    }
+    if (isCurrentOrderAssignmentModificationLocked) {
+      return '배정 계약 데이터가 있어 자동 잠금 상태입니다.';
+    }
+    if (isCurrentOrderManualModificationLocked) {
+      return currentOrderLockMetaText
+        ? `수동 잠금 상태입니다. ${currentOrderLockMetaText}`
+        : '수동 잠금 상태입니다.';
+    }
+    if (hasFormChanges) {
+      return '미저장 변경사항이 있으면 잠글 수 없습니다. 먼저 저장해 주세요.';
+    }
+    return '필요할 때 주문 수정 잠금을 켜서 기본 정보를 고정할 수 있습니다.';
+  }, [
+    currentOrderLockMetaText,
+    hasFormChanges,
+    isCurrentOrderAssignmentModificationLocked,
+    isCurrentOrderConfirmedModificationLocked,
+    isCurrentOrderManualModificationLocked,
+    isNewOrder,
+  ]);
+  const currentOrderLockAlertText = useMemo(() => {
+    if (isCurrentOrderConfirmedModificationLocked) {
+      return '이 주문은 확정되어 기본 정보가 자동으로 잠겨 있습니다.';
+    }
+    if (isCurrentOrderAssignmentModificationLocked) {
+      return '이 주문은 배정 계약 데이터가 있어 자동으로 잠겨 있습니다.';
+    }
+    if (isCurrentOrderManualModificationLocked) {
+      return '이 주문은 수동 잠금 상태입니다. 상단 스위치로 잠금을 해제하면 다시 수정할 수 있습니다.';
+    }
+    return ORDER_MODIFICATION_LOCK_MESSAGE;
+  }, [
+    isCurrentOrderAssignmentModificationLocked,
+    isCurrentOrderConfirmedModificationLocked,
+    isCurrentOrderManualModificationLocked,
+  ]);
+  const isModificationLockToggleDisabled =
+    isNewOrder ||
+    isSavingOrder ||
+    isTogglingModificationLock ||
+    !canToggleCurrentOrderModificationLock ||
+    (!isCurrentOrderManualModificationLocked && hasFormChanges);
   const displayedConfirmationStatus =
     pendingConfirmationStatus ||
     normalizeOrderConfirmation(formData.confirmationStatus) ||
@@ -1460,6 +1567,45 @@ const OrderList = () => {
     navigateToPath(`/order/${order.id}`, {
       label: buildOrderTabLabel(order),
     });
+  };
+
+  const handleModificationLockToggle = async (event) => {
+    if (isNewOrder || !currentDetailOrder?.id) return;
+    const nextLocked = Boolean(event.target.checked);
+
+    if (nextLocked && hasFormChanges) {
+      showNotification('변경사항을 먼저 저장한 뒤 잠가 주세요.', 'warning');
+      return;
+    }
+    if (!canToggleCurrentOrderModificationLock) {
+      showNotification(
+        '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+        'warning'
+      );
+      return;
+    }
+
+    setIsTogglingModificationLock(true);
+    try {
+      const updated = await toggleOrderModificationLockToApi(
+        currentDetailOrder.id,
+        {
+          locked: nextLocked,
+          lockedBy: activeProfile?.email || activeProfile?.name || '관리자',
+        },
+        { orgId: activeOrgId }
+      );
+      mergeOrderIntoState(updated);
+      markPathForRefresh('/order');
+      showNotification(
+        nextLocked ? '주문 수정이 잠겼습니다.' : '주문 수정 잠금이 해제되었습니다.',
+        'success'
+      );
+    } catch (error) {
+      showNotification(resolveOrderModificationLockToggleErrorMessage(error), 'error');
+    } finally {
+      setIsTogglingModificationLock(false);
+    }
   };
 
   const handleDeleteOrder = async (order) => {
@@ -1946,6 +2092,7 @@ const OrderList = () => {
       updatedAt: new Date().toISOString(),
     };
 
+    setIsSavingOrder(true);
     try {
       if (!isNewOrder) {
         const existingOrder = orders.find((order) => order.id === orderId);
@@ -2038,6 +2185,8 @@ const OrderList = () => {
       closeDetailAndGoList();
     } catch (error) {
       showNotification(resolveOrderSaveErrorMessage(error), 'error');
+    } finally {
+      setIsSavingOrder(false);
     }
   };
 
@@ -2318,26 +2467,65 @@ const OrderList = () => {
 
   return (
     <AppPageContainer>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', md: 'center' },
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 2,
+          mb: 2,
+        }}
+      >
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h6">{isNewOrder ? '신규 주문 등록' : '주문 정보 수정'}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
             {ORDER_MODIFICATION_LOCK_NOTICE}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+          {!isNewOrder && (
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', md: 'flex-end' } }}
+            >
+              <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  주문 수정 잠금
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 320 }}>
+                  {currentOrderLockHelperText}
+                </Typography>
+              </Stack>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
+                {isTogglingModificationLock && <CircularProgress size={16} />}
+                <Switch
+                  checked={isCurrentOrderModificationLocked}
+                  onChange={handleModificationLockToggle}
+                  disabled={isModificationLockToggleDisabled}
+                  inputProps={{ 'aria-label': '주문 수정 잠금 스위치' }}
+                />
+              </Stack>
+            </Stack>
+          )}
+          <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-end', md: 'flex-end' }}>
           {isNewOrder && (
-            <Button onClick={handleClearDraft} color="inherit">
+            <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
               임시 저장 삭제
             </Button>
           )}
           <Button
             onClick={handleSave}
             variant="contained"
-            disabled={!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked)}
+            disabled={
+              isSavingOrder ||
+              (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
+            }
           >
             저장
           </Button>
+          </Stack>
         </Stack>
       </Box>
 
@@ -2349,7 +2537,7 @@ const OrderList = () => {
 
       {isCurrentOrderModificationLocked && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {ORDER_MODIFICATION_LOCK_MESSAGE}
+          {currentOrderLockAlertText}
         </Alert>
       )}
 

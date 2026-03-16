@@ -130,6 +130,8 @@ const WORK_ORDER_STATUS_CODES = new Set([
 const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set(["PLANNED", "CONFIRMED"]);
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
+const ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR =
+  "order modification lock cannot be changed";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["주문접수", "ORDER_RECEIVED"],
   ["접수", "ORDER_RECEIVED"],
@@ -3120,7 +3122,7 @@ const workOrderItemToItemShape = (row: any) => ({
 const toOrderResponse = (
   order: any,
   options: {
-    isModificationLocked?: boolean;
+    isAssignmentModificationLocked?: boolean;
   } = {}
 ) => {
   const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
@@ -3130,6 +3132,13 @@ const toOrderResponse = (
     : null;
   const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
+  const isManualModificationLocked = Boolean(order?.modificationLockedAt);
+  const isConfirmedModificationLocked = isWorkOrderConfirmed(order?.confirmationStatus);
+  const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
+  const isModificationLocked =
+    isManualModificationLocked ||
+    isConfirmedModificationLocked ||
+    isAssignmentModificationLocked;
   return {
     id: order.orderId,
     ownerOrgId,
@@ -3149,7 +3158,14 @@ const toOrderResponse = (
     ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
-    isModificationLocked: Boolean(options.isModificationLocked),
+    isModificationLocked,
+    isManualModificationLocked,
+    isConfirmedModificationLocked,
+    isAssignmentModificationLocked,
+    canToggleModificationLock:
+      !isConfirmedModificationLocked && !isAssignmentModificationLocked,
+    modificationLockedAt: order.modificationLockedAt ?? null,
+    modificationLockedBy: order.modificationLockedBy ?? "",
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
   };
@@ -5198,7 +5214,27 @@ const getOrderRelatedOrgIds = (order: any): number[] =>
         .filter((value): value is number => value !== null)
     )
   );
-const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, boolean>> => {
+const buildOrderModificationLockState = ({
+  order,
+  isAssignmentLocked = false,
+}: {
+  order: any;
+  isAssignmentLocked?: boolean;
+}) => {
+  const isManualLocked = Boolean(order?.modificationLockedAt);
+  const isConfirmedLocked = isWorkOrderConfirmed(order?.confirmationStatus);
+  const assignmentLocked = Boolean(isAssignmentLocked);
+  return {
+    isManualLocked,
+    isConfirmedLocked,
+    isAssignmentLocked: assignmentLocked,
+    canToggle: !isConfirmedLocked && !assignmentLocked,
+    isLocked: isManualLocked || isConfirmedLocked || assignmentLocked,
+  };
+};
+const loadOrderAssignmentModificationLockMap = async (
+  orders: any[]
+): Promise<Map<string, boolean>> => {
   const safeOrders = ensureArray(orders).filter((order) => order && typeof order === "object");
   const orderIds = Array.from(
     new Set(
@@ -5209,14 +5245,6 @@ const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, 
   );
   const lockMap = new Map<string, boolean>();
   if (orderIds.length === 0) return lockMap;
-
-  safeOrders.forEach((order) => {
-    const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
-    if (!orderId) return;
-    if (isWorkOrderConfirmed(order?.confirmationStatus)) {
-      lockMap.set(orderId, true);
-    }
-  });
 
   const orderIdSet = new Set(orderIds);
   const orgIds = Array.from(
@@ -5243,10 +5271,7 @@ const loadOrderModificationLockMap = async (orders: any[]): Promise<Map<string, 
   });
   return lockMap;
 };
-const isOrderModificationLocked = async (order: any): Promise<boolean> => {
-  if (isWorkOrderConfirmed(order?.confirmationStatus)) {
-    return true;
-  }
+const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean> => {
   const orderId = resolveOptionalString(order?.orderId ?? order?.id, null);
   if (!orderId) return false;
   const orgIds = getOrderRelatedOrgIds(order);
@@ -5265,6 +5290,14 @@ const isOrderModificationLocked = async (order: any): Promise<boolean> => {
     select: { id: true },
   });
   return Boolean(lockedPlan);
+};
+const getOrderModificationLockState = async (order: any) =>
+  buildOrderModificationLockState({
+    order,
+    isAssignmentLocked: await isOrderAssignmentModificationLocked(order),
+  });
+const isOrderModificationLocked = async (order: any): Promise<boolean> => {
+  return (await getOrderModificationLockState(order)).isLocked;
 };
 const loadAssignmentDisplayReferenceMaps = async (
   orgId: number
@@ -8657,13 +8690,13 @@ app.get("/orders", async (req, res) => {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
   });
-  const lockMap = await loadOrderModificationLockMap(orders);
+  const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   res.json(
     orders.map((order) =>
       {
         const orderKey = resolveOptionalString(order?.orderId ?? order?.id, null) ?? "";
         return toOrderResponse(order, {
-          isModificationLocked: Boolean(lockMap.get(orderKey)),
+          isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
         });
       }
     )
@@ -8720,9 +8753,10 @@ app.post("/orders", async (req, res) => {
 
   const { order, created } = await createOrReuseSharedOrder({ normalized });
   await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
+  const orderLockState = await getOrderModificationLockState(order);
   res.status(created ? 201 : 200).json(
     toOrderResponse(order, {
-      isModificationLocked: await isOrderModificationLocked(order),
+      isAssignmentModificationLocked: orderLockState.isAssignmentLocked,
     })
   );
 });
@@ -8852,9 +8886,81 @@ app.put("/orders/:orderId", async (req, res) => {
     buyer.id,
     seller.id,
   ]);
+  const updatedLockState = await getOrderModificationLockState(updated);
   res.json(
     toOrderResponse(updated, {
-      isModificationLocked: await isOrderModificationLocked(updated),
+      isAssignmentModificationLocked: updatedLockState.isAssignmentLocked,
+    })
+  );
+});
+
+app.post("/orders/:orderId/modification-lock", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const orderId = String(req.params.orderId || "").trim();
+  if (!orderId) {
+    return res.status(400).json({ ok: false, error: "orderId is required" });
+  }
+  if (typeof req.body?.locked !== "boolean") {
+    return res.status(400).json({ ok: false, error: "locked boolean is required" });
+  }
+
+  const existing = await prisma.workOrder.findFirst({
+    where: {
+      orderId,
+      OR: getOrderAccessWhere(organization.id),
+    },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+  });
+  if (!existing) {
+    return res.status(404).json({ ok: false, error: "order not found" });
+  }
+
+  const currentLockState = await getOrderModificationLockState(existing);
+  if (!currentLockState.canToggle) {
+    return res.status(409).json({
+      ok: false,
+      error: ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR,
+    });
+  }
+
+  const requestedLocked = Boolean(req.body.locked);
+  if (requestedLocked === currentLockState.isManualLocked) {
+    return res.json(
+      toOrderResponse(existing, {
+        isAssignmentModificationLocked: currentLockState.isAssignmentLocked,
+      })
+    );
+  }
+
+  const lockedBy =
+    resolveOptionalString(req.body?.lockedBy, null) ??
+    getRequesterEmail(req) ??
+    "unknown";
+  const updated = await prisma.workOrder.update({
+    where: { id: existing.id },
+    data: requestedLocked
+      ? {
+          modificationLockedAt: new Date(),
+          modificationLockedBy: lockedBy,
+        }
+      : {
+          modificationLockedAt: null,
+          modificationLockedBy: null,
+        },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+  });
+
+  res.json(
+    toOrderResponse(updated, {
+      isAssignmentModificationLocked: currentLockState.isAssignmentLocked,
     })
   );
 });

@@ -32,3 +32,19 @@ export const deleteOrder = async (orderId, { orgId = null } = {}) => {
     method: 'DELETE',
   });
 };
+
+export const toggleOrderModificationLock = async (
+  orderId,
+  { locked, lockedBy = '' } = {},
+  { orgId = null } = {}
+) => {
+  const query = buildQueryString({ orgId });
+  return requestJSON(`/orders/${encodeURIComponent(orderId)}/modification-lock` + query, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      locked: Boolean(locked),
+      lockedBy,
+    }),
+  });
+};

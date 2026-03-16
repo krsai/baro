@@ -469,6 +469,8 @@ model WorkOrder {
   dueDate       String?
   status        WorkOrderStatus @default(ORDER_RECEIVED)
   confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
+  modificationLockedAt DateTime?
+  modificationLockedBy String?
   items         Json?
   totalQuantity Int             @default(0)
   createdAt     DateTime        @default(now())
