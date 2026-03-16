@@ -8,21 +8,76 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const BASELINE_COLORS = [
-  { code: 'WHITE', name: 'White' },
-  { code: 'BLACK', name: 'Black' },
-  { code: 'NAVY', name: 'Navy' },
-  { code: 'GRAY-MEL', name: 'Gray Melange' },
-  { code: 'LT-BLUE', name: 'Light Blue' },
-  { code: 'MID-BLUE', name: 'Mid Blue' },
-  { code: 'INDIGO', name: 'Indigo' },
+  { code: 'WHITE', name: 'White', nameEn: 'White', nameKo: '화이트', nameVi: 'Trắng' },
+  { code: 'BLACK', name: 'Black', nameEn: 'Black', nameKo: '블랙', nameVi: 'Đen' },
+  { code: 'NAVY', name: 'Navy', nameEn: 'Navy', nameKo: '네이비', nameVi: 'Xanh Navy' },
+  {
+    code: 'DARK-MELANGE',
+    name: 'Dark Melange',
+    nameEn: 'Dark Melange',
+    nameKo: '다크 멜란지',
+    nameVi: 'Dark Melange',
+  },
+  {
+    code: 'LT-BLUE',
+    name: 'Light Blue',
+    nameEn: 'Light Blue',
+    nameKo: '라이트 블루',
+    nameVi: 'Xanh nhạt',
+  },
+  {
+    code: 'MID-BLUE',
+    name: 'Mid Blue',
+    nameEn: 'Mid Blue',
+    nameKo: '미드 블루',
+    nameVi: 'Xanh trung',
+  },
+  { code: 'INDIGO', name: 'Indigo', nameEn: 'Indigo', nameKo: '인디고', nameVi: 'Indigo' },
 ];
 
 const BASELINE_CATEGORIES = [
-  { code: 'OUT', name: 'Outer' },
-  { code: 'TOP', name: 'Top' },
-  { code: 'BTM', name: 'Bottom' },
-  { code: 'DRS', name: 'Dress' },
-  { code: 'ACC', name: 'Accessory' },
+  {
+    code: '01-CHEF',
+    name: 'Chef Uniform',
+    nameKo: '쉐프복',
+    nameEn: 'Chef Uniform',
+    nameVi: 'Đồng phục đầu bếp',
+  },
+  {
+    code: '02-APRON',
+    name: 'Apron',
+    nameKo: '앞치마',
+    nameEn: 'Apron',
+    nameVi: 'Tạp dề',
+  },
+  {
+    code: '03-WINDBREAKER',
+    name: 'Windbreaker',
+    nameKo: '바람막이',
+    nameEn: 'Windbreaker',
+    nameVi: 'Áo khoác gió',
+  },
+  {
+    code: '04-SS-TSHIRT',
+    name: 'Short Sleeve T-Shirt',
+    nameKo: '반팔 티셔츠',
+    nameEn: 'Short Sleeve T-Shirt',
+    nameVi: 'Áo thun ngắn tay',
+  },
+  {
+    code: '05-LS-TSHIRT',
+    name: 'Long Sleeve T-Shirt',
+    nameKo: '긴팔 티셔츠',
+    nameEn: 'Long Sleeve T-Shirt',
+    nameVi: 'Áo thun dài tay',
+  },
+  {
+    code: '06-SCRUB',
+    name: 'Scrub',
+    nameKo: '스크럽',
+    nameEn: 'Scrub',
+    nameVi: 'Đồng phục scrub',
+  },
 ];
 
 const BASELINE_PROCESSES = Array.from({ length: 10 }, (_, index) => ({
@@ -277,7 +332,12 @@ async function syncGlobalColors() {
   for (const color of BASELINE_COLORS) {
     await prisma.attrColor.upsert({
       where: { code: color.code },
-      update: { name: color.name },
+      update: {
+        name: color.name,
+        nameEn: color.nameEn,
+        nameKo: color.nameKo,
+        nameVi: color.nameVi,
+      },
       create: color,
     });
   }
@@ -287,7 +347,12 @@ async function syncManufacturerAttributes(orgId) {
   for (const category of BASELINE_CATEGORIES) {
     await prisma.attrCategory.upsert({
       where: { orgId_code: { orgId, code: category.code } },
-      update: { name: category.name },
+      update: {
+        name: category.name,
+        nameKo: category.nameKo,
+        nameEn: category.nameEn,
+        nameVi: category.nameVi,
+      },
       create: { orgId, ...category },
     });
   }

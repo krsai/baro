@@ -190,11 +190,48 @@ const DEFAULT_EMPLOYEE_ROLE_CODES = new Set<string>(
 const DEFAULT_ATTRIBUTES = {
   colors: [] as { code: string; name: string }[],
   categories: [
-    { code: "OUT", name: "Outer" },
-    { code: "TOP", name: "Top" },
-    { code: "BTM", name: "Bottom" },
-    { code: "DRS", name: "Dress" },
-    { code: "ACC", name: "Accessory" },
+    {
+      code: "01-CHEF",
+      name: "Chef Uniform",
+      nameKo: "쉐프복",
+      nameEn: "Chef Uniform",
+      nameVi: "Đồng phục đầu bếp",
+    },
+    {
+      code: "02-APRON",
+      name: "Apron",
+      nameKo: "앞치마",
+      nameEn: "Apron",
+      nameVi: "Tạp dề",
+    },
+    {
+      code: "03-WINDBREAKER",
+      name: "Windbreaker",
+      nameKo: "바람막이",
+      nameEn: "Windbreaker",
+      nameVi: "Áo khoác gió",
+    },
+    {
+      code: "04-SS-TSHIRT",
+      name: "Short Sleeve T-Shirt",
+      nameKo: "반팔 티셔츠",
+      nameEn: "Short Sleeve T-Shirt",
+      nameVi: "Áo thun ngắn tay",
+    },
+    {
+      code: "05-LS-TSHIRT",
+      name: "Long Sleeve T-Shirt",
+      nameKo: "긴팔 티셔츠",
+      nameEn: "Long Sleeve T-Shirt",
+      nameVi: "Áo thun dài tay",
+    },
+    {
+      code: "06-SCRUB",
+      name: "Scrub",
+      nameKo: "스크럽",
+      nameEn: "Scrub",
+      nameVi: "Đồng phục scrub",
+    },
   ],
   roles: DEFAULT_EMPLOYEE_ROLES,
   processes: [
@@ -5802,28 +5839,52 @@ const closeActiveLineAssignments = async (employeeId: number, endedAt: Date = ne
   return lineIds;
 };
 
-const seedAttributesIfEmpty = async (orgId: number) => {
-  const processCount = await prisma.attrProcess.count({
-    where: { orgId },
-  });
-  const tasks = [
-    prisma.attrColor.createMany({
-      data: DEFAULT_ATTRIBUTES.colors.map((item) => ({
-        ...item,
-        nameEn: item.name,
-      })),
-      skipDuplicates: true,
-    }),
-    prisma.attrCategory.createMany({
-      data: DEFAULT_ATTRIBUTES.categories.map((item) => ({
-        ...item,
-        orgId,
-        nameEn: item.name,
-      })),
-      skipDuplicates: true,
-    }),
-  ];
-  if (processCount === 0) {
+const seedAttributesIfEmpty = async (
+  orgId: number,
+  options: {
+    includeColors?: boolean;
+    includeCategories?: boolean;
+    includeProcesses?: boolean;
+  } = {}
+) => {
+  const includeColors = options.includeColors !== false;
+  const includeCategories = options.includeCategories !== false;
+  const includeProcesses = options.includeProcesses !== false;
+  const [colorCount, categoryCount, processCount] = await Promise.all([
+    includeColors ? prisma.attrColor.count() : Promise.resolve(0),
+    includeCategories
+      ? prisma.attrCategory.count({ where: { orgId } })
+      : Promise.resolve(0),
+    includeProcesses
+      ? prisma.attrProcess.count({ where: { orgId } })
+      : Promise.resolve(0),
+  ]);
+
+  const tasks: Prisma.PrismaPromise<any>[] = [];
+  if (includeColors && colorCount === 0) {
+    tasks.push(
+      prisma.attrColor.createMany({
+        data: DEFAULT_ATTRIBUTES.colors.map((item) => ({
+          ...item,
+          nameEn: item.name,
+        })),
+        skipDuplicates: true,
+      })
+    );
+  }
+  if (includeCategories && categoryCount === 0) {
+    tasks.push(
+      prisma.attrCategory.createMany({
+        data: DEFAULT_ATTRIBUTES.categories.map((item) => ({
+          ...item,
+          orgId,
+          nameEn: item.name,
+        })),
+        skipDuplicates: true,
+      })
+    );
+  }
+  if (includeProcesses && processCount === 0) {
     tasks.push(
       prisma.attrProcess.createMany({
         data: DEFAULT_ATTRIBUTES.processes.map((item) => ({
@@ -5835,8 +5896,9 @@ const seedAttributesIfEmpty = async (orgId: number) => {
       })
     );
   }
-  await prisma.$transaction(tasks);
-  await ensureDefaultEmployeeRoles(orgId);
+  if (tasks.length > 0) {
+    await prisma.$transaction(tasks);
+  }
 };
 
 const resolveEmployeeStoredPayType = async ({
@@ -5884,6 +5946,25 @@ const resolveManagedAttributeNameData = (item: any) => {
   return {
     name,
     nameKo,
+    nameEn,
+    nameVi,
+  };
+};
+
+const capitalizeAttributeDisplayName = (value: string | null) => {
+  const text = resolveOptionalString(value, null);
+  if (!text) return null;
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+};
+
+const resolveManagedColorNameData = (item: any) => {
+  const base = resolveManagedAttributeNameData(item);
+  const nameEn = capitalizeAttributeDisplayName(base.nameEn);
+  const nameVi = capitalizeAttributeDisplayName(base.nameVi);
+  const name = capitalizeAttributeDisplayName(nameEn ?? base.name) ?? "";
+  return {
+    name,
+    nameKo: base.nameKo,
     nameEn,
     nameVi,
   };
@@ -6180,7 +6261,7 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
     }
 
     let code = (item.code ?? "").trim();
-    const { name, nameKo, nameEn, nameVi } = resolveManagedAttributeNameData(item);
+    const { name, nameKo, nameEn, nameVi } = resolveManagedColorNameData(item);
     if (typeof options.resolveCode === "function") {
       code = options.resolveCode({
         code,
@@ -9644,20 +9725,39 @@ app.get("/attributes", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  const includeProcesses = isManufacturerOrg(organization);
-  await seedAttributesIfEmpty(organization.id);
+  const canManageProcesses = isManufacturerOrg(organization);
+  const includeColors =
+    !["0", "false"].includes(String(req.query.includeColors ?? "").trim().toLowerCase());
+  const includeCategories =
+    !["0", "false"].includes(String(req.query.includeCategories ?? "").trim().toLowerCase());
+  const includeRoles =
+    !["0", "false"].includes(String(req.query.includeRoles ?? "").trim().toLowerCase());
+  const includeProcesses =
+    canManageProcesses &&
+    !["0", "false"].includes(String(req.query.includeProcesses ?? "").trim().toLowerCase());
+  await seedAttributesIfEmpty(organization.id, {
+    includeColors,
+    includeCategories,
+    includeProcesses,
+  });
 
   const [colors, categories, roles, processes] = await Promise.all([
-    prisma.attrColor.findMany({
-      orderBy: { id: "asc" },
-    }),
-    prisma.attrCategory.findMany({
-      where: { orgId: organization.id },
-      orderBy: { id: "asc" },
-    }),
-    ensureDefaultEmployeeRoles(organization.id).then((items) =>
-      items.filter((item) => isWorkerEmployeeRoleCode(item.code)).map(toAttrRoleResponse)
-    ),
+    includeColors
+      ? prisma.attrColor.findMany({
+          orderBy: { id: "asc" },
+        })
+      : Promise.resolve([]),
+    includeCategories
+      ? prisma.attrCategory.findMany({
+          where: { orgId: organization.id },
+          orderBy: { id: "asc" },
+        })
+      : Promise.resolve([]),
+    includeRoles
+      ? ensureDefaultEmployeeRoles(organization.id).then((items) =>
+          items.filter((item) => isWorkerEmployeeRoleCode(item.code)).map(toAttrRoleResponse)
+        )
+      : Promise.resolve([]),
     includeProcesses
       ? prisma.attrProcess.findMany({
           where: { orgId: organization.id },
@@ -9671,7 +9771,7 @@ app.get("/attributes", async (req, res) => {
     categories,
     roles,
     processes,
-    canManageProcesses: includeProcesses,
+    canManageProcesses,
   });
 });
 
@@ -9679,7 +9779,7 @@ app.post("/attributes/colors", async (req, res) => {
   const systemAdmin = await requireSystemAdmin(req, res);
   if (!systemAdmin) return;
 
-  const { name, nameKo, nameEn, nameVi } = resolveManagedAttributeNameData(req.body ?? {});
+  const { name, nameKo, nameEn, nameVi } = resolveManagedColorNameData(req.body ?? {});
   const code = resolveOptionalString(req.body?.code, null);
   if (!name) {
     return res.status(400).json({ ok: false, error: "name is required" });

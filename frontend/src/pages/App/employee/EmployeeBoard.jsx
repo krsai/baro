@@ -379,6 +379,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     try {
       const data = await fetchAttributes({
         orgId,
+        includeColors: false,
+        includeCategories: false,
+        includeRoles: true,
+        includeProcesses: false,
         skipGlobalLoading: true,
       });
       const roles = Array.isArray(data?.roles) ? data.roles : [];

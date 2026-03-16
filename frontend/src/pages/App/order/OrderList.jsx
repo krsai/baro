@@ -864,7 +864,13 @@ const OrderList = () => {
 
     const loadColors = async () => {
       try {
-        const data = await fetchAttributes({ orgId: activeOrgId });
+        const data = await fetchAttributes({
+          orgId: activeOrgId,
+          includeColors: true,
+          includeCategories: false,
+          includeRoles: false,
+          includeProcesses: false,
+        });
         if (cancelled) return;
         setColorOptions(Array.isArray(data?.colors) ? data.colors : []);
       } catch (_error) {

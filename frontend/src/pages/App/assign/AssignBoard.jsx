@@ -63,6 +63,7 @@ import {
   resolveAssignmentCtUpdatedAt,
   resolveAssignmentCtUpdatedBy,
 } from '../../../utils/assignmentCt';
+import { formatProcessNameWithQuantity } from '../../../utils/processDisplay';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -4672,7 +4673,12 @@ const AssignBoard = () => {
                           {detailProcessRows.map((row, index) => (
                             <TableRow key={row.processKey}>
                               <TableCell align="right">{index + 1}</TableCell>
-                              <TableCell>{row.processName}</TableCell>
+                              <TableCell>
+                                {formatProcessNameWithQuantity(
+                                  row.processName,
+                                  row.processQuantity
+                                )}
+                              </TableCell>
                               <TableCell align="right">
                                 {row.ptSeconds == null ? (
                                   <Typography variant="caption" color="text.secondary">

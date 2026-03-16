@@ -109,7 +109,12 @@ const StyleInfo = ({
     const loadCategories = async () => {
       setLoadingCategories(true);
       try {
-        const data = await fetchAttributes();
+        const data = await fetchAttributes({
+          includeColors: false,
+          includeCategories: true,
+          includeRoles: false,
+          includeProcesses: false,
+        });
         if (!active) return;
         setCategories(Array.isArray(data?.categories) ? data.categories : []);
       } catch (_error) {

@@ -59,6 +59,7 @@ import {
   resolveAssignmentCtUpdatedAt,
   resolveAssignmentCtUpdatedBy,
 } from '../../../utils/assignmentCt';
+import { formatProcessNameWithQuantity } from '../../../utils/processDisplay';
 
 const STATUS_META = {
   UNSAVED: { label: 'CT 미저장', color: 'default' },
@@ -2862,7 +2863,10 @@ const ProductionPlanBoard = () => {
                               <TableCell align="right">{index + 1}</TableCell>
                               <TableCell>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {row.processName}
+                                  {formatProcessNameWithQuantity(
+                                    row.processName,
+                                    row.processQuantity
+                                  )}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right">

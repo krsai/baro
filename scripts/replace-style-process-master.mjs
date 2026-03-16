@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
 import { PrismaClient } from "../backend/node_modules/@prisma/client/index.js";
 
+const require = createRequire(import.meta.url);
+const { normalizeProcessNaming } = require("../backend/scripts/lib/processNamingRules.js");
 const prisma = new PrismaClient();
 
 const ORG_ID = 2;
@@ -14,13 +17,14 @@ const round4 = (value) => Math.round(Number(value || 0) * 10000) / 10000;
 const toSeedSeconds = (value) =>
   Math.max(MIN_PROCESS_PT_SECONDS, Math.ceil((Number(value) || 0) * PT_UPLIFT_RATE));
 
-const masterProcess = (code, nameEn, nameKo, nameVi) => ({
-  code,
-  name: nameEn,
-  nameEn,
-  nameKo,
-  nameVi,
-});
+const masterProcess = (code, nameEn, nameKo, nameVi) =>
+  normalizeProcessNaming({
+    code,
+    name: nameEn,
+    nameEn,
+    nameKo,
+    nameVi,
+  });
 
 const row = (
   code,

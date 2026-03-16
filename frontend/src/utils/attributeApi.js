@@ -53,28 +53,6 @@ const normalizeAttributeItem = (item = {}) => {
   };
 };
 
-const mergeAttributeItem = (items = [], nextItem) => {
-  const nextId = Number(nextItem?.id);
-  const nextCode = String(nextItem?.code || '').trim();
-  let replaced = false;
-
-  const mergedItems = normalizeArray(items).map((item) => {
-    const itemId = Number(item?.id);
-    const sameId =
-      Number.isInteger(nextId) &&
-      nextId > 0 &&
-      Number.isInteger(itemId) &&
-      itemId === nextId;
-    const sameCode = Boolean(nextCode) && String(item?.code || '').trim() === nextCode;
-    if (!sameId && !sameCode) return item;
-    replaced = true;
-    return { ...item, ...nextItem };
-  });
-
-  if (replaced) return mergedItems;
-  return [...mergedItems, nextItem];
-};
-
 const normalizeAttributes = (data = {}) => ({
   colors: normalizeArray(data?.colors).map(normalizeAttributeItem),
   categories: normalizeArray(data?.categories).map(normalizeAttributeItem),
@@ -126,8 +104,24 @@ const normalizeAttributePayload = (payload = {}) => {
   return normalized;
 };
 
-const toAttributeCacheKey = (orgId, hasOrgFilter) =>
+const resolveAttributeSectionOptions = (options = {}) => ({
+  includeColors: options?.includeColors !== false,
+  includeCategories: options?.includeCategories !== false,
+  includeRoles: options?.includeRoles !== false,
+  includeProcesses: options?.includeProcesses !== false,
+});
+
+const toAttributeCacheBaseKey = (orgId, hasOrgFilter) =>
   hasOrgFilter ? `org:${orgId}` : 'global';
+const toAttributeCacheKey = (orgId, hasOrgFilter, sectionOptions) => {
+  const { includeColors, includeCategories, includeRoles, includeProcesses } =
+    resolveAttributeSectionOptions(sectionOptions);
+  return `${toAttributeCacheBaseKey(orgId, hasOrgFilter)}::sections:${
+    includeColors ? '1' : '0'
+  }${includeCategories ? '1' : '0'}${includeRoles ? '1' : '0'}${
+    includeProcesses ? '1' : '0'
+  }`;
+};
 
 const readFreshAttributesCache = (cacheKey) => {
   const cached = attributesCache.get(cacheKey);
@@ -146,13 +140,34 @@ const writeAttributesCache = (cacheKey, data) => {
   });
 };
 
+const clearAttributeCacheVariants = (orgId, hasOrgFilter) => {
+  const cacheBaseKey = `${toAttributeCacheBaseKey(orgId, hasOrgFilter)}::`;
+  for (const key of attributesCache.keys()) {
+    if (key.startsWith(cacheBaseKey)) {
+      attributesCache.delete(key);
+    }
+  }
+  for (const key of attributesInFlight.keys()) {
+    if (key.startsWith(cacheBaseKey)) {
+      attributesInFlight.delete(key);
+    }
+  }
+};
+
 export const fetchAttributes = async (options = {}) => {
   const orgId = getEffectiveAttributeOrgId(options?.orgId);
   const hasOrgScope = orgId !== null;
+  const { includeColors, includeCategories, includeRoles, includeProcesses } =
+    resolveAttributeSectionOptions(options);
   const forceRefresh = Boolean(options?.forceRefresh);
   const skipGlobalLoading = Boolean(options?.skipGlobalLoading);
   const requestScheduler = options?.requestScheduler ?? null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
+  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope, {
+    includeColors,
+    includeCategories,
+    includeRoles,
+    includeProcesses,
+  });
   const schedulerGroupId = String(requestScheduler?.groupId ?? '').trim();
   const schedulerScopeId = String(requestScheduler?.scopeId ?? '').trim();
   const inFlightKey =
@@ -171,6 +186,10 @@ export const fetchAttributes = async (options = {}) => {
     const data = await requestJSON(
       `/attributes${buildQueryString({
         orgId: hasOrgScope ? orgId : undefined,
+        includeColors: includeColors ? undefined : 0,
+        includeCategories: includeCategories ? undefined : 0,
+        includeRoles: includeRoles ? undefined : 0,
+        includeProcesses: includeProcesses ? undefined : 0,
       })}`,
       { skipGlobalLoading, requestScheduler }
     );
@@ -189,7 +208,6 @@ export const fetchAttributes = async (options = {}) => {
 export const updateAttributes = async (payload, options = {}) => {
   const orgId = getEffectiveAttributeOrgId(options?.orgId);
   const hasOrgScope = orgId !== null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const body = normalizeAttributePayload(payload);
   const data = await requestJSON(
     `/attributes${buildQueryString({
@@ -202,24 +220,13 @@ export const updateAttributes = async (payload, options = {}) => {
     }
   );
   const normalizedPartial = normalizePartialAttributes(data);
-  const previous = readFreshAttributesCache(cacheKey);
-  if (previous) {
-    const merged = {
-      ...previous,
-      ...data,
-    };
-    writeAttributesCache(cacheKey, merged);
-  } else {
-    attributesCache.delete(cacheKey);
-  }
-  attributesInFlight.delete(cacheKey);
+  clearAttributeCacheVariants(orgId, hasOrgScope);
   return normalizedPartial;
 };
 
 export const createColorAttribute = async (payload, options = {}) => {
   const orgId = getEffectiveAttributeOrgId(options?.orgId);
   const hasOrgScope = orgId !== null;
-  const cacheKey = toAttributeCacheKey(orgId, hasOrgScope);
   const body = {
     code: toTrimmedText(payload?.code),
     name: resolveAttributeBaseName(payload),
@@ -238,20 +245,17 @@ export const createColorAttribute = async (payload, options = {}) => {
     }
   );
   const normalizedColor = normalizeAttributeItem(data);
-  const previous = readFreshAttributesCache(cacheKey);
-  if (previous) {
-    writeAttributesCache(cacheKey, {
-      ...previous,
-      colors: mergeAttributeItem(previous.colors, data),
-    });
-  } else {
-    attributesCache.delete(cacheKey);
-  }
-  attributesInFlight.delete(cacheKey);
+  clearAttributeCacheVariants(orgId, hasOrgScope);
   return normalizedColor;
 };
 
 export const fetchProcessAttributes = async (options = {}) => {
-  const data = await fetchAttributes(options);
+  const data = await fetchAttributes({
+    ...options,
+    includeColors: false,
+    includeCategories: false,
+    includeRoles: false,
+    includeProcesses: true,
+  });
   return data.processes;
 };

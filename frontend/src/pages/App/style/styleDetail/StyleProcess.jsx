@@ -46,6 +46,7 @@ import {
   formatDivergencePercentLabel,
   resolveDivergenceMeta,
 } from '../../../../utils/timeDivergence';
+import { formatProcessLabelWithQuantity } from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
   process: null,
@@ -855,7 +856,11 @@ const StyleProcess = ({
                                   </TableCell>
 
                                   <TableCell>
-                                    {`[${process.code}] ${process.name}`}
+                                    {formatProcessLabelWithQuantity({
+                                      code: process.code,
+                                      name: process.name,
+                                      quantity: process.quantity,
+                                    })}
                                   </TableCell>
 
                                   <TableCell align="right">

@@ -945,6 +945,10 @@ const WorkDetail = ({
           }).catch(() => []),
           fetchAttributes({
             orgId: activeOrgId,
+            includeColors: true,
+            includeCategories: false,
+            includeRoles: false,
+            includeProcesses: false,
           }).catch(() => null),
         ]);
         if (cancelled) return;
