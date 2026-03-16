@@ -73,6 +73,24 @@
   - 회귀 검증용 테스트 스크립트일 때
 - 1회성 실험이 끝난 스크립트는 남기지 말고 제거한다.
 
+### 2026-03-16 다국어 라벨 운영 규칙
+
+- 다국어는 **DB 저장값이나 상태 상수 자체를 번역 문자열로 바꾸지 않는다.**
+- 저장/비즈니스 비교에 쓰는 값은 항상 **안정적인 코드값**으로 유지한다.
+  - 예: 주문 진행상태 `ORDER_RECEIVED / IN_PROGRESS / SHIPPED / SETTLED`
+  - 예: 주문 확정상태 `PLANNED / CONFIRMED`
+  - 예: 성별 `M / W / U`
+  - 예: 급여 타입 `CT / FIXED`
+- 화면 라벨만 `ko / en / vi` 매핑으로 처리한다.
+- 다국어 상수는 **한 파일에 전부 몰지 않고 도메인별 `frontend/src/constants/*`** 에 둔다.
+  - 예: 주문 상태는 `orderStatus.js`
+  - 예: 주문 확정은 `orderConfirmationStatus.js`
+  - 예: 성별은 `productAttributes.js`
+  - 예: 급여 타입은 `payType.js`
+- 페이지 안에서 한국어 라벨을 다시 하드코딩하지 않는다.
+  - 가능하면 공용 helper(`get...Label`, `get...Options`)를 import해서 쓴다.
+- 빠른 수정이 필요할 때도 전체 i18n 구조를 과하게 늘리지 말고, **해당 도메인 상수 + 해당 화면 표시부만 최소 수정**한다.
+
 ### 시간 모델 기준
 
 - `PT(q)`, `AT(q)`, `ST(q)`, `CT(q)`는 **모두 같은 개념 계열**이다.

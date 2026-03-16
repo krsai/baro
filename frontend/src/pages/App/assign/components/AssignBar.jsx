@@ -1,6 +1,8 @@
 import React, { useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { useLanguage } from '../../../../context/LanguageContext';
+import { getGenderLabel } from '../../../../constants/productAttributes';
 import { hasAssignmentCtSnapshot } from '../../../../utils/assignmentCt';
 
 const getDurationDays = (assignment) => {
@@ -33,6 +35,7 @@ const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
 };
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
+  const { languageCode } = useLanguage();
   const isClippedLeft = Boolean(assignment.isClippedLeft);
   const isClippedRight = Boolean(assignment.isClippedRight);
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
@@ -66,7 +69,11 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const durationLabel = formatDuration(durationValue);
   const isNarrow = Number(assignment.widthPx) < 132;
   const hideMetaBadges = Number(assignment.widthPx) < 156;
-  const genderDisplay = assignment.gender || '';
+  const genderDisplay = getGenderLabel(
+    assignment.gender,
+    String(assignment.gender || '').trim(),
+    languageCode
+  );
   const hasSavedSnapshot =
     assignment?.ctDisplayState != null
       ? assignment.ctDisplayState === 'SAVED'

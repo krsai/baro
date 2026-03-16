@@ -33,6 +33,8 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getGenderLabel } from '../../../constants/productAttributes';
 import StyleCard from './components/StyleCard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import {
@@ -2005,6 +2007,7 @@ const rebuildLineWithReplace = ({
 const AssignBoard = () => {
   const { showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
+  const { languageCode } = useLanguage();
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCardId, setSelectedCardId] = useState(null);
@@ -4565,7 +4568,9 @@ const AssignBoard = () => {
                     <Typography variant="body2">
                       <strong>스타일:</strong> {detailCard.styleName || '-'}
                       {detailCard.colorName ? ` · ${detailCard.colorName}` : ''}
-                      {detailCard.gender ? ` · ${detailCard.gender}` : ''}
+                      {detailCard.gender
+                        ? ` · ${getGenderLabel(detailCard.gender, detailCard.gender, languageCode)}`
+                        : ''}
                     </Typography>
                     <Typography variant="body2">
                       <strong>수량:</strong>{' '}

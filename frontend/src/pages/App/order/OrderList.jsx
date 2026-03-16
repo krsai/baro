@@ -50,6 +50,7 @@ import { createColorAttribute, fetchAttributes } from '../../../utils/attributeA
 import {
   SIZE_CODES,
   GENDER_CODES,
+  getGenderLabel,
   normalizeGenderCode,
 } from '../../../constants/productAttributes';
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName } from '../../../utils/appLanguage';
@@ -101,30 +102,6 @@ const GENDER_OPTIONS = GENDER_CODES;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
-const ORDER_CONFIRMATION_FILTER_OPTIONS = [
-  {
-    value: ORDER_FILTER_ALL,
-    label: ORDER_CONFIRMATION_TEXT.filterAllLabel,
-  },
-  ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
-    value: option.value,
-    label: option.label,
-  })),
-];
-const ORDER_PROGRESS_FILTER_OPTIONS = [
-  {
-    value: ORDER_FILTER_ALL,
-    label: ORDER_STATUS_TEXT.filterAllLabel,
-  },
-  {
-    value: ORDER_PROGRESS_STAGE_NONE,
-    label: ORDER_STATUS_TEXT.noneLabel,
-  },
-  ...ORDER_STATUS_OPTIONS.map((option) => ({
-    value: option.value,
-    label: option.label,
-  })),
-];
 const ORDER_FILTER_DATE_PICKER_SLOT_PROPS = {
   textField: {
     sx: {
@@ -166,11 +143,15 @@ const GENDER_PASTEL_STYLES = {
 };
 const normalizeOrderConfirmation = (status) =>
   normalizeOrderConfirmationStatusFromConst(status);
-const getOrderConfirmationLabel = (status) =>
-  getOrderConfirmationStatusLabelFromConst(status, String(status || '').trim() || '-');
+const getOrderConfirmationLabel = (status, languageCode) =>
+  getOrderConfirmationStatusLabelFromConst(
+    status,
+    String(status || '').trim() || '-',
+    languageCode
+  );
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
-const getOrderProgressStageLabel = (status) =>
-  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-');
+const getOrderProgressStageLabel = (status, languageCode) =>
+  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-', languageCode);
 const isOrderDeletable = (confirmationStatus) => isOrderConfirmationPlanned(confirmationStatus);
 const normalizeFilterDate = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(value);
@@ -1213,9 +1194,39 @@ const OrderList = () => {
     () =>
       GENDER_OPTIONS.map((code) => ({
         code,
-        label: GENDER_OPTION_LABELS[code] || code,
+        label: getGenderLabel(code, GENDER_OPTION_LABELS[code] || code, languageCode),
       })),
-    []
+    [languageCode]
+  );
+  const orderConfirmationFilterOptions = useMemo(
+    () => [
+      {
+        value: ORDER_FILTER_ALL,
+        label: ORDER_CONFIRMATION_TEXT.filterAllLabel,
+      },
+      ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    ],
+    [languageCode]
+  );
+  const orderProgressFilterOptions = useMemo(
+    () => [
+      {
+        value: ORDER_FILTER_ALL,
+        label: ORDER_STATUS_TEXT.filterAllLabel,
+      },
+      {
+        value: ORDER_PROGRESS_STAGE_NONE,
+        label: ORDER_STATUS_TEXT.noneLabel,
+      },
+      ...ORDER_STATUS_OPTIONS.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    ],
+    [languageCode]
   );
   const genderOptionByCode = useMemo(
     () => new Map(genderSelectOptions.map((item) => [item.code, item])),
@@ -1459,7 +1470,10 @@ const OrderList = () => {
     }
     if (!isOrderDeletable(order.confirmationStatus)) {
       showNotification(
-        getOrderConfirmationDeleteOnlyMessage(ORDER_CONFIRMATION_STATUS_KEYS.PLANNED),
+        getOrderConfirmationDeleteOnlyMessage(
+          ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
+          languageCode
+        ),
         'warning'
       );
       return;
@@ -2069,7 +2083,7 @@ const OrderList = () => {
               label={ORDER_CONFIRMATION_TEXT.fieldLabel}
               onChange={(event) => setConfirmationFilter(event.target.value)}
             >
-              {ORDER_CONFIRMATION_FILTER_OPTIONS.map((option) => (
+              {orderConfirmationFilterOptions.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
@@ -2084,7 +2098,7 @@ const OrderList = () => {
               label={ORDER_STATUS_TEXT.fieldLabel}
               onChange={(event) => setProgressFilter(event.target.value)}
             >
-              {ORDER_PROGRESS_FILTER_OPTIONS.map((option) => (
+              {orderProgressFilterOptions.map((option) => (
                 <MenuItem
                   key={option.value}
                   value={option.value}
@@ -2236,7 +2250,7 @@ const OrderList = () => {
                     const deletable =
                       !order?.isModificationLocked && isOrderDeletable(order.confirmationStatus);
                     const progressStageLabel = hasOrderProgressStage(order.confirmationStatus)
-                      ? getOrderProgressStageLabel(order.status)
+                      ? getOrderProgressStageLabel(order.status, languageCode)
                       : ORDER_STATUS_TEXT.noneLabel;
                     return (
                       <TableRow
@@ -2246,7 +2260,7 @@ const OrderList = () => {
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {getOrderConfirmationLabel(order.confirmationStatus)}
+                          {getOrderConfirmationLabel(order.confirmationStatus, languageCode)}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {progressStageLabel}
@@ -2278,7 +2292,8 @@ const OrderList = () => {
                               deletable
                                 ? '주문 삭제'
                                 : getOrderConfirmationDeleteTooltip(
-                                    ORDER_CONFIRMATION_STATUS_KEYS.PLANNED
+                                    ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
+                                    languageCode
                                   )
                             }
                             onClick={(event) => {

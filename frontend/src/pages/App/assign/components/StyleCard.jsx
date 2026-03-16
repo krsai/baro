@@ -1,6 +1,8 @@
-﻿import React from 'react';
+import React from 'react';
 import { Box, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { useLanguage } from '../../../../context/LanguageContext';
+import { getGenderLabel } from '../../../../constants/productAttributes';
 
 const hasSt = (card) =>
   Number(card?.totalSt) > 0;
@@ -18,10 +20,11 @@ const getCardBasis = (card) => {
 };
 
 const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
+  const { languageCode } = useLanguage();
   const isDeltaCard = card.type === 'DELTA';
   const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
   const isDisabled = basis === 'NONE';
-  // palette removed — status chip no longer shown
+  const genderLabel = getGenderLabel(card.gender, card.gender || '', languageCode);
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `card-${card.id}`,
     data: { cardId: card.id, type: 'card' },
@@ -126,7 +129,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
           </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
             {card.colorName ? `색상: ${card.colorName} · ` : ''}
-            {card.gender ? `성별: ${card.gender} · ` : ''}
+            {genderLabel ? `성별: ${genderLabel} · ` : ''}
             수량: {card.quantity}
           </Typography>
         </Stack>

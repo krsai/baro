@@ -19,6 +19,8 @@ import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getPayTypeOptions } from '../../../constants/payType';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchAttributes } from '../../../utils/attributeApi';
 
@@ -48,11 +50,6 @@ const ORG_ROLE_LABELS = ORG_ROLE_OPTIONS.reduce((map, option) => {
   map[option.value] = option.label;
   return map;
 }, {});
-
-const PAY_TYPE_OPTIONS = [
-  { value: 'CT', label: '성과급' },
-  { value: 'FIXED', label: '고정급' },
-];
 
 const getRoleOptionsByOrgType = (orgType) =>
   String(orgType || '').toUpperCase() === 'BRAND'
@@ -100,7 +97,9 @@ const EmployeeRow = React.memo(
     isUpdating,
     onSave,
   }) => {
+    const { languageCode } = useLanguage();
     const baseDraft = useMemo(() => buildEmployeeDraft(member, employee), [member, employee]);
+    const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
     const [draft, setDraft] = useState(baseDraft);
     const [isDirty, setIsDirty] = useState(false);
     const joinedAt = employee?.joinedAt || member.approvedAt;
@@ -210,7 +209,7 @@ const EmployeeRow = React.memo(
             disabled={isUpdating}
             sx={{ minWidth: 170 }}
           >
-            {PAY_TYPE_OPTIONS.map((option) => (
+            {payTypeOptions.map((option) => (
               <MenuItem key={option.value || 'default'} value={option.value}>
                 {option.label}
               </MenuItem>

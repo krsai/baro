@@ -19,7 +19,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
-import { GENDER_CODES, SIZE_CODES } from '../../../../constants/productAttributes';
+import { GENDER_CODES, SIZE_CODES, getGenderLabel } from '../../../../constants/productAttributes';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
@@ -492,7 +492,7 @@ const StyleInfo = ({
                 </MenuItem>
                 {GENDER_CODES.map((code) => (
                   <MenuItem key={code} value={code}>
-                    {code}
+                    {getGenderLabel(code, code, languageCode)}
                   </MenuItem>
                 ))}
               </Select>

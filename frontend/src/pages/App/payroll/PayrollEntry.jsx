@@ -22,6 +22,8 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getPayTypeLabel as getLocalizedPayTypeLabel } from '../../../constants/payType';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
@@ -87,6 +89,7 @@ const PayrollEntry = () => {
   const { payrollId } = useParams();
   const { navigateToPath, showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
+  const { languageCode } = useLanguage();
 
   const isNew = !payrollId || payrollId === 'new';
   const monthFromParam = isNew ? null : payrollId;
@@ -456,7 +459,11 @@ const PayrollEntry = () => {
                               <TableCell align="center">
                                 <Chip
                                   size="small"
-                                  label={getPayTypeLabel(employee.payType)}
+                                  label={getLocalizedPayTypeLabel(
+                                    employee.payType,
+                                    getPayTypeLabel(employee.payType),
+                                    languageCode
+                                  )}
                                   color={employee.payType === 'CT' ? 'info' : 'default'}
                                   variant={employee.payType === 'CT' ? 'filled' : 'outlined'}
                                 />

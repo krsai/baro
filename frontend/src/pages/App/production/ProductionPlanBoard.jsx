@@ -35,6 +35,8 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getGenderLabel } from '../../../constants/productAttributes';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
@@ -841,6 +843,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 const ProductionPlanBoard = () => {
   const { showNotification } = useApp();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
+  const { languageCode } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
@@ -2291,7 +2294,8 @@ const ProductionPlanBoard = () => {
                           {card.customer || '-'} / {card.label || '-'}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {card.colorName || '-'} · {card.gender || '-'}
+                          {card.colorName || '-'} ·{' '}
+                          {getGenderLabel(card.gender, card.gender || '-', languageCode)}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={0.5} flexShrink={0}>
@@ -2617,7 +2621,13 @@ const ProductionPlanBoard = () => {
                     <Typography variant="body2">
                       <strong>색상/성별:</strong>{' '}
                       {selectedAssignment.colorName || '-'}
-                      {selectedAssignment.gender ? ` / ${selectedAssignment.gender}` : ''}
+                      {selectedAssignment.gender
+                        ? ` / ${getGenderLabel(
+                            selectedAssignment.gender,
+                            selectedAssignment.gender,
+                            languageCode
+                          )}`
+                        : ''}
                     </Typography>
                     <Typography variant="body2">
                       <strong>수량:</strong>{' '}
@@ -3030,7 +3040,13 @@ const ProductionPlanBoard = () => {
                 <Typography variant="body2">
                   <strong>차이 카드:</strong> {deltaDialog.deltaCard.customer} / {deltaDialog.deltaCard.label}
                   {deltaDialog.deltaCard.colorName ? ` · ${deltaDialog.deltaCard.colorName}` : ''}
-                  {deltaDialog.deltaCard.gender ? ` · ${deltaDialog.deltaCard.gender}` : ''}
+                  {deltaDialog.deltaCard.gender
+                    ? ` · ${getGenderLabel(
+                        deltaDialog.deltaCard.gender,
+                        deltaDialog.deltaCard.gender,
+                        languageCode
+                      )}`
+                    : ''}
                 </Typography>
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
                   <strong>수량:</strong>{' '}
