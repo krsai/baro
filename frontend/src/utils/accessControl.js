@@ -30,6 +30,7 @@ const FEATURE_KEYS = {
   HOLIDAY: 'HOLIDAY',
   SYSTEM_SETTING: 'SYSTEM_SETTING',
   SYSTEM_ONBOARDING: 'SYSTEM_ONBOARDING',
+  PAGE_TRANSLATION: 'PAGE_TRANSLATION',
   PROFILE: 'PROFILE',
 };
 
@@ -142,6 +143,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
       (featureKey === FEATURE_KEYS.ATTRIBUTE ||
         featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
         featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING ||
+        featureKey === FEATURE_KEYS.PAGE_TRANSLATION ||
         featureKey === FEATURE_KEYS.EMPLOYEE)
     );
   }
@@ -207,6 +209,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);
     case FEATURE_KEYS.SYSTEM_SETTING:
     case FEATURE_KEYS.SYSTEM_ONBOARDING:
+    case FEATURE_KEYS.PAGE_TRANSLATION:
       return false;
     default:
       return false;
@@ -235,6 +238,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/holiday')) return FEATURE_KEYS.HOLIDAY;
   if (path.startsWith('/system-setting')) return FEATURE_KEYS.SYSTEM_SETTING;
   if (path.startsWith('/system-onboarding')) return FEATURE_KEYS.SYSTEM_ONBOARDING;
+  if (path.startsWith('/page-translations')) return FEATURE_KEYS.PAGE_TRANSLATION;
   if (path.startsWith('/profile')) return FEATURE_KEYS.PROFILE;
   return null;
 };
@@ -274,6 +278,7 @@ const ACCESS_PATH_PRIORITY = [
   '/holiday',
   '/system-onboarding',
   '/system-setting',
+  '/page-translations',
   '/attribute',
 ];
 

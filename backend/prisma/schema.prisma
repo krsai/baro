@@ -81,6 +81,30 @@ model SystemUser {
   updatedAt  DateTime   @updatedAt
 }
 
+model PageTranslation {
+  id             Int      @id @default(autoincrement())
+  pageCode       String
+  translationKey String
+  textKo         String?
+  textEn         String?
+  textVi         String?
+  sourceText     String?
+  sourceHash     String?
+  sourceFile     String?
+  sourceLine     Int?
+  autoCollectedAt DateTime?
+  needsReview    Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  note           String?
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([pageCode, translationKey])
+  @@index([pageCode])
+  @@index([translationKey])
+}
+
 model Organization {
   id             Int              @id @default(autoincrement())
   name           String
