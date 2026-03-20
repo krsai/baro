@@ -48,7 +48,6 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
-import TranslateIcon from '@mui/icons-material/Translate';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -316,7 +315,6 @@ const MainLayout = () => {
         setOpen: setSystemOpen,
         children: [
           { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
-          { label: '페이지 번역 관리', icon: <TranslateIcon />, path: '/page-translations' },
           {
             label: '가입 승인',
             icon: <GroupIcon />,

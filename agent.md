@@ -27,10 +27,6 @@
   - 예: `주머니 달기`, `주머니 박기`처럼 실질적으로 같은 작업이면 별도 마스터를 만들지 않는다.
 - 스타일 로컬 코드(`TT01`, `TS02`, `VS301` 등)는 원본 시트 구분용일 뿐, 시스템의 공용 마스터 코드로 쓰지 않는다.
 - 시스템 구분 기준은 `style + common processCode`다.
-- 공용 마스터는 최소 아래를 가진다.
-  - 영문 canonical 이름
-  - 한국어명
-  - 베트남어명
 - 스타일 공정에서 `X2`, `X3` 같은 반복 표기는 공정 마스터를 늘리지 않고 `processQuantity`로 저장한다.
 - 같은 공용 마스터가 한 스타일 안에서 여러 위치에 등장하면 하나의 스타일 공정으로 합치고, 부위 정보는 설명(`processDescription`)에 남긴다.
 - 단, 원본 시트가 이미 여러 작업을 한 행으로 묶어 시간만 제공하는 경우는 현재 시간을 다시 쪼개지 않고 그 묶음 단위의 공정 마스터를 유지한다.
@@ -38,10 +34,6 @@
 ### 2026-03-16 공정 명명 규칙
 
 - 공정명은 필드를 늘리지 않고 텍스트 순서로 중복을 줄인다.
-- 기본 형식:
-  - 영어명: `Primary target - Sub target / Part - Action - Method / Spec`
-  - 한국어명: `주대상 - 세부위치/부속 - 작업 - 방식/규격`
-  - 베트남어명도 같은 구조를 따른다.
 - 핵심 규칙:
   - 항상 **주대상부터 먼저** 쓴다.
   - 여러 작업은 `+` 로만 연결한다.
@@ -51,7 +43,6 @@
 - 누락값 규칙:
   - 주대상이 없으면 `((주대상 누락))`
   - 작업이 없으면 `((작업 누락))`
-  - 영어/베트남어도 같은 placeholder 원칙을 유지한다.
 - 예:
   - `허리밴드 - 상침 (완성)`
   - `앞판 포켓 - 부착`
@@ -73,42 +64,6 @@
   - 운영 데이터를 **파괴 없이** 보정해야 해서 reset/reseed로 대체할 수 없을 때
   - 회귀 검증용 테스트 스크립트일 때
 - 1회성 실험이 끝난 스크립트는 남기지 말고 제거한다.
-
-### 2026-03-16 다국어 라벨 운영 규칙
-
-- 다국어는 **DB 저장값이나 상태 상수 자체를 번역 문자열로 바꾸지 않는다.**
-- 저장/비즈니스 비교에 쓰는 값은 항상 **안정적인 코드값**으로 유지한다.
-  - 예: 주문 진행상태 `ORDER_RECEIVED / IN_PROGRESS / SHIPPED / SETTLED`
-  - 예: 주문 확정상태 `PLANNED / CONFIRMED`
-  - 예: 성별 `M / W / U`
-  - 예: 급여 타입 `CT / FIXED`
-- 화면 라벨만 `ko / en / vi` 매핑으로 처리한다.
-- 다국어 상수는 **한 파일에 전부 몰지 않고 도메인별 `frontend/src/constants/*`** 에 둔다.
-  - 예: 주문 상태는 `orderStatus.js`
-  - 예: 주문 확정은 `orderConfirmationStatus.js`
-  - 예: 성별은 `productAttributes.js`
-  - 예: 급여 타입은 `payType.js`
-- 페이지 안에서 한국어 라벨을 다시 하드코딩하지 않는다.
-  - 가능하면 공용 helper(`get...Label`, `get...Options`)를 import해서 쓴다.
-- 빠른 수정이 필요할 때도 전체 i18n 구조를 과하게 늘리지 말고, **해당 도메인 상수 + 해당 화면 표시부만 최소 수정**한다.
-
-### 2026-03-20 페이지 번역 운영 시작 규칙
-
-- 번역 관리는 아래 2축으로 나눈다.
-  - **속성 번역**: `Attr*` 기준의 FK anchor 데이터(공정/색상/역할 등), DB에서 관리
-  - **페이지 컨텍스트 번역**: 페이지별 key(`pageCode + translationKey`) 기준, 시스템 관리자 메뉴에서 관리
-- 페이지 번역 key는 문구 원문이 아니라 **안정적인 key 문자열**을 기준으로 저장/매핑한다.
-  - 예: `work.item_row.empty_state`
-- 페이지 번역은 초기부터 페이지 단위로 조회/편집/저장한다.
-  - 저장 단위는 `pageCode` 단위 snapshot으로 맞춘다.
-- 상태/enum 코드값(`ORDER_RECEIVED`, `PLANNED`, `M/W/U`, `CT/FIXED`)은 기존 원칙대로 DB 코드값 그대로 유지하고, 화면에서만 라벨 매핑한다.
-- 시스템 관리자 메뉴 정책:
-  - 기존 `속성 관리`는 유지한다.
-  - 별도 `페이지 번역 관리` 메뉴를 추가해 key 단위 편집을 지원한다.
-- 페이지 번역 관리 화면 운영 기준:
-  - 페이지 선택 시 해당 페이지 소스 파일에서 UI 텍스트를 자동 수집(sync)한다.
-  - 자동 수집 대상은 **사이드바 메뉴 페이지 + 로그인/온보딩 페이지**를 기본 카탈로그로 사용한다.
-  - 소스 텍스트 hash가 바뀐 key는 `변경감지(needsReview)`로 표시해 재검토 대상으로 관리한다.
 
 ### 시간 모델 기준
 
@@ -197,7 +152,7 @@
 - 오토컴플리트 검색은 **연속 문자열 일치**만으로 판단하지 않는다.
 - 입력어를 공백 기준 토큰으로 나눠, **순서가 달라도 각 토큰이 옵션 어딘가에 포함되면 검색 결과에 포함**한다.
   - 예: `뒷목 페이싱 뒤집어 달기`는 `달기 뒷목`, `페이싱 달기`, `back facing` 같은 입력에도 검색될 수 있어야 한다.
-- 코드/영문명/한국어명/베트남어명/설명/표시명은 가능한 한 같은 검색 blob에 포함한다.
+- 코드/이름/설명/표시명은 가능한 한 같은 검색 blob에 포함한다.
 - 공용 검색 규칙은 우선 `MuiAutocomplete` 기본값과 `SearchableSelect`에서 같이 유지한다.
 - 서버 검색처럼 클라이언트 필터를 우회하는 화면이 있으면, 그 화면의 선행 필터/매칭 로직도 같은 토큰 검색 기준으로 맞춘다.
 
@@ -805,7 +760,6 @@ Organization (MANUFACTURER | BRAND)
 
 ## 개발 시 주의사항
 
-- 다국어: 한국어 UI, 영문 코드/enum
 - 날짜 인덱스: AssignmentPlan의 startIndex/endIndex는 달력 기준 일(day) 오프셋
 - 스타일 코드: 별도 입력이 없으면 스타일명과 동일하게 저장 (buildPayload fallback)
 - 타임라인 레인 배치: assignLanes는 실제 논리 범위(buildRange)로 충돌 감지, 시각 최소 너비(MIN_BAR_WIDTH)는 렌더 전용
@@ -1278,74 +1232,6 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - 서버에서 비작업자 `roleId`는 비우고, 작업자만 유효 작업자 직무를 유지한다.
 - 작업자 직무가 비어 있거나 잘못 연결된 경우 기본값은 `WORKER_SEWING`으로 보정한다.
 - `/attributes`의 `roles` 응답은 현재 작업자 직무 하드코딩 목록만 내려준다.
-
-### 다국어 준비용 정규화 밑작업
-
-> **중요 원칙**: 실제 다국어(i18n) 적용은 **맨 마지막 단계**에서 진행한다.  
-> 이번 작업은 다국어를 바로 붙이기 위한 **선행 정규화 / anchor 준비 작업**이다.
-
-#### 이번에 정리한 기준
-- 다른 테이블을 참조할 때는 번역 가능한 문자열(name)을 직접 저장하지 말고, **ID FK를 anchor**로 사용한다.
-- 상태값은 한국어 문자열이 아니라 **enum/code 값**으로 저장한다.
-- 화면/API 호환 때문에 필요한 표시 문자열은 JOIN/유도값으로 응답하고, DB 저장 기준은 FK/code로 정리한다.
-
-#### 이번에 반영한 스키마 정규화
-- `WorkOrder.status`를 한국어 문자열에서 `WorkOrderStatus` enum으로 변경
-  - `ORDER_RECEIVED`, `IN_PROGRESS`, `PRODUCTION_DONE`, `SHIPPED`
-- `AssignmentPlan.ctStatus`를 `CtStatus` enum으로 변경
-  - `PENDING`, `SENT`, `AGREED`, `REJECTED`
-- 번역 anchor FK 추가
-  - `WorkOrderItem.styleUid -> Style.uid`
-  - `AssignmentPlan.colorId -> AttrColor.id`
-  - `WorkRecord.styleUid -> Style.uid`
-- 중복 문자열 제거
-  - `WorkOrderItem.colorName` 제거
-  - `WorkRecord.processName` 제거
-  - `WorkRecord.colorName` 제거
-
-#### 중요한 예외 / 설계 메모
-- `WorkOrderItem.styleId`, `WorkRecord.styleId`는 현재 시스템에서 비즈니스 키 문자열로 넓게 사용 중이다.
-- 따라서 스타일 번역/참조의 실제 anchor는 `styleId` 문자열이 아니라 **새 정수 FK `styleUid`** 로 본다.
-- `styleId` 문자열은 당분간 외부 식별/호환용으로 유지한다.
-- 스냅샷 성격의 문자열(`buyerOrgName`, `sellerOrgName`, `customerName`, `factoryName`, `workerName`)은 히스토리 보존 목적이 있으므로 성급히 제거하지 않는다.
-
-#### 현재 호환성 정책
-- DB에는 enum/FK 중심으로 저장한다.
-- API 응답은 기존 화면이 깨지지 않도록 `styleName`, `colorName`, `processName`을 JOIN 결과로 복원해서 내려준다.
-- 주문 상태는 DB/API 모두 코드값을 사용하고, 프런트에서 한글 라벨로 매핑한다.
-
-#### 기존 데이터 백필 상태
-- `WorkOrder.status` 기존 한국어 값은 enum 코드로 전환 완료
-- `AssignmentPlan.ctStatus` 기존 문자열은 enum으로 전환 완료
-- `WorkOrderItem.styleUid`는 현재 로컬 데이터 `16/16`건 연결 완료
-- `AssignmentPlan.colorId`는 현재 로컬 데이터 `6/6`건 연결 완료
-- `WorkRecord`는 현재 로컬 데이터가 `0건`이라 styleUid 백필 대상은 없었다
-
-#### 다국어 실제 개발 시 참고 모델
-- 속성 번역은 FK 기준 번역 테이블로 붙인다.
-  - 예시: `AttrColorTranslation(colorId, locale, name)`
-  - 예시: `AttrProcessTranslation(processId, locale, name)`
-  - 예시: `AttrRoleTranslation(roleId, locale, name)`
-- 상태값(enum)은 번역 테이블보다 **코드 -> locale 라벨 매핑**으로 처리하는 편이 단순하다.
-- 스타일명처럼 번역 대상이 실제로 필요한 경우에만 `StyleTranslation(styleUid, locale, name)` 같은 구조를 별도 검토한다.
-- 스냅샷 문자열은 번역 대상이 아니라 **당시 입력값 보존 데이터**로 취급한다.
-
-#### 다국어 구현 순서 (나중에 마지막 단계에서)
-1. 프런트 locale 인프라와 공통 label 레이어 도입
-2. 번역 대상 마스터의 translation 테이블 추가 + 기본 `ko` 데이터 시드
-3. 백엔드 응답을 locale 기준 JOIN/매핑하도록 확장
-4. 프런트 하드코딩 한글 라벨을 locale key 기반으로 치환
-5. 필요 시 번역 관리 UI를 마지막에 추가
-
-#### 검증 메모
-- `backend` TypeScript 빌드 통과
-- `frontend` Vite 빌드 통과
-- HTTP smoke test:
-  - `/orders`
-  - `/assignment-plans`
-  - `/work-logs`
-  - `/payroll`
-  모두 정상 응답 확인
 
 ## 오늘 반영 메모 (2026-03-05)
 

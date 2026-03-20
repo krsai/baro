@@ -29,7 +29,6 @@ const Payroll = React.lazy(() => import('./pages/App/Payroll'));
 const PayrollEntry = React.lazy(() => import('./pages/App/payroll/PayrollEntry'));
 const Onboarding = React.lazy(() => import('./pages/Auth/Onboarding'));
 const Attribute = React.lazy(() => import('./pages/App/Attribute'));
-const PageTranslations = React.lazy(() => import('./pages/App/PageTranslations'));
 const Order = React.lazy(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
 const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
@@ -291,10 +290,6 @@ const router = createBrowserRouter([
           {
             path: 'attribute',
             element: <Attribute />,
-          },
-          {
-            path: 'page-translations',
-            element: <PageTranslations />,
           },
           {
             path: 'line',
