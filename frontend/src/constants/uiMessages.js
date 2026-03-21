@@ -41,7 +41,7 @@ export const UI_MESSAGES = {
     productionResult: { ko: '생산 결과', en: 'Production Result', vi: 'Ket qua san xuat' },
     organization: { ko: '조직 관리', en: 'Organization', vi: 'To chuc' },
     business: { ko: '사업체 관리', en: 'Business', vi: 'Doanh nghiep' },
-    line: { ko: '라인 관리', en: 'Lines', vi: 'Chuyen may' },
+    line: { ko: '라인', en: 'Lines', vi: 'Chuyen may' },
     employee: { ko: '직원 관리', en: 'Employees', vi: 'Nhan vien' },
     customer: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
     holiday: { ko: '휴일 관리', en: 'Holidays', vi: 'Ngay nghi' },

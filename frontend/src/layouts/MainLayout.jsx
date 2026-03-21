@@ -268,7 +268,12 @@ const MainLayout = () => {
         setOpen: setProductionOpen,
         children: [
           {
-            label: getUiMessage('menu.assignment', '작업 배정', languageCode),
+            label: getUiMessage('menu.line', '라인', languageCode),
+            icon: <ContentCut />,
+            path: '/line',
+          },
+          {
+            label: getUiMessage('menu.assignment', '배정', languageCode),
             icon: <ContentCut />,
             path: '/assignment',
           },
@@ -283,12 +288,12 @@ const MainLayout = () => {
             path: '/st-review',
           },
           {
-            label: getUiMessage('menu.workHistory', '작업 기록', languageCode),
+            label: getUiMessage('menu.workHistory', '기록', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
           },
           {
-            label: getUiMessage('menu.attendance', '출퇴근 입력', languageCode),
+            label: getUiMessage('menu.attendance', '출퇴근', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
           },
@@ -338,11 +343,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.business', '사업체 관리', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
-          },
-          {
-            label: getUiMessage('menu.line', '라인 관리', languageCode),
-            icon: <ContentCut />,
-            path: '/line',
           },
           {
             label: getUiMessage('menu.employee', '직원 관리', languageCode),
@@ -431,6 +431,7 @@ const MainLayout = () => {
 
         if (childPaths.has('/assignment')) {
           visibleChildren = [
+            visibleChildren.find((child) => child.path === '/line') || null,
             visibleChildren.find((child) => child.path === '/assignment') || null,
             visibleChildren.find((child) => child.path === '/work-history') || null,
             visibleChildren.find((child) => child.path === '/attendance') || null,
@@ -470,10 +471,10 @@ const MainLayout = () => {
   const resolveTabLabel = React.useCallback(
     (path) => {
       if (path === '/work-history/new') {
-        return getUiMessage('menu.workHistory', '작업 기록', languageCode);
+        return getUiMessage('menu.workHistory', '기록', languageCode);
       }
       if (path.startsWith('/work-history/') && path !== '/work-history') {
-        return getUiMessage('menu.workHistory', '작업 기록', languageCode);
+        return getUiMessage('menu.workHistory', '기록', languageCode);
       }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||

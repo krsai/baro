@@ -76,6 +76,115 @@
 - 날짜 라벨은 `buildDays(..., languageCode)`로 생성하고, 언어가 바뀌면 현재 day window를 같은 길이로 다시 만들어 요일 표기도 즉시 바꾼다.
 - assignment 페이지에서 사용자에게 보이는 새 문구를 추가할 때는 먼저 `uiMessages.js`의 `assign.*`에 넣고 화면에서 `getUiMessage(...)`로만 읽는다.
 
+### 2026-03-21 앱 페이지 기본 레이아웃 기준
+
+- 앱의 기본 리스트/보드형 페이지는 아래 순서를 기본 틀로 맞춘다.
+  1. 제목 행
+  2. 검색/필터/추가 액션 행
+  3. 본문
+- 제목 행 기준:
+  - 좌측은 제목만 둔다.
+  - 우측 끝에는 저장 버튼을 둔다. 저장이 없는 화면은 비워도 되지만, 저장이 필요한 화면은 제목 줄 우측에 둔다.
+  - 부제목(설명 문장)은 기본형에서는 두지 않는다.
+- 검색/필터/추가 액션 행 기준:
+  - 좌측: 검색기
+  - 우측: 날짜 필터(필요한 경우), 추가 버튼, 보조 액션
+  - 검색기/날짜필터/버튼 간 간격과 높이는 공통 컴포넌트로 맞춘다.
+- 본문 기준:
+  - 표/리스트/카드 영역은 가능한 한 공통 Paper/Card 래퍼 안에 넣는다.
+  - 테이블 상태 메시지(로딩/빈 상태)는 공통 컴포넌트로 맞춘다.
+- 예외:
+  - `배정`, `생산 계획`, `재고`, `상세 편집 화면`처럼 구조가 큰 화면은 기본 틀을 참고하되, 별도 예외 레이아웃으로 다룬다.
+  - 특히 `배정`은 일반 보드형과 분리해서 마지막에 별도 정리한다.
+
+### 2026-03-21 페이지 레이아웃 현황 메모
+
+- 기본 틀에 비교적 가까운 화면:
+  - `CustomerList`
+  - `StyleBoard`
+  - `OrderList` 목록 모드
+  - `WorkList`
+  - `FactoryBoard`
+  - `PayrollBoard`
+  - `MyProfile`
+- 제목/부제목/액션 배치가 현재 제각각인 화면:
+  - `AttendanceBoard`
+  - `HolidayBoard`
+  - `ProductionPlanBoard`
+  - `LineBoard`
+  - `StaticOptionBoard`
+  - `OnboardingBoard`
+  - `Permission`
+- 구조 자체가 기본형과 다른 복합 화면:
+  - `AssignBoard`
+  - `InventoryBoard`
+  - `EmployeeBoard`
+  - `AttrBoard`
+  - `OrganizationBoard`
+  - `OrderList` 상세 모드
+  - `StyleDetail`
+  - `WorkEntry`
+
+### 2026-03-21 레이아웃 공통화 우선순위
+
+- CSS/구성 일관성을 위해 아래 공통 컴포넌트부터 우선 검토한다.
+  - `AppPageContainer`
+    - 현재는 단순 wrapper라서, 제목 행/툴바 행/본문 행을 명시적으로 받는 방향을 우선 검토한다.
+  - `PageSectionHeader`
+    - 현재는 `title + actionLabel` 수준이라, 제목 우측 저장 버튼/보조 액션/정렬 규칙을 담기에는 부족하다.
+    - `title row` 전용 공통 컴포넌트로 확장하거나 새 컴포넌트로 대체하는 것을 우선 검토한다.
+  - `SearchInput`
+    - 폭, 높이, placeholder 스타일, 아이콘 여백을 전역 기준으로 맞춘다.
+  - `CustomDatePicker`
+    - 페이지마다 반복되는 폭/버튼 배치/월 이동 버튼 스타일을 공통 wrapper로 묶는 것을 우선 검토한다.
+  - `TableStatusRow`
+    - 로딩/빈 상태/오류 상태 텍스트 스타일을 동일 규칙으로 맞춘다.
+  - 공통 본문 래퍼
+    - `Paper variant="outlined"`와 내부 padding/overflow/table container 규칙이 반복되고 있으므로 `table/list body wrapper` 공통화를 우선 검토한다.
+- 원칙:
+  - 페이지를 먼저 하나 승인받아 맞춘 뒤, 그 페이지에서 검증된 공통 컴포넌트만 다른 화면에 확장한다.
+  - 한 번에 모든 페이지를 바꾸지 않는다.
+
+### 2026-03-21 페이지별 순차 개선 계획
+
+- 1차(기본형 확정용, 가장 단순한 리스트 화면)
+  - `CustomerList`
+  - `StyleBoard`
+  - `FactoryBoard`
+- 2차(검색 + 날짜 필터 조합)
+  - `OrderList` 목록 모드
+  - `WorkList`
+  - `AttendanceBoard`
+- 3차(조직/운영 보드형)
+  - `HolidayBoard`
+  - `PayrollBoard`
+  - `StaticOptionBoard`
+  - `OnboardingBoard`
+- 4차(구조 복합형)
+  - `EmployeeBoard`
+  - `LineBoard`
+  - `AttrBoard`
+  - `OrganizationBoard`
+- 5차(상세/편집형)
+  - `OrderList` 상세 모드
+  - `StyleDetail`
+  - `MyProfile`
+  - `WorkEntry`
+- 6차(예외 레이아웃 별도 정리)
+  - `ProductionPlanBoard`
+  - `InventoryBoard`
+  - `AssignBoard`
+
+### 2026-03-21 진행 원칙
+
+- 다음 턴부터는 사용자가 승인한 페이지 하나씩만 레이아웃을 손본다.
+- 각 턴에서 먼저 할 일:
+  1. 해당 페이지를 기본 틀로 정렬
+  2. 그 페이지에서 반복된 스타일을 공통 컴포넌트로 올릴 수 있는지 검토
+  3. 공통화가 안전한 부분만 글로벌로 반영
+- 새 공통 컴포넌트는 최소 개수로 유지한다.
+  - 기본 목표는 `제목 행`, `필터 행`, `본문 래퍼` 3축만 먼저 통일하는 것이다.
+
 ### 공용 공정 마스터 기준
 
 - 공정 마스터(`AttrProcess`)는 **스타일별 로컬 코드(TT/TS/VS/HT 등)** 가 아니라, 공정의 **의미 자체**를 기준으로 만든다.
