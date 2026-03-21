@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box,
+  Button,
   Chip,
   Paper,
   Table,
@@ -12,7 +13,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -20,7 +21,10 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const formatDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
+  `${formatNumberWithCommas(Math.round(Number(value)), {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })} 동`;
 
 const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useApp();
@@ -30,6 +34,7 @@ const PayrollBoard = () => {
 
   useEffect(() => {
     let cancelled = false;
+
     const load = async () => {
       setLoading(true);
       try {
@@ -45,8 +50,11 @@ const PayrollBoard = () => {
         if (!cancelled) setLoading(false);
       }
     };
+
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeOrgId, showNotification]);
 
   const handleAdd = () => {
@@ -59,17 +67,23 @@ const PayrollBoard = () => {
 
   return (
     <AppPageContainer
-      header={
-        <PageSectionHeader
-          title="급여 계산"
-          actionLabel="급여 계산 추가"
-          actionIcon={<AddIcon />}
-          onAction={handleAdd}
+      title="급여 계산"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleAdd}
+            >
+              급여 계산 추가
+            </Button>
+          )}
         />
-      }
+      )}
     >
       <Box>
-        <Paper variant="outlined" sx={{ width: '100%' }}>
+        <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead>
@@ -94,9 +108,11 @@ const PayrollBoard = () => {
                   snapshots.map((snapshot) => {
                     const employees = Array.isArray(snapshot.data) ? snapshot.data : [];
                     const totalEarnings = employees.reduce(
-                      (sum, e) => sum + Number(e.finalEarnings ?? e.totalEarnings ?? 0),
+                      (sum, employee) =>
+                        sum + Number(employee.finalEarnings ?? employee.totalEarnings ?? 0),
                       0
                     );
+
                     return (
                       <TableRow
                         key={snapshot.id}

@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import {
+  Button,
   Paper,
   Table,
   TableBody,
@@ -13,7 +14,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import FactoryDetail from './factoryDetail/FactoryDetail';
 import { useApp } from '../../../context/AppContext';
@@ -142,16 +143,22 @@ const FactoryList = () => {
 
   return (
     <AppPageContainer
-      header={
-        <PageSectionHeader
-          title="공장 관리"
-          actionLabel="공장 추가"
-          actionIcon={<AddIcon />}
-          onAction={handleAddClick}
+      title="공장"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleAddClick}
+            >
+              공장 추가
+            </Button>
+          )}
         />
-      }
+      )}
     >
-      <Paper variant="outlined" sx={{ width: '100%' }}>
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import OrganizationDetail from './OrganizationDetail';
 import FactoryBoard from './FactoryBoard';
@@ -27,26 +28,28 @@ const OrganizationBoard = () => {
   };
 
   return (
-    <AppPageContainer>
-      <Box sx={{ mb: 3 }}>
-        <ToggleButtonGroup
-          value={currentTab}
-          exclusive
-          onChange={handleChange}
-          aria-label="business management toggle"
-        >
-          <ToggleButton
-            value="business"
-          >
-            법인 정보
-          </ToggleButton>
-          <ToggleButton
-            value="factory"
-          >
-            공장 정보
-          </ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+    <AppPageContainer
+      title="조직"
+      toolbar={(
+        <PageToolbar
+          left={(
+            <ToggleButtonGroup
+              value={currentTab}
+              exclusive
+              onChange={handleChange}
+              aria-label="business management toggle"
+            >
+              <ToggleButton value="business">
+                법인 정보
+              </ToggleButton>
+              <ToggleButton value="factory">
+                공장 정보
+              </ToggleButton>
+            </ToggleButtonGroup>
+          )}
+        />
+      )}
+    >
       {loadedTabs.business && (
         <RequestScopeBoundary scopeId="business" active={currentTab === 'business'}>
           <Box sx={{ display: currentTab === 'business' ? 'block' : 'none' }}>

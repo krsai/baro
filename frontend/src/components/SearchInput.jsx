@@ -17,7 +17,15 @@ const SearchInput = ({ value, onChange, placeholder = "검색...", sx, ...props 
           </InputAdornment>
         ),
       }}
-      sx={{ width: '400px', ...sx }}
+      sx={{
+        width: { xs: '100%', sm: 360, md: 420 },
+        maxWidth: '100%',
+        '& .MuiOutlinedInput-root': {
+          borderRadius: 2,
+          backgroundColor: 'background.paper',
+        },
+        ...sx,
+      }}
       {...props}
     />
   );

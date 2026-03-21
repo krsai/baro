@@ -21,6 +21,7 @@ import AddIcon from '@mui/icons-material/Add';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
@@ -60,6 +61,7 @@ const CustomerList = () => {
   const [formData, setFormData] = useState(buildFormData());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const isReadOnly = activeOrgType !== 'MANUFACTURER';
   const customerQuery = useMemo(
     () => buildQueryString({ orgId: activeOrgId }),
@@ -184,77 +186,73 @@ const CustomerList = () => {
   const drawerTitle = isEditing ? '고객 정보 수정' : '고객 등록';
 
   return (
-    <AppPageContainer>
-      <Stack spacing={1.5}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', sm: 'center' },
-            gap: 1,
-          }}
-        >
-          <SearchInput
-            placeholder="고객명, 코드, 담당자 또는 주소 검색..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            sx={{ width: { xs: '100%', sm: 420 } }}
-          />
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleAdd}
-            disabled={isReadOnly}
-          >
-            고객 추가
-          </Button>
-        </Box>
-
-        <Paper variant="outlined" sx={{ width: '100%' }}>
-          <TableContainer>
-            <Table stickyHeader size="small">
-              <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 'bold' }}>고객 코드</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>고객명</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>등록일</TableCell>
+    <AppPageContainer
+      title="고객"
+      toolbar={(
+        <PageToolbar
+          left={(
+            <SearchInput
+              placeholder="고객명, 코드, 담당자 또는 주소 검색..."
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          )}
+          right={(
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleAdd}
+              disabled={isReadOnly}
+            >
+              고객 추가
+            </Button>
+          )}
+        />
+      )}
+    >
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
+        <TableContainer>
+          <Table stickyHeader size="small">
+            <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 'bold' }}>고객 코드</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>고객명</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>등록일</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading && (
+                <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+              )}
+              {!loading && filteredCustomers.length === 0 && (
+                <TableStatusRow colSpan={6} message="등록된 고객이 없습니다." sx={{ py: 2 }} />
+              )}
+              {filteredCustomers.map((customer) => (
+                <TableRow
+                  key={customer.id}
+                  hover
+                  onDoubleClick={() => handleRowDoubleClick(customer)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{customer.code || '-'}</TableCell>
+                  <TableCell>{customer.name || '-'}</TableCell>
+                  <TableCell>{customer.manager || '-'}</TableCell>
+                  <TableCell>
+                    {customer.phone ||
+                      combinePhone(customer.countryCode, customer.phoneNumber) ||
+                      '-'}
+                  </TableCell>
+                  <TableCell>{customer.email || '-'}</TableCell>
+                  <TableCell>{formatDate(customer.registeredAt)}</TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody>
-                {loading && (
-                  <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
-                )}
-                {!loading && filteredCustomers.length === 0 && (
-                  <TableStatusRow colSpan={6} message="등록된 고객이 없습니다." sx={{ py: 2 }} />
-                )}
-                {filteredCustomers.map((customer) => (
-                  <TableRow
-                    key={customer.id}
-                    hover
-                    onDoubleClick={() => handleRowDoubleClick(customer)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>{customer.code || '-'}</TableCell>
-                    <TableCell>{customer.name || '-'}</TableCell>
-                    <TableCell>{customer.manager || '-'}</TableCell>
-                    <TableCell>
-                      {customer.phone ||
-                        combinePhone(customer.countryCode, customer.phoneNumber) ||
-                        '-'}
-                    </TableCell>
-                    <TableCell>{customer.email || '-'}</TableCell>
-                    <TableCell>{formatDate(customer.registeredAt)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Paper>
-      </Stack>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       <Drawer
         anchor="right"

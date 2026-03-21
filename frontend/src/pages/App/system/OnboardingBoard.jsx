@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { useApp } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
@@ -220,19 +221,25 @@ const OnboardingBoard = () => {
 
   return (
     <AppPageContainer
-      header={
-        <>
-          <Typography component="h1" variant="h4">
-            가입 승인
-          </Typography>
-          <Typography sx={{ mt: 1, color: 'text.secondary' }}>
-            가입 요청을 검토하고 승인 또는 거절할 수 있습니다.
-          </Typography>
-        </>
-      }
+      title="가입 승인"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => fetchRequests({ isRefresh: true })}
+              disabled={loading || refreshing}
+              startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : null}
+            >
+              새로고침
+            </Button>
+          )}
+        />
+      )}
     >
       <Box sx={{ width: '100%' }}>
-        <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
+        <Paper variant="outlined" sx={{ p: 3, width: '100%', borderRadius: 2 }}>
             <Box
               sx={{
                 display: 'flex',
@@ -242,15 +249,6 @@ const OnboardingBoard = () => {
               }}
             >
               <Typography variant="h6">가입 요청 목록</Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => fetchRequests({ isRefresh: true })}
-                disabled={loading || refreshing}
-                startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : null}
-              >
-                새로고침
-              </Button>
             </Box>
 
             {loading ? (

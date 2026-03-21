@@ -3,31 +3,43 @@ import { Box, Button, Typography } from '@mui/material';
 
 const PageSectionHeader = ({
   title,
+  actions = null,
   actionLabel,
   onAction,
   actionIcon = null,
   actionDisabled = false,
+  sx = {},
+  titleVariant = 'h5',
 }) => {
+  const resolvedActions =
+    actions ||
+    (actionLabel ? (
+      <Button
+        variant="contained"
+        startIcon={actionIcon}
+        onClick={onAction}
+        disabled={actionDisabled}
+      >
+        {actionLabel}
+      </Button>
+    ) : null);
+
   return (
     <Box
       sx={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        mb: 2,
+        alignItems: { xs: 'flex-start', sm: 'center' },
+        flexDirection: { xs: 'column', sm: 'row' },
+        gap: 1.25,
+        minWidth: 0,
+        ...sx,
       }}
     >
-      <Typography variant="h6">{title}</Typography>
-      {actionLabel ? (
-        <Button
-          variant="contained"
-          startIcon={actionIcon}
-          onClick={onAction}
-          disabled={actionDisabled}
-        >
-          {actionLabel}
-        </Button>
-      ) : null}
+      <Typography variant={titleVariant} sx={{ fontWeight: 700 }}>
+        {title}
+      </Typography>
+      {resolvedActions}
     </Box>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Paper,
@@ -24,6 +24,7 @@ import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import { getUiMessage } from '../../../constants/uiMessages';
 import StyleDetail from './StyleDetail';
@@ -294,23 +295,30 @@ const StyleBoard = () => {
   );
 
   return (
-    <AppPageContainer>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <SearchInput
-          placeholder={getUiMessage(
-            'styleBoard.searchPlaceholder',
-            '스타일명 또는 고객사 검색...',
-            languageCode
+    <AppPageContainer
+      title="스타일"
+      toolbar={(
+        <PageToolbar
+          left={(
+            <SearchInput
+              placeholder={getUiMessage(
+                'styleBoard.searchPlaceholder',
+                '스타일명 또는 고객사 검색...',
+                languageCode
+              )}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           )}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          right={(
+            <Button onClick={handleAddNewClick} variant="contained" color="primary">
+              {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
+            </Button>
+          )}
         />
-        <Button onClick={handleAddNewClick} variant="contained" color="primary">
-          {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
-        </Button>
-      </Box>
-
-      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
+      )}
+    >
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table
             stickyHeader

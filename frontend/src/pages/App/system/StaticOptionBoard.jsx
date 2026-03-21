@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
   Box,
@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import {
   STATIC_OPTION_GROUPS,
   countStaticOptionItems,
@@ -34,53 +35,44 @@ const StaticOptionBoard = () => {
 
   return (
     <AppPageContainer
-      header={
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
-          <Box>
-            <Typography variant="h5" fontWeight={700}>
-              {getUiMessage('staticOptionBoard.title', '정적 사전', languageCode)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              {getUiMessage(
-                'staticOptionBoard.description',
-                '앱에 하드코딩된 정적 코드 사전을 읽기 전용으로 보여줍니다.',
-                languageCode
-              )}
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
-            <Chip
-              label={getUiMessage(
-                'staticOptionBoard.groupCount',
-                `그룹 ${groupCount}`,
-                languageCode,
-                { count: groupCount }
-              )}
-              variant="outlined"
-            />
-            <Chip
-              label={getUiMessage(
-                'staticOptionBoard.itemCount',
-                `항목 ${itemCount}`,
-                languageCode,
-                { count: itemCount }
-              )}
-              variant="outlined"
-            />
-            <Button component={RouterLink} to="/system-setting" variant="outlined" size="small">
-              {getUiMessage(
-                'staticOptionBoard.goToSystemSetting',
-                '구독 관리로 이동',
-                languageCode
-              )}
-            </Button>
-          </Stack>
-        </Stack>
-      }
+      title={getUiMessage('staticOptionBoard.title', '정적 사전', languageCode)}
+      toolbar={(
+        <PageToolbar
+          right={(
+            <>
+              <Chip
+                label={getUiMessage(
+                  'staticOptionBoard.groupCount',
+                  `그룹 ${groupCount}`,
+                  languageCode,
+                  { count: groupCount }
+                )}
+                variant="outlined"
+              />
+              <Chip
+                label={getUiMessage(
+                  'staticOptionBoard.itemCount',
+                  `항목 ${itemCount}`,
+                  languageCode,
+                  { count: itemCount }
+                )}
+                variant="outlined"
+              />
+              <Button component={RouterLink} to="/system-setting" variant="outlined" size="small">
+                {getUiMessage(
+                  'staticOptionBoard.goToSystemSetting',
+                  '구독 관리로 이동',
+                  languageCode
+                )}
+              </Button>
+            </>
+          )}
+        />
+      )}
     >
       <Stack spacing={3}>
         {STATIC_OPTION_GROUPS.map((group) => (
-          <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden' }}>
+          <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
             <Box
               sx={{
                 px: 2,

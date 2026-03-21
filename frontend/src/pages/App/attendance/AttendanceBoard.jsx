@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -28,6 +28,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -318,72 +319,69 @@ const AttendanceBoard = () => {
 
   return (
     <AppPageContainer
-      header={
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">출퇴근 입력</Typography>
-          <Chip
-            icon={<EventAvailableIcon />}
-            label={`${dateKey} · ${selectedFactory?.name || '공장 미선택'}`}
-            variant="outlined"
-          />
-        </Box>
-      }
+      title="출퇴근 기록"
+      titleActions={(
+        <Button
+          variant="contained"
+          onClick={handleSaveEntries}
+          disabled={!selectedFactoryId || savingEntries}
+        >
+          저장
+        </Button>
+      )}
+      toolbar={(
+        <PageToolbar
+          right={(
+            <>
+              <Chip
+                icon={<EventAvailableIcon />}
+                label={`${dateKey} · ${selectedFactory?.name || '공장 미선택'}`}
+                variant="outlined"
+              />
+              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
+                <DatePicker
+                  label="근무일자"
+                  value={selectedDate}
+                  onChange={(value) => {
+                    if (!value || !value.isValid()) return;
+                    setSelectedDate(value.startOf('day'));
+                  }}
+                  slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
+                />
+              </LocalizationProvider>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel id="attendance-factory-select-label">공장</InputLabel>
+                <Select
+                  labelId="attendance-factory-select-label"
+                  value={selectedFactoryId}
+                  label="공장"
+                  onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
+                  disabled={loadingFactories || factories.length === 0}
+                >
+                  {factories.map((factory) => (
+                    <MenuItem key={factory.id} value={String(factory.id)}>
+                      {factory.name || `공장 ${factory.id}`}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="outlined"
+                onClick={handleResetEntries}
+                disabled={!selectedFactoryId || savingEntries}
+              >
+                초기화
+              </Button>
+            </>
+          )}
+        />
+      )}
     >
       <Alert severity="warning" sx={{ mb: 2 }}>
         AT 계산은 매월 5일 기준 직전 월 데이터를 반영하며, 출퇴근 미입력 작업자는 8시간 기준으로 자동 계산됩니다.
       </Alert>
 
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ alignItems: 'center' }}>
-          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
-            <DatePicker
-              label="근무일자"
-              value={selectedDate}
-              onChange={(value) => {
-                if (!value || !value.isValid()) return;
-                setSelectedDate(value.startOf('day'));
-              }}
-              slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
-            />
-          </LocalizationProvider>
-
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel id="attendance-factory-select-label">공장</InputLabel>
-            <Select
-              labelId="attendance-factory-select-label"
-              value={selectedFactoryId}
-              label="공장"
-              onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
-              disabled={loadingFactories || factories.length === 0}
-            >
-              {factories.map((factory) => (
-                <MenuItem key={factory.id} value={String(factory.id)}>
-                  {factory.name || `공장 ${factory.id}`}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          <Box sx={{ flexGrow: 1 }} />
-
-          <Button
-            variant="outlined"
-            onClick={handleResetEntries}
-            disabled={!selectedFactoryId || savingEntries}
-          >
-            초기화
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSaveEntries}
-            disabled={!selectedFactoryId || savingEntries}
-          >
-            저장
-          </Button>
-        </Stack>
-      </Paper>
-
-      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+      <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table size="small">
             <TableHead>

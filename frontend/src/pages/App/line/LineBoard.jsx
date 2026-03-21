@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
-  Divider,
   FormControl,
   Grid,
   IconButton,
@@ -29,6 +28,7 @@ import ManageAccountsOutlinedIcon from '@mui/icons-material/ManageAccountsOutlin
 import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
@@ -378,16 +378,48 @@ const LineBoard = () => {
 
   return (
     <AppPageContainer
-      header={
-        <Stack spacing={0.75}>
-          <Typography variant="h5" fontWeight={800}>
-            라인 관리
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            공장별 라인을 구성하고, 작업자를 드래그로 배치하며, 라인장을 지정합니다.
-          </Typography>
-        </Stack>
-      }
+      title="라인 관리"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <>
+              <TextField
+                select
+                size="small"
+                label="공장"
+                value={selectedFactoryId}
+                onChange={(e) => setSelectedFactoryId(e.target.value)}
+                sx={{ minWidth: { xs: '100%', md: 210 } }}
+                disabled={loading}
+              >
+                {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
+                {factories.map((factory) => (
+                  <MenuItem key={factory.id} value={String(factory.id)}>
+                    {factory.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                size="small"
+                label="새 라인 이름"
+                value={newLineName}
+                onChange={(e) => setNewLineName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddLine()}
+                sx={{ minWidth: { xs: '100%', md: 220 } }}
+                disabled={!selectedFactoryId || saving}
+              />
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAddLine}
+                disabled={!selectedFactoryId || saving || !newLineName.trim()}
+              >
+                라인 추가
+              </Button>
+            </>
+          )}
+        />
+      )}
     >
       <Stack spacing={2.25}>
         <Paper
@@ -399,51 +431,6 @@ const LineBoard = () => {
               `linear-gradient(180deg, ${alpha(theme.palette.primary.main, 0.06)} 0%, ${theme.palette.background.paper} 72%)`,
           }}
         >
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            spacing={1.25}
-            alignItems={{ xs: 'stretch', md: 'center' }}
-          >
-            <TextField
-              select
-              size="small"
-              label="공장"
-              value={selectedFactoryId}
-              onChange={(e) => setSelectedFactoryId(e.target.value)}
-              sx={{ minWidth: { xs: '100%', md: 210 } }}
-              disabled={loading}
-            >
-              {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
-              {factories.map((f) => (
-                <MenuItem key={f.id} value={String(f.id)}>
-                  {f.name}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              size="small"
-              label="새 라인 이름"
-              value={newLineName}
-              onChange={(e) => setNewLineName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddLine()}
-              sx={{ flex: 1, minWidth: { xs: '100%', md: 220 } }}
-              disabled={!selectedFactoryId || saving}
-            />
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={handleAddLine}
-              disabled={!selectedFactoryId || saving || !newLineName.trim()}
-              sx={{ minWidth: 120, height: 40 }}
-            >
-              라인 추가
-            </Button>
-          </Stack>
-
-          <Divider sx={{ my: 1.5 }} />
-
           <Grid container spacing={1}>
             <Grid item xs={12} sm={6} md={3}>
               <Paper

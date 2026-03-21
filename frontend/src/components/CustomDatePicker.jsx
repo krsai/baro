@@ -14,6 +14,14 @@ const CustomDatePicker = ({ value, onChange, slotProps, ...props }) => {
     textField: {
       size: 'small',
       ...slotProps?.textField,
+      sx: {
+        minWidth: 140,
+        '& .MuiOutlinedInput-root': {
+          borderRadius: 2,
+          backgroundColor: 'background.paper',
+        },
+        ...slotProps?.textField?.sx,
+      },
       className: `compact-date-picker${slotProps?.textField?.className ? ` ${slotProps.textField.className}` : ''}`,
     },
   };

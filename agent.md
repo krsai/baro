@@ -185,6 +185,52 @@
 - 새 공통 컴포넌트는 최소 개수로 유지한다.
   - 기본 목표는 `제목 행`, `필터 행`, `본문 래퍼` 3축만 먼저 통일하는 것이다.
 
+### 2026-03-21 레이아웃 공통화 구현 메모
+
+- 공통 페이지 쉘은 아래 구조로 실제 구현했다.
+  - `AppPageContainer`
+    - `title`
+    - `titleActions`
+    - `toolbar`
+    - `header`는 예외 화면에서만 유지
+  - `PageToolbar`
+    - 검색/필터/추가/보조 액션을 한 줄로 맞추는 전용 컴포넌트
+    - 모바일에서는 세로, 데스크톱에서는 가로 정렬
+- 공통 스타일 기준:
+  - `SearchInput`은 흰 배경 + 둥근 outlined 입력으로 통일
+  - `CustomDatePicker`는 공통 최소 폭과 rounded outlined 스타일을 기본값으로 사용
+  - 리스트/테이블형 본문 `Paper`는 가능하면 `variant="outlined" + borderRadius: 2 + overflow: hidden` 기준으로 맞춘다
+  - `TableStatusRow`로 로딩/빈 상태 메시지를 계속 통일한다
+- 현재 기본 틀 적용 또는 상단 구조 정리 완료:
+  - `CustomerList`
+  - `StyleBoard`
+  - `FactoryBoard`
+  - `PayrollBoard`
+  - `WorkList`
+  - `AttendanceBoard`
+  - `HolidayBoard`
+  - `StaticOptionBoard`
+  - `OnboardingBoard`
+  - `AttrBoard`
+  - `LineBoard`
+  - `OrganizationBoard`
+  - `OrganizationDetail`
+  - `MyProfile`
+  - `Permission`
+  - `ProductionResultBoard`
+- 현재도 예외 레이아웃으로 남겨둔 화면:
+  - `AssignBoard`
+  - `ProductionPlanBoard`
+  - `InventoryBoard`
+  - `OrderList`
+  - `EmployeeBoard`
+  - `StyleDetail`
+  - `WorkEntry`
+- 적용 규칙:
+  - 저장이 필요한 화면은 가능한 한 `titleActions`에 저장 버튼을 둔다
+  - 검색/날짜 필터/추가 버튼은 가능한 한 `toolbar`로 내린다
+  - 구조가 큰 화면은 본문을 억지로 바꾸지 말고, 헤더/툴바부터 먼저 맞춘다
+
 ### 공용 공정 마스터 기준
 
 - 공정 마스터(`AttrProcess`)는 **스타일별 로컬 코드(TT/TS/VS/HT 등)** 가 아니라, 공정의 **의미 자체**를 기준으로 만든다.

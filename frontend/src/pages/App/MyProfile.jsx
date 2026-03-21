@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Button,
   Paper,
   TextField,
   Typography,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../components/AppPageContainer';
-import PageSectionHeader from '../../components/PageSectionHeader';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
@@ -164,17 +164,19 @@ const MyProfile = () => {
 
   return (
     <AppPageContainer
-      header={(
-        <PageSectionHeader
-          title={TEXT.title}
-          actionLabel={TEXT.save}
-          actionIcon={<SaveIcon />}
-          onAction={handleSave}
-          actionDisabled={!isDirty || isSaving}
-        />
+      title={TEXT.title}
+      titleActions={(
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+          disabled={!isDirty || isSaving}
+        >
+          {TEXT.save}
+        </Button>
       )}
     >
-      <Paper variant="outlined" sx={{ width: '100%', p: 3 }}>
+      <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
         <InfoRow label={TEXT.email} value={formData.email} disabled />
         <InfoRow label={TEXT.name} name="name" value={formData.name} />
         <InfoRow label={TEXT.phone} name="phone" value={formData.phone} />

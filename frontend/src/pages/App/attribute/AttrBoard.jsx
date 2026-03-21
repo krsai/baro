@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -442,35 +442,24 @@ const AttrBoard = () => {
     }
   };
   return (
-    <AppPageContainer>
-      <Box>
-        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-              속성 관리
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              사이즈와 성별은 공통 코드로 고정되어 있어 이 화면에서 관리하지 않습니다.
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="contained"
-              onClick={handleSave}
-              disabled={!isDirty || isSaving}
-              startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
-            >
-              {isSaving ? '저장 중...' : '저장'}
-            </Button>
-          </Box>
-        </Box>
-
-        <Grid container spacing={3}>
-          {visibleSectionConfigs.map((config) => (
-            <Grid item xs={12} key={config.key}>
-              <AttributeSection
-                config={config}
+    <AppPageContainer
+      title="속성 관리"
+      titleActions={(
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={!isDirty || isSaving}
+          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
+        >
+          {isSaving ? '저장 중...' : '저장'}
+        </Button>
+      )}
+    >
+      <Grid container spacing={3}>
+        {visibleSectionConfigs.map((config) => (
+          <Grid item xs={12} key={config.key}>
+            <AttributeSection
+              config={config}
               rows={formData[config.key] || []}
               onAddRow={handleAddRow}
               onDeleteRow={handleDeleteRow}
@@ -478,11 +467,10 @@ const AttrBoard = () => {
               onOpenGuide={
                 config.key === 'processes' ? () => setIsProcessGuideOpen(true) : undefined
               }
-              />
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
+            />
+          </Grid>
+        ))}
+      </Grid>
       <ProcessNamingGuideDialog
         open={isProcessGuideOpen}
         onClose={() => setIsProcessGuideOpen(false)}

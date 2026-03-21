@@ -19,7 +19,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
-import PageSectionHeader from '../../../components/PageSectionHeader';
+import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -157,42 +157,48 @@ const WorkList = () => {
 
   return (
     <AppPageContainer
-      header={
-        <PageSectionHeader
-          title="작업 기록"
-          actionLabel="작업 기록 추가"
-          actionIcon={<AddIcon />}
-          onAction={handleAdd}
+      title="작업 기록"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <>
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} title="이전 달">
+                  <ChevronLeftIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+                <CustomDatePicker
+                  value={monthStart}
+                  onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
+                  slotProps={{ textField: { sx: { width: 140 } } }}
+                />
+                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+                <CustomDatePicker
+                  value={getMonthEnd(monthStart)}
+                  onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
+                  slotProps={{ textField: { sx: { width: 140 } } }}
+                />
+                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} title="다음 달">
+                  <ChevronRightIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+                <Stack sx={{ gap: '2px' }}>
+                  <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M+</Button>
+                  <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M-</Button>
+                </Stack>
+              </Stack>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAdd}
+              >
+                작업 기록 추가
+              </Button>
+            </>
+          )}
         />
-      }
+      )}
     >
       <Box>
-        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1.5 }}>
-          <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} title="이전 달">
-            <ChevronLeftIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-          <CustomDatePicker
-            value={monthStart}
-            onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
-            slotProps={{ textField: { sx: { width: 140 } } }}
-          />
-          <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
-          <CustomDatePicker
-            value={getMonthEnd(monthStart)}
-            onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
-            slotProps={{ textField: { sx: { width: 140 } } }}
-          />
-          <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} title="다음 달">
-            <ChevronRightIcon sx={{ fontSize: 18 }} />
-          </IconButton>
-          <Stack sx={{ gap: '2px' }}>
-            <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M+</Button>
-            <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M-</Button>
-          </Stack>
-        </Stack>
-      </Box>
-      <Box>
-        <Paper variant="outlined" sx={{ width: '100%' }}>
+        <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead>

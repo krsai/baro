@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -15,6 +15,7 @@ import { PickersDay } from '@mui/x-date-pickers/PickersDay';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PageToolbar from '../../../components/PageToolbar';
 import { useApp } from '../../../context/AppContext';
 import { loadHolidays, saveHolidays } from '../../../utils/localData';
 
@@ -110,20 +111,24 @@ const HolidayBoard = () => {
 
   return (
     <AppPageContainer
-      header={(
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <CalendarMonthIcon color="primary" />
-            <Typography variant="h6">휴일 관리</Typography>
-          </Stack>
-          <Typography variant="body2" color="text.secondary">
-            수동 등록 휴일 {holidayKeys.length}일
-          </Typography>
-        </Box>
+      title="휴일 관리"
+      toolbar={(
+        <PageToolbar
+          right={(
+            <Chip
+              icon={<CalendarMonthIcon color="primary" />}
+              label={`수동 등록 휴일 ${holidayKeys.length}일`}
+              variant="outlined"
+            />
+          )}
+        />
       )}
     >
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-        <Paper variant="outlined" sx={{ p: 2, width: { xs: '100%', md: 420 }, flexShrink: 0 }}>
+        <Paper
+          variant="outlined"
+          sx={{ p: 2, width: { xs: '100%', md: 420 }, flexShrink: 0, borderRadius: 2 }}
+        >
           <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
             <DateCalendar
               value={selectedDate}
@@ -160,7 +165,7 @@ const HolidayBoard = () => {
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2, flexGrow: 1, minHeight: 260 }}>
+        <Paper variant="outlined" sx={{ p: 2, flexGrow: 1, minHeight: 260, borderRadius: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
               등록된 휴일
