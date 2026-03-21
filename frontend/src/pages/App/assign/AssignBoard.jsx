@@ -31,6 +31,7 @@ import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
+import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -4509,7 +4510,14 @@ const AssignBoard = () => {
           anchor="right"
           open={Boolean(detailState)}
           onClose={handleCloseDetail}
-          PaperProps={{ sx: { width: { xs: '100%', md: '80%' }, p: 2.5, overflowY: 'auto' } }}
+          PaperProps={{
+            sx: {
+              ...TOP_OFFSET_DRAWER_PAPER_SX,
+              width: { xs: '100%', md: '80%' },
+              p: 2.5,
+              overflowY: 'auto',
+            },
+          }}
         >
           <Stack spacing={1.5}>
             <Box

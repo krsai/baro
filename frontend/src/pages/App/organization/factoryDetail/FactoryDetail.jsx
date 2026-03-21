@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
+import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import {
   formatDigitsWithCommas,
   parseNumberLike,
@@ -102,8 +103,18 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
   };
 
   return (
-    <Drawer anchor="right" open={open} onClose={onClose}>
-      <Box sx={{ width: 500, p: 3 }}>
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      PaperProps={{
+        sx: {
+          ...TOP_OFFSET_DRAWER_PAPER_SX,
+          width: { xs: '100%', sm: 500 },
+        },
+      }}
+    >
+      <Box sx={{ width: '100%', height: '100%', overflowY: 'auto', p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">{factory ? '공장 수정' : '공장 추가'}</Typography>
           <IconButton onClick={onClose}>

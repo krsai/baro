@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -27,11 +25,10 @@ import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { formatDigitsWithCommas, parseNumberLike } from '../../../utils/numberFormat';
 
 const DEFAULT_COUNTRY_CODE = '+84';
-const WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -42,23 +39,7 @@ const formatDate = (value) => {
 const combinePhone = (countryCode, phoneNumber) =>
   [String(countryCode || '').trim(), String(phoneNumber || '').trim()].filter(Boolean).join(' ');
 
-const parseNumber = (value) => parseNumberLike(value);
-
-const buildBrandOption = (organization) => ({
-  id: Number(organization?.id) || null,
-  code: organization?.code ?? '',
-  name: organization?.name ?? '',
-  address: organization?.address ?? '',
-  countryCode: organization?.countryCode ?? DEFAULT_COUNTRY_CODE,
-  phoneNumber: organization?.phone ?? '',
-  manager: organization?.representative ?? '',
-  email: organization?.email ?? '',
-  targetMonthlyWage: organization?.targetMonthlyWage ?? '',
-  wagePerSecond: organization?.wagePerSecond ?? '',
-});
-
 const buildFormData = (customer) => ({
-  brandOrgId: customer?.brandOrgId ?? null,
   code: customer?.code ?? '',
   name: customer?.name ?? '',
   address: customer?.address ?? '',
@@ -66,8 +47,6 @@ const buildFormData = (customer) => ({
   phoneNumber: customer?.phoneNumber ?? customer?.phone ?? '',
   manager: customer?.manager ?? '',
   email: customer?.email ?? '',
-  targetMonthlyWage: customer?.targetMonthlyWage ?? '',
-  wagePerSecond: customer?.wagePerSecond ?? '',
 });
 
 const CustomerList = () => {
@@ -75,16 +54,13 @@ const CustomerList = () => {
   const { activeOrgId, activeOrgType } = useAuth();
 
   const [customers, setCustomers] = useState([]);
-  const [brandOrganizations, setBrandOrganizations] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
-  const [selectedBrandOption, setSelectedBrandOption] = useState(null);
   const [formData, setFormData] = useState(buildFormData());
   const [loading, setLoading] = useState(false);
-  const [loadingBrandOrganizations, setLoadingBrandOrganizations] = useState(false);
   const [saving, setSaving] = useState(false);
-  const isReadOnly = activeOrgType === 'BRAND';
+  const isReadOnly = activeOrgType !== 'MANUFACTURER';
   const customerQuery = useMemo(
     () => buildQueryString({ orgId: activeOrgId }),
     [activeOrgId]
@@ -102,30 +78,9 @@ const CustomerList = () => {
     }
   };
 
-  const fetchBrandOrganizations = async () => {
-    setLoadingBrandOrganizations(true);
-    try {
-      const data = await requestJSON('/organizations');
-      const rows = Array.isArray(data) ? data : [];
-      const nextOptions = rows
-        .filter((row) => String(row?.type || '').toUpperCase() === 'BRAND')
-        .map(buildBrandOption)
-        .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')));
-      setBrandOrganizations(nextOptions);
-    } catch (_error) {
-      setBrandOrganizations([]);
-    } finally {
-      setLoadingBrandOrganizations(false);
-    }
-  };
-
   useEffect(() => {
     fetchCustomers();
   }, [customerQuery]);
-
-  useEffect(() => {
-    fetchBrandOrganizations();
-  }, []);
 
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
@@ -145,56 +100,18 @@ const CustomerList = () => {
     });
   }, [customers, searchTerm]);
 
-  const linkedBrandIdSet = useMemo(
-    () =>
-      new Set(
-        customers
-          .map((customer) => Number(customer?.brandOrgId))
-          .filter((brandOrgId) => Number.isFinite(brandOrgId) && brandOrgId > 0)
-      ),
-    [customers]
-  );
-
-  const selectableBrandOptions = useMemo(() => {
-    const editingBrandOrgId = Number(editingCustomer?.brandOrgId);
-    return brandOrganizations.filter((option) => {
-      if (!option?.id) return false;
-      if (Number.isFinite(editingBrandOrgId) && option.id === editingBrandOrgId) {
-        return true;
-      }
-      return !linkedBrandIdSet.has(option.id);
-    });
-  }, [brandOrganizations, editingCustomer?.brandOrgId, linkedBrandIdSet]);
-
-  const computedWagePerSecond = useMemo(() => {
-    const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
-    if (Number.isFinite(targetMonthlyWage)) {
-      return Math.round((targetMonthlyWage / WORK_SECONDS_PER_MONTH) * 100) / 100;
-    }
-    const fallback = parseNumber(formData.wagePerSecond);
-    return Number.isFinite(fallback) ? fallback : Number.NaN;
-  }, [formData.targetMonthlyWage, formData.wagePerSecond]);
-
-  const computedWageDisplay = Number.isFinite(computedWagePerSecond)
-    ? computedWagePerSecond.toFixed(2)
-    : '';
-
   const handleAdd = () => {
     if (isReadOnly) {
-      showNotification('브랜드 조직은 고객 정보를 수정할 수 없습니다. 조회만 가능합니다.', 'info');
+      showNotification('현재 조직에서는 고객 정보를 수정할 수 없습니다.', 'info');
       return;
     }
     setEditingCustomer(null);
-    setSelectedBrandOption(null);
     setFormData(buildFormData());
     setDrawerOpen(true);
   };
 
   const handleRowDoubleClick = (customer) => {
     setEditingCustomer(customer);
-    setSelectedBrandOption(
-      brandOrganizations.find((option) => option.id === Number(customer?.brandOrgId)) || null
-    );
     setFormData(buildFormData(customer));
     setDrawerOpen(true);
   };
@@ -203,42 +120,11 @@ const CustomerList = () => {
     if (saving) return;
     setDrawerOpen(false);
     setEditingCustomer(null);
-    setSelectedBrandOption(null);
   };
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
-    if (name === 'targetMonthlyWage') {
-      setFormData((prev) => ({
-        ...prev,
-        targetMonthlyWage: value.replace(/[^\d]/g, ''),
-      }));
-      return;
-    }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleBrandOptionChange = (_event, nextOption) => {
-    setSelectedBrandOption(nextOption || null);
-    if (!nextOption) {
-      setFormData((prev) => ({ ...prev, brandOrgId: null }));
-      return;
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      brandOrgId: nextOption.id,
-      code: nextOption.code || '',
-      name: nextOption.name || '',
-      address: nextOption.address || '',
-      countryCode: nextOption.countryCode || DEFAULT_COUNTRY_CODE,
-      phoneNumber: nextOption.phoneNumber || '',
-      manager: nextOption.manager || '',
-      email: nextOption.email || '',
-      targetMonthlyWage: nextOption.targetMonthlyWage ?? '',
-      wagePerSecond: nextOption.wagePerSecond ?? '',
-    }));
   };
 
   const handleSave = async () => {
@@ -247,18 +133,16 @@ const CustomerList = () => {
     const code = String(formData.code || '').trim().toUpperCase();
     const name = String(formData.name || '').trim();
     if (!code) {
-      showNotification('브랜드 코드를 입력해 주세요.', 'error');
+      showNotification('고객 코드를 입력해 주세요.', 'error');
       return;
     }
     if (!name) {
-      showNotification('브랜드 업체명을 입력해 주세요.', 'error');
+      showNotification('고객명을 입력해 주세요.', 'error');
       return;
     }
 
     setSaving(true);
-    const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
     const payload = {
-      brandOrgId: formData.brandOrgId || undefined,
       code,
       name,
       address: String(formData.address || '').trim(),
@@ -266,8 +150,6 @@ const CustomerList = () => {
       phoneNumber: String(formData.phoneNumber || '').trim(),
       manager: String(formData.manager || '').trim(),
       email: String(formData.email || '').trim(),
-      targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : null,
-      wagePerSecond: Number.isFinite(computedWagePerSecond) ? computedWagePerSecond : null,
     };
 
     try {
@@ -288,36 +170,36 @@ const CustomerList = () => {
       } else {
         setCustomers((prev) => [...prev, data]);
       }
-      await fetchBrandOrganizations();
 
-      showNotification(
-        isEdit ? '브랜드 업체 정보가 수정되었습니다.' : '브랜드 업체가 등록되었습니다.',
-        'success'
-      );
+      showNotification(isEdit ? '고객 정보가 수정되었습니다.' : '고객이 등록되었습니다.', 'success');
       handleCloseDrawer();
     } catch (error) {
-      showNotification(error?.message || '브랜드 업체 저장 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || '고객 저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   const isEditing = Boolean(editingCustomer?.id);
-  const isDrawerReadOnly = isReadOnly;
-  const drawerTitle = isEditing ? '브랜드 업체 수정' : '브랜드 업체 등록';
-  const selectedBrandSummary = selectedBrandOption
-    ? `${selectedBrandOption.name} (${selectedBrandOption.code || '-'})`
-    : '';
+  const drawerTitle = isEditing ? '고객 정보 수정' : '고객 등록';
 
   return (
     <AppPageContainer>
       <Stack spacing={1.5}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1,
+          }}
+        >
           <SearchInput
             placeholder="고객명, 코드, 담당자 또는 주소 검색..."
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            sx={{ width: 420 }}
+            sx={{ width: { xs: '100%', sm: 420 } }}
           />
           <Button
             variant="contained"
@@ -328,17 +210,6 @@ const CustomerList = () => {
             고객 추가
           </Button>
         </Box>
-
-        <Alert severity="info">
-          고객(브랜드) 정보는 조직 공통 데이터로 공유됩니다. 한 곳에서 수정하면 연결된 다른 조직에도
-          같은 정보가 반영됩니다.
-        </Alert>
-
-        {isReadOnly ? (
-          <Alert severity="info">
-            현재 조직은 브랜드 유형이라 고객 정보는 조회 전용입니다.
-          </Alert>
-        ) : null}
 
         <Paper variant="outlined" sx={{ width: '100%' }}>
           <TableContainer>
@@ -391,18 +262,27 @@ const CustomerList = () => {
         onClose={handleCloseDrawer}
         PaperProps={{
           sx: {
+            ...TOP_OFFSET_DRAWER_PAPER_SX,
             width: { xs: '100%', sm: 520 },
           },
         }}
       >
-        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box
+          sx={{
+            p: 3,
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            overflowY: 'auto',
+          }}
+        >
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 {drawerTitle}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                공장 등록과 같은 형식으로 브랜드 업체 정보를 입력합니다.
+                고객 기본 정보를 입력합니다.
               </Typography>
             </Box>
             <IconButton onClick={handleCloseDrawer} disabled={saving} aria-label="닫기">
@@ -413,64 +293,23 @@ const CustomerList = () => {
           <Divider sx={{ mb: 2 }} />
 
           <Stack spacing={1.8}>
-            {!isEditing ? (
-              <Autocomplete
-                options={selectableBrandOptions}
-                value={selectedBrandOption}
-                onChange={handleBrandOptionChange}
-                loading={loadingBrandOrganizations}
-                isOptionEqualToValue={(option, value) => Number(option?.id) === Number(value?.id)}
-                getOptionLabel={(option) =>
-                  option?.code ? `${option.name} (${option.code})` : option?.name || ''
-                }
-                noOptionsText="연결 가능한 공유 브랜드 업체가 없습니다."
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="기존 공유 브랜드 업체 선택"
-                    helperText={
-                      selectedBrandSummary
-                        ? `${selectedBrandSummary} 정보를 불러왔습니다.`
-                        : '이미 등록된 브랜드 업체를 선택하면 공유 정보를 그대로 연결합니다.'
-                    }
-                    InputProps={{
-                      ...params.InputProps,
-                      endAdornment: (
-                        <>
-                          {loadingBrandOrganizations ? (
-                            <CircularProgress color="inherit" size={18} />
-                          ) : null}
-                          {params.InputProps.endAdornment}
-                        </>
-                      ),
-                    }}
-                    disabled={saving || isDrawerReadOnly}
-                  />
-                )}
-              />
-            ) : null}
-
-            <Alert severity="info">
-              이 화면의 수정 내용은 브랜드 조직 원본 데이터에 저장됩니다.
-            </Alert>
-
             <TextField
               fullWidth
               required
-              label="브랜드 코드"
+              label="고객 코드"
               name="code"
               value={formData.code}
               onChange={handleInputChange}
-              disabled={saving || isDrawerReadOnly}
+              disabled={saving || isReadOnly}
             />
             <TextField
               fullWidth
               required
-              label="브랜드 업체명"
+              label="고객명"
               name="name"
               value={formData.name}
               onChange={handleInputChange}
-              disabled={saving || isDrawerReadOnly}
+              disabled={saving || isReadOnly}
             />
             <TextField
               fullWidth
@@ -478,7 +317,7 @@ const CustomerList = () => {
               name="address"
               value={formData.address}
               onChange={handleInputChange}
-              disabled={saving || isDrawerReadOnly}
+              disabled={saving || isReadOnly}
             />
             <TextField
               fullWidth
@@ -486,17 +325,17 @@ const CustomerList = () => {
               name="manager"
               value={formData.manager}
               onChange={handleInputChange}
-              disabled={saving || isDrawerReadOnly}
+              disabled={saving || isReadOnly}
             />
 
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 fullWidth
                 label="국가번호"
                 name="countryCode"
                 value={formData.countryCode}
                 onChange={handleInputChange}
-                disabled={saving || isDrawerReadOnly}
+                disabled={saving || isReadOnly}
               />
               <TextField
                 fullWidth
@@ -504,7 +343,7 @@ const CustomerList = () => {
                 name="phoneNumber"
                 value={formData.phoneNumber}
                 onChange={handleInputChange}
-                disabled={saving || isDrawerReadOnly}
+                disabled={saving || isReadOnly}
               />
             </Stack>
 
@@ -515,30 +354,8 @@ const CustomerList = () => {
               type="email"
               value={formData.email}
               onChange={handleInputChange}
-              disabled={saving || isDrawerReadOnly}
+              disabled={saving || isReadOnly}
             />
-
-            <Stack direction="row" spacing={2}>
-              <TextField
-                fullWidth
-                label="월 목표 급여"
-                name="targetMonthlyWage"
-                value={formatDigitsWithCommas(formData.targetMonthlyWage)}
-                onChange={handleInputChange}
-                disabled={saving || isDrawerReadOnly}
-                inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                helperText="월 26일, 하루 8시간 기준"
-              />
-              <TextField
-                fullWidth
-                label="초당 급여 (자동계산)"
-                name="wagePerSecond"
-                value={computedWageDisplay}
-                InputProps={{ readOnly: true }}
-                helperText="월 목표 급여 기준 자동 계산"
-                sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
-              />
-            </Stack>
           </Stack>
 
           <Box sx={{ mt: 'auto', pt: 3 }}>
@@ -551,7 +368,7 @@ const CustomerList = () => {
               >
                 닫기
               </Button>
-              {!isDrawerReadOnly ? (
+              {!isReadOnly ? (
                 <Button
                   fullWidth
                   variant="contained"

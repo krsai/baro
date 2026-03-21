@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AppPageContainer from '../../../components/AppPageContainer';
+import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { useApp } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
 import { getOrganizationTypeLabel } from '../../../constants/organizationType';
@@ -379,6 +380,7 @@ const OnboardingBoard = () => {
         onClose={handleCloseDetailDrawer}
         PaperProps={{
           sx: {
+            ...TOP_OFFSET_DRAWER_PAPER_SX,
             width: { xs: '100%', sm: 460 },
             p: 2.5,
             overflowY: 'auto',
