@@ -429,6 +429,14 @@ const MainLayout = () => {
           ].filter(Boolean);
         }
 
+        if (childPaths.has('/assignment')) {
+          visibleChildren = [
+            visibleChildren.find((child) => child.path === '/assignment') || null,
+            visibleChildren.find((child) => child.path === '/work-history') || null,
+            visibleChildren.find((child) => child.path === '/attendance') || null,
+          ].filter(Boolean);
+        }
+
         if (childPaths.has('/employee')) {
           visibleChildren = visibleChildren.filter((child) => child.path !== '/customer');
         }
