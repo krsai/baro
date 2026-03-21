@@ -315,6 +315,7 @@ const MainLayout = () => {
         setOpen: setSystemOpen,
         children: [
           { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
+          { label: '정적 사전', icon: <DnsIcon />, path: '/system-setting/static-options' },
           {
             label: '가입 승인',
             icon: <GroupIcon />,

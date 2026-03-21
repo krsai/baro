@@ -14,6 +14,7 @@ const Permission = React.lazy(() => import('./pages/App/Permission'));
 const Line = React.lazy(() => import('./pages/App/Line'));
 const Holiday = React.lazy(() => import('./pages/App/Holiday'));
 const SystemBoard = React.lazy(() => import('./pages/App/system/systemBoard'));
+const StaticOptionBoard = React.lazy(() => import('./pages/App/system/StaticOptionBoard'));
 const OnboardingBoard = React.lazy(() => import('./pages/App/system/OnboardingBoard'));
 const Customer = React.lazy(() => import('./pages/App/Customer'));
 const Style = React.lazy(() => import('./pages/App/Style'));
@@ -202,6 +203,10 @@ const router = createBrowserRouter([
           {
             path: 'system-setting',
             element: <SystemBoard />,
+          },
+          {
+            path: 'system-setting/static-options',
+            element: <StaticOptionBoard />,
           },
           {
             path: 'system-onboarding',
