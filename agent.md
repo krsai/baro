@@ -46,6 +46,36 @@
 - 기존 업무 로직 전체를 한 번에 이 레지스트리로 치환하지는 않았다.
   - 이번 목적은 누락 검토와 기준표 제공이다.
 
+### 2026-03-21 정적 UI 문구 기준
+
+- 페이지/메뉴/버튼/도움말 같은 UI 문구는 `frontend/src/constants/uiMessages.js` 한 파일에 모아 둔다.
+- 기본 원칙:
+  - 코드형 값 라벨은 `staticOptionRegistry.js`
+  - 화면 문구는 `uiMessages.js`
+- `uiMessages.js`는 dot-path 키 방식(`common.save`, `menu.assignment`, `assign.pageTitle`)을 쓴다.
+- 헬퍼는 `getUiMessage(key, fallback, languageCode, params)` 하나만 쓴다.
+- 런타임 수정 기능은 두지 않는다.
+  - 정적 코드 기반으로 관리하고, 수정은 코드 변경 + 배포로 반영한다.
+- 신규 화면을 만질 때는 하드코딩 문자열을 바로 박지 말고, 가능하면 `uiMessages.js`에 먼저 추가한 뒤 사용한다.
+- 이번 턴에서 실제 연결한 범위:
+  - 좌측 메뉴(`MainLayout`)
+  - 정적 사전 보드(`StaticOptionBoard`)
+  - 작업 배정 상단 헤더와 일부 핵심 문구(`AssignBoard`)
+
+### 2026-03-21 작업 배정 번역 확장 메모
+
+- 작업 배정 페이지의 남은 하드코딩 UI 문구도 `uiMessages.js`의 `assign.*` 키로 계속 옮긴다.
+- 이번 턴에서 실제 연결한 범위:
+  - 타임라인 좌측 헤더 `라인`
+  - 날짜 헤더 요일(`일/월/...`)
+  - 라인 인원수 표기(`20명`)
+  - 배정 바 내부 수량/이미지 없음/CT 저장 상태/기간 배지
+  - 미배정 카드의 색상/성별/수량/이미지 없음
+  - 우클릭 메뉴, 상세 드로어 제목/라벨/요약 테이블 핵심 문구
+  - 저장/이탈 확인/초기화 같은 assignment 전용 알림 문구
+- 날짜 라벨은 `buildDays(..., languageCode)`로 생성하고, 언어가 바뀌면 현재 day window를 같은 길이로 다시 만들어 요일 표기도 즉시 바꾼다.
+- assignment 페이지에서 사용자에게 보이는 새 문구를 추가할 때는 먼저 `uiMessages.js`의 `assign.*`에 넣고 화면에서 `getUiMessage(...)`로만 읽는다.
+
 ### 공용 공정 마스터 기준
 
 - 공정 마스터(`AttrProcess`)는 **스타일별 로컬 코드(TT/TS/VS/HT 등)** 가 아니라, 공정의 **의미 자체**를 기준으로 만든다.

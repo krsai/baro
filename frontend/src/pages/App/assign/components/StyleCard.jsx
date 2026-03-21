@@ -1,13 +1,12 @@
 import React from 'react';
 import { Box, Paper, Stack, Tooltip, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { getGenderLabel } from '../../../../constants/productAttributes';
 
-const hasSt = (card) =>
-  Number(card?.totalSt) > 0;
-const hasPt = (card) =>
-  Number(card.totalPt) > 0;
+const hasSt = (card) => Number(card?.totalSt) > 0;
+const hasPt = (card) => Number(card?.totalPt) > 0;
 
 const getCardBasis = (card) => {
   if (hasSt(card)) return 'ST';
@@ -48,8 +47,17 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
   const cardStyleName = isDeltaCard ? card.label : card.styleName;
   const previewUrl = card.previewUrl || card.imageUrl || card.thumbnailUrl || '';
   const customerLabel = card.customer || '';
-  const showCustomerTooltip = (customerLabel || '').length > 14;
+  const showCustomerTooltip = customerLabel.length > 14;
   const showStyleTooltip = (cardStyleName || '').length > 16;
+  const metaParts = [
+    card.colorName
+      ? `${getUiMessage('assign.colorLabel', 'Color', languageCode)}: ${card.colorName}`
+      : '',
+    genderLabel
+      ? `${getUiMessage('assign.genderLabel', 'Gender', languageCode)}: ${genderLabel}`
+      : '',
+    `${getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}: ${card.quantity}`,
+  ].filter(Boolean);
 
   return (
     <Paper
@@ -110,9 +118,11 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
               color: 'text.secondary',
               fontSize: 11,
               flexShrink: 0,
+              textAlign: 'center',
+              whiteSpace: 'pre-line',
             }}
           >
-            이미지 없음
+            {getUiMessage('assign.imageUnavailable', 'No Image', languageCode)}
           </Box>
         )}
 
@@ -128,9 +138,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
             </Typography>
           </Tooltip>
           <Typography variant="caption" color="text.secondary" noWrap>
-            {card.colorName ? `색상: ${card.colorName} · ` : ''}
-            {genderLabel ? `성별: ${genderLabel} · ` : ''}
-            수량: {card.quantity}
+            {metaParts.join(' / ')}
           </Typography>
         </Stack>
       </Box>

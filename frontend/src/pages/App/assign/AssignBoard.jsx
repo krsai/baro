@@ -32,6 +32,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -112,23 +113,39 @@ const resolveCtUnitCost = (seconds, wagePerSecond) => {
   if (!Number.isFinite(resolvedWage) || resolvedWage <= 0) return null;
   return resolvedSeconds * resolvedWage;
 };
-const formatCurrencyDong = (value) =>
-  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
+const LANGUAGE_LOCALE_MAP = {
+  ko: 'ko-KR',
+  en: 'en-US',
+  vi: 'vi-VN',
+};
+const resolveLocale = (languageCode = 'en') => LANGUAGE_LOCALE_MAP[languageCode] || LANGUAGE_LOCALE_MAP.en;
+const formatCurrencyDong = (value, languageCode = 'en') =>
+  `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} ${getUiMessage(
+    'assign.currencyUnit',
+    'dong',
+    languageCode
+  )}`;
 const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
-const formatSecondsLabel = (value, fallback = '-') => {
+const formatSecondsLabel = (value, fallback = '-', languageCode = 'en') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}초`;
+  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}${getUiMessage(
+    'assign.secondsUnit',
+    'sec',
+    languageCode
+  )}`;
 };
-const formatDaysLabel = (value, fallback = '-') => {
+const formatDaysLabel = (value, fallback = '-', languageCode = 'en') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return `${formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 })}일`;
+  return getUiMessage('assign.durationDays', '{days}d', languageCode, {
+    days: formatNumberWithCommas(parsed, { fallback: '0', maximumFractionDigits: 2 }),
+  });
 };
-const formatDateTimeLabel = (value, fallback = '-') => {
+const formatDateTimeLabel = (value, fallback = '-', languageCode = 'en') => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return fallback;
-  return parsed.toLocaleString('ko-KR');
+  return parsed.toLocaleString(resolveLocale(languageCode));
 };
 const AT_RELIABILITY_COLOR = {
   [AT_RELIABILITY_STATUS.COLLECTING]: 'default',
@@ -1280,11 +1297,25 @@ const parseDueDateToTimestamp = (value) => {
   return Number.isFinite(normalizedTime) ? normalizedTime : null;
 };
 
-const buildDays = (baseDate, count, holidaySet = new Set()) => {
+const WEEKDAY_MESSAGE_KEYS = [
+  'assign.weekdaySun',
+  'assign.weekdayMon',
+  'assign.weekdayTue',
+  'assign.weekdayWed',
+  'assign.weekdayThu',
+  'assign.weekdayFri',
+  'assign.weekdaySat',
+];
+
+const buildDays = (baseDate, count, holidaySet = new Set(), languageCode = 'en') => {
   return Array.from({ length: count }).map((_, index) => {
     const date = new Date(baseDate);
     date.setDate(baseDate.getDate() + index);
-    const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+    const weekday = getUiMessage(
+      WEEKDAY_MESSAGE_KEYS[date.getDay()],
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()],
+      languageCode
+    );
     const key = buildDateKey(date);
     const isSunday = date.getDay() === 0;
     return {
@@ -2045,7 +2076,8 @@ const AssignBoard = () => {
     buildDays(
       startDateRef.current,
       getDateRangeDayCount(startDateRef.current, getMonthEndDate(startDateRef.current)),
-      holidaySet
+      holidaySet,
+      languageCode
     )
   );
   const [contextMenuState, setContextMenuState] = useState(null);
@@ -2060,6 +2092,12 @@ const AssignBoard = () => {
   const daysRef = useRef(days);
   const detailDraftsRef = useRef(detailDraftsByTarget);
   const detailStDraftsRef = useRef(detailStDraftsByTarget);
+  useEffect(() => {
+    setDays((prev) => {
+      const nextLength = Array.isArray(prev) && prev.length > 0 ? prev.length : dayCount;
+      return buildDays(startDateRef.current, nextLength, holidaySet, languageCode);
+    });
+  }, [dayCount, holidaySet, languageCode]);
   const { sensors, handleDragStart, handleDragCancel } = useAssignBoardDnd({
     persistReady,
     loading,
@@ -2312,10 +2350,14 @@ const AssignBoard = () => {
   const resolveBoardSaveErrorMessage = useCallback((error, fallbackMessage) => {
     const raw = String(error?.message || '').trim();
     if (raw.toLowerCase().includes('assignment version conflict')) {
-      return '서버 최신 상태와 화면 버전이 어긋났습니다. 작업 배정 화면을 다시 불러온 뒤 다시 시도해 주세요.';
+      return getUiMessage(
+        'assign.versionConflict',
+        'The server data is newer than this screen. Reload the assignment page and try again.',
+        languageCode
+      );
     }
     return raw || fallbackMessage;
-  }, []);
+  }, [languageCode]);
 
   const applyBoardSnapshotText = useCallback((snapshotText) => {
     try {
@@ -2353,7 +2395,7 @@ const AssignBoard = () => {
       setDays((prev) => {
         const requiredLength = Math.max(prev.length, maxEndIndex + 10);
         return requiredLength > prev.length
-          ? buildDays(startDateRef.current, requiredLength, holidaySet)
+          ? buildDays(startDateRef.current, requiredLength, holidaySet, languageCode)
           : prev;
       });
       return true;
@@ -2417,7 +2459,7 @@ const AssignBoard = () => {
       const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
       const restoreDays =
         restoreDayCount > days.length
-          ? buildDays(startDateRef.current, restoreDayCount, holidaySet)
+          ? buildDays(startDateRef.current, restoreDayCount, holidaySet, languageCode)
           : days;
       const restoredAssignments = hasSavedBoardState
         ? normalizedSavedAssignments.map((item) => {
@@ -2475,7 +2517,12 @@ const AssignBoard = () => {
             reflowStartIndex,
           });
           if (!reflowResult?.needsMoreDays) break;
-          candidateDays = buildDays(startDateRef.current, candidateDays.length + 20, holidaySet);
+          candidateDays = buildDays(
+            startDateRef.current,
+            candidateDays.length + 20,
+            holidaySet,
+            languageCode
+          );
         }
 
         if (Array.isArray(reflowResult?.assignments)) {
@@ -2528,7 +2575,7 @@ const AssignBoard = () => {
       setDetailDraftsByTarget({});
       setDetailStDraftsByTarget({});
       if (nextDayCount > normalizedRestoreDays.length) {
-        setDays(buildDays(startDateRef.current, nextDayCount, holidaySet));
+        setDays(buildDays(startDateRef.current, nextDayCount, holidaySet, languageCode));
       } else if (normalizedRestoreDays.length > days.length) {
         setDays(normalizedRestoreDays);
       }
@@ -2578,7 +2625,7 @@ const AssignBoard = () => {
     const oldBase = prevViewStartRef.current || newStart;
     prevViewStartRef.current = newStart;
     startDateRef.current = newStart;
-    const newDays = buildDays(newStart, dayCount, holidaySet);
+    const newDays = buildDays(newStart, dayCount, holidaySet, languageCode);
     setDays(newDays);
     setAssignments((prev) =>
       prev.map((assignment) => remapAssignmentToDayWindow(assignment, newDays, oldBase))
@@ -2879,10 +2926,16 @@ const AssignBoard = () => {
         {}
       );
       resetBoardHistory(persistedCards, persistedAssignments, {}, {});
-      showNotification('작업 배정을 저장했습니다.', 'success');
+      showNotification(
+        getUiMessage('assign.saveSuccess', 'Assignment saved.', languageCode),
+        'success'
+      );
     } catch (error) {
       showNotification(
-        resolveBoardSaveErrorMessage(error, '작업 배정 저장에 실패했습니다.'),
+        resolveBoardSaveErrorMessage(
+          error,
+          getUiMessage('assign.saveError', 'Failed to save the assignment.', languageCode)
+        ),
         'error'
       );
     } finally {
@@ -2913,6 +2966,7 @@ const AssignBoard = () => {
     activeProfile?.email,
     activeProfile?.label,
     stylesRef,
+    languageCode,
   ]);
 
   const navigationBlocker = useBlocker(
@@ -2922,14 +2976,18 @@ const AssignBoard = () => {
   useEffect(() => {
     if (navigationBlocker.state !== 'blocked') return;
     const shouldLeave = window.confirm(
-      '저장되지 않은 작업 배정 데이터가 있습니다. 저장하지 않고 이동하시겠습니까?'
+      getUiMessage(
+        'assign.leaveWithoutSaving',
+        'There are unsaved assignment changes. Leave without saving?',
+        languageCode
+      )
     );
     if (shouldLeave) {
       navigationBlocker.proceed();
       return;
     }
     navigationBlocker.reset();
-  }, [navigationBlocker, navigationBlocker.state]);
+  }, [languageCode, navigationBlocker, navigationBlocker.state]);
 
   useBeforeUnload(
     useCallback(
@@ -2944,7 +3002,7 @@ const AssignBoard = () => {
 
   const ensureDaysLength = (minLength) => {
     if (days.length >= minLength) return days;
-    const next = buildDays(startDateRef.current, minLength, holidaySet);
+    const next = buildDays(startDateRef.current, minLength, holidaySet, languageCode);
     setDays(next);
     return next;
   };
@@ -3119,7 +3177,9 @@ const AssignBoard = () => {
   const groupedFilteredCards = useMemo(() => {
     const groups = new Map();
     filteredCards.forEach((card) => {
-      const orderNo = normalizeKey(card?.orderNo) || '주문번호 없음';
+      const orderNo =
+        normalizeKey(card?.orderNo) ||
+        getUiMessage('assign.fallbackOrderNumber', 'No Order No.', languageCode);
       const dueDate = normalizeKey(card?.dueDate);
       const dueDateTimestamp = parseDueDateToTimestamp(dueDate);
       if (!groups.has(orderNo)) {
@@ -3154,7 +3214,7 @@ const AssignBoard = () => {
       }
       return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
     });
-  }, [filteredCards]);
+  }, [filteredCards, languageCode]);
 
   const lineById = useMemo(
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
@@ -3300,7 +3360,13 @@ const AssignBoard = () => {
       const processKey = String(
         process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
       );
-      const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
+      const processName =
+        process?.name ||
+        process?.processName ||
+        process?.code ||
+        getUiMessage('assign.fallbackProcessName', 'Process {index}', languageCode, {
+          index: index + 1,
+        });
       const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
       const ptInfo = resolveProcessPtInfo(process, orderQuantity);
       const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
@@ -3368,6 +3434,7 @@ const AssignBoard = () => {
     detailAssignment?.ctSnapshot,
     detailLine?.factoryWagePerSecond,
     detailLine?.wagePerSecond,
+    languageCode,
     lineCapacityById,
   ]);
   const detailSummary = useMemo(() => {
@@ -3889,14 +3956,21 @@ const AssignBoard = () => {
 
   const promptSplitQuantity = useCallback((quantity) => {
     if (!quantity || quantity <= 1) return null;
-    const input = window.prompt(`분할할 수량을 입력하세요 (1 ~ ${quantity - 1})`);
+    const input = window.prompt(
+      getUiMessage(
+        'assign.splitQuantityPrompt',
+        'Enter the quantity to split (1 to {max})',
+        languageCode,
+        { max: quantity - 1 }
+      )
+    );
     if (input == null) return null;
     const value = Number(input);
     if (!Number.isFinite(value)) return null;
     const qty = Math.floor(value);
     if (qty <= 0 || qty >= quantity) return null;
     return qty;
-  }, []);
+  }, [languageCode]);
 
   const buildSplitCard = useCallback((card, quantity, ratio, newId) => {
     const totalSeconds = scaleValue(card.totalSeconds, ratio);
@@ -4007,7 +4081,7 @@ const AssignBoard = () => {
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
-      styleName: assignment.label || '스타일',
+      styleName: assignment.label || getUiMessage('assign.styleLabel', 'Style', languageCode),
       colorName: assignment.colorName || '',
       gender: normalizeGenderKey(assignment.gender),
       quantity: assignment.quantity ?? 0,
@@ -4136,16 +4210,30 @@ const AssignBoard = () => {
   const handleResetAssignments = useCallback(() => {
     if (!persistReady || !isDirty) return;
     const confirmed = window.confirm(
-      '저장되지 않은 작업 배정 변경사항을 마지막 저장 상태로 되돌릴까요?'
+      getUiMessage(
+        'assign.resetConfirm',
+        'Restore unsaved assignment changes to the last saved state?',
+        languageCode
+      )
     );
     if (!confirmed) return;
     const restored = applyBoardSnapshotText(lastSavedSnapshotRef.current);
     if (!restored) {
-      showNotification('마지막 저장 상태를 복원하지 못했습니다. 화면을 새로고침 후 다시 시도해 주세요.', 'error');
+      showNotification(
+        getUiMessage(
+          'assign.resetFailed',
+          'Failed to restore the last saved state. Refresh the page and try again.',
+          languageCode
+        ),
+        'error'
+      );
       return;
     }
-    showNotification('마지막 저장 상태로 되돌렸습니다.', 'info');
-  }, [applyBoardSnapshotText, isDirty, persistReady, showNotification]);
+    showNotification(
+      getUiMessage('assign.resetSuccess', 'Restored the last saved state.', languageCode),
+      'info'
+    );
+  }, [applyBoardSnapshotText, isDirty, languageCode, persistReady, showNotification]);
 
   const handleUndo = useCallback(() => {
     if (historyPastRef.current.length === 0) return;
@@ -4254,7 +4342,9 @@ const AssignBoard = () => {
     <AppPageContainer
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6">작업 배정</Typography>
+          <Typography variant="h6">
+            {getUiMessage('assign.pageTitle', '작업 배정', languageCode)}
+          </Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Button
               variant="contained"
@@ -4263,7 +4353,11 @@ const AssignBoard = () => {
               disabled={persisting || !persistReady || !isDirty}
               sx={{ minWidth: 72 }}
             >
-              {persisting ? <CircularProgress size={18} thickness={4.5} color="inherit" /> : '저장'}
+              {persisting ? (
+                <CircularProgress size={18} thickness={4.5} color="inherit" />
+              ) : (
+                getUiMessage('common.save', '저장', languageCode)
+              )}
             </Button>
             <Button
               variant="outlined"
@@ -4271,7 +4365,7 @@ const AssignBoard = () => {
               onClick={handleUndo}
               disabled={controlsDisabled || historyStatus.undoCount === 0}
             >
-              되돌리기
+              {getUiMessage('common.undo', '되돌리기', languageCode)}
             </Button>
             <Button
               variant="outlined"
@@ -4279,7 +4373,7 @@ const AssignBoard = () => {
               onClick={handleRedo}
               disabled={controlsDisabled || historyStatus.redoCount === 0}
             >
-              다시하기
+              {getUiMessage('common.redo', '다시하기', languageCode)}
             </Button>
             <Button
               variant="outlined"
@@ -4287,7 +4381,7 @@ const AssignBoard = () => {
               onClick={handleResetAssignments}
               disabled={controlsDisabled || !persistReady || !isDirty}
             >
-              초기화
+              {getUiMessage('common.reset', '초기화', languageCode)}
             </Button>
           </Stack>
         </Box>
@@ -4304,16 +4398,30 @@ const AssignBoard = () => {
           <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <SearchInput
-                placeholder="스타일/고객사/색상 검색"
+                placeholder={getUiMessage(
+                  'assign.searchPlaceholder',
+                  '스타일/고객사/색상 검색',
+                  languageCode
+                )}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">미배정 카드</Typography>
+                <Typography variant="subtitle2">
+                  {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
+                </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {loading
-                    ? '카드 동기화 중...'
-                    : `${filteredCards.length}개 · ${groupedFilteredCards.length}주문`}
+                    ? getUiMessage('assign.cardsSyncing', '카드 동기화 중...', languageCode)
+                    : getUiMessage(
+                        'assign.cardSummary',
+                        `${filteredCards.length}개 · ${groupedFilteredCards.length}주문`,
+                        languageCode,
+                        {
+                          cardCount: filteredCards.length,
+                          orderCount: groupedFilteredCards.length,
+                        }
+                      )}
                 </Typography>
               </Box>
               <Stack
@@ -4344,10 +4452,33 @@ const AssignBoard = () => {
                       }}
                     >
                       <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                        주문 {group.orderNo}
+                        {getUiMessage(
+                          'assign.orderWithNumber',
+                          `주문 ${group.orderNo}`,
+                          languageCode,
+                          { orderNo: group.orderNo }
+                        )}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {group.dueDate ? `납기 ${group.dueDate}` : '납기 미정'} · {group.cards.length}개
+                        {group.dueDate
+                          ? getUiMessage(
+                              'common.dueDate',
+                              `납기 ${group.dueDate}`,
+                              languageCode,
+                              { date: group.dueDate }
+                            )
+                          : getUiMessage(
+                              'common.dueDateUndecided',
+                              '납기 미정',
+                              languageCode
+                            )}{' '}
+                        ·{' '}
+                        {getUiMessage(
+                          'common.itemCountSuffix',
+                          `${group.cards.length}개`,
+                          languageCode,
+                          { count: group.cards.length }
+                        )}
                       </Typography>
                     </Box>
                     <Stack
@@ -4382,7 +4513,7 @@ const AssignBoard = () => {
                 ))}
                 {!loading && groupedFilteredCards.length === 0 ? (
                   <Typography variant="body2" color="text.secondary">
-                    미배정 카드가 없습니다.
+                    {getUiMessage('assign.noUnassignedCards', '미배정 카드가 없습니다.', languageCode)}
                   </Typography>
                 ) : null}
               </Stack>
@@ -4391,12 +4522,18 @@ const AssignBoard = () => {
           <Grid item xs={12} md={8} sx={{ minWidth: 0 }}>
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">라인 타임라인</Typography>
+                <Typography variant="subtitle2">
+                  {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
+                </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <IconButton
                     size="small"
                     onClick={handlePrevMonthFrom}
-                    title="이전 달 1일"
+                    title={getUiMessage(
+                      'common.previousMonthFirstDay',
+                      '이전 달 1일',
+                      languageCode
+                    )}
                     sx={{ p: 0.25 }}
                     disabled={controlsDisabled}
                   >
@@ -4416,7 +4553,11 @@ const AssignBoard = () => {
                   <IconButton
                     size="small"
                     onClick={handleNextMonthTo}
-                    title="다음 달 말일"
+                    title={getUiMessage(
+                      'common.nextMonthLastDay',
+                      '다음 달 말일',
+                      languageCode
+                    )}
                     sx={{ p: 0.25 }}
                     disabled={controlsDisabled}
                   >
@@ -4475,7 +4616,9 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                {activeDrag.orderNo ? activeDrag.orderNo : '미배정 카드'}
+                {activeDrag.orderNo
+                  ? activeDrag.orderNo
+                  : getUiMessage('assign.dragOverlayFallback', 'Unassigned Card', languageCode)}
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
                 {activeDrag.label}
@@ -4499,10 +4642,12 @@ const AssignBoard = () => {
               : undefined
           }
         >
-          <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>업무 상세</MenuItem>
+          <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>
+            {getUiMessage('assign.contextOpenDetail', 'Open Detail', languageCode)}
+          </MenuItem>
           <Divider />
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
-            수량 분할
+            {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
           </MenuItem>
         </Menu>
 
@@ -4536,7 +4681,7 @@ const AssignBoard = () => {
               }}
             >
               <Typography variant="subtitle2" color="text.secondary">
-                업무 상세
+                {getUiMessage('assign.detailTitle', 'Assignment Detail', languageCode)}
               </Typography>
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <Button
@@ -4545,7 +4690,7 @@ const AssignBoard = () => {
                   onClick={handleCloseDetail}
                   disabled={controlsDisabled}
                 >
-                  닫기
+                  {getUiMessage('common.close', 'Close', languageCode)}
                 </Button>
                 <IconButton
                   size="small"
@@ -4564,49 +4709,64 @@ const AssignBoard = () => {
 
             {!detailCard ? (
               <Typography variant="body2" color="text.secondary">
-                선택한 카드 정보를 찾을 수 없습니다.
+                {getUiMessage(
+                  'assign.detailNotFound',
+                  'The selected card could not be found.',
+                  languageCode
+                )}
               </Typography>
             ) : (
               <>
                 <Paper variant="outlined" sx={{ p: 1.5 }}>
                   <Stack spacing={0.5}>
                     <Typography variant="body2">
-                      <strong>고객:</strong> {detailCard.customer || '-'}
+                      <strong>{getUiMessage('assign.customerLabel', 'Customer', languageCode)}:</strong>{' '}
+                      {detailCard.customer || '-'}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>스타일:</strong> {detailCard.styleName || '-'}
+                      <strong>{getUiMessage('assign.styleLabel', 'Style', languageCode)}:</strong>{' '}
+                      {detailCard.styleName || '-'}
                       {detailCard.colorName ? ` · ${detailCard.colorName}` : ''}
                       {detailCard.gender
                         ? ` · ${getGenderLabel(detailCard.gender, detailCard.gender, languageCode)}`
                         : ''}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>수량:</strong>{' '}
+                      <strong>{getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}:</strong>{' '}
                       {formatNumberWithCommas(
                         detailAssignment?.quantity ?? detailCard.quantity ?? 0,
                         { fallback: '-', maximumFractionDigits: 0 }
-                      )}개
+                      )}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>라인:</strong> {detailLine?.name || '-'}
+                      <strong>{getUiMessage('assign.lineLabel', 'Line', languageCode)}:</strong>{' '}
+                      {detailLine?.name || '-'}
                     </Typography>
                     {detailAssignment && (
                       <>
                         <Typography variant="body2">
-                          <strong>저장 CT:</strong>{' '}
+                          <strong>{getUiMessage('assign.savedCtLabel', 'Saved CT', languageCode)}:</strong>{' '}
                           <Chip
                             size="small"
-                            label={detailCtIsSaved ? '저장됨' : '미저장'}
+                            label={getUiMessage(
+                              detailCtIsSaved ? 'assign.savedState' : 'assign.unsavedState',
+                              detailCtIsSaved ? 'Saved' : 'Unsaved',
+                              languageCode
+                            )}
                             color={detailCtIsSaved ? 'primary' : 'default'}
                             variant="outlined"
                             sx={{ height: 20 }}
                           />
                         </Typography>
                         <Typography variant="body2">
-                          <strong>최근 저장자:</strong>{' '}
+                          <strong>{getUiMessage('assign.updatedByLabel', 'Last Saved By', languageCode)}:</strong>{' '}
                           {resolveAssignmentCtUpdatedBy(detailAssignment) || '-'}
                           {' · '}
-                          {formatDateTimeLabel(resolveAssignmentCtUpdatedAt(detailAssignment))}
+                          {formatDateTimeLabel(
+                            resolveAssignmentCtUpdatedAt(detailAssignment),
+                            '-',
+                            languageCode
+                          )}
                         </Typography>
                       </>
                     )}
@@ -4615,42 +4775,47 @@ const AssignBoard = () => {
 
                 <Paper variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    CT/비용 요약
+                    {getUiMessage('assign.ctCostSummary', 'CT / Cost Summary', languageCode)}
                   </Typography>
                   <Stack spacing={0.6}>
                     <Typography variant="body2">
-                      <strong>공정 ST 합 (한 벌):</strong>{' '}
-                      {formatSecondsLabel(detailSummary?.totalBasePerPieceSeconds)}
+                      <strong>{getUiMessage('assign.processStSumPerPiece', 'Process ST Total (per piece)', languageCode)}:</strong>{' '}
+                      {formatSecondsLabel(detailSummary?.totalBasePerPieceSeconds, '-', languageCode)}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>공정 입력 CT 합 (한 벌):</strong>{' '}
-                      {formatSecondsLabel(detailSummary?.totalRequestedPerPieceSeconds)}
+                      <strong>{getUiMessage('assign.processInputCtSumPerPiece', 'Entered CT Total (per piece)', languageCode)}:</strong>{' '}
+                      {formatSecondsLabel(
+                        detailSummary?.totalRequestedPerPieceSeconds,
+                        '-',
+                        languageCode
+                      )}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>공정 입력 CT 합 (전체):</strong>{' '}
-                      {formatSecondsLabel(detailSummary?.totalRequestedSeconds)}
+                      <strong>{getUiMessage('assign.processInputCtSumTotal', 'Entered CT Total (all qty)', languageCode)}:</strong>{' '}
+                      {formatSecondsLabel(detailSummary?.totalRequestedSeconds, '-', languageCode)}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>변동률:</strong>{' '}
+                      <strong>{getUiMessage('assign.divergenceLabel', 'Variance', languageCode)}:</strong>{' '}
                       {detailSummary?.divergencePercent == null
                         ? '-'
                         : `${detailSummary.divergencePercent > 0 ? '+' : ''}${detailSummary.divergencePercent.toFixed(1)}%`}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>예상 기간:</strong> {formatDaysLabel(detailSummary?.totalDurationDays)}
+                      <strong>{getUiMessage('assign.expectedDurationLabel', 'Expected Duration', languageCode)}:</strong>{' '}
+                      {formatDaysLabel(detailSummary?.totalDurationDays, '-', languageCode)}
                     </Typography>
                     <Typography variant="body2">
-                      <strong>예상 비용:</strong>{' '}
+                      <strong>{getUiMessage('assign.expectedCostLabel', 'Expected Cost', languageCode)}:</strong>{' '}
                       {detailSummary?.expectedCost == null
                         ? '-'
-                        : formatCurrencyDong(detailSummary.expectedCost)}
+                        : formatCurrencyDong(detailSummary.expectedCost, languageCode)}
                     </Typography>
                   </Stack>
                 </Paper>
 
                 <Paper variant="outlined" sx={{ p: 1.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    공정 CT 상세
+                    {getUiMessage('assign.processCtDetail', 'Process CT Detail', languageCode)}
                   </Typography>
                   {detailStyleLoading ? (
                     <Box
@@ -4665,7 +4830,11 @@ const AssignBoard = () => {
                     </Box>
                   ) : detailProcessRows.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      공정 정보가 없어 상세 CT를 표시할 수 없습니다.
+                      {getUiMessage(
+                        'assign.processDataUnavailable',
+                        'Process data is not available, so CT detail cannot be shown.',
+                        languageCode
+                      )}
                     </Typography>
                   ) : (
                     <TableContainer>
@@ -4673,13 +4842,29 @@ const AssignBoard = () => {
                         <TableHead>
                           <TableRow>
                             <TableCell align="right">#</TableCell>
-                            <TableCell>공정</TableCell>
+                            <TableCell>{getUiMessage('assign.processLabel', 'Process', languageCode)}</TableCell>
                             <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`입력 CT(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`저장 CT(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">단가(동)</TableCell>
+                            <TableCell align="right">
+                              {getUiMessage(
+                                'assign.inputCtColumn',
+                                'Entered CT({quantity})',
+                                languageCode,
+                                { quantity: detailQuantityLabel }
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              {getUiMessage(
+                                'assign.savedCtColumn',
+                                'Saved CT({quantity})',
+                                languageCode,
+                                { quantity: detailQuantityLabel }
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              {getUiMessage('assign.unitCostDong', 'Unit Cost (dong)', languageCode)}
+                            </TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -4695,7 +4880,7 @@ const AssignBoard = () => {
                               <TableCell align="right">
                                 {row.ptSeconds == null ? (
                                   <Typography variant="caption" color="text.secondary">
-                                    데이터 없음
+                                    {getUiMessage('assign.noData', 'No data', languageCode)}
                                   </Typography>
                                 ) : (
                                   <Stack spacing={0.1} alignItems="flex-end">
@@ -4785,14 +4970,18 @@ const AssignBoard = () => {
                                 ) : (
                                   row.savedUnitCost == null
                                     ? '-'
-                                    : formatCurrencyDong(row.savedUnitCost)
+                                    : formatCurrencyDong(row.savedUnitCost, languageCode)
                                 )}
                               </TableCell>
                             </TableRow>
                           ))}
                           <TableRow>
                             <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>
-                              공정 합(한 벌)
+                              {getUiMessage(
+                                'assign.processSumPerPiece',
+                                'Process Total (per piece)',
+                                languageCode
+                              )}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {detailSummary?.totalBasePerPieceSeconds == null
@@ -4826,7 +5015,8 @@ const AssignBoard = () => {
                                 detailSummary.totalSavedPerPieceSeconds > 0 ? (
                                 formatCurrencyDong(
                                   detailSummary.totalSavedPerPieceSeconds *
-                                    detailSummary.wagePerSecond
+                                    detailSummary.wagePerSecond,
+                                  languageCode
                                 )
                               ) : (
                                 '-'
@@ -4838,7 +5028,11 @@ const AssignBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    입력 CT를 비우면 ST(q) 값을 그대로 사용합니다. 현재 값은 작업 배정을 저장할 때 날짜/라인 정보와 함께 CT snapshot으로 저장됩니다.
+                    {getUiMessage(
+                      'assign.ctSnapshotHint',
+                      'If Entered CT is empty, the ST(q) value is used as-is. The current value is saved as a CT snapshot together with date and line info when you save the assignment.',
+                      languageCode
+                    )}
                   </Typography>
                 </Paper>
               </>

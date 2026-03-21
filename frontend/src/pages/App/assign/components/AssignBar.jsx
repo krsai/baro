@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { getGenderLabel } from '../../../../constants/productAttributes';
 import { hasAssignmentCtSnapshot } from '../../../../utils/assignmentCt';
@@ -15,24 +16,21 @@ const getDurationDays = (assignment) => {
   return startPercent + fullDays + endPercent;
 };
 
-const formatDuration = (daysValue) => {
+const formatDuration = (daysValue, languageCode = 'en') => {
   const rounded = Math.round(daysValue * 10) / 10;
-  if (Number.isInteger(rounded)) return `${rounded}일`;
-  return `${rounded}일`;
-};
-
-const CT_SNAPSHOT_META = {
-  UNSAVED: { label: 'CT 미저장', cardBg: '#EBEBF0', labelColor: '#888898' },
-  SAVED: { label: 'CT 저장', cardBg: '#C8DFF7', progressBg: '#88B8E8', labelColor: '#4A88C8' },
+  const days = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  return getUiMessage('assign.durationDays', '{days}d', languageCode, { days });
 };
 
 const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
-  const tl = isClippedLeft ? 0 : 8;
-  const tr = isClippedRight ? 0 : 8;
-  const br = isClippedRight ? 0 : 8;
-  const bl = isClippedLeft ? 0 : 8;
-  return `${tl}px ${tr}px ${br}px ${bl}px`;
+  const topLeft = isClippedLeft ? 0 : 8;
+  const topRight = isClippedRight ? 0 : 8;
+  const bottomRight = isClippedRight ? 0 : 8;
+  const bottomLeft = isClippedLeft ? 0 : 8;
+  return `${topLeft}px ${topRight}px ${bottomRight}px ${bottomLeft}px`;
 };
+
+const joinText = (parts) => parts.filter(Boolean).join(' / ');
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
   const { languageCode } = useLanguage();
@@ -66,7 +64,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
 
   const previewUrl = assignment.previewUrl || assignment.imageUrl || assignment.thumbnailUrl || '';
   const durationValue = assignment.workDays ?? getDurationDays(assignment);
-  const durationLabel = formatDuration(durationValue);
+  const durationLabel = formatDuration(durationValue, languageCode);
   const isNarrow = Number(assignment.widthPx) < 132;
   const hideMetaBadges = Number(assignment.widthPx) < 156;
   const genderDisplay = getGenderLabel(
@@ -74,26 +72,42 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     String(assignment.gender || '').trim(),
     languageCode
   );
+  const quantityLabel = getUiMessage(
+    'assign.quantityCompact',
+    'Qty {quantity}',
+    languageCode,
+    { quantity: assignment.quantity ?? '-' }
+  );
   const hasSavedSnapshot =
     assignment?.ctDisplayState != null
       ? assignment.ctDisplayState === 'SAVED'
       : hasAssignmentCtSnapshot(assignment);
-  const ctMeta = hasSavedSnapshot ? CT_SNAPSHOT_META.SAVED : CT_SNAPSHOT_META.UNSAVED;
+  const ctMeta = hasSavedSnapshot
+    ? {
+        label: getUiMessage('assign.savedCtBadge', 'CT Saved', languageCode),
+        cardBg: '#C8DFF7',
+        progressBg: '#88B8E8',
+        labelColor: '#4A88C8',
+      }
+    : {
+        label: getUiMessage('assign.unsavedCtBadge', 'CT Unsaved', languageCode),
+        cardBg: '#EBEBF0',
+        progressBg: '#EBEBF0',
+        labelColor: '#888898',
+      };
   const progressPercent = hasSavedSnapshot
     ? Math.min(100, Math.max(0, Number(assignment.progressPercent) || 0))
     : 0;
 
   const line1 = assignment.orderNo
-    ? `${assignment.customer || ''} · ${assignment.orderNo}`
+    ? joinText([assignment.customer || '', assignment.orderNo])
     : assignment.customer || '';
-  const line2 = [
+  const line2 = joinText([
     assignment.label,
     assignment.colorName,
     genderDisplay,
-    `수량 ${assignment.quantity ?? '-'}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+    quantityLabel,
+  ]);
 
   const openContextMenu = (event) => {
     event.preventDefault();
@@ -136,15 +150,13 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}
       style={style}
-      title={[
+      title={joinText([
         assignment.customer,
         assignment.label,
         assignment.colorName,
         genderDisplay,
-        assignment.quantity != null ? `수량 ${assignment.quantity}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · ')}
+        assignment.quantity != null ? quantityLabel : null,
+      ])}
       {...attributes}
       {...listeners}
       onContextMenu={openContextMenu}
@@ -263,7 +275,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
             boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
             zIndex: (theme) => theme.zIndex.appBar + 4,
           }}
-          title="앞 작업과 연결"
+          title={getUiMessage('assign.connectPrev', 'Link to previous task', languageCode)}
         >
           {'<'}
         </Box>
@@ -316,7 +328,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
               px: 0.2,
             }}
           >
-            이미지{'\n'}없음
+            {getUiMessage('assign.imageUnavailable', 'No\nImage', languageCode)}
           </Box>
         )}
 

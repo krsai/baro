@@ -19,6 +19,8 @@ import {
   STATIC_OPTION_GROUPS,
   countStaticOptionItems,
 } from '../../../constants/staticOptionRegistry';
+import { getUiMessage } from '../../../constants/uiMessages';
+import { useLanguage } from '../../../context/LanguageContext';
 
 const renderAliases = (aliases = []) => {
   if (!Array.isArray(aliases) || aliases.length === 0) return '-';
@@ -26,6 +28,7 @@ const renderAliases = (aliases = []) => {
 };
 
 const StaticOptionBoard = () => {
+  const { languageCode } = useLanguage();
   const groupCount = STATIC_OPTION_GROUPS.length;
   const itemCount = countStaticOptionItems();
 
@@ -35,18 +38,41 @@ const StaticOptionBoard = () => {
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
           <Box>
             <Typography variant="h5" fontWeight={700}>
-              정적 사전
+              {getUiMessage('staticOptionBoard.title', '정적 사전', languageCode)}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              앱에 하드코딩된 정적 코드 사전을 읽기 전용으로 보여줍니다. 누락된 라벨이나 alias를
-              검토할 때 기준표로 사용하세요.
+              {getUiMessage(
+                'staticOptionBoard.description',
+                '앱에 하드코딩된 정적 코드 사전을 읽기 전용으로 보여줍니다.',
+                languageCode
+              )}
             </Typography>
           </Box>
           <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
-            <Chip label={`그룹 ${groupCount}`} variant="outlined" />
-            <Chip label={`항목 ${itemCount}`} variant="outlined" />
+            <Chip
+              label={getUiMessage(
+                'staticOptionBoard.groupCount',
+                `그룹 ${groupCount}`,
+                languageCode,
+                { count: groupCount }
+              )}
+              variant="outlined"
+            />
+            <Chip
+              label={getUiMessage(
+                'staticOptionBoard.itemCount',
+                `항목 ${itemCount}`,
+                languageCode,
+                { count: itemCount }
+              )}
+              variant="outlined"
+            />
             <Button component={RouterLink} to="/system-setting" variant="outlined" size="small">
-              구독 관리로 이동
+              {getUiMessage(
+                'staticOptionBoard.goToSystemSetting',
+                '구독 관리로 이동',
+                languageCode
+              )}
             </Button>
           </Stack>
         </Stack>
@@ -75,21 +101,41 @@ const StaticOptionBoard = () => {
                     {group.title}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    key: {group.key}
+                    {getUiMessage('staticOptionBoard.groupKey', `key: ${group.key}`, languageCode, {
+                      key: group.key,
+                    })}
                   </Typography>
                 </Box>
-                <Chip label={`${group.items.length}개`} size="small" />
+                <Chip
+                  label={getUiMessage(
+                    'staticOptionBoard.itemCountChip',
+                    `${group.items.length}개`,
+                    languageCode,
+                    { count: group.items.length }
+                  )}
+                  size="small"
+                />
               </Stack>
             </Box>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ width: '16%' }}>Code</TableCell>
-                    <TableCell sx={{ width: '14%' }}>한국어</TableCell>
-                    <TableCell sx={{ width: '18%' }}>English</TableCell>
-                    <TableCell sx={{ width: '18%' }}>Tiếng Việt</TableCell>
-                    <TableCell>Aliases</TableCell>
+                    <TableCell sx={{ width: '16%' }}>
+                      {getUiMessage('staticOptionBoard.columnCode', 'Code', languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ width: '14%' }}>
+                      {getUiMessage('staticOptionBoard.columnKo', '한국어', languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ width: '18%' }}>
+                      {getUiMessage('staticOptionBoard.columnEn', 'English', languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ width: '18%' }}>
+                      {getUiMessage('staticOptionBoard.columnVi', 'Tiếng Việt', languageCode)}
+                    </TableCell>
+                    <TableCell>
+                      {getUiMessage('staticOptionBoard.columnAliases', 'Aliases', languageCode)}
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>

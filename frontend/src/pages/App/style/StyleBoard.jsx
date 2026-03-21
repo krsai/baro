@@ -22,8 +22,10 @@ import {
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
+import { getUiMessage } from '../../../constants/uiMessages';
 import StyleDetail from './StyleDetail';
 import {
   fetchStyles as fetchStylesFromApi,
@@ -121,6 +123,7 @@ const StyleBoard = () => {
   }
 
   const { activeOrgId, activeOrgType } = useAuth();
+  const { languageCode } = useLanguage();
   const { navigateToPath, showNotification, activePath, refreshSignals, markPathForRefresh } = useApp();
   const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
@@ -147,11 +150,15 @@ const StyleBoard = () => {
     } catch (error) {
       setStyles([]);
       setFactoryWagePerSecond(null);
-      showNotification(error?.message || '스타일 목록을 불러오지 못했습니다.', 'error');
+      showNotification(
+        error?.message ||
+          getUiMessage('styleBoard.fetchError', '스타일 목록을 불러오지 못했습니다.', languageCode),
+        'error'
+      );
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, canViewProcessSummary, showNotification]);
+  }, [activeOrgId, canViewProcessSummary, languageCode, showNotification]);
 
   useEffect(() => {
     handledStyleRefreshRef.current = styleRefreshSignal;
@@ -172,7 +179,9 @@ const StyleBoard = () => {
   };
 
   const handleAddNewClick = () => {
-    navigateToPath('/style/new', { label: '신규 스타일' });
+    navigateToPath('/style/new', {
+      label: getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode),
+    });
   };
 
   const handleDeleteClick = (style, event) => {
@@ -196,9 +205,16 @@ const StyleBoard = () => {
       });
       setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
       markPathForRefresh('/order/styles');
-      showNotification('스타일이 삭제되었습니다.', 'success');
+      showNotification(
+        getUiMessage('styleBoard.deleteSuccess', '스타일이 삭제되었습니다.', languageCode),
+        'success'
+      );
     } catch (error) {
-      showNotification(error?.message || '스타일 삭제에 실패했습니다.', 'error');
+      showNotification(
+        error?.message ||
+          getUiMessage('styleBoard.deleteError', '스타일 삭제에 실패했습니다.', languageCode),
+        'error'
+      );
     } finally {
       handleConfirmClose();
     }
@@ -281,29 +297,45 @@ const StyleBoard = () => {
     <AppPageContainer>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <SearchInput
-          placeholder="스타일명 또는 고객사 검색..."
+          placeholder={getUiMessage(
+            'styleBoard.searchPlaceholder',
+            '스타일명 또는 고객사 검색...',
+            languageCode
+          )}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
         <Button onClick={handleAddNewClick} variant="contained" color="primary">
-          스타일 추가
+          {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
         </Button>
       </Box>
 
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden' }}>
         <TableContainer>
-          <Table stickyHeader aria-label="style list table" size="small">
+          <Table
+            stickyHeader
+            aria-label={getUiMessage('styleBoard.tableAriaLabel', 'Style list table', languageCode)}
+            size="small"
+          >
             <TableHead>
               <TableRow>
-                <TableCell>고객사</TableCell>
-                <TableCell>스타일명</TableCell>
-                <TableCell>스타일 코드</TableCell>
+                <TableCell>{getUiMessage('styleBoard.customer', '고객사', languageCode)}</TableCell>
+                <TableCell>{getUiMessage('styleBoard.styleName', '스타일명', languageCode)}</TableCell>
+                <TableCell>
+                  {getUiMessage('styleBoard.styleCode', '스타일 코드', languageCode)}
+                </TableCell>
                 {canViewProcessSummary ? <TableCell>{'PT'}</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? <TableCell>{'단위 공임'}</TableCell> : null}
-                <TableCell>등록일</TableCell>
-                <TableCell align="center">작업</TableCell>
+                {canViewProcessSummary ? (
+                  <TableCell>{getUiMessage('styleBoard.unitCost', '단위 공임', languageCode)}</TableCell>
+                ) : null}
+                <TableCell>
+                  {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
+                </TableCell>
+                <TableCell align="center">
+                  {getUiMessage('styleBoard.action', '작업', languageCode)}
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -313,7 +345,17 @@ const StyleBoard = () => {
                     colSpan={canViewProcessSummary ? 9 : 5}
                     sx={{ textAlign: 'center', color: 'text.secondary' }}
                   >
-                    {loading ? '스타일 목록을 불러오는 중입니다.' : '등록된 스타일이 없습니다.'}
+                    {loading
+                      ? getUiMessage(
+                          'styleBoard.loadingMessage',
+                          '스타일 목록을 불러오는 중입니다.',
+                          languageCode
+                        )
+                      : getUiMessage(
+                          'styleBoard.emptyMessage',
+                          '등록된 스타일이 없습니다.',
+                          languageCode
+                        )}
                   </TableCell>
                 </TableRow>
               )}
@@ -396,16 +438,25 @@ const StyleBoard = () => {
         </TableContainer>
       </Paper>
       <Dialog open={isConfirmOpen} onClose={handleConfirmClose}>
-        <DialogTitle>스타일 삭제 확인</DialogTitle>
+        <DialogTitle>
+          {getUiMessage('styleBoard.deleteDialogTitle', '스타일 삭제 확인', languageCode)}
+        </DialogTitle>
         <DialogContent>
           <DialogContentText>
-            정말로 '{styleToDelete?.name}' 스타일을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            {getUiMessage(
+              'styleBoard.deleteDialogDescription',
+              `정말로 '${styleToDelete?.name || ''}' 스타일을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
+              languageCode,
+              { name: styleToDelete?.name || '-' }
+            )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleConfirmClose}>취소</Button>
+          <Button onClick={handleConfirmClose}>
+            {getUiMessage('common.cancel', '취소', languageCode)}
+          </Button>
           <Button onClick={handleDeleteConfirm} color="error">
-            삭제
+            {getUiMessage('common.delete', '삭제', languageCode)}
           </Button>
         </DialogActions>
       </Dialog>

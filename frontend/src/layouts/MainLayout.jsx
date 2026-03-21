@@ -50,6 +50,7 @@ import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
+import { getUiMessage } from '../constants/uiMessages';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import useNetworkLoading from '../hooks/useNetworkLoading';
 import { RequestScopeBoundary } from '../context/RequestScopeContext';
@@ -241,99 +242,197 @@ const MainLayout = () => {
   const menuItems = useMemo(() => {
     const baseItems = [
       {
-        label: '영업 관리',
+        label: getUiMessage('menu.sales', '영업 관리', languageCode),
         icon: <ShoppingCartIcon />,
         isParent: true,
         isOpen: orderOpen,
         setOpen: setOrderOpen,
         children: [
-          { label: '주문', icon: <ListAltIcon />, path: '/order' },
-          { label: '스타일', icon: <StyleIcon />, path: '/style' },
+          {
+            label: getUiMessage('menu.order', '주문', languageCode),
+            icon: <ListAltIcon />,
+            path: '/order',
+          },
+          {
+            label: getUiMessage('menu.style', '스타일', languageCode),
+            icon: <StyleIcon />,
+            path: '/style',
+          },
         ],
       },
       {
-        label: '생산 관리',
+        label: getUiMessage('menu.production', '생산 관리', languageCode),
         icon: <ProductionQuantityLimitsIcon />,
         isParent: true,
         isOpen: productionOpen,
         setOpen: setProductionOpen,
         children: [
-          { label: '작업 배정', icon: <ContentCut />, path: '/assignment' },
-          { label: '작업 계획 현황', icon: <TimelineIcon />, path: '/production-plan' },
-          { label: '표준 공임 검토', icon: <FactCheckIcon />, path: '/st-review' },
-          { label: '작업 기록', icon: <HistoryIcon />, path: '/work-history' },
-          { label: '출퇴근 입력', icon: <ScheduleIcon />, path: '/attendance' },
+          {
+            label: getUiMessage('menu.assignment', '작업 배정', languageCode),
+            icon: <ContentCut />,
+            path: '/assignment',
+          },
+          {
+            label: getUiMessage('menu.productionPlan', '작업 계획 현황', languageCode),
+            icon: <TimelineIcon />,
+            path: '/production-plan',
+          },
+          {
+            label: getUiMessage('menu.standardReview', '표준 공임 검토', languageCode),
+            icon: <FactCheckIcon />,
+            path: '/st-review',
+          },
+          {
+            label: getUiMessage('menu.workHistory', '작업 기록', languageCode),
+            icon: <HistoryIcon />,
+            path: '/work-history',
+          },
+          {
+            label: getUiMessage('menu.attendance', '출퇴근 입력', languageCode),
+            icon: <ScheduleIcon />,
+            path: '/attendance',
+          },
         ],
       },
       {
-        label: '재고 관리',
+        label: getUiMessage('menu.inventory', '재고 관리', languageCode),
         icon: <Inventory2Icon />,
         isParent: true,
         isOpen: inventoryOpen,
         setOpen: setInventoryOpen,
         children: [
-          { label: '재고 불출', icon: <Inventory2Icon />, path: '/inventory' },
+          {
+            label: getUiMessage('menu.inventoryIssue', '재고 불출', languageCode),
+            icon: <Inventory2Icon />,
+            path: '/inventory',
+          },
         ],
       },
       {
-        label: '회계 관리',
+        label: getUiMessage('menu.accounting', '회계 관리', languageCode),
         icon: <AccountBalanceWalletIcon />,
         isParent: true,
         isOpen: accountingOpen,
         setOpen: setAccountingOpen,
         children: [
-          { label: '급여 계산', icon: <CalculateIcon />, path: '/payroll' },
-          { label: '생산 결과', icon: <ListAltIcon />, path: '/production-result' },
+          {
+            label: getUiMessage('menu.payroll', '급여 계산', languageCode),
+            icon: <CalculateIcon />,
+            path: '/payroll',
+          },
+          {
+            label: getUiMessage('menu.productionResult', '생산 결과', languageCode),
+            icon: <ListAltIcon />,
+            path: '/production-result',
+          },
         ],
       },
       {
-        label: '조직 관리',
+        label: getUiMessage('menu.organization', '조직 관리', languageCode),
         icon: <OrganizationIcon />,
         isParent: true,
         isOpen: adminOpen,
         setOpen: setAdminOpen,
         children: [
-          { label: '사업체 관리', icon: <BusinessIcon />, path: '/business' },
-          { label: '라인 관리', icon: <ContentCut />, path: '/line' },
           {
-            label: '직원 관리',
+            label: getUiMessage('menu.business', '사업체 관리', languageCode),
+            icon: <BusinessIcon />,
+            path: '/business',
+          },
+          {
+            label: getUiMessage('menu.line', '라인 관리', languageCode),
+            icon: <ContentCut />,
+            path: '/line',
+          },
+          {
+            label: getUiMessage('menu.employee', '직원 관리', languageCode),
             icon: <GroupIcon />,
             path: '/employee',
             badgeCount: pendingEmployeeCount,
           },
-          { label: '고객 관리', icon: <PeopleIcon />, path: '/customer' },
-          { label: '휴일 관리', icon: <CalendarMonthIcon />, path: '/holiday' },
-          { label: '개인 정보', icon: <AccountCircleIcon />, path: '/profile' },
-          { label: '구독 관리', icon: <TuneIcon />, path: '/system-setting' },
+          {
+            label: getUiMessage('menu.customer', '고객 관리', languageCode),
+            icon: <PeopleIcon />,
+            path: '/customer',
+          },
+          {
+            label: getUiMessage('menu.holiday', '휴일 관리', languageCode),
+            icon: <CalendarMonthIcon />,
+            path: '/holiday',
+          },
+          {
+            label: getUiMessage('menu.profile', '개인 정보', languageCode),
+            icon: <AccountCircleIcon />,
+            path: '/profile',
+          },
+          {
+            label: getUiMessage('menu.subscription', '구독 관리', languageCode),
+            icon: <TuneIcon />,
+            path: '/system-setting',
+          },
         ],
       },
       {
-        label: '시스템 설정',
+        label: getUiMessage('menu.system', '시스템 설정', languageCode),
         icon: <TuneIcon />,
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
         children: [
-          { label: '속성 관리', icon: <DnsIcon />, path: '/attribute' },
-          { label: '정적 사전', icon: <DnsIcon />, path: '/system-setting/static-options' },
           {
-            label: '가입 승인',
+            label: getUiMessage('menu.attribute', '속성 관리', languageCode),
+            icon: <DnsIcon />,
+            path: '/attribute',
+          },
+          {
+            label: getUiMessage('menu.staticOptions', '정적 사전', languageCode),
+            icon: <DnsIcon />,
+            path: '/system-setting/static-options',
+          },
+          {
+            label: getUiMessage('menu.onboardingApproval', '가입 승인', languageCode),
             icon: <GroupIcon />,
             path: '/system-onboarding',
-            badgeLabel: pendingOnboardingCount > 0 ? '신규' : '',
+            badgeLabel:
+              pendingOnboardingCount > 0
+                ? getUiMessage('common.new', '신규', languageCode)
+                : '',
           },
         ],
       },
     ];
+
+    const customerMenuItem = {
+      label: getUiMessage('menu.customer', '怨좉컼', languageCode),
+      icon: <PeopleIcon />,
+      path: '/customer',
+    };
 
     return baseItems
       .map((item) => {
         if (!item.isParent) {
           return hasPathAccess(item.path) ? item : null;
         }
-        const visibleChildren = item.children.filter((child) =>
+        let visibleChildren = item.children.filter((child) =>
           hasPathAccess(child.path)
         );
+        const childPaths = new Set(item.children.map((child) => child.path));
+
+        if (childPaths.has('/order') && childPaths.has('/style')) {
+          visibleChildren = [
+            hasPathAccess(customerMenuItem.path) ? customerMenuItem : null,
+            visibleChildren.find((child) => child.path === '/style') || null,
+            visibleChildren.find((child) => child.path === '/order') || null,
+            ...visibleChildren.filter(
+              (child) => !['/customer', '/style', '/order'].includes(child.path)
+            ),
+          ].filter(Boolean);
+        }
+
+        if (childPaths.has('/employee')) {
+          visibleChildren = visibleChildren.filter((child) => child.path !== '/customer');
+        }
+
         if (visibleChildren.length === 0) return null;
         return {
           ...item,
@@ -346,6 +445,7 @@ const MainLayout = () => {
     adminOpen,
     hasPathAccess,
     inventoryOpen,
+    languageCode,
     orderOpen,
     pendingEmployeeCount,
     pendingOnboardingCount,
@@ -361,16 +461,18 @@ const MainLayout = () => {
   );
   const resolveTabLabel = React.useCallback(
     (path) => {
-      if (path === '/work-history/new') return '작업 상세';
+      if (path === '/work-history/new') {
+        return getUiMessage('menu.workHistory', '작업 기록', languageCode);
+      }
       if (path.startsWith('/work-history/') && path !== '/work-history') {
-        return '작업 상세';
+        return getUiMessage('menu.workHistory', '작업 기록', languageCode);
       }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||
         flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
       return matchedMenu?.label || path;
     },
-    [flattenedMenuItems]
+    [flattenedMenuItems, languageCode]
   );
   const tabsForRender = useMemo(() => {
     if (

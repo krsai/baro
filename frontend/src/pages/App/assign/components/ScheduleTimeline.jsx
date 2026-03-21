@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
+import { getUiMessage } from '../../../../constants/uiMessages';
+import { useLanguage } from '../../../../context/LanguageContext';
 import AssignBar from './AssignBar';
 import { ASSIGN_TIMELINE_CELL_WIDTH } from '../constants';
 
@@ -141,6 +143,7 @@ const getLayoutByLineId = (lineLayouts, lineId) =>
   lineLayouts.get(lineId) ?? lineLayouts.get(Number(lineId)) ?? lineLayouts.get(String(lineId));
 
 const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOpenContextMenu }) => {
+  const { languageCode } = useLanguage();
   // 뷰에 실제 표시할 날짜 범위: dayCount가 있으면 그 수까지만, 없으면 days 전체
   const viewDays = dayCount != null && dayCount < days.length
     ? days.slice(0, dayCount)
@@ -395,7 +398,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
                   backgroundColor: 'background.paper',
                 }}
               >
-                라인
+                {getUiMessage('assign.lineColumn', 'Line', languageCode)}
               </TableCell>
               {viewDays.map((day) => {
                 const isHoliday = day.isSunday || day.isHoliday;
@@ -450,7 +453,10 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
                       {line.factoryName}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                      {line.name}({line.headcount}명)
+                      {line.name}
+                      {` (${getUiMessage('assign.headcount', '{count} ppl', languageCode, {
+                        count: line.headcount,
+                      })})`}
                     </Typography>
                   </TableCell>
                   <TableCell colSpan={viewDays.length} sx={{ p: 0 }}>
