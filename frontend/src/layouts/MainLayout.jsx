@@ -360,11 +360,6 @@ const MainLayout = () => {
             path: '/customer',
           },
           {
-            label: getUiMessage('menu.profile', '개인 정보', languageCode),
-            icon: <AccountCircleIcon />,
-            path: '/profile',
-          },
-          {
             label: getUiMessage('menu.subscription', '구독 관리', languageCode),
             icon: <TuneIcon />,
             path: '/system-setting',
@@ -490,6 +485,9 @@ const MainLayout = () => {
   );
   const resolveTabLabel = React.useCallback(
     (path) => {
+      if (path === '/profile') {
+        return getUiMessage('menu.profile', '개인 정보', languageCode);
+      }
       if (path === '/work-history/new') {
         return getUiMessage('menu.workHistory', '기록', languageCode);
       }
@@ -1031,19 +1029,32 @@ const MainLayout = () => {
             </Box>
           </Fade>
 
-          <Typography
-            variant="body2"
-            color="text.secondary"
+          <Button
+            color="inherit"
+            onClick={() =>
+              handleNavigation('/profile', {
+                label: getUiMessage('menu.profile', '개인 정보', languageCode),
+              })
+            }
+            startIcon={<AccountCircleIcon fontSize="small" />}
             sx={{
-              mr: 1.5,
+              mr: 1,
+              minWidth: 0,
+              px: 1,
+              color: 'text.secondary',
+              textTransform: 'none',
               maxWidth: { xs: 160, sm: 240, md: 320 },
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
+              '& .MuiButton-startIcon': {
+                mr: 0.5,
+                color: 'text.secondary',
+              },
             }}
           >
             {activeUserSummary}
-          </Typography>
+          </Button>
 
           <LanguageSwitcher
             languageCode={languageCode}
