@@ -171,6 +171,56 @@ const LINE_CONFIGS = [
   { key: 'sample-line', lineName: '샘플 라인', workerPrefix: 'sample-worker-', workerLabel: '샘플 작업자' },
 ];
 
+const SAMPLE_API_BASE = process.env.API_BASE ?? 'http://localhost:4000';
+const SAMPLE_MANUFACTURER_CODE = 'TSMF';
+const SAMPLE_BRAND_CODE = 'TSBR';
+const SAMPLE_MANUFACTURER_ADMIN_EMAIL = 'manufacturer-admin@test.local';
+const SAMPLE_BRAND_ADMIN_EMAIL = 'brand-admin@test.local';
+const SAMPLE_MANUFACTURER_OPERATOR_EMAIL = 'manufacturer-operator@test.local';
+const SAMPLE_LEGACY_ORDER_PREFIX = 'LOAD-26';
+const SAMPLE_DEMO_ORDER_ID = 'order-tsbr-po-260322-01';
+const SAMPLE_DEMO_ORDER_NUMBER = 'TSBR-PO-260322-01';
+const SAMPLE_ORDER_DUE_OFFSET_DAYS = 47;
+const SAMPLE_ORDER_STYLE_ITEMS = [
+  {
+    styleId: 'BL20',
+    colorCode: 'BLACK',
+    gender: 'U',
+    quantity: 1500,
+    sizeQuantities: { S: 300, M: 525, L: 450, XL: 225 },
+  },
+  {
+    styleId: 'AM01160',
+    colorCode: 'NAVY',
+    gender: 'M',
+    quantity: 950,
+    sizeQuantities: { S: 150, M: 330, L: 280, XL: 190 },
+  },
+  {
+    styleId: 'AM01622',
+    colorCode: 'WHITE',
+    gender: 'U',
+    quantity: 1350,
+    sizeQuantities: { S: 200, M: 470, L: 410, XL: 270 },
+  },
+  {
+    styleId: 'AM02053',
+    colorCode: 'INDIGO',
+    gender: 'U',
+    quantity: 1650,
+    sizeQuantities: { S: 250, M: 580, L: 500, XL: 320 },
+  },
+];
+const SAMPLE_WORK_LOG_ORG_ID = Number(process.env.ORG_ID ?? 2);
+const SAMPLE_WORK_LOG_SHIFT_SECONDS = Number(process.env.SHIFT_SECONDS ?? 8 * 60 * 60);
+const SAMPLE_WORK_LOG_TARGET_VARIANCE = Math.max(
+  0,
+  Math.min(5, Number(process.env.TARGET_VARIANCE ?? 4))
+);
+const SAMPLE_WORK_LOG_SEED = Number(process.env.SEED ?? 20260306);
+const SAMPLE_WORK_LOG_DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN ?? '');
+const SAMPLE_WORK_LOG_NOTE_PREFIX = 'AUTO_SAMPLE_WORK_LOG';
+
 const toWorkerEmail = (prefix, index) => `${prefix}${String(index).padStart(2, '0')}@baro.local`;
 const toWorkerName = (label, index) => `${label} ${String(index).padStart(2, '0')}`;
 
@@ -526,7 +576,953 @@ async function clearOrderAndAssignmentData() {
   };
 }
 
-async function main() {
+function sampleBuildQuery(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') return;
+    query.set(key, String(value));
+  });
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+async function sampleApiRequest(path, { method = 'GET', body, userEmail, orgId } = {}) {
+  const headers = new Headers();
+  if (userEmail) headers.set('x-user-email', String(userEmail).trim().toLowerCase());
+  if (orgId) headers.set('x-org-id', String(orgId));
+  if (body !== undefined) headers.set('Content-Type', 'application/json');
+
+  const response = await fetch(`${SAMPLE_API_BASE}${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const raw = await response.text();
+  let data = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = raw;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error === 'string' ? data.error : `Request failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.details = data;
+    error.path = path;
+    throw error;
+  }
+
+  return data;
+}
+
+function sampleAssert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function sampleToDateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function sampleAddDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function sampleToFiniteNumber(value, fallback = null) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function sampleToPositiveIntOrNull(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  return rounded > 0 ? rounded : null;
+}
+
+function sampleToPositiveInt(value, fallback = 0) {
+  return sampleToPositiveIntOrNull(value) ?? fallback;
+}
+
+function sampleClamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function sampleCreateRng(seed) {
+  let state = (seed >>> 0) || 1;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+function sampleRandomInt(random, min, max) {
+  const lower = Math.ceil(min);
+  const upper = Math.floor(max);
+  return Math.floor(random() * (upper - lower + 1)) + lower;
+}
+
+function sampleRandomFloat(random, min, max) {
+  return random() * (max - min) + min;
+}
+
+function sampleSumBy(items, selector) {
+  return items.reduce((total, item, index) => total + selector(item, index), 0);
+}
+
+function sampleAllocateByWeights(total, weights) {
+  const safeTotal = Math.max(0, Math.round(Number(total) || 0));
+  if (safeTotal === 0 || weights.length === 0) {
+    return Array.from({ length: weights.length }, () => 0);
+  }
+
+  const normalized = weights.map((weight) =>
+    Number.isFinite(weight) && weight > 0 ? weight : 0
+  );
+  const sumWeights = normalized.reduce((acc, weight) => acc + weight, 0);
+  const basis = sumWeights > 0 ? normalized : normalized.map(() => 1);
+  const denominator = sumWeights > 0 ? sumWeights : basis.length;
+  const raw = basis.map((weight) => (safeTotal * weight) / denominator);
+  const floorValues = raw.map((value) => Math.floor(value));
+  let remaining = safeTotal - floorValues.reduce((acc, value) => acc + value, 0);
+
+  const order = raw
+    .map((value, index) => ({
+      index,
+      fraction: value - floorValues[index],
+      weight: basis[index],
+    }))
+    .sort(
+      (left, right) =>
+        right.fraction - left.fraction ||
+        right.weight - left.weight ||
+        left.index - right.index
+    );
+
+  for (let index = 0; index < order.length && remaining > 0; index += 1) {
+    floorValues[order[index].index] += 1;
+    remaining -= 1;
+  }
+
+  return floorValues;
+}
+
+function sampleSplitQuantity(total, parts, random) {
+  if (parts <= 0) return [];
+  if (parts === 1) return [total];
+  if (parts > total) {
+    throw new Error(`cannot split quantity ${total} into ${parts} positive parts`);
+  }
+
+  const weights = Array.from({ length: parts }, () => 0.9 + random() * 0.2);
+  const base = Array.from({ length: parts }, () => 1);
+  const remaining = sampleAllocateByWeights(total - parts, weights);
+  return base.map((value, index) => value + remaining[index]);
+}
+
+function sampleSumStylePt(style) {
+  return Array.isArray(style?.processes)
+    ? style.processes.reduce((sum, process) => {
+        const pt = Number(process?.pt || 0);
+        const quantity = Number(process?.quantity || 1);
+        return sum + pt * Math.max(1, quantity);
+      }, 0)
+    : 0;
+}
+
+async function sampleLoadOrganizations() {
+  const organizations = await sampleApiRequest('/organizations');
+  const manufacturer = organizations.find(
+    (organization) => organization?.code === SAMPLE_MANUFACTURER_CODE
+  );
+  const brand = organizations.find((organization) => organization?.code === SAMPLE_BRAND_CODE);
+  sampleAssert(manufacturer, `organization not found: ${SAMPLE_MANUFACTURER_CODE}`);
+  sampleAssert(brand, `organization not found: ${SAMPLE_BRAND_CODE}`);
+  return { manufacturer, brand };
+}
+
+async function sampleLoadManufacturingContext(manufacturer, brand) {
+  const [customers, attributes, factories] = await Promise.all([
+    sampleApiRequest(`/customers${sampleBuildQuery({ orgId: manufacturer.id })}`, {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }),
+    sampleApiRequest(`/attributes${sampleBuildQuery({ orgId: manufacturer.id })}`, {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }),
+    sampleApiRequest(`/factories${sampleBuildQuery({ orgId: manufacturer.id })}`, {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }),
+  ]);
+
+  const linkedCustomer = Array.isArray(customers)
+    ? customers.find((item) => Number(item?.brandOrgId) === Number(brand.id))
+    : null;
+  sampleAssert(linkedCustomer, 'manufacturer-brand relationship not found');
+
+  const colors = Array.isArray(attributes?.colors) ? attributes.colors : [];
+  sampleAssert(colors.length > 0, 'at least one color is required');
+  sampleAssert(Array.isArray(factories) && factories.length > 0, 'no factory found for manufacturer');
+
+  const preferredFactoryName = String(SAMPLE_FACTORY_NAME || '').trim();
+  const factory =
+    factories.find((item) => String(item?.name || '').trim() === preferredFactoryName) ||
+    factories[0];
+  const lines = await sampleApiRequest(
+    `/lines${sampleBuildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }
+  );
+  const preferredLineName = String(LINE_CONFIGS[0]?.lineName || '').trim();
+  const line =
+    (Array.isArray(lines) ? lines : []).find(
+      (item) => String(item?.name || '').trim() === preferredLineName
+    ) || ((Array.isArray(lines) && lines.length > 0) ? lines[0] : null);
+  sampleAssert(line, 'no line found for selected factory');
+
+  const lineWorkers = await sampleApiRequest(
+    `/line-workers${sampleBuildQuery({ orgId: manufacturer.id, factoryId: factory.id })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }
+  );
+
+  const assignedWorkerCount = Array.isArray(lineWorkers)
+    ? lineWorkers.filter((worker) => Number(worker?.currentLineId) === Number(line.id)).length
+    : 0;
+
+  return {
+    colorByCode: colors.reduce((map, color) => {
+      const code = String(color?.code || '').trim().toUpperCase();
+      if (code) map.set(code, color);
+      return map;
+    }, new Map()),
+    factory,
+    line,
+    assignedWorkerCount: assignedWorkerCount || SAMPLE_WORKER_COUNT,
+  };
+}
+
+async function sampleCleanupLegacyOrders(manufacturer) {
+  const existingOrders = await sampleApiRequest(
+    `/orders${sampleBuildQuery({ orgId: manufacturer.id })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }
+  );
+
+  const legacyOrders = (Array.isArray(existingOrders) ? existingOrders : []).filter((order) => {
+    const orderNumber = String(order?.orderNumber || '');
+    const orderId = String(order?.id || '');
+    return orderNumber.startsWith(SAMPLE_LEGACY_ORDER_PREFIX) || orderId.startsWith('order-load-26');
+  });
+
+  for (const order of legacyOrders) {
+    await sampleApiRequest(
+      `/orders/${encodeURIComponent(order.id)}${sampleBuildQuery({ orgId: manufacturer.id })}`,
+      {
+        method: 'DELETE',
+        userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        orgId: manufacturer.id,
+      }
+    );
+  }
+
+  return legacyOrders.length;
+}
+
+async function sampleCleanupLegacyStyles(organizationId, userEmail) {
+  const existingStyles = await sampleApiRequest(
+    `/styles${sampleBuildQuery({ orgId: organizationId, compact: 1 })}`,
+    {
+      userEmail,
+      orgId: organizationId,
+    }
+  );
+
+  const legacyStyles = (Array.isArray(existingStyles) ? existingStyles : []).filter((style) =>
+    String(style?.id || '').startsWith(SAMPLE_LEGACY_ORDER_PREFIX)
+  );
+
+  for (const style of legacyStyles) {
+    await sampleApiRequest(
+      `/styles/${encodeURIComponent(style.id)}${sampleBuildQuery({ orgId: organizationId })}`,
+      {
+        method: 'DELETE',
+        userEmail,
+        orgId: organizationId,
+      }
+    );
+  }
+
+  return legacyStyles.length;
+}
+
+async function sampleLoadRegisteredStyles(manufacturer, colorByCode) {
+  const styles = [];
+  for (const item of SAMPLE_ORDER_STYLE_ITEMS) {
+    const style = await sampleApiRequest(
+      `/styles/${encodeURIComponent(item.styleId)}${sampleBuildQuery({ orgId: manufacturer.id })}`,
+      {
+        userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        orgId: manufacturer.id,
+      }
+    );
+    const color = colorByCode.get(item.colorCode);
+    sampleAssert(color, `color not found: ${item.colorCode}`);
+    styles.push({
+      definition: item,
+      style,
+      color,
+      ptPerPiece: sampleSumStylePt(style),
+    });
+  }
+  return styles;
+}
+
+async function sampleCreateOrUpdateConsolidatedOrder({ manufacturer, brand, registeredStyles }) {
+  const today = new Date();
+  const existingOrders = await sampleApiRequest(
+    `/orders${sampleBuildQuery({ orgId: manufacturer.id })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }
+  );
+
+  const existingOrder = (Array.isArray(existingOrders) ? existingOrders : []).find(
+    (order) =>
+      String(order?.id || '') === SAMPLE_DEMO_ORDER_ID ||
+      String(order?.orderNumber || '') === SAMPLE_DEMO_ORDER_NUMBER
+  );
+
+  const payload = {
+    id: SAMPLE_DEMO_ORDER_ID,
+    orderNumber: SAMPLE_DEMO_ORDER_NUMBER,
+    buyerOrgId: brand.id,
+    buyerOrgName: brand.name,
+    sellerOrgId: manufacturer.id,
+    sellerOrgName: manufacturer.name,
+    customer: brand.name,
+    dueDate: sampleToDateKey(sampleAddDays(today, SAMPLE_ORDER_DUE_OFFSET_DAYS)),
+    status: 'ORDER_RECEIVED',
+    confirmationStatus: 'PLANNED',
+    items: registeredStyles.map(({ definition, style, color }, index) => ({
+      id: `item-${String(index + 1).padStart(2, '0')}`,
+      styleId: style.id,
+      styleCode: style.styleCode,
+      styleName: style.name,
+      colorId: color.id,
+      colorCode: color.code,
+      colorName: color.name,
+      gender: definition.gender,
+      sizeQuantities: definition.sizeQuantities,
+      totalQuantity: definition.quantity,
+    })),
+    totalQuantity: registeredStyles.reduce(
+      (sum, item) => sum + Number(item.definition.quantity || 0),
+      0
+    ),
+  };
+
+  if (existingOrder?.isManualModificationLocked) {
+    await sampleApiRequest(
+      `/orders/${encodeURIComponent(existingOrder.id)}/modification-lock${sampleBuildQuery({
+        orgId: manufacturer.id,
+      })}`,
+      {
+        method: 'POST',
+        userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        orgId: manufacturer.id,
+        body: {
+          locked: false,
+          lockedBy: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        },
+      }
+    );
+  }
+
+  const order = await sampleApiRequest(
+    existingOrder
+      ? `/orders/${encodeURIComponent(existingOrder.id)}${sampleBuildQuery({ orgId: manufacturer.id })}`
+      : `/orders${sampleBuildQuery({ orgId: manufacturer.id })}`,
+    {
+      method: existingOrder ? 'PUT' : 'POST',
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+      body: payload,
+    }
+  );
+
+  if (existingOrder) {
+    await sampleApiRequest(
+      `/orders/${encodeURIComponent(order.id)}/modification-lock${sampleBuildQuery({
+        orgId: manufacturer.id,
+      })}`,
+      {
+        method: 'POST',
+        userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        orgId: manufacturer.id,
+        body: {
+          locked: true,
+          lockedBy: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+        },
+      }
+    );
+  }
+
+  return {
+    order,
+    mode: existingOrder ? 'updated' : 'created',
+  };
+}
+
+async function runSampleOrders() {
+  const { manufacturer, brand } = await sampleLoadOrganizations();
+  const context = await sampleLoadManufacturingContext(manufacturer, brand);
+
+  const deletedLegacyOrderCount = await sampleCleanupLegacyOrders(manufacturer);
+  const deletedLegacyBrandStyleCount = await sampleCleanupLegacyStyles(
+    brand.id,
+    SAMPLE_BRAND_ADMIN_EMAIL
+  );
+  const deletedLegacyManufacturerStyleCount = await sampleCleanupLegacyStyles(
+    manufacturer.id,
+    SAMPLE_MANUFACTURER_ADMIN_EMAIL
+  );
+
+  const registeredStyles = await sampleLoadRegisteredStyles(
+    manufacturer,
+    context.colorByCode
+  );
+  const consolidatedOrder = await sampleCreateOrUpdateConsolidatedOrder({
+    manufacturer,
+    brand,
+    registeredStyles,
+  });
+
+  const assignmentCardsResponse = await sampleApiRequest(
+    `/assignment-cards${sampleBuildQuery({ orgId: manufacturer.id })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_ADMIN_EMAIL,
+      orgId: manufacturer.id,
+    }
+  );
+
+  const cards = Array.isArray(assignmentCardsResponse?.cards)
+    ? assignmentCardsResponse.cards
+    : [];
+  const orderCards = cards.filter((card) => String(card?.orderNo || '') === SAMPLE_DEMO_ORDER_NUMBER);
+
+  const totalPtSeconds = registeredStyles.reduce(
+    (sum, item) => sum + item.ptPerPiece * Number(item.definition.quantity || 0),
+    0
+  );
+  const estimatedLineDays =
+    totalPtSeconds / (Math.max(1, context.assignedWorkerCount) * SAMPLE_WORK_LOG_SHIFT_SECONDS);
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        apiBase: SAMPLE_API_BASE,
+        cleanup: {
+          deletedLegacyOrderCount,
+          deletedLegacyBrandStyleCount,
+          deletedLegacyManufacturerStyleCount,
+        },
+        factory: {
+          id: context.factory.id,
+          name: context.factory.name,
+        },
+        line: {
+          id: context.line.id,
+          name: context.line.name,
+          assignedWorkerCount: context.assignedWorkerCount,
+        },
+        summary: {
+          orderCount: 1,
+          cardCount: orderCards.length,
+          totalQuantity: registeredStyles.reduce(
+            (sum, item) => sum + Number(item.definition.quantity || 0),
+            0
+          ),
+          totalPtSeconds,
+          estimatedLineDays: Number(estimatedLineDays.toFixed(2)),
+          orderMode: consolidatedOrder.mode,
+        },
+        order: {
+          orderId: consolidatedOrder.order.id,
+          orderNumber: consolidatedOrder.order.orderNumber,
+          buyerOrgName: consolidatedOrder.order.buyerOrgName,
+          sellerOrgName: consolidatedOrder.order.sellerOrgName,
+          dueDate: consolidatedOrder.order.dueDate,
+        },
+      },
+      null,
+      2
+    )
+  );
+}
+
+function sampleParseDateKey(dateKey) {
+  return new Date(`${dateKey}T12:00:00Z`);
+}
+
+function sampleListDateKeysInclusive(startDateKey, endDateKey) {
+  const result = [];
+  const start = sampleParseDateKey(startDateKey);
+  const end = sampleParseDateKey(endDateKey);
+  for (const cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    result.push(sampleToDateKey(cursor));
+  }
+  return result;
+}
+
+function sampleIsSunday(dateKey) {
+  return sampleParseDateKey(dateKey).getUTCDay() === 0;
+}
+
+function sampleExtractProcessCode(process, index) {
+  const rawKey =
+    typeof process?.processKey === 'string' && process.processKey.trim()
+      ? process.processKey.trim()
+      : '';
+  if (rawKey) return rawKey.split('-')[0];
+
+  const rawCode =
+    typeof process?.code === 'string' && process.code.trim()
+      ? process.code.trim()
+      : '';
+  if (rawCode) return rawCode;
+
+  return `P${String(index + 1).padStart(2, '0')}`;
+}
+
+function sampleBuildPlanProcesses(plan) {
+  const snapshotProcesses = Array.isArray(plan?.ctSnapshot?.processes)
+    ? plan.ctSnapshot.processes
+    : [];
+
+  return snapshotProcesses
+    .map((process, index) => {
+      const ctSeconds = sampleToPositiveInt(
+        process?.agreedPerPieceSeconds ??
+          process?.agreedSeconds ??
+          process?.requestedSeconds ??
+          process?.stSeconds,
+        0
+      );
+      if (!ctSeconds) return null;
+
+      return {
+        processCode: sampleExtractProcessCode(process, index),
+        processName:
+          typeof process?.name === 'string' && process.name.trim()
+            ? process.name.trim()
+            : `Process ${index + 1}`,
+        ctSeconds,
+        processIndex: index,
+      };
+    })
+    .filter(Boolean);
+}
+
+function sampleBuildDailyWeights(plan) {
+  const schedule = plan?.ctSnapshot?.schedule;
+  if (!schedule?.startDateKey || !schedule?.endDateKey) return [];
+
+  const allDateKeys = sampleListDateKeysInclusive(
+    schedule.startDateKey,
+    schedule.endDateKey
+  );
+  const dateKeys = allDateKeys.filter((dateKey) => !sampleIsSunday(dateKey));
+  const effectiveDateKeys = dateKeys.length > 0 ? dateKeys : allDateKeys;
+  const startShare = sampleClamp(sampleToFiniteNumber(schedule.startDayPercent, 100), 1, 100);
+  const endShare = sampleClamp(sampleToFiniteNumber(schedule.endDayPercent, 100), 1, 100);
+
+  return effectiveDateKeys.map((dateKey, index) => {
+    if (effectiveDateKeys.length === 1) {
+      return { dateKey, weight: Math.max(startShare, endShare) / 100 };
+    }
+    if (index === 0) {
+      return {
+        dateKey,
+        weight: dateKey === schedule.startDateKey ? startShare / 100 : 1,
+      };
+    }
+    if (index === effectiveDateKeys.length - 1) {
+      return {
+        dateKey,
+        weight: dateKey === schedule.endDateKey ? endShare / 100 : 1,
+      };
+    }
+    return { dateKey, weight: 1 };
+  });
+}
+
+function sampleNormalizePlan(plan, random) {
+  const lineId = sampleToPositiveInt(plan?.lineId, 0);
+  const baselineQuantity = sampleToPositiveInt(plan?.finalQuantity ?? plan?.quantity, 0);
+  const processes = sampleBuildPlanProcesses(plan);
+  const dailyWeights = sampleBuildDailyWeights(plan);
+
+  if (!lineId || !baselineQuantity || processes.length === 0 || dailyWeights.length === 0) {
+    return null;
+  }
+
+  const varianceLimit = Math.min(
+    SAMPLE_WORK_LOG_TARGET_VARIANCE,
+    Math.max(0, baselineQuantity - 1)
+  );
+  const variance =
+    varianceLimit > 0 ? sampleRandomInt(random, -varianceLimit, varianceLimit) : 0;
+  const targetQuantity = baselineQuantity + variance;
+  const dailyQuantities = sampleAllocateByWeights(
+    targetQuantity,
+    dailyWeights.map((item) => item.weight)
+  );
+
+  return {
+    dbId: sampleToPositiveInt(plan?.dbId, 0),
+    externalId: String(plan?.id || ''),
+    lineId,
+    styleId: String(plan?.styleId || ''),
+    styleName: String(plan?.label || ''),
+    orderNo: String(plan?.orderNo || ''),
+    customerName: String(plan?.customer || ''),
+    colorId: sampleToPositiveIntOrNull(plan?.colorId),
+    colorName: String(plan?.colorName || ''),
+    baselineQuantity,
+    targetQuantity,
+    totalPerPieceSeconds: sampleSumBy(processes, (process) => process.ctSeconds),
+    processes,
+    dailyRows: dailyWeights
+      .map((weight, index) => ({
+        dateKey: weight.dateKey,
+        weight: weight.weight,
+        quantity: dailyQuantities[index] ?? 0,
+      }))
+      .filter((row) => row.quantity > 0),
+  };
+}
+
+function sampleAllocateWorkerCounts(tasks, workerCount) {
+  if (tasks.length === 0 || workerCount <= 0) {
+    return Array.from({ length: tasks.length }, () => 0);
+  }
+
+  const counts = Array.from({ length: tasks.length }, () => 0);
+  let remaining = workerCount;
+
+  if (tasks.length <= workerCount) {
+    for (let index = 0; index < tasks.length; index += 1) {
+      counts[index] = 1;
+      remaining -= 1;
+    }
+  }
+
+  while (remaining > 0) {
+    let bestIndex = -1;
+    let bestScore = -1;
+
+    for (let index = 0; index < tasks.length; index += 1) {
+      if (counts[index] >= tasks[index].quantity) continue;
+      const score = tasks[index].totalSeconds / (counts[index] + 1);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    }
+
+    if (bestIndex < 0) break;
+    counts[bestIndex] += 1;
+    remaining -= 1;
+  }
+
+  return counts;
+}
+
+function sampleBuildLineDayEntries(plans) {
+  const entryMap = new Map();
+
+  plans.forEach((plan, planOrder) => {
+    plan.dailyRows.forEach((row) => {
+      const key = `${plan.lineId}::${row.dateKey}`;
+      if (!entryMap.has(key)) {
+        entryMap.set(key, {
+          lineId: plan.lineId,
+          dateKey: row.dateKey,
+          items: [],
+        });
+      }
+
+      entryMap.get(key).items.push({
+        plan,
+        quantity: row.quantity,
+        planOrder,
+      });
+    });
+  });
+
+  return Array.from(entryMap.values()).sort(
+    (left, right) =>
+      left.lineId - right.lineId || left.dateKey.localeCompare(right.dateKey)
+  );
+}
+
+function sampleSummarizeProgress(rows, planByExternalId) {
+  return rows
+    .map((row) => {
+      const plan = planByExternalId.get(String(row.id || ''));
+      return {
+        dbId: row.dbId,
+        orderNo: row.orderNo,
+        label: row.label,
+        colorName: plan?.colorName ?? '',
+        plannedQuantity: row.plannedQuantity,
+        producedQuantity: row.producedQuantity,
+        diff:
+          Number.isFinite(row.producedQuantity) && Number.isFinite(plan?.baselineQuantity)
+            ? row.producedQuantity - plan.baselineQuantity
+            : null,
+      };
+    })
+    .sort((left, right) => left.dbId - right.dbId);
+}
+
+async function runSampleWorkLogs() {
+  const random = sampleCreateRng(SAMPLE_WORK_LOG_SEED);
+  const factoryIdFromEnv = sampleToPositiveIntOrNull(process.env.FACTORY_ID);
+  const factories = await sampleApiRequest(
+    `/factories${sampleBuildQuery({ orgId: SAMPLE_WORK_LOG_ORG_ID })}`,
+    {
+      userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+      orgId: SAMPLE_WORK_LOG_ORG_ID,
+    }
+  );
+  const preferredFactoryName = String(SAMPLE_FACTORY_NAME || '').trim();
+  const factory =
+    (Array.isArray(factories) ? factories : []).find(
+      (item) => Number(item?.id) === Number(factoryIdFromEnv)
+    ) ||
+    (Array.isArray(factories) ? factories : []).find(
+      (item) => String(item?.name || '').trim() === preferredFactoryName
+    ) ||
+    (Array.isArray(factories) ? factories[0] : null);
+  sampleAssert(factory, `factory not found for org ${SAMPLE_WORK_LOG_ORG_ID}`);
+
+  const [rawPlans, existingLogs] = await Promise.all([
+    sampleApiRequest(
+      `/assignment-plans${sampleBuildQuery({
+        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        factoryId: factory.id,
+      })}`,
+      {
+        userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+        orgId: SAMPLE_WORK_LOG_ORG_ID,
+      }
+    ),
+    sampleApiRequest(
+      `/work-logs${sampleBuildQuery({
+        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        factoryId: factory.id,
+      })}`,
+      {
+        userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+        orgId: SAMPLE_WORK_LOG_ORG_ID,
+      }
+    ),
+  ]);
+
+  const plans = (Array.isArray(rawPlans) ? rawPlans : [])
+    .filter((plan) => Number(plan?.contractedSeconds) > 0)
+    .map((plan) => sampleNormalizePlan(plan, random))
+    .filter(Boolean);
+
+  sampleAssert(plans.length > 0, 'no agreed assignment plans found');
+
+  const existingKeys = new Set(
+    (Array.isArray(existingLogs) ? existingLogs : []).map(
+      (log) => `${log.lineId ?? '?'}::${log.workDate ?? ''}`
+    )
+  );
+
+  const workerCache = new Map();
+  const getWorkersForLineDate = async (lineId, dateKey) => {
+    const cacheKey = `${lineId}::${dateKey}`;
+    if (!workerCache.has(cacheKey)) {
+      workerCache.set(
+        cacheKey,
+        sampleApiRequest(
+          `/line-workers${sampleBuildQuery({
+            orgId: SAMPLE_WORK_LOG_ORG_ID,
+            factoryId: factory.id,
+            lineId,
+            workDate: dateKey,
+          })}`,
+          {
+            userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+            orgId: SAMPLE_WORK_LOG_ORG_ID,
+          }
+        )
+      );
+    }
+    const rows = await workerCache.get(cacheKey);
+    return Array.isArray(rows) ? rows.slice().sort((left, right) => left.id - right.id) : [];
+  };
+
+  const entries = sampleBuildLineDayEntries(plans);
+  const planByExternalId = new Map(plans.map((plan) => [plan.externalId, plan]));
+
+  let createdCount = 0;
+  let skippedCount = 0;
+
+  for (const entry of entries) {
+    const logKey = `${entry.lineId}::${entry.dateKey}`;
+    if (existingKeys.has(logKey)) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const workers = await getWorkersForLineDate(entry.lineId, entry.dateKey);
+    sampleAssert(workers.length > 0, `no line workers for line ${entry.lineId} on ${entry.dateKey}`);
+
+    const tasks = entry.items
+      .sort((left, right) => left.planOrder - right.planOrder || left.plan.dbId - right.plan.dbId)
+      .flatMap((item) =>
+        item.plan.processes.map((process) => ({
+          plan: item.plan,
+          quantity: item.quantity,
+          totalSeconds: item.quantity * process.ctSeconds,
+          processCode: process.processCode,
+          processName: process.processName,
+          ctSeconds: process.ctSeconds,
+        }))
+      );
+
+    const workerCounts = sampleAllocateWorkerCounts(tasks, workers.length);
+    const records = [];
+    let workerCursor = 0;
+
+    tasks.forEach((task, taskIndex) => {
+      const assignedWorkerCount = workerCounts[taskIndex] ?? 0;
+      if (assignedWorkerCount <= 0) return;
+
+      const assignedWorkers = workers.slice(workerCursor, workerCursor + assignedWorkerCount);
+      workerCursor += assignedWorkers.length;
+      if (assignedWorkers.length === 0) return;
+
+      const splitQuantities = sampleSplitQuantity(task.quantity, assignedWorkers.length, random);
+      assignedWorkers.forEach((worker, workerIndex) => {
+        records.push({
+          workerId: worker.id,
+          workerName: worker.name,
+          customerName: task.plan.customerName,
+          styleId: task.plan.styleId,
+          styleName: task.plan.styleName,
+          processCode: task.processCode,
+          processName: task.processName,
+          colorId: task.plan.colorId,
+          colorName: task.plan.colorName,
+          ctSeconds: task.ctSeconds,
+          quantity: splitQuantities[workerIndex],
+          assignmentPlanId: task.plan.dbId,
+        });
+      });
+    });
+
+    sampleAssert(
+      workerCursor === workers.length,
+      `worker allocation mismatch for line ${entry.lineId} on ${entry.dateKey}: ${workerCursor}/${workers.length}`
+    );
+
+    const totalContractedSeconds = sampleSumBy(
+      records,
+      (record) => record.ctSeconds * record.quantity
+    );
+    const body = {
+      workDate: entry.dateKey,
+      factoryId: factory.id,
+      factoryName: factory.name,
+      factoryWagePerSecond: sampleToFiniteNumber(factory.wagePerSecond, null),
+      lineId: entry.lineId,
+      ctBasis: 'CT',
+      workerCount: workers.length,
+      itemCount: records.length,
+      totalContractedSeconds,
+      records,
+      note: `${SAMPLE_WORK_LOG_NOTE_PREFIX} seed=${SAMPLE_WORK_LOG_SEED}`,
+    };
+
+    if (SAMPLE_WORK_LOG_DRY_RUN) {
+      skippedCount += 1;
+      continue;
+    }
+
+    await sampleApiRequest(`/work-logs${sampleBuildQuery({ orgId: SAMPLE_WORK_LOG_ORG_ID })}`, {
+      method: 'POST',
+      userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+      orgId: SAMPLE_WORK_LOG_ORG_ID,
+      body,
+    });
+
+    existingKeys.add(logKey);
+    createdCount += 1;
+  }
+
+  const ids = plans.map((plan) => plan.externalId).filter(Boolean).join(',');
+  const progressRows = SAMPLE_WORK_LOG_DRY_RUN
+    ? []
+    : await sampleApiRequest(
+        `/assignment-plan-progress${sampleBuildQuery({
+          orgId: SAMPLE_WORK_LOG_ORG_ID,
+          ids,
+        })}`,
+        {
+          userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+          orgId: SAMPLE_WORK_LOG_ORG_ID,
+        }
+      );
+  const summary = sampleSummarizeProgress(
+    Array.isArray(progressRows) ? progressRows : [],
+    planByExternalId
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        dryRun: SAMPLE_WORK_LOG_DRY_RUN,
+        factory: { id: factory.id, name: factory.name },
+        summary: {
+          planCount: plans.length,
+          lineDayCount: entries.length,
+          createdCount,
+          skippedCount,
+        },
+        verification: summary,
+      },
+      null,
+      2
+    )
+  );
+}
+
+async function runBaselineReset() {
   const summary = {};
 
   await prisma.systemUser.upsert({
@@ -680,6 +1676,35 @@ async function main() {
 
   console.log('Baseline reset completed.');
   console.log(JSON.stringify(summary, null, 2));
+}
+
+async function main() {
+  const command = String(process.argv[2] || 'baseline').trim().toLowerCase();
+
+  if (command === 'baseline' || command === 'reset') {
+    await runBaselineReset();
+    return;
+  }
+
+  if (command === 'orders') {
+    await runSampleOrders();
+    return;
+  }
+
+  if (command === 'work-logs') {
+    await runSampleWorkLogs();
+    return;
+  }
+
+  if (command === 'sample-all') {
+    await runSampleOrders();
+    await runSampleWorkLogs();
+    return;
+  }
+
+  throw new Error(
+    `unknown command "${command}". expected one of: baseline, orders, work-logs, sample-all`
+  );
 }
 
 main()

@@ -3020,11 +3020,18 @@ const findSharedOrderConflict = async ({
   });
 };
 
-const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => {
+const createOrReuseSharedOrder = async ({
+  normalized,
+  defaultManualLockBy = null,
+}: {
+  normalized: any;
+  defaultManualLockBy?: string | null;
+}) => {
   const resolvedOwnerOrgId = toPositiveIntOrNull(normalized?.buyerOrgId);
   if (!resolvedOwnerOrgId) {
     throw createHttpError(400, "buyerOrgId is required");
   }
+  const manualLockBy = resolveOptionalString(defaultManualLockBy, null) ?? "system";
 
   for (let attempt = 0; attempt <= ORDER_CREATE_SERIALIZABLE_RETRIES; attempt += 1) {
     try {
@@ -3053,6 +3060,8 @@ const createOrReuseSharedOrder = async ({ normalized }: { normalized: any }) => 
             data: {
               orgId: resolvedOwnerOrgId,
               ...normalized,
+              modificationLockedAt: new Date(),
+              modificationLockedBy: manualLockBy,
             },
           });
           const itemsToCreate = normalizeOrderItems(normalized.items);
@@ -8761,8 +8770,13 @@ app.post("/orders", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
+  const defaultManualLockBy =
+    resolveOptionalString(getRequesterEmail(req), null) ?? "system";
 
-  const { order, created } = await createOrReuseSharedOrder({ normalized });
+  const { order, created } = await createOrReuseSharedOrder({
+    normalized,
+    defaultManualLockBy,
+  });
   await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
   const orderLockState = await getOrderModificationLockState(order);
   res.status(created ? 201 : 200).json(

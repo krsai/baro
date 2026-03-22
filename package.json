@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
     "setup:env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-env.ps1",
-    "sample:work-logs": "node scripts/generate-assignment-work-records.mjs",
+    "sample:work-logs": "node backend/scripts/reset-to-baseline.js work-logs",
+    "sample:orders": "node backend/scripts/reset-to-baseline.js orders",
     "check:encoding": "node scripts/check-encoding.mjs",
     "test:quantity-change": "node --test scripts/quantity-change-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",

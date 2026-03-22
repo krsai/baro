@@ -10,6 +10,8 @@
     "postinstall": "npm run prisma:prepare-client",
     "prereset:baseline": "npm run prisma:prepare-client",
     "reset:baseline": "node scripts/reset-to-baseline.js",
+    "sample:orders": "node scripts/reset-to-baseline.js orders",
+    "sample:work-logs": "node scripts/reset-to-baseline.js work-logs",
     "predev": "npm run prisma:prepare-client",
     "prestart": "npm run prisma:prepare-client && npm run build",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",

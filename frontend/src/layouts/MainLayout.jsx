@@ -126,6 +126,7 @@ const MainLayout = () => {
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
+  const [pendingTabPath, setPendingTabPath] = useState('');
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
@@ -573,6 +574,7 @@ const MainLayout = () => {
       const nextPathname = toPathname(nextPath);
 
       if (!hasPathAccess(nextPathname)) {
+        setPendingTabPath('');
         const fallbackPath = resolveAccessiblePath();
         if (currentPath !== fallbackPath) {
           navigate(fallbackPath, { replace: true });
@@ -611,11 +613,13 @@ const MainLayout = () => {
       openTab({ id: nextPathname, label, path: nextPath }, openOptions);
 
       if (nextPath && currentRoutePath !== nextPath) {
+        setPendingTabPath(nextPathname);
         pendingCloseTabRef.current = closeTabId;
         pendingNavigationPathRef.current = nextPathname;
         navigate(nextPath);
         schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
       } else if (closeTabId && currentPath !== closeTabId) {
+        setPendingTabPath('');
         pendingCloseTabRef.current = null;
         closeTab(closeTabId);
       }
@@ -665,6 +669,17 @@ const MainLayout = () => {
     const label = resolveTabLabel(currentPath);
     openTab({ id: currentPath, label, path: currentRoutePath });
   }, [closeTab, currentPath, currentRoutePath, openTab, openTabs, resolveTabLabel]);
+
+  useEffect(() => {
+    if (!pendingTabPath) return () => {};
+    if (currentPath !== pendingTabPath) return () => {};
+
+    const timerId = window.setTimeout(() => {
+      setPendingTabPath((prev) => (prev === currentPath ? '' : prev));
+    }, 250);
+
+    return () => window.clearTimeout(timerId);
+  }, [currentPath, pendingTabPath]);
 
   useEffect(() => {
     openTabs.forEach((tab) => {
@@ -752,6 +767,7 @@ const MainLayout = () => {
 
   const handleLogout = async () => {
     isLoggingOutRef.current = true;
+    setPendingTabPath('');
     skipAutoOpenPathRef.current = '/login';
     pendingNavigationPathRef.current = null;
     pendingCloseTabRef.current = null;
@@ -1115,63 +1131,68 @@ const MainLayout = () => {
               },
             }}
           >
-            {tabsForRender.map((tab) => (
-              <Tab
-                key={tab.id}
-                value={tab.id}
-                component="div"
-                sx={{
-                  minHeight: '40px',
-                  textTransform: 'none',
-                  borderRight: 1,
-                  borderColor: 'divider',
-                  opacity: 1,
-                  '&.Mui-selected': {
-                    bgcolor: 'white',
-                    fontWeight: 'bold',
-                  },
-                  '&:not(.Mui-selected)': {
-                    bgcolor: '#f4f6f8',
-                  },
-                  '& .MuiTab-wrapper': {
-                    flexDirection: 'row',
-                  },
-                  p: '0 16px',
-                  minWidth: '120px',
-                }}
-                label={
-                  <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
-                    {tab.label}
-                    {tabLoadingCounts.get(tab.id) > 0 && (
-                      <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
-                        <CircularProgress size={13} thickness={5} color="inherit" />
-                      </Box>
-                    )}
-                    {!tab.isOptimistic && (
-                      <IconButton
-                        component="span"
-                        size="small"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        onClick={(e) => handleCloseTab(e, tab.id)}
-                        sx={{
-                          ml: 1,
-                          mr: -1.5,
-                          p: '2px',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.08)',
-                          },
-                        }}
-                      >
-                        <CloseIcon sx={{ fontSize: '1rem' }} />
-                      </IconButton>
-                    )}
-                  </Box>
-                }
-              />
-            ))}
+            {tabsForRender.map((tab) => {
+              const isTabLoading =
+                (tabLoadingCounts.get(tab.id) || 0) > 0 || pendingTabPath === tab.id;
+
+              return (
+                <Tab
+                  key={tab.id}
+                  value={tab.id}
+                  component="div"
+                  sx={{
+                    minHeight: '40px',
+                    textTransform: 'none',
+                    borderRight: 1,
+                    borderColor: 'divider',
+                    opacity: 1,
+                    '&.Mui-selected': {
+                      bgcolor: 'white',
+                      fontWeight: 'bold',
+                    },
+                    '&:not(.Mui-selected)': {
+                      bgcolor: '#f4f6f8',
+                    },
+                    '& .MuiTab-wrapper': {
+                      flexDirection: 'row',
+                    },
+                    p: '0 16px',
+                    minWidth: '120px',
+                  }}
+                  label={
+                    <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
+                      {tab.label}
+                      {isTabLoading && (
+                        <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
+                          <CircularProgress size={13} thickness={5} color="inherit" />
+                        </Box>
+                      )}
+                      {!tab.isOptimistic && (
+                        <IconButton
+                          component="span"
+                          size="small"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => handleCloseTab(e, tab.id)}
+                          sx={{
+                            ml: 1,
+                            mr: -1.5,
+                            p: '2px',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.08)',
+                            },
+                          }}
+                        >
+                          <CloseIcon sx={{ fontSize: '1rem' }} />
+                        </IconButton>
+                      )}
+                    </Box>
+                  }
+                />
+              );
+            })}
           </Tabs>
         </Box>
 
