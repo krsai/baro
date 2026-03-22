@@ -1,8 +1,9 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   FormControl,
   Grid,
   IconButton,
@@ -29,6 +30,7 @@ import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
@@ -39,6 +41,63 @@ const buildWorkerLabel = (worker) => {
   return `작업자 ${worker?.id ?? ''}`.trim();
 };
 
+const buildExistingLineKey = (lineId) => `line-${lineId}`;
+const buildNewLineKey = () => `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeDraftData = (lineRows = [], workerRows = []) => {
+  const draftLines = (Array.isArray(lineRows) ? lineRows : []).map((line) => ({
+    ...line,
+    id: Number.isFinite(Number(line?.id)) ? Number(line.id) : null,
+    localKey: buildExistingLineKey(line.id),
+    managerEmployeeId:
+      line?.managerEmployeeId !== null &&
+      line?.managerEmployeeId !== undefined &&
+      line?.managerEmployeeId !== ''
+        ? Number(line.managerEmployeeId)
+        : null,
+  }));
+  const lineKeyById = new Map(
+    draftLines
+      .filter((line) => line.id !== null)
+      .map((line) => [String(line.id), line.localKey])
+  );
+  const draftWorkers = (Array.isArray(workerRows) ? workerRows : []).map((worker) => ({
+    ...worker,
+    currentLineKey:
+      worker?.currentLineId !== null &&
+      worker?.currentLineId !== undefined &&
+      lineKeyById.has(String(worker.currentLineId))
+        ? lineKeyById.get(String(worker.currentLineId))
+        : null,
+  }));
+  return { lines: draftLines, workers: draftWorkers };
+};
+
+const buildDraftSnapshot = (lineRows = [], workerRows = []) =>
+  JSON.stringify({
+    lines: [...lineRows]
+      .map((line) => ({
+        id: line?.id ?? null,
+        localKey: String(line?.localKey || ''),
+        name: String(line?.name || '').trim(),
+        managerEmployeeId:
+          line?.managerEmployeeId !== null &&
+          line?.managerEmployeeId !== undefined &&
+          line?.managerEmployeeId !== ''
+            ? Number(line.managerEmployeeId)
+            : null,
+      }))
+      .sort((a, b) => String(a.localKey).localeCompare(String(b.localKey))),
+    workers: [...workerRows]
+      .map((worker) => ({
+        id: Number(worker?.id || 0),
+        currentLineKey: worker?.currentLineKey || null,
+      }))
+      .sort((a, b) => a.id - b.id),
+  });
+
+const EMPTY_SNAPSHOT = buildDraftSnapshot([], []);
+
 const LineBoard = () => {
   const { showNotification } = useApp();
   const { activeOrgId } = useAuth();
@@ -46,34 +105,39 @@ const LineBoard = () => {
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [lines, setLines] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [originalSnapshot, setOriginalSnapshot] = useState(EMPTY_SNAPSHOT);
   const [newLineName, setNewLineName] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // 라인명 인라인 편집
-  const [editingLineId, setEditingLineId] = useState(null);
+  const [editingLineKey, setEditingLineKey] = useState(null);
   const [editingLineName, setEditingLineName] = useState('');
-  const [deletingLineId, setDeletingLineId] = useState(null);
 
-  const buildOrgQuery = (params = {}) =>
-    buildQueryString({ ...params, orgId: activeOrgId });
+  const buildOrgQuery = useCallback(
+    (params = {}) => buildQueryString({ ...params, orgId: activeOrgId }),
+    [activeOrgId]
+  );
+
+  const selectedFactory = useMemo(
+    () => factories.find((factory) => String(factory.id) === String(selectedFactoryId)) ?? null,
+    [factories, selectedFactoryId]
+  );
 
   const lineWorkers = useMemo(() => {
     const byLine = new Map();
-    lines.forEach((line) => byLine.set(String(line.id), []));
+    lines.forEach((line) => byLine.set(String(line.localKey), []));
     const unassigned = [];
 
     workers.forEach((worker) => {
-      const lineId = worker.currentLineId ? String(worker.currentLineId) : null;
-      if (lineId && byLine.has(lineId)) {
-        byLine.get(lineId).push(worker);
+      const lineKey = worker.currentLineKey ? String(worker.currentLineKey) : null;
+      if (lineKey && byLine.has(lineKey)) {
+        byLine.get(lineKey).push(worker);
       } else {
         unassigned.push(worker);
       }
     });
 
     lines.forEach((line) => {
-      const workersInLine = byLine.get(String(line.id));
+      const workersInLine = byLine.get(String(line.localKey));
       if (!workersInLine) return;
       workersInLine.sort((a, b) => {
         if (a.id === line.managerEmployeeId) return -1;
@@ -85,10 +149,6 @@ const LineBoard = () => {
     return { byLine, unassigned };
   }, [lines, workers]);
 
-  const selectedFactory = useMemo(
-    () => factories.find((f) => String(f.id) === String(selectedFactoryId)) ?? null,
-    [factories, selectedFactoryId]
-  );
   const totalWorkers = workers.length;
   const assignedWorkers = totalWorkers - lineWorkers.unassigned.length;
   const managerAssignedLines = useMemo(
@@ -102,283 +162,374 @@ const LineBoard = () => {
     [lines]
   );
 
-  const fetchFactories = async () => {
+  const currentSnapshot = useMemo(() => buildDraftSnapshot(lines, workers), [lines, workers]);
+  const isDirty = currentSnapshot !== originalSnapshot;
+
+  useUnsavedChanges(isDirty || Boolean(editingLineKey));
+
+  const clearInlineEdit = useCallback(() => {
+    setEditingLineKey(null);
+    setEditingLineName('');
+  }, []);
+
+  const loadFactoryBoardData = useCallback(
+    async (factoryId) => {
+      if (!factoryId) {
+        setLines([]);
+        setWorkers([]);
+        setOriginalSnapshot(EMPTY_SNAPSHOT);
+        clearInlineEdit();
+        setNewLineName('');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const [lineRows, workerRows] = await Promise.all([
+          requestJSON('/lines' + buildOrgQuery({ factoryId })),
+          requestJSON('/line-workers' + buildOrgQuery({ factoryId })),
+        ]);
+        const normalized = normalizeDraftData(lineRows, workerRows);
+        setLines(normalized.lines);
+        setWorkers(normalized.workers);
+        setOriginalSnapshot(buildDraftSnapshot(normalized.lines, normalized.workers));
+        clearInlineEdit();
+        setNewLineName('');
+      } catch (error) {
+        showNotification(error?.message || '라인 정보를 불러오는 데 실패했습니다.', 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [buildOrgQuery, clearInlineEdit, showNotification]
+  );
+
+  const fetchFactories = useCallback(async () => {
     try {
       const data = await requestJSON('/factories' + buildOrgQuery());
       const list = Array.isArray(data) ? data : [];
       setFactories(list);
       setSelectedFactoryId((prev) => {
-        if (prev && list.some((f) => String(f.id) === String(prev))) return prev;
+        if (prev && list.some((factory) => String(factory.id) === String(prev))) return prev;
         return list.length > 0 ? String(list[0].id) : '';
       });
     } catch (error) {
       showNotification(error?.message || '공장 목록을 불러오는 데 실패했습니다.', 'error');
     }
-  };
-
-  const fetchLines = async (factoryId) => {
-    if (!factoryId) return;
-    try {
-      const data = await requestJSON('/lines' + buildOrgQuery({ factoryId }));
-      setLines(Array.isArray(data) ? data : []);
-    } catch (error) {
-      showNotification(error?.message || '라인 목록을 불러오는 데 실패했습니다.', 'error');
-    }
-  };
-
-  const fetchWorkers = async (factoryId) => {
-    if (!factoryId) return;
-    try {
-      const data = await requestJSON('/line-workers' + buildOrgQuery({ factoryId }));
-      setWorkers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      showNotification(error?.message || '작업자 목록을 불러오는 데 실패했습니다.', 'error');
-    }
-  };
+  }, [buildOrgQuery, showNotification]);
 
   useEffect(() => {
     fetchFactories();
-  }, [activeOrgId]);
+  }, [fetchFactories]);
 
   useEffect(() => {
-    if (!selectedFactoryId) {
-      setLines([]);
-      setWorkers([]);
-      return;
-    }
-    setLoading(true);
-    Promise.all([fetchLines(selectedFactoryId), fetchWorkers(selectedFactoryId)]).finally(
-      () => setLoading(false)
-    );
-  }, [activeOrgId, selectedFactoryId]);
+    loadFactoryBoardData(selectedFactoryId);
+  }, [activeOrgId, selectedFactoryId, loadFactoryBoardData]);
 
-  const handleAddLine = async () => {
+  const validateLineName = useCallback(
+    (lineKey, nextName, sourceLines = lines) => {
+      const trimmed = String(nextName || '').trim();
+      if (!trimmed) {
+        showNotification('라인 이름은 필수입니다.', 'warning');
+        return null;
+      }
+      const hasDuplicate = sourceLines.some(
+        (line) =>
+          line.localKey !== lineKey && String(line.name || '').trim() === trimmed
+      );
+      if (hasDuplicate) {
+        showNotification('같은 공장 안에 동일한 라인 이름이 이미 있습니다.', 'warning');
+        return null;
+      }
+      return trimmed;
+    },
+    [lines, showNotification]
+  );
+
+  const commitLineNameEdit = useCallback(
+    (targetLineKey = editingLineKey, nextName = editingLineName, sourceLines = lines) => {
+      if (!targetLineKey) {
+        return { nextLines: sourceLines, committed: false };
+      }
+      const trimmedName = validateLineName(targetLineKey, nextName, sourceLines);
+      if (!trimmedName) return null;
+
+      const nextLines = sourceLines.map((line) =>
+        line.localKey === targetLineKey ? { ...line, name: trimmedName } : line
+      );
+      setLines(nextLines);
+      clearInlineEdit();
+      return { nextLines, committed: true };
+    },
+    [clearInlineEdit, editingLineKey, editingLineName, lines, validateLineName]
+  );
+
+  const handleFactoryChange = useCallback(
+    (event) => {
+      const nextFactoryId = String(event.target.value || '');
+      if (nextFactoryId === selectedFactoryId) return;
+      if (
+        (isDirty || editingLineKey) &&
+        !window.confirm('저장되지 않은 변경사항이 있습니다. 저장하지 않고 공장을 변경하시겠습니까?')
+      ) {
+        return;
+      }
+      setSelectedFactoryId(nextFactoryId);
+    },
+    [editingLineKey, isDirty, selectedFactoryId]
+  );
+
+  const handleAddLine = useCallback(() => {
     if (saving) return;
-    const trimmedName = newLineName.trim();
     if (!selectedFactoryId) {
       showNotification('먼저 공장을 선택해 주세요.', 'warning');
       return;
     }
-    if (!trimmedName) {
-      showNotification('라인 이름은 필수입니다.', 'warning');
-      return;
-    }
-    setSaving(true);
-    try {
-      const data = await requestJSON('/lines' + buildOrgQuery(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ factoryId: Number(selectedFactoryId), name: trimmedName }),
-      });
-      setLines((prev) => [...prev, data]);
-      setNewLineName('');
-      showNotification('라인이 생성되었습니다.', 'success');
-    } catch (error) {
-      showNotification(error?.message || '라인 생성에 실패했습니다.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleStartLineNameEdit = (line) => {
-    setEditingLineId(line.id);
-    setEditingLineName(line.name);
-  };
-
-  const handleCancelLineNameEdit = () => {
-    setEditingLineId(null);
-    setEditingLineName('');
-  };
-
-  const handleLineNameSave = async (lineId) => {
-    const trimmedName = editingLineName.trim();
-    setEditingLineId(null);
-    setEditingLineName('');
+    const trimmedName = validateLineName(null, newLineName, lines);
     if (!trimmedName) return;
-    const currentLine = lines.find((l) => l.id === lineId);
-    if (currentLine?.name === trimmedName) return;
 
-    setSaving(true);
-    try {
-      const data = await requestJSON(`/lines/${lineId}` + buildOrgQuery(), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmedName }),
-      });
-      setLines((prev) => prev.map((line) => (line.id === data.id ? data : line)));
-      showNotification('라인 이름이 변경되었습니다.', 'success');
-    } catch (error) {
-      showNotification(error?.message || '라인 이름 변경에 실패했습니다.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+    setLines((prev) => [
+      ...prev,
+      {
+        id: null,
+        localKey: buildNewLineKey(),
+        name: trimmedName,
+        managerEmployeeId: null,
+      },
+    ]);
+    setNewLineName('');
+  }, [lines, newLineName, saving, selectedFactoryId, showNotification, validateLineName]);
 
-  const handleManagerChange = async (lineId, managerEmployeeId) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const data = await requestJSON(`/lines/${lineId}` + buildOrgQuery(), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ managerEmployeeId: managerEmployeeId || null }),
-      });
-      setLines((prev) => prev.map((line) => (line.id === data.id ? data : line)));
-      showNotification('라인 관리자가 지정되었습니다.', 'success');
-    } catch (error) {
-      showNotification(error?.message || '라인 정보 업데이트에 실패했습니다.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const handleStartLineNameEdit = useCallback((line) => {
+    setEditingLineKey(line.localKey);
+    setEditingLineName(line.name || '');
+  }, []);
 
-  const handleDeleteLine = async (line) => {
-    const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
-    const confirmMsg =
-      workersInLine.length > 0
-        ? `'${line.name}'을(를) 삭제하시겠습니까?\n배정된 작업자 ${workersInLine.length}명은 미배정으로 이동됩니다.`
-        : `'${line.name}'을(를) 삭제하시겠습니까?`;
-    if (!window.confirm(confirmMsg)) return;
+  const handleDeleteLine = useCallback(
+    (line) => {
+      const workersInLine = lineWorkers.byLine.get(String(line.localKey)) || [];
+      const confirmMessage =
+        workersInLine.length > 0
+          ? `'${line.name}'을(를) 삭제하시겠습니까?\n배정된 작업자 ${workersInLine.length}명은 미배정으로 이동됩니다.`
+          : `'${line.name}'을(를) 삭제하시겠습니까?`;
+      if (!window.confirm(confirmMessage)) return;
 
-    setDeletingLineId(line.id);
-    try {
-      const result = await requestJSON(`/lines/${line.id}` + buildOrgQuery(), {
-        method: 'DELETE',
-      });
-      setLines((prev) => prev.filter((l) => l.id !== line.id));
+      setLines((prev) => prev.filter((item) => item.localKey !== line.localKey));
       setWorkers((prev) =>
-        prev.map((w) => (w.currentLineId === line.id ? { ...w, currentLineId: null } : w))
-      );
-      const msg =
-        result?.movedWorkers > 0
-          ? `라인을 삭제했습니다. 작업자 ${result.movedWorkers}명이 미배정으로 이동되었습니다.`
-          : '라인이 삭제되었습니다.';
-      showNotification(msg, 'success');
-    } catch (error) {
-      showNotification(error?.message || '라인 삭제에 실패했습니다.', 'error');
-    } finally {
-      setDeletingLineId(null);
-    }
-  };
-
-  const handleDragEnd = async (result) => {
-    const { destination, source, draggableId } = result;
-    if (!destination) return;
-    if (destination.droppableId === source.droppableId) return;
-
-    const employeeId = Number(draggableId);
-    if (!Number.isFinite(employeeId)) return;
-
-    const destinationId = destination.droppableId;
-    const isUnassigned = destinationId === 'unassigned';
-    const lineMatch = destinationId.match(/^line-(\d+)$/);
-    if (!isUnassigned && !lineMatch) return;
-
-    const destinationLineId = isUnassigned ? null : Number(lineMatch[1]);
-    const sourceLineId = workers.find((w) => w.id === employeeId)?.currentLineId ?? null;
-    if (String(sourceLineId ?? '') === String(destinationLineId ?? '')) return;
-
-    const previousWorkers = workers;
-    const previousLines = lines;
-
-    setWorkers((prev) =>
-      prev.map((w) => (w.id === employeeId ? { ...w, currentLineId: destinationLineId } : w))
-    );
-    if (sourceLineId) {
-      setLines((prev) =>
-        prev.map((line) =>
-          line.id === sourceLineId && line.managerEmployeeId === employeeId
-            ? { ...line, managerEmployeeId: null }
-            : line
+        prev.map((worker) =>
+          worker.currentLineKey === line.localKey
+            ? { ...worker, currentLineKey: null }
+            : worker
         )
       );
+      if (editingLineKey === line.localKey) {
+        clearInlineEdit();
+      }
+    },
+    [clearInlineEdit, editingLineKey, lineWorkers.byLine]
+  );
+
+  const handleManagerChange = useCallback((lineKey, managerEmployeeId) => {
+    setLines((prev) =>
+      prev.map((line) =>
+        line.localKey === lineKey
+          ? {
+              ...line,
+              managerEmployeeId:
+                managerEmployeeId !== null &&
+                managerEmployeeId !== undefined &&
+                managerEmployeeId !== ''
+                  ? Number(managerEmployeeId)
+                  : null,
+            }
+          : line
+      )
+    );
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (result) => {
+      if (saving) return;
+
+      const { destination, source, draggableId } = result;
+      if (!destination) return;
+      if (destination.droppableId === source.droppableId) return;
+
+      const employeeId = Number(draggableId);
+      if (!Number.isFinite(employeeId)) return;
+
+      const destinationId = String(destination.droppableId || '');
+      const destinationLineKey =
+        destinationId === 'unassigned'
+          ? null
+          : destinationId.startsWith('line:')
+            ? destinationId.slice(5)
+            : null;
+      if (destinationId !== 'unassigned' && !destinationLineKey) return;
+
+      const sourceLineKey =
+        workers.find((worker) => worker.id === employeeId)?.currentLineKey ?? null;
+      if (String(sourceLineKey ?? '') === String(destinationLineKey ?? '')) return;
+
+      setWorkers((prev) =>
+        prev.map((worker) =>
+          worker.id === employeeId
+            ? { ...worker, currentLineKey: destinationLineKey }
+            : worker
+        )
+      );
+
+      if (sourceLineKey) {
+        setLines((prev) =>
+          prev.map((line) =>
+            line.localKey === sourceLineKey && line.managerEmployeeId === employeeId
+              ? { ...line, managerEmployeeId: null }
+              : line
+          )
+        );
+      }
+    },
+    [saving, workers]
+  );
+
+  const handleResetDraft = useCallback(async () => {
+    if (!isDirty && !editingLineKey) return;
+    if (!window.confirm('저장되지 않은 변경사항을 모두 되돌릴까요?')) return;
+    await loadFactoryBoardData(selectedFactoryId);
+  }, [editingLineKey, isDirty, loadFactoryBoardData, selectedFactoryId]);
+
+  const handleSaveChanges = useCallback(async () => {
+    if (saving || !selectedFactoryId) return;
+
+    let nextLines = lines;
+    if (editingLineKey) {
+      const committed = commitLineNameEdit(editingLineKey, editingLineName, lines);
+      if (!committed) return;
+      nextLines = committed.nextLines;
+    }
+
+    if (buildDraftSnapshot(nextLines, workers) === originalSnapshot) {
+      showNotification('변경사항이 없습니다.', 'info');
+      return;
     }
 
     setSaving(true);
     try {
-      let responseData;
-      if (isUnassigned) {
-        responseData = await requestJSON('/line-assignments/unassign' + buildOrgQuery(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ employeeId }),
-          skipGlobalLoading: true,
-        });
-      } else {
-        responseData = await requestJSON('/line-assignments/assign' + buildOrgQuery(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lineId: destinationLineId, employeeId }),
-          skipGlobalLoading: true,
-        });
-      }
+      const response = await requestJSON('/lines/batch-save' + buildOrgQuery(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          factoryId: Number(selectedFactoryId),
+          lines: nextLines.map((line) => ({
+            id: line.id ?? null,
+            lineKey: line.localKey,
+            name: String(line.name || '').trim(),
+            managerEmployeeId: line.managerEmployeeId ?? null,
+          })),
+          workerAssignments: workers.map((worker) => ({
+            employeeId: worker.id,
+            lineKey: worker.currentLineKey ?? null,
+          })),
+        }),
+      });
 
-      // API 응답의 lineHeadcounts로 라인 인원 수 갱신
-      const lineHeadcounts = responseData?.lineHeadcounts;
-      if (lineHeadcounts && typeof lineHeadcounts === 'object') {
-        setLines((prev) =>
-          prev.map((line) => {
-            const key = String(line.id);
-            if (key in lineHeadcounts) {
-              return { ...line, headcount: lineHeadcounts[key] };
-            }
-            return line;
-          })
-        );
-      }
+      const normalized = normalizeDraftData(response?.lines, response?.workers);
+      setLines(normalized.lines);
+      setWorkers(normalized.workers);
+      setOriginalSnapshot(buildDraftSnapshot(normalized.lines, normalized.workers));
+      clearInlineEdit();
+      setNewLineName('');
+      showNotification('라인 변경사항이 저장되었습니다.', 'success');
     } catch (error) {
-      setWorkers(previousWorkers);
-      setLines(previousLines);
-      showNotification(error?.message || '배정 정보 업데이트에 실패했습니다.', 'error');
+      showNotification(error?.message || '라인 저장에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
-  };
+  }, [
+    buildOrgQuery,
+    clearInlineEdit,
+    commitLineNameEdit,
+    editingLineKey,
+    editingLineName,
+    lines,
+    originalSnapshot,
+    saving,
+    selectedFactoryId,
+    showNotification,
+    workers,
+  ]);
 
-  const renderWorkerCard = (worker, index, isManager = false) => (
-    <Draggable key={worker.id} draggableId={String(worker.id)} index={index}>
-      {(provided, snapshot) => (
-        <Box
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.75,
-            px: 1.25,
-            py: 0.85,
-            mb: 0.75,
-            borderRadius: 1.5,
-            border: '1px solid',
-            borderColor:
-              snapshot.isDragging ? 'primary.main' : isManager ? 'primary.light' : 'divider',
-            background: (theme) =>
-              snapshot.isDragging
-                ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.16)} 0%, ${theme.palette.background.paper} 100%)`
-                : isManager
-                ? alpha(theme.palette.primary.main, 0.09)
-                : theme.palette.background.paper,
-            cursor: 'grab',
-            boxShadow: snapshot.isDragging ? 3 : 'none',
-            transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-          }}
-        >
-          <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
-          <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
-            {buildWorkerLabel(worker)}
-          </Typography>
-          {isManager ? (
-            <Chip size="small" label="라인장" color="primary" variant="filled" />
-          ) : null}
-        </Box>
-      )}
-    </Draggable>
+  const renderWorkerCard = useCallback(
+    (worker, index, isManager = false) => (
+      <Draggable
+        key={worker.id}
+        draggableId={String(worker.id)}
+        index={index}
+        isDragDisabled={saving}
+      >
+        {(provided, snapshot) => (
+          <Box
+            ref={provided.innerRef}
+            {...provided.draggableProps}
+            {...provided.dragHandleProps}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              px: 1.25,
+              py: 0.85,
+              mb: 0.75,
+              borderRadius: 1.5,
+              border: '1px solid',
+              borderColor:
+                snapshot.isDragging ? 'primary.main' : isManager ? 'primary.light' : 'divider',
+              background: (theme) =>
+                snapshot.isDragging
+                  ? `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.16)} 0%, ${theme.palette.background.paper} 100%)`
+                  : isManager
+                    ? alpha(theme.palette.primary.main, 0.09)
+                    : theme.palette.background.paper,
+              cursor: saving ? 'default' : 'grab',
+              boxShadow: snapshot.isDragging ? 3 : 'none',
+              transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+            }}
+          >
+            <DragIndicatorIcon sx={{ fontSize: 17, color: 'text.disabled' }} />
+            <Typography variant="body2" fontWeight={isManager ? 700 : 500} noWrap sx={{ flex: 1 }}>
+              {buildWorkerLabel(worker)}
+            </Typography>
+            {isManager ? (
+              <Chip size="small" label="라인장" color="primary" variant="filled" />
+            ) : null}
+          </Box>
+        )}
+      </Draggable>
+    ),
+    [saving]
   );
 
   return (
     <AppPageContainer
       title="라인 관리"
+      titleActions={(
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            onClick={handleResetDraft}
+            disabled={saving || (!isDirty && !editingLineKey)}
+          >
+            초기화
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveChanges}
+            disabled={saving || !selectedFactoryId || (!isDirty && !editingLineKey)}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
+          >
+            {saving ? '저장 중...' : '저장'}
+          </Button>
+        </Stack>
+      )}
       toolbar={(
         <PageToolbar
           right={(
@@ -388,9 +539,9 @@ const LineBoard = () => {
                 size="small"
                 label="공장"
                 value={selectedFactoryId}
-                onChange={(e) => setSelectedFactoryId(e.target.value)}
+                onChange={handleFactoryChange}
                 sx={{ minWidth: { xs: '100%', md: 210 } }}
-                disabled={loading}
+                disabled={loading || saving}
               >
                 {factories.length === 0 && <MenuItem value="">공장 없음</MenuItem>}
                 {factories.map((factory) => (
@@ -403,16 +554,21 @@ const LineBoard = () => {
                 size="small"
                 label="새 라인 이름"
                 value={newLineName}
-                onChange={(e) => setNewLineName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddLine()}
+                onChange={(event) => setNewLineName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleAddLine();
+                  }
+                }}
                 sx={{ minWidth: { xs: '100%', md: 220 } }}
-                disabled={!selectedFactoryId || saving}
+                disabled={!selectedFactoryId || loading || saving}
               />
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
                 onClick={handleAddLine}
-                disabled={!selectedFactoryId || saving || !newLineName.trim()}
+                disabled={!selectedFactoryId || loading || saving || !newLineName.trim()}
               >
                 라인 추가
               </Button>
@@ -501,7 +657,6 @@ const LineBoard = () => {
 
         <DragDropContext onDragEnd={handleDragEnd}>
           <Box sx={{ display: 'flex', gap: 2.25, alignItems: 'flex-start' }}>
-            {/* 미배정 작업자 - 전체 너비의 1/5 */}
             <Box sx={{ flex: '0 0 20%', minWidth: 0 }}>
               <Paper
                 variant="outlined"
@@ -521,7 +676,7 @@ const LineBoard = () => {
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                   라인 카드로 드래그해 배정하세요.
                 </Typography>
-                <Droppable droppableId="unassigned">
+                <Droppable droppableId="unassigned" isDropDisabled={saving}>
                   {(provided, snapshot) => (
                     <Box
                       ref={provided.innerRef}
@@ -558,7 +713,6 @@ const LineBoard = () => {
               </Paper>
             </Box>
 
-            {/* 라인 카드들 - 전체 너비의 4/5, 내부에서 4열 */}
             <Box sx={{ flex: 1, minWidth: 0 }}>
               {loading ? (
                 <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
@@ -575,15 +729,11 @@ const LineBoard = () => {
               ) : (
                 <Grid container spacing={1.5}>
                   {lines.map((line) => {
-                    const workersInLine = lineWorkers.byLine.get(String(line.id)) || [];
-                    const isEditingName = editingLineId === line.id;
-                    const displayedHeadcount =
-                      Number.isFinite(Number(line.headcount)) && Number(line.headcount) >= 0
-                        ? Number(line.headcount)
-                        : workersInLine.length;
+                    const workersInLine = lineWorkers.byLine.get(String(line.localKey)) || [];
+                    const isEditingName = editingLineKey === line.localKey;
 
                     return (
-                      <Grid item xs={6} key={line.id}>
+                      <Grid item xs={6} key={line.localKey}>
                         <Paper
                           variant="outlined"
                           sx={{
@@ -601,10 +751,15 @@ const LineBoard = () => {
                                 <TextField
                                   size="small"
                                   value={editingLineName}
-                                  onChange={(e) => setEditingLineName(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleLineNameSave(line.id);
-                                    if (e.key === 'Escape') handleCancelLineNameEdit();
+                                  onChange={(event) => setEditingLineName(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault();
+                                      commitLineNameEdit(line.localKey, editingLineName, lines);
+                                    }
+                                    if (event.key === 'Escape') {
+                                      clearInlineEdit();
+                                    }
                                   }}
                                   autoFocus
                                   sx={{
@@ -616,13 +771,18 @@ const LineBoard = () => {
                                     },
                                   }}
                                 />
-                                <Tooltip title="저장">
-                                  <IconButton size="small" onClick={() => handleLineNameSave(line.id)}>
+                                <Tooltip title="이름 적용">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      commitLineNameEdit(line.localKey, editingLineName, lines)
+                                    }
+                                  >
                                     <CheckIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="취소">
-                                  <IconButton size="small" onClick={handleCancelLineNameEdit}>
+                                  <IconButton size="small" onClick={clearInlineEdit}>
                                     <CloseIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
@@ -634,7 +794,7 @@ const LineBoard = () => {
                                 </Typography>
                                 <Chip
                                   size="small"
-                                  label={`${workersInLine.length}/${displayedHeadcount}명`}
+                                  label={`${workersInLine.length}명`}
                                   color="primary"
                                   variant="outlined"
                                 />
@@ -642,7 +802,7 @@ const LineBoard = () => {
                                   <IconButton
                                     size="small"
                                     onClick={() => handleStartLineNameEdit(line)}
-                                    disabled={saving || Boolean(editingLineId) || deletingLineId === line.id}
+                                    disabled={saving || Boolean(editingLineKey)}
                                     sx={{ opacity: 0.45, '&:hover': { opacity: 1 } }}
                                   >
                                     <EditIcon sx={{ fontSize: 15 }} />
@@ -652,7 +812,7 @@ const LineBoard = () => {
                                   <IconButton
                                     size="small"
                                     onClick={() => handleDeleteLine(line)}
-                                    disabled={saving || Boolean(editingLineId) || Boolean(deletingLineId)}
+                                    disabled={saving || Boolean(editingLineKey)}
                                     sx={{ opacity: 0.45, '&:hover': { opacity: 1, color: 'error.main' } }}
                                   >
                                     <DeleteOutlineIcon sx={{ fontSize: 15 }} />
@@ -663,24 +823,26 @@ const LineBoard = () => {
                           </Stack>
 
                           <FormControl size="small" fullWidth sx={{ mb: 1.15 }}>
-                            <InputLabel id={`mgr-${line.id}`}>라인장</InputLabel>
+                            <InputLabel id={`mgr-${line.localKey}`}>라인장</InputLabel>
                             <Select
-                              labelId={`mgr-${line.id}`}
+                              labelId={`mgr-${line.localKey}`}
                               label="라인장"
                               value={line.managerEmployeeId || ''}
-                              onChange={(e) => handleManagerChange(line.id, e.target.value || null)}
+                              onChange={(event) =>
+                                handleManagerChange(line.localKey, event.target.value || null)
+                              }
                               disabled={saving}
                             >
                               <MenuItem value="">없음</MenuItem>
-                              {workersInLine.map((w) => (
-                                <MenuItem key={w.id} value={w.id}>
-                                  {buildWorkerLabel(w)}
+                              {workersInLine.map((worker) => (
+                                <MenuItem key={worker.id} value={worker.id}>
+                                  {buildWorkerLabel(worker)}
                                 </MenuItem>
                               ))}
                             </Select>
                           </FormControl>
 
-                          <Droppable droppableId={`line-${line.id}`}>
+                          <Droppable droppableId={`line:${line.localKey}`} isDropDisabled={saving}>
                             {(provided, snapshot) => (
                               <Box
                                 ref={provided.innerRef}

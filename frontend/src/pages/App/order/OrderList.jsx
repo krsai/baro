@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box,
@@ -38,6 +38,7 @@ import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -207,8 +208,6 @@ const buildOrderTabLabel = (order) => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `주문: ${orderNumber}` : '주문';
 };
-const ORDER_MODIFICATION_LOCK_NOTICE =
-  '\uC8FC\uBB38\uC744 \uD655\uC815\uD558\uBA74 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB294 \uC790\uB3D9\uC73C\uB85C \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.';
 const ORDER_MODIFICATION_LOCK_MESSAGE =
   '잠긴 주문은 수정하거나 삭제할 수 없습니다.';
 const toOrgId = (value) => {
@@ -758,6 +757,37 @@ const OrderList = () => {
   const { showNotification, navigateToPath, activePath, refreshSignals, markPathForRefresh } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const orderPageText = useMemo(
+    () => ({
+      listTitle: getUiMessage('menu.order', 'Orders', languageCode),
+      addOrder:
+        languageCode === 'vi'
+          ? 'Them don hang'
+          : languageCode === 'en'
+            ? 'Add Order'
+            : '주문 추가',
+      deleteOrder:
+        languageCode === 'vi'
+          ? 'Xoa don hang'
+          : languageCode === 'en'
+            ? 'Delete Order'
+            : '주문 삭제',
+      styleSection:
+        languageCode === 'vi'
+          ? 'Cau hinh style'
+          : languageCode === 'en'
+            ? 'Style Setup'
+            : '스타일 구성',
+      styleRegister:
+        languageCode === 'vi'
+          ? 'Dang ky style'
+          : languageCode === 'en'
+            ? 'Register Style'
+            : '스타일 등록',
+      styleAdd: getUiMessage('styleBoard.addStyle', 'Add Style', languageCode),
+    }),
+    [languageCode]
+  );
   const orderPartyText = useMemo(
     () => ({
       buyer: getOrderPartyRoleLabel(ORDER_PARTY_ROLE_KEYS.BUYER, 'Buyer', languageCode),
@@ -1477,23 +1507,55 @@ const OrderList = () => {
     currentDetailOrder?.modificationLockedBy,
   ]);
   const currentOrderLockHelperText = useMemo(() => {
-    if (isNewOrder) return '주문을 저장한 뒤 잠금 스위치를 사용할 수 있습니다.';
+    if (isNewOrder) {
+      return getUiMessage(
+        'orderDetail.lockHelperNew',
+        'Save the order before using the lock switch.',
+        languageCode
+      );
+    }
     if (isCurrentOrderConfirmedModificationLocked) {
-      return '주문이 확정되어 자동 잠금 상태입니다.';
+      return getUiMessage(
+        'orderDetail.lockHelperConfirmed',
+        'This order is auto-locked because it is confirmed.',
+        languageCode
+      );
     }
     if (isCurrentOrderAssignmentModificationLocked) {
-      return '배정 계약 데이터가 있어 자동 잠금 상태입니다.';
+      return getUiMessage(
+        'orderDetail.lockHelperAssignment',
+        'This order is auto-locked because assignment contract data exists.',
+        languageCode
+      );
     }
     if (isCurrentOrderManualModificationLocked) {
       return currentOrderLockMetaText
-        ? `수동 잠금 상태입니다. ${currentOrderLockMetaText}`
-        : '수동 잠금 상태입니다.';
+        ? getUiMessage(
+            'orderDetail.lockHelperManual',
+            'Manual lock is enabled. {meta}',
+            languageCode,
+            { meta: currentOrderLockMetaText }
+          )
+        : getUiMessage(
+            'orderDetail.lockHelperManualSimple',
+            'Manual lock is enabled.',
+            languageCode
+          );
     }
     if (hasFormChanges) {
-      return '미저장 변경사항이 있으면 잠글 수 없습니다. 먼저 저장해 주세요.';
+      return getUiMessage(
+        'orderDetail.lockHelperUnsaved',
+        'You cannot lock the order while there are unsaved changes. Save first.',
+        languageCode
+      );
     }
-    return '필요할 때 주문 수정 잠금을 켜서 기본 정보를 고정할 수 있습니다.';
+    return getUiMessage(
+      'orderDetail.lockHelperDefault',
+      'Turn on the edit lock when you want to freeze the basic order information.',
+      languageCode
+    );
   }, [
+    languageCode,
     currentOrderLockMetaText,
     hasFormChanges,
     isCurrentOrderAssignmentModificationLocked,
@@ -1503,16 +1565,33 @@ const OrderList = () => {
   ]);
   const currentOrderLockAlertText = useMemo(() => {
     if (isCurrentOrderConfirmedModificationLocked) {
-      return '이 주문은 확정되어 기본 정보가 자동으로 잠겨 있습니다.';
+      return getUiMessage(
+        'orderDetail.lockAlertConfirmed',
+        'This order is confirmed, so the basic information is automatically locked.',
+        languageCode
+      );
     }
     if (isCurrentOrderAssignmentModificationLocked) {
-      return '이 주문은 배정 계약 데이터가 있어 자동으로 잠겨 있습니다.';
+      return getUiMessage(
+        'orderDetail.lockAlertAssignment',
+        'This order is automatically locked because assignment contract data exists.',
+        languageCode
+      );
     }
     if (isCurrentOrderManualModificationLocked) {
-      return '이 주문은 수동 잠금 상태입니다. 상단 스위치로 잠금을 해제하면 다시 수정할 수 있습니다.';
+      return getUiMessage(
+        'orderDetail.lockAlertManual',
+        'This order is manually locked. Turn off the switch above to edit it again.',
+        languageCode
+      );
     }
-    return ORDER_MODIFICATION_LOCK_MESSAGE;
+    return getUiMessage(
+      'orderDetail.modificationLocked',
+      'Locked orders cannot be edited or deleted.',
+      languageCode
+    );
   }, [
+    languageCode,
     isCurrentOrderAssignmentModificationLocked,
     isCurrentOrderConfirmedModificationLocked,
     isCurrentOrderManualModificationLocked,
@@ -2195,8 +2274,8 @@ const OrderList = () => {
       <AppPageContainer
         header={
           <PageSectionHeader
-            title="주문"
-            actionLabel="주문 추가"
+            title={orderPageText.listTitle}
+            actionLabel={orderPageText.addOrder}
             actionIcon={<AddIcon />}
             onAction={handleAdd}
           />
@@ -2439,7 +2518,7 @@ const OrderList = () => {
                             disabled={!deletable}
                             title={
                               deletable
-                                ? '주문 삭제'
+                                ? orderPageText.deleteOrder
                                 : getOrderConfirmationDeleteTooltip(
                                     ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
                                     languageCode
@@ -2478,9 +2557,10 @@ const OrderList = () => {
         }}
       >
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h6">{isNewOrder ? '신규 주문 등록' : '주문 정보 수정'}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {ORDER_MODIFICATION_LOCK_NOTICE}
+          <Typography variant="h6">
+            {isNewOrder
+              ? getUiMessage('orderDetail.newTitle', 'New Order', languageCode)
+              : getUiMessage('orderDetail.editTitle', 'Edit Order', languageCode)}
           </Typography>
         </Box>
         <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
@@ -2492,7 +2572,7 @@ const OrderList = () => {
             >
               <Stack spacing={0.25} sx={{ minWidth: 0 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  주문 수정 잠금
+                  {getUiMessage('orderDetail.lockLabel', 'Order Edit Lock', languageCode)}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 320 }}>
                   {currentOrderLockHelperText}
@@ -2504,7 +2584,13 @@ const OrderList = () => {
                   checked={isCurrentOrderModificationLocked}
                   onChange={handleModificationLockToggle}
                   disabled={isModificationLockToggleDisabled}
-                  inputProps={{ 'aria-label': '주문 수정 잠금 스위치' }}
+                  inputProps={{
+                    'aria-label': getUiMessage(
+                      'orderDetail.lockSwitchAria',
+                      'Order edit lock switch',
+                      languageCode
+                    ),
+                  }}
                 />
               </Stack>
             </Stack>
@@ -2512,7 +2598,7 @@ const OrderList = () => {
           <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-end', md: 'flex-end' }}>
           {isNewOrder && (
             <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
-              임시 저장 삭제
+              {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
             </Button>
           )}
           <Button
@@ -2523,7 +2609,7 @@ const OrderList = () => {
               (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
             }
           >
-            저장
+            {getUiMessage('common.save', 'Save', languageCode)}
           </Button>
           </Stack>
         </Stack>
@@ -2531,7 +2617,11 @@ const OrderList = () => {
 
       {!loadingParties && (buyerOptions.length === 0 || sellerOptions.length === 0) && (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          연결된 주문 파트너가 없습니다. 고객 관계를 먼저 등록해 주세요.
+          {getUiMessage(
+            'orderDetail.noPartners',
+            'No linked order partners. Register the customer relationship first.',
+            languageCode
+          )}
         </Alert>
       )}
 
@@ -2631,7 +2721,7 @@ const OrderList = () => {
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-              스타일 구성
+              {orderPageText.styleSection}
             </Typography>
             <Stack direction="row" spacing={1}>
               <Button
@@ -2639,7 +2729,7 @@ const OrderList = () => {
                 startIcon={<OpenInNewIcon />}
                 onClick={handleOpenStyleRegistration}
               >
-                스타일 등록
+                {orderPageText.styleRegister}
               </Button>
               <Button
                 ref={styleAddButtonRef}
@@ -2647,7 +2737,7 @@ const OrderList = () => {
                 startIcon={<AddIcon />}
                 onClick={handleAddItem}
               >
-                스타일 추가
+                {orderPageText.styleAdd}
               </Button>
             </Stack>
           </Box>
@@ -2930,3 +3020,4 @@ const OrderList = () => {
 };
 
 export default OrderList;
+

@@ -43,6 +43,48 @@ const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, n
   return result;
 };
 
+const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) => {
+  const [lines, workers, assignments] = await Promise.all([
+    prisma.line.findMany({
+      where: { orgId, factoryId },
+      orderBy: [{ id: "asc" }],
+    }),
+    prisma.employee.findMany({
+      where: {
+        orgId,
+        factoryId,
+        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+      },
+      include: { membership: true },
+      orderBy: [{ factoryId: "asc" }, { id: "asc" }],
+    }),
+    prisma.lineAssignment.findMany({
+      where: {
+        line: { orgId, factoryId },
+        endAt: null,
+      },
+      select: { employeeId: true, lineId: true },
+    }),
+  ]);
+
+  const assignmentByEmployee = new Map<number, number>();
+  assignments.forEach((assignment) => {
+    assignmentByEmployee.set(assignment.employeeId, assignment.lineId);
+  });
+
+  return {
+    lines,
+    workers: workers.map((worker) => ({
+      id: worker.id,
+      orgMembershipId: worker.orgMembershipId,
+      name: worker.name,
+      email: worker.membership?.email ?? "",
+      factoryId: worker.factoryId,
+      currentLineId: assignmentByEmployee.get(worker.id) ?? null,
+    })),
+  };
+};
+
 export const createLineRouter = ({
   closeActiveLineAssignments,
   isManufacturerOrg,
@@ -154,6 +196,333 @@ export const createLineRouter = ({
     });
 
     return res.status(201).json(line);
+  });
+
+  lineRouter.post("/lines/batch-save", async (req, res) => {
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+    if (!isManufacturerOrg(organization)) {
+      return res.status(400).json({ ok: false, error: "brand organizations have no lines" });
+    }
+
+    const factoryIdNum = Number(req.body?.factoryId);
+    if (!Number.isFinite(factoryIdNum)) {
+      return res.status(400).json({ ok: false, error: "factoryId is required" });
+    }
+
+    const factory = await prisma.factory.findFirst({
+      where: { id: factoryIdNum, orgId: organization.id },
+    });
+    if (!factory) {
+      return res.status(404).json({ ok: false, error: "factory not found" });
+    }
+
+    const submittedLinesInput = Array.isArray(req.body?.lines) ? req.body.lines : null;
+    const submittedWorkerAssignmentsInput = Array.isArray(req.body?.workerAssignments)
+      ? req.body.workerAssignments
+      : null;
+    if (!submittedLinesInput || !submittedWorkerAssignmentsInput) {
+      return res.status(400).json({
+        ok: false,
+        error: "lines and workerAssignments arrays are required",
+      });
+    }
+
+    const existingLines = await prisma.line.findMany({
+      where: { orgId: organization.id, factoryId: factoryIdNum },
+      orderBy: [{ id: "asc" }],
+    });
+    const existingLineById = new Map(existingLines.map((line) => [line.id, line]));
+
+    const seenLineKeys = new Set<string>();
+    const seenLineIds = new Set<number>();
+    const seenLineNames = new Set<string>();
+    const parsedLines: Array<{
+      id: number | null;
+      lineKey: string;
+      name: string;
+      managerEmployeeId: number | null;
+    }> = [];
+
+    for (const item of submittedLinesInput) {
+      const lineKey = resolveOptionalString(item?.lineKey, null)?.trim() ?? "";
+      if (!lineKey) {
+        return res.status(400).json({ ok: false, error: "lineKey is required" });
+      }
+      if (seenLineKeys.has(lineKey)) {
+        return res.status(400).json({ ok: false, error: "duplicate lineKey" });
+      }
+      seenLineKeys.add(lineKey);
+
+      let lineId: number | null = null;
+      if (item?.id !== null && item?.id !== undefined && item?.id !== "") {
+        const parsedId = Number(item.id);
+        if (!Number.isFinite(parsedId) || parsedId <= 0) {
+          return res.status(400).json({ ok: false, error: "invalid line id" });
+        }
+        if (!existingLineById.has(parsedId)) {
+          return res.status(404).json({ ok: false, error: "line not found" });
+        }
+        if (seenLineIds.has(parsedId)) {
+          return res.status(400).json({ ok: false, error: "duplicate line id" });
+        }
+        seenLineIds.add(parsedId);
+        lineId = parsedId;
+      }
+
+      const trimmedName = resolveOptionalString(item?.name, null)?.trim() ?? "";
+      if (!trimmedName) {
+        return res.status(400).json({ ok: false, error: "line name is required" });
+      }
+      if (seenLineNames.has(trimmedName)) {
+        return res.status(409).json({ ok: false, error: "line already exists" });
+      }
+      seenLineNames.add(trimmedName);
+
+      let managerEmployeeId: number | null = null;
+      if (
+        item?.managerEmployeeId !== null &&
+        item?.managerEmployeeId !== undefined &&
+        item?.managerEmployeeId !== ""
+      ) {
+        const parsedManagerId = Number(item.managerEmployeeId);
+        if (!Number.isFinite(parsedManagerId) || parsedManagerId <= 0) {
+          return res.status(400).json({ ok: false, error: "invalid managerEmployeeId" });
+        }
+        managerEmployeeId = parsedManagerId;
+      }
+
+      parsedLines.push({
+        id: lineId,
+        lineKey,
+        name: trimmedName,
+        managerEmployeeId,
+      });
+    }
+
+    const workerRows = await prisma.employee.findMany({
+      where: {
+        orgId: organization.id,
+        factoryId: factoryIdNum,
+        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+      },
+      select: { id: true },
+      orderBy: [{ id: "asc" }],
+    });
+    const eligibleWorkerIds = workerRows.map((worker) => worker.id);
+    const eligibleWorkerIdSet = new Set(eligibleWorkerIds);
+
+    if (submittedWorkerAssignmentsInput.length !== eligibleWorkerIds.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "workerAssignments must include all eligible workers",
+      });
+    }
+
+    const desiredLineKeyByEmployee = new Map<number, string | null>(
+      eligibleWorkerIds.map((workerId) => [workerId, null])
+    );
+    const seenWorkerIds = new Set<number>();
+
+    for (const item of submittedWorkerAssignmentsInput) {
+      const employeeId = Number(item?.employeeId);
+      if (!Number.isFinite(employeeId) || employeeId <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid employeeId" });
+      }
+      if (!eligibleWorkerIdSet.has(employeeId)) {
+        return res.status(404).json({ ok: false, error: "worker not found" });
+      }
+      if (seenWorkerIds.has(employeeId)) {
+        return res.status(400).json({ ok: false, error: "duplicate employeeId" });
+      }
+      seenWorkerIds.add(employeeId);
+
+      const lineKey = resolveOptionalString(item?.lineKey, null)?.trim() ?? "";
+      if (lineKey && !seenLineKeys.has(lineKey)) {
+        return res.status(400).json({ ok: false, error: "invalid worker lineKey" });
+      }
+      desiredLineKeyByEmployee.set(employeeId, lineKey || null);
+    }
+
+    for (const line of parsedLines) {
+      if (line.managerEmployeeId === null) continue;
+      if (!eligibleWorkerIdSet.has(line.managerEmployeeId)) {
+        return res.status(404).json({ ok: false, error: "manager not found" });
+      }
+      if (desiredLineKeyByEmployee.get(line.managerEmployeeId) !== line.lineKey) {
+        return res.status(400).json({
+          ok: false,
+          error: "manager must be assigned to the line first",
+        });
+      }
+    }
+
+    const deletedLineIds = existingLines
+      .filter((line) => !seenLineIds.has(line.id))
+      .map((line) => line.id);
+
+    const renamedExistingLines = parsedLines.filter((line) => {
+      if (!line.id) return false;
+      const existing = existingLineById.get(line.id);
+      return existing ? existing.name !== line.name : false;
+    });
+
+    const refreshedLines = await prisma.$transaction(async (tx) => {
+      const tempNamePrefix = `__line_tmp_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}_`;
+
+      for (const line of renamedExistingLines) {
+        await tx.line.update({
+          where: { id: line.id as number },
+          data: { name: `${tempNamePrefix}${line.id}` },
+        });
+      }
+
+      if (deletedLineIds.length > 0) {
+        await tx.lineAssignment.deleteMany({
+          where: { lineId: { in: deletedLineIds } },
+        });
+        await tx.assignmentPlan.deleteMany({
+          where: { orgId: organization.id, lineId: { in: deletedLineIds } },
+        });
+        await tx.line.deleteMany({
+          where: { orgId: organization.id, id: { in: deletedLineIds } },
+        });
+      }
+
+      const lineKeyToId = new Map<string, number>();
+      parsedLines.forEach((line) => {
+        if (line.id) {
+          lineKeyToId.set(line.lineKey, line.id);
+        }
+      });
+
+      for (const line of parsedLines) {
+        if (line.id) continue;
+        const created = await tx.line.create({
+          data: {
+            orgId: organization.id,
+            factoryId: factoryIdNum,
+            name: line.name,
+          },
+        });
+        lineKeyToId.set(line.lineKey, created.id);
+      }
+
+      for (const line of renamedExistingLines) {
+        await tx.line.update({
+          where: { id: line.id as number },
+          data: { name: line.name },
+        });
+      }
+
+      const activeAssignments = await tx.lineAssignment.findMany({
+        where: {
+          employeeId: { in: eligibleWorkerIds },
+          endAt: null,
+        },
+        select: { employeeId: true, lineId: true },
+      });
+      const currentLineIdByEmployee = new Map<number, number>();
+      activeAssignments.forEach((assignment) => {
+        currentLineIdByEmployee.set(assignment.employeeId, assignment.lineId);
+      });
+
+      const employeesToClose: number[] = [];
+      const assignmentsToCreate: Array<{
+        employeeId: number;
+        lineId: number;
+        startAt: Date;
+      }> = [];
+      const employeeIdsByLineId = new Map<number, number[]>();
+      const now = new Date();
+
+      eligibleWorkerIds.forEach((employeeId) => {
+        const desiredLineKey = desiredLineKeyByEmployee.get(employeeId) ?? null;
+        const desiredLineId = desiredLineKey ? lineKeyToId.get(desiredLineKey) ?? null : null;
+        const currentLineId = currentLineIdByEmployee.get(employeeId) ?? null;
+
+        if (currentLineId !== desiredLineId && currentLineId !== null) {
+          employeesToClose.push(employeeId);
+        }
+        if (desiredLineId !== null && currentLineId !== desiredLineId) {
+          assignmentsToCreate.push({
+            employeeId,
+            lineId: desiredLineId,
+            startAt: now,
+          });
+        }
+        if (desiredLineId !== null) {
+          const currentEmployeeIds = employeeIdsByLineId.get(desiredLineId) ?? [];
+          currentEmployeeIds.push(employeeId);
+          employeeIdsByLineId.set(desiredLineId, currentEmployeeIds);
+        }
+      });
+
+      if (employeesToClose.length > 0) {
+        await tx.lineAssignment.updateMany({
+          where: {
+            employeeId: { in: employeesToClose },
+            endAt: null,
+          },
+          data: { endAt: now },
+        });
+      }
+
+      if (assignmentsToCreate.length > 0) {
+        await tx.lineAssignment.createMany({
+          data: assignmentsToCreate,
+        });
+      }
+
+      for (const line of parsedLines) {
+        const lineId = lineKeyToId.get(line.lineKey);
+        if (!lineId) continue;
+        await tx.line.update({
+          where: { id: lineId },
+          data: { managerEmployeeId: line.managerEmployeeId ?? null },
+        });
+      }
+
+      if (eligibleWorkerIds.length > 0) {
+        await tx.employee.updateMany({
+          where: {
+            orgId: organization.id,
+            id: { in: eligibleWorkerIds },
+          },
+          data: { lineName: null },
+        });
+      }
+
+      for (const line of parsedLines) {
+        const lineId = lineKeyToId.get(line.lineKey);
+        if (!lineId) continue;
+        const employeeIds = employeeIdsByLineId.get(lineId) ?? [];
+        if (employeeIds.length === 0) continue;
+        await tx.employee.updateMany({
+          where: {
+            orgId: organization.id,
+            id: { in: employeeIds },
+          },
+          data: { lineName: line.name },
+        });
+      }
+
+      return tx.line.findMany({
+        where: { orgId: organization.id, factoryId: factoryIdNum },
+        orderBy: [{ id: "asc" }],
+      });
+    });
+
+    const snapshot = await buildFactoryLineBoardSnapshot(organization.id, factoryIdNum);
+    return res.json({
+      ok: true,
+      lines: snapshot.lines.length > 0 ? snapshot.lines : refreshedLines,
+      workers: snapshot.workers,
+    });
   });
 
   lineRouter.patch("/lines/:id", async (req, res) => {

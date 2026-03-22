@@ -288,44 +288,111 @@ async function ensureMembership(orgId, data) {
   });
 }
 
-async function ensureFactory(orgId) {
-  const existing = await prisma.factory.findFirst({
+async function cleanupSampleFactoryData(orgId) {
+  const sampleFactories = await prisma.factory.findMany({
     where: { orgId, name: 'Sample Factory' },
+    select: { id: true },
     orderBy: { id: 'asc' },
   });
-  if (existing) {
-    return prisma.factory.update({
-      where: { id: existing.id },
-      data: {
-        address: 'Sample Factory Address',
-        countryCode: 'VN',
-        phoneNumber: '010-0000-0000',
-        manager: 'Manager',
-        targetMonthlyWage: TARGET_MONTHLY_WAGE,
-        wagePerSecond: WAGE_PER_SECOND,
-      },
-    });
-  }
-  return prisma.factory.create({
-    data: {
+  const sampleFactoryIds = sampleFactories.map((factory) => factory.id);
+
+  const baselineWorkerEmails = LINE_CONFIGS.flatMap((config) =>
+    Array.from({ length: 20 }, (_, index) => toWorkerEmail(config.workerPrefix, index + 1))
+  );
+  const baselineWorkerMemberships = await prisma.orgMembership.findMany({
+    where: {
       orgId,
-      name: 'Sample Factory',
-      address: 'Sample Factory Address',
-      countryCode: 'VN',
-      phoneNumber: '010-0000-0000',
-      manager: 'Manager',
-      targetMonthlyWage: TARGET_MONTHLY_WAGE,
-      wagePerSecond: WAGE_PER_SECOND,
+      email: { in: baselineWorkerEmails },
+    },
+    select: {
+      id: true,
+      employee: { select: { id: true } },
     },
   });
-}
+  const baselineWorkerMembershipIds = baselineWorkerMemberships.map((membership) => membership.id);
+  const baselineWorkerIds = baselineWorkerMemberships
+    .map((membership) => membership.employee?.id ?? null)
+    .filter((id) => Number.isFinite(id));
 
-async function ensureLine(orgId, factoryId, name) {
-  return prisma.line.upsert({
-    where: { factoryId_name: { factoryId, name } },
-    update: { orgId, isActive: true },
-    create: { orgId, factoryId, name, isActive: true },
+  if (sampleFactoryIds.length === 0 && baselineWorkerIds.length === 0) {
+    return {
+      deletedFactories: 0,
+      deletedLines: 0,
+      deletedWorkers: 0,
+      deletedMemberships: 0,
+    };
+  }
+
+  const sampleLines = sampleFactoryIds.length
+    ? await prisma.line.findMany({
+        where: { orgId, factoryId: { in: sampleFactoryIds } },
+        select: { id: true },
+      })
+    : [];
+  const sampleLineIds = sampleLines.map((line) => line.id);
+
+  await prisma.$transaction(async (tx) => {
+    if (baselineWorkerIds.length > 0) {
+      await tx.line.updateMany({
+        where: { orgId, managerEmployeeId: { in: baselineWorkerIds } },
+        data: { managerEmployeeId: null },
+      });
+    }
+
+    if (sampleFactoryIds.length > 0) {
+      await tx.employee.updateMany({
+        where: { orgId, factoryId: { in: sampleFactoryIds } },
+        data: { factoryId: null, lineName: null },
+      });
+    }
+
+    const assignmentDeleteOr = [];
+    if (sampleLineIds.length > 0) {
+      assignmentDeleteOr.push({ lineId: { in: sampleLineIds } });
+      await tx.assignmentPlan.deleteMany({
+        where: { orgId, lineId: { in: sampleLineIds } },
+      });
+    }
+    if (baselineWorkerIds.length > 0) {
+      assignmentDeleteOr.push({ employeeId: { in: baselineWorkerIds } });
+    }
+    if (assignmentDeleteOr.length > 0) {
+      await tx.lineAssignment.deleteMany({
+        where: { OR: assignmentDeleteOr },
+      });
+    }
+
+    if (sampleLineIds.length > 0) {
+      await tx.line.deleteMany({
+        where: { orgId, id: { in: sampleLineIds } },
+      });
+    }
+
+    if (baselineWorkerIds.length > 0) {
+      await tx.employee.deleteMany({
+        where: { orgId, id: { in: baselineWorkerIds } },
+      });
+    }
+
+    if (baselineWorkerMembershipIds.length > 0) {
+      await tx.orgMembership.deleteMany({
+        where: { orgId, id: { in: baselineWorkerMembershipIds } },
+      });
+    }
+
+    if (sampleFactoryIds.length > 0) {
+      await tx.factory.deleteMany({
+        where: { orgId, id: { in: sampleFactoryIds } },
+      });
+    }
   });
+
+  return {
+    deletedFactories: sampleFactoryIds.length,
+    deletedLines: sampleLineIds.length,
+    deletedWorkers: baselineWorkerIds.length,
+    deletedMemberships: baselineWorkerMembershipIds.length,
+  };
 }
 
 async function syncGlobalColors() {
@@ -500,26 +567,14 @@ async function main() {
 
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
-
-  const sewingRole = await prisma.attrRole.findUnique({
-    where: { orgId_code: { orgId: manufacturer.id, code: 'WORKER_SEWING' } },
-  });
-
-  const factory = await ensureFactory(manufacturer.id);
-  const lineRows = [];
-  for (const lineConfig of LINE_CONFIGS) {
-    lineRows.push({
-      config: lineConfig,
-      line: await ensureLine(manufacturer.id, factory.id, lineConfig.lineName),
-    });
-  }
+  const sampleCleanup = await cleanupSampleFactoryData(manufacturer.id);
 
   for (const membership of STAFF_MEMBERSHIPS) {
     const createdMembership = await ensureMembership(manufacturer.id, membership);
     await ensureEmployee({
       orgId: manufacturer.id,
       orgMembershipId: createdMembership.id,
-      factoryId: factory.id,
+      factoryId: null,
       roleId: null,
       payType: membership.payType,
       name: membership.name,
@@ -546,51 +601,6 @@ async function main() {
     });
   }
 
-  const workerEmployeeIdsByLine = new Map();
-  for (const { config } of lineRows) {
-    workerEmployeeIdsByLine.set(config.key, []);
-    for (let index = 1; index <= 20; index += 1) {
-      const email = toWorkerEmail(config.workerPrefix, index);
-      const membership = await ensureMembership(manufacturer.id, {
-        email,
-        role: 'WORKER',
-      });
-      const employee = await ensureEmployee({
-        orgId: manufacturer.id,
-        orgMembershipId: membership.id,
-        factoryId: factory.id,
-        roleId: sewingRole ? sewingRole.id : null,
-        payType: 'CT',
-        name: toWorkerName(config.workerLabel, index),
-        lineName: config.lineName,
-        position: index === 1 ? 'LINE_LEADER' : 'WORKER',
-      });
-      workerEmployeeIdsByLine.get(config.key).push(employee.id);
-    }
-  }
-
-  const baselineWorkerIds = Array.from(workerEmployeeIdsByLine.values()).flat();
-  await prisma.lineAssignment.deleteMany({
-    where: { employeeId: { in: baselineWorkerIds } },
-  });
-
-  for (const { config, line } of lineRows) {
-    const workerIds = workerEmployeeIdsByLine.get(config.key) || [];
-    if (workerIds.length === 0) continue;
-
-    await prisma.line.update({
-      where: { id: line.id },
-      data: { managerEmployeeId: workerIds[0], isActive: true },
-    });
-
-    await prisma.lineAssignment.createMany({
-      data: workerIds.map((employeeId) => ({
-        lineId: line.id,
-        employeeId,
-      })),
-    });
-  }
-
   await ensureStyles(manufacturer.id);
   const cleanup = await clearOrderAndAssignmentData();
 
@@ -599,7 +609,8 @@ async function main() {
   summary.processes = BASELINE_PROCESSES.length;
   summary.roles = BASELINE_ROLES.length;
   summary.styles = BASELINE_STYLES.length;
-  summary.workers = baselineWorkerIds.length;
+  summary.workers = 0;
+  summary.sampleFactoryCleanup = sampleCleanup;
   summary.cleanup = cleanup;
 
   console.log('Baseline reset completed.');

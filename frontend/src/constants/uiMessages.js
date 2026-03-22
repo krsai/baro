@@ -52,6 +52,77 @@ export const UI_MESSAGES = {
     staticOptions: { ko: '정적 사전', en: 'Static Dictionary', vi: 'Tu dien tinh' },
     onboardingApproval: { ko: '가입 승인', en: 'Onboarding Approval', vi: 'Duyet dang ky' },
   },
+  orderDetail: {
+    newTitle: { ko: '신규 주문 등록', en: 'New Order', vi: 'Tao don hang moi' },
+    editTitle: { ko: '주문 정보 수정', en: 'Edit Order', vi: 'Sua thong tin don hang' },
+    lockLabel: { ko: '주문 수정 잠금', en: 'Order Edit Lock', vi: 'Khoa sua don hang' },
+    lockSwitchAria: {
+      ko: '주문 수정 잠금 스위치',
+      en: 'Order edit lock switch',
+      vi: 'Cong tac khoa sua don hang',
+    },
+    clearDraft: { ko: '임시 저장 삭제', en: 'Clear Draft', vi: 'Xoa ban nhap tam' },
+    noPartners: {
+      ko: '연결된 주문 파트너가 없습니다. 고객 관계를 먼저 등록해 주세요.',
+      en: 'No linked order partners. Register the customer relationship first.',
+      vi: 'Chua co doi tac don hang lien ket. Hay dang ky quan he khach hang truoc.',
+    },
+    lockHelperNew: {
+      ko: '주문을 저장한 뒤 잠금 스위치를 사용할 수 있습니다.',
+      en: 'Save the order before using the lock switch.',
+      vi: 'Hay luu don hang truoc khi dung cong tac khoa.',
+    },
+    lockHelperConfirmed: {
+      ko: '주문이 확정되어 자동 잠금 상태입니다.',
+      en: 'This order is auto-locked because it is confirmed.',
+      vi: 'Don hang nay dang duoc khoa tu dong vi da xac nhan.',
+    },
+    lockHelperAssignment: {
+      ko: '배정 계약 데이터가 있어 자동 잠금 상태입니다.',
+      en: 'This order is auto-locked because assignment contract data exists.',
+      vi: 'Don hang nay dang duoc khoa tu dong vi da co du lieu hop dong phan cong.',
+    },
+    lockHelperManual: {
+      ko: '수동 잠금 상태입니다. {meta}',
+      en: 'Manual lock is enabled. {meta}',
+      vi: 'Dang khoa thu cong. {meta}',
+    },
+    lockHelperManualSimple: {
+      ko: '수동 잠금 상태입니다.',
+      en: 'Manual lock is enabled.',
+      vi: 'Dang khoa thu cong.',
+    },
+    lockHelperUnsaved: {
+      ko: '미저장 변경사항이 있으면 잠글 수 없습니다. 먼저 저장해 주세요.',
+      en: 'You cannot lock the order while there are unsaved changes. Save first.',
+      vi: 'Khong the khoa khi van con thay doi chua luu. Hay luu truoc.',
+    },
+    lockHelperDefault: {
+      ko: '필요할 때 주문 수정 잠금을 켜서 기본 정보를 고정할 수 있습니다.',
+      en: 'Turn on the edit lock when you want to freeze the basic order information.',
+      vi: 'Ban co the bat khoa sua khi muon co dinh thong tin co ban cua don hang.',
+    },
+    lockAlertConfirmed: {
+      ko: '이 주문은 확정되어 기본 정보가 자동으로 잠겨 있습니다.',
+      en: 'This order is confirmed, so the basic information is automatically locked.',
+      vi: 'Don hang nay da duoc xac nhan nen thong tin co ban bi khoa tu dong.',
+    },
+    lockAlertAssignment: {
+      ko: '이 주문은 배정 계약 데이터가 있어 자동으로 잠겨 있습니다.',
+      en: 'This order is automatically locked because assignment contract data exists.',
+      vi: 'Don hang nay bi khoa tu dong vi da co du lieu hop dong phan cong.',
+    },
+    lockAlertManual: {
+      ko: '이 주문은 수동 잠금 상태입니다. 상단 스위치로 잠금을 해제하면 다시 수정할 수 있습니다.',
+      en: 'This order is manually locked. Turn off the switch above to edit it again.',
+      vi: 'Don hang nay dang duoc khoa thu cong. Tat cong tac ben tren de sua lai.',
+    },
+    modificationLocked: {
+      ko: '잠긴 주문은 수정하거나 삭제할 수 없습니다.',
+      en: 'Locked orders cannot be edited or deleted.',
+      vi: 'Don hang da khoa khong the sua hoac xoa.',
+    },
+  },
   staticOptionBoard: {
     title: { ko: '정적 사전', en: 'Static Dictionary', vi: 'Tu dien tinh' },
     description: {

@@ -38,7 +38,6 @@ import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotal,
-  formatSeconds,
   hasAnyProcessTime,
   normalizeProcesses,
   resolveStyleAtReliability,
@@ -108,13 +107,31 @@ const resolveFactoryWagePerSecond = (factories = []) => {
   return null;
 };
 
-const formatCurrencyDong = (value) => {
+const resolveSecondsUnitLabel = (languageCode) => {
+  if (languageCode === 'en') return 'sec';
+  if (languageCode === 'vi') return 'giay';
+  return '초';
+};
+
+const resolveCurrencyUnitLabel = (languageCode) => {
+  if (languageCode === 'en') return 'dong';
+  if (languageCode === 'vi') return 'dong';
+  return '동';
+};
+
+const formatLocalizedSeconds = (value, languageCode) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return '-';
+  return `${formatNumberWithCommas(Math.round(parsed))}${resolveSecondsUnitLabel(languageCode)}`;
+};
+
+const formatLocalizedCurrency = (value, languageCode) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '-';
   return `${formatNumberWithCommas(Math.round(parsed), {
     fallback: '0',
     maximumFractionDigits: 0,
-  })} \uB3D9`;
+  })} ${resolveCurrencyUnitLabel(languageCode)}`;
 };
 
 const StyleBoard = () => {
@@ -296,7 +313,7 @@ const StyleBoard = () => {
 
   return (
     <AppPageContainer
-      title="스타일"
+      title={getUiMessage('menu.style', '스타일', languageCode)}
       toolbar={(
         <PageToolbar
           left={(
@@ -378,12 +395,14 @@ const StyleBoard = () => {
                   <TableCell>{style.name || '-'}</TableCell>
                   <TableCell>{style.styleCode || style.id || '-'}</TableCell>
                   {canViewProcessSummary ? (
-                    <TableCell>{style.hasTotalPT ? formatSeconds(style.totalPT) : '-'}</TableCell>
+                    <TableCell>
+                      {style.hasTotalPT ? formatLocalizedSeconds(style.totalPT, languageCode) : '-'}
+                    </TableCell>
                   ) : null}
                   {canViewProcessSummary ? (
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        {style.hasTotalAT ? formatSeconds(style.totalAT) : '-'}
+                        {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
                         {style.styleAtReliability && style.hasTotalAT && (
                           <Chip
                             size="small"
@@ -401,7 +420,7 @@ const StyleBoard = () => {
                   {canViewProcessSummary ? (
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        {style.hasTotalST ? formatSeconds(style.totalST) : '-'}
+                        {style.hasTotalST ? formatLocalizedSeconds(style.totalST, languageCode) : '-'}
                         {style.hasTotalAT && style.hasTotalST && style.stGapPercent != null && (
                           <Tooltip
                             title={
@@ -426,7 +445,9 @@ const StyleBoard = () => {
                   ) : null}
                   {canViewProcessSummary ? (
                     <TableCell>
-                      {style.stPerPieceCost == null ? '-' : formatCurrencyDong(style.stPerPieceCost)}
+                      {style.stPerPieceCost == null
+                        ? '-'
+                        : formatLocalizedCurrency(style.stPerPieceCost, languageCode)}
                     </TableCell>
                   ) : null}
                   <TableCell>{style.registrationDate || '-'}</TableCell>
