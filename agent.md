@@ -877,15 +877,19 @@ AGREED (확정)
 - **OrgMembership**: 조직 수준 접근 제어. `role: ADMIN | OPERATOR | ACCOUNTANT | WORKER`
   - `status: PENDING | ACTIVE | REJECTED | SUSPENDED | TERMINATED`
   - 로그인 사용자의 이메일로 OrgMembership 조회 → orgId, orgRole 결정
+  - **과금과 무관**하다. 직원 수, 역할, 직무, 소속 여부는 회사 과금 기준이 아니다.
 - **OrganizationSubscription**: 구독 상태. `status: NOT_SUBSCRIBED | TRIAL | ACTIVE | GRACE | SUSPENDED`
+  - **회사 단위 SaaS 사용/과금 상태**다. 비용 주체는 회사이며 개별 직원이 아니다.
   - SUSPENDED 조직 멤버는 API 호출 시 403 차단 (로그인 자체는 허용)
   - NOT_SUBSCRIBED도 로그인은 가능 — 구독 상태가 로그인을 막지는 않음
+  - UI/응답에서는 `serviceContactEmail` 용어를 사용하고, DB 컬럼 `membershipEmail`은 레거시 호환용 내부 저장 필드로 유지한다.
 
 ### 실제 사용자 등록 절차
 1. 시스템 관리자가 `/system` 화면에서 조직 생성 (구독 상태 설정)
 2. 해당 조직에 사용자 Google 이메일을 역할과 함께 assign → OrgMembership(status=ACTIVE) 생성
 3. 사용자가 Google 로그인 → `GET /auth/context`에서 이메일로 ACTIVE 멤버십 조회 → orgId, orgRole 반환
 4. 조직 등록 폼에서 "초기 관리자 이메일" 입력 시 조직 생성과 동시에 멤버십 할당 가능
+5. 초기 관리자 할당은 접근권한 편의 기능일 뿐이며, 회사 구독/과금과는 분리한다.
 
 ### auth/context 판단 로직
 - 이메일 = SYSTEM_ADMIN 이메일 → entryType='SYSTEM' 반환 (orgId=null)
@@ -903,7 +907,7 @@ AGREED (확정)
 
 ```
 Organization (MANUFACTURER | BRAND)
-  └─ OrganizationSubscription (status, membershipEmail, billingEmail, trialStartedAt, ...)
+  └─ OrganizationSubscription (status, membershipEmail[legacy 내부 저장], billingEmail, trialStartedAt, ...)
   └─ OrgMembership (email, role, status, approvedAt)
   └─ Factory
        └─ Line
@@ -926,6 +930,12 @@ Organization (MANUFACTURER | BRAND)
   └─ WorkLog (workDate, factoryWagePerSecond snapshot)
        └─ WorkRecord (workerId, ctSeconds snapshot, quantity, assignmentPlanId)
 ```
+
+### 회사 구독 화면 정책 (2026-03-22)
+- `/system` 구독 화면은 `회사 구독 관리` 기준으로 유지한다.
+- 화면에서 다루는 핵심 값은 `구독 상태`, `서비스 담당 이메일`, `청구 이메일`, `활성 종료일`이다.
+- 회사 생성 시 보이는 `초기 관리자 할당` 영역은 접근권한 부여용 옵션이며, 과금 섹션과 명확히 분리해서 안내한다.
+- 직원 수/역할/직무 기반 과금 UI나 집계는 만들지 않는다.
 
 ### AssignmentBoardState 주의사항
 - 조직당 단 1개의 레코드 (upsert)

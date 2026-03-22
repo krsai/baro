@@ -48,6 +48,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import { getUiMessage } from '../constants/uiMessages';
@@ -121,6 +122,7 @@ const MainLayout = () => {
   const [productionOpen, setProductionOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
+  const [miscOpen, setMiscOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
@@ -303,6 +305,7 @@ const MainLayout = () => {
         label: getUiMessage('menu.inventory', '재고 관리', languageCode),
         icon: <Inventory2Icon />,
         isParent: true,
+        disabled: true,
         isOpen: inventoryOpen,
         setOpen: setInventoryOpen,
         children: [
@@ -317,6 +320,7 @@ const MainLayout = () => {
         label: getUiMessage('menu.accounting', '회계 관리', languageCode),
         icon: <AccountBalanceWalletIcon />,
         isParent: true,
+        disabled: true,
         isOpen: accountingOpen,
         setOpen: setAccountingOpen,
         children: [
@@ -356,11 +360,6 @@ const MainLayout = () => {
             path: '/customer',
           },
           {
-            label: getUiMessage('menu.holiday', '휴일 관리', languageCode),
-            icon: <CalendarMonthIcon />,
-            path: '/holiday',
-          },
-          {
             label: getUiMessage('menu.profile', '개인 정보', languageCode),
             icon: <AccountCircleIcon />,
             path: '/profile',
@@ -369,6 +368,20 @@ const MainLayout = () => {
             label: getUiMessage('menu.subscription', '구독 관리', languageCode),
             icon: <TuneIcon />,
             path: '/system-setting',
+          },
+        ],
+      },
+      {
+        label: getUiMessage('menu.misc', '기타 관리', languageCode),
+        icon: <MoreHorizIcon />,
+        isParent: true,
+        isOpen: miscOpen,
+        setOpen: setMiscOpen,
+        children: [
+          {
+            label: getUiMessage('menu.holiday', '휴일 관리', languageCode),
+            icon: <CalendarMonthIcon />,
+            path: '/holiday',
           },
         ],
       },
@@ -416,6 +429,12 @@ const MainLayout = () => {
         let visibleChildren = item.children.filter((child) =>
           hasPathAccess(child.path)
         );
+        if (item.disabled) {
+          visibleChildren = visibleChildren.map((child) => ({
+            ...child,
+            disabled: true,
+          }));
+        }
         const childPaths = new Set(item.children.map((child) => child.path));
 
         if (childPaths.has('/order') && childPaths.has('/style')) {
@@ -455,6 +474,7 @@ const MainLayout = () => {
     hasPathAccess,
     inventoryOpen,
     languageCode,
+    miscOpen,
     orderOpen,
     pendingEmployeeCount,
     pendingOnboardingCount,
@@ -823,98 +843,119 @@ const MainLayout = () => {
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
+  const getMenuItemSx = React.useCallback(({ selected = false, disabled = false, nested = false } = {}) => {
+    const baseSx = nested ? { pl: 4 } : {};
+
+    if (disabled) {
+      return {
+        ...baseSx,
+        color: 'text.disabled',
+        opacity: 0.55,
+        cursor: 'not-allowed',
+        '&:hover': {
+          backgroundColor: 'transparent',
+        },
+        '& .MuiListItemIcon-root': {
+          color: 'text.disabled',
+        },
+        '& .MuiListItemText-primary': {
+          color: 'text.disabled',
+        },
+      };
+    }
+
+    if (selected) {
+      return {
+        ...baseSx,
+        backgroundColor: 'rgba(25, 118, 210, 0.08)',
+        color: 'primary.main',
+        '& .MuiListItemIcon-root': {
+          color: 'primary.main',
+        },
+        '&:hover': {
+          backgroundColor: 'rgba(25, 118, 210, 0.12)',
+        },
+      };
+    }
+
+    return {
+      ...baseSx,
+      '&:hover': {
+        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+      },
+    };
+  }, []);
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <List sx={{ flex: 1, overflowY: 'auto' }}>
         {menuItems.map((menu) => {
-          const isMenuSelected = !menu.isParent && currentPath === menu.path;
+          const isMenuDisabled = Boolean(menu.disabled);
+          const isMenuSelected = !menu.isParent && !isMenuDisabled && currentPath === menu.path;
 
           return (
             <React.Fragment key={menu.label}>
             <ListItem
               button
-              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
-              selected={isMenuSelected}
-              sx={
-                isMenuSelected
-                  ? {
-                      backgroundColor: 'rgba(25, 118, 210, 0.08)', // A light blue background
-                      color: 'primary.main',
-                      '& .MuiListItemIcon-root': {
-                        color: 'primary.main',
-                      },
-                      '&:hover': {
-                        backgroundColor: 'rgba(25, 118, 210, 0.12)',
-                      },
-                    }
-                  : {
-                      '&:hover': {
-                        backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                      },
-                    }
+              onClick={
+                isMenuDisabled
+                  ? undefined
+                  : () => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)
               }
+              selected={isMenuSelected}
+              aria-disabled={isMenuDisabled}
+              sx={getMenuItemSx({ selected: isMenuSelected, disabled: isMenuDisabled })}
             >
               <ListItemIcon sx={{ minWidth: '40px' }}>{menu.icon}</ListItemIcon>
               <ListItemText primary={menu.label} />
-              {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
+              {menu.isParent && !isMenuDisabled && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
             </ListItem>
             {menu.isParent && (
               <Collapse in={menu.isOpen} timeout={120}>
                 <List component="div" disablePadding>
-                  {menu.children.map((child) => (
-                    <ListItem
-                      button
-                      key={child.path}
-                      onClick={() => handleMenuItemClick(child.path)}
-                      selected={
-                        currentPath === child.path ||
-                        (currentPath ? currentPath.startsWith(child.path + '/') : false)
-                      }
-                      sx={
-                        currentPath === child.path ||
-                        (currentPath ? currentPath.startsWith(child.path + '/') : false)
-                          ? {
-                              pl: 4,
-                              backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                              color: 'primary.main',
-                              '& .MuiListItemIcon-root': {
-                                color: 'primary.main',
-                              },
-                              '&:hover': {
-                                backgroundColor: 'rgba(25, 118, 210, 0.12)',
-                              },
-                            }
-                          : {
-                              pl: 4,
-                              '&:hover': {
-                                backgroundColor: 'rgba(0, 0, 0, 0.04)',
-                              },
-                            }
-                      }
-                    >
-                      <ListItemIcon sx={{ minWidth: '40px' }} />
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <span>{child.label}</span>
-                            {(Boolean(child.badgeLabel) || Number(child.badgeCount) > 0) && (
-                              <Badge
-                                color={child.badgeLabel ? 'warning' : 'error'}
-                                badgeContent={child.badgeLabel || child.badgeCount}
-                                sx={{
-                                  '& .MuiBadge-badge': {
-                                    position: 'static',
-                                    transform: 'none',
-                                  },
-                                }}
-                              />
-                            )}
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                  ))}
+                  {menu.children.map((child) => {
+                    const isChildDisabled = Boolean(child.disabled);
+                    const isChildSelected =
+                      !isChildDisabled &&
+                      (currentPath === child.path ||
+                        (currentPath ? currentPath.startsWith(child.path + '/') : false));
+
+                    return (
+                      <ListItem
+                        button
+                        key={child.path}
+                        onClick={isChildDisabled ? undefined : () => handleMenuItemClick(child.path)}
+                        selected={isChildSelected}
+                        aria-disabled={isChildDisabled}
+                        sx={getMenuItemSx({
+                          selected: isChildSelected,
+                          disabled: isChildDisabled,
+                          nested: true,
+                        })}
+                      >
+                        <ListItemIcon sx={{ minWidth: '40px' }} />
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <span>{child.label}</span>
+                              {(Boolean(child.badgeLabel) || Number(child.badgeCount) > 0) && (
+                                <Badge
+                                  color={child.badgeLabel ? 'warning' : 'error'}
+                                  badgeContent={child.badgeLabel || child.badgeCount}
+                                  sx={{
+                                    '& .MuiBadge-badge': {
+                                      position: 'static',
+                                      transform: 'none',
+                                    },
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    );
+                  })}
                 </List>
               </Collapse>
             )}

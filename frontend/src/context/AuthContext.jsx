@@ -240,8 +240,14 @@ const normalizeSubscription = (subscription) => {
 
   return {
     status: normalizeOrganizationSubscriptionStatus(subscription.status),
+    serviceContactEmail:
+      typeof (subscription.serviceContactEmail ?? subscription.membershipEmail) === 'string'
+        ? String(subscription.serviceContactEmail ?? subscription.membershipEmail).trim()
+        : '',
     membershipEmail:
-      typeof subscription.membershipEmail === 'string' ? subscription.membershipEmail.trim() : '',
+      typeof (subscription.serviceContactEmail ?? subscription.membershipEmail) === 'string'
+        ? String(subscription.serviceContactEmail ?? subscription.membershipEmail).trim()
+        : '',
     billingEmail:
       typeof subscription.billingEmail === 'string' ? subscription.billingEmail.trim() : '',
     trialStartedAt: subscription.trialStartedAt ?? null,

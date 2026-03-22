@@ -96,65 +96,16 @@ const BASELINE_ROLES = [
 
 const TARGET_MONTHLY_WAGE = 8000000;
 const WAGE_PER_SECOND = TARGET_MONTHLY_WAGE / (26 * 8 * 3600);
-const BASELINE_CUSTOMER_NAME = 'TSBR';
-
-const buildStyleProcesses = (ptValues) =>
-  ptValues.map((pt, index) => ({
-    code: `P${String(index + 1).padStart(2, '0')}`,
-    name: `Test Process ${String(index + 1).padStart(2, '0')}`,
-    pt,
-    at: null,
-    atParams: null,
-    ct: pt,
-    stManual: true,
-    timeRefQuantity: 100,
-    processQuantity: 1,
-  }));
-
-const BASELINE_STYLES = [
-  {
-    styleId: 'S-2025SS-T001',
-    styleCode: '25SS-T001',
-    name: 'Daily Round T-Shirt',
-    customer: BASELINE_CUSTOMER_NAME,
-    registrationDate: '2026-03-10',
-    designer: 'BARO Design Team',
-    collection: 'Basic Line',
-    season: '2025SS',
-    imageUrls: [],
-    processes: buildStyleProcesses([500, 450, 450, 400, 400, 450, 450, 400]),
-    bom: [],
-    bomNotes: '',
-  },
-  {
-    styleId: 'S-2025SS-P002',
-    styleCode: '25SS-P002',
-    name: 'Slim Collar Hero Polo',
-    customer: BASELINE_CUSTOMER_NAME,
-    registrationDate: '2026-03-10',
-    designer: 'BARO Design Team',
-    collection: 'Sport Casual',
-    season: '2025SS',
-    imageUrls: [],
-    processes: buildStyleProcesses([550, 500, 500, 500, 450, 500, 450, 450, 500]),
-    bom: [],
-    bomNotes: '',
-  },
-  {
-    styleId: 'S-2025FW-J003',
-    styleCode: '25FW-J003',
-    name: 'Urban Corduroy Pants',
-    customer: BASELINE_CUSTOMER_NAME,
-    registrationDate: '2026-03-10',
-    designer: 'BARO Design Team',
-    collection: 'Urban Premium',
-    season: '2025FW',
-    imageUrls: [],
-    processes: buildStyleProcesses([700, 650, 650, 600, 600, 600, 600, 550, 550, 500]),
-    bom: [],
-    bomNotes: '',
-  },
+const SAMPLE_FACTORY_NAME = '샘플 공장';
+const SAMPLE_FACTORY_ADDRESS = '샘플 공장 주소';
+const SAMPLE_WORKER_COUNT = 15;
+const LEGACY_BASELINE_STYLE_IDS = [
+  'S-2025SS-T001',
+  'S-2025SS-P002',
+  'S-2025FW-J003',
 ];
+
+const BASELINE_STYLES = [];
 
 const STAFF_MEMBERSHIPS = [
   {
@@ -217,8 +168,7 @@ const BRAND_MEMBERSHIPS = [
 ];
 
 const LINE_CONFIGS = [
-  { key: 'line1', lineName: 'Sample Line 1', workerPrefix: 'line1-worker', workerLabel: 'Line1 Worker' },
-  { key: 'line2', lineName: 'Sample Line 2', workerPrefix: 'line2-worker', workerLabel: 'Line2 Worker' },
+  { key: 'sample-line', lineName: '샘플 라인', workerPrefix: 'sample-worker-', workerLabel: '샘플 작업자' },
 ];
 
 const toWorkerEmail = (prefix, index) => `${prefix}${String(index).padStart(2, '0')}@baro.local`;
@@ -288,21 +238,63 @@ async function ensureMembership(orgId, data) {
   });
 }
 
+async function ensureFactory(orgId) {
+  const existing = await prisma.factory.findFirst({
+    where: { orgId, name: SAMPLE_FACTORY_NAME },
+    orderBy: { id: 'asc' },
+  });
+  const data = {
+    address: SAMPLE_FACTORY_ADDRESS,
+    countryCode: 'VN',
+    phoneNumber: '010-0000-0000',
+    manager: 'Manager',
+    targetMonthlyWage: TARGET_MONTHLY_WAGE,
+    wagePerSecond: WAGE_PER_SECOND,
+  };
+
+  if (existing) {
+    return prisma.factory.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.factory.create({
+    data: {
+      orgId,
+      name: SAMPLE_FACTORY_NAME,
+      ...data,
+    },
+  });
+}
+
+async function ensureLine(orgId, factoryId, name) {
+  return prisma.line.upsert({
+    where: { factoryId_name: { factoryId, name } },
+    update: { orgId, isActive: true },
+    create: { orgId, factoryId, name, isActive: true },
+  });
+}
+
 async function cleanupSampleFactoryData(orgId) {
   const sampleFactories = await prisma.factory.findMany({
-    where: { orgId, name: 'Sample Factory' },
+    where: {
+      orgId,
+      name: { in: ['Sample Factory', SAMPLE_FACTORY_NAME] },
+    },
     select: { id: true },
     orderBy: { id: 'asc' },
   });
   const sampleFactoryIds = sampleFactories.map((factory) => factory.id);
 
-  const baselineWorkerEmails = LINE_CONFIGS.flatMap((config) =>
-    Array.from({ length: 20 }, (_, index) => toWorkerEmail(config.workerPrefix, index + 1))
-  );
   const baselineWorkerMemberships = await prisma.orgMembership.findMany({
     where: {
       orgId,
-      email: { in: baselineWorkerEmails },
+      OR: [
+        { email: { startsWith: 'line1-worker' } },
+        { email: { startsWith: 'line2-worker' } },
+        { email: { startsWith: 'sample-worker-' } },
+      ],
     },
     select: {
       id: true,
@@ -319,7 +311,7 @@ async function cleanupSampleFactoryData(orgId) {
       deletedFactories: 0,
       deletedLines: 0,
       deletedWorkers: 0,
-      deletedMemberships: 0,
+      deletedWorkerMemberships: 0,
     };
   }
 
@@ -391,7 +383,7 @@ async function cleanupSampleFactoryData(orgId) {
     deletedFactories: sampleFactoryIds.length,
     deletedLines: sampleLineIds.length,
     deletedWorkers: baselineWorkerIds.length,
-    deletedMemberships: baselineWorkerMembershipIds.length,
+    deletedWorkerMemberships: baselineWorkerMembershipIds.length,
   };
 }
 
@@ -500,6 +492,21 @@ async function ensureStyles(orgId) {
   }
 }
 
+async function cleanupLegacyBaselineStyles(orgId) {
+  if (LEGACY_BASELINE_STYLE_IDS.length === 0) {
+    return { deletedStyles: 0 };
+  }
+
+  const result = await prisma.style.deleteMany({
+    where: {
+      orgId,
+      styleId: { in: LEGACY_BASELINE_STYLE_IDS },
+    },
+  });
+
+  return { deletedStyles: result.count };
+}
+
 async function clearOrderAndAssignmentData() {
   const detachedRecords = await prisma.workRecord.updateMany({
     where: { assignmentPlanId: { not: null } },
@@ -568,6 +575,18 @@ async function main() {
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
   const sampleCleanup = await cleanupSampleFactoryData(manufacturer.id);
+  const legacyStyleCleanup = await cleanupLegacyBaselineStyles(manufacturer.id);
+  const sewingRole = await prisma.attrRole.findUnique({
+    where: { orgId_code: { orgId: manufacturer.id, code: 'WORKER_SEWING' } },
+  });
+  const factory = await ensureFactory(manufacturer.id);
+  const lineRows = [];
+  for (const lineConfig of LINE_CONFIGS) {
+    lineRows.push({
+      config: lineConfig,
+      line: await ensureLine(manufacturer.id, factory.id, lineConfig.lineName),
+    });
+  }
 
   for (const membership of STAFF_MEMBERSHIPS) {
     const createdMembership = await ensureMembership(manufacturer.id, membership);
@@ -601,6 +620,51 @@ async function main() {
     });
   }
 
+  const workerEmployeeIdsByLine = new Map();
+  for (const { config } of lineRows) {
+    workerEmployeeIdsByLine.set(config.key, []);
+    for (let index = 1; index <= SAMPLE_WORKER_COUNT; index += 1) {
+      const email = toWorkerEmail(config.workerPrefix, index);
+      const membership = await ensureMembership(manufacturer.id, {
+        email,
+        role: 'WORKER',
+      });
+      const employee = await ensureEmployee({
+        orgId: manufacturer.id,
+        orgMembershipId: membership.id,
+        factoryId: factory.id,
+        roleId: sewingRole ? sewingRole.id : null,
+        payType: 'CT',
+        name: toWorkerName(config.workerLabel, index),
+        lineName: config.lineName,
+        position: index === 1 ? 'LINE_LEADER' : 'WORKER',
+      });
+      workerEmployeeIdsByLine.get(config.key).push(employee.id);
+    }
+  }
+
+  const baselineWorkerIds = Array.from(workerEmployeeIdsByLine.values()).flat();
+  await prisma.lineAssignment.deleteMany({
+    where: { employeeId: { in: baselineWorkerIds } },
+  });
+
+  for (const { config, line } of lineRows) {
+    const workerIds = workerEmployeeIdsByLine.get(config.key) || [];
+    if (workerIds.length === 0) continue;
+
+    await prisma.line.update({
+      where: { id: line.id },
+      data: { managerEmployeeId: workerIds[0], isActive: true },
+    });
+
+    await prisma.lineAssignment.createMany({
+      data: workerIds.map((employeeId) => ({
+        lineId: line.id,
+        employeeId,
+      })),
+    });
+  }
+
   await ensureStyles(manufacturer.id);
   const cleanup = await clearOrderAndAssignmentData();
 
@@ -609,8 +673,9 @@ async function main() {
   summary.processes = BASELINE_PROCESSES.length;
   summary.roles = BASELINE_ROLES.length;
   summary.styles = BASELINE_STYLES.length;
-  summary.workers = 0;
+  summary.workers = baselineWorkerIds.length;
   summary.sampleFactoryCleanup = sampleCleanup;
+  summary.legacyStyleCleanup = legacyStyleCleanup;
   summary.cleanup = cleanup;
 
   console.log('Baseline reset completed.');

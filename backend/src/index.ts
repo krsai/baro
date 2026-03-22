@@ -438,6 +438,7 @@ const buildSubscriptionResponse = (subscription: any) => {
   return {
     id: subscription.id,
     status: subscription.status,
+    serviceContactEmail: subscription.membershipEmail ?? null,
     membershipEmail: subscription.membershipEmail ?? null,
     billingEmail: subscription.billingEmail ?? null,
     trialStartedAt,
@@ -496,6 +497,7 @@ const toOrganizationResponse = (organization: any) => {
 const hasSubscriptionPayload = (payload: any = {}) =>
   payload.subscriptionStatus !== undefined ||
   payload.status !== undefined ||
+  payload.serviceContactEmail !== undefined ||
   payload.membershipEmail !== undefined ||
   payload.billingEmail !== undefined ||
   payload.trialStartedAt !== undefined ||
@@ -521,13 +523,18 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
     nextStatus = resolved;
   }
 
-  const membershipEmailResolved = normalizeSubscriptionEmailInput(
-    payload.membershipEmail,
-    "membershipEmail",
+  const serviceContactEmailInput =
+    payload.serviceContactEmail !== undefined
+      ? payload.serviceContactEmail
+      : payload.membershipEmail;
+
+  const serviceContactEmailResolved = normalizeSubscriptionEmailInput(
+    serviceContactEmailInput,
+    "serviceContactEmail",
     current.membershipEmail ?? null
   );
-  if (membershipEmailResolved.error) {
-    throw createHttpError(400, membershipEmailResolved.error);
+  if (serviceContactEmailResolved.error) {
+    throw createHttpError(400, serviceContactEmailResolved.error);
   }
   const billingEmailResolved = normalizeSubscriptionEmailInput(
     payload.billingEmail,
@@ -564,7 +571,7 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   }
 
   const now = new Date();
-  let membershipEmail = membershipEmailResolved.value;
+  let serviceContactEmail = serviceContactEmailResolved.value;
   let billingEmail = billingEmailResolved.value;
   let trialStartedAt = trialStartedAtResolved.value;
   let trialEndsAt = trialEndsAtResolved.value;
@@ -584,10 +591,10 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
   }
 
   if (nextStatus === "ACTIVE") {
-    if (!membershipEmail || !billingEmail) {
+    if (!serviceContactEmail || !billingEmail) {
       throw createHttpError(
         400,
-        "membershipEmail and billingEmail are required for ACTIVE"
+        "serviceContactEmail and billingEmail are required for ACTIVE"
       );
     }
     if (!activatedAt) {
@@ -620,7 +627,9 @@ const applySubscriptionPayload = async (organization: any, payload: any = {}) =>
     activatedAt,
     activeEndsAt,
     suspendedAt,
-    ...(membershipEmail !== undefined ? { membershipEmail } : {}),
+    ...(serviceContactEmail !== undefined
+      ? { membershipEmail: serviceContactEmail }
+      : {}),
     ...(billingEmail !== undefined ? { billingEmail } : {}),
     ...(trialStartedAt !== undefined ? { trialStartedAt } : {}),
     ...(trialEndsAt !== undefined ? { trialEndsAt } : {}),
@@ -6955,20 +6964,22 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid subscription status" });
   }
 
-  const normalizedMembershipEmail = normalizeEmail(req.body?.membershipEmail);
+  const normalizedServiceContactEmail = normalizeEmail(
+    req.body?.serviceContactEmail ?? req.body?.membershipEmail
+  );
   const normalizedBillingEmail = normalizeEmail(req.body?.billingEmail);
   const subscriptionPayload: Record<string, unknown> = {};
   subscriptionPayload.subscriptionStatus =
     normalizedSubscriptionStatus ?? "TRIAL";
   if (normalizedSubscriptionStatus === "ACTIVE") {
-    subscriptionPayload.membershipEmail =
-      normalizedMembershipEmail || companyRequest.contactEmail;
+    subscriptionPayload.serviceContactEmail =
+      normalizedServiceContactEmail || companyRequest.contactEmail;
     subscriptionPayload.billingEmail =
       normalizedBillingEmail || companyRequest.contactEmail;
     subscriptionPayload.activeEndsAt = req.body?.activeEndsAt ?? null;
   } else {
-    if (normalizedMembershipEmail) {
-      subscriptionPayload.membershipEmail = normalizedMembershipEmail;
+    if (normalizedServiceContactEmail) {
+      subscriptionPayload.serviceContactEmail = normalizedServiceContactEmail;
     }
     if (normalizedBillingEmail) {
       subscriptionPayload.billingEmail = normalizedBillingEmail;

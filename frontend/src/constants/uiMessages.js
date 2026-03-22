@@ -44,6 +44,7 @@ export const UI_MESSAGES = {
     line: { ko: '라인', en: 'Lines', vi: 'Chuyen may' },
     employee: { ko: '직원 관리', en: 'Employees', vi: 'Nhan vien' },
     customer: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
+    misc: { ko: '기타 관리', en: 'Miscellaneous', vi: 'Quan ly khac' },
     holiday: { ko: '휴일 관리', en: 'Holidays', vi: 'Ngay nghi' },
     profile: { ko: '개인 정보', en: 'Profile', vi: 'Ho so ca nhan' },
     subscription: { ko: '구독 관리', en: 'Subscription', vi: 'Goi dich vu' },

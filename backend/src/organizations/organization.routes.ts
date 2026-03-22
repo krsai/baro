@@ -204,7 +204,12 @@ export const createOrganizationRouter = ({
     }
 
     const subscription = await ensureOrganizationSubscription(organization);
-    return res.json(subscription);
+    return res.json(
+      toOrganizationResponse({
+        ...organization,
+        subscription,
+      }).subscription
+    );
   });
 
   organizationRouter.patch("/organizations/:id/subscription", async (req, res) => {
