@@ -524,6 +524,58 @@ Object.assign(UI_MESSAGES, {
       vi: 'Khong the luu thong tin cong ty.',
     },
   },
+  holidayBoard: {
+    title: { ko: '\uD734\uC77C \uAD00\uB9AC', en: 'Holiday Management', vi: 'Quan ly ngay nghi' },
+    saveInProgress: { ko: '\uC800\uC7A5 \uC911...', en: 'Saving...', vi: 'Dang luu...' },
+    manualHolidayCount: {
+      ko: '\uC218\uB3D9 \uB4F1\uB85D \uD734\uC77C {count}\uC77C',
+      en: 'Manual holidays {count} days',
+      vi: 'Ngay nghi thu cong {count} ngay',
+    },
+    selectedDate: { ko: '\uC120\uD0DD\uC77C', en: 'Selected Date', vi: 'Ngay da chon' },
+    registerSelected: {
+      ko: '\uC120\uD0DD\uC77C \uD734\uC77C \uB4F1\uB85D',
+      en: 'Register Selected Date',
+      vi: 'Dang ky ngay da chon',
+    },
+    unregisterSelected: {
+      ko: '\uC120\uD0DD\uC77C \uD734\uC77C \uD574\uC81C',
+      en: 'Remove Selected Date',
+      vi: 'Bo ngay da chon',
+    },
+    sundayInfo: {
+      ko: '\uC77C\uC694\uC77C\uC740 \uAE30\uBCF8 \uD734\uC77C\uB85C \uC790\uB3D9 \uBC18\uC601\uB429\uB2C8\uB2E4.',
+      en: 'Sundays are automatically treated as holidays.',
+      vi: 'Chu nhat duoc tu dong tinh la ngay nghi.',
+    },
+    pastDateHint: {
+      ko: '\uC9C0\uB09C \uB0A0\uC9DC\uB294 \uD68C\uC0C9 \uD1A4\uC73C\uB85C \uD45C\uC2DC\uB429\uB2C8\uB2E4.',
+      en: 'Past dates are shown in gray tone.',
+      vi: 'Ngay trong qua khu duoc hien thi mau xam.',
+    },
+    registeredHolidays: { ko: '\uB4F1\uB85D\uB41C \uD734\uC77C', en: 'Registered Holidays', vi: 'Ngay nghi da dang ky' },
+    emptyMessage: {
+      ko: '\uB4F1\uB85D\uB41C \uD734\uC77C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. \uB2EC\uB825\uC5D0\uC11C \uB0A0\uC9DC\uB97C \uC120\uD0DD\uD574 \uD734\uC77C\uB85C \uB4F1\uB85D\uD558\uC138\uC694.',
+      en: 'No registered holidays. Select a date from the calendar to register one.',
+      vi: 'Chua co ngay nghi da dang ky. Hay chon ngay tren lich de dang ky.',
+    },
+    pastSuffix: { ko: '\uC9C0\uB0A8', en: 'Past', vi: 'Da qua' },
+    noChanges: {
+      ko: '\uC800\uC7A5\uD560 \uBCC0\uACBD\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
+      en: 'There are no changes to save.',
+      vi: 'Khong co thay doi de luu.',
+    },
+    saveSuccess: {
+      ko: '\uD734\uC77C \uBCC0\uACBD\uC0AC\uD56D\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.',
+      en: 'Holiday changes have been saved.',
+      vi: 'Da luu thay doi ngay nghi.',
+    },
+    saveError: {
+      ko: '\uD734\uC77C \uBCC0\uACBD\uC0AC\uD56D \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+      en: 'Failed to save holiday changes.',
+      vi: 'Khong the luu thay doi ngay nghi.',
+    },
+  },
 });
 
 const resolveMessageNode = (key) => {

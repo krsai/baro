@@ -1,12 +1,14 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Paper,
   Stack,
   Typography,
 } from '@mui/material';
+import SaveIcon from '@mui/icons-material/Save';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -14,15 +16,34 @@ import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
 import { PickersDay } from '@mui/x-date-pickers/PickersDay';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
+import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { loadHolidays, saveHolidays } from '../../../utils/localData';
 
 const getTodayStart = () => dayjs().startOf('day');
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
-const formatHolidayLabel = (key) => dayjs(key).locale('ko').format('YYYY-MM-DD (ddd)');
 const isPastDateKey = (key) => dayjs(key).startOf('day').isBefore(getTodayStart(), 'day');
+const normalizeHolidayKeys = (keys = []) =>
+  Array.from(
+    new Set(
+      (Array.isArray(keys) ? keys : []).filter(
+        (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim())
+      )
+    )
+  ).sort();
+const resolveCalendarLocale = (languageCode = 'ko') => {
+  const code = String(languageCode || '').toLowerCase();
+  if (code.startsWith('vi')) return 'vi';
+  if (code.startsWith('en')) return 'en';
+  return 'ko';
+};
+const formatHolidayLabel = (key, localeCode) =>
+  dayjs(key).locale(localeCode || 'ko').format('YYYY-MM-DD (ddd)');
 
 const HolidayDay = (props) => {
   const { day, holidaysSet, ...other } = props;
@@ -67,57 +88,175 @@ const HolidayDay = (props) => {
 
 const HolidayBoard = () => {
   const { showNotification } = useApp();
-  const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
+  const { languageCode } = useLanguage();
 
-  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [savedHolidayKeys, setSavedHolidayKeys] = useState(() => loadHolidays());
+  const [draftHolidayKeys, setDraftHolidayKeys] = useState(() => loadHolidays());
+  const [isSaving, setIsSaving] = useState(false);
+
+  const calendarLocale = useMemo(
+    () => resolveCalendarLocale(languageCode),
+    [languageCode]
+  );
+  const text = useMemo(
+    () => ({
+      title: getUiMessage('holidayBoard.title', 'Holiday Management', languageCode),
+      save: getUiMessage('common.save', 'Save', languageCode),
+      saveInProgress: getUiMessage('holidayBoard.saveInProgress', 'Saving...', languageCode),
+      manualHolidayCount: getUiMessage(
+        'holidayBoard.manualHolidayCount',
+        'Manual holidays {count} days',
+        languageCode,
+        { count: draftHolidayKeys.length }
+      ),
+      selectedDate: getUiMessage('holidayBoard.selectedDate', 'Selected Date', languageCode),
+      registerSelected: getUiMessage(
+        'holidayBoard.registerSelected',
+        'Register Selected Date',
+        languageCode
+      ),
+      unregisterSelected: getUiMessage(
+        'holidayBoard.unregisterSelected',
+        'Remove Selected Date',
+        languageCode
+      ),
+      sundayInfo: getUiMessage(
+        'holidayBoard.sundayInfo',
+        'Sundays are automatically treated as holidays.',
+        languageCode
+      ),
+      pastDateHint: getUiMessage(
+        'holidayBoard.pastDateHint',
+        'Past dates are shown in gray tone.',
+        languageCode
+      ),
+      registeredHolidays: getUiMessage(
+        'holidayBoard.registeredHolidays',
+        'Registered Holidays',
+        languageCode
+      ),
+      emptyMessage: getUiMessage(
+        'holidayBoard.emptyMessage',
+        'No registered holidays. Select a date from the calendar to register one.',
+        languageCode
+      ),
+      pastSuffix: getUiMessage('holidayBoard.pastSuffix', 'Past', languageCode),
+      noChanges: getUiMessage(
+        'holidayBoard.noChanges',
+        'There are no changes to save.',
+        languageCode
+      ),
+      saveSuccess: getUiMessage(
+        'holidayBoard.saveSuccess',
+        'Holiday changes have been saved.',
+        languageCode
+      ),
+      saveError: getUiMessage(
+        'holidayBoard.saveError',
+        'Failed to save holiday changes.',
+        languageCode
+      ),
+    }),
+    [draftHolidayKeys.length, languageCode]
+  );
+
+  const holidaySet = useMemo(() => new Set(draftHolidayKeys), [draftHolidayKeys]);
   const selectedKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
   const isSelectedHoliday = holidaySet.has(selectedKey);
   const isSelectedSunday = selectedDate.day() === 0;
+  const isDirty = useMemo(
+    () => JSON.stringify(savedHolidayKeys) !== JSON.stringify(draftHolidayKeys),
+    [draftHolidayKeys, savedHolidayKeys]
+  );
 
-  const persistHolidayKeys = (nextKeys, message) => {
-    const saved = saveHolidays(nextKeys);
-    setHolidayKeys(saved);
-    if (message) {
-      showNotification(message, 'success');
-    }
-  };
+  useUnsavedChanges(isDirty);
 
-  const handleToggleSelectedHoliday = () => {
+  const updateDraftHolidayKeys = useCallback((nextKeys) => {
+    setDraftHolidayKeys(normalizeHolidayKeys(nextKeys));
+  }, []);
+
+  const handleToggleSelectedHoliday = useCallback(() => {
     if (!selectedDate || !selectedDate.isValid()) return;
 
     if (isSelectedSunday) {
-      showNotification('일요일은 기본 휴일로 자동 반영됩니다.', 'info');
+      showNotification(text.sundayInfo, 'info');
       return;
     }
 
     if (isSelectedHoliday) {
-      persistHolidayKeys(
-        holidayKeys.filter((key) => key !== selectedKey),
-        '휴일에서 제거했습니다.'
-      );
+      updateDraftHolidayKeys(draftHolidayKeys.filter((key) => key !== selectedKey));
       return;
     }
 
-    persistHolidayKeys([...holidayKeys, selectedKey], '휴일로 등록했습니다.');
-  };
+    updateDraftHolidayKeys([...draftHolidayKeys, selectedKey]);
+  }, [
+    draftHolidayKeys,
+    isSelectedHoliday,
+    isSelectedSunday,
+    selectedDate,
+    selectedKey,
+    showNotification,
+    text.sundayInfo,
+    updateDraftHolidayKeys,
+  ]);
 
-  const handleRemoveHoliday = (dateKey) => {
-    persistHolidayKeys(
-      holidayKeys.filter((key) => key !== dateKey),
-      '휴일에서 제거했습니다.'
-    );
-  };
+  const handleRemoveHoliday = useCallback(
+    (dateKey) => {
+      if (isSaving) return;
+      updateDraftHolidayKeys(draftHolidayKeys.filter((key) => key !== dateKey));
+    },
+    [draftHolidayKeys, isSaving, updateDraftHolidayKeys]
+  );
+
+  const handleSaveChanges = useCallback(() => {
+    if (isSaving) return;
+
+    if (!isDirty) {
+      showNotification(text.noChanges, 'info');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const saved = saveHolidays(draftHolidayKeys);
+      setSavedHolidayKeys(saved);
+      setDraftHolidayKeys(saved);
+      showNotification(text.saveSuccess, 'success');
+    } catch (_error) {
+      showNotification(text.saveError, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    draftHolidayKeys,
+    isDirty,
+    isSaving,
+    showNotification,
+    text.noChanges,
+    text.saveError,
+    text.saveSuccess,
+  ]);
 
   return (
     <AppPageContainer
-      title="휴일 관리"
+      title={text.title}
+      titleActions={(
+        <Button
+          variant="contained"
+          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+          onClick={handleSaveChanges}
+          disabled={isSaving || !isDirty}
+        >
+          {isSaving ? text.saveInProgress : text.save}
+        </Button>
+      )}
       toolbar={(
         <PageToolbar
           right={(
             <Chip
               icon={<CalendarMonthIcon color="primary" />}
-              label={`수동 등록 휴일 ${holidayKeys.length}일`}
+              label={text.manualHolidayCount}
               variant="outlined"
             />
           )}
@@ -129,7 +268,7 @@ const HolidayBoard = () => {
           variant="outlined"
           sx={{ p: 2, width: { xs: '100%', md: 420 }, flexShrink: 0, borderRadius: 2 }}
         >
-          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
+          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={calendarLocale}>
             <DateCalendar
               value={selectedDate}
               onChange={(value) => {
@@ -142,25 +281,25 @@ const HolidayBoard = () => {
 
           <Stack spacing={1.5} sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              선택일: {formatHolidayLabel(selectedKey)}
+              {text.selectedDate}: {formatHolidayLabel(selectedKey, calendarLocale)}
             </Typography>
 
             <Button
               variant={isSelectedHoliday ? 'outlined' : 'contained'}
               onClick={handleToggleSelectedHoliday}
-              disabled={isSelectedSunday}
+              disabled={isSelectedSunday || isSaving}
             >
-              {isSelectedHoliday ? '선택일 휴일 해제' : '선택일 휴일 등록'}
+              {isSelectedHoliday ? text.unregisterSelected : text.registerSelected}
             </Button>
 
             {isSelectedSunday && (
               <Typography variant="caption" color="text.secondary">
-                일요일은 자동 휴일입니다.
+                {text.sundayInfo}
               </Typography>
             )}
 
             <Typography variant="caption" color="text.secondary">
-              지난 날짜는 회색 톤으로 표시됩니다.
+              {text.pastDateHint}
             </Typography>
           </Stack>
         </Paper>
@@ -168,17 +307,17 @@ const HolidayBoard = () => {
         <Paper variant="outlined" sx={{ p: 2, flexGrow: 1, minHeight: 260, borderRadius: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-              등록된 휴일
+              {text.registeredHolidays}
             </Typography>
           </Box>
 
-          {holidayKeys.length === 0 ? (
+          {draftHolidayKeys.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              등록된 휴일이 없습니다. 달력에서 날짜를 선택해 휴일로 등록하세요.
+              {text.emptyMessage}
             </Typography>
           ) : (
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-              {holidayKeys.map((dateKey) => {
+              {draftHolidayKeys.map((dateKey) => {
                 const isPastHoliday = isPastDateKey(dateKey);
 
                 return (
@@ -186,10 +325,10 @@ const HolidayBoard = () => {
                     key={dateKey}
                     label={
                       isPastHoliday
-                        ? `${formatHolidayLabel(dateKey)} (지남)`
-                        : formatHolidayLabel(dateKey)
+                        ? `${formatHolidayLabel(dateKey, calendarLocale)} (${text.pastSuffix})`
+                        : formatHolidayLabel(dateKey, calendarLocale)
                     }
-                    onDelete={() => handleRemoveHoliday(dateKey)}
+                    onDelete={isSaving ? undefined : () => handleRemoveHoliday(dateKey)}
                     color="error"
                     variant="outlined"
                     sx={

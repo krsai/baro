@@ -577,6 +577,75 @@ async function clearOrderAndAssignmentData() {
   };
 }
 
+function cloneJsonValue(value) {
+  if (value === null || value === undefined) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+async function captureAssignmentBoardSnapshot(orgId) {
+  const [boardState, assignmentCards] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { assignments: true, cards: true, updatedAt: true },
+    }),
+    prisma.assignmentCard.findMany({
+      where: { orgId },
+      select: { cardId: true, sortOrder: true, payload: true },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    }),
+  ]);
+
+  const assignments = Array.isArray(boardState?.assignments)
+    ? cloneJsonValue(boardState.assignments)
+    : [];
+  const boardCards = Array.isArray(boardState?.cards) ? cloneJsonValue(boardState.cards) : [];
+  const cards = (Array.isArray(assignmentCards) ? assignmentCards : []).map((row) => ({
+    cardId: String(row?.cardId || ''),
+    sortOrder: sampleToPositiveInt(row?.sortOrder, 0),
+    payload: cloneJsonValue(row?.payload ?? {}),
+  }));
+
+  return {
+    updatedAt: boardState?.updatedAt ?? null,
+    assignments,
+    boardCards,
+    cards,
+  };
+}
+
+function remapAssignmentExternalIdLineSegment(externalId, previousLineId, nextLineId) {
+  const raw = String(externalId || '').trim();
+  if (!raw) return raw;
+
+  const prev = sampleToPositiveIntOrNull(previousLineId);
+  const next = sampleToPositiveIntOrNull(nextLineId);
+  if (!prev || !next || prev === next) return raw;
+
+  const suffixPattern = new RegExp(`-${prev}-(\\d+)$`);
+  if (!suffixPattern.test(raw)) return raw;
+  return raw.replace(suffixPattern, `-${next}-$1`);
+}
+
+function remapAssignmentSnapshotLines(assignments, targetLineId) {
+  const nextLineId = sampleToPositiveIntOrNull(targetLineId);
+  if (!nextLineId) return [];
+
+  return (Array.isArray(assignments) ? assignments : [])
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const previousLineId = sampleToPositiveIntOrNull(row.lineId);
+      const nextRow = { ...row };
+      nextRow.lineId = String(nextLineId);
+      nextRow.id = remapAssignmentExternalIdLineSegment(
+        nextRow.id,
+        previousLineId,
+        nextLineId
+      );
+      return nextRow;
+    })
+    .filter(Boolean);
+}
+
 function sampleBuildQuery(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -991,7 +1060,8 @@ async function sampleCreateOrUpdateConsolidatedOrder({ manufacturer, brand, regi
   };
 }
 
-async function runSampleOrders() {
+async function runSampleOrders(options = {}) {
+  const silent = Boolean(options?.silent);
   const { manufacturer, brand } = await sampleLoadOrganizations();
   const context = await sampleLoadManufacturingContext(manufacturer, brand);
 
@@ -1035,48 +1105,211 @@ async function runSampleOrders() {
   const estimatedLineDays =
     totalPtSeconds / (Math.max(1, context.assignedWorkerCount) * SAMPLE_WORK_LOG_SHIFT_SECONDS);
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        apiBase: SAMPLE_API_BASE,
-        cleanup: {
-          deletedLegacyOrderCount,
-          deletedLegacyBrandStyleCount,
-          deletedLegacyManufacturerStyleCount,
-        },
-        factory: {
-          id: context.factory.id,
-          name: context.factory.name,
-        },
-        line: {
-          id: context.line.id,
-          name: context.line.name,
-          assignedWorkerCount: context.assignedWorkerCount,
-        },
-        summary: {
-          orderCount: 1,
-          cardCount: orderCards.length,
-          totalQuantity: registeredStyles.reduce(
-            (sum, item) => sum + Number(item.definition.quantity || 0),
-            0
-          ),
-          totalPtSeconds,
-          estimatedLineDays: Number(estimatedLineDays.toFixed(2)),
-          orderMode: consolidatedOrder.mode,
-        },
-        order: {
-          orderId: consolidatedOrder.order.id,
-          orderNumber: consolidatedOrder.order.orderNumber,
-          buyerOrgName: consolidatedOrder.order.buyerOrgName,
-          sellerOrgName: consolidatedOrder.order.sellerOrgName,
-          dueDate: consolidatedOrder.order.dueDate,
-        },
+  const result = {
+    ok: true,
+    apiBase: SAMPLE_API_BASE,
+    cleanup: {
+      deletedLegacyOrderCount,
+      deletedLegacyBrandStyleCount,
+      deletedLegacyManufacturerStyleCount,
+    },
+    factory: {
+      id: context.factory.id,
+      name: context.factory.name,
+    },
+    line: {
+      id: context.line.id,
+      name: context.line.name,
+      assignedWorkerCount: context.assignedWorkerCount,
+    },
+    summary: {
+      orderCount: 1,
+      cardCount: orderCards.length,
+      totalQuantity: registeredStyles.reduce(
+        (sum, item) => sum + Number(item.definition.quantity || 0),
+        0
+      ),
+      totalPtSeconds,
+      estimatedLineDays: Number(estimatedLineDays.toFixed(2)),
+      orderMode: consolidatedOrder.mode,
+    },
+    order: {
+      orderId: consolidatedOrder.order.id,
+      orderNumber: consolidatedOrder.order.orderNumber,
+      buyerOrgName: consolidatedOrder.order.buyerOrgName,
+      sellerOrgName: consolidatedOrder.order.sellerOrgName,
+      dueDate: consolidatedOrder.order.dueDate,
+    },
+  };
+
+  if (!silent) {
+    console.log(JSON.stringify(result, null, 2));
+  }
+
+  return result;
+}
+
+function buildAssignmentPlanWriteDataFromSnapshot(orgId, assignment, timestamp = new Date()) {
+  const externalId = String(assignment?.id || '').trim();
+  const lineId = sampleToPositiveIntOrNull(assignment?.lineId);
+  if (!externalId || !lineId) return null;
+
+  const startIndex = sampleToPositiveInt(assignment?.startIndex, 0);
+  const endIndex = sampleToPositiveInt(assignment?.endIndex, startIndex);
+  const completedAtRaw = assignment?.completedAt ? new Date(assignment.completedAt) : null;
+  const completedAt =
+    completedAtRaw && Number.isFinite(completedAtRaw.getTime()) ? completedAtRaw : null;
+
+  return {
+    orgId,
+    lineId,
+    externalId,
+    cardId: assignment?.cardId ? String(assignment.cardId) : null,
+    orderNo: assignment?.orderNo ? String(assignment.orderNo) : null,
+    customer: assignment?.customer ? String(assignment.customer) : null,
+    label: assignment?.label ? String(assignment.label) : null,
+    colorId: sampleToPositiveIntOrNull(assignment?.colorId),
+    colorName: assignment?.colorName ? String(assignment.colorName) : null,
+    previewUrl: assignment?.previewUrl ? String(assignment.previewUrl) : null,
+    imageUrl: assignment?.imageUrl ? String(assignment.imageUrl) : null,
+    thumbnailUrl: assignment?.thumbnailUrl ? String(assignment.thumbnailUrl) : null,
+    quantity: sampleToPositiveIntOrNull(assignment?.quantity),
+    originOrderId: assignment?.originOrderId ? String(assignment.originOrderId) : null,
+    basis: assignment?.basis ? String(assignment.basis) : null,
+    contractedSeconds: sampleToPositiveIntOrNull(
+      assignment?.contractedSeconds ?? assignment?.totalSeconds
+    ),
+    ctSnapshot:
+      assignment?.ctSnapshot && typeof assignment.ctSnapshot === 'object'
+        ? cloneJsonValue(assignment.ctSnapshot)
+        : null,
+    color: assignment?.color ? String(assignment.color) : null,
+    stripeColor: assignment?.stripeColor ? String(assignment.stripeColor) : null,
+    totalSeconds: sampleToPositiveIntOrNull(assignment?.totalSeconds),
+    startIndex,
+    endIndex,
+    startDayOffsetPercent: sampleToFiniteNumber(assignment?.startDayOffsetPercent, null),
+    startDayPercent: sampleToFiniteNumber(assignment?.startDayPercent, null),
+    endDayPercent: sampleToFiniteNumber(assignment?.endDayPercent, null),
+    isCompleted: Boolean(assignment?.isCompleted),
+    finalQuantity: sampleToPositiveIntOrNull(assignment?.finalQuantity),
+    completedAt,
+    updatedAt: timestamp,
+  };
+}
+
+async function restoreAssignmentSnapshotWithPrisma({
+  manufacturerId,
+  assignments,
+  boardCards,
+  cards,
+  targetLineId,
+}) {
+  const normalizedAssignments = remapAssignmentSnapshotLines(assignments, targetLineId);
+  if (normalizedAssignments.length === 0) {
+    return {
+      attempted: false,
+      method: 'prisma',
+      reason: 'empty-snapshot-or-missing-target-line',
+      restoredAssignmentCount: 0,
+      restoredCardCount: 0,
+      restoredPlanCount: 0,
+    };
+  }
+
+  const now = new Date();
+  const planByExternalId = new Map();
+  normalizedAssignments.forEach((item) => {
+    const row = buildAssignmentPlanWriteDataFromSnapshot(manufacturerId, item, now);
+    if (row) planByExternalId.set(row.externalId, row);
+  });
+  const planRows = Array.from(planByExternalId.values());
+
+  const cardById = new Map();
+  (Array.isArray(cards) ? cards : []).forEach((item, index) => {
+    const cardId = String(item?.cardId || '').trim();
+    if (!cardId) return;
+    cardById.set(cardId, {
+      orgId: manufacturerId,
+      cardId,
+      sortOrder: sampleToPositiveInt(item?.sortOrder, index),
+      payload: cloneJsonValue(item?.payload ?? {}),
+    });
+  });
+  const cardRows = Array.from(cardById.values());
+
+  await prisma.$transaction(async (tx) => {
+    await tx.assignmentPlan.deleteMany({ where: { orgId: manufacturerId } });
+    if (planRows.length > 0) {
+      await tx.assignmentPlan.createMany({ data: planRows });
+    }
+
+    await tx.assignmentCard.deleteMany({ where: { orgId: manufacturerId } });
+    if (cardRows.length > 0) {
+      await tx.assignmentCard.createMany({ data: cardRows });
+    }
+
+    const safeBoardCards = Array.isArray(boardCards) ? cloneJsonValue(boardCards) : [];
+    await tx.assignmentBoardState.upsert({
+      where: { orgId: manufacturerId },
+      update: {
+        cards: safeBoardCards,
+        assignments: cloneJsonValue(normalizedAssignments),
       },
-      null,
-      2
-    )
+      create: {
+        orgId: manufacturerId,
+        cards: safeBoardCards,
+        assignments: cloneJsonValue(normalizedAssignments),
+      },
+    });
+  });
+
+  return {
+    attempted: true,
+    method: 'prisma',
+    restoredAssignmentCount: normalizedAssignments.length,
+    restoredCardCount: cardRows.length,
+    restoredPlanCount: planRows.length,
+    targetLineId: sampleToPositiveIntOrNull(targetLineId),
+  };
+}
+
+async function sampleRestoreAssignmentSnapshot({
+  manufacturerId,
+  assignments,
+  targetLineId,
+}) {
+  const normalizedAssignments = remapAssignmentSnapshotLines(assignments, targetLineId);
+  if (normalizedAssignments.length === 0) {
+    return {
+      attempted: false,
+      reason: 'empty-snapshot-or-missing-target-line',
+      restoredAssignmentCount: 0,
+    };
+  }
+
+  await sampleApiRequest(
+    `/assignment-board-state${sampleBuildQuery({ orgId: manufacturerId })}`,
+    {
+      method: 'PUT',
+      userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+      orgId: manufacturerId,
+      body: {
+        assignments: normalizedAssignments,
+      },
+    }
   );
+
+  const persistedPlans = await prisma.assignmentPlan.count({
+    where: { orgId: manufacturerId },
+  });
+
+  return {
+    attempted: true,
+    restoredAssignmentCount: normalizedAssignments.length,
+    persistedPlanCount: persistedPlans,
+    targetLineId: sampleToPositiveIntOrNull(targetLineId),
+  };
 }
 
 function sampleParseDateKey(dateKey) {
@@ -1569,6 +1802,8 @@ async function runBaselineReset() {
     },
   });
 
+  const assignmentSnapshot = await captureAssignmentBoardSnapshot(manufacturer.id);
+
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
   const sampleCleanup = await cleanupSampleFactoryData(manufacturer.id);
@@ -1664,6 +1899,47 @@ async function runBaselineReset() {
 
   await ensureStyles(manufacturer.id);
   const cleanup = await clearOrderAndAssignmentData();
+  let sampleOrderSeed = null;
+  let assignmentRestore = {
+    capturedAssignmentCount: Array.isArray(assignmentSnapshot?.assignments)
+      ? assignmentSnapshot.assignments.length
+      : 0,
+    sourceUpdatedAt: assignmentSnapshot?.updatedAt ?? null,
+    attempted: false,
+    restoredAssignmentCount: 0,
+  };
+
+  if (assignmentRestore.capturedAssignmentCount > 0) {
+    try {
+      sampleOrderSeed = await runSampleOrders({ silent: true });
+      assignmentRestore = {
+        ...assignmentRestore,
+        ...(await sampleRestoreAssignmentSnapshot({
+          manufacturerId: manufacturer.id,
+          assignments: assignmentSnapshot.assignments,
+          targetLineId: lineRows[0]?.line?.id ?? null,
+        })),
+      };
+    } catch (error) {
+      assignmentRestore = {
+        ...assignmentRestore,
+        attempted: false,
+        reason: 'restore-through-api-failed',
+        error: error?.message || 'failed to restore assignment snapshot through api',
+      };
+
+      assignmentRestore = {
+        ...assignmentRestore,
+        ...(await restoreAssignmentSnapshotWithPrisma({
+          manufacturerId: manufacturer.id,
+          assignments: assignmentSnapshot.assignments,
+          boardCards: assignmentSnapshot.boardCards,
+          cards: assignmentSnapshot.cards,
+          targetLineId: lineRows[0]?.line?.id ?? null,
+        })),
+      };
+    }
+  }
 
   summary.organizations = [manufacturer.code, brand.code].join(', ');
   summary.globalColors = BASELINE_COLORS.length;
@@ -1674,6 +1950,13 @@ async function runBaselineReset() {
   summary.sampleFactoryCleanup = sampleCleanup;
   summary.legacyStyleCleanup = legacyStyleCleanup;
   summary.cleanup = cleanup;
+  summary.sampleOrderSeed = sampleOrderSeed
+    ? {
+        orderNumber: sampleOrderSeed?.order?.orderNumber ?? null,
+        cardCount: sampleOrderSeed?.summary?.cardCount ?? 0,
+      }
+    : null;
+  summary.assignmentSnapshotRestore = assignmentRestore;
 
   console.log('Baseline reset completed.');
   console.log(JSON.stringify(summary, null, 2));
