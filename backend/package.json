@@ -17,7 +17,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "repair:assignment-text": "node scripts/repair-assignment-text.js"
+    "repair:assignment-text": "node scripts/repair-assignment-text.js",
+    "realign:time-model": "node scripts/realign-time-model.js"
   },
   "keywords": [],
   "author": "",

@@ -329,6 +329,20 @@ const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
+const MIN_PROCESS_SECONDS = 30;
+const DEFAULT_ST_BUCKET_QUANTITY = 1;
+const ST_STANDARD_BUCKETS = Object.freeze([
+  DEFAULT_ST_BUCKET_QUANTITY,
+  10,
+  30,
+  100,
+  300,
+  1000,
+  3000,
+  10000,
+  30000,
+  100000,
+]);
 // 출퇴근 입력값을 AT 계산에 반영한다.
 // 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
 const USE_ATTENDANCE_INPUT_FOR_AT = true;
@@ -793,6 +807,27 @@ const toOptionalSeconds = (value: any) => {
   return parsed < 0 ? 0 : roundToScale(parsed, 4);
 };
 
+const toOptionalProcessSeconds = (value: any) => {
+  const parsed = toOptionalSeconds(value);
+  if (parsed === null) return null;
+  if (parsed <= 0) return parsed;
+  return Math.max(MIN_PROCESS_SECONDS, parsed);
+};
+
+const resolveStBucketQuantity = (
+  orderQuantity: any,
+  fallback = DEFAULT_ST_BUCKET_QUANTITY
+) => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, fallback);
+  let resolvedBucket = fallback;
+  ST_STANDARD_BUCKETS.forEach((bucket) => {
+    if (resolvedOrderQuantity >= bucket) {
+      resolvedBucket = bucket;
+    }
+  });
+  return resolvedBucket;
+};
+
 type StyleAtParams = {
   a: number;
   b: number;
@@ -871,8 +906,8 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
 
 const toStyleStValue = (value: any): StyleStValue | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const quantity = toPositiveIntOrNull((value as any).quantity);
-  const seconds = toOptionalSeconds((value as any).seconds);
+  const quantity = resolveStBucketQuantity((value as any).quantity);
+  const seconds = toOptionalProcessSeconds((value as any).seconds);
   if (quantity === null || seconds === null) return null;
   const setAtRaw = resolveOptionalString((value as any).setAt, null);
   const setAtDate = setAtRaw ? new Date(setAtRaw) : null;
@@ -904,8 +939,8 @@ const normalizeStyleProcessStValues = (
     byQuantity.set(normalized.quantity, normalized);
   });
 
-  const legacyCt = toOptionalSeconds((legacyProcess as any)?.ct);
-  const legacyQuantity = toPositiveInt(
+  const legacyCt = toOptionalProcessSeconds((legacyProcess as any)?.ct);
+  const legacyQuantity = resolveStBucketQuantity(
     (legacyProcess as any)?.timeRefQuantity ??
       (legacyProcess as any)?.referenceQuantity,
     DEFAULT_TIME_REF_QUANTITY
@@ -933,7 +968,7 @@ const findStyleProcessExactStValue = (
   values: StyleStValue[] = [],
   orderQuantity = 1
 ): StyleStValue | null => {
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
   return (
     values.find((value) => toPositiveInt(value.quantity, 0) === resolvedOrderQuantity) ??
     null
@@ -1185,9 +1220,9 @@ const normalizeStyleProcess = (process: any) => {
     normalizedStValues,
     resolvedTimeRefQuantity
   );
-  if ("pt" in next) next.pt = toOptionalSeconds(next.pt);
+  if ("pt" in next) next.pt = toOptionalProcessSeconds(next.pt);
   const legacyCt =
-    normalizedStValues.length === 0 ? toOptionalSeconds(next.ct) : null;
+    normalizedStValues.length === 0 ? toOptionalProcessSeconds(next.ct) : null;
   next.ct = exactStValue?.seconds ?? legacyCt;
   const normalizedAtParams = toStyleAtParams((next as any).atParams);
   if (normalizedAtParams) {
@@ -1245,12 +1280,12 @@ const resolveStyleProcessExactStPerPieceSeconds = (
     return null;
   }
 
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const legacyQuantity = toPositiveInt(
+  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
+  const legacyQuantity = resolveStBucketQuantity(
     (normalized as any)?.timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
-  const legacyCt = toOptionalSeconds((normalized as any)?.ct);
+  const legacyCt = toOptionalProcessSeconds((normalized as any)?.ct);
   if (
     (normalized as any)?.stManual === true &&
     legacyCt !== null &&
@@ -2699,7 +2734,7 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       1
     ),
     sortOrder: index,
-    ptSeconds: toOptionalSeconds((process as any)?.pt),
+    ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
     atParams: toStyleAtParams((process as any)?.atParams),
     stValues: normalizeStyleProcessStValues((process as any)?.stValues, process),
   }));
@@ -2718,11 +2753,13 @@ const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
         name: row.processName,
         description: row.processDescription ?? null,
         quantity: row.processQuantity ?? 1,
-        pt: toOptionalSeconds(row.ptSeconds),
+        pt: toOptionalProcessSeconds(row.ptSeconds),
         atParams: toStyleAtParams(row.atParams),
         stValues: ensureArray(row.standards).map((standard) => ({
-          quantity: toPositiveInt((standard as any)?.quantity, DEFAULT_TIME_REF_QUANTITY),
-          seconds: toOptionalSeconds((standard as any)?.stSeconds),
+          quantity: resolveStBucketQuantity(
+            (standard as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY
+          ),
+          seconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
           setBy: resolveOptionalString((standard as any)?.setBy, null),
           setAt:
             (standard as any)?.setAt instanceof Date
@@ -2980,7 +3017,7 @@ const collectStyleQuantityRequirementsFromOrders = ({
         const normalizedQuantity = toPositiveIntOrNull(quantity);
         if (normalizedQuantity === null) return;
         const current = quantityByStyleUid.get(styleUid) || new Set<number>();
-        current.add(normalizedQuantity);
+        current.add(resolveStBucketQuantity(normalizedQuantity));
         quantityByStyleUid.set(styleUid, current);
       });
     });
@@ -3018,10 +3055,10 @@ const ensureStyleStandardsForQuantities = async ({
     for (const processRow of processRows) {
       const existingQuantities = new Set(
         ensureArray(processRow.standards).map((standard) =>
-          toPositiveInt((standard as any)?.quantity, 0)
+          resolveStBucketQuantity((standard as any)?.quantity ?? 1)
         )
       );
-      const ptSeconds = toOptionalSeconds(processRow.ptSeconds);
+      const ptSeconds = toOptionalProcessSeconds(processRow.ptSeconds);
       if (ptSeconds === null) continue;
       const missingQuantities = requiredQuantities.filter(
         (quantity) => !existingQuantities.has(quantity)
@@ -4730,14 +4767,13 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
       null
     ) ?? `PROCESS-${index + 1}`;
   const quantity = Math.max(1, toOptionalNonNegativeInt(value?.quantity, 1) ?? 1);
-  const stSeconds = toOptionalFloat(value?.stSeconds, null);
-  const ctSeconds = toOptionalFloat(
+  const stSeconds = toOptionalProcessSeconds(value?.stSeconds);
+  const ctSeconds = toOptionalProcessSeconds(
     value?.ctSeconds ??
       value?.agreedSeconds ??
       value?.requestedSeconds ??
       value?.proposedSeconds ??
-      value?.stSeconds,
-    null
+      value?.stSeconds
   );
   if (ctSeconds == null || ctSeconds <= 0) return null;
   const ctPerPieceSeconds = toOptionalFloat(

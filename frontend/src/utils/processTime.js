@@ -1,6 +1,19 @@
 ﻿import { formatNumberWithCommas } from './numberFormat';
 
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
+export const MIN_PROCESS_SECONDS = 30;
+export const ST_STANDARD_BUCKETS = Object.freeze([
+  1,
+  10,
+  30,
+  100,
+  300,
+  1000,
+  3000,
+  10000,
+  30000,
+  100000,
+]);
 const AT_RELIABILITY_SETUP_SHARE_THRESHOLD = 0.03;
 const AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX = 18;
 const AT_RELIABILITY_SAMPLE_REFERENCE_COUNT = 24;
@@ -46,6 +59,11 @@ const toPositiveInt = (value, fallback = 1) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 };
+const toBucketQuantity = (value, fallback = ST_STANDARD_BUCKETS[0]) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
 
 const hasTime = (value) => typeof value === 'number' && Number.isFinite(value);
 const roundToScale = (value, digits = 4) => {
@@ -58,11 +76,34 @@ const toNonNegativeInt = (value, fallback = 0) => {
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
   return parsed;
 };
+const clampProcessSeconds = (value) => {
+  const parsed = toOptionalNumber(value);
+  if (parsed === null) return null;
+  if (parsed <= 0) return 0;
+  return Math.max(MIN_PROCESS_SECONDS, parsed);
+};
+
+export const resolveStBucketQuantity = (orderQuantity = 1) => {
+  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  let resolvedBucket = ST_STANDARD_BUCKETS[0];
+  ST_STANDARD_BUCKETS.forEach((bucket) => {
+    if (resolvedOrderQuantity >= bucket) {
+      resolvedBucket = bucket;
+    }
+  });
+  return resolvedBucket;
+};
+
+export const formatStBucketQuantityLabel = (bucketQuantity, locale = 'ko-KR') => {
+  const resolvedBucket = toBucketQuantity(bucketQuantity, ST_STANDARD_BUCKETS[0]);
+  const displayQuantity = resolvedBucket <= 1 ? 0 : resolvedBucket;
+  return displayQuantity.toLocaleString(locale);
+};
 
 const normalizeProcessStValue = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const quantity = toPositiveInt(value.quantity, 0);
-  const seconds = toOptionalNumber(value.seconds);
+  const quantity = resolveStBucketQuantity(value.quantity);
+  const seconds = clampProcessSeconds(value.seconds);
   if (quantity <= 0 || seconds === null) return null;
   return {
     quantity,
@@ -84,8 +125,8 @@ const normalizeProcessStValues = (values, legacyProcess = null) => {
     byQuantity.set(normalized.quantity, normalized);
   });
 
-  const legacyCt = toOptionalNumber(legacyProcess?.ct);
-  const legacyQuantity = toPositiveInt(
+  const legacyCt = clampProcessSeconds(legacyProcess?.ct);
+  const legacyQuantity = resolveStBucketQuantity(
     legacyProcess?.timeRefQuantity ?? legacyProcess?.referenceQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
@@ -108,9 +149,9 @@ const normalizeProcessStValues = (values, legacyProcess = null) => {
 };
 
 const findExactProcessStValue = (stValues = [], orderQuantity = 1) => {
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
+  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
   return (Array.isArray(stValues) ? stValues : []).find(
-    (value) => toPositiveInt(value?.quantity, 0) === resolvedOrderQuantity
+    (value) => toBucketQuantity(value?.quantity, 0) === resolvedOrderQuantity
   ) || null;
 };
 
@@ -426,7 +467,7 @@ export const normalizeProcess = (process = {}, index = 0) => {
   );
   const exactStValue = findExactProcessStValue(normalizedStValues, resolvedTimeRefQuantity);
   const legacyCt =
-    normalizedStValues.length === 0 ? toOptionalNumber(safeProcess.ct) : null;
+    normalizedStValues.length === 0 ? clampProcessSeconds(safeProcess.ct) : null;
   const normalizedCt = exactStValue?.seconds ?? legacyCt;
   const normalizedAtParams = resolveAtParamsMeta(process);
   const normalizedAt =
@@ -454,7 +495,7 @@ export const normalizeProcess = (process = {}, index = 0) => {
     quantity: toPositiveInt(safeProcess.quantity ?? _legacyProcessQuantity, 1),
     timeRefQuantity: resolvedTimeRefQuantity,
     stManual: normalizedStManual,
-    pt: toOptionalNumber(safeProcess.pt),
+    pt: clampProcessSeconds(safeProcess.pt),
     ...(normalizedAtParams ? { atParams: normalizedAtParams } : {}),
     ...(normalizedStValues.length > 0 ? { stValues: normalizedStValues } : {}),
     ct: normalizedCt,
@@ -574,12 +615,12 @@ export const resolveProcessExactStPerPieceSeconds = (process, orderQuantity = 1)
     return null;
   }
 
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const legacyQuantity = toPositiveInt(
+  const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
+  const legacyQuantity = resolveStBucketQuantity(
     normalized?.timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
-  const legacyCt = toOptionalNumber(normalized?.ct);
+  const legacyCt = clampProcessSeconds(normalized?.ct);
   if (normalized?.stManual === true && legacyCt !== null && legacyQuantity === resolvedOrderQuantity) {
     return legacyCt;
   }

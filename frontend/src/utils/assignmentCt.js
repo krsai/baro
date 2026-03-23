@@ -1,3 +1,5 @@
+import { MIN_PROCESS_SECONDS } from './processTime';
+
 const toOptionalNumber = (value, fallback = null) => {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number(value);
@@ -9,6 +11,12 @@ const toOptionalPositiveNumber = (value, fallback = null) => {
   const parsed = toOptionalNumber(value, fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
+};
+
+const toOptionalProcessSeconds = (value, fallback = null) => {
+  const parsed = toOptionalPositiveNumber(value, fallback);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(MIN_PROCESS_SECONDS, parsed);
 };
 
 const toOptionalDateString = (value) => {
@@ -26,7 +34,7 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   if (!processKey) return null;
 
   const quantity = Math.max(1, Math.round(toOptionalNumber(process.quantity, 1) || 1));
-  const ctSeconds = toOptionalPositiveNumber(
+  const ctSeconds = toOptionalProcessSeconds(
     process.ctSeconds ??
       process.agreedSeconds ??
       process.requestedSeconds ??
@@ -40,7 +48,7 @@ const normalizeSnapshotProcess = (process, index = 0) => {
     name: String(process.name || process.processName || `공정 ${index + 1}`).trim() || `공정 ${index + 1}`,
     quantity,
     basis: String(process.basis || '').trim() || null,
-    stSeconds: toOptionalPositiveNumber(process.stSeconds),
+    stSeconds: toOptionalProcessSeconds(process.stSeconds),
     ctSeconds,
     ctPerPieceSeconds:
       toOptionalPositiveNumber(process.ctPerPieceSeconds ?? process.agreedPerPieceSeconds) ??

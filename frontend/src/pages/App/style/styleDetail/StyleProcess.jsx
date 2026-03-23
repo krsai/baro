@@ -29,14 +29,17 @@ import { fetchProcessAttributes } from '../../../../utils/attributeApi';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
+  formatStBucketQuantityLabel,
   formatSeconds,
   hasAnyProcessTime,
+  MIN_PROCESS_SECONDS,
   normalizeProcess,
   normalizeProcesses,
   parseOptionalSecondsInput,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
+  resolveStBucketQuantity,
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../../utils/processTime';
@@ -72,7 +75,9 @@ const toOptionalSeconds = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
-  return parsed < 0 ? 0 : parsed;
+  if (parsed < 0) return 0;
+  if (parsed === 0) return 0;
+  return Math.max(MIN_PROCESS_SECONDS, parsed);
 };
 
 const toDraftNumberText = (value) => {
@@ -181,7 +186,7 @@ const resolveExactStPerPiece = (process, quantity) =>
 
 const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => {
   const normalized = normalizeProcess(process);
-  const resolvedQuantity = toPositiveInt(quantity, DEFAULT_TIME_REF_QUANTITY);
+  const resolvedQuantity = resolveStBucketQuantity(quantity);
   const nextSeconds = toOptionalSeconds(seconds);
   const nextValues = normalizeStValues(normalized).filter(
     (value) => toPositiveInt(value?.quantity, 0) !== resolvedQuantity
@@ -217,30 +222,31 @@ const buildProcessPayload = (
     timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
+  const resolvedStBucketQuantity = resolveStBucketQuantity(resolvedTimeRefQuantity);
   const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const ptPerPiece =
     ptTotalForDisplay == null
       ? null
-      : roundToScale(ptTotalForDisplay / processQuantity, 4);
+      : toOptionalSeconds(roundToScale(ptTotalForDisplay / processQuantity, 4));
   const exactStPerPiece =
     stTotalForDisplay == null
       ? null
-      : roundToScale(stTotalForDisplay / processQuantity, 4);
+      : toOptionalSeconds(roundToScale(stTotalForDisplay / processQuantity, 4));
   const existingStValues = normalizeStValues(existingProcess);
   const nextStValues = existingStValues.filter(
-    (value) => toPositiveInt(value?.quantity, 0) !== resolvedTimeRefQuantity
+    (value) => toPositiveInt(value?.quantity, 0) !== resolvedStBucketQuantity
   );
   if (exactStPerPiece != null) {
     nextStValues.push({
-      quantity: resolvedTimeRefQuantity,
+      quantity: resolvedStBucketQuantity,
       seconds: exactStPerPiece,
       setBy: 'MANUAL',
       setAt: null,
       updatedAt: null,
     });
-  } else if (resolvedTimeRefQuantity === PT_REFERENCE_QUANTITY && ptPerPiece != null) {
+  } else if (resolvedStBucketQuantity === PT_REFERENCE_QUANTITY && ptPerPiece != null) {
     nextStValues.push({
       quantity: PT_REFERENCE_QUANTITY,
       seconds: ptPerPiece,
@@ -401,6 +407,14 @@ const StyleProcess = ({
     () => displayOrderQuantity.toLocaleString('ko-KR'),
     [displayOrderQuantity]
   );
+  const stBucketQuantity = useMemo(
+    () => resolveStBucketQuantity(displayOrderQuantity),
+    [displayOrderQuantity]
+  );
+  const stBucketQuantityLabel = useMemo(
+    () => formatStBucketQuantityLabel(stBucketQuantity, 'ko-KR'),
+    [stBucketQuantity]
+  );
   const ptTimeRefQuantityLabel = useMemo(
     () => PT_REFERENCE_QUANTITY.toLocaleString('ko-KR'),
     []
@@ -464,9 +478,18 @@ const StyleProcess = ({
   };
 
   const handleTimeRefQuantityKeyDown = (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    event.currentTarget.blur();
+    if (event.key === 'Enter' || event.key === 'NumpadEnter') {
+      event.preventDefault();
+      commitTimeRefQuantity();
+      event.currentTarget.blur();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setTimeRefQuantityInput('');
+      setIsTimeRefQuantityEditing(false);
+      event.currentTarget.blur();
+    }
   };
 
   const validateDraft = (draft, options = {}) => {
@@ -701,9 +724,12 @@ const StyleProcess = ({
                   </TableCell>
                   <TableCell align="right" sx={{ width: 190 }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
-                      <Tooltip title={`ST(${timeRefQuantityLabel}): ${timeRefQuantityLabel}장 주문 기준의 개당 표준 시간(초)입니다.`} placement="top">
+                      <Tooltip
+                        title={`ST(${stBucketQuantityLabel}): ${timeRefQuantityLabel}장 주문은 ${stBucketQuantityLabel} 구간 기준의 개당 표준 시간(초)입니다.`}
+                        placement="top"
+                      >
                         <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
-                          {`ST(${timeRefQuantityLabel})`}
+                          {`ST(${stBucketQuantityLabel})`}
                         </Box>
                       </Tooltip>
                       {hasAT && hasST && totalStGapPercent != null ? renderStGapChip(totalStGapPercent) : null}

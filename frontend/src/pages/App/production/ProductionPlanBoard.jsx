@@ -43,10 +43,12 @@ import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
+  formatStBucketQuantityLabel,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
+  resolveStBucketQuantity,
 } from '../../../utils/processTime';
 import {
   HOLIDAY_UPDATED_EVENT,
@@ -1093,6 +1095,14 @@ const ProductionPlanBoard = () => {
       ),
     [selectedAssignment?.quantity]
   );
+  const selectedStBucketQuantityLabel = useMemo(
+    () =>
+      formatStBucketQuantityLabel(
+        resolveStBucketQuantity(Math.max(1, toPositiveInt(selectedAssignment?.quantity ?? 1, 1))),
+        'ko-KR'
+      ),
+    [selectedAssignment?.quantity]
+  );
   const renderActionButtonLabel = (label, busy) => (
     <Box
       sx={{
@@ -1624,8 +1634,6 @@ const ProductionPlanBoard = () => {
         const linkedCard = nextCardById.get(String(syncedAssignment?.cardId || '')) || null;
         const style = styleById.get(String(linkedCard?.styleId || '')) || null;
         const orderQuantity = Math.max(1, toPositiveInt(syncedAssignment?.quantity, 1));
-        const currentCtSeconds = Math.max(0, Math.round(resolveCurrentCtSeconds(syncedAssignment)));
-        const currentCtPerPieceSeconds = currentCtSeconds > 0 ? currentCtSeconds / orderQuantity : 0;
         const existingSnapshot = resolveAssignmentCtSnapshot(syncedAssignment);
         const processes = normalizeProcesses(style?.processes);
         const baseRows = processes.map((process) => {
@@ -1649,14 +1657,7 @@ const ProductionPlanBoard = () => {
         const snapshotProcesses = baseRows
           .map((row) => {
             if (!row.processKey) return null;
-            const ctSeconds =
-              resolveDistributedSeconds({
-                totalPerPieceSeconds: currentCtPerPieceSeconds,
-                totalBasePerPieceSeconds,
-                basePerPieceSeconds: row.basePerPieceSeconds,
-                processQuantity: row.processQuantity,
-                processCount: baseRows.length,
-              }) ?? row.baseSeconds;
+            const ctSeconds = row.baseSeconds;
             return {
               processKey: row.processKey,
               name: row.name,
@@ -1675,14 +1676,12 @@ const ProductionPlanBoard = () => {
                   sum + ((Number(row?.stSeconds) || 0) * (Number(row?.quantity) || 1)),
                 0
               )
-            : Number(existingSnapshot?.totalStPerPieceSeconds) || currentCtPerPieceSeconds;
-        const totalCtPerPieceSeconds =
-          snapshotProcesses.length > 0
-            ? snapshotProcesses.reduce(
-                (sum, row) => sum + (Number(row?.ctPerPieceSeconds) || 0),
-                0
-              )
-            : Number(existingSnapshot?.totalCtPerPieceSeconds) || currentCtPerPieceSeconds;
+            : Number(existingSnapshot?.totalStPerPieceSeconds) || 0;
+        const totalCtPerPieceSeconds = totalStPerPieceSeconds;
+        const currentCtSeconds = Math.max(
+          0,
+          Math.round(totalCtPerPieceSeconds > 0 ? totalCtPerPieceSeconds * orderQuantity : 0)
+        );
 
         return {
           ...syncedAssignment,
@@ -2861,9 +2860,8 @@ const ProductionPlanBoard = () => {
                             <TableCell>공정</TableCell>
                             <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${selectedQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`ST(${selectedQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`현재 CT(${selectedQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`저장 CT(${selectedQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`ST(${selectedStBucketQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`CT(${selectedQuantityLabel})`}</TableCell>
                             <TableCell align="right">단가(동)</TableCell>
                           </TableRow>
                         </TableHead>
@@ -2929,32 +2927,18 @@ const ProductionPlanBoard = () => {
                                 })}
                               </TableCell>
                               <TableCell align="right">
-                                {formatNumberWithCommas(row.assignedSeconds, {
+                                {formatNumberWithCommas(row.savedSeconds ?? row.assignedSeconds, {
                                   fallback: '0',
                                   maximumFractionDigits: 2,
                                 })}
                               </TableCell>
                               <TableCell align="right">
-                                {selectedCtStatus !== 'SAVED' || row.savedSeconds == null
-                                  ? '-'
-                                  : formatNumberWithCommas(row.savedSeconds, {
-                                      fallback: '0',
-                                      maximumFractionDigits: 2,
-                                    })}
-                              </TableCell>
-                              <TableCell align="right">
                                 {selectedAssignment.wagePerSecond == null ? (
                                   '-'
-                                ) : selectedCtStatus === 'SAVED' && row.savedUnitCost == null ? (
-                                  '-'
-                                ) : selectedCtStatus !== 'SAVED' && row.assignedUnitCost == null ? (
+                                ) : (row.savedUnitCost ?? row.assignedUnitCost) == null ? (
                                   '-'
                                 ) : (
-                                  formatCurrencyDong(
-                                    selectedCtStatus === 'SAVED' && row.savedUnitCost != null
-                                      ? row.savedUnitCost
-                                      : row.assignedUnitCost
-                                  )
+                                  formatCurrencyDong(row.savedUnitCost ?? row.assignedUnitCost)
                                 )}
                               </TableCell>
                             </TableRow>
@@ -2980,26 +2964,8 @@ const ProductionPlanBoard = () => {
                                   })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {selectedCtStatus === 'SAVED' &&
-                              selectedCostSummary?.totalSavedPerPieceSeconds != null
-                                ? formatNumberWithCommas(
-                                    selectedCostSummary.totalSavedPerPieceSeconds,
-                                    {
-                                      fallback: '0',
-                                      maximumFractionDigits: 2,
-                                    }
-                                  )
-                                : '-'}
-                            </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {selectedAssignment.wagePerSecond == null ? (
                                 '-'
-                              ) : selectedCtStatus === 'SAVED' &&
-                                selectedCostSummary?.totalSavedPerPieceSeconds != null ? (
-                                formatCurrencyDong(
-                                  selectedCostSummary.totalSavedPerPieceSeconds *
-                                    selectedAssignment.wagePerSecond
-                                )
                               ) : (
                                 formatCurrencyDong(
                                   selectedCostSummary.totalAssignedPerPieceSeconds *
@@ -3010,13 +2976,11 @@ const ProductionPlanBoard = () => {
                           </TableRow>
                         </TableBody>
                       </Table>
-                    </TableContainer>
-                  )}
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {selectedCtStatus === 'SAVED'
-                      ? '저장된 배정은 저장 CT 기준으로 표시됩니다.'
-                      : '아직 저장되지 않은 배정은 현재 CT 기준으로 표시됩니다.'}
-                  </Typography>
+                  </TableContainer>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    저장 시 CT는 현재 ST 기준으로 snapshot 됩니다.
+                </Typography>
                 </Paper>
               </Stack>
             )}

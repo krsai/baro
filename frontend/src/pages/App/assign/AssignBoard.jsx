@@ -54,10 +54,12 @@ import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
   calculateProcessTotalForOrderQuantity,
+  formatStBucketQuantityLabel,
   normalizeProcesses,
   resolveProcessAtPerPieceSeconds,
   resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
+  resolveStBucketQuantity,
 } from '../../../utils/processTime';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
@@ -1040,7 +1042,6 @@ const buildAssignmentCtSnapshotForSave = ({
 
       const snapshotProcess = existingProcessMap.get(processKey) ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(stDraftByProcess?.[processKey]);
-      const ctDraftSeconds = toOptionalPositiveNumber(draftByProcess?.[processKey]);
       const stSeedInfo =
         seed.source === 'STYLE'
           ? resolveProcessStSeedSeconds({
@@ -1055,25 +1056,15 @@ const buildAssignmentCtSnapshotForSave = ({
         stDraftSeconds ??
         toOptionalPositiveNumber(snapshotProcess?.stSeconds) ??
         toOptionalPositiveNumber(stSeedInfo?.seconds);
-      const ctSeconds =
-        ctDraftSeconds ??
-        toOptionalPositiveNumber(snapshotProcess?.ctSeconds) ??
-        stSeconds;
+      if (stSeconds == null) return null;
 
-      if (ctSeconds == null && stSeconds == null) return null;
-
-      const resolvedCtSeconds = ctSeconds ?? stSeconds ?? 0;
-      const resolvedStSeconds = stSeconds ?? resolvedCtSeconds;
+      const resolvedStSeconds = stSeconds;
+      const resolvedCtSeconds = resolvedStSeconds;
       return {
         processKey,
         name: seed.processName || `공정 ${index + 1}`,
         quantity: seed.processQuantity,
-        basis:
-          ctDraftSeconds != null
-            ? 'CT'
-            : stDraftSeconds != null
-              ? 'ST'
-              : snapshotProcess?.basis || stSeedInfo?.source || seed.process?.basis || null,
+        basis: 'ST',
         stSeconds: resolvedStSeconds,
         ctSeconds: resolvedCtSeconds,
         ctPerPieceSeconds: resolvedCtSeconds * seed.processQuantity,
@@ -1189,9 +1180,7 @@ const hasAssignmentCtDraftChange = ({
   baseDate = null,
 }) => {
   if (!hasSavedCtSnapshot(assignment)) return false;
-  const hasDraftInput =
-    Object.keys(draftByProcess || {}).length > 0 ||
-    Object.keys(stDraftByProcess || {}).length > 0;
+  const hasDraftInput = Object.keys(stDraftByProcess || {}).length > 0;
   if (!hasDraftInput) return false;
 
   const savedSnapshotComparable = toComparableCtSnapshot(
@@ -3381,11 +3370,9 @@ const AssignBoard = () => {
         stDraftSeconds != null &&
         Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
       const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
-      const savedSnapshotSeconds = savedSnapshotEntry?.ctSeconds ?? null;
-      const proposedSeedSeconds = savedSnapshotSeconds ?? baseSeconds;
-      const proposedDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
-      const proposedSeconds = proposedDraftSeconds ?? proposedSeedSeconds;
-      const savedSeconds = savedSnapshotSeconds ?? null;
+      const savedSnapshotSeconds = savedSnapshotEntry?.ctSeconds ?? baseSeconds;
+      const proposedSeconds = savedSnapshotSeconds ?? baseSeconds;
+      const savedSeconds = proposedSeconds;
       const basePerPieceSeconds = baseSeconds * processQuantity;
       const proposedPerPieceSeconds = proposedSeconds * processQuantity;
       const savedPerPieceSeconds =
@@ -3402,8 +3389,8 @@ const AssignBoard = () => {
         atSeconds,
         atReliability,
         baseSeconds,
+        ctSeconds: proposedSeconds,
         hasStDraftChange,
-        proposedSeedSeconds,
         requestedSeconds: proposedSeconds,
         proposedSeconds,
         basePerPieceSeconds,
@@ -3513,6 +3500,16 @@ const AssignBoard = () => {
       ),
     [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]
   );
+  const detailStBucketQuantityLabel = useMemo(() => {
+    const orderQuantity = Math.max(
+      1,
+      toPositiveInt(
+        detailSummary?.orderQuantity ?? detailAssignment?.quantity ?? detailCard?.quantity ?? 1,
+        1
+      )
+    );
+    return formatStBucketQuantityLabel(resolveStBucketQuantity(orderQuantity), 'ko-KR');
+  }, [detailSummary?.orderQuantity, detailAssignment?.quantity, detailCard?.quantity]);
   const detailHasSavedCtSnapshot = useMemo(
     () => hasSavedCtSnapshot(detailAssignment),
     [detailAssignment]
@@ -4845,23 +4842,8 @@ const AssignBoard = () => {
                             <TableCell>{getUiMessage('assign.processLabel', 'Process', languageCode)}</TableCell>
                             <TableCell align="right">{`PT(${PT_REFERENCE_QUANTITY_LABEL})`}</TableCell>
                             <TableCell align="right">{`AT(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">{`ST(${detailQuantityLabel})`}</TableCell>
-                            <TableCell align="right">
-                              {getUiMessage(
-                                'assign.inputCtColumn',
-                                'Entered CT({quantity})',
-                                languageCode,
-                                { quantity: detailQuantityLabel }
-                              )}
-                            </TableCell>
-                            <TableCell align="right">
-                              {getUiMessage(
-                                'assign.savedCtColumn',
-                                'Saved CT({quantity})',
-                                languageCode,
-                                { quantity: detailQuantityLabel }
-                              )}
-                            </TableCell>
+                            <TableCell align="right">{`ST(${detailStBucketQuantityLabel})`}</TableCell>
+                            <TableCell align="right">{`CT(${detailQuantityLabel})`}</TableCell>
                             <TableCell align="right">
                               {getUiMessage('assign.unitCostDong', 'Unit Cost (dong)', languageCode)}
                             </TableCell>
@@ -4931,35 +4913,9 @@ const AssignBoard = () => {
                                 </Typography>
                               </TableCell>
                               <TableCell align="right">
-                                <TextField
-                                  size="small"
-                                  value={detailDraftByProcess[row.processKey] ?? ''}
-                                  placeholder={
-                                    row.proposedSeconds > 0
-                                      ? String(
-                                          formatNumberWithCommas(row.proposedSeconds, {
-                                            fallback: '0',
-                                            maximumFractionDigits: 2,
-                                          })
-                                        )
-                                      : ''
-                                  }
-                                  inputProps={{
-                                    inputMode: 'decimal',
-                                    pattern: '\\d*(\\.\\d{0,2})?',
-                                    style: { textAlign: 'right', width: 80 },
-                                  }}
-                                  onChange={(event) =>
-                                    handleDetailDraftInput(row.processKey, event.target.value)
-                                  }
-                                  disabled={controlsDisabled}
-                                  sx={{ width: 90 }}
-                                />
-                              </TableCell>
-                              <TableCell align="right">
-                                {row.savedSeconds == null
+                                {row.ctSeconds == null
                                   ? '-'
-                                  : formatNumberWithCommas(row.savedSeconds, {
+                                  : formatNumberWithCommas(row.ctSeconds, {
                                       fallback: '0',
                                       maximumFractionDigits: 2,
                                     })}
@@ -4968,9 +4924,9 @@ const AssignBoard = () => {
                                 {detailSummary?.wagePerSecond == null ? (
                                   '-'
                                 ) : (
-                                  row.savedUnitCost == null
+                                  row.proposedUnitCost == null
                                     ? '-'
-                                    : formatCurrencyDong(row.savedUnitCost, languageCode)
+                                    : formatCurrencyDong(row.proposedUnitCost, languageCode)
                                 )}
                               </TableCell>
                             </TableRow>
@@ -5000,9 +4956,9 @@ const AssignBoard = () => {
                                   })}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {detailSummary?.totalSavedPerPieceSeconds != null &&
-                              detailSummary.totalSavedPerPieceSeconds > 0
-                                ? formatNumberWithCommas(detailSummary.totalSavedPerPieceSeconds, {
+                              {detailSummary?.totalRequestedPerPieceSeconds != null &&
+                              detailSummary.totalRequestedPerPieceSeconds > 0
+                                ? formatNumberWithCommas(detailSummary.totalRequestedPerPieceSeconds, {
                                     fallback: '0',
                                     maximumFractionDigits: 2,
                                   })
@@ -5011,10 +4967,10 @@ const AssignBoard = () => {
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {detailSummary?.wagePerSecond == null ? (
                                 '-'
-                              ) : detailSummary?.totalSavedPerPieceSeconds != null &&
-                                detailSummary.totalSavedPerPieceSeconds > 0 ? (
+                              ) : detailSummary?.totalRequestedPerPieceSeconds != null &&
+                                detailSummary.totalRequestedPerPieceSeconds > 0 ? (
                                 formatCurrencyDong(
-                                  detailSummary.totalSavedPerPieceSeconds *
+                                  detailSummary.totalRequestedPerPieceSeconds *
                                     detailSummary.wagePerSecond,
                                   languageCode
                                 )
@@ -5028,11 +4984,11 @@ const AssignBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {getUiMessage(
-                      'assign.ctSnapshotHint',
-                      'If Entered CT is empty, the ST(q) value is used as-is. The current value is saved as a CT snapshot together with date and line info when you save the assignment.',
-                      languageCode
-                    )}
+                    {languageCode === 'ko'
+                      ? '저장하면 현재 ST 기준으로 CT snapshot이 저장됩니다.'
+                      : languageCode === 'vi'
+                        ? 'Khi luu, CT se duoc luu theo ST hien tai thanh CT snapshot.'
+                        : 'When you save the assignment, CT is stored as the current ST snapshot.'}
                   </Typography>
                 </Paper>
               </>
