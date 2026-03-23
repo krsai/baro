@@ -417,6 +417,13 @@ const isManufacturerOrg = (org: { type?: string | null } | null | undefined) =>
   org?.type === "MANUFACTURER";
 const isBrandOrg = (org: { type?: string | null } | null | undefined) =>
   org?.type === "BRAND";
+const resolveCustomerPerspective = (
+  org: { type?: string | null } | null | undefined
+): "MANUFACTURER" | "BRAND" | null => {
+  if (isManufacturerOrg(org)) return "MANUFACTURER";
+  if (isBrandOrg(org)) return "BRAND";
+  return null;
+};
 const addDays = (date: Date, days: number): Date =>
   new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 
@@ -716,6 +723,10 @@ const buildSharedCustomerOrganizationData = (
       payload?.address !== undefined
         ? resolveOptionalString(payload.address, null)
         : resolveOptionalString(fallbackOrganization?.address, null),
+    country:
+      payload?.country !== undefined
+        ? resolveOptionalString(payload.country, null)
+        : resolveOptionalString((fallbackOrganization as any)?.country, null),
     countryCode:
       payload?.countryCode !== undefined
         ? resolveOptionalString(payload.countryCode, null)
@@ -752,6 +763,7 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     code: targetCode,
     name: targetOrg.name ?? "",
     address: targetOrg.address ?? "",
+    country: (targetOrg as any)?.country ?? null,
     countryCode: (targetOrg as any)?.countryCode ?? null,
     phoneNumber: targetOrg.phone ?? relationship.managerPhone ?? "",
     phone,
@@ -7012,12 +7024,14 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
   const organizationType =
     resolveOnboardingOrganizationType(companyRequest.organizationType) ??
     ORGANIZATION_TYPE_KEYS.MANUFACTURER;
+  const organizationCountry = resolveOnboardingCountry(companyRequest.country);
   const organization = await prisma.organization.create({
     data: {
       name: companyRequest.organizationNameEn,
       businessNumber: companyRequest.businessNumber,
       representative: companyRequest.contactName || null,
       address: companyRequest.companyAddress || null,
+      country: organizationCountry ?? null,
       email: companyRequest.contactEmail,
       phone: companyRequest.contactPhone,
       type: organizationType,
@@ -9044,14 +9058,15 @@ app.post("/customers", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  if (!isManufacturerOrg(organization)) {
+  const perspective = resolveCustomerPerspective(organization);
+  if (!perspective) {
     return res.status(400).json({
       ok: false,
-      error: "only manufacturer organizations can manage customers",
+      error: "invalid organization type",
     });
   }
 
-  const { brandOrgId, memo } = req.body ?? {};
+  const { brandOrgId, customerOrgId, memo } = req.body ?? {};
   const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {});
   const normalizedCode = sharedOrganizationData.code;
   if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
@@ -9061,109 +9076,130 @@ app.post("/customers", async (req, res) => {
     });
   }
 
-  let brand = null;
-  const brandOrgIdNum = toPositiveIntOrNull(brandOrgId);
-  if (brandOrgIdNum) {
-    brand = await prisma.organization.findUnique({
-      where: { id: brandOrgIdNum },
+  const isManufacturerPerspective = perspective === "MANUFACTURER";
+  const targetType = isManufacturerPerspective
+    ? ORGANIZATION_TYPE_KEYS.BRAND
+    : ORGANIZATION_TYPE_KEYS.MANUFACTURER;
+
+  let targetOrganization: any = null;
+  const targetOrgIdNum = toPositiveIntOrNull(customerOrgId ?? brandOrgId);
+  if (targetOrgIdNum) {
+    targetOrganization = await prisma.organization.findUnique({
+      where: { id: targetOrgIdNum },
     });
-    if (!brand) {
-      return res.status(404).json({ ok: false, error: "brand not found" });
+    if (!targetOrganization) {
+      return res.status(404).json({ ok: false, error: "customer organization not found" });
+    }
+    if (targetOrganization.type !== targetType) {
+      return res.status(400).json({
+        ok: false,
+        error: "invalid customer organization type",
+      });
     }
 
     const existingCodeOwner = await prisma.organization.findFirst({
       where: {
         code: normalizedCode,
-        NOT: { id: brand.id },
+        NOT: { id: targetOrganization.id },
       },
     });
     if (existingCodeOwner) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
-    const nextBrandData = buildSharedCustomerOrganizationData(req.body ?? {}, brand);
-    if (!nextBrandData.name) {
+    const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
+    if (!nextTargetData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
-    brand = await prisma.organization.update({
-      where: { id: brand.id },
+    targetOrganization = await prisma.organization.update({
+      where: { id: targetOrganization.id },
       data: {
-        name: nextBrandData.name,
+        name: nextTargetData.name,
         code: normalizedCode,
-        address: nextBrandData.address,
-        countryCode: nextBrandData.countryCode,
-        phone: nextBrandData.phone,
-        representative: nextBrandData.representative,
-        email: nextBrandData.email,
-        targetMonthlyWage: nextBrandData.targetMonthlyWage,
-        wagePerSecond: nextBrandData.wagePerSecond,
+        address: nextTargetData.address,
+        country: nextTargetData.country,
+        countryCode: nextTargetData.countryCode,
+        phone: nextTargetData.phone,
+        representative: nextTargetData.representative,
+        email: nextTargetData.email,
+        targetMonthlyWage: nextTargetData.targetMonthlyWage,
+        wagePerSecond: nextTargetData.wagePerSecond,
       },
     });
   } else {
     const existingCodeOwner = await prisma.organization.findFirst({
       where: { code: normalizedCode },
     });
-    if (existingCodeOwner && !isBrandOrg(existingCodeOwner)) {
+    if (existingCodeOwner && existingCodeOwner.type !== targetType) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
-    const nextBrandData = buildSharedCustomerOrganizationData(
+    const nextTargetData = buildSharedCustomerOrganizationData(
       req.body ?? {},
       existingCodeOwner ?? null
     );
-    if (!nextBrandData.name) {
+    if (!nextTargetData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
 
-    if (existingCodeOwner && isBrandOrg(existingCodeOwner)) {
-      brand = await prisma.organization.update({
+    if (existingCodeOwner && existingCodeOwner.type === targetType) {
+      targetOrganization = await prisma.organization.update({
         where: { id: existingCodeOwner.id },
         data: {
-          name: nextBrandData.name,
+          name: nextTargetData.name,
           code: normalizedCode,
-          address: nextBrandData.address,
-          countryCode: nextBrandData.countryCode,
-          phone: nextBrandData.phone,
-          representative: nextBrandData.representative,
-          email: nextBrandData.email,
-          targetMonthlyWage: nextBrandData.targetMonthlyWage,
-          wagePerSecond: nextBrandData.wagePerSecond,
+          address: nextTargetData.address,
+          country: nextTargetData.country,
+          countryCode: nextTargetData.countryCode,
+          phone: nextTargetData.phone,
+          representative: nextTargetData.representative,
+          email: nextTargetData.email,
+          targetMonthlyWage: nextTargetData.targetMonthlyWage,
+          wagePerSecond: nextTargetData.wagePerSecond,
         },
       });
     } else {
-      brand = await prisma.organization.create({
+      targetOrganization = await prisma.organization.create({
         data: {
-          name: nextBrandData.name,
+          name: nextTargetData.name,
           code: normalizedCode,
-          address: nextBrandData.address,
-          countryCode: nextBrandData.countryCode,
-          phone: nextBrandData.phone,
-          representative: nextBrandData.representative,
-          email: nextBrandData.email,
-          targetMonthlyWage: nextBrandData.targetMonthlyWage,
-          wagePerSecond: nextBrandData.wagePerSecond,
-          type: "BRAND",
+          address: nextTargetData.address,
+          country: nextTargetData.country,
+          countryCode: nextTargetData.countryCode,
+          phone: nextTargetData.phone,
+          representative: nextTargetData.representative,
+          email: nextTargetData.email,
+          targetMonthlyWage: nextTargetData.targetMonthlyWage,
+          wagePerSecond: nextTargetData.wagePerSecond,
+          type: targetType,
         },
       });
     }
   }
 
-  if (!isBrandOrg(brand)) {
-    return res.status(400).json({ ok: false, error: "invalid brand type" });
+  if (!targetOrganization || targetOrganization.type !== targetType) {
+    return res.status(400).json({ ok: false, error: "invalid customer organization type" });
   }
 
-  if (brand.id === organization.id) {
+  if (targetOrganization.id === organization.id) {
     return res.status(400).json({
       ok: false,
       error: "cannot link organization to itself",
     });
   }
 
+  const manufacturerOrgId = isManufacturerPerspective
+    ? organization.id
+    : targetOrganization.id;
+  const brandOrgIdForRelationship = isManufacturerPerspective
+    ? targetOrganization.id
+    : organization.id;
+
   const relationship = await prisma.orgRelationship.upsert({
     where: {
       manufacturerOrgId_brandOrgId: {
-        manufacturerOrgId: organization.id,
-        brandOrgId: brand.id,
+        manufacturerOrgId,
+        brandOrgId: brandOrgIdForRelationship,
       },
     },
     update: {
@@ -9174,18 +9210,18 @@ app.post("/customers", async (req, res) => {
       memo: resolveOptionalString(memo, null),
     },
     create: {
-      manufacturerOrgId: organization.id,
-      brandOrgId: brand.id,
+      manufacturerOrgId,
+      brandOrgId: brandOrgIdForRelationship,
       customerCode: normalizedCode,
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
       managerPhone: resolveOptionalString(sharedOrganizationData.phone, null),
       managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
       memo: resolveOptionalString(memo, null),
     },
-    include: { brand: true },
+    include: { brand: true, manufacturer: true },
   });
 
-  res.status(201).json(toCustomerResponse(relationship));
+  res.status(201).json(toCustomerResponse(relationship, perspective));
 });
 
 app.put("/customers/:id", async (req, res) => {
@@ -9202,16 +9238,20 @@ app.put("/customers/:id", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  if (!isManufacturerOrg(organization)) {
+  const perspective = resolveCustomerPerspective(organization);
+  if (!perspective) {
     return res.status(400).json({
       ok: false,
-      error: "only manufacturer organizations can manage customers",
+      error: "invalid organization type",
     });
   }
 
+  const isManufacturerPerspective = perspective === "MANUFACTURER";
   const existing = await prisma.orgRelationship.findFirst({
-    where: { id, manufacturerOrgId: organization.id },
-    include: { brand: true },
+    where: isManufacturerPerspective
+      ? { id, manufacturerOrgId: organization.id }
+      : { id, brandOrgId: organization.id },
+    include: { brand: true, manufacturer: true },
   });
 
   if (!existing) {
@@ -9219,7 +9259,13 @@ app.put("/customers/:id", async (req, res) => {
   }
 
   const { name, code, memo } = req.body ?? {};
-  const nextBrandData = buildSharedCustomerOrganizationData(req.body ?? {}, existing.brand);
+  const targetOrganization = isManufacturerPerspective
+    ? existing.brand
+    : existing.manufacturer;
+  const targetOrganizationId = isManufacturerPerspective
+    ? existing.brandOrgId
+    : existing.manufacturerOrgId;
+  const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
   const normalizedCode =
     code !== undefined ? normalizeOrgCode(code) : undefined;
 
@@ -9240,7 +9286,7 @@ app.put("/customers/:id", async (req, res) => {
     const existingCodeOwner = await prisma.organization.findFirst({
       where: {
         code: normalizedCode,
-        NOT: { id: existing.brandOrgId },
+        NOT: { id: targetOrganizationId },
       },
     });
     if (existingCodeOwner) {
@@ -9249,24 +9295,25 @@ app.put("/customers/:id", async (req, res) => {
   }
 
   await prisma.organization.update({
-    where: { id: existing.brandOrgId },
+    where: { id: targetOrganizationId },
     data: {
-      name: nextBrandData.name ?? existing.brand?.name ?? "",
+      name: nextTargetData.name ?? targetOrganization?.name ?? "",
       ...(normalizedCode ? { code: normalizedCode } : {}),
-      address: nextBrandData.address,
-      countryCode: nextBrandData.countryCode,
-      phone: nextBrandData.phone,
-      representative: nextBrandData.representative,
-      email: nextBrandData.email,
-      targetMonthlyWage: nextBrandData.targetMonthlyWage,
-      wagePerSecond: nextBrandData.wagePerSecond,
+      address: nextTargetData.address,
+      country: nextTargetData.country,
+      countryCode: nextTargetData.countryCode,
+      phone: nextTargetData.phone,
+      representative: nextTargetData.representative,
+      email: nextTargetData.email,
+      targetMonthlyWage: nextTargetData.targetMonthlyWage,
+      wagePerSecond: nextTargetData.wagePerSecond,
     },
   });
 
   const relationshipUpdateData: any = {
-    managerName: resolveOptionalString(nextBrandData.representative, existing.managerName),
-    managerPhone: resolveOptionalString(nextBrandData.phone, existing.managerPhone),
-    managerEmail: resolveOptionalString(nextBrandData.email, existing.managerEmail),
+    managerName: resolveOptionalString(nextTargetData.representative, existing.managerName),
+    managerPhone: resolveOptionalString(nextTargetData.phone, existing.managerPhone),
+    managerEmail: resolveOptionalString(nextTargetData.email, existing.managerEmail),
     memo: resolveOptionalString(memo, existing.memo),
     ...(code !== undefined ? { customerCode: normalizedCode } : {}),
   };
@@ -9277,10 +9324,10 @@ app.put("/customers/:id", async (req, res) => {
 
   const refreshed = await prisma.orgRelationship.findUnique({
     where: { id: existing.id },
-    include: { brand: true },
+    include: { brand: true, manufacturer: true },
   });
 
-  res.json(toCustomerResponse(refreshed));
+  res.json(toCustomerResponse(refreshed, perspective));
 });
 
 app.delete("/customers/:id", async (req, res) => {
@@ -9297,15 +9344,19 @@ app.delete("/customers/:id", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  if (!isManufacturerOrg(organization)) {
+  const perspective = resolveCustomerPerspective(organization);
+  if (!perspective) {
     return res.status(400).json({
       ok: false,
-      error: "only manufacturer organizations can manage customers",
+      error: "invalid organization type",
     });
   }
 
+  const isManufacturerPerspective = perspective === "MANUFACTURER";
   const existing = await prisma.orgRelationship.findFirst({
-    where: { id, manufacturerOrgId: organization.id },
+    where: isManufacturerPerspective
+      ? { id, manufacturerOrgId: organization.id }
+      : { id, brandOrgId: organization.id },
     select: { id: true },
   });
   if (!existing) {

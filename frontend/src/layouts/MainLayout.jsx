@@ -502,6 +502,30 @@ const MainLayout = () => {
     },
     [flattenedMenuItems, languageCode]
   );
+  const resolveRenderedTabLabel = React.useCallback(
+    (tab) => {
+      const tabPath = toPathname(tab?.id || tab?.path || '');
+      if (!tabPath) return tab?.label || '';
+
+      const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
+      if (exactMenuItem?.label) return exactMenuItem.label;
+
+      if (tabPath === '/profile') {
+        return getUiMessage('menu.profile', '개인 정보', languageCode);
+      }
+
+      if (tabPath === '/work-history/new') {
+        return getUiMessage('menu.workHistory', '기록', languageCode);
+      }
+
+      if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
+        return getUiMessage('menu.workHistory', '기록', languageCode);
+      }
+
+      return tab?.label || '';
+    },
+    [flattenedMenuItems, languageCode]
+  );
   const tabsForRender = useMemo(() => {
     if (
       pendingNavigationPathRef.current &&
@@ -810,7 +834,9 @@ const MainLayout = () => {
     // User clicks a tab: make URL the only source of truth.
     const selectedTab = tabsForRender.find((tab) => tab.id === newValue);
     // Pass the existing label so tabs with custom labels (e.g. style detail) are not reset.
-    handleNavigation(selectedTab?.path || newValue, { label: selectedTab?.label });
+    handleNavigation(selectedTab?.path || newValue, {
+      label: selectedTab ? resolveRenderedTabLabel(selectedTab) : selectedTab?.label,
+    });
   };
 
   const handleCloseTab = (e, tabIdToClose) => {
@@ -1173,7 +1199,7 @@ const MainLayout = () => {
                   }}
                   label={
                     <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
-                      {tab.label}
+                      {resolveRenderedTabLabel(tab)}
                       {isTabLoading && (
                         <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
                           <CircularProgress size={13} thickness={5} color="inherit" />

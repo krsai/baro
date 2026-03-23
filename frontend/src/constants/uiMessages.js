@@ -370,6 +370,73 @@ export const UI_MESSAGES = {
       vi: 'Xoa style that bai.',
     },
   },
+  customerBoard: {
+    title: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
+    searchPlaceholder: {
+      ko: '고객명, 코드, 담당자 또는 주소 검색...',
+      en: 'Search customer name, code, manager, or address...',
+      vi: 'Tim ten khach, ma, nguoi phu trach hoac dia chi...',
+    },
+    addCustomer: { ko: '고객 추가', en: 'Add Customer', vi: 'Them khach hang' },
+    code: { ko: '고객 코드', en: 'Customer Code', vi: 'Ma khach hang' },
+    name: { ko: '고객명', en: 'Customer Name', vi: 'Ten khach hang' },
+    country: { ko: '국가', en: 'Country', vi: 'Quoc gia' },
+    address: { ko: '주소', en: 'Address', vi: 'Dia chi' },
+    manager: { ko: '담당자', en: 'Manager', vi: 'Nguoi phu trach' },
+    contact: { ko: '연락처', en: 'Contact', vi: 'Lien he' },
+    email: { ko: '이메일', en: 'Email', vi: 'Email' },
+    registeredAt: { ko: '등록일', en: 'Registered', vi: 'Ngay dang ky' },
+    loadingMessage: {
+      ko: '고객 목록을 불러오는 중입니다.',
+      en: 'Loading customers...',
+      vi: 'Dang tai danh sach khach hang...',
+    },
+    emptyMessage: {
+      ko: '등록된 고객이 없습니다.',
+      en: 'No customers found.',
+      vi: 'Chua co khach hang nao.',
+    },
+    createTitle: { ko: '고객 등록', en: 'Add Customer', vi: 'Tao khach hang' },
+    editTitle: { ko: '고객 정보 수정', en: 'Edit Customer', vi: 'Sua khach hang' },
+    drawerDescription: {
+      ko: '고객 기본 정보를 입력합니다.',
+      en: 'Enter the customer basic information.',
+      vi: 'Nhap thong tin co ban cua khach hang.',
+    },
+    countryCode: { ko: '국가번호', en: 'Country Code', vi: 'Ma quoc gia' },
+    phoneNumber: { ko: '전화번호', en: 'Phone Number', vi: 'So dien thoai' },
+    saveInProgress: { ko: '저장 중...', en: 'Saving...', vi: 'Dang luu...' },
+    fetchError: {
+      ko: '고객 목록을 불러오지 못했습니다.',
+      en: 'Failed to load customer list.',
+      vi: 'Khong the tai danh sach khach hang.',
+    },
+    saveError: {
+      ko: '고객 저장 중 오류가 발생했습니다.',
+      en: 'An error occurred while saving customer information.',
+      vi: 'Co loi khi luu khach hang.',
+    },
+    createSuccess: {
+      ko: '고객을 등록했습니다.',
+      en: 'Customer has been created.',
+      vi: 'Da tao khach hang.',
+    },
+    updateSuccess: {
+      ko: '고객 정보를 수정했습니다.',
+      en: 'Customer information has been updated.',
+      vi: 'Da cap nhat thong tin khach hang.',
+    },
+    codeRequired: {
+      ko: '고객 코드를 입력해 주세요.',
+      en: 'Please enter a customer code.',
+      vi: 'Vui long nhap ma khach hang.',
+    },
+    nameRequired: {
+      ko: '고객명을 입력해 주세요.',
+      en: 'Please enter a customer name.',
+      vi: 'Vui long nhap ten khach hang.',
+    },
+  },
 };
 
 const resolveMessageNode = (key) => {

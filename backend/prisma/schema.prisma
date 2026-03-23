@@ -89,6 +89,7 @@ model Organization {
   representative String?
   industry       String?
   address        String?
+  country        String?
   countryCode    String?
   phone          String?
   email          String?

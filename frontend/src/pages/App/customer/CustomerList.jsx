@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -6,6 +6,7 @@ import {
   Divider,
   Drawer,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -24,35 +25,76 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
+import { getUiMessage } from '../../../constants/uiMessages';
+import { getStaticOptionLabel, getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
-const DEFAULT_COUNTRY_CODE = '+84';
+const COUNTRY_CODE_BY_COUNTRY = {
+  KR: '+82',
+  VN: '+84',
+};
 
-const formatDate = (value) => {
+const DEFAULT_COUNTRY = 'VN';
+const DEFAULT_COUNTRY_CODE = COUNTRY_CODE_BY_COUNTRY[DEFAULT_COUNTRY];
+
+const normalizeCountry = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'KR' || normalized === 'VN' ? normalized : '';
+};
+
+const inferCountryFromCountryCode = (value) => {
+  const normalizedCode = String(value || '').trim();
+  if (normalizedCode === COUNTRY_CODE_BY_COUNTRY.KR) return 'KR';
+  if (normalizedCode === COUNTRY_CODE_BY_COUNTRY.VN) return 'VN';
+  return '';
+};
+
+const resolveDefaultCountryCode = (country) =>
+  COUNTRY_CODE_BY_COUNTRY[normalizeCountry(country)] || DEFAULT_COUNTRY_CODE;
+
+const resolveCountryForForm = (customer) => {
+  const fromPayload = normalizeCountry(customer?.country);
+  if (fromPayload) return fromPayload;
+  const fromCode = inferCountryFromCountryCode(customer?.countryCode);
+  if (fromCode) return fromCode;
+  return DEFAULT_COUNTRY;
+};
+
+const formatDate = (value, languageCode) => {
   if (!value) return '-';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return '-';
+  const locale = languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
+  return date.toLocaleDateString(locale);
 };
 
 const combinePhone = (countryCode, phoneNumber) =>
   [String(countryCode || '').trim(), String(phoneNumber || '').trim()].filter(Boolean).join(' ');
 
-const buildFormData = (customer) => ({
-  code: customer?.code ?? '',
-  name: customer?.name ?? '',
-  address: customer?.address ?? '',
-  countryCode: customer?.countryCode ?? DEFAULT_COUNTRY_CODE,
-  phoneNumber: customer?.phoneNumber ?? customer?.phone ?? '',
-  manager: customer?.manager ?? '',
-  email: customer?.email ?? '',
-});
+const buildFormData = (customer) => {
+  const country = resolveCountryForForm(customer);
+  const countryCode =
+    String(customer?.countryCode || '').trim() || resolveDefaultCountryCode(country);
+  return {
+    code: customer?.code ?? '',
+    name: customer?.name ?? '',
+    country,
+    address: customer?.address ?? '',
+    countryCode,
+    phoneNumber: customer?.phoneNumber ?? customer?.phone ?? '',
+    manager: customer?.manager ?? '',
+    email: customer?.email ?? '',
+  };
+};
 
 const CustomerList = () => {
   const { showNotification } = useApp();
-  const { activeOrgId, activeOrgType } = useAuth();
+  const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
 
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,27 +104,97 @@ const CustomerList = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isReadOnly = activeOrgType !== 'MANUFACTURER';
-  const customerQuery = useMemo(
-    () => buildQueryString({ orgId: activeOrgId }),
-    [activeOrgId]
+  const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
+  const countryOptions = useMemo(
+    () => getStaticOptionOptions('country', languageCode),
+    [languageCode]
+  );
+  const countryOptionByCode = useMemo(
+    () => new Map(countryOptions.map((option) => [String(option?.value || ''), option])),
+    [countryOptions]
+  );
+  const customerText = useMemo(
+    () => ({
+      title: getUiMessage('customerBoard.title', 'Customer', languageCode),
+      searchPlaceholder: getUiMessage(
+        'customerBoard.searchPlaceholder',
+        'Search customer name, code, manager, or address...',
+        languageCode
+      ),
+      addCustomer: getUiMessage('customerBoard.addCustomer', 'Add Customer', languageCode),
+      code: getUiMessage('customerBoard.code', 'Customer Code', languageCode),
+      name: getUiMessage('customerBoard.name', 'Customer Name', languageCode),
+      country: getUiMessage('customerBoard.country', 'Country', languageCode),
+      address: getUiMessage('customerBoard.address', 'Address', languageCode),
+      manager: getUiMessage('customerBoard.manager', 'Manager', languageCode),
+      contact: getUiMessage('customerBoard.contact', 'Contact', languageCode),
+      email: getUiMessage('customerBoard.email', 'Email', languageCode),
+      registeredAt: getUiMessage('customerBoard.registeredAt', 'Registered', languageCode),
+      loadingMessage: getUiMessage('customerBoard.loadingMessage', 'Loading customers...', languageCode),
+      emptyMessage: getUiMessage('customerBoard.emptyMessage', 'No customers found.', languageCode),
+      createTitle: getUiMessage('customerBoard.createTitle', 'Add Customer', languageCode),
+      editTitle: getUiMessage('customerBoard.editTitle', 'Edit Customer', languageCode),
+      drawerDescription: getUiMessage(
+        'customerBoard.drawerDescription',
+        'Enter the customer basic information.',
+        languageCode
+      ),
+      countryCode: getUiMessage('customerBoard.countryCode', 'Country Code', languageCode),
+      phoneNumber: getUiMessage('customerBoard.phoneNumber', 'Phone Number', languageCode),
+      saveInProgress: getUiMessage('customerBoard.saveInProgress', 'Saving...', languageCode),
+      fetchError: getUiMessage(
+        'customerBoard.fetchError',
+        'Failed to load customer list.',
+        languageCode
+      ),
+      saveError: getUiMessage(
+        'customerBoard.saveError',
+        'An error occurred while saving customer information.',
+        languageCode
+      ),
+      createSuccess: getUiMessage(
+        'customerBoard.createSuccess',
+        'Customer has been created.',
+        languageCode
+      ),
+      updateSuccess: getUiMessage(
+        'customerBoard.updateSuccess',
+        'Customer information has been updated.',
+        languageCode
+      ),
+      codeRequired: getUiMessage(
+        'customerBoard.codeRequired',
+        'Please enter a customer code.',
+        languageCode
+      ),
+      nameRequired: getUiMessage(
+        'customerBoard.nameRequired',
+        'Please enter a customer name.',
+        languageCode
+      ),
+    }),
+    [languageCode]
   );
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
+    if (!activeOrgId) {
+      setCustomers([]);
+      return;
+    }
     setLoading(true);
     try {
       const data = await requestJSON(`/customers${customerQuery}`);
       setCustomers(Array.isArray(data) ? data : []);
     } catch (error) {
-      showNotification(error?.message || '고객 목록을 불러오지 못했습니다.', 'error');
+      showNotification(error?.message || customerText.fetchError, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeOrgId, customerQuery, customerText.fetchError, showNotification]);
 
   useEffect(() => {
     fetchCustomers();
-  }, [customerQuery]);
+  }, [fetchCustomers]);
 
   const filteredCustomers = useMemo(() => {
     if (!searchTerm) return customers;
@@ -94,6 +206,7 @@ const CustomerList = () => {
         customer?.manager,
         customer?.address,
         customer?.email,
+        customer?.country,
       ]
         .filter(Boolean)
         .join(' ')
@@ -103,10 +216,6 @@ const CustomerList = () => {
   }, [customers, searchTerm]);
 
   const handleAdd = () => {
-    if (isReadOnly) {
-      showNotification('현재 조직에서는 고객 정보를 수정할 수 없습니다.', 'info');
-      return;
-    }
     setEditingCustomer(null);
     setFormData(buildFormData());
     setDrawerOpen(true);
@@ -129,17 +238,27 @@ const CustomerList = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleCountryChange = (event) => {
+    const nextCountry = normalizeCountry(event.target.value) || DEFAULT_COUNTRY;
+    setFormData((prev) => ({
+      ...prev,
+      country: nextCountry,
+      // Auto-align to selected country, but users can still edit this field manually afterward.
+      countryCode: resolveDefaultCountryCode(nextCountry),
+    }));
+  };
+
   const handleSave = async () => {
-    if (saving || isReadOnly) return;
+    if (saving) return;
 
     const code = String(formData.code || '').trim().toUpperCase();
     const name = String(formData.name || '').trim();
     if (!code) {
-      showNotification('고객 코드를 입력해 주세요.', 'error');
+      showNotification(customerText.codeRequired, 'error');
       return;
     }
     if (!name) {
-      showNotification('고객명을 입력해 주세요.', 'error');
+      showNotification(customerText.nameRequired, 'error');
       return;
     }
 
@@ -147,6 +266,7 @@ const CustomerList = () => {
     const payload = {
       code,
       name,
+      country: normalizeCountry(formData.country) || null,
       address: String(formData.address || '').trim(),
       countryCode: String(formData.countryCode || '').trim(),
       phoneNumber: String(formData.phoneNumber || '').trim(),
@@ -173,62 +293,58 @@ const CustomerList = () => {
         setCustomers((prev) => [...prev, data]);
       }
 
-      showNotification(isEdit ? '고객 정보가 수정되었습니다.' : '고객이 등록되었습니다.', 'success');
+      showNotification(isEdit ? customerText.updateSuccess : customerText.createSuccess, 'success');
       handleCloseDrawer();
     } catch (error) {
-      showNotification(error?.message || '고객 저장 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || customerText.saveError, 'error');
     } finally {
       setSaving(false);
     }
   };
 
   const isEditing = Boolean(editingCustomer?.id);
-  const drawerTitle = isEditing ? '고객 정보 수정' : '고객 등록';
+  const drawerTitle = isEditing ? customerText.editTitle : customerText.createTitle;
 
   return (
     <AppPageContainer
-      title="고객"
-      toolbar={(
+      title={customerText.title}
+      toolbar={
         <PageToolbar
-          left={(
+          left={
             <SearchInput
-              placeholder="고객명, 코드, 담당자 또는 주소 검색..."
+              placeholder={customerText.searchPlaceholder}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
-          )}
-          right={(
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAdd}
-              disabled={isReadOnly}
-            >
-              고객 추가
+          }
+          right={
+            <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+              {customerText.addCustomer}
             </Button>
-          )}
+          }
         />
-      )}
+      }
     >
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>고객 코드</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>고객명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>담당자</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>이메일</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>등록일</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.code}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.name}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.country}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.manager}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.contact}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.email}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.registeredAt}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableStatusRow colSpan={6} message="불러오는 중..." sx={{ py: 2 }} />
+                <TableStatusRow colSpan={7} message={customerText.loadingMessage} sx={{ py: 2 }} />
               )}
               {!loading && filteredCustomers.length === 0 && (
-                <TableStatusRow colSpan={6} message="등록된 고객이 없습니다." sx={{ py: 2 }} />
+                <TableStatusRow colSpan={7} message={customerText.emptyMessage} sx={{ py: 2 }} />
               )}
               {filteredCustomers.map((customer) => (
                 <TableRow
@@ -239,14 +355,20 @@ const CustomerList = () => {
                 >
                   <TableCell>{customer.code || '-'}</TableCell>
                   <TableCell>{customer.name || '-'}</TableCell>
+                  <TableCell>
+                    {getStaticOptionLabel(
+                      'country',
+                      customer?.country,
+                      customer?.country || '-',
+                      languageCode
+                    )}
+                  </TableCell>
                   <TableCell>{customer.manager || '-'}</TableCell>
                   <TableCell>
-                    {customer.phone ||
-                      combinePhone(customer.countryCode, customer.phoneNumber) ||
-                      '-'}
+                    {customer.phone || combinePhone(customer.countryCode, customer.phoneNumber) || '-'}
                   </TableCell>
                   <TableCell>{customer.email || '-'}</TableCell>
-                  <TableCell>{formatDate(customer.registeredAt)}</TableCell>
+                  <TableCell>{formatDate(customer.registeredAt, languageCode)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -280,10 +402,14 @@ const CustomerList = () => {
                 {drawerTitle}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                고객 기본 정보를 입력합니다.
+                {customerText.drawerDescription}
               </Typography>
             </Box>
-            <IconButton onClick={handleCloseDrawer} disabled={saving} aria-label="닫기">
+            <IconButton
+              onClick={handleCloseDrawer}
+              disabled={saving}
+              aria-label={getUiMessage('common.close', 'Close', languageCode)}
+            >
               <CloseRoundedIcon />
             </IconButton>
           </Stack>
@@ -294,89 +420,102 @@ const CustomerList = () => {
             <TextField
               fullWidth
               required
-              label="고객 코드"
+              label={customerText.code}
               name="code"
               value={formData.code}
               onChange={handleInputChange}
-              disabled={saving || isReadOnly}
+              disabled={saving}
             />
             <TextField
               fullWidth
               required
-              label="고객명"
+              label={customerText.name}
               name="name"
               value={formData.name}
               onChange={handleInputChange}
-              disabled={saving || isReadOnly}
+              disabled={saving}
             />
             <TextField
               fullWidth
-              label="주소"
+              select
+              label={customerText.country}
+              name="country"
+              value={normalizeCountry(formData.country) || DEFAULT_COUNTRY}
+              onChange={handleCountryChange}
+              disabled={saving}
+            >
+              {countryOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+              {!countryOptionByCode.has(formData.country) && normalizeCountry(formData.country) ? (
+                <MenuItem value={formData.country}>{formData.country}</MenuItem>
+              ) : null}
+            </TextField>
+            <TextField
+              fullWidth
+              label={customerText.address}
               name="address"
               value={formData.address}
               onChange={handleInputChange}
-              disabled={saving || isReadOnly}
+              disabled={saving}
             />
             <TextField
               fullWidth
-              label="담당자"
+              label={customerText.manager}
               name="manager"
               value={formData.manager}
               onChange={handleInputChange}
-              disabled={saving || isReadOnly}
+              disabled={saving}
             />
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 fullWidth
-                label="국가번호"
+                label={customerText.countryCode}
                 name="countryCode"
                 value={formData.countryCode}
                 onChange={handleInputChange}
-                disabled={saving || isReadOnly}
+                disabled={saving}
               />
               <TextField
                 fullWidth
-                label="전화번호"
+                label={customerText.phoneNumber}
                 name="phoneNumber"
                 value={formData.phoneNumber}
                 onChange={handleInputChange}
-                disabled={saving || isReadOnly}
+                disabled={saving}
               />
             </Stack>
 
             <TextField
               fullWidth
-              label="이메일"
+              label={customerText.email}
               name="email"
               type="email"
               value={formData.email}
               onChange={handleInputChange}
-              disabled={saving || isReadOnly}
+              disabled={saving}
             />
           </Stack>
 
           <Box sx={{ mt: 'auto', pt: 3 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
+              <Button fullWidth variant="outlined" onClick={handleCloseDrawer} disabled={saving}>
+                {getUiMessage('common.close', 'Close', languageCode)}
+              </Button>
               <Button
                 fullWidth
-                variant="outlined"
-                onClick={handleCloseDrawer}
+                variant="contained"
+                onClick={handleSave}
                 disabled={saving}
+                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
               >
-                닫기
+                {saving
+                  ? customerText.saveInProgress
+                  : getUiMessage('common.save', 'Save', languageCode)}
               </Button>
-              {!isReadOnly ? (
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleSave}
-                  disabled={saving}
-                  startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-                >
-                  {saving ? '저장 중...' : '저장'}
-                </Button>
-              ) : null}
             </Stack>
           </Box>
         </Box>
