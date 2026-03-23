@@ -684,15 +684,27 @@ const MainLayout = () => {
   useEffect(() => {
     openTabs.forEach((tab) => {
       const matchedMenu = flattenedMenuItems.find((item) => item.path === tab.id);
-      if (!matchedMenu) return;
-      if (tab.label === matchedMenu.label) return;
+      const nextLabel = matchedMenu?.label || (() => {
+        if (tab.id === '/profile') {
+          return getUiMessage('menu.profile', '개인 정보', languageCode);
+        }
+        if (tab.id === '/work-history/new') {
+          return getUiMessage('menu.workHistory', '기록', languageCode);
+        }
+        if (tab.id.startsWith('/work-history/') && tab.id !== '/work-history') {
+          return getUiMessage('menu.workHistory', '기록', languageCode);
+        }
+        return '';
+      })();
+      if (!nextLabel) return;
+      if (tab.label === nextLabel) return;
       openTab({
         ...tab,
-        label: matchedMenu.label,
+        label: nextLabel,
         path: tab.path || tab.id,
       });
     });
-  }, [flattenedMenuItems, openTab, openTabs]);
+  }, [flattenedMenuItems, languageCode, openTab, openTabs]);
 
   useEffect(() => {
     if (

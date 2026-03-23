@@ -204,9 +204,9 @@ const addMonths = (value, amount) => {
   date.setMonth(date.getMonth() + amount);
   return getMonthStart(date);
 };
-const buildOrderTabLabel = (order) => {
+const buildOrderTabLabel = (order, baseLabel = 'Order') => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
-  return orderNumber ? `주문: ${orderNumber}` : '주문';
+  return orderNumber ? `${baseLabel}: ${orderNumber}` : baseLabel;
 };
 const ORDER_MODIFICATION_LOCK_MESSAGE =
   '잠긴 주문은 수정하거나 삭제할 수 없습니다.';
@@ -465,28 +465,39 @@ const hasDuplicateOrderNumberByCustomer = ({
     return targetBuyerName === orderBuyerName && targetSellerName === orderSellerName;
   });
 };
-const resolveOrderSaveErrorMessage = (error) => {
+const resolveOrderSaveErrorMessage = (error, options = {}) => {
+  const {
+    modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
+    manufacturerCannotConfirmMessage = '공장은 주문을 확정할 수 없습니다.',
+    duplicateOrderNumberMessage = '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.',
+    fallbackMessage = '주문 저장 중 오류가 발생했습니다.',
+  } = options;
   const message = String(error?.message || '').trim();
   if (message.includes('order modification is locked')) {
-    return ORDER_MODIFICATION_LOCK_MESSAGE;
+    return modificationLockedMessage;
   }
   if (message.includes('manufacturer cannot change confirmation status')) {
-    return '공장은 주문을 확정할 수 없습니다.';
+    return manufacturerCannotConfirmMessage;
   }
   if (message === 'order number already exists for this customer') {
-    return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
+    return duplicateOrderNumberMessage;
   }
-  return message || '주문 저장 중 오류가 발생했습니다.';
+  return message || fallbackMessage;
 };
-const resolveOrderModificationLockToggleErrorMessage = (error) => {
+const resolveOrderModificationLockToggleErrorMessage = (error, options = {}) => {
+  const {
+    lockChangeNotAllowedMessage = '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+    modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
+    fallbackMessage = '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
+  } = options;
   const message = String(error?.message || '').trim();
   if (message.includes('order modification lock cannot be changed')) {
-    return '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.';
+    return lockChangeNotAllowedMessage;
   }
   if (message.includes('order modification is locked')) {
-    return ORDER_MODIFICATION_LOCK_MESSAGE;
+    return modificationLockedMessage;
   }
-  return message || '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.';
+  return message || fallbackMessage;
 };
 const formatOrderLockTimestamp = (value) => {
   if (!value) return '';
@@ -742,10 +753,16 @@ const getStyleDisplayNames = (items = []) => {
   return names;
 };
 
-const formatStyleSummary = (items = []) => {
+const formatStyleSummary = (items = [], languageCode = 'ko') => {
   const names = getStyleDisplayNames(items);
   if (names.length === 0) return '-';
   if (names.length === 1) return names[0];
+  if (languageCode === 'vi') {
+    return `${names[0]} + ${names.length - 1} style`;
+  }
+  if (languageCode === 'en') {
+    return `${names[0]} + ${names.length - 1} styles`;
+  }
   return `${names[0]} 외 ${names.length - 1}개`;
 };
 
@@ -760,6 +777,12 @@ const OrderList = () => {
   const orderPageText = useMemo(
     () => ({
       listTitle: getUiMessage('menu.order', 'Orders', languageCode),
+      newOrderTab:
+        languageCode === 'vi'
+          ? 'Don hang moi'
+          : languageCode === 'en'
+            ? 'New Order'
+            : '신규 주문',
       addOrder:
         languageCode === 'vi'
           ? 'Them don hang'
@@ -772,6 +795,60 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Delete Order'
             : '주문 삭제',
+      previousMonth:
+        languageCode === 'vi'
+          ? 'Thang truoc'
+          : languageCode === 'en'
+            ? 'Previous month'
+            : '이전 달',
+      nextMonth:
+        languageCode === 'vi'
+          ? 'Thang sau'
+          : languageCode === 'en'
+            ? 'Next month'
+            : '다음 달',
+      orderNumber:
+        languageCode === 'vi'
+          ? 'So don'
+          : languageCode === 'en'
+            ? 'Order No.'
+            : '주문번호',
+      styleColumn:
+        languageCode === 'vi'
+          ? 'Style'
+          : languageCode === 'en'
+            ? 'Style'
+            : '스타일',
+      totalQuantity:
+        languageCode === 'vi'
+          ? 'Tong so luong'
+          : languageCode === 'en'
+            ? 'Total Qty'
+            : '합계 수량',
+      dueDate:
+        languageCode === 'vi'
+          ? 'Han giao'
+          : languageCode === 'en'
+            ? 'Due Date'
+            : '납기일',
+      actions:
+        languageCode === 'vi'
+          ? 'Quan ly'
+          : languageCode === 'en'
+            ? 'Actions'
+            : '관리',
+      loadingOrders:
+        languageCode === 'vi'
+          ? 'Dang tai danh sach don hang...'
+          : languageCode === 'en'
+            ? 'Loading orders...'
+            : '주문 목록을 불러오는 중입니다.',
+      emptyOrders:
+        languageCode === 'vi'
+          ? 'Khong co don hang phu hop bo loc hien tai.'
+          : languageCode === 'en'
+            ? 'No orders match the current filters.'
+            : '조건에 맞는 주문이 없습니다.',
       styleSection:
         languageCode === 'vi'
           ? 'Cau hinh style'
@@ -785,6 +862,336 @@ const OrderList = () => {
             ? 'Register Style'
             : '스타일 등록',
       styleAdd: getUiMessage('styleBoard.addStyle', 'Add Style', languageCode),
+      detailStyleNameCode:
+        languageCode === 'vi'
+          ? 'Chon ten/ma style'
+          : languageCode === 'en'
+            ? 'Select Style Name/Code'
+            : '스타일명/코드 선택',
+      detailStyleCode:
+        languageCode === 'vi'
+          ? 'Ma style'
+          : languageCode === 'en'
+            ? 'Style Code'
+            : '스타일 코드',
+      detailStyleCodeAuto:
+        languageCode === 'vi'
+          ? 'Ma style (Tu dong)'
+          : languageCode === 'en'
+            ? 'Style Code (Auto)'
+            : '스타일 코드 (자동입력)',
+      autoInput:
+        languageCode === 'vi'
+          ? 'Tu dong'
+          : languageCode === 'en'
+            ? 'Auto-filled'
+            : '자동 입력',
+      color:
+        languageCode === 'vi'
+          ? 'Mau'
+          : languageCode === 'en'
+            ? 'Color'
+            : '색상',
+      gender:
+        languageCode === 'vi'
+          ? 'Gioi tinh'
+          : languageCode === 'en'
+            ? 'Gender'
+            : '성별',
+      total:
+        languageCode === 'vi'
+          ? 'Tong'
+          : languageCode === 'en'
+            ? 'Total'
+            : '합계',
+      styleSearchPlaceholder:
+        languageCode === 'vi'
+          ? 'Tim ten style'
+          : languageCode === 'en'
+            ? 'Search style name'
+            : '스타일명 검색',
+      noRegisteredStyles:
+        languageCode === 'vi'
+          ? 'Chua co style nao.'
+          : languageCode === 'en'
+            ? 'No registered styles.'
+            : '등록된 스타일이 없습니다.',
+      colorCreateHint:
+        languageCode === 'vi'
+          ? 'Ban co the them mau moi voi ten da nhap.'
+          : languageCode === 'en'
+            ? 'You can add a new color with this name.'
+            : '입력한 이름으로 새 색상을 추가할 수 있습니다.',
+      noRegisteredColors:
+        languageCode === 'vi'
+          ? 'Khong tim thay mau da dang ky.'
+          : languageCode === 'en'
+            ? 'No registered colors found.'
+            : '등록된 색상을 찾을 수 없습니다.',
+      colorSearchOrCreate:
+        languageCode === 'vi'
+          ? 'Tim hoac them mau'
+          : languageCode === 'en'
+            ? 'Search or add color'
+            : '색상 검색 또는 추가',
+      colorSearch:
+        languageCode === 'vi'
+          ? 'Tim mau'
+          : languageCode === 'en'
+            ? 'Search color'
+            : '색상 검색',
+      noSelectableGender:
+        languageCode === 'vi'
+          ? 'Khong co gioi tinh co the chon.'
+          : languageCode === 'en'
+            ? 'No selectable gender.'
+            : '선택 가능한 성별이 없습니다.',
+      selectGender:
+        languageCode === 'vi'
+          ? 'Chon gioi tinh'
+          : languageCode === 'en'
+            ? 'Select gender'
+            : '성별 선택',
+      orderTotalQuantity:
+        languageCode === 'vi'
+          ? 'Tong so luong don'
+          : languageCode === 'en'
+            ? 'Order Total Qty'
+            : '주문 합계 수량',
+      addNewColorPrefix:
+        languageCode === 'vi'
+          ? 'Them mau moi:'
+          : languageCode === 'en'
+            ? 'Add new color:'
+            : '새 색상 추가:',
+      newStyleTab:
+        languageCode === 'vi'
+          ? 'Style moi'
+          : languageCode === 'en'
+            ? 'New Style'
+            : '신규 스타일',
+      manager:
+        languageCode === 'vi'
+          ? 'Quan ly'
+          : languageCode === 'en'
+            ? 'Manager'
+            : '관리자',
+      stylesLoadError:
+        languageCode === 'vi'
+          ? 'Khong the tai danh sach style.'
+          : languageCode === 'en'
+            ? 'Failed to load styles.'
+            : '스타일 목록을 불러오지 못했습니다.',
+      ordersLoadError:
+        languageCode === 'vi'
+          ? 'Khong the tai danh sach don hang.'
+          : languageCode === 'en'
+            ? 'Failed to load orders.'
+            : '주문 목록을 불러오지 못했습니다.',
+      partiesLoadError:
+        languageCode === 'vi'
+          ? 'Khong the tai thong tin doi tac don hang.'
+          : languageCode === 'en'
+            ? 'Failed to load order partner information.'
+            : '주문 파트너 정보를 불러오지 못했습니다.',
+      draftLoaded:
+        languageCode === 'vi'
+          ? 'Da tai don hang tam da luu.'
+          : languageCode === 'en'
+            ? 'Loaded the saved order draft.'
+            : '임시 저장한 주문을 불러왔습니다.',
+      orderNotFound:
+        languageCode === 'vi'
+          ? 'Khong tim thay thong tin don hang.'
+          : languageCode === 'en'
+            ? 'Order information was not found.'
+            : '주문 정보를 찾을 수 없습니다.',
+      lockSaveFirstWarning:
+        languageCode === 'vi'
+          ? 'Hay luu thay doi truoc khi khoa don hang.'
+          : languageCode === 'en'
+            ? 'Save your changes before locking the order.'
+            : '변경사항을 먼저 저장한 뒤 잠가 주세요.',
+      lockChangeNotAllowed:
+        languageCode === 'vi'
+          ? 'Khong the doi trang thai khoa o day voi don da xac nhan hoac da co hop dong phan cong.'
+          : languageCode === 'en'
+            ? 'You cannot change lock status here for confirmed orders or orders with assignment contracts.'
+            : '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+      lockEnabledSuccess:
+        languageCode === 'vi'
+          ? 'Da khoa sua don hang.'
+          : languageCode === 'en'
+            ? 'Order edit lock enabled.'
+            : '주문 수정이 잠겼습니다.',
+      lockDisabledSuccess:
+        languageCode === 'vi'
+          ? 'Da mo khoa sua don hang.'
+          : languageCode === 'en'
+            ? 'Order edit lock disabled.'
+            : '주문 수정 잠금이 해제되었습니다.',
+      deleteTargetOrder:
+        languageCode === 'vi'
+          ? 'Don'
+          : languageCode === 'en'
+            ? 'Order'
+            : '주문',
+      deleteTargetFallback:
+        languageCode === 'vi'
+          ? 'Don da chon'
+          : languageCode === 'en'
+            ? 'this order'
+            : '해당 주문',
+      deleteConfirm:
+        languageCode === 'vi'
+          ? 'Ban co muon xoa khong?'
+          : languageCode === 'en'
+            ? 'Do you want to delete it?'
+            : '삭제하시겠습니까?',
+      deleteSuccess:
+        languageCode === 'vi'
+          ? 'Da xoa don hang.'
+          : languageCode === 'en'
+            ? 'Order deleted.'
+            : '주문이 삭제되었습니다.',
+      deleteError:
+        languageCode === 'vi'
+          ? 'Da xay ra loi khi xoa don hang.'
+          : languageCode === 'en'
+            ? 'An error occurred while deleting the order.'
+            : '주문 삭제 중 오류가 발생했습니다.',
+      duplicateStyleColorGender:
+        languageCode === 'vi'
+          ? 'Khong the chon trung cung to hop style/mau/gioi tinh.'
+          : languageCode === 'en'
+            ? 'You cannot select duplicate style/color/gender combinations.'
+            : '같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.',
+      colorCreatedSuccess:
+        languageCode === 'vi'
+          ? 'Da them mau moi.'
+          : languageCode === 'en'
+            ? 'Added a new color.'
+            : '새 색상을 추가했습니다.',
+      colorCreateError:
+        languageCode === 'vi'
+          ? 'Da xay ra loi khi them mau.'
+          : languageCode === 'en'
+            ? 'An error occurred while adding a color.'
+            : '색상 추가 중 오류가 발생했습니다.',
+      draftCleared:
+        languageCode === 'vi'
+          ? 'Da xoa ban nhap tam.'
+          : languageCode === 'en'
+            ? 'Draft cleared.'
+            : '임시 저장본을 삭제했습니다.',
+      validationOrderNumberRequired:
+        languageCode === 'vi'
+          ? 'Hay nhap so don hang.'
+          : languageCode === 'en'
+            ? 'Please enter an order number.'
+            : '주문번호를 입력해 주세요.',
+      validationDuplicateOrderNumber:
+        languageCode === 'vi'
+          ? 'Khong the dung trung so don hang cho cung khach hang.'
+          : languageCode === 'en'
+            ? 'The same customer cannot use duplicate order numbers.'
+            : '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.',
+      validationDueDateRequired:
+        languageCode === 'vi'
+          ? 'Hay nhap han giao.'
+          : languageCode === 'en'
+            ? 'Please enter a due date.'
+            : '납기일을 입력해 주세요.',
+      validationAddStyle:
+        languageCode === 'vi'
+          ? 'Hay them style.'
+          : languageCode === 'en'
+            ? 'Please add a style.'
+            : '스타일을 추가해 주세요.',
+      validationSelectAllStyles:
+        languageCode === 'vi'
+          ? 'Hay chon tat ca style.'
+          : languageCode === 'en'
+            ? 'Please select all styles.'
+            : '모든 스타일을 선택해 주세요.',
+      validationSelectAllColors:
+        languageCode === 'vi'
+          ? 'Hay chon mau cho tat ca style.'
+          : languageCode === 'en'
+            ? 'Please select a color for every style.'
+            : '모든 스타일에 색상을 선택해 주세요.',
+      validationSelectAllGenderCodes:
+        languageCode === 'vi'
+          ? 'Hay chon ma gioi tinh (M/W/U) cho tat ca style.'
+          : languageCode === 'en'
+            ? 'Please select a gender code (M/W/U) for every style.'
+            : '모든 스타일의 성별 코드(M/W/U)를 선택해 주세요.',
+      validationEnterSizeQty:
+        languageCode === 'vi'
+          ? 'Hay nhap so luong size cho tung style.'
+          : languageCode === 'en'
+            ? 'Please enter size quantities for each style.'
+            : '스타일별 사이즈 수량을 입력해 주세요.',
+      validationDuplicateOnce:
+        languageCode === 'vi'
+          ? 'Moi to hop style/mau/gioi tinh chi duoc nhap mot lan.'
+          : languageCode === 'en'
+            ? 'Each style/color/gender combination can be entered only once.'
+            : '같은 스타일/색상/성별 조합은 한 번만 입력할 수 있습니다.',
+      noChanges:
+        languageCode === 'vi'
+          ? 'Khong co thay doi.'
+          : languageCode === 'en'
+            ? 'No changes to save.'
+            : '변경된 내용이 없습니다.',
+      orderToEditNotFound:
+        languageCode === 'vi'
+          ? 'Khong tim thay don hang de chinh sua.'
+          : languageCode === 'en'
+            ? 'Order to edit was not found.'
+            : '수정할 주문 정보를 찾을 수 없습니다.',
+      assignmentCancelledInfo:
+        languageCode === 'vi'
+          ? 'Do thay doi so luong hop dong, {count} phan cong cu da bi huy va chuyen thanh the chua phan cong.'
+          : languageCode === 'en'
+            ? '{count} existing assignments were cancelled and converted to unassigned cards due to contract quantity changes.'
+            : '계약 수량 변경으로 기존 배정 {count}건이 취소되어 미배정 카드로 전환되었습니다.',
+      orderSaved:
+        languageCode === 'vi'
+          ? 'Da luu thong tin don hang.'
+          : languageCode === 'en'
+            ? 'Order information saved.'
+            : '주문 정보가 저장되었습니다.',
+      saveErrorFallback:
+        languageCode === 'vi'
+          ? 'Da xay ra loi khi luu don hang.'
+          : languageCode === 'en'
+            ? 'An error occurred while saving the order.'
+            : '주문 저장 중 오류가 발생했습니다.',
+      confirmManufacturerCannotConfirm:
+        languageCode === 'vi'
+          ? 'Nha may khong the xac nhan don hang.'
+          : languageCode === 'en'
+            ? 'Manufacturer cannot confirm the order.'
+            : '공장은 주문을 확정할 수 없습니다.',
+      lockToggleErrorFallback:
+        languageCode === 'vi'
+          ? 'Da xay ra loi khi thay doi trang thai khoa don hang.'
+          : languageCode === 'en'
+            ? 'An error occurred while changing order lock status.'
+            : '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
+      lockSaveErrorFallback:
+        languageCode === 'vi'
+          ? 'Da xay ra loi khi luu don hang.'
+          : languageCode === 'en'
+            ? 'An error occurred while saving the order.'
+            : '주문 저장 중 오류가 발생했습니다.',
+      modificationLocked:
+        languageCode === 'vi'
+          ? 'Don hang da khoa khong the sua hoac xoa.'
+          : languageCode === 'en'
+            ? 'Locked orders cannot be edited or deleted.'
+            : '잠긴 주문은 수정하거나 삭제할 수 없습니다.',
     }),
     [languageCode]
   );
@@ -878,9 +1285,9 @@ const OrderList = () => {
       setStyles(items);
     } catch (error) {
       setStyles([]);
-      showNotification(error?.message || '스타일 목록을 불러오지 못했습니다.', 'error');
+      showNotification(error?.message || orderPageText.stylesLoadError, 'error');
     }
-  }, [showNotification]);
+  }, [orderPageText.stylesLoadError, showNotification]);
 
   useEffect(() => {
     handledOrderStylesRefreshRef.current = orderStylesRefreshSignal;
@@ -931,14 +1338,14 @@ const OrderList = () => {
     } catch (error) {
       if (!cancelledRef?.current) {
         setOrders([]);
-        showNotification(error?.message || '주문 목록을 불러오지 못했습니다.', 'error');
+        showNotification(error?.message || orderPageText.ordersLoadError, 'error');
       }
     } finally {
       if (!cancelledRef?.current) {
         setOrdersLoaded(true);
       }
     }
-  }, [activeOrgId, showNotification]);
+  }, [activeOrgId, orderPageText.ordersLoadError, showNotification]);
 
   useEffect(() => {
     const cancelledRef = { current: false };
@@ -1008,7 +1415,7 @@ const OrderList = () => {
         setRelationshipPairs([]);
         setCurrentOrgOption(null);
         setPartyRoleHint('');
-        showNotification(error?.message || '주문 파트너 정보를 불러오지 못했습니다.', 'error');
+        showNotification(error?.message || orderPageText.partiesLoadError, 'error');
       } finally {
         if (!cancelled) {
           setLoadingParties(false);
@@ -1020,7 +1427,7 @@ const OrderList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, showNotification]);
+  }, [activeOrgId, orderPageText.partiesLoadError, showNotification]);
 
   useEffect(() => {
     if (buyerOptions.length === 0 && sellerOptions.length === 0) return;
@@ -1094,7 +1501,7 @@ const OrderList = () => {
       const draft = loadOrderDraft();
       if (draft) {
         setFormData(normalizeOrderForm(draft));
-        showNotification('임시 저장한 주문을 불러왔습니다.', 'info');
+        showNotification(orderPageText.draftLoaded, 'info');
       } else {
         setFormData(buildInitialFormData());
       }
@@ -1103,12 +1510,23 @@ const OrderList = () => {
 
     const targetOrder = orders.find((order) => order.id === orderId);
     if (!targetOrder) {
-      showNotification('주문 정보를 찾을 수 없습니다.', 'error');
-      navigateToPath('/order', { label: '주문' });
+      showNotification(orderPageText.orderNotFound, 'error');
+      navigateToPath('/order', { label: orderPageText.listTitle });
       return;
     }
     setFormData(normalizeOrderForm(targetOrder));
-  }, [isDetailMode, isNewOrder, orderId, orders, ordersLoaded, navigateToPath, showNotification]);
+  }, [
+    isDetailMode,
+    isNewOrder,
+    navigateToPath,
+    orderId,
+    orderPageText.draftLoaded,
+    orderPageText.listTitle,
+    orderPageText.orderNotFound,
+    orders,
+    ordersLoaded,
+    showNotification,
+  ]);
 
   useEffect(() => {
     if (!isDetailMode || !isNewOrder) return;
@@ -1167,7 +1585,7 @@ const OrderList = () => {
       const orderNumber = order.orderNumber || '';
       const buyer = order.buyerOrgName || order.customerName || order.customer || '';
       const seller = order.sellerOrgName || '';
-      const styleSummary = formatStyleSummary(order.items || []);
+      const styleSummary = formatStyleSummary(order.items || [], languageCode);
       const styleNames = getStyleDisplayNames(order.items || []).join(' ');
       return (
         orderNumber.toLowerCase().includes(lowerTerm) ||
@@ -1181,6 +1599,7 @@ const OrderList = () => {
     confirmationFilter,
     dueDateFilterEndKey,
     dueDateFilterStartKey,
+    languageCode,
     orders,
     progressFilter,
     searchTerm,
@@ -1448,7 +1867,7 @@ const OrderList = () => {
   useEffect(() => {
     if (!isDetailMode || isNewOrder || !currentDetailOrder?.id) return;
     navigateToPath(`/order/${currentDetailOrder.id}`, {
-      label: buildOrderTabLabel(currentDetailOrder),
+      label: buildOrderTabLabel(currentDetailOrder, orderPageText.listTitle),
     });
   }, [
     currentDetailOrder?.id,
@@ -1456,6 +1875,7 @@ const OrderList = () => {
     isDetailMode,
     isNewOrder,
     navigateToPath,
+    orderPageText.listTitle,
   ]);
   const hasFormChanges = useMemo(() => {
     if (isNewOrder) return true;
@@ -1607,7 +2027,7 @@ const OrderList = () => {
     normalizeOrderConfirmation(formData.confirmationStatus) ||
     ORDER_CONFIRMATION_STATUSES[0];
   const handleAdd = () => {
-    navigateToPath('/order/new', { label: '신규 주문' });
+    navigateToPath('/order/new', { label: orderPageText.newOrderTab });
   };
 
   const handleDueDateFilterStartChange = (value) => {
@@ -1644,7 +2064,7 @@ const OrderList = () => {
   const handleEdit = (order) => {
     if (!order?.id) return;
     navigateToPath(`/order/${order.id}`, {
-      label: buildOrderTabLabel(order),
+      label: buildOrderTabLabel(order, orderPageText.listTitle),
     });
   };
 
@@ -1653,14 +2073,11 @@ const OrderList = () => {
     const nextLocked = Boolean(event.target.checked);
 
     if (nextLocked && hasFormChanges) {
-      showNotification('변경사항을 먼저 저장한 뒤 잠가 주세요.', 'warning');
+      showNotification(orderPageText.lockSaveFirstWarning, 'warning');
       return;
     }
     if (!canToggleCurrentOrderModificationLock) {
-      showNotification(
-        '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
-        'warning'
-      );
+      showNotification(orderPageText.lockChangeNotAllowed, 'warning');
       return;
     }
 
@@ -1670,18 +2087,25 @@ const OrderList = () => {
         currentDetailOrder.id,
         {
           locked: nextLocked,
-          lockedBy: activeProfile?.email || activeProfile?.name || '관리자',
+          lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
         },
         { orgId: activeOrgId }
       );
       mergeOrderIntoState(updated);
       markPathForRefresh('/order');
       showNotification(
-        nextLocked ? '주문 수정이 잠겼습니다.' : '주문 수정 잠금이 해제되었습니다.',
+        nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
         'success'
       );
     } catch (error) {
-      showNotification(resolveOrderModificationLockToggleErrorMessage(error), 'error');
+      showNotification(
+        resolveOrderModificationLockToggleErrorMessage(error, {
+          lockChangeNotAllowedMessage: orderPageText.lockChangeNotAllowed,
+          modificationLockedMessage: orderPageText.modificationLocked,
+          fallbackMessage: orderPageText.lockToggleErrorFallback,
+        }),
+        'error'
+      );
     } finally {
       setIsTogglingModificationLock(false);
     }
@@ -1690,7 +2114,7 @@ const OrderList = () => {
   const handleDeleteOrder = async (order) => {
     if (!order?.id) return;
     if (order?.isModificationLocked) {
-      showNotification(ORDER_MODIFICATION_LOCK_MESSAGE, 'warning');
+      showNotification(orderPageText.modificationLocked, 'warning');
       return;
     }
     if (!isOrderDeletable(order.confirmationStatus)) {
@@ -1704,33 +2128,35 @@ const OrderList = () => {
       return;
     }
 
-    const orderLabel = order.orderNumber ? `주문 ${order.orderNumber}` : '해당 주문';
-    if (!window.confirm(`${orderLabel}을(를) 삭제하시겠습니까?`)) {
+    const orderLabel = order.orderNumber
+      ? `${orderPageText.deleteTargetOrder} ${order.orderNumber}`
+      : orderPageText.deleteTargetFallback;
+    if (!window.confirm(`${orderLabel} ${orderPageText.deleteConfirm}`)) {
       return;
     }
 
     try {
       await deleteOrderToApi(order.id, { orgId: activeOrgId });
       setOrders((prev) => prev.filter((target) => target.id !== order.id));
-      showNotification('주문이 삭제되었습니다.', 'success');
+      showNotification(orderPageText.deleteSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || '주문 삭제 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || orderPageText.deleteError, 'error');
     }
   };
 
   const closeDetailAndGoList = () => {
     if (isNewOrder) {
-      navigateToPath('/order', { label: '주문', closeTabId: '/order/new' });
+      navigateToPath('/order', { label: orderPageText.listTitle, closeTabId: '/order/new' });
       return;
     }
     if (orderId) {
       navigateToPath('/order', {
-        label: '주문',
+        label: orderPageText.listTitle,
         closeTabId: `/order/${orderId}`,
       });
       return;
     }
-    navigateToPath('/order', { label: '주문' });
+    navigateToPath('/order', { label: orderPageText.listTitle });
   };
 
   const handleBuyerChange = (_event, customer) => {
@@ -1837,7 +2263,7 @@ const OrderList = () => {
     );
 
     if (hasDuplicateStyleColorGender(previewItems)) {
-      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
+      showNotification(orderPageText.duplicateStyleColorGender, 'warning');
       return;
     }
 
@@ -1867,7 +2293,7 @@ const OrderList = () => {
         : item
     );
     if (hasDuplicateStyleColorGender(previewItems)) {
-      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
+      showNotification(orderPageText.duplicateStyleColorGender, 'warning');
       return false;
     }
     setFormData((prev) => ({
@@ -1916,10 +2342,10 @@ const OrderList = () => {
       setColorOptions((prev) => mergeColorOption(prev, normalizedCreatedColor));
       const applied = applyColorSelection(itemId, normalizedCreatedColor, options);
       if (applied) {
-        showNotification('새 색상을 추가했습니다.', 'success');
+        showNotification(orderPageText.colorCreatedSuccess, 'success');
       }
     } catch (error) {
-      showNotification(error?.message || '색상 추가 중 오류가 발생했습니다.', 'error');
+      showNotification(error?.message || orderPageText.colorCreateError, 'error');
     } finally {
       setCreatingColorItemId('');
     }
@@ -1958,7 +2384,7 @@ const OrderList = () => {
         : item
     );
     if (hasDuplicateStyleColorGender(previewItems)) {
-      showNotification('같은 스타일/색상/성별 조합은 중복 선택할 수 없습니다.', 'warning');
+      showNotification(orderPageText.duplicateStyleColorGender, 'warning');
       return;
     }
 
@@ -2011,13 +2437,13 @@ const OrderList = () => {
 
   const handleOpenStyleRegistration = () => {
     saveOrderDraft(formData);
-    navigateToPath('/style/new', { label: '신규 스타일' });
+    navigateToPath('/style/new', { label: orderPageText.newStyleTab });
   };
 
   const handleClearDraft = () => {
     clearOrderDraft();
     setFormData(buildInitialFormData());
-    showNotification('임시 저장본을 삭제했습니다.', 'info');
+    showNotification(orderPageText.draftCleared, 'info');
     if (isDetailMode) {
       closeDetailAndGoList();
     }
@@ -2045,16 +2471,16 @@ const OrderList = () => {
       return partyValidationMessage;
     }
     if (!formData.orderNumber.trim()) {
-      return '주문번호를 입력해 주세요.';
+      return orderPageText.validationOrderNumberRequired;
     }
     if (!formData.buyerOrgName || !toOrgId(formData.buyerOrgId)) {
-      return '발주자를 선택해 주세요.';
+      return orderPartyText.selectBuyer;
     }
     if (!resolvedSellerOrgName || !resolvedSellerOrgId) {
-      return '수주자를 선택해 주세요.';
+      return orderPartyText.selectSeller;
     }
     if (!hasRelationshipPair(relationshipPairs, formData.buyerOrgId, resolvedSellerOrgId)) {
-      return '연결된 관계의 발주자/수주자 조합만 선택할 수 있습니다.';
+      return orderPartyText.linkedPairOnly;
     }
     if (
       hasDuplicateOrderNumberByCustomer({
@@ -2067,42 +2493,42 @@ const OrderList = () => {
         sellerOrgName: resolvedSellerOrgName,
       })
     ) {
-      return '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.';
+      return orderPageText.validationDuplicateOrderNumber;
     }
     if (!formData.dueDate) {
-      return '납기일을 입력해 주세요.';
+      return orderPageText.validationDueDateRequired;
     }
     if (!formData.items.length) {
-      return '스타일을 추가해 주세요.';
+      return orderPageText.validationAddStyle;
     }
     for (const item of formData.items) {
       if (!item.styleId) {
-        return '모든 스타일을 선택해 주세요.';
+        return orderPageText.validationSelectAllStyles;
       }
       if (!getItemColorCode(item)) {
-        return '모든 스타일에 색상을 선택해 주세요.';
+        return orderPageText.validationSelectAllColors;
       }
       if (!GENDER_OPTIONS.includes(item.gender)) {
-        return '모든 스타일의 성별 코드(M/W/U)를 선택해 주세요.';
+        return orderPageText.validationSelectAllGenderCodes;
       }
       const totalQuantity = sumSizeQuantities(item.sizeQuantities);
       if (totalQuantity <= 0) {
-        return '스타일별 사이즈 수량을 입력해 주세요.';
+        return orderPageText.validationEnterSizeQty;
       }
     }
     if (hasDuplicateStyleColorGender(formData.items)) {
-      return '같은 스타일/색상/성별 조합은 한 번만 입력할 수 있습니다.';
+      return orderPageText.validationDuplicateOnce;
     }
     return null;
   };
 
   const handleSave = async () => {
     if (isCurrentOrderModificationLocked) {
-      showNotification(ORDER_MODIFICATION_LOCK_MESSAGE, 'warning');
+      showNotification(orderPageText.modificationLocked, 'warning');
       return;
     }
     if (!isNewOrder && !hasFormChanges) {
-      showNotification('변경된 내용이 없습니다.', 'info');
+      showNotification(orderPageText.noChanges, 'info');
       return;
     }
 
@@ -2176,7 +2602,7 @@ const OrderList = () => {
       if (!isNewOrder) {
         const existingOrder = orders.find((order) => order.id === orderId);
         if (!existingOrder) {
-          showNotification('수정할 주문 정보를 찾을 수 없습니다.', 'error');
+          showNotification(orderPageText.orderToEditNotFound, 'error');
           return;
         }
         payload.id = existingOrder.id;
@@ -2243,7 +2669,10 @@ const OrderList = () => {
 
             if (nextBoardState.cancelledAssignmentCount > 0) {
               showNotification(
-                `\uACC4\uC57D \uC218\uB7C9 \uBCC0\uACBD\uC73C\uB85C \uAE30\uC874 \uBC30\uC815 ${nextBoardState.cancelledAssignmentCount}\uAC74\uC774 \uCDE8\uC18C\uB418\uC5B4 \uBBF8\uBC30\uC815 \uCE74\uB4DC\uB85C \uC804\uD658\uB418\uC5C8\uC2B5\uB2C8\uB2E4.`,
+                orderPageText.assignmentCancelledInfo.replace(
+                  '{count}',
+                  String(nextBoardState.cancelledAssignmentCount)
+                ),
                 'info'
               );
             }
@@ -2260,10 +2689,18 @@ const OrderList = () => {
 
       clearOrderDraft();
       markPathForRefresh('/order');
-      showNotification('주문 정보가 저장되었습니다.', 'success');
+      showNotification(orderPageText.orderSaved, 'success');
       closeDetailAndGoList();
     } catch (error) {
-      showNotification(resolveOrderSaveErrorMessage(error), 'error');
+      showNotification(
+        resolveOrderSaveErrorMessage(error, {
+          modificationLockedMessage: orderPageText.modificationLocked,
+          manufacturerCannotConfirmMessage: orderPageText.confirmManufacturerCannotConfirm,
+          duplicateOrderNumberMessage: orderPageText.validationDuplicateOrderNumber,
+          fallbackMessage: orderPageText.saveErrorFallback,
+        }),
+        'error'
+      );
     } finally {
       setIsSavingOrder(false);
     }
@@ -2367,7 +2804,7 @@ const OrderList = () => {
               <IconButton
                 size="small"
                 onClick={() => shiftDueDateFilterMonth(-1)}
-                title="이전 달"
+                title={orderPageText.previousMonth}
               >
                 <ChevronLeftIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -2387,7 +2824,7 @@ const OrderList = () => {
               <IconButton
                 size="small"
                 onClick={() => shiftDueDateFilterMonth(1)}
-                title="다음 달"
+                title={orderPageText.nextMonth}
               >
                 <ChevronRightIcon sx={{ fontSize: 18 }} />
               </IconButton>
@@ -2428,22 +2865,20 @@ const OrderList = () => {
                   <TableCell
                     sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.orderNumber }}
                   >
-                    주문번호
+                    {orderPageText.orderNumber}
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.buyer, fontSize: 0 }}>
                     <Box component="span" sx={{ fontSize: '0.875rem' }}>
                       {orderPartyText.buyerWithType}
                     </Box>
-                    발주자(브랜드)
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.seller, fontSize: 0 }}>
                     <Box component="span" sx={{ fontSize: '0.875rem' }}>
                       {orderPartyText.sellerWithType}
                     </Box>
-                    수주자(제조사)
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.style }}>
-                    스타일
+                    {orderPageText.styleColumn}
                   </TableCell>
                   <TableCell
                     sx={{
@@ -2452,10 +2887,10 @@ const OrderList = () => {
                       textAlign: 'right',
                     }}
                   >
-                    합계 수량
+                    {orderPageText.totalQuantity}
                   </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.dueDate }}>
-                    납기일
+                    {orderPageText.dueDate}
                   </TableCell>
                   <TableCell
                     sx={{
@@ -2464,15 +2899,15 @@ const OrderList = () => {
                       textAlign: 'center',
                     }}
                   >
-                    관리
+                    {orderPageText.actions}
                   </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={9} message="주문 목록을 불러오는 중입니다." />
+                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={9} message="조건에 맞는 주문이 없습니다." />
+                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable =
@@ -2501,7 +2936,7 @@ const OrderList = () => {
                           {order.sellerOrgName || '-'}
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {formatStyleSummary(order.items)}
+                          {formatStyleSummary(order.items, languageCode)}
                         </TableCell>
                         <TableCell
                           sx={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
@@ -2652,7 +3087,7 @@ const OrderList = () => {
           >
             <TextField
               name="orderNumber"
-              label="주문번호"
+              label={orderPageText.orderNumber}
               value={formData.orderNumber}
               onChange={handleInputChange}
               fullWidth
@@ -2674,8 +3109,6 @@ const OrderList = () => {
                         ? orderPartyText.loadingPlaceholder
                         : orderPartyText.selectBuyer,
                     }}
-                    label="발주자(Brand)"
-                    placeholder={loadingParties ? '불러오는 중...' : '발주자를 선택해 주세요'}
                     fullWidth
                   />
                 )}
@@ -2699,8 +3132,6 @@ const OrderList = () => {
                         ? orderPartyText.loadingPlaceholder
                         : orderPartyText.selectSeller,
                     }}
-                    label="수주자(Manufacturer)"
-                    placeholder={loadingParties ? '불러오는 중...' : '수주자를 선택해 주세요'}
                     fullWidth
                   />
                 )}
@@ -2708,7 +3139,7 @@ const OrderList = () => {
             </Box>
             <TextField
               name="dueDate"
-              label="납기일"
+              label={orderPageText.dueDate}
               type="date"
               value={formData.dueDate}
               onChange={handleInputChange}
@@ -2758,10 +3189,10 @@ const OrderList = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>스타일명/코드 선택</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>스타일 코드</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>색상</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>성별</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>{orderPageText.detailStyleNameCode}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>{orderPageText.detailStyleCode}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>{orderPageText.color}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{orderPageText.gender}</TableCell>
                   {SIZE_COLUMNS.map((size) => (
                     <TableCell
                       key={size}
@@ -2775,8 +3206,8 @@ const OrderList = () => {
                       {size}
                     </TableCell>
                   ))}
-                  <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>합계</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>삭제</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.total}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getUiMessage('common.delete', 'Delete', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -2850,12 +3281,12 @@ const OrderList = () => {
                               autoHighlight
                               textFieldProps={{
                                 size: 'small',
-                                placeholder: '스타일명 검색',
+                                placeholder: orderPageText.styleSearchPlaceholder,
                               }}
                               noOptionsText={
                                 selectedBuyerName
-                                  ? '등록된 스타일이 없습니다.'
-                                  : '발주자를 먼저 선택해 주세요.'
+                                  ? orderPageText.noRegisteredStyles
+                                  : orderPartyText.selectBuyerFirst
                               }
                             />
                           </TableCell>
@@ -2871,13 +3302,17 @@ const OrderList = () => {
                           >
                             <TextField
                               size="small"
-                              label={group.styleCode ? '스타일 코드 (자동입력)' : '스타일 코드'}
+                              label={
+                                group.styleCode
+                                  ? orderPageText.detailStyleCodeAuto
+                                  : orderPageText.detailStyleCode
+                              }
                               className={group.styleCode ? 'auto-selected-field' : undefined}
                               value={group.styleCode || ''}
                               fullWidth
                               InputProps={{ readOnly: true }}
                               disabled
-                              placeholder="자동 입력"
+                              placeholder={orderPageText.autoInput}
                             />
                           </TableCell>
                         )}
@@ -2912,7 +3347,7 @@ const OrderList = () => {
                               renderOption={(props, option) => (
                                 <li {...props}>
                                   {option?.isCreateOption
-                                    ? `새 색상 추가: ${option.inputValue || option.name || ''}`
+                                    ? `${orderPageText.addNewColorPrefix} ${option.inputValue || option.name || ''}`
                                     : option?.displayName || option?.name || option?.code || ''}
                                 </li>
                               )}
@@ -2922,14 +3357,14 @@ const OrderList = () => {
                               handleHomeEndKeys
                               noOptionsText={
                                 canCreateColorAttribute
-                                  ? '입력한 이름으로 새 색상을 추가할 수 있습니다.'
-                                  : '등록된 색상을 찾을 수 없습니다.'
+                                  ? orderPageText.colorCreateHint
+                                  : orderPageText.noRegisteredColors
                               }
                               textFieldProps={{
                                 size: 'small',
                                 placeholder: canCreateColorAttribute
-                                  ? '색상 검색 또는 추가'
-                                  : '색상 검색',
+                                  ? orderPageText.colorSearchOrCreate
+                                  : orderPageText.colorSearch,
                                 inputRef: (node) =>
                                   setInputElementInMap(colorInputRefs, item.id, node),
                               }}
@@ -2953,10 +3388,10 @@ const OrderList = () => {
                               }
                               autoHighlight
                               disabled={!rowStyleIdentity || !rowColorCode}
-                              noOptionsText="선택 가능한 성별이 없습니다."
+                              noOptionsText={orderPageText.noSelectableGender}
                               textFieldProps={{
                                 size: 'small',
-                                placeholder: '성별 선택',
+                                placeholder: orderPageText.selectGender,
                                 inputRef: (node) =>
                                   setInputElementInMap(genderInputRefs, item.id, node),
                               }}
@@ -3010,7 +3445,7 @@ const OrderList = () => {
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-            주문 합계 수량: {getOrderTotal().toLocaleString()}
+            {orderPageText.orderTotalQuantity}: {getOrderTotal().toLocaleString()}
           </Typography>
         </Box>
         </Box>
