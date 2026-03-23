@@ -1390,29 +1390,81 @@ const resolveAtSyncTrainingMonthKey = (options: AtSyncRunOptions = {}) => {
   });
 };
 
-const syncStyleProcessActualTimesFromWorkRecords = async (
-  orgId: number,
-  options: AtSyncRunOptions = {}
-) => {
-  const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
-  const startedAt = Date.now();
-  const finish = (
-    updatedStyles: number,
-    updatedProcesses: number,
-    reason = "done"
-  ) => {
-    console.log(
-      `[AT sync] orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
-    );
-    return { updatedStyles, updatedProcesses };
-  };
-  console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
-  const workLogs = await prisma.workLog.findMany({
-    where: {
-      orgId,
-      workDate: { startsWith: trainingMonthKey },
-    },
+type AtTrainingBucketStoreClient = Prisma.TransactionClient | typeof prisma;
+type AtTrainingMetricQuality = {
+  totalQuantity: number;
+  weightedCoverageQuantity: number;
+  observationCount: number;
+};
+type AtTrainingBucketProcessDraft = {
+  styleUid: number;
+  styleProcessId: number;
+  quantity: number;
+};
+type AtTrainingBucketDraft = {
+  sourceWorkLogId: number;
+  monthKey: string;
+  workDate: string;
+  factoryId: number | null;
+  totalSeconds: number;
+  attendanceCoverage: number | null;
+  processRows: AtTrainingBucketProcessDraft[];
+};
+
+const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
+  `STYLE_PROCESS:${styleProcessId}`;
+
+const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) =>
+  toOptionalSeconds(processRow?.ptSeconds) ??
+  resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
+    quantity: processRow?.processQuantity,
+    atParams: processRow?.atParams,
+    timeRefQuantity: DEFAULT_TIME_REF_QUANTITY,
+  });
+
+const loadAtTrainingSourceWorkLogs = async ({
+  orgId,
+  trainingMonthKey = null,
+  workLogIds = [],
+  workDate = null,
+  factoryId = null,
+  db = prisma,
+}: {
+  orgId: number;
+  trainingMonthKey?: string | null;
+  workLogIds?: number[];
+  workDate?: string | null;
+  factoryId?: number | null;
+  db?: AtTrainingBucketStoreClient;
+}) => {
+  const normalizedWorkLogIds = Array.from(
+    new Set(
+      ensureArray(workLogIds)
+        .map((workLogId) => toPositiveIntOrNull(workLogId))
+        .filter((workLogId): workLogId is number => workLogId !== null)
+    )
+  );
+  const where: Prisma.WorkLogWhereInput = { orgId };
+  if (normalizedWorkLogIds.length > 0) {
+    where.id = { in: normalizedWorkLogIds };
+  } else {
+    const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
+    const normalizedWorkDate = normalizeDateKey(workDate);
+    const normalizedFactoryId = toPositiveIntOrNull(factoryId);
+    if (normalizedTrainingMonthKey) {
+      where.workDate = { startsWith: normalizedTrainingMonthKey };
+    } else if (normalizedWorkDate) {
+      where.workDate = normalizedWorkDate;
+    }
+    if (normalizedFactoryId !== null) {
+      where.factoryId = normalizedFactoryId;
+    }
+  }
+
+  return db.workLog.findMany({
+    where,
     select: {
+      id: true,
       workDate: true,
       factoryId: true,
       workerCount: true,
@@ -1440,21 +1492,45 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     },
     orderBy: [{ workDate: "asc" }, { id: "asc" }],
   });
+};
+
+const buildAtTrainingBucketDraftsFromRawSource = async ({
+  orgId,
+  trainingMonthKey = null,
+  workLogIds = [],
+  workDate = null,
+  factoryId = null,
+  db = prisma,
+}: {
+  orgId: number;
+  trainingMonthKey?: string | null;
+  workLogIds?: number[];
+  workDate?: string | null;
+  factoryId?: number | null;
+  db?: AtTrainingBucketStoreClient;
+}): Promise<AtTrainingBucketDraft[]> => {
+  const workLogs = await loadAtTrainingSourceWorkLogs({
+    orgId,
+    trainingMonthKey,
+    workLogIds,
+    workDate,
+    factoryId,
+    db,
+  });
+  if (workLogs.length === 0) return [];
 
   const styleIds = Array.from(
     new Set(
       workLogs
-        .flatMap((workLog) => workLog.workRecords)
+        .flatMap((item) => item.workRecords)
         .map((record) => String(record.styleId || "").trim())
         .filter((styleId) => styleId !== "")
     )
   );
-  if (styleIds.length === 0) {
-    return finish(0, 0, "no_style_ids");
-  }
+  if (styleIds.length === 0) return [];
 
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
-  const styleCandidates = await prisma.style.findMany({
+  const styleCandidates = await db.style.findMany({
     where: {
       orgId: { in: syncTargetOrgIds },
       styleId: { in: styleIds },
@@ -1468,18 +1544,42 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       processes: true,
     },
   });
-  if (styleCandidates.length === 0) {
-    return finish(0, 0, "no_style_candidates");
-  }
+  if (styleCandidates.length === 0) return [];
+
+  await ensureStyleProcessStorageForStyles(styleCandidates, {
+    processOrgId: orgId,
+    db,
+  });
+  const styleProcessRowsByStyleUid = await loadStyleProcessRowsByStyleUid(
+    styleCandidates.map((style) => Number(style.uid)),
+    { processOrgId: orgId, db }
+  );
 
   const stylesByStyleId = new Map<string, any[]>();
   styleCandidates.forEach((style) => {
-    const key = String(style.styleId || "").trim();
-    if (!key) return;
-    const current = stylesByStyleId.get(key) || [];
+    const styleIdKey = String(style.styleId || "").trim();
+    if (!styleIdKey) return;
+    const current = stylesByStyleId.get(styleIdKey) || [];
     current.push(style);
-    stylesByStyleId.set(key, current);
+    stylesByStyleId.set(styleIdKey, current);
   });
+
+  const processLookupByStyleUid = styleCandidates.reduce((map, style) => {
+    const byCode = new Map<string, any>();
+    const byName = new Map<string, any>();
+    ensureArray(styleProcessRowsByStyleUid.get(Number(style.uid))).forEach((processRow) => {
+      const codeKey = normalizeProcessCodeKey(processRow?.processCode);
+      const nameKey = normalizeProcessNameKey(processRow?.processName);
+      if (codeKey && !byCode.has(codeKey)) {
+        byCode.set(codeKey, processRow);
+      }
+      if (nameKey && !byName.has(nameKey)) {
+        byName.set(nameKey, processRow);
+      }
+    });
+    map.set(Number(style.uid), { byCode, byName });
+    return map;
+  }, new Map<number, { byCode: Map<string, any>; byName: Map<string, any> }>());
 
   const resolveCandidateStyle = (record: {
     styleId: any;
@@ -1516,35 +1616,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
     return resolvedStyle;
   };
 
-  const trainingDayBuckets: AtTrainingDayBucket[] = [];
-  const fallbackPerPieceByMetricKey = new Map<string, number | null>();
-  const metricTrainingQualityByMetricKey = new Map<
-    string,
-    {
-      totalQuantity: number;
-      weightedCoverageQuantity: number;
-      observationCount: number;
-    }
-  >();
-  const matchedStyleUids = new Set<number>();
   const attendanceSecondsByWorkerDate = new Map<string, number>();
-  const processLookupByStyleUid = styleCandidates.reduce((map, style) => {
-    const byCode = new Map<string, any>();
-    const byName = new Map<string, any>();
-    normalizeStyleProcesses(style?.processes).forEach((process) => {
-      const codeKey = normalizeProcessCodeKey((process as any)?.code);
-      const nameKey = normalizeProcessNameKey((process as any)?.name);
-      if (codeKey && !byCode.has(codeKey)) {
-        byCode.set(codeKey, process);
-      }
-      if (nameKey && !byName.has(nameKey)) {
-        byName.set(nameKey, process);
-      }
-    });
-    map.set(style.uid, { byCode, byName });
-    return map;
-  }, new Map<number, { byCode: Map<string, any>; byName: Map<string, any> }>());
-
   if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
     const workDates = Array.from(
       new Set(
@@ -1557,7 +1629,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
       new Set(
         workLogs
           .map((workLog) => toPositiveIntOrNull((workLog as any).factoryId))
-          .filter((factoryId): factoryId is number => factoryId !== null)
+          .filter((resolvedFactoryId): resolvedFactoryId is number => resolvedFactoryId !== null)
       )
     );
     const workerIds = Array.from(
@@ -1571,7 +1643,7 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
 
     if (workDates.length > 0 && workerIds.length > 0) {
       try {
-        const attendanceRows = await prisma.attendanceEntry.findMany({
+        const attendanceRows = await db.attendanceEntry.findMany({
           where: {
             orgId,
             workDate: { in: workDates },
@@ -1586,20 +1658,24 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           },
         });
         attendanceRows.forEach((row) => {
-          const workDate = normalizeDateKey(row.workDate);
-          const factoryId = toPositiveIntOrNull((row as any).factoryId);
-          const workerId = toPositiveIntOrNull(row.workerId);
+          const normalizedWorkDate = normalizeDateKey(row.workDate);
+          const resolvedFactoryId = toPositiveIntOrNull((row as any).factoryId);
+          const resolvedWorkerId = toPositiveIntOrNull(row.workerId);
           const workedSeconds = toNumberOrNull(row.workedSeconds);
           if (
-            !workDate ||
-            factoryId === null ||
-            workerId === null ||
+            !normalizedWorkDate ||
+            resolvedFactoryId === null ||
+            resolvedWorkerId === null ||
             workedSeconds === null
           ) {
             return;
           }
           attendanceSecondsByWorkerDate.set(
-            toAttendanceWorkerDateKey(workDate, workerId, factoryId),
+            toAttendanceWorkerDateKey(
+              normalizedWorkDate,
+              resolvedWorkerId,
+              resolvedFactoryId
+            ),
             Math.max(0, Math.round(workedSeconds))
           );
         });
@@ -1607,54 +1683,48 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
         if (getErrorCode(error) !== "P2021") {
           throw error;
         }
+        const contextMonthKey =
+          normalizeMonthKey(trainingMonthKey) ||
+          normalizeMonthKey(workDate ? String(workDate).slice(0, 7) : "") ||
+          "mixed";
         console.warn(
-          `[AT sync] orgId=${orgId} month=${trainingMonthKey} attendance_table_missing=true fallback=default_8h`
+          `[AT sync] orgId=${orgId} month=${contextMonthKey} attendance_table_missing=true fallback=default_8h`
         );
       }
     }
   }
 
   const resolveWorkerSecondsForDate = (
-    workDate: string,
+    normalizedWorkDate: string,
     workerId: number | null,
-    factoryId: number | null
+    resolvedFactoryId: number | null
   ) => {
     if (!USE_ATTENDANCE_INPUT_FOR_AT) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
-    if (workerId === null || factoryId === null) {
+    if (workerId === null || resolvedFactoryId === null) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
-    const key = toAttendanceWorkerDateKey(workDate, workerId, factoryId);
+    const key = toAttendanceWorkerDateKey(
+      normalizedWorkDate,
+      workerId,
+      resolvedFactoryId
+    );
     if (!attendanceSecondsByWorkerDate.has(key)) {
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
     return toNonNegativeInt(attendanceSecondsByWorkerDate.get(key), 0);
   };
 
-  const resolveProcessFallbackPerPieceSeconds = (
-    styleUid: number,
-    processCodeKey: string,
-    processNameKey: string
-  ) => {
-    const lookup = processLookupByStyleUid.get(styleUid);
-    if (!lookup) return null;
-    const matched =
-      (processCodeKey ? lookup.byCode.get(processCodeKey) : null) ||
-      (processNameKey ? lookup.byName.get(processNameKey) : null) ||
-      null;
-    if (!matched) return null;
-    return (
-      toOptionalSeconds((matched as any).pt) ??
-      resolveStyleProcessAtPerPieceSecondsForReferenceQuantity(matched) ??
-      toOptionalSeconds((matched as any).ct)
-    );
-  };
+  return workLogs.reduce((drafts, workLog) => {
+    const normalizedWorkDate = normalizeDateKey(workLog.workDate);
+    const monthKey = normalizeMonthKey(normalizedWorkDate.slice(0, 7));
+    const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
+    const workLogId = toPositiveIntOrNull(workLog.id);
+    if (!normalizedWorkDate || !monthKey || workLogId === null) {
+      return drafts;
+    }
 
-  workLogs.forEach((workLog, workLogOrder) => {
-    const workDate = normalizeDateKey(workLog.workDate);
-    const workLogFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
-    if (!workDate) return;
     const resolvedRows = workLog.workRecords
       .map((record) => {
         const quantity = Number(record.quantity) || 0;
@@ -1666,277 +1736,663 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
           resolveWorkRecordProcessName(record)
         );
         if (!processCodeKey && !processNameKey) return null;
+        const lookup = processLookupByStyleUid.get(Number(resolvedStyle.uid));
+        if (!lookup) return null;
+        const matchedStyleProcess =
+          (processCodeKey ? lookup.byCode.get(processCodeKey) : null) ||
+          (processNameKey ? lookup.byName.get(processNameKey) : null) ||
+          null;
+        const styleProcessId = toPositiveIntOrNull(matchedStyleProcess?.id);
+        if (styleProcessId === null) return null;
         return {
-          resolvedStyle,
+          styleUid: Number(resolvedStyle.uid),
+          styleProcessId,
           quantity,
           workerId: toPositiveIntOrNull(record.workerId),
-          processCodeKey,
-          processNameKey,
         };
       })
       .filter(Boolean) as Array<{
-      resolvedStyle: any;
+      styleUid: number;
+      styleProcessId: number;
       quantity: number;
       workerId: number | null;
-      processCodeKey: string;
-      processNameKey: string;
     }>;
+    if (resolvedRows.length === 0) {
+      return drafts;
+    }
 
-    if (resolvedRows.length === 0) return;
-
-    // AT 계산: worklog(라인×일자) 단위 총시간을 공정별 작업량(q * w_p)에 비례 배분하고,
-    // 이를 반복 수렴시킨 뒤 최종 WLS(가중치 보정)로 a,b를 추정한다.
-    const perProcessGroups = new Map<
-      string,
-      {
-        resolvedStyle: any;
-        processCodeKey: string;
-        processNameKey: string;
-        totalQuantity: number;
-      }
-    >();
+    const perProcessGroups = new Map<number, AtTrainingBucketProcessDraft>();
     const workerIdsForDay = new Set<number>();
-
     resolvedRows.forEach((row) => {
-      const metricKey = row.processCodeKey
-        ? toStyleProcessMetricKey(String(row.resolvedStyle.uid), "code", row.processCodeKey)
-        : toStyleProcessMetricKey(String(row.resolvedStyle.uid), "name", row.processNameKey);
-
-      const current = perProcessGroups.get(metricKey) || {
-        resolvedStyle: row.resolvedStyle,
-        processCodeKey: row.processCodeKey,
-        processNameKey: row.processNameKey,
-        totalQuantity: 0,
+      const current = perProcessGroups.get(row.styleProcessId) || {
+        styleUid: row.styleUid,
+        styleProcessId: row.styleProcessId,
+        quantity: 0,
       };
-      if (row.workerId !== null) workerIdsForDay.add(row.workerId);
-      current.totalQuantity += row.quantity;
-      perProcessGroups.set(metricKey, current);
+      current.quantity += row.quantity;
+      perProcessGroups.set(row.styleProcessId, current);
+      if (row.workerId !== null) {
+        workerIdsForDay.add(row.workerId);
+      }
     });
 
-    let attendanceCoverageRatio: number | null = null;
+    let attendanceCoverage: number | null = null;
     if (!USE_ATTENDANCE_INPUT_FOR_AT) {
-      attendanceCoverageRatio = 1;
+      attendanceCoverage = 1;
     } else if (workerIdsForDay.size > 0) {
-      if (workLogFactoryId === null) {
-        attendanceCoverageRatio = 0;
+      if (resolvedFactoryId === null) {
+        attendanceCoverage = 0;
       } else {
         let attendanceProvidedCount = 0;
         workerIdsForDay.forEach((workerId) => {
-          const key = toAttendanceWorkerDateKey(workDate, workerId, workLogFactoryId);
+          const key = toAttendanceWorkerDateKey(
+            normalizedWorkDate,
+            workerId,
+            resolvedFactoryId
+          );
           if (attendanceSecondsByWorkerDate.has(key)) {
             attendanceProvidedCount += 1;
           }
         });
-        attendanceCoverageRatio = attendanceProvidedCount / workerIdsForDay.size;
+        attendanceCoverage = attendanceProvidedCount / workerIdsForDay.size;
       }
     }
-    if (!Number.isFinite(attendanceCoverageRatio as number)) {
-      attendanceCoverageRatio = null;
-    } else if (attendanceCoverageRatio !== null) {
-      attendanceCoverageRatio = Math.min(1, Math.max(0, attendanceCoverageRatio));
+    if (!Number.isFinite(attendanceCoverage as number)) {
+      attendanceCoverage = null;
+    } else if (attendanceCoverage !== null) {
+      attendanceCoverage = roundToScale(
+        Math.min(1, Math.max(0, attendanceCoverage)),
+        4
+      );
     }
 
-    const totalDaySeconds =
+    const totalSeconds =
       workerIdsForDay.size > 0
         ? Array.from(workerIdsForDay.values()).reduce(
             (sum, workerId) =>
-              sum + resolveWorkerSecondsForDate(workDate, workerId, workLogFactoryId),
+              sum +
+              resolveWorkerSecondsForDate(
+                normalizedWorkDate,
+                workerId,
+                resolvedFactoryId
+              ),
             0
           )
-        : Math.max(
-            1,
-            toPositiveIntOrNull((workLog as any).workerCount) ?? 1
-          ) * ATTENDANCE_DEFAULT_WORK_SECONDS;
-    if (!Number.isFinite(totalDaySeconds) || totalDaySeconds <= 0) return;
+        : Math.max(1, toPositiveIntOrNull((workLog as any).workerCount) ?? 1) *
+          ATTENDANCE_DEFAULT_WORK_SECONDS;
+    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+      return drafts;
+    }
 
+    const processRows = Array.from(perProcessGroups.values()).filter(
+      (item) =>
+        item.styleUid > 0 &&
+        item.styleProcessId > 0 &&
+        Number.isFinite(item.quantity) &&
+        item.quantity > 0
+    );
+    if (processRows.length === 0) {
+      return drafts;
+    }
+
+    drafts.push({
+      sourceWorkLogId: workLogId,
+      monthKey,
+      workDate: normalizedWorkDate,
+      factoryId: resolvedFactoryId,
+      totalSeconds: Math.max(1, Math.round(totalSeconds)),
+      attendanceCoverage,
+      processRows,
+    });
+    return drafts;
+  }, [] as AtTrainingBucketDraft[]);
+};
+
+const replaceAtTrainingBucketsForMonth = async ({
+  orgId,
+  trainingMonthKey,
+  drafts,
+  db = prisma,
+}: {
+  orgId: number;
+  trainingMonthKey: string;
+  drafts: AtTrainingBucketDraft[];
+  db?: AtTrainingBucketStoreClient;
+}) => {
+  await db.$executeRaw(
+    Prisma.sql`DELETE FROM "AtTrainingBucket" WHERE "orgId" = ${orgId} AND "monthKey" = ${trainingMonthKey}`
+  );
+
+  for (const draft of drafts) {
+    const insertedRows = await db.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+      INSERT INTO "AtTrainingBucket" (
+        "orgId",
+        "monthKey",
+        "sourceWorkLogId",
+        "workDate",
+        "factoryId",
+        "totalSeconds",
+        "attendanceCoverage",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES (
+        ${orgId},
+        ${draft.monthKey},
+        ${draft.sourceWorkLogId},
+        ${draft.workDate},
+        ${draft.factoryId},
+        ${draft.totalSeconds},
+        ${draft.attendanceCoverage},
+        NOW(),
+        NOW()
+      )
+      RETURNING "id"
+    `);
+    const bucketId = toPositiveIntOrNull(insertedRows[0]?.id);
+    if (bucketId === null || draft.processRows.length === 0) continue;
+
+    await db.$executeRaw(
+      Prisma.sql`
+        INSERT INTO "AtTrainingBucketProcess" (
+          "orgId",
+          "bucketId",
+          "styleUid",
+          "styleProcessId",
+          "quantity",
+          "createdAt",
+          "updatedAt"
+        )
+        VALUES ${Prisma.join(
+          draft.processRows.map((processRow) => {
+            const quantity = Math.max(1, Math.round(processRow.quantity));
+            return Prisma.sql`(
+              ${orgId},
+              ${bucketId},
+              ${processRow.styleUid},
+              ${processRow.styleProcessId},
+              ${quantity},
+              NOW(),
+              NOW()
+            )`;
+          })
+        )}
+      `
+    );
+  }
+};
+
+const syncAtTrainingBucketsForMonth = async ({
+  orgId,
+  trainingMonthKey,
+  db = prisma,
+}: {
+  orgId: number;
+  trainingMonthKey: string;
+  db?: AtTrainingBucketStoreClient;
+}) => {
+  const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
+  if (!normalizedTrainingMonthKey) return 0;
+  const drafts = await buildAtTrainingBucketDraftsFromRawSource({
+    orgId,
+    trainingMonthKey: normalizedTrainingMonthKey,
+    db,
+  });
+  await replaceAtTrainingBucketsForMonth({
+    orgId,
+    trainingMonthKey: normalizedTrainingMonthKey,
+    drafts,
+    db,
+  });
+  return drafts.length;
+};
+
+const collectRawAtTrainingMonthKeysForOrg = async (orgId: number) => {
+  const rows = await prisma.workLog.findMany({
+    where: { orgId },
+    select: { workDate: true },
+    orderBy: [{ workDate: "asc" }, { id: "asc" }],
+  });
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => normalizeMonthKey(normalizeDateKey(row.workDate).slice(0, 7)))
+        .filter((monthKey) => monthKey !== "")
+    )
+  ).sort();
+};
+
+const collectStoredAtTrainingMonthKeysForOrg = async (orgId: number) => {
+  const rows = await prisma.$queryRaw<Array<{ monthKey: string }>>(Prisma.sql`
+    SELECT DISTINCT "monthKey"
+    FROM "AtTrainingBucket"
+    WHERE "orgId" = ${orgId}
+    ORDER BY "monthKey" ASC
+  `);
+  return Array.from(
+    new Set(
+      rows
+        .map((row: { monthKey: string }) => normalizeMonthKey(row.monthKey))
+        .filter((monthKey: string) => monthKey !== "")
+    )
+  ).sort();
+};
+
+const ensureHistoricalAtTrainingBucketsForOrg = async ({
+  orgId,
+  maxMonthKey,
+  excludeMonthKeys = [],
+}: {
+  orgId: number;
+  maxMonthKey: string;
+  excludeMonthKeys?: string[];
+}) => {
+  const normalizedMaxMonthKey = normalizeMonthKey(maxMonthKey);
+  if (!normalizedMaxMonthKey) return [] as string[];
+
+  const [rawMonthKeys, storedMonthKeys] = await Promise.all([
+    collectRawAtTrainingMonthKeysForOrg(orgId),
+    collectStoredAtTrainingMonthKeysForOrg(orgId),
+  ]);
+  const storedMonthKeySet = new Set(storedMonthKeys);
+  const excludeMonthKeySet = new Set(
+    ensureArray(excludeMonthKeys)
+      .map((monthKey) => normalizeMonthKey(monthKey))
+      .filter((monthKey) => monthKey !== "")
+  );
+  const missingMonthKeys = rawMonthKeys.filter(
+    (monthKey) =>
+      monthKey <= normalizedMaxMonthKey &&
+      !storedMonthKeySet.has(monthKey) &&
+      !excludeMonthKeySet.has(monthKey)
+  );
+
+  for (const monthKey of missingMonthKeys) {
+    await prisma.$transaction(
+      async (tx) => {
+        await syncAtTrainingBucketsForMonth({
+          orgId,
+          trainingMonthKey: monthKey,
+          db: tx,
+        });
+      },
+      { timeout: 30000 }
+    );
+  }
+
+  return missingMonthKeys;
+};
+
+const loadAtTrainingDataFromBuckets = async ({
+  orgId,
+  upToMonthKey,
+}: {
+  orgId: number;
+  upToMonthKey: string;
+}) => {
+  const normalizedUpToMonthKey = normalizeMonthKey(upToMonthKey);
+  if (!normalizedUpToMonthKey) {
+    return {
+      trainingDayBuckets: [] as AtTrainingDayBucket[],
+      fallbackPerPieceByMetricKey: new Map<string, number | null>(),
+      metricTrainingQualityByMetricKey: new Map<string, AtTrainingMetricQuality>(),
+      styleProcessRowsById: new Map<number, any>(),
+    };
+  }
+
+  type StoredAtTrainingBucketRow = {
+    id: number;
+    workDate: string;
+    totalSeconds: number;
+    attendanceCoverage: number | null;
+  };
+  type StoredAtTrainingBucketProcessRow = {
+    bucketId: number;
+    styleProcessId: number;
+    quantity: number;
+  };
+
+  const bucketRows = await prisma.$queryRaw<StoredAtTrainingBucketRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "workDate",
+      "totalSeconds",
+      "attendanceCoverage"
+    FROM "AtTrainingBucket"
+    WHERE "orgId" = ${orgId} AND "monthKey" <= ${normalizedUpToMonthKey}
+    ORDER BY "workDate" ASC, "id" ASC
+  `);
+  if (bucketRows.length === 0) {
+    return {
+      trainingDayBuckets: [] as AtTrainingDayBucket[],
+      fallbackPerPieceByMetricKey: new Map<string, number | null>(),
+      metricTrainingQualityByMetricKey: new Map<string, AtTrainingMetricQuality>(),
+      styleProcessRowsById: new Map<number, any>(),
+    };
+  }
+
+  const bucketIds = bucketRows
+    .map((bucketRow: StoredAtTrainingBucketRow) => toPositiveIntOrNull(bucketRow.id))
+    .filter((bucketId): bucketId is number => bucketId !== null);
+  const bucketProcessRows =
+    bucketIds.length > 0
+      ? await prisma.$queryRaw<StoredAtTrainingBucketProcessRow[]>(Prisma.sql`
+          SELECT
+            "bucketId",
+            "styleProcessId",
+            "quantity"
+          FROM "AtTrainingBucketProcess"
+          WHERE "orgId" = ${orgId} AND "bucketId" IN (${Prisma.join(bucketIds)})
+          ORDER BY "bucketId" ASC, "styleProcessId" ASC
+        `)
+      : [];
+  const bucketProcessRowsByBucketId = bucketProcessRows.reduce((map, row) => {
+    const bucketId = toPositiveIntOrNull(row?.bucketId);
+    if (bucketId === null) return map;
+    const current = map.get(bucketId) || [];
+    current.push(row);
+    map.set(bucketId, current);
+    return map;
+  }, new Map<number, StoredAtTrainingBucketProcessRow[]>());
+
+  const styleProcessIds = Array.from(
+    new Set(
+      bucketProcessRows
+        .map((row: StoredAtTrainingBucketProcessRow) =>
+          toPositiveIntOrNull(row?.styleProcessId)
+        )
+        .filter((styleProcessId): styleProcessId is number => styleProcessId !== null)
+    )
+  );
+  const styleProcessRows =
+    styleProcessIds.length > 0
+      ? await prisma.styleProcess.findMany({
+          where: {
+            orgId,
+            id: { in: styleProcessIds },
+          },
+          select: {
+            id: true,
+            styleUid: true,
+            processQuantity: true,
+            ptSeconds: true,
+            atParams: true,
+          },
+        })
+      : [];
+  const styleProcessRowsById = new Map(
+    styleProcessRows.map((row) => [Number(row.id), row])
+  );
+
+  const trainingDayBuckets: AtTrainingDayBucket[] = [];
+  const fallbackPerPieceByMetricKey = new Map<string, number | null>();
+  const metricTrainingQualityByMetricKey = new Map<
+    string,
+    AtTrainingMetricQuality
+  >();
+
+  bucketRows.forEach((bucketRow: StoredAtTrainingBucketRow, bucketOrder: number) => {
+    const totalSeconds = toNumberOrNull(bucketRow.totalSeconds);
+    if (totalSeconds === null || totalSeconds <= 0) return;
+    const attendanceCoverage = toNumberOrNull(bucketRow.attendanceCoverage);
     const dayProcessRows: AtTrainingDayProcessRow[] = [];
-    perProcessGroups.forEach((group, metricKey) => {
-      if (group.totalQuantity <= 0) return;
-      matchedStyleUids.add(group.resolvedStyle.uid);
+
+    ensureArray(bucketProcessRowsByBucketId.get(Number(bucketRow.id))).forEach((processRow) => {
+      const styleProcessId = toPositiveIntOrNull(processRow?.styleProcessId);
+      const quantity = Number(processRow?.quantity) || 0;
+      if (styleProcessId === null || quantity <= 0) return;
+      const styleProcessRow = styleProcessRowsById.get(styleProcessId);
+      if (!styleProcessRow) return;
+
+      const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
       dayProcessRows.push({
         metricKey,
-        quantity: group.totalQuantity,
-        attendanceCoverage: attendanceCoverageRatio,
+        quantity,
+        attendanceCoverage,
       });
+
       const qualityCurrent = metricTrainingQualityByMetricKey.get(metricKey) || {
         totalQuantity: 0,
         weightedCoverageQuantity: 0,
         observationCount: 0,
       };
-      qualityCurrent.totalQuantity += group.totalQuantity;
-      if (attendanceCoverageRatio !== null) {
-        qualityCurrent.weightedCoverageQuantity +=
-          group.totalQuantity * attendanceCoverageRatio;
+      qualityCurrent.totalQuantity += quantity;
+      if (attendanceCoverage !== null) {
+        qualityCurrent.weightedCoverageQuantity += quantity * attendanceCoverage;
       }
       qualityCurrent.observationCount += 1;
       metricTrainingQualityByMetricKey.set(metricKey, qualityCurrent);
+
       if (!fallbackPerPieceByMetricKey.has(metricKey)) {
         fallbackPerPieceByMetricKey.set(
           metricKey,
-          resolveProcessFallbackPerPieceSeconds(
-            Number(group.resolvedStyle.uid),
-            group.processCodeKey,
-            group.processNameKey
-          )
+          resolveStoredStyleProcessFallbackPerPieceSeconds(styleProcessRow)
         );
       } else if (fallbackPerPieceByMetricKey.get(metricKey) == null) {
-        const resolvedFallback = resolveProcessFallbackPerPieceSeconds(
-          Number(group.resolvedStyle.uid),
-          group.processCodeKey,
-          group.processNameKey
-        );
+        const resolvedFallback =
+          resolveStoredStyleProcessFallbackPerPieceSeconds(styleProcessRow);
         if (resolvedFallback != null) {
           fallbackPerPieceByMetricKey.set(metricKey, resolvedFallback);
         }
       }
     });
-    if (dayProcessRows.length === 0) return;
 
+    if (dayProcessRows.length === 0) return;
     trainingDayBuckets.push({
-      dayKey: `${workDate}#${workLogOrder}`,
-      order: workLogOrder,
-      totalSeconds: totalDaySeconds,
+      dayKey: `${bucketRow.workDate}#${bucketRow.id}`,
+      order: bucketOrder,
+      totalSeconds: Math.max(1, Math.round(totalSeconds)),
       processRows: dayProcessRows,
     });
   });
 
-  if (trainingDayBuckets.length === 0) {
-    return finish(0, 0, "no_metric_observations");
-  }
-
-  const fittingResult = fitAtParamsWithProportionalAllocation(
+  return {
     trainingDayBuckets,
-    fallbackPerPieceByMetricKey
-  );
-  const fittedParamsByMetric = fittingResult.paramsByMetric;
-  if (fittedParamsByMetric.size === 0) {
-    return finish(0, 0, "no_fitted_metrics");
-  }
-  console.log(
-    `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
-  );
+    fallbackPerPieceByMetricKey,
+    metricTrainingQualityByMetricKey,
+    styleProcessRowsById,
+  };
+};
 
-  const styles = styleCandidates.filter((style) => matchedStyleUids.has(style.uid));
-  await ensureStyleProcessStorageForStyles(styles, { processOrgId: orgId });
-  const processRowsByStyleUid = await loadStyleProcessRowsByStyleUid(
-    styles.map((style) => style.uid),
-    { processOrgId: orgId }
-  );
-
-  let updatedStyles = 0;
+const applyAtTrainingResultsToStyleProcesses = async ({
+  orgId,
+  trainingMonthKey,
+  fittedParamsByMetric,
+  metricTrainingQualityByMetricKey,
+  styleProcessRowsById,
+}: {
+  orgId: number;
+  trainingMonthKey: string;
+  fittedParamsByMetric: Map<string, { a: number; b: number }>;
+  metricTrainingQualityByMetricKey: Map<string, AtTrainingMetricQuality>;
+  styleProcessRowsById: Map<number, any>;
+}) => {
   let updatedProcesses = 0;
   let clampAdjustedProcesses = 0;
-  for (const style of styles) {
-    let changed = false;
-    const processRows = processRowsByStyleUid.get(style.uid) || [];
-    for (const processRow of processRows) {
-      const codeKey = normalizeProcessCodeKey((processRow as any).processCode);
-      const nameKey = normalizeProcessNameKey((processRow as any).processName);
-      const metricKey =
-        (codeKey
-          ? toStyleProcessMetricKey(String(style.uid), "code", codeKey)
-          : null) ||
-        (nameKey
-          ? toStyleProcessMetricKey(String(style.uid), "name", nameKey)
-          : null);
-      if (!metricKey) continue;
+  const changedStyleUids = new Set<number>();
 
-      const fittedRaw = fittedParamsByMetric.get(metricKey);
-      if (!fittedRaw) continue;
+  for (const processRow of styleProcessRowsById.values()) {
+    const styleProcessId = toPositiveIntOrNull(processRow?.id);
+    const styleUid = toPositiveIntOrNull(processRow?.styleUid);
+    if (styleProcessId === null || styleUid === null) continue;
 
-      const currentAtParams = toStyleAtParams((processRow as any).atParams);
-      const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
-      const nextAttendanceCoverage =
-        qualityStats && qualityStats.totalQuantity > 0
-          ? roundToScale(
-              Math.min(
-                1,
-                Math.max(
-                  0,
-                  qualityStats.weightedCoverageQuantity / qualityStats.totalQuantity
-                )
-              ),
-              4
-            )
-          : null;
-      const nextAttendanceFallbackShare =
-        nextAttendanceCoverage == null
-          ? null
-          : roundToScale(Math.max(0, 1 - nextAttendanceCoverage), 4);
-      const nextObservationCount =
-        qualityStats && qualityStats.observationCount > 0
-          ? Math.trunc(qualityStats.observationCount)
-          : null;
-      const clampedA = clampAtSlopeByMonthlyChange(fittedRaw.a, currentAtParams, {
-        observationCount: nextObservationCount,
-      });
-      const fitted =
-        clampedA !== fittedRaw.a
-          ? { a: clampedA, b: fittedRaw.b }
-          : fittedRaw;
-      if (clampedA !== fittedRaw.a) {
-        clampAdjustedProcesses += 1;
-      }
-      const hasAtParamDelta =
-        currentAtParams === null ||
-        currentAtParams.a !== fitted.a ||
-        currentAtParams.b !== fitted.b;
-      const hasQualityDelta =
-        (currentAtParams?.attendanceCoverage ?? null) !==
-          (nextAttendanceCoverage ?? null) ||
-        (currentAtParams?.attendanceFallbackShare ?? null) !==
-          (nextAttendanceFallbackShare ?? null) ||
-        (currentAtParams?.observationCount ?? null) !==
-          (nextObservationCount ?? null);
-      const hasTrainingPeriodDelta =
-        currentAtParams?.trainedPeriod !== trainingMonthKey;
-      const shouldRefreshAtParams =
-        currentAtParams === null ||
-        hasAtParamDelta ||
-        hasQualityDelta ||
-        hasTrainingPeriodDelta;
-      const nextAtParams = shouldRefreshAtParams
-        ? {
-            a: fitted.a,
-            b: fitted.b,
-            version:
-              currentAtParams === null
-                ? 1
-                : currentAtParams.version + (hasAtParamDelta ? 1 : 0),
-            updatedAt: new Date().toISOString(),
-            trainedPeriod: trainingMonthKey,
-            attendanceCoverage: nextAttendanceCoverage,
-            attendanceFallbackShare: nextAttendanceFallbackShare,
-            observationCount: nextObservationCount,
-          }
-        : currentAtParams;
-      const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);
-      if (!atParamsChanged) continue;
+    const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
+    const fittedRaw = fittedParamsByMetric.get(metricKey);
+    if (!fittedRaw) continue;
 
-      changed = true;
-      updatedProcesses += 1;
-      await prisma.styleProcess.update({
-        where: { id: processRow.id },
-        data: {
-          atParams: nextAtParams,
-        },
-      });
+    const currentAtParams = toStyleAtParams((processRow as any).atParams);
+    const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
+    const nextAttendanceCoverage =
+      qualityStats && qualityStats.totalQuantity > 0
+        ? roundToScale(
+            Math.min(
+              1,
+              Math.max(
+                0,
+                qualityStats.weightedCoverageQuantity / qualityStats.totalQuantity
+              )
+            ),
+            4
+          )
+        : null;
+    const nextAttendanceFallbackShare =
+      nextAttendanceCoverage == null
+        ? null
+        : roundToScale(Math.max(0, 1 - nextAttendanceCoverage), 4);
+    const nextObservationCount =
+      qualityStats && qualityStats.observationCount > 0
+        ? Math.trunc(qualityStats.observationCount)
+        : null;
+    const clampedA = clampAtSlopeByMonthlyChange(fittedRaw.a, currentAtParams, {
+      observationCount: nextObservationCount,
+    });
+    const fitted =
+      clampedA !== fittedRaw.a ? { a: clampedA, b: fittedRaw.b } : fittedRaw;
+    if (clampedA !== fittedRaw.a) {
+      clampAdjustedProcesses += 1;
     }
 
-    if (!changed) continue;
-    updatedStyles += 1;
-    await refreshStyleProcessMirrorForStyleUids([style.uid], {
+    const hasAtParamDelta =
+      currentAtParams === null ||
+      currentAtParams.a !== fitted.a ||
+      currentAtParams.b !== fitted.b;
+    const hasQualityDelta =
+      (currentAtParams?.attendanceCoverage ?? null) !==
+        (nextAttendanceCoverage ?? null) ||
+      (currentAtParams?.attendanceFallbackShare ?? null) !==
+        (nextAttendanceFallbackShare ?? null) ||
+      (currentAtParams?.observationCount ?? null) !==
+        (nextObservationCount ?? null);
+    const hasTrainingPeriodDelta =
+      currentAtParams?.trainedPeriod !== trainingMonthKey;
+    const shouldRefreshAtParams =
+      currentAtParams === null ||
+      hasAtParamDelta ||
+      hasQualityDelta ||
+      hasTrainingPeriodDelta;
+    const nextAtParams = shouldRefreshAtParams
+      ? {
+          a: fitted.a,
+          b: fitted.b,
+          version:
+            currentAtParams === null
+              ? 1
+              : currentAtParams.version + (hasAtParamDelta ? 1 : 0),
+          updatedAt: new Date().toISOString(),
+          trainedPeriod: trainingMonthKey,
+          attendanceCoverage: nextAttendanceCoverage,
+          attendanceFallbackShare: nextAttendanceFallbackShare,
+          observationCount: nextObservationCount,
+        }
+      : currentAtParams;
+    const atParamsChanged = !isSameStyleAtParams(currentAtParams, nextAtParams);
+    if (!atParamsChanged) continue;
+
+    updatedProcesses += 1;
+    changedStyleUids.add(styleUid);
+    await prisma.styleProcess.update({
+      where: { id: styleProcessId },
+      data: {
+        atParams: nextAtParams,
+      },
+    });
+  }
+
+  if (changedStyleUids.size > 0) {
+    await refreshStyleProcessMirrorForStyleUids(Array.from(changedStyleUids.values()), {
       processOrgId: orgId,
     });
   }
 
-  if (clampAdjustedProcesses > 0) {
+  return {
+    updatedStyles: changedStyleUids.size,
+    updatedProcesses,
+    clampAdjustedProcesses,
+  };
+};
+
+const syncStyleProcessActualTimesFromWorkRecords = async (
+  orgId: number,
+  options: AtSyncRunOptions = {}
+) => {
+  const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
+  const startedAt = Date.now();
+  const finish = (
+    updatedStyles: number,
+    updatedProcesses: number,
+    reason = "done"
+  ) => {
     console.log(
-      `[AT sync] orgId=${orgId} month=${trainingMonthKey} clampAdjustedProcesses=${clampAdjustedProcesses} clampRatio=${AT_MONTHLY_A_CLAMP_RATIO}`
+      `[AT sync] orgId=${orgId} month=${trainingMonthKey} updatedStyles=${updatedStyles} updatedProcesses=${updatedProcesses} reason=${reason} durationMs=${Date.now() - startedAt}`
+    );
+    return { updatedStyles, updatedProcesses };
+  };
+  console.log(`[AT sync] start orgId=${orgId} month=${trainingMonthKey}`);
+  {
+    const backfilledMonthKeys = await ensureHistoricalAtTrainingBucketsForOrg({
+      orgId,
+      maxMonthKey: trainingMonthKey,
+      excludeMonthKeys: [trainingMonthKey],
+    });
+    if (backfilledMonthKeys.length > 0) {
+      console.log(
+        `[AT sync] orgId=${orgId} month=${trainingMonthKey} backfilledMonths=${backfilledMonthKeys.join(",")}`
+      );
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await syncAtTrainingBucketsForMonth({
+          orgId,
+          trainingMonthKey,
+          db: tx,
+        });
+      },
+      { timeout: 30000 }
+    );
+
+    const bucketTrainingData = await loadAtTrainingDataFromBuckets({
+      orgId,
+      upToMonthKey: trainingMonthKey,
+    });
+    if (bucketTrainingData.trainingDayBuckets.length === 0) {
+      return finish(0, 0, "no_metric_observations");
+    }
+
+    const fittingResult = fitAtParamsWithProportionalAllocation(
+      bucketTrainingData.trainingDayBuckets,
+      bucketTrainingData.fallbackPerPieceByMetricKey
+    );
+    const fittedParamsByMetric = fittingResult.paramsByMetric;
+    if (fittedParamsByMetric.size === 0) {
+      return finish(0, 0, "no_fitted_metrics");
+    }
+    console.log(
+      `[AT sync] orgId=${orgId} month=${trainingMonthKey} metrics=${fittedParamsByMetric.size} dayBuckets=${bucketTrainingData.trainingDayBuckets.length} iterations=${fittingResult.iterationCount} converged=${fittingResult.converged}`
+    );
+
+    const applyResult = await applyAtTrainingResultsToStyleProcesses({
+      orgId,
+      trainingMonthKey,
+      fittedParamsByMetric,
+      metricTrainingQualityByMetricKey:
+        bucketTrainingData.metricTrainingQualityByMetricKey,
+      styleProcessRowsById: bucketTrainingData.styleProcessRowsById,
+    });
+    if (applyResult.clampAdjustedProcesses > 0) {
+      console.log(
+        `[AT sync] orgId=${orgId} month=${trainingMonthKey} clampAdjustedProcesses=${applyResult.clampAdjustedProcesses} clampRatio=${AT_MONTHLY_A_CLAMP_RATIO}`
+      );
+    }
+
+    return finish(
+      applyResult.updatedStyles,
+      applyResult.updatedProcesses,
+      backfilledMonthKeys.length > 0
+        ? `done+backfilled_${backfilledMonthKeys.length}`
+        : "done"
     );
   }
-
-  return finish(updatedStyles, updatedProcesses);
 };
 
 type AtSyncEventSource =

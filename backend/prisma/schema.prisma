@@ -118,6 +118,8 @@ model Organization {
   assignmentPlans           AssignmentPlan[]
   payrollSnapshots          PayrollSnapshot[]
   attendanceEntries         AttendanceEntry[]
+  atTrainingBuckets         AtTrainingBucket[]
+  atTrainingBucketProcesses AtTrainingBucketProcess[]
   manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
   brandRelationships        OrgRelationship[]         @relation("BrandOrgRelationships")
   onboardingRequests        OnboardingRequest[]
@@ -433,6 +435,7 @@ model StyleProcess {
   organization Organization          @relation(fields: [orgId], references: [id])
   style        Style                 @relation(fields: [styleUid], references: [uid], onDelete: Cascade)
   standards    StyleProcessStandard[]
+  trainingBuckets AtTrainingBucketProcess[]
 
   @@unique([styleUid, orgId, processCode])
   @@index([orgId])
@@ -455,6 +458,45 @@ model StyleProcessStandard {
   @@unique([styleProcessId, quantity])
   @@index([orgId])
   @@index([styleProcessId])
+}
+
+model AtTrainingBucket {
+  id                 Int      @id @default(autoincrement())
+  orgId              Int
+  monthKey           String
+  sourceWorkLogId    Int
+  workDate           String
+  factoryId          Int?
+  totalSeconds       Int
+  attendanceCoverage Float?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization Organization             @relation(fields: [orgId], references: [id])
+  processRows  AtTrainingBucketProcess[]
+
+  @@unique([orgId, sourceWorkLogId])
+  @@index([orgId, monthKey, workDate])
+  @@index([orgId, workDate])
+}
+
+model AtTrainingBucketProcess {
+  id             Int      @id @default(autoincrement())
+  orgId          Int
+  bucketId       Int
+  styleUid       Int
+  styleProcessId Int
+  quantity       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization     @relation(fields: [orgId], references: [id])
+  bucket       AtTrainingBucket  @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  styleProcess StyleProcess      @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
+
+  @@unique([bucketId, styleProcessId])
+  @@index([orgId, styleProcessId])
+  @@index([orgId, styleUid])
 }
 
 model WorkOrder {

@@ -709,19 +709,29 @@
 
 **학습 실행 정책**
 - **실행 시점**: 매달 5일 00:00 이후(Asia/Seoul) 스케줄러 자동 실행 + 이벤트 트리거 보조
-- **학습 대상**: 직전 월 전체 데이터
+- **전월 raw 적재**: 실행 시점마다 직전 월 `WorkLog/WorkRecord/Attendance`를 읽어 `AtTrainingBucket` / `AtTrainingBucketProcess`에 다시 적재한다.
+  - `AtTrainingBucket`: `라인×일자(workLog)` 단위의 `T_d`, 출퇴근 커버리지, 기준 월
+  - `AtTrainingBucketProcess`: 해당 bucket 안의 **스타일+공정(`styleProcessId`)별 `q_{d,p}`**
+- **실제 학습 대상**: 당월 학습 시점의 전월 raw만 직접 읽는 것이 아니라, **누적된 bucket 전체(대상 월 이하)** 를 사용한다.
+  - 예: `2026-03-05` 학습은 `2026-02` raw를 bucket에 적재하고, 실제 피팅은 `... + 2026-01 + 2026-02` 누적 bucket으로 수행한다.
+  - 초기 배포 후 bucket이 비어 있으면 과거 월 raw를 한 번 backfill해 누적 기반을 만든다.
 - **출퇴근 기록 폴백 규칙(확정)**:
   - 매달 5일까지 전월 출퇴근 기록이 입력된 경우: 입력된 실제 근무시간으로 `T_d`를 사용한다.
   - 매달 5일까지 전월 출퇴근 기록이 입력되지 않은 경우: 해당 라인/작업자는 `T_d = 8 * 3600` (8시간)으로 간주한다.
   - 위 규칙은 학습(AT 갱신)에만 적용하며, 실제 급여 계산 기준은 별도 정책을 따른다.
-- **구현 상태(반영 완료)**: 출퇴근 입력은 화면 + 서버 저장으로 동작하며, AT 학습 계산은 매월 5일 기준 직전 월 데이터를 반영할 때 출퇴근 입력값을 우선 사용한다. 입력이 없거나 불완전한 경우 8시간 기준으로 폴백한다.
+  - 구현상 폴백은 `workerId + factoryId + workDate` 단위로 적용된다.
 
 **AT 추정 구현(현재)**
 - 현재 운영 구현은 **라인×일자 총시간(T_d)을 공정별 작업량(q×w_p)으로 비례배분**하고, 공정별 `t = a*q + b`를 반복 추정한다.
-- `w_p <- a_p`로 갱신하는 반복 수렴 루프를 수행한 뒤, 일자 단위 가중치(`w_day = max(w_mag, w_trend)`)를 적용한 최종 WLS를 1회 수행해 `a,b`를 확정한다.
+- 학습 단위는 반드시 **스타일+공정(`styleProcessId`)** 이다. 스타일 단독 집계는 사용하지 않는다.
+- 매달 5일 실행 시:
+  1. 전월 raw를 `AtTrainingBucket` 계열 테이블로 재적재
+  2. 누적 bucket 전체(대상 월 이하)를 읽어 스타일+공정별 관측치를 구성
+  3. `w_p <- a_p` 반복 수렴 후, 일자 단위 가중치(`w_day = max(w_mag, w_trend)`)를 적용한 최종 WLS를 1회 수행해 `a,b`를 확정
 - 월간 급변 방지를 위해 `a`는 직전 값 대비 `±AT_MONTHLY_A_CLAMP_RATIO` 범위로 clamp한다.
-- 추정 결과는 `Style.processes[].atParams = { a, b, version, updatedAt, trainedPeriod }`로 저장되며, `at` 필드는 더 이상 갱신하거나 사용하지 않는다.
+- 추정 결과는 `StyleProcess.atParams = { a, b, version, updatedAt, trainedPeriod, attendanceCoverage, attendanceFallbackShare, observationCount }`로 저장한다.
 - 데이터가 부족하거나 회귀가 불안정한 경우에는 `b=0`(원점 통과 slope) 및 평균 단위시간 fallback을 사용한다.
+- 오래된 월 데이터가 수정되면 해당 월 bucket을 다시 적재한 뒤 AT를 재실행해야 한다. 운영상 수동 실행은 `POST /at-sync/run-now`의 `trainingMonthKey=YYYY-MM`로 맞춘다.
 
 **ST(q) (Standard Time) — 정책 기준값 (충격 완충재)**
 - PT → AT로 기준이 전환될 때 급격한 변화를 막기 위한 완충 구간
