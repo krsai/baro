@@ -1022,7 +1022,10 @@ const MainLayout = () => {
           <ListItemIcon sx={{ color: '#d32f2f' }}>
             <LogoutIcon />
           </ListItemIcon>
-          <ListItemText primary="로그아웃" sx={{ color: '#d32f2f' }} />
+          <ListItemText
+            primary={getUiMessage('menu.logout', 'Logout', languageCode)}
+            sx={{ color: '#d32f2f' }}
+          />
         </ListItem>
       </List>
     </Box>

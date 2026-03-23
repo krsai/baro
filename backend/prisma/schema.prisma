@@ -198,6 +198,7 @@ model Factory {
   orgId             Int
   name              String
   address           String?
+  country           String?
   countryCode       String?
   phoneNumber       String?
   manager           String?

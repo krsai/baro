@@ -14,6 +14,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -61,6 +62,7 @@ const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER
 const isWorkerJobRoleOption = (role) =>
   WORKER_JOB_ROLE_CODES.has(String(role?.code || '').trim().toUpperCase());
 const getOrgRoleLabel = (value) => ORG_ROLE_LABELS[String(value || '').toUpperCase()] || '-';
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const sortJobRoleOptions = (rows = []) =>
   [...rows].sort((a, b) => {
@@ -77,8 +79,17 @@ const formatDate = (value) => {
 };
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 
-const buildEmployeeDraft = (member, employee) => ({
-  name: employee?.name || '',
+const resolveNameFromEmail = (email) => {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) return '';
+  return normalized.split('@')[0];
+};
+
+const buildEmployeeDraft = (member, employee, options = {}) => ({
+  name:
+    String(employee?.name || '').trim() ||
+    String(options.currentUserName || '').trim() ||
+    (options.useEmailFallback ? resolveNameFromEmail(member?.email) : ''),
   bankName: employee?.bankName || '',
   bankAccountNumber: employee?.bankAccountNumber || '',
   orgRole: String(member?.role || 'WORKER').toUpperCase(),
@@ -94,11 +105,17 @@ const EmployeeRow = React.memo(
     employee,
     roleOptions,
     jobRoleOptions,
+    draftOptions,
+    isBulkSaving,
     isUpdating,
     onSave,
+    onRowStateChange,
   }) => {
     const { languageCode } = useLanguage();
-    const baseDraft = useMemo(() => buildEmployeeDraft(member, employee), [member, employee]);
+    const baseDraft = useMemo(
+      () => buildEmployeeDraft(member, employee, draftOptions),
+      [draftOptions, employee, member]
+    );
     const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
     const [draft, setDraft] = useState(baseDraft);
     const [isDirty, setIsDirty] = useState(false);
@@ -124,7 +141,7 @@ const EmployeeRow = React.memo(
       setIsDirty(true);
     };
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
       const didSave = await onSave(member, {
         ...draft,
         jobRoleId: effectiveJobRoleId,
@@ -132,7 +149,19 @@ const EmployeeRow = React.memo(
       if (didSave) {
         setIsDirty(false);
       }
-    };
+      return didSave;
+    }, [draft, effectiveJobRoleId, member, onSave]);
+
+    useEffect(() => {
+      if (typeof onRowStateChange !== 'function') return undefined;
+      onRowStateChange(member.id, {
+        isDirty,
+        save: handleSave,
+      });
+      return () => {
+        onRowStateChange(member.id, null);
+      };
+    }, [handleSave, isDirty, member.id, onRowStateChange]);
 
     return (
       <TableRow>
@@ -141,7 +170,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.name}
             onChange={(e) => handleDraftChange({ name: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
           />
         </TableCell>
 
@@ -152,7 +181,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.bankName}
             onChange={(e) => handleDraftChange({ bankName: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
           />
         </TableCell>
 
@@ -161,7 +190,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.bankAccountNumber}
             onChange={(e) => handleDraftChange({ bankAccountNumber: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
           />
         </TableCell>
 
@@ -171,7 +200,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.orgRole}
             onChange={(e) => handleDraftChange({ orgRole: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
           >
             {roleOptions.map((role) => (
               <MenuItem key={role.value} value={role.value}>
@@ -188,7 +217,7 @@ const EmployeeRow = React.memo(
               size="small"
               value={effectiveJobRoleId}
               onChange={(e) => handleDraftChange({ jobRoleId: e.target.value })}
-              disabled={isUpdating}
+              disabled={isUpdating || isBulkSaving}
               sx={{ minWidth: 180 }}
             >
               {jobRoleOptions.map((role) => (
@@ -206,7 +235,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.payType}
             onChange={(e) => handleDraftChange({ payType: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
             sx={{ minWidth: 170 }}
           >
             {payTypeOptions.map((option) => (
@@ -223,7 +252,7 @@ const EmployeeRow = React.memo(
             size="small"
             value={draft.status}
             onChange={(e) => handleDraftChange({ status: e.target.value })}
-            disabled={isUpdating}
+            disabled={isUpdating || isBulkSaving}
           >
             {EMPLOYEE_STATUS_OPTIONS.map((option) => (
               <MenuItem key={option.value} value={option.value}>
@@ -245,46 +274,47 @@ const EmployeeRow = React.memo(
 
         <TableCell>{formatDate(joinedAt)}</TableCell>
         <TableCell>{formatDate(leftAt)}</TableCell>
-
-        <TableCell>
-          <Button
-            variant="contained"
-            size="small"
-            onClick={handleSave}
-            disabled={isUpdating || !isDirty}
-          >
-            저장
-          </Button>
-        </TableCell>
       </TableRow>
     );
   }
 );
 
 const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
-  const { user, activeOrgId: authOrgId, activeOrgType: authOrgType, activeOrgRole, activeFactoryId } = useAuth();
+  const {
+    user,
+    activeProfile,
+    activeOrgId: authOrgId,
+    activeOrgType: authOrgType,
+    activeOrgRole,
+    activeFactoryId,
+  } = useAuth();
   const { showNotification } = useApp();
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
   const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;
+  const myEmail = useMemo(
+    () => normalizeEmail(user?.email || activeProfile?.email || ''),
+    [activeProfile?.email, user?.email]
+  );
 
   const [factories, setFactories] = useState([]);
   const [pendingMembers, setPendingMembers] = useState([]);
   const [activeMembers, setActiveMembers] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
-  const [myEmail, setMyEmail] = useState(user?.email || '');
   const [selectedFactoryFilterId, setSelectedFactoryFilterId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [statusMessage, setStatusMessage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
+  const [isSavingAllRows, setIsSavingAllRows] = useState(false);
 
   const [pendingFactoryOverrides, setPendingFactoryOverrides] = useState({});
   const [pendingRoleOverrides, setPendingRoleOverrides] = useState({});
   const [updatingMembershipIds, setUpdatingMembershipIds] = useState({});
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
+  const [rowSaveRegistry, setRowSaveRegistry] = useState({});
 
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType),
@@ -297,6 +327,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       : '';
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
+  const currentUserName = String(activeProfile?.employeeName || '').trim();
 
   const employeeByMembership = useMemo(() => {
     const map = new Map();
@@ -312,10 +343,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     });
     return map;
   }, [factories]);
-
-  useEffect(() => {
-    setMyEmail(user?.email || '');
-  }, [user?.email]);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -570,6 +597,77 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     [activeOrgId, fetchEmployees, fetchMemberships, myEmail, selectedFactoryFilterId, updatingEmployeeIds, updatingMembershipIds]
   );
 
+  const handleRowStateChange = useCallback((memberId, payload) => {
+    const key = String(memberId);
+    setRowSaveRegistry((prev) => {
+      if (!payload) {
+        if (!Object.prototype.hasOwnProperty.call(prev, key)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return {
+        ...prev,
+        [key]: payload,
+      };
+    });
+  }, []);
+
+  const dirtyRowIds = useMemo(
+    () =>
+      Object.keys(rowSaveRegistry).filter(
+        (key) => rowSaveRegistry[key] && rowSaveRegistry[key].isDirty
+      ),
+    [rowSaveRegistry]
+  );
+
+  const handleSaveAllRows = useCallback(async () => {
+    if (isSavingAllRows) return;
+
+    const targetRowIds = Object.keys(rowSaveRegistry).filter(
+      (key) => rowSaveRegistry[key] && rowSaveRegistry[key].isDirty
+    );
+    if (targetRowIds.length === 0) {
+      setStatusMessage({ type: 'info', text: '저장할 변경사항이 없습니다.' });
+      return;
+    }
+
+    setIsSavingAllRows(true);
+    setStatusMessage(null);
+
+    let savedCount = 0;
+    let failedCount = 0;
+
+    for (const key of targetRowIds) {
+      const saveHandler = rowSaveRegistry[key]?.save;
+      if (typeof saveHandler !== 'function') continue;
+
+      try {
+        const didSave = await saveHandler();
+        if (didSave) {
+          savedCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      } catch (_error) {
+        failedCount += 1;
+      }
+    }
+
+    if (savedCount > 0 && failedCount === 0) {
+      setStatusMessage({ type: 'success', text: `직원 정보 ${savedCount}건을 저장했습니다.` });
+    } else if (savedCount > 0 && failedCount > 0) {
+      setStatusMessage({
+        type: 'warning',
+        text: `직원 정보 ${savedCount}건 저장, ${failedCount}건 실패했습니다.`,
+      });
+    } else if (failedCount > 0) {
+      setStatusMessage({ type: 'error', text: '직원 정보 저장에 실패했습니다.' });
+    }
+
+    setIsSavingAllRows(false);
+  }, [isSavingAllRows, rowSaveRegistry]);
+
   const factoryOrder = useMemo(() => {
     const map = new Map();
     factories.forEach((factory, index) => {
@@ -635,22 +733,27 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, [employeeByMembership, factoryOrder, filteredActiveMembers]);
 
   return (
-    <AppPageContainer>
+    <AppPageContainer
+      title="직원 관리"
+      titleActions={(
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSaveAllRows}
+          disabled={isSavingAllRows || dirtyRowIds.length === 0}
+        >
+          {isSavingAllRows
+            ? '저장 중...'
+            : dirtyRowIds.length > 0
+              ? `저장 (${dirtyRowIds.length})`
+              : '저장'}
+        </Button>
+      )}
+    >
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
         {statusMessage && (
           <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
         )}
-
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            직원 관리
-          </Typography>
-        </Box>
 
         {pendingMembers.length > 0 && (
           <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
@@ -819,19 +922,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>상태</TableCell>
                   <TableCell>입사일</TableCell>
                   <TableCell>퇴사일</TableCell>
-                  <TableCell>저장</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={11}
+                    colSpan={10}
                     message={searchTerm ? '검색 결과가 없습니다.' : '표시할 직원이 없습니다.'}
                     sx={{ py: 2 }}
                   />
                 ) : (
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
+                    const normalizedMemberEmail = normalizeEmail(member?.email);
                     const isUpdating =
                       Boolean(updatingEmployeeIds[member.id]) ||
                       Boolean(updatingMembershipIds[member.id]);
@@ -843,8 +946,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         employee={employee}
                         roleOptions={roleOptions}
                         jobRoleOptions={jobRoleOptions}
+                        draftOptions={{
+                          useEmailFallback: normalizedMemberEmail === myEmail,
+                          currentUserName:
+                            normalizedMemberEmail === myEmail ? currentUserName : '',
+                        }}
+                        isBulkSaving={isSavingAllRows}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}
+                        onRowStateChange={handleRowStateChange}
                       />
                     );
                   })

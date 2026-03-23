@@ -8,6 +8,10 @@ type FactoryRoutesDeps = {
 };
 
 const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
+const FACTORY_DIAL_CODE_BY_COUNTRY: Record<string, string> = {
+  KR: "+82",
+  VN: "+84",
+};
 
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
@@ -28,6 +32,53 @@ const resolveFactoryWageFields = (
   return {
     targetMonthlyWage,
     wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
+  };
+};
+
+const normalizeFactoryCountry = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized || null;
+};
+
+const normalizeFactoryCountryCode = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.toUpperCase();
+  if (normalized === "KR") return FACTORY_DIAL_CODE_BY_COUNTRY.KR ?? null;
+  if (normalized === "VN") return FACTORY_DIAL_CODE_BY_COUNTRY.VN ?? null;
+  return trimmed;
+};
+
+const resolveFactoryPhoneFields = (params: {
+  countryInput: unknown;
+  countryCodeInput: unknown;
+  fallbackCountry?: unknown;
+  fallbackCountryCode?: unknown;
+}): { country: string | null; countryCode: string | null } => {
+  const countryFromInput = normalizeFactoryCountry(params.countryInput);
+  const countryCodeFromInput = normalizeFactoryCountryCode(params.countryCodeInput);
+  const fallbackCountry = normalizeFactoryCountry(params.fallbackCountry);
+  const fallbackCountryCode = normalizeFactoryCountryCode(params.fallbackCountryCode);
+
+  let country = countryFromInput ?? fallbackCountry;
+  let countryCode = countryCodeFromInput ?? fallbackCountryCode;
+
+  if (!country && countryCode === FACTORY_DIAL_CODE_BY_COUNTRY.KR) {
+    country = "KR";
+  } else if (!country && countryCode === FACTORY_DIAL_CODE_BY_COUNTRY.VN) {
+    country = "VN";
+  }
+
+  if (!countryCode && country && FACTORY_DIAL_CODE_BY_COUNTRY[country]) {
+    countryCode = FACTORY_DIAL_CODE_BY_COUNTRY[country] ?? null;
+  }
+
+  return {
+    country,
+    countryCode,
   };
 };
 
@@ -59,6 +110,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const {
       name,
       address,
+      country,
       countryCode,
       phoneNumber,
       manager,
@@ -70,13 +122,18 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       return res.status(400).json({ ok: false, error: "name is required" });
     }
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
+    const phoneFields = resolveFactoryPhoneFields({
+      countryInput: country,
+      countryCodeInput: countryCode,
+    });
 
     const factory = await prisma.factory.create({
       data: {
         orgId: organization.id,
         name: name.trim(),
         address: address?.trim?.() ?? address ?? null,
-        countryCode: countryCode?.trim?.() ?? countryCode ?? null,
+        country: phoneFields.country,
+        countryCode: phoneFields.countryCode,
         phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
         manager: manager?.trim?.() ?? manager ?? null,
         targetMonthlyWage: wageFields.targetMonthlyWage,
@@ -111,6 +168,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const {
       name,
       address,
+      country,
       countryCode,
       phoneNumber,
       manager,
@@ -118,13 +176,20 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       wagePerSecond,
     } = req.body ?? {};
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
+    const phoneFields = resolveFactoryPhoneFields({
+      countryInput: country,
+      countryCodeInput: countryCode,
+      fallbackCountry: (existing as any)?.country ?? null,
+      fallbackCountryCode: existing.countryCode,
+    });
 
     const factory = await prisma.factory.update({
       where: { id },
       data: {
         name: typeof name === "string" ? name.trim() : existing.name,
         address: address?.trim?.() ?? address ?? null,
-        countryCode: countryCode?.trim?.() ?? countryCode ?? null,
+        country: phoneFields.country,
+        countryCode: phoneFields.countryCode,
         phoneNumber: phoneNumber?.trim?.() ?? phoneNumber ?? null,
         manager: manager?.trim?.() ?? manager ?? null,
         targetMonthlyWage: wageFields.targetMonthlyWage,

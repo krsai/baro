@@ -52,6 +52,7 @@ export const UI_MESSAGES = {
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
     staticOptions: { ko: '정적 사전', en: 'Static Dictionary', vi: 'Tu dien tinh' },
     onboardingApproval: { ko: '가입 승인', en: 'Onboarding Approval', vi: 'Duyet dang ky' },
+    logout: { ko: '로그아웃', en: 'Logout', vi: 'Dang xuat' },
   },
   orderDetail: {
     newTitle: { ko: '신규 주문 등록', en: 'New Order', vi: 'Tao don hang moi' },
@@ -438,6 +439,92 @@ export const UI_MESSAGES = {
     },
   },
 };
+
+Object.assign(UI_MESSAGES, {
+  organizationBoard: {
+    title: { ko: '\uC870\uC9C1', en: 'Organization', vi: 'To chuc' },
+    tabBusiness: { ko: '\uBC95\uC778 \uC815\uBCF4', en: 'Business Info', vi: 'Thong tin doanh nghiep' },
+    tabFactory: { ko: '\uACF5\uC7A5 \uC815\uBCF4', en: 'Factory Info', vi: 'Thong tin nha may' },
+    toggleAriaLabel: {
+      ko: '\uC870\uC9C1 \uAD00\uB9AC \uD0ED',
+      en: 'Organization management tabs',
+      vi: 'Tab quan ly to chuc',
+    },
+  },
+  factoryBoard: {
+    title: { ko: '\uACF5\uC7A5', en: 'Factory', vi: 'Nha may' },
+    addFactory: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
+    deleteFactory: { ko: '\uACF5\uC7A5 \uC0AD\uC81C', en: 'Delete Factory', vi: 'Xoa nha may' },
+    columnName: { ko: '\uACF5\uC7A5\uBA85', en: 'Factory Name', vi: 'Ten nha may' },
+    columnAddress: { ko: '\uC8FC\uC18C', en: 'Address', vi: 'Dia chi' },
+    columnContact: { ko: '\uC5F0\uB77D\uCC98', en: 'Contact', vi: 'Lien he' },
+    columnManager: { ko: '\uAD00\uB9AC\uC790', en: 'Manager', vi: 'Quan ly' },
+    columnWagePerSecond: { ko: '\uCD08\uB2F9 \uAE09\uC5EC', en: 'Wage / sec', vi: 'Luong/giay' },
+    columnAction: { ko: '\uAD00\uB9AC', en: 'Action', vi: 'Tac vu' },
+    loading: { ko: '\uBD88\uB7EC\uC624\uB294 \uC911...', en: 'Loading...', vi: 'Dang tai...' },
+    empty: { ko: '\uB4F1\uB85D\uB41C \uACF5\uC7A5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.', en: 'No factories found.', vi: 'Chua co nha may nao.' },
+    fetchError: { ko: '\uACF5\uC7A5 \uBAA9\uB85D\uC744 \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', en: 'Failed to load factory list.', vi: 'Khong the tai danh sach nha may.' },
+    saveSuccess: { ko: '\uACF5\uC7A5 \uC815\uBCF4\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.', en: 'Factory information has been saved.', vi: 'Da luu thong tin nha may.' },
+    saveError: { ko: '\uACF5\uC7A5 \uC815\uBCF4 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', en: 'Failed to save factory information.', vi: 'Khong the luu thong tin nha may.' },
+    deleteConfirm: {
+      ko: "'{name}'\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?\\n\uAD00\uB828 \uB77C\uC778/\uC9C1\uC6D0/\uB77C\uC778\uBC30\uC815\uB3C4 \uD568\uAED8 \uC0AD\uC81C\uB429\uB2C8\uB2E4.",
+      en: "Delete '{name}'?\\nRelated lines, employees, and assignments will also be deleted.",
+      vi: "Xoa '{name}'?\\nCac chuyen, nhan vien va phan cong lien quan cung se bi xoa.",
+    },
+    deleteSuccess: {
+      ko: '\uACF5\uC7A5\uC744 \uC0AD\uC81C\uD588\uC2B5\uB2C8\uB2E4. \uB77C\uC778 {lineCount}\uAC1C, \uC9C1\uC6D0 {employeeCount}\uBA85\uB3C4 \uD568\uAED8 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.',
+      en: 'Factory deleted. Lines {lineCount}, employees {employeeCount} were also deleted.',
+      vi: 'Da xoa nha may. Cung da xoa {lineCount} chuyen va {employeeCount} nhan vien.',
+    },
+    deleteError: { ko: '\uACF5\uC7A5 \uC0AD\uC81C\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', en: 'Failed to delete factory.', vi: 'Khong the xoa nha may.' },
+  },
+  factoryDetail: {
+    createTitle: { ko: '\uACF5\uC7A5 \uCD94\uAC00', en: 'Add Factory', vi: 'Them nha may' },
+    editTitle: { ko: '\uACF5\uC7A5 \uC218\uC815', en: 'Edit Factory', vi: 'Sua nha may' },
+    name: { ko: '\uACF5\uC7A5\uBA85', en: 'Factory Name', vi: 'Ten nha may' },
+    address: { ko: '\uC8FC\uC18C', en: 'Address', vi: 'Dia chi' },
+    manager: { ko: '\uAD00\uB9AC\uC790', en: 'Manager', vi: 'Quan ly' },
+    country: { ko: '\uAD6D\uAC00', en: 'Country', vi: 'Quoc gia' },
+    countryCode: { ko: '\uAD6D\uAC00\uBC88\uD638', en: 'Country Code', vi: 'Ma quoc gia' },
+    phoneNumber: { ko: '\uC804\uD654\uBC88\uD638', en: 'Phone Number', vi: 'So dien thoai' },
+    targetMonthlyWage: { ko: '\uC6D4 \uBAA9\uD45C \uAE09\uC5EC', en: 'Target Monthly Wage', vi: 'Muc luong thang muc tieu' },
+    wagePerSecond: { ko: '\uCD08\uB2F9 \uAE09\uC5EC (\uC790\uB3D9\uACC4\uC0B0)', en: 'Wage / sec (auto)', vi: 'Luong/giay (tu dong)' },
+    targetMonthlyWageHelper: {
+      ko: '\uC6D4 26\uC77C, \uD558\uB8E8 8\uC2DC\uAC04(08:00~17:00, \uC810\uC2EC 1\uC2DC\uAC04 \uC81C\uC678) \uAE30\uC900',
+      en: 'Based on 26 days/month, 8 hours/day (08:00-17:00 with 1 hour lunch break).',
+      vi: 'Tinh theo 26 ngay/thang, 8 gio/ngay (08:00-17:00, tru 1 gio nghi trua).',
+    },
+    wagePerSecondHelper: {
+      ko: '\uC6D4 \uBAA9\uD45C \uAE09\uC5EC \uAE30\uC900\uC73C\uB85C \uC790\uB3D9 \uACC4\uC0B0',
+      en: 'Automatically calculated from monthly target wage.',
+      vi: 'Tu dong tinh theo muc luong thang muc tieu.',
+    },
+  },
+  organizationDetail: {
+    title: { ko: '\uD68C\uC0AC \uC815\uBCF4', en: 'Company Info', vi: 'Thong tin cong ty' },
+    name: { ko: '\uD68C\uC0AC\uBA85', en: 'Company Name', vi: 'Ten cong ty' },
+    businessNumber: {
+      ko: '\uC0AC\uC5C5\uC790\uB4F1\uB85D\uBC88\uD638',
+      en: 'Business Registration Number',
+      vi: 'So dang ky kinh doanh',
+    },
+    representative: { ko: '\uB300\uD45C\uC790\uBA85', en: 'Representative', vi: 'Nguoi dai dien' },
+    industry: { ko: '\uC5C5\uC885', en: 'Industry', vi: 'Nganh nghe' },
+    address: { ko: '\uC8FC\uC18C', en: 'Address', vi: 'Dia chi' },
+    phone: { ko: '\uC5F0\uB77D\uCC98', en: 'Contact', vi: 'Lien he' },
+    email: { ko: '\uC774\uBA54\uC77C', en: 'Email', vi: 'Email' },
+    saveSuccess: {
+      ko: '\uD68C\uC0AC \uC815\uBCF4\uB97C \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.',
+      en: 'Company information has been saved.',
+      vi: 'Da luu thong tin cong ty.',
+    },
+    saveError: {
+      ko: '\uD68C\uC0AC \uC815\uBCF4 \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+      en: 'Failed to save company information.',
+      vi: 'Khong the luu thong tin cong ty.',
+    },
+  },
+});
 
 const resolveMessageNode = (key) => {
   if (!key) return null;

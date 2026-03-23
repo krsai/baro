@@ -2,18 +2,32 @@ import React, { useState } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import { getUiMessage } from '../../../constants/uiMessages';
+import { useLanguage } from '../../../context/LanguageContext';
 import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import OrganizationDetail from './OrganizationDetail';
 import FactoryBoard from './FactoryBoard';
 
 const OrganizationBoard = () => {
+  const { languageCode } = useLanguage();
   const [currentTab, setCurrentTab] = useState('business');
   const [loadedTabs, setLoadedTabs] = useState({
     business: true,
     factory: false,
   });
 
-  const handleChange = (event, newValue) => {
+  const text = {
+    title: getUiMessage('organizationBoard.title', 'Organization', languageCode),
+    tabBusiness: getUiMessage('organizationBoard.tabBusiness', 'Business Info', languageCode),
+    tabFactory: getUiMessage('organizationBoard.tabFactory', 'Factory Info', languageCode),
+    toggleAriaLabel: getUiMessage(
+      'organizationBoard.toggleAriaLabel',
+      'organization management toggle',
+      languageCode
+    ),
+  };
+
+  const handleChange = (_event, newValue) => {
     if (newValue !== null) {
       setCurrentTab(newValue);
       setLoadedTabs((prev) =>
@@ -29,7 +43,7 @@ const OrganizationBoard = () => {
 
   return (
     <AppPageContainer
-      title="조직"
+      title={text.title}
       toolbar={(
         <PageToolbar
           left={(
@@ -37,14 +51,10 @@ const OrganizationBoard = () => {
               value={currentTab}
               exclusive
               onChange={handleChange}
-              aria-label="business management toggle"
+              aria-label={text.toggleAriaLabel}
             >
-              <ToggleButton value="business">
-                법인 정보
-              </ToggleButton>
-              <ToggleButton value="factory">
-                공장 정보
-              </ToggleButton>
+              <ToggleButton value="business">{text.tabBusiness}</ToggleButton>
+              <ToggleButton value="factory">{text.tabFactory}</ToggleButton>
             </ToggleButtonGroup>
           )}
         />

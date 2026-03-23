@@ -295,7 +295,8 @@ async function ensureFactory(orgId) {
   });
   const data = {
     address: SAMPLE_FACTORY_ADDRESS,
-    countryCode: 'VN',
+    country: 'VN',
+    countryCode: '+84',
     phoneNumber: '010-0000-0000',
     manager: 'Manager',
     targetMonthlyWage: TARGET_MONTHLY_WAGE,

@@ -6,12 +6,16 @@ import {
   Drawer,
   Grid,
   IconButton,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
+import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
+import { getUiMessage } from '../../../../constants/uiMessages';
+import { useLanguage } from '../../../../context/LanguageContext';
 import {
   formatDigitsWithCommas,
   parseNumberLike,
@@ -20,16 +24,87 @@ import {
 const WORK_DAYS_PER_MONTH = 26;
 const HOURS_PER_DAY = 8;
 const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
+const COUNTRY_CODE_BY_COUNTRY = {
+  KR: '+82',
+  VN: '+84',
+};
+const DEFAULT_COUNTRY = 'VN';
+const DEFAULT_COUNTRY_CODE = COUNTRY_CODE_BY_COUNTRY[DEFAULT_COUNTRY];
 
 const parseNumber = (value) => {
   return parseNumberLike(value);
 };
 
+const normalizeCountry = (value) => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized || '';
+};
+
+const resolveCountryFromCountryCode = (countryCode) => {
+  const normalized = String(countryCode || '').trim();
+  if (normalized === COUNTRY_CODE_BY_COUNTRY.KR) return 'KR';
+  if (normalized === COUNTRY_CODE_BY_COUNTRY.VN) return 'VN';
+  return '';
+};
+
+const resolveDefaultCountryCode = (country) =>
+  COUNTRY_CODE_BY_COUNTRY[normalizeCountry(country)] || DEFAULT_COUNTRY_CODE;
+
+const buildFactoryFormData = (factory) => {
+  const rawCountry = normalizeCountry(factory?.country);
+  const countryFromCode = resolveCountryFromCountryCode(factory?.countryCode);
+  const country = rawCountry || countryFromCode || DEFAULT_COUNTRY;
+  return {
+    name: factory?.name || '',
+    address: factory?.address || '',
+    country,
+    countryCode: factory?.countryCode || resolveDefaultCountryCode(country),
+    phoneNumber: factory?.phoneNumber || '',
+    manager: factory?.manager || '',
+    targetMonthlyWage: factory?.targetMonthlyWage ?? '',
+    wagePerSecond: factory?.wagePerSecond ?? '',
+  };
+};
+
 const FactoryDetail = ({ open, onClose, onSave, factory }) => {
+  const { languageCode } = useLanguage();
+  const countryOptions = useMemo(
+    () => getStaticOptionOptions('country', languageCode),
+    [languageCode]
+  );
+
+  const text = useMemo(
+    () => ({
+      editTitle: getUiMessage('factoryDetail.editTitle', 'Edit Factory', languageCode),
+      createTitle: getUiMessage('factoryDetail.createTitle', 'Add Factory', languageCode),
+      name: getUiMessage('factoryDetail.name', 'Factory Name', languageCode),
+      address: getUiMessage('factoryDetail.address', 'Address', languageCode),
+      manager: getUiMessage('factoryDetail.manager', 'Manager', languageCode),
+      country: getUiMessage('factoryDetail.country', 'Country', languageCode),
+      countryCode: getUiMessage('factoryDetail.countryCode', 'Country Code', languageCode),
+      phoneNumber: getUiMessage('factoryDetail.phoneNumber', 'Phone Number', languageCode),
+      targetMonthlyWage: getUiMessage('factoryDetail.targetMonthlyWage', 'Target Monthly Wage', languageCode),
+      wagePerSecond: getUiMessage('factoryDetail.wagePerSecond', 'Wage / sec (auto)', languageCode),
+      targetMonthlyWageHelper: getUiMessage(
+        'factoryDetail.targetMonthlyWageHelper',
+        'Based on 26 days/month, 8 hours/day (08:00-17:00 with 1 hour lunch break).',
+        languageCode
+      ),
+      wagePerSecondHelper: getUiMessage(
+        'factoryDetail.wagePerSecondHelper',
+        'Automatically calculated from monthly target wage.',
+        languageCode
+      ),
+      save: getUiMessage('common.save', 'Save', languageCode),
+    }),
+    [languageCode]
+  );
+
   const [formData, setFormData] = useState({
     name: '',
     address: '',
-    countryCode: '+84',
+    country: DEFAULT_COUNTRY,
+    countryCode: DEFAULT_COUNTRY_CODE,
     phoneNumber: '',
     manager: '',
     targetMonthlyWage: '',
@@ -38,31 +113,25 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
   useEffect(() => {
     if (factory) {
-      setFormData({
-        name: factory.name || '',
-        address: factory.address || '',
-        countryCode: factory.countryCode || '+84',
-        phoneNumber: factory.phoneNumber || '',
-        manager: factory.manager || '',
-        targetMonthlyWage: factory.targetMonthlyWage ?? '',
-        wagePerSecond: factory.wagePerSecond ?? '',
-      });
+      setFormData(buildFactoryFormData(factory));
       return;
     }
 
-    setFormData({
-      name: '',
-      address: '',
-      countryCode: '+84',
-      phoneNumber: '',
-      manager: '',
-      targetMonthlyWage: '',
-      wagePerSecond: '',
-    });
+    setFormData(buildFactoryFormData(null));
   }, [factory, open]);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'country') {
+      const nextCountry = normalizeCountry(value) || DEFAULT_COUNTRY;
+      setFormData((prev) => ({
+        ...prev,
+        country: nextCountry,
+        countryCode: resolveDefaultCountryCode(nextCountry),
+      }));
+      return;
+    }
+
     if (name === 'targetMonthlyWage') {
       setFormData((prev) => ({
         ...prev,
@@ -97,6 +166,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     onSave?.({
       ...factory,
       ...formData,
+      country: normalizeCountry(formData.country) || DEFAULT_COUNTRY,
       targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
       wagePerSecond,
     });
@@ -116,7 +186,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     >
       <Box sx={{ width: '100%', height: '100%', overflowY: 'auto', p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">{factory ? '공장 수정' : '공장 추가'}</Typography>
+          <Typography variant="h6">{factory ? text.editTitle : text.createTitle}</Typography>
           <IconButton onClick={onClose}>
             <CloseIcon />
           </IconButton>
@@ -124,11 +194,12 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
         <Divider sx={{ mb: 3 }} />
 
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
+        <Grid container spacing={2.25}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="공장명"
+              size="small"
+              label={text.name}
               name="name"
               value={formData.name}
               onChange={handleInputChange}
@@ -136,40 +207,62 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
             />
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="주소"
+              size="small"
+              label={text.address}
               name="address"
               value={formData.address}
               onChange={handleInputChange}
             />
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="관리자"
+              size="small"
+              label={text.manager}
               name="manager"
               value={formData.manager}
               onChange={handleInputChange}
             />
           </Grid>
 
-          <Grid item xs={5}>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="국가번호"
+              select
+              size="small"
+              label={text.country}
+              name="country"
+              value={normalizeCountry(formData.country) || DEFAULT_COUNTRY}
+              onChange={handleInputChange}
+            >
+              {countryOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+
+          <Grid item xs={12} sm={4}>
+            <TextField
+              fullWidth
+              size="small"
+              label={text.countryCode}
               name="countryCode"
               value={formData.countryCode}
               onChange={handleInputChange}
             />
           </Grid>
 
-          <Grid item xs={7}>
+          <Grid item xs={12} sm={8}>
             <TextField
               fullWidth
-              label="전화번호"
+              size="small"
+              label={text.phoneNumber}
               name="phoneNumber"
               value={formData.phoneNumber}
               onChange={handleInputChange}
@@ -179,23 +272,25 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="월 목표 급여"
+              size="small"
+              label={text.targetMonthlyWage}
               name="targetMonthlyWage"
               value={formatDigitsWithCommas(formData.targetMonthlyWage)}
               onChange={handleInputChange}
               inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-              helperText="월 26일, 하루 8시간(08:00~17:00, 점심 1시간 제외) 기준"
+              helperText={text.targetMonthlyWageHelper}
             />
           </Grid>
 
           <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
-              label="초당 급여 (자동계산)"
+              size="small"
+              label={text.wagePerSecond}
               name="wagePerSecond"
               value={computedWageDisplay}
               InputProps={{ readOnly: true }}
-              helperText="월 목표 급여 기준으로 자동 계산"
+              helperText={text.wagePerSecondHelper}
               sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
             />
           </Grid>
@@ -203,7 +298,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave}>
-            저장
+            {text.save}
           </Button>
         </Box>
       </Box>

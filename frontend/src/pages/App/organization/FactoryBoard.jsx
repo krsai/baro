@@ -17,7 +17,9 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import FactoryDetail from './factoryDetail/FactoryDetail';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 
 const FactoryList = () => {
@@ -27,7 +29,48 @@ const FactoryList = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingFactoryId, setDeletingFactoryId] = useState(null);
+  const { languageCode } = useLanguage();
   const { showNotification } = useApp();
+
+  const text = {
+    title: getUiMessage('factoryBoard.title', 'Factory', languageCode),
+    addFactory: getUiMessage('factoryBoard.addFactory', 'Add Factory', languageCode),
+    deleteFactory: getUiMessage('factoryBoard.deleteFactory', 'Delete Factory', languageCode),
+    columnName: getUiMessage('factoryBoard.columnName', 'Factory Name', languageCode),
+    columnAddress: getUiMessage('factoryBoard.columnAddress', 'Address', languageCode),
+    columnContact: getUiMessage('factoryBoard.columnContact', 'Contact', languageCode),
+    columnManager: getUiMessage('factoryBoard.columnManager', 'Manager', languageCode),
+    columnWagePerSecond: getUiMessage('factoryBoard.columnWagePerSecond', 'Wage / sec', languageCode),
+    columnAction: getUiMessage('factoryBoard.columnAction', 'Action', languageCode),
+    loading: getUiMessage('factoryBoard.loading', 'Loading...', languageCode),
+    empty: getUiMessage('factoryBoard.empty', 'No factories found.', languageCode),
+    fetchError: getUiMessage('factoryBoard.fetchError', 'Failed to load factory list.', languageCode),
+    saveSuccess: getUiMessage('factoryBoard.saveSuccess', 'Factory information has been saved.', languageCode),
+    saveError: getUiMessage('factoryBoard.saveError', 'Failed to save factory information.', languageCode),
+    deleteConfirm: getUiMessage(
+      'factoryBoard.deleteConfirm',
+      "Delete '{name}'?\nRelated lines, employees, and assignments will also be deleted.",
+      languageCode
+    ),
+    deleteSuccess: getUiMessage(
+      'factoryBoard.deleteSuccess',
+      'Factory deleted. Lines {lineCount}, employees {employeeCount} were also deleted.',
+      languageCode
+    ),
+    deleteError: getUiMessage('factoryBoard.deleteError', 'Failed to delete factory.', languageCode),
+  };
+
+  const formatWithParams = (template, params = {}) =>
+    String(template || '').replace(/\{(\w+)\}/g, (_match, token) =>
+      Object.prototype.hasOwnProperty.call(params, token) ? String(params[token] ?? '') : ''
+    );
+
+  const formatFactoryContact = (factory) => {
+    const country = String(factory?.country || '').trim();
+    const countryCode = String(factory?.countryCode || '').trim();
+    const phoneNumber = String(factory?.phoneNumber || '').trim();
+    return [country, countryCode, phoneNumber].filter(Boolean).join(' ') || '-';
+  };
 
   const fetchFactories = async (options = {}) => {
     const isActive = options.isActive ?? (() => true);
@@ -39,7 +82,7 @@ const FactoryList = () => {
       setFactories(Array.isArray(data) ? data : []);
     } catch (_error) {
       if (!isActive()) return;
-      showNotification('공장 목록을 불러오지 못했습니다.', 'error');
+      showNotification(text.fetchError, 'error');
     } finally {
       if (!isActive()) return;
       setLoading(false);
@@ -76,6 +119,7 @@ const FactoryList = () => {
     const payload = {
       name: savedData.name,
       address: savedData.address,
+      country: savedData.country,
       countryCode: savedData.countryCode,
       phoneNumber: savedData.phoneNumber,
       manager: savedData.manager,
@@ -103,9 +147,9 @@ const FactoryList = () => {
       }
 
       handleDetailClose();
-      showNotification('공장 정보를 저장했습니다.', 'success');
+      showNotification(text.saveSuccess, 'success');
     } catch (_error) {
-      showNotification('공장 정보 저장에 실패했습니다.', 'error');
+      showNotification(text.saveError, 'error');
     } finally {
       setSaving(false);
     }
@@ -115,7 +159,9 @@ const FactoryList = () => {
     event?.stopPropagation?.();
     if (!factory?.id || deletingFactoryId) return;
     const confirmed = window.confirm(
-      `'${factory.name || '공장'}'를 삭제하시겠습니까?\n관련 라인/직원/라인배정도 함께 삭제됩니다.`
+      formatWithParams(text.deleteConfirm, {
+        name: factory.name || text.title,
+      })
     );
     if (!confirmed) return;
 
@@ -131,11 +177,14 @@ const FactoryList = () => {
       const deletedEmployees = Number(result?.deletedEmployees) || 0;
       const deletedLines = Number(result?.deletedLines) || 0;
       showNotification(
-        `공장을 삭제했습니다. 라인 ${deletedLines}개, 직원 ${deletedEmployees}명도 함께 삭제되었습니다.`,
+        formatWithParams(text.deleteSuccess, {
+          lineCount: deletedLines,
+          employeeCount: deletedEmployees,
+        }),
         'success'
       );
     } catch (error) {
-      showNotification(error?.message || '공장 삭제에 실패했습니다.', 'error');
+      showNotification(error?.message || text.deleteError, 'error');
     } finally {
       setDeletingFactoryId(null);
     }
@@ -143,7 +192,7 @@ const FactoryList = () => {
 
   return (
     <AppPageContainer
-      title="공장"
+      title={text.title}
       toolbar={(
         <PageToolbar
           right={(
@@ -152,7 +201,7 @@ const FactoryList = () => {
               startIcon={<AddIcon />}
               onClick={handleAddClick}
             >
-              공장 추가
+              {text.addFactory}
             </Button>
           )}
         />
@@ -163,21 +212,21 @@ const FactoryList = () => {
           <Table stickyHeader size="small">
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>공장명</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>주소</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>연락처</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>관리자</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>초당 급여</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{text.columnName}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{text.columnAddress}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{text.columnContact}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{text.columnManager}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>{text.columnWagePerSecond}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold', width: 80, textAlign: 'center' }}>
-                  관리
+                  {text.columnAction}
                 </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={6} message="불러오는 중..." />
+                <TableStatusRow colSpan={6} message={text.loading} />
               ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={6} message="등록된 공장이 없습니다." />
+                <TableStatusRow colSpan={6} message={text.empty} />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
@@ -195,13 +244,11 @@ const FactoryList = () => {
                     >
                       <TableCell>{factory.name || '-'}</TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
-                      <TableCell>
-                        {`${factory.countryCode || ''} ${factory.phoneNumber || ''}`.trim() || '-'}
-                      </TableCell>
+                      <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{factory.manager || '-'}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        <Tooltip title="공장 삭제">
+                        <Tooltip title={text.deleteFactory}>
                           <span>
                             <IconButton
                               size="small"

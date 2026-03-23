@@ -8,8 +8,10 @@ import {
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 
 const buildCompanyInfo = (data = {}) => ({
@@ -22,27 +24,46 @@ const buildCompanyInfo = (data = {}) => ({
   email: data.email ?? '',
 });
 
-const TEXT = {
-  title: '\uD68C\uC0AC \uC815\uBCF4',
-  save: '\uC800\uC7A5',
-  name: '\uD68C\uC0AC\uBA85',
-  businessNumber: '\uC0AC\uC5C5\uC790\uB4F1\uB85D\uBC88\uD638',
-  representative: '\uB300\uD45C\uC790\uBA85',
-  industry: '\uC5C5\uC885',
-  address: '\uC8FC\uC18C',
-  phone: '\uC5F0\uB77D\uCC98',
-  email: '\uC774\uBA54\uC77C',
-  saveSuccess: '\uD68C\uC0AC \uC815\uBCF4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.',
-  saveError: '\uD68C\uC0AC \uC815\uBCF4 \uC800\uC7A5 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.',
-};
-
 const OrganizationDetail = () => {
+  const { languageCode } = useLanguage();
   const { showNotification } = useApp();
   const { updateActiveProfile } = useAuth();
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());
   const [savedFormData, setSavedFormData] = useState(buildCompanyInfo());
   const [isSaving, setIsSaving] = useState(false);
+  const text = useMemo(
+    () => ({
+      title: getUiMessage('organizationDetail.title', 'Company Info', languageCode),
+      save: getUiMessage('common.save', 'Save', languageCode),
+      name: getUiMessage('organizationDetail.name', 'Company Name', languageCode),
+      businessNumber: getUiMessage(
+        'organizationDetail.businessNumber',
+        'Business Registration Number',
+        languageCode
+      ),
+      representative: getUiMessage(
+        'organizationDetail.representative',
+        'Representative',
+        languageCode
+      ),
+      industry: getUiMessage('organizationDetail.industry', 'Industry', languageCode),
+      address: getUiMessage('organizationDetail.address', 'Address', languageCode),
+      phone: getUiMessage('organizationDetail.phone', 'Contact', languageCode),
+      email: getUiMessage('organizationDetail.email', 'Email', languageCode),
+      saveSuccess: getUiMessage(
+        'organizationDetail.saveSuccess',
+        'Company information has been saved.',
+        languageCode
+      ),
+      saveError: getUiMessage(
+        'organizationDetail.saveError',
+        'Failed to save company information.',
+        languageCode
+      ),
+    }),
+    [languageCode]
+  );
 
   useEffect(() => {
     let active = true;
@@ -107,9 +128,9 @@ const OrganizationDetail = () => {
       updateActiveProfile({
         orgName: nextFormData.name?.trim() || null,
       });
-      showNotification(TEXT.saveSuccess, 'success');
+      showNotification(text.saveSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || TEXT.saveError, 'error');
+      showNotification(error?.message || text.saveError, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -132,7 +153,7 @@ const OrganizationDetail = () => {
 
   return (
     <AppPageContainer
-      title={TEXT.title}
+      title={text.title}
       titleActions={(
         <Button
           variant="contained"
@@ -140,26 +161,26 @@ const OrganizationDetail = () => {
           onClick={handleSave}
           disabled={!isDirty || isSaving}
         >
-          {TEXT.save}
+          {text.save}
         </Button>
       )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
-        <InfoRow label={TEXT.name} name="name" value={formData.name} />
+        <InfoRow label={text.name} name="name" value={formData.name} />
         <InfoRow
-          label={TEXT.businessNumber}
+          label={text.businessNumber}
           name="businessNumber"
           value={formData.businessNumber}
         />
         <InfoRow
-          label={TEXT.representative}
+          label={text.representative}
           name="representative"
           value={formData.representative}
         />
-        <InfoRow label={TEXT.industry} name="industry" value={formData.industry} />
-        <InfoRow label={TEXT.address} name="address" value={formData.address} />
-        <InfoRow label={TEXT.phone} name="phone" value={formData.phone} />
-        <InfoRow label={TEXT.email} name="email" value={formData.email} />
+        <InfoRow label={text.industry} name="industry" value={formData.industry} />
+        <InfoRow label={text.address} name="address" value={formData.address} />
+        <InfoRow label={text.phone} name="phone" value={formData.phone} />
+        <InfoRow label={text.email} name="email" value={formData.email} />
       </Paper>
     </AppPageContainer>
   );
