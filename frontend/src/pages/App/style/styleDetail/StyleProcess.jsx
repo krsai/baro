@@ -138,13 +138,20 @@ const normalizeProcessOption = (item) => {
   const code = String(item?.code ?? '')
     .trim()
     .toUpperCase();
-  const name = String(item?.name ?? '').trim();
+  const nameKo = String(item?.nameKo ?? item?.processNameKo ?? '').trim();
+  const nameEn = String(item?.nameEn ?? item?.processNameEn ?? '').trim();
+  const nameVi = String(item?.nameVi ?? item?.processNameVi ?? '').trim();
+  const baseName = String(item?.name ?? item?.processName ?? '').trim();
+  const name = baseName || nameEn || nameKo || nameVi;
   const displayName = String(item?.displayName ?? name ?? code).trim();
   if (!code && !name) return null;
   return {
     id: item?.id ?? null,
     code: code || name,
     name: name || code,
+    nameKo,
+    nameEn: nameEn || name || code,
+    nameVi,
     displayName: displayName || name || code,
     searchText: String(item?.searchText || '').trim(),
     description: String(item?.description ?? '').trim(),
@@ -327,6 +334,17 @@ const StyleProcess = ({
     () => attributeProcesses.map((item) => normalizeProcessOption(item)).filter(Boolean),
     [attributeProcesses]
   );
+  const processLocalizationByCode = useMemo(() => {
+    const byCode = new Map();
+    normalizedAttributeOptions.forEach((process) => {
+      const code = String(process?.code ?? '')
+        .trim()
+        .toUpperCase();
+      if (!code || byCode.has(code)) return;
+      byCode.set(code, process);
+    });
+    return byCode;
+  }, [normalizedAttributeOptions]);
   const processOptions = useMemo(() => {
     const byIdentity = new Map();
     normalizedAttributeOptions.forEach((process) => {
@@ -341,6 +359,9 @@ const StyleProcess = ({
         id: process.id,
         code: process.code,
         name: process.name,
+        nameKo: process.nameKo,
+        nameEn: process.nameEn,
+        nameVi: process.nameVi,
         description: process.description || '',
         actualTime: process.actualTime ?? null,
       });
@@ -850,6 +871,10 @@ const StyleProcess = ({
                           isDragDisabled={Boolean(isAddingRow)}
                         >
                           {(dragProvided) => {
+                            const processCode = String(process?.code ?? '')
+                              .trim()
+                              .toUpperCase();
+                            const localizedSource = processLocalizationByCode.get(processCode);
                             const previewAtTotalSeconds =
                               resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
                             const previewStTotalSeconds =
@@ -885,7 +910,11 @@ const StyleProcess = ({
                                     {formatProcessLabelWithQuantity({
                                       code: process.code,
                                       name: process.name,
+                                      nameKo: process?.nameKo || localizedSource?.nameKo,
+                                      nameEn: process?.nameEn || localizedSource?.nameEn,
+                                      nameVi: process?.nameVi || localizedSource?.nameVi,
                                       quantity: process.quantity,
+                                      languageCode,
                                     })}
                                   </TableCell>
 

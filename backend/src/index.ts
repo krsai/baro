@@ -151,7 +151,7 @@ const DEFAULT_EMPLOYEE_ROLES = [
   {
     code: "WORKER_CUTTING",
     name: "재단",
-    defaultPayType: "FIXED",
+    defaultPayType: "CT",
     sortOrder: 1,
   },
   {
@@ -163,25 +163,25 @@ const DEFAULT_EMPLOYEE_ROLES = [
   {
     code: "WORKER_IRONING",
     name: "다림",
-    defaultPayType: "FIXED",
+    defaultPayType: "CT",
     sortOrder: 3,
   },
   {
     code: "WORKER_INSPECTION",
     name: "검수",
-    defaultPayType: "FIXED",
+    defaultPayType: "CT",
     sortOrder: 4,
   },
   {
     code: "WORKER_PACKING",
     name: "포장",
-    defaultPayType: "FIXED",
+    defaultPayType: "CT",
     sortOrder: 5,
   },
   {
     code: "WORKER_OTHER",
     name: "기타",
-    defaultPayType: "FIXED",
+    defaultPayType: "CT",
     sortOrder: 6,
   },
 ] as const;

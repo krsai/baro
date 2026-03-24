@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Chip,
   FormControl,
@@ -17,18 +16,15 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
 } from '@mui/material';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
-import EventAvailableIcon from '@mui/icons-material/EventAvailable';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import AppPageContainer from '../../../components/AppPageContainer';
+import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
+import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -74,13 +70,20 @@ const AttendanceBoard = () => {
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [savingEntries, setSavingEntries] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
-  const selectedFactory = useMemo(
-    () =>
-      factories.find((factory) => String(factory?.id) === String(selectedFactoryId)) || null,
-    [factories, selectedFactoryId]
-  );
+  const filteredEmployees = useMemo(() => {
+    const keyword = String(searchTerm || '').trim().toLowerCase();
+    if (!keyword) return employees;
+    return employees.filter((employee) => {
+      const text = [employee?.displayName, employee?.name, employee?.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [employees, searchTerm]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,32 +270,6 @@ const AttendanceBoard = () => {
     }
   };
 
-  const handleResetEntries = async () => {
-    if (!selectedFactoryId) return;
-    setSavingEntries(true);
-    try {
-      const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/attendance-entries' + query, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          factoryId: Number(selectedFactoryId),
-          workDate: dateKey,
-          entries: [],
-        }),
-      });
-      setEntriesByWorker({});
-      showNotification('해당 일자 입력을 초기화했습니다.', 'info');
-    } catch (error) {
-      showNotification(
-        error?.message || '출퇴근 입력 초기화에 실패했습니다.',
-        'error'
-      );
-    } finally {
-      setSavingEntries(false);
-    }
-  };
-
   const summary = useMemo(() => {
     const workerCount = employees.length;
     let enteredCount = 0;
@@ -331,24 +308,24 @@ const AttendanceBoard = () => {
       )}
       toolbar={(
         <PageToolbar
+          left={(
+            <SearchInput
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="작업자 검색"
+            />
+          )}
           right={(
             <>
-              <Chip
-                icon={<EventAvailableIcon />}
-                label={`${dateKey} · ${selectedFactory?.name || '공장 미선택'}`}
-                variant="outlined"
+              <CustomDatePicker
+                label="근무일자"
+                value={selectedDate}
+                onChange={(value) => {
+                  if (!value || !value.isValid?.()) return;
+                  setSelectedDate(value.startOf('day'));
+                }}
+                slotProps={{ textField: { sx: { minWidth: 160 } } }}
               />
-              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="ko">
-                <DatePicker
-                  label="근무일자"
-                  value={selectedDate}
-                  onChange={(value) => {
-                    if (!value || !value.isValid()) return;
-                    setSelectedDate(value.startOf('day'));
-                  }}
-                  slotProps={{ textField: { size: 'small', sx: { minWidth: 160 } } }}
-                />
-              </LocalizationProvider>
               <FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel id="attendance-factory-select-label">공장</InputLabel>
                 <Select
@@ -365,13 +342,6 @@ const AttendanceBoard = () => {
                   ))}
                 </Select>
               </FormControl>
-              <Button
-                variant="outlined"
-                onClick={handleResetEntries}
-                disabled={!selectedFactoryId || savingEntries}
-              >
-                초기화
-              </Button>
             </>
           )}
         />
@@ -403,17 +373,19 @@ const AttendanceBoard = () => {
                       ? '출퇴근 입력을 불러오는 중입니다.'
                     : !selectedFactoryId
                       ? '공장을 먼저 선택하세요.'
-                      : employees.length === 0
-                        ? '등록된 작업자가 없습니다.'
+                      : filteredEmployees.length === 0
+                        ? searchTerm
+                          ? '검색 결과가 없습니다.'
+                          : '등록된 작업자가 없습니다.'
                         : ''
                 }
                 sx={{
                   py:
-                    loadingEmployees || loadingEntries || !selectedFactoryId || employees.length === 0
+                    loadingEmployees || loadingEntries || !selectedFactoryId || filteredEmployees.length === 0
                       ? 3
                       : 0,
                   display:
-                    loadingEmployees || loadingEntries || !selectedFactoryId || employees.length === 0
+                    loadingEmployees || loadingEntries || !selectedFactoryId || filteredEmployees.length === 0
                       ? 'table-cell'
                       : 'none',
                 }}
@@ -421,7 +393,7 @@ const AttendanceBoard = () => {
               {!loadingEmployees &&
                 !loadingEntries &&
                 selectedFactoryId &&
-                employees.map((employee) => {
+                filteredEmployees.map((employee) => {
                   const workerId = String(employee?.id || '');
                   const entry = entriesByWorker[workerId] || { clockIn: '', clockOut: '', note: '' };
                   const workedMinutes = calcWorkedMinutes(entry.clockIn, entry.clockOut);

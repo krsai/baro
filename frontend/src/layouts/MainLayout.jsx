@@ -518,6 +518,14 @@ const MainLayout = () => {
         return getUiMessage('menu.workHistory', '기록', languageCode);
       }
 
+      if (
+        tabPath.startsWith('/work-history/') &&
+        tabPath !== '/work-history' &&
+        typeof tab?.label === 'string' &&
+        tab.label.trim()
+      ) {
+        return tab.label;
+      }
       if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
         return getUiMessage('menu.workHistory', '기록', languageCode);
       }
@@ -714,6 +722,14 @@ const MainLayout = () => {
         }
         if (tab.id === '/work-history/new') {
           return getUiMessage('menu.workHistory', '기록', languageCode);
+        }
+        if (
+          tab.id.startsWith('/work-history/') &&
+          tab.id !== '/work-history' &&
+          typeof tab.label === 'string' &&
+          tab.label.trim()
+        ) {
+          return tab.label;
         }
         if (tab.id.startsWith('/work-history/') && tab.id !== '/work-history') {
           return getUiMessage('menu.workHistory', '기록', languageCode);

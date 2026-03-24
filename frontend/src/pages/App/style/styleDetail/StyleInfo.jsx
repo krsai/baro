@@ -11,9 +11,15 @@ import {
   Select,
   MenuItem,
   IconButton,
+  Chip,
+  ToggleButton,
+  ToggleButtonGroup,
+  InputAdornment,
 } from '@mui/material';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import ImageIcon from '@mui/icons-material/Image';
+import LinkRoundedIcon from '@mui/icons-material/LinkRounded';
+import CloudUploadRoundedIcon from '@mui/icons-material/CloudUploadRounded';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -25,6 +31,7 @@ import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
+const IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:']);
 
 let customersCache = null;
 let customersCacheTimestamp = 0;
@@ -55,6 +62,35 @@ const loadCustomersOnce = async () => {
   return customersInFlight;
 };
 
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Invalid image data.'));
+    };
+    reader.onerror = () => {
+      reject(reader.error || new Error('Failed to read image file.'));
+    };
+    reader.readAsDataURL(file);
+  });
+
+const normalizeImageLink = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    if (!IMAGE_URL_PROTOCOLS.has(parsed.protocol)) return '';
+    return parsed.toString();
+  } catch (_error) {
+    return '';
+  }
+};
+const isExternalImageLink = (value) => /^https?:\/\//i.test(String(value || '').trim());
+
 const StyleInfo = ({
   formData = {},
   handleInputChange,
@@ -64,6 +100,10 @@ const StyleInfo = ({
   const { languageCode } = useLanguage();
   const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
+  const [imageInputMode, setImageInputMode] = useState('file');
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imageUrlError, setImageUrlError] = useState('');
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -116,7 +156,17 @@ const StyleInfo = ({
           includeProcesses: false,
         });
         if (!active) return;
-        setCategories(Array.isArray(data?.categories) ? data.categories : []);
+        const normalizedCategories = Array.isArray(data?.categories) ? data.categories : [];
+        const seen = new Set();
+        const deduped = normalizedCategories.filter((category) => {
+          const key = String(category?.displayName || category?.name || category?.code || '')
+            .trim()
+            .toLowerCase();
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setCategories(deduped);
       } catch (_error) {
         if (!active) return;
         setCategories([]);
@@ -133,8 +183,99 @@ const StyleInfo = ({
     };
   }, [languageCode]);
 
-  const handleImageChange = () => {
-    console.log('Image selection not implemented yet.');
+  useEffect(() => {
+    if (imageUrls.length === 0) {
+      setMainImageIndex(0);
+      return;
+    }
+    setMainImageIndex((prev) => Math.min(prev, imageUrls.length - 1));
+  }, [imageUrls.length]);
+
+  const updateImageUrls = (nextImageUrls) => {
+    const normalized = Array.from(
+      new Set(
+        (Array.isArray(nextImageUrls) ? nextImageUrls : [])
+          .map((url) => String(url || '').trim())
+          .filter(Boolean)
+      )
+    );
+
+    handleInputChange({
+      target: {
+        name: 'imageUrls',
+        value: normalized,
+      },
+    });
+  };
+
+  const handleImageChange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const imageFiles = files.filter((file) => String(file?.type || '').startsWith('image/'));
+    if (imageFiles.length === 0) {
+      setImageUrlError('이미지 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    setUploadingImages(true);
+    setImageUrlError('');
+
+    try {
+      const encodedImages = (
+        await Promise.all(
+          imageFiles.map((file) =>
+            readFileAsDataUrl(file).catch(() => '')
+          )
+        )
+      ).filter(Boolean);
+
+      if (encodedImages.length === 0) {
+        setImageUrlError('이미지 파일을 읽지 못했습니다. 다시 시도해 주세요.');
+        return;
+      }
+
+      updateImageUrls([...imageUrls, ...encodedImages]);
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  const handleImageUrlAdd = () => {
+    const normalizedLink = normalizeImageLink(imageUrlInput);
+    if (!normalizedLink) {
+      setImageUrlError('http:// 또는 https:// 형태의 이미지 링크를 입력해 주세요.');
+      return;
+    }
+    if (imageUrls.includes(normalizedLink)) {
+      setImageUrlError('이미 등록된 이미지 링크입니다.');
+      return;
+    }
+
+    updateImageUrls([...imageUrls, normalizedLink]);
+    setImageUrlInput('');
+    setImageUrlError('');
+  };
+
+  const handleImageUrlKeyDown = (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    handleImageUrlAdd();
+  };
+
+  const handleImageUrlInputChange = (event) => {
+    setImageUrlInput(event.target.value);
+    if (imageUrlError) {
+      setImageUrlError('');
+    }
+  };
+  const handleImageInputModeChange = (_event, value) => {
+    if (!value) return;
+    setImageInputMode(value);
+    if (imageUrlError) {
+      setImageUrlError('');
+    }
   };
 
   const handleThumbnailClick = (index) => {
@@ -144,13 +285,7 @@ const StyleInfo = ({
   const handleImageDelete = (indexToDelete) => {
     if (window.confirm('이 이미지를 삭제하시겠습니까?')) {
       const newImageUrls = imageUrls.filter((_, index) => index !== indexToDelete);
-
-      handleInputChange({
-        target: {
-          name: 'imageUrls',
-          value: newImageUrls,
-        },
-      });
+      updateImageUrls(newImageUrls);
 
       if (newImageUrls.length === 0) {
         setMainImageIndex(0);
@@ -209,13 +344,20 @@ const StyleInfo = ({
     });
   };
 
-  const sectionWidth = '50%';
+  const sectionWidth = { xs: '100%', lg: '50%' };
 
   return (
     <Box>
-      <Stack direction="row" spacing={3}>
+      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3}>
         <Paper sx={{ p: 2, width: sectionWidth }}>
-          <Typography variant="h6" gutterBottom>스타일 사진</Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="h6">스타일 사진</Typography>
+            <Chip
+              size="small"
+              label={`${imageUrls.length}장`}
+              sx={{ fontWeight: 600 }}
+            />
+          </Stack>
           <Stack spacing={2} alignItems="center" sx={{ mt: 2.5 }}>
             <Box
               sx={{
@@ -224,9 +366,12 @@ const StyleInfo = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: 'grey.100',
+                background:
+                  imageUrls.length > 0
+                    ? 'linear-gradient(180deg, #fafafa 0%, #f4f6f8 100%)'
+                    : 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
                 border: '2px dashed',
-                borderColor: 'grey.300',
+                borderColor: imageUrls.length > 0 ? 'grey.400' : 'grey.300',
                 borderRadius: 2,
                 overflow: 'hidden',
               }}
@@ -240,8 +385,13 @@ const StyleInfo = ({
                 />
               ) : (
                 <Stack alignItems="center" spacing={1} color="grey.500">
-                  <ImageIcon sx={{ fontSize: 60 }} />
-                  <Typography variant="body2">사진을 업로드해 주세요</Typography>
+                  <ImageIcon sx={{ fontSize: 56 }} />
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    사진을 업로드해 주세요
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    파일 업로드 또는 이미지 링크 추가
+                  </Typography>
                 </Stack>
               )}
             </Box>
@@ -267,14 +417,15 @@ const StyleInfo = ({
                         width: '100%',
                         height: '100%',
                         cursor: 'pointer',
-                        border: mainImageIndex === index ? '3px solid' : '1px solid',
+                        border: mainImageIndex === index ? '2px solid' : '1px solid',
                         borderColor: mainImageIndex === index ? 'primary.main' : 'grey.300',
                         borderRadius: 1,
                         overflow: 'hidden',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        transition: 'border-color 0.2s',
+                        boxShadow: mainImageIndex === index ? 2 : 0,
+                        transition: 'all 0.2s',
                       }}
                     >
                       <CardMedia
@@ -283,7 +434,38 @@ const StyleInfo = ({
                         alt={`Thumbnail ${index + 1}`}
                         sx={{ objectFit: 'cover', width: '100%', height: '100%' }}
                       />
+                      {isExternalImageLink(url) ? (
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            left: 4,
+                            bottom: 4,
+                            borderRadius: 1,
+                            px: 0.5,
+                            py: 0.125,
+                            bgcolor: 'rgba(0, 0, 0, 0.55)',
+                            color: '#fff',
+                            lineHeight: 1,
+                          }}
+                        >
+                          <LinkRoundedIcon sx={{ fontSize: 12 }} />
+                        </Box>
+                      ) : null}
                     </Box>
+                    {mainImageIndex === index ? (
+                      <Chip
+                        size="small"
+                        label="대표"
+                        color="primary"
+                        sx={{
+                          position: 'absolute',
+                          left: -4,
+                          top: -8,
+                          height: 18,
+                          '& .MuiChip-label': { px: 0.75, fontSize: 10, fontWeight: 700 },
+                        }}
+                      />
+                    ) : null}
                     <IconButton
                       aria-label="delete image"
                       className="delete-button"
@@ -298,10 +480,10 @@ const StyleInfo = ({
                         right: -8,
                         padding: '2px',
                         color: 'text.primary',
-                        backgroundColor: 'background.paper',
+                        backgroundColor: 'rgba(255, 255, 255, 0.96)',
                         border: '1px solid',
                         borderColor: 'divider',
-                        opacity: 0,
+                        opacity: mainImageIndex === index ? 1 : 0,
                         transition: 'opacity 0.2s ease-in-out',
                         '&:hover': {
                           backgroundColor: 'grey.100',
@@ -323,11 +505,110 @@ const StyleInfo = ({
               multiple
               onChange={handleImageChange}
             />
-            <label htmlFor="raised-button-file">
-              <Button variant="contained" component="span" startIcon={<PhotoCamera />}>
-                사진 올리기
-              </Button>
-            </label>
+            <Paper
+              variant="outlined"
+              sx={{
+                width: '100%',
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: 'grey.50',
+                borderColor: 'grey.300',
+              }}
+            >
+              <Stack spacing={1.25}>
+                <ToggleButtonGroup
+                  color="primary"
+                  size="small"
+                  exclusive
+                  value={imageInputMode}
+                  onChange={handleImageInputModeChange}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  <ToggleButton value="file">
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <CloudUploadRoundedIcon sx={{ fontSize: 16 }} />
+                      <span>파일 업로드</span>
+                    </Stack>
+                  </ToggleButton>
+                  <ToggleButton value="url">
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <LinkRoundedIcon sx={{ fontSize: 16 }} />
+                      <span>링크 추가</span>
+                    </Stack>
+                  </ToggleButton>
+                </ToggleButtonGroup>
+                {imageInputMode === 'file' ? (
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    sx={{ width: '100%', alignItems: { xs: 'stretch', sm: 'center' } }}
+                  >
+                    <label htmlFor="raised-button-file">
+                      <Button
+                        variant="contained"
+                        component="span"
+                        startIcon={<PhotoCamera />}
+                        disabled={uploadingImages}
+                        sx={{ whiteSpace: 'nowrap' }}
+                      >
+                        사진 올리기
+                      </Button>
+                    </label>
+                    <Typography variant="caption" color="text.secondary">
+                      JPG/PNG/WebP 권장, 여러 장 선택 가능
+                    </Typography>
+                  </Stack>
+                ) : (
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    sx={{ width: '100%', alignItems: 'flex-start' }}
+                  >
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="이미지 링크(URL)"
+                      value={imageUrlInput}
+                      onChange={handleImageUrlInputChange}
+                      onKeyDown={handleImageUrlKeyDown}
+                      placeholder="https://example.com/style-image.jpg"
+                      error={Boolean(imageUrlError)}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <LinkRoundedIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                    <Button
+                      variant="outlined"
+                      onClick={handleImageUrlAdd}
+                      sx={{ whiteSpace: 'nowrap' }}
+                      disabled={uploadingImages}
+                    >
+                      링크 추가
+                    </Button>
+                  </Stack>
+                )}
+                {imageUrlError ? (
+                  <Typography variant="caption" color="error.main">
+                    {imageUrlError}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    {imageInputMode === 'file'
+                      ? '업로드 후 썸네일에서 대표 이미지를 선택할 수 있습니다.'
+                      : 'http:// 또는 https:// 링크만 추가됩니다.'}
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+            {uploadingImages ? (
+              <Typography variant="caption" color="text.secondary">
+                이미지 파일을 처리하는 중입니다...
+              </Typography>
+            ) : null}
           </Stack>
         </Paper>
 

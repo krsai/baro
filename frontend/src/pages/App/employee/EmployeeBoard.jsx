@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -85,19 +85,23 @@ const resolveNameFromEmail = (email) => {
   return normalized.split('@')[0];
 };
 
-const buildEmployeeDraft = (member, employee, options = {}) => ({
-  name:
-    String(employee?.name || '').trim() ||
-    String(options.currentUserName || '').trim() ||
-    (options.useEmailFallback ? resolveNameFromEmail(member?.email) : ''),
-  bankName: employee?.bankName || '',
-  bankAccountNumber: employee?.bankAccountNumber || '',
-  orgRole: String(member?.role || 'WORKER').toUpperCase(),
-  jobRoleId: employee?.roleId ? String(employee.roleId) : '',
-  payType: String(employee?.payType || employee?.effectivePayType || 'FIXED').toUpperCase(),
-  factoryId: employee?.factoryId ? String(employee.factoryId) : '',
-  status: member.status,
-});
+const buildEmployeeDraft = (member, employee, options = {}) => {
+  const orgRole = String(member?.role || 'WORKER').toUpperCase();
+  const defaultPayType = orgRole === 'WORKER' ? 'CT' : 'FIXED';
+  return {
+    name:
+      String(employee?.name || '').trim() ||
+      String(options.currentUserName || '').trim() ||
+      (options.useEmailFallback ? resolveNameFromEmail(member?.email) : ''),
+    bankName: employee?.bankName || '',
+    bankAccountNumber: employee?.bankAccountNumber || '',
+    orgRole,
+    jobRoleId: employee?.roleId ? String(employee.roleId) : '',
+    payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
+    factoryId: employee?.factoryId ? String(employee.factoryId) : '',
+    status: member.status,
+  };
+};
 
 const EmployeeRow = React.memo(
   ({
@@ -105,7 +109,8 @@ const EmployeeRow = React.memo(
     employee,
     roleOptions,
     jobRoleOptions,
-    draftOptions,
+    useEmailFallback,
+    currentUserName,
     isBulkSaving,
     isUpdating,
     onSave,
@@ -113,12 +118,18 @@ const EmployeeRow = React.memo(
   }) => {
     const { languageCode } = useLanguage();
     const baseDraft = useMemo(
-      () => buildEmployeeDraft(member, employee, draftOptions),
-      [draftOptions, employee, member]
+      () =>
+        buildEmployeeDraft(member, employee, {
+          useEmailFallback,
+          currentUserName,
+        }),
+      [currentUserName, employee, member, useEmailFallback]
     );
     const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
     const [draft, setDraft] = useState(baseDraft);
     const [isDirty, setIsDirty] = useState(false);
+    const latestDraftRef = useRef(baseDraft);
+    const latestEffectiveJobRoleIdRef = useRef('');
     const joinedAt = employee?.joinedAt || member.approvedAt;
     const leftAt = employee?.leftAt;
     const isWorker = isWorkerOrgRole(draft.orgRole);
@@ -135,22 +146,32 @@ const EmployeeRow = React.memo(
         setDraft(baseDraft);
       }
     }, [baseDraft, isDirty]);
+    useEffect(() => {
+      latestDraftRef.current = draft;
+    }, [draft]);
+    useEffect(() => {
+      latestEffectiveJobRoleIdRef.current = effectiveJobRoleId;
+    }, [effectiveJobRoleId]);
 
     const handleDraftChange = (patch) => {
-      setDraft((prev) => ({ ...prev, ...patch }));
+      setDraft((prev) => {
+        const next = { ...prev, ...patch };
+        latestDraftRef.current = next;
+        return next;
+      });
       setIsDirty(true);
     };
 
     const handleSave = useCallback(async () => {
       const didSave = await onSave(member, {
-        ...draft,
-        jobRoleId: effectiveJobRoleId,
+        ...latestDraftRef.current,
+        jobRoleId: latestEffectiveJobRoleIdRef.current,
       });
       if (didSave) {
         setIsDirty(false);
       }
       return didSave;
-    }, [draft, effectiveJobRoleId, member, onSave]);
+    }, [member, onSave]);
 
     useEffect(() => {
       if (typeof onRowStateChange !== 'function') return undefined;
@@ -567,7 +588,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
-          payType: draft.payType || 'FIXED',
+          payType: draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED'),
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
@@ -605,6 +626,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         const next = { ...prev };
         delete next[key];
         return next;
+      }
+      const current = prev[key];
+      if (current?.isDirty === payload.isDirty && current?.save === payload.save) {
+        return prev;
       }
       return {
         ...prev,
@@ -946,11 +971,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         employee={employee}
                         roleOptions={roleOptions}
                         jobRoleOptions={jobRoleOptions}
-                        draftOptions={{
-                          useEmailFallback: normalizedMemberEmail === myEmail,
-                          currentUserName:
-                            normalizedMemberEmail === myEmail ? currentUserName : '',
-                        }}
+                        useEmailFallback={normalizedMemberEmail === myEmail}
+                        currentUserName={normalizedMemberEmail === myEmail ? currentUserName : ''}
                         isBulkSaving={isSavingAllRows}
                         isUpdating={isUpdating}
                         onSave={handleEmployeeSave}
@@ -969,3 +991,4 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 };
 
 export default EmployeeBoard;
+

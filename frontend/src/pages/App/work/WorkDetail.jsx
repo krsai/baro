@@ -871,7 +871,6 @@ const WorkDetail = ({
   const [duplicateEntryMessage, setDuplicateEntryMessage] = useState('');
   const [saveErrorMessage, setSaveErrorMessage] = useState('');
   const [note, setNote] = useState('');
-  const cancelButtonRef = useRef(null);
   const initializedMetaLogIdRef = useRef('');
   const initializedLineLogIdRef = useRef('');
   const initializedRecordsLogIdRef = useRef('');
@@ -1820,6 +1819,14 @@ const WorkDetail = ({
     });
   };
 
+  const isSaveDisabled =
+    !selectedFactory ||
+    !selectedLine ||
+    isSelectedLineDataLoading ||
+    isLogSwitching ||
+    summary.records.length === 0 ||
+    isFactoryAggregateInitialLog;
+
   return (
     <Box
       sx={{
@@ -1831,9 +1838,12 @@ const WorkDetail = ({
       }}
     >
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box>
+        <Stack direction="row" spacing={1} alignItems="center">
           <Typography variant="h6">작업 상세</Typography>
-        </Box>
+          <Button variant="contained" size="small" onClick={handleSave} disabled={isSaveDisabled}>
+            저장
+          </Button>
+        </Stack>
         {!isPageMode ? (
           <IconButton onClick={onClose}>
             <CloseIcon />
@@ -2052,27 +2062,6 @@ const WorkDetail = ({
         )}
       </Paper>
 
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        <Stack direction="row" spacing={1}>
-          <Button variant="outlined" onClick={onClose} ref={cancelButtonRef}>
-            취소
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={
-              !selectedFactory ||
-              !selectedLine ||
-              isSelectedLineDataLoading ||
-              isLogSwitching ||
-              summary.records.length === 0 ||
-              isFactoryAggregateInitialLog
-            }
-          >
-            저장
-          </Button>
-        </Stack>
-      </Box>
     </Box>
   );
 };

@@ -314,6 +314,11 @@ const StyleBoard = () => {
   return (
     <AppPageContainer
       title={getUiMessage('menu.style', '스타일', languageCode)}
+      titleActions={(
+        <Button onClick={handleAddNewClick} variant="contained" color="primary">
+          {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
+        </Button>
+      )}
       toolbar={(
         <PageToolbar
           left={(
@@ -326,11 +331,6 @@ const StyleBoard = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
-          )}
-          right={(
-            <Button onClick={handleAddNewClick} variant="contained" color="primary">
-              {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
-            </Button>
           )}
         />
       )}

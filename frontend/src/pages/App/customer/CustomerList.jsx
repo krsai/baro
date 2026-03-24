@@ -308,6 +308,11 @@ const CustomerList = () => {
   return (
     <AppPageContainer
       title={customerText.title}
+      titleActions={
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+          {customerText.addCustomer}
+        </Button>
+      }
       toolbar={
         <PageToolbar
           left={
@@ -316,11 +321,6 @@ const CustomerList = () => {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
-          }
-          right={
-            <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-              {customerText.addCustomer}
-            </Button>
           }
         />
       }

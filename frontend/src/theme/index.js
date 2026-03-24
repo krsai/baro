@@ -134,6 +134,44 @@ const theme = createTheme({
         },
       },
     },
+    MuiPickersInputBase: {
+      styleOverrides: {
+        root: {
+          fontSize: '0.8125rem',
+          lineHeight: 1.4375,
+          fontFamily: 'inherit',
+          fontWeight: 400,
+        },
+        input: {
+          fontSize: '0.8125rem',
+          lineHeight: 1.4375,
+          fontFamily: 'inherit',
+          fontWeight: 400,
+        },
+        sectionContent: {
+          fontSize: '0.8125rem',
+          lineHeight: 1.4375,
+          fontFamily: 'inherit',
+          fontWeight: 400,
+        },
+      },
+    },
+    MuiPickersSectionList: {
+      styleOverrides: {
+        root: {
+          fontSize: '0.8125rem',
+          lineHeight: 1.4375,
+          fontFamily: 'inherit',
+          fontWeight: 400,
+        },
+        sectionContent: {
+          fontSize: '0.8125rem',
+          lineHeight: 1.4375,
+          fontFamily: 'inherit',
+          fontWeight: 400,
+        },
+      },
+    },
     MuiAutocomplete: {
       defaultProps: {
         filterOptions: createAutocompleteFilterOptions(),

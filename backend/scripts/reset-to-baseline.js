@@ -1971,49 +1971,13 @@ const BASELINE_COLORS = [
   { code: 'INDIGO', name: 'Indigo', nameEn: 'Indigo', nameKo: 'Indigo', nameVi: 'Indigo' },
 ];
 
-const BASELINE_CATEGORIES = [
-  {
-    code: '01-CHEF',
-    name: 'Chef Uniform',
-    nameKo: 'Chef Uniform',
-    nameEn: 'Chef Uniform',
-    nameVi: 'Dong phuc bep',
-  },
-  {
-    code: '02-APRON',
-    name: 'Apron',
-    nameKo: 'Apron',
-    nameEn: 'Apron',
-    nameVi: 'Tap de',
-  },
-  {
-    code: '03-WINDBREAKER',
-    name: 'Windbreaker',
-    nameKo: 'Windbreaker',
-    nameEn: 'Windbreaker',
-    nameVi: 'Ao khoac gio',
-  },
-  {
-    code: '04-SS-TSHIRT',
-    name: 'Short Sleeve T-Shirt',
-    nameKo: 'Short Sleeve T-Shirt',
-    nameEn: 'Short Sleeve T-Shirt',
-    nameVi: 'Ao thun ngan tay',
-  },
-  {
-    code: '05-LS-TSHIRT',
-    name: 'Long Sleeve T-Shirt',
-    nameKo: 'Long Sleeve T-Shirt',
-    nameEn: 'Long Sleeve T-Shirt',
-    nameVi: 'Ao thun dai tay',
-  },
-  {
-    code: '06-SCRUB',
-    name: 'Scrub',
-    nameKo: 'Scrub',
-    nameEn: 'Scrub',
-    nameVi: 'Dong phuc scrub',
-  },
+const LEGACY_CATEGORY_CODE_ALIASES = [
+  { legacyCode: 'CHEF UNIFORM', canonicalCode: '01-CHEF' },
+  { legacyCode: 'APRON', canonicalCode: '02-APRON' },
+  { legacyCode: 'WINDBREAKER', canonicalCode: '03-WINDBREAKER' },
+  { legacyCode: 'SS-TSHIRT', canonicalCode: '04-SS-TSHIRT' },
+  { legacyCode: 'LS-TSHIRT', canonicalCode: '05-LS-TSHIRT' },
+  { legacyCode: 'SCRUB', canonicalCode: '06-SCRUB' },
 ];
 
 const BASELINE_PROCESSES = Array.from({ length: 10 }, (_, index) => ({
@@ -2022,12 +1986,12 @@ const BASELINE_PROCESSES = Array.from({ length: 10 }, (_, index) => ({
 }));
 
 const BASELINE_ROLES = [
-  { code: 'WORKER_CUTTING', name: '\uC7AC\uB2E8', defaultPayType: 'FIXED', sortOrder: 1 },
+  { code: 'WORKER_CUTTING', name: '\uC7AC\uB2E8', defaultPayType: 'CT', sortOrder: 1 },
   { code: 'WORKER_SEWING', name: '\uBD09\uC81C', defaultPayType: 'CT', sortOrder: 2 },
-  { code: 'WORKER_IRONING', name: '\uB2E4\uB9BC', defaultPayType: 'FIXED', sortOrder: 3 },
-  { code: 'WORKER_INSPECTION', name: '\uAC80\uC218', defaultPayType: 'FIXED', sortOrder: 4 },
-  { code: 'WORKER_PACKING', name: '\uD3EC\uC7A5', defaultPayType: 'FIXED', sortOrder: 5 },
-  { code: 'WORKER_OTHER', name: '\uAE30\uD0C0', defaultPayType: 'FIXED', sortOrder: 6 },
+  { code: 'WORKER_IRONING', name: '\uB2E4\uB9BC', defaultPayType: 'CT', sortOrder: 3 },
+  { code: 'WORKER_INSPECTION', name: '\uAC80\uC218', defaultPayType: 'CT', sortOrder: 4 },
+  { code: 'WORKER_PACKING', name: '\uD3EC\uC7A5', defaultPayType: 'CT', sortOrder: 5 },
+  { code: 'WORKER_OTHER', name: '\uAE30\uD0C0', defaultPayType: 'CT', sortOrder: 6 },
 ];
 
 const TARGET_MONTHLY_WAGE = 8000000;
@@ -2395,19 +2359,6 @@ async function syncGlobalColors() {
 }
 
 async function syncManufacturerAttributes(orgId) {
-  for (const category of BASELINE_CATEGORIES) {
-    await prisma.attrCategory.upsert({
-      where: { orgId_code: { orgId, code: category.code } },
-      update: {
-        name: category.name,
-        nameKo: category.nameKo,
-        nameEn: category.nameEn,
-        nameVi: category.nameVi,
-      },
-      create: { orgId, ...category },
-    });
-  }
-
   for (const process of BASELINE_PROCESSES) {
     await prisma.attrProcess.upsert({
       where: { orgId_code: { orgId, code: process.code } },
@@ -2427,6 +2378,26 @@ async function syncManufacturerAttributes(orgId) {
       create: { orgId, ...role },
     });
   }
+}
+
+async function cleanupLegacyCategoryAliases(orgId) {
+  let deletedCount = 0;
+  for (const alias of LEGACY_CATEGORY_CODE_ALIASES) {
+    const canonicalExists = await prisma.attrCategory.findUnique({
+      where: { orgId_code: { orgId, code: alias.canonicalCode } },
+      select: { id: true },
+    });
+    if (!canonicalExists) continue;
+
+    const result = await prisma.attrCategory.deleteMany({
+      where: {
+        orgId,
+        code: alias.legacyCode,
+      },
+    });
+    deletedCount += result.count;
+  }
+  return { deletedCategories: deletedCount };
 }
 
 async function ensureEmployee({
@@ -3759,6 +3730,8 @@ async function runBaselineReset() {
 
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
+  const manufacturerCategoryCleanup = await cleanupLegacyCategoryAliases(manufacturer.id);
+  const brandCategoryCleanup = await cleanupLegacyCategoryAliases(brand.id);
   const sampleCleanup = await cleanupSampleFactoryData(manufacturer.id);
   const legacyStyleCleanup = await cleanupLegacyBaselineStyles(manufacturer.id);
   const sewingRole = await prisma.attrRole.findUnique({
@@ -3908,6 +3881,10 @@ async function runBaselineReset() {
   summary.globalColors = BASELINE_COLORS.length;
   summary.processes = BASELINE_PROCESSES.length;
   summary.roles = BASELINE_ROLES.length;
+  summary.categoryCleanup = {
+    manufacturerDeleted: manufacturerCategoryCleanup.deletedCategories,
+    brandDeleted: brandCategoryCleanup.deletedCategories,
+  };
   summary.styles = BASELINE_STYLES.length;
   summary.workers = baselineWorkerIds.length;
   summary.sampleFactoryCleanup = sampleCleanup;

@@ -85,11 +85,25 @@ export const formatProcessNameWithQuantity = (name, quantity) => {
 export const formatProcessLabelWithQuantity = ({
   code,
   name,
+  nameKo,
+  nameEn,
+  nameVi,
   quantity,
+  languageCode = 'en',
   fallback = '공정',
 }) => {
   const processCode = toTrimmedText(code);
-  const processName = formatProcessNameWithQuantity(name, quantity) || fallback;
+  const localizedName = resolveLocalizedProcessName(
+    {
+      code,
+      name,
+      nameKo,
+      nameEn,
+      nameVi,
+    },
+    languageCode
+  );
+  const processName = formatProcessNameWithQuantity(localizedName || name || code, quantity) || fallback;
   if (!processCode) return processName;
   return `[${processCode}] ${processName}`;
 };

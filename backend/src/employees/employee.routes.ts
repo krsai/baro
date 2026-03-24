@@ -171,8 +171,8 @@ export const createEmployeeRouter = ({
       return res.status(404).json({ ok: false, error: "membership not found" });
     }
 
-    if (membership.status !== "ACTIVE") {
-      return res.status(400).json({ ok: false, error: "membership is not active" });
+    if (membership.status === "PENDING" || membership.status === "REJECTED") {
+      return res.status(400).json({ ok: false, error: "membership is not editable yet" });
     }
 
     await ensureDefaultEmployeeRoles(membership.orgId);

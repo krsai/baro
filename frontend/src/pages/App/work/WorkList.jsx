@@ -20,6 +20,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
+import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -31,6 +32,11 @@ const WORK_LIST_TEXT = {
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
   addLog: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
+  searchPlaceholder: {
+    ko: '작업일자, 공장, 비고 검색',
+    en: 'Search date, factory, note',
+    vi: 'Tim ngay, nha may, ghi chu',
+  },
   workDate: { ko: '작업일자', en: 'Work Date', vi: 'Ngay lam viec' },
   factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
   workerCount: { ko: '작업자 수', en: 'Workers', vi: 'So cong nhan' },
@@ -104,6 +110,15 @@ const buildDateKey = (date) => {
   return `${y}-${m}-${d}`;
 };
 
+const resolveDateKeyFromValue = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return buildDateKey(parsed);
+};
+
 const getMonthStart = (date) => {
   const d = new Date(date);
   d.setDate(1);
@@ -172,6 +187,23 @@ const WorkList = () => {
       ),
     [workLogs]
   );
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredLogs = useMemo(() => {
+    const keyword = String(searchTerm || '').trim().toLowerCase();
+    if (!keyword) return sortedLogs;
+    return sortedLogs.filter((log) => {
+      const searchText = [
+        log?.workDate,
+        log?.factoryName,
+        log?.note,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return searchText.includes(keyword);
+    });
+  }, [searchTerm, sortedLogs]);
 
   const handleAdd = () => {
     navigateToPath('/work-history/new', { label: resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가') });
@@ -179,8 +211,10 @@ const WorkList = () => {
 
   const handleEdit = (log) => {
     if (!log?.id) return;
+    const workDateKey = resolveDateKeyFromValue(log?.workDate) || resolveDateKeyFromValue(log?.createdAt);
+    const detailTabLabel = workDateKey ? `기록: ${workDateKey}` : '기록';
     navigateToPath(`/work-history/${log.id}`, {
-      label: resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가'),
+      label: detailTabLabel,
     });
   };
 
@@ -218,8 +252,24 @@ const WorkList = () => {
   return (
     <AppPageContainer
       title={getUiMessage('menu.workHistory', '기록', languageCode)}
+      titleActions={(
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleAdd}
+        >
+          {resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가')}
+        </Button>
+      )}
       toolbar={(
         <PageToolbar
+          left={(
+            <SearchInput
+              placeholder={resolveText(WORK_LIST_TEXT.searchPlaceholder, languageCode, '작업일자, 공장, 비고 검색')}
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+          )}
           right={(
             <>
               <Stack direction="row" spacing={0.5} alignItems="center">
@@ -245,13 +295,6 @@ const WorkList = () => {
                   <Button size="small" variant="outlined" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}>M-</Button>
                 </Stack>
               </Stack>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={handleAdd}
-              >
-                {resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가')}
-              </Button>
             </>
           )}
         />
@@ -280,13 +323,13 @@ const WorkList = () => {
                     colSpan={7}
                     message={resolveText(WORK_LIST_TEXT.loading, languageCode, '기록을 불러오는 중입니다.')}
                   />
-                ) : sortedLogs.length === 0 ? (
+                ) : filteredLogs.length === 0 ? (
                   <TableStatusRow
                     colSpan={7}
                     message={resolveText(WORK_LIST_TEXT.empty, languageCode, '등록된 기록이 없습니다.')}
                   />
                 ) : (
-                  sortedLogs.map((log) => {
+                  filteredLogs.map((log) => {
                     const rowId = String(log.id);
                     const isDeleting = deletingId === rowId;
                     return (
