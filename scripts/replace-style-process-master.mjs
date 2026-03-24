@@ -1,21 +1,28 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { PrismaClient } from "../backend/node_modules/@prisma/client/index.js";
 
 const require = createRequire(import.meta.url);
 const { normalizeProcessNaming } = require("../backend/scripts/lib/processNamingRules.js");
 const prisma = new PrismaClient();
 
-const ORG_ID = 2;
-const CUSTOMER_NAME = "TSBR";
+const ORG_ID = Number(process.env.ORG_ID || 2);
+const CUSTOMER_NAME = String(process.env.CUSTOMER_NAME || "TSBR").trim() || "TSBR";
 const TIME_REF_QUANTITY = 1000;
 const PT_UPLIFT_RATE = 1.3;
-const MIN_PROCESS_PT_SECONDS = 1;
+const MIN_PROCESS_SECONDS = 30;
 
 const round4 = (value) => Math.round(Number(value || 0) * 10000) / 10000;
+const clampProcessSeconds = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.max(MIN_PROCESS_SECONDS, Math.round(parsed * 10000) / 10000);
+};
 const toSeedSeconds = (value) =>
-  Math.max(MIN_PROCESS_PT_SECONDS, Math.ceil((Number(value) || 0) * PT_UPLIFT_RATE));
+  clampProcessSeconds(Math.ceil((Number(value) || 0) * PT_UPLIFT_RATE)) ?? MIN_PROCESS_SECONDS;
 
 const masterProcess = (code, nameEn, nameKo, nameVi) =>
   normalizeProcessNaming({
@@ -1193,6 +1200,20 @@ const run = async () => {
     }
   );
 
+  const realignOutput = execFileSync(
+    process.execPath,
+    [path.join(process.cwd(), "backend", "scripts", "reset-to-baseline.js"), "time-model"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        ORG_ID: String(ORG_ID),
+      },
+      encoding: "utf8",
+    }
+  );
+  const timeModelRealign = JSON.parse(realignOutput.trim());
+
   const [styles, processCount] = await Promise.all([
     prisma.style.findMany({
       where: {
@@ -1226,6 +1247,7 @@ const run = async () => {
     JSON.stringify(
       {
         replacedProcessMasterCount: processCount,
+        timeModelRealign: timeModelRealign.summary,
         styles: summary,
       },
       null,

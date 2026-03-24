@@ -1585,10 +1585,14 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - 테스트 baseline은 계정/조직/라인/스타일/공통 색상까지만 재구성하고, 주문/작업 배정 더미 데이터는 재생성하지 않는다.
 - 분리돼 있던 테스트 계정 전용 스크립트 `backend/scripts/seed-test-accounts.js`는 제거되었다.
 - 실행 커맨드:
+  - 루트 초기화: `npm run initialize` -> 내부적으로 `node backend/scripts/reset-to-baseline.js initialize`
   - 루트: `npm run reset:baseline`
   - 루트 샘플 주문: `npm run sample:orders` -> 내부적으로 `node backend/scripts/reset-to-baseline.js orders`
   - 루트 샘플 작업기록: `npm run sample:work-logs` -> 내부적으로 `node backend/scripts/reset-to-baseline.js work-logs`
+  - 루트 시간모델 정렬: `npm run realign:time-model` -> 내부적으로 `node backend/scripts/reset-to-baseline.js time-model`
   - 백엔드: `npm run reset:baseline` (`prereset:baseline`에서 `prisma:prepare-client` 자동 실행)
+- `reset-to-baseline.js initialize`는 baseline reset 안에서 스타일 마스터 재생성까지 같이 수행한다.
+- 별도 실행 파일 `backend/scripts/realign-time-model.js`는 제거되었고, 보정 로직은 `reset-to-baseline.js` 내부로 흡수되었다.
 
 #### 작업기록 데이터 보호 원칙
 - baseline reset은 `WorkLog`, `WorkRecord` 데이터를 삭제/초기화하지 않는다.

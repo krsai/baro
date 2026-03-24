@@ -3,80 +3,762 @@
 
 require('dotenv').config();
 process.env.PRISMA_CLIENT_ENGINE_TYPE ||= 'binary';
+const path = require('path');
+const { execFileSync } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
+const MIN_PROCESS_SECONDS = 30;
+const DEFAULT_TIME_REF_QUANTITY = 1000;
+const ST_STANDARD_BUCKETS = Object.freeze([
+  1,
+  10,
+  30,
+  100,
+  300,
+  1000,
+  3000,
+  10000,
+  30000,
+  100000,
+]);
+const DEFAULT_UPDATED_BY = 'SYSTEM_REALIGN';
+
+const roundToScale = (value, digits = 4) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const factor = 10 ** digits;
+  return Math.round(parsed * factor) / factor;
+};
+
+const toPositiveInt = (value, fallback = 1) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+};
+
+const sortJsonValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortJsonValue(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = sortJsonValue(value[key]);
+        return result;
+      }, {});
+  }
+  return value ?? null;
+};
+
+const normalizeJson = (value) => JSON.stringify(sortJsonValue(value ?? null));
+
+const clampProcessSeconds = (value) => {
+  const parsed = roundToScale(value);
+  if (parsed === null || parsed <= 0) return null;
+  return Math.max(MIN_PROCESS_SECONDS, parsed);
+};
+
+const resolveStBucketQuantity = (value) => {
+  const resolvedQuantity = toPositiveInt(value, ST_STANDARD_BUCKETS[0]);
+  let resolvedBucket = ST_STANDARD_BUCKETS[0];
+  ST_STANDARD_BUCKETS.forEach((bucket) => {
+    if (resolvedQuantity >= bucket) {
+      resolvedBucket = bucket;
+    }
+  });
+  return resolvedBucket;
+};
+
+const resolveStandardPreference = (row) => {
+  const setBy = String(row?.setBy || '').trim().toUpperCase();
+  const rank =
+    setBy === 'MANUAL'
+      ? 4
+      : setBy === 'LEGACY'
+        ? 3
+        : setBy === 'SEED'
+          ? 2
+          : setBy === 'PT_DERIVED'
+            ? 1
+            : 0;
+  const updatedAtRaw = row?.updatedAt ?? row?.setAt ?? null;
+  const updatedAt = updatedAtRaw ? new Date(updatedAtRaw).getTime() : 0;
+  return {
+    rank,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
+    id: Number(row?.id) || 0,
+  };
+};
+
+const pickPreferredStandard = (current, candidate) => {
+  if (!current) return candidate;
+  const currentPref = resolveStandardPreference(current);
+  const candidatePref = resolveStandardPreference(candidate);
+  if (candidatePref.rank !== currentPref.rank) {
+    return candidatePref.rank > currentPref.rank ? candidate : current;
+  }
+  if (candidatePref.updatedAt !== currentPref.updatedAt) {
+    return candidatePref.updatedAt > currentPref.updatedAt ? candidate : current;
+  }
+  return candidatePref.id >= currentPref.id ? candidate : current;
+};
+
+const resolveProcessInstanceId = (processCode, rowId, index) =>
+  `${processCode || 'PROC'}-${rowId || index}-${index}`;
+
+const buildProcessMirror = (rows = []) =>
+  rows
+    .slice()
+    .sort(
+      (left, right) =>
+        Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
+        Number(left?.id ?? 0) - Number(right?.id ?? 0)
+    )
+    .map((row, index) => {
+      const standards = (Array.isArray(row?.standards) ? row.standards : [])
+        .map((standard) => {
+          const seconds = clampProcessSeconds(standard?.stSeconds);
+          if (seconds === null) return null;
+          return {
+            quantity: resolveStBucketQuantity(standard?.quantity),
+            seconds,
+            setBy:
+              typeof standard?.setBy === 'string' && standard.setBy.trim()
+                ? standard.setBy.trim()
+                : null,
+            setAt: standard?.setAt ? new Date(standard.setAt).toISOString() : null,
+            updatedAt: standard?.updatedAt ? new Date(standard.updatedAt).toISOString() : null,
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.quantity - right.quantity);
+
+      return {
+        code: row?.processCode || '',
+        name: row?.processName || row?.processCode || `Process ${index + 1}`,
+        description: row?.processDescription ?? null,
+        quantity: toPositiveInt(row?.processQuantity, 1),
+        pt: clampProcessSeconds(row?.ptSeconds),
+        atParams:
+          row?.atParams && typeof row.atParams === 'object' && !Array.isArray(row.atParams)
+            ? row.atParams
+            : null,
+        stValues: standards,
+        timeRefQuantity: standards[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
+        instanceId: resolveProcessInstanceId(row?.processCode, row?.id, index),
+      };
+    });
+
+const resolveStyleIdFromAssignment = (plan) => {
+  const splitCandidate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const parts = raw.split('::');
+    return String(parts[1] || '').trim();
+  };
+
+  return (
+    splitCandidate(plan?.externalId) ||
+    splitCandidate(plan?.originOrderId) ||
+    splitCandidate(plan?.cardId) ||
+    String(plan?.label || '').trim()
+  );
+};
+
+const normalizeAssignmentSchedule = (plan, existingSnapshot) => {
+  const existing = existingSnapshot?.schedule;
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    return {
+      startIndex: Number.isFinite(Number(existing.startIndex)) ? Number(existing.startIndex) : 0,
+      endIndex: Number.isFinite(Number(existing.endIndex)) ? Number(existing.endIndex) : 0,
+      startDayOffsetPercent: Number.isFinite(Number(existing.startDayOffsetPercent))
+        ? Number(existing.startDayOffsetPercent)
+        : null,
+      startDayPercent: Number.isFinite(Number(existing.startDayPercent))
+        ? Number(existing.startDayPercent)
+        : null,
+      endDayPercent: Number.isFinite(Number(existing.endDayPercent))
+        ? Number(existing.endDayPercent)
+        : null,
+      startDateKey: existing.startDateKey || null,
+      endDateKey: existing.endDateKey || null,
+    };
+  }
+
+  return {
+    startIndex: Math.max(0, Number(plan?.startIndex || 0)),
+    endIndex: Math.max(Number(plan?.startIndex || 0), Number(plan?.endIndex || 0)),
+    startDayOffsetPercent: null,
+    startDayPercent: null,
+    endDayPercent: null,
+    startDateKey: null,
+    endDateKey: null,
+  };
+};
+
+const resolveStPerPieceSeconds = (process, orderQuantity) => {
+  const bucketQuantity = resolveStBucketQuantity(orderQuantity);
+  const standards = Array.isArray(process?.stValues) ? process.stValues : [];
+  const exact = standards.find(
+    (value) => resolveStBucketQuantity(value?.quantity) === bucketQuantity
+  );
+  if (exact?.seconds != null) {
+    return clampProcessSeconds(exact.seconds);
+  }
+  return clampProcessSeconds(process?.pt);
+};
+
+const buildAssignmentSnapshot = ({ plan, styleProcesses, updatedAtIso, updatedBy }) => {
+  const existingSnapshot =
+    plan?.ctSnapshot && typeof plan.ctSnapshot === 'object' && !Array.isArray(plan.ctSnapshot)
+      ? plan.ctSnapshot
+      : null;
+  const orderQuantity = toPositiveInt(
+    plan?.finalQuantity ?? plan?.quantity ?? existingSnapshot?.quantity ?? 1,
+    1
+  );
+  const snapshotProcesses = styleProcesses
+    .map((process, index) => {
+      const stSeconds = resolveStPerPieceSeconds(process, orderQuantity);
+      if (stSeconds == null) return null;
+      const processQuantity = toPositiveInt(process?.quantity, 1);
+      return {
+        processKey: String(
+          process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
+        ).trim(),
+        name: process?.name || process?.processName || process?.code || `Process ${index + 1}`,
+        quantity: processQuantity,
+        basis: 'ST',
+        stSeconds,
+        ctSeconds: stSeconds,
+        ctPerPieceSeconds: stSeconds * processQuantity,
+      };
+    })
+    .filter(Boolean);
+
+  if (snapshotProcesses.length === 0) return null;
+
+  const totalStPerPieceSeconds = snapshotProcesses.reduce(
+    (sum, process) => sum + (Number(process?.ctPerPieceSeconds) || 0),
+    0
+  );
+  const totalCtSeconds = Math.max(0, Math.round(totalStPerPieceSeconds * orderQuantity));
+
+  return {
+    updatedAt: updatedAtIso,
+    updatedBy,
+    quantity: orderQuantity,
+    schedule: normalizeAssignmentSchedule(plan, existingSnapshot),
+    totalStPerPieceSeconds,
+    totalCtPerPieceSeconds: totalStPerPieceSeconds,
+    totalCtSeconds,
+    processes: snapshotProcesses,
+  };
+};
+
+const normalizeAssignmentSnapshotForComparison = (snapshot) => {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+    return snapshot ?? null;
+  }
+
+  const nextSnapshot = { ...snapshot };
+  delete nextSnapshot.updatedAt;
+  delete nextSnapshot.updatedBy;
+  return nextSnapshot;
+};
+
+const normalizeBoardAssignmentForComparison = (assignment) => {
+  if (!assignment || typeof assignment !== 'object' || Array.isArray(assignment)) {
+    return assignment ?? null;
+  }
+
+  const nextAssignment = {
+    ...assignment,
+    ctSnapshot: normalizeAssignmentSnapshotForComparison(assignment.ctSnapshot),
+  };
+  delete nextAssignment.version;
+  delete nextAssignment.versionUpdatedAt;
+  return nextAssignment;
+};
+
+const toPositiveIdList = (values) =>
+  Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [values])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    )
+  );
+
+const toStringIdList = (values) =>
+  Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [values])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+async function runTimeModelRealignment(prisma, options = {}) {
+  const updatedAt = options.updatedAt instanceof Date ? options.updatedAt : new Date();
+  const updatedAtIso = updatedAt.toISOString();
+  const updatedBy =
+    typeof options.updatedBy === 'string' && options.updatedBy.trim()
+      ? options.updatedBy.trim()
+      : DEFAULT_UPDATED_BY;
+  const orgIds = toPositiveIdList(options.orgIds);
+  const styleUids = toStringIdList(options.styleUids);
+  const shouldLog = options.log !== false;
+
+  const styleProcessWhere = {};
+  if (orgIds.length > 0) {
+    styleProcessWhere.orgId = { in: orgIds };
+  }
+  if (styleUids.length > 0) {
+    styleProcessWhere.styleUid = { in: styleUids };
+  }
+
+  const styleProcessRows = await prisma.styleProcess.findMany({
+    where: Object.keys(styleProcessWhere).length > 0 ? styleProcessWhere : undefined,
+    include: {
+      style: {
+        select: {
+          uid: true,
+          orgId: true,
+          styleId: true,
+          name: true,
+          customer: true,
+        },
+      },
+      standards: {
+        orderBy: [{ quantity: 'asc' }, { id: 'asc' }],
+      },
+    },
+    orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+  });
+
+  const touchedStyleProcessIds = new Set();
+  const touchedStyleUids = new Set();
+  const candidateStyleUids = new Set(styleProcessRows.map((row) => row.styleUid));
+
+  for (const row of styleProcessRows) {
+    const nextPtSeconds = clampProcessSeconds(row?.ptSeconds);
+    const groupedStandards = new Map();
+
+    for (const standard of Array.isArray(row?.standards) ? row.standards : []) {
+      const stSeconds = clampProcessSeconds(standard?.stSeconds);
+      if (stSeconds === null) continue;
+      const quantity = resolveStBucketQuantity(standard?.quantity);
+      const candidate = {
+        id: standard.id,
+        quantity,
+        stSeconds,
+        setBy:
+          typeof standard?.setBy === 'string' && standard.setBy.trim()
+            ? standard.setBy.trim()
+            : null,
+        setAt: standard?.setAt ?? null,
+        updatedAt: standard?.updatedAt ?? null,
+      };
+      groupedStandards.set(
+        quantity,
+        pickPreferredStandard(groupedStandards.get(quantity), candidate)
+      );
+    }
+
+    const nextStandards = Array.from(groupedStandards.values()).sort(
+      (left, right) => left.quantity - right.quantity
+    );
+    const comparableCurrent = {
+      ptSeconds: clampProcessSeconds(row?.ptSeconds),
+      standards: (Array.isArray(row?.standards) ? row.standards : [])
+        .map((standard) => {
+          const stSeconds = clampProcessSeconds(standard?.stSeconds);
+          if (stSeconds === null) return null;
+          return {
+            quantity: resolveStBucketQuantity(standard?.quantity),
+            stSeconds,
+            setBy:
+              typeof standard?.setBy === 'string' && standard.setBy.trim()
+                ? standard.setBy.trim()
+                : null,
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.quantity - right.quantity),
+    };
+    const comparableNext = {
+      ptSeconds: nextPtSeconds,
+      standards: nextStandards.map((standard) => ({
+        quantity: standard.quantity,
+        stSeconds: standard.stSeconds,
+        setBy: standard.setBy,
+      })),
+    };
+
+    if (normalizeJson(comparableCurrent) === normalizeJson(comparableNext)) {
+      continue;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.styleProcess.update({
+        where: { id: row.id },
+        data: {
+          ptSeconds: nextPtSeconds,
+        },
+      });
+
+      await tx.styleProcessStandard.deleteMany({
+        where: { styleProcessId: row.id },
+      });
+
+      if (nextStandards.length > 0) {
+        await tx.styleProcessStandard.createMany({
+          data: nextStandards.map((standard) => ({
+            orgId: row.orgId,
+            styleProcessId: row.id,
+            quantity: standard.quantity,
+            stSeconds: standard.stSeconds,
+            setBy: standard.setBy,
+            setAt: standard.setAt ? new Date(standard.setAt) : undefined,
+          })),
+        });
+      }
+    });
+
+    touchedStyleProcessIds.add(row.id);
+    touchedStyleUids.add(row.styleUid);
+  }
+
+  const refreshedStyleProcessWhere = {};
+  if (styleUids.length > 0) {
+    refreshedStyleProcessWhere.styleUid = { in: styleUids };
+  } else if (candidateStyleUids.size > 0) {
+    refreshedStyleProcessWhere.styleUid = { in: Array.from(candidateStyleUids) };
+  } else if (orgIds.length > 0) {
+    refreshedStyleProcessWhere.orgId = { in: orgIds };
+  }
+
+  const refreshedStyleProcessRows = await prisma.styleProcess.findMany({
+    where: Object.keys(refreshedStyleProcessWhere).length > 0
+      ? refreshedStyleProcessWhere
+      : undefined,
+    include: {
+      standards: {
+        orderBy: [{ quantity: 'asc' }, { id: 'asc' }],
+      },
+    },
+    orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+  });
+
+  const styleProcessRowsByStyleUid = refreshedStyleProcessRows.reduce((map, row) => {
+    const current = map.get(row.styleUid) || [];
+    current.push(row);
+    map.set(row.styleUid, current);
+    return map;
+  }, new Map());
+
+  const styleWhere = {};
+  if (orgIds.length > 0) {
+    styleWhere.orgId = { in: orgIds };
+  }
+  if (styleUids.length > 0) {
+    styleWhere.uid = { in: styleUids };
+  } else if (candidateStyleUids.size > 0) {
+    styleWhere.uid = { in: Array.from(candidateStyleUids) };
+  }
+
+  const styles = await prisma.style.findMany({
+    where: Object.keys(styleWhere).length > 0 ? styleWhere : undefined,
+    select: {
+      uid: true,
+      orgId: true,
+      styleId: true,
+      name: true,
+      customer: true,
+      processes: true,
+    },
+  });
+
+  const styleByOrgAndStyleId = new Map();
+  styles.forEach((style) => {
+    const styleId = String(style?.styleId || '').trim();
+    if (!styleId) return;
+    styleByOrgAndStyleId.set(`${style.orgId}::${styleId}`, style);
+  });
+
+  const processMirrorByStyleUid = new Map();
+  Array.from(styleProcessRowsByStyleUid.entries()).forEach(([styleUid, rows]) => {
+    processMirrorByStyleUid.set(styleUid, buildProcessMirror(rows));
+  });
+
+  let updatedStyleMirrorCount = 0;
+  for (const style of styles) {
+    const nextProcesses = processMirrorByStyleUid.get(style.uid);
+    if (!nextProcesses) continue;
+    if (normalizeJson(style?.processes ?? null) === normalizeJson(nextProcesses)) {
+      continue;
+    }
+    await prisma.style.update({
+      where: { uid: style.uid },
+      data: {
+        processes: nextProcesses,
+      },
+    });
+    updatedStyleMirrorCount += 1;
+  }
+
+  const assignmentPlanWhere = {};
+  if (orgIds.length > 0) {
+    assignmentPlanWhere.orgId = { in: orgIds };
+  }
+
+  const assignmentPlans = await prisma.assignmentPlan.findMany({
+    where: Object.keys(assignmentPlanWhere).length > 0 ? assignmentPlanWhere : undefined,
+    select: {
+      id: true,
+      orgId: true,
+      externalId: true,
+      cardId: true,
+      originOrderId: true,
+      label: true,
+      quantity: true,
+      finalQuantity: true,
+      lineId: true,
+      startIndex: true,
+      endIndex: true,
+      totalSeconds: true,
+      contractedSeconds: true,
+      ctSnapshot: true,
+    },
+    orderBy: [{ orgId: 'asc' }, { id: 'asc' }],
+  });
+
+  const nextSnapshotByExternalId = new Map();
+  let assignmentPlanUpdateCount = 0;
+
+  for (const plan of assignmentPlans) {
+    const styleId = resolveStyleIdFromAssignment(plan);
+    if (!styleId) continue;
+    const style = styleByOrgAndStyleId.get(`${plan.orgId}::${styleId}`);
+    if (!style) continue;
+    const styleProcesses = processMirrorByStyleUid.get(style.uid) || [];
+    if (styleProcesses.length === 0) continue;
+
+    const nextSnapshot = buildAssignmentSnapshot({
+      plan,
+      styleProcesses,
+      updatedAtIso,
+      updatedBy,
+    });
+    if (!nextSnapshot) continue;
+
+    const nextTotalSeconds = nextSnapshot.totalCtSeconds;
+    const comparableCurrent = {
+      contractedSeconds: Number(plan?.contractedSeconds) || 0,
+      totalSeconds: Number(plan?.totalSeconds) || 0,
+      ctSnapshot: normalizeAssignmentSnapshotForComparison(plan?.ctSnapshot),
+    };
+    const comparableNext = {
+      contractedSeconds: nextTotalSeconds,
+      totalSeconds: nextTotalSeconds,
+      ctSnapshot: normalizeAssignmentSnapshotForComparison(nextSnapshot),
+    };
+    if (normalizeJson(comparableCurrent) === normalizeJson(comparableNext)) {
+      nextSnapshotByExternalId.set(
+        plan.externalId,
+        plan?.ctSnapshot && typeof plan.ctSnapshot === 'object' && !Array.isArray(plan.ctSnapshot)
+          ? plan.ctSnapshot
+          : nextSnapshot
+      );
+      continue;
+    }
+
+    await prisma.assignmentPlan.update({
+      where: { id: plan.id },
+      data: {
+        contractedSeconds: nextTotalSeconds,
+        totalSeconds: nextTotalSeconds,
+        ctSnapshot: nextSnapshot,
+      },
+    });
+    assignmentPlanUpdateCount += 1;
+    nextSnapshotByExternalId.set(plan.externalId, nextSnapshot);
+  }
+
+  const boardStateWhere = {};
+  if (orgIds.length > 0) {
+    boardStateWhere.orgId = { in: orgIds };
+  }
+
+  const boardStates = await prisma.assignmentBoardState.findMany({
+    where: Object.keys(boardStateWhere).length > 0 ? boardStateWhere : undefined,
+    select: {
+      id: true,
+      orgId: true,
+      assignments: true,
+    },
+    orderBy: { id: 'asc' },
+  });
+
+  let boardStateUpdateCount = 0;
+
+  for (const state of boardStates) {
+    if (!Array.isArray(state?.assignments) || state.assignments.length === 0) continue;
+    let changed = false;
+    const nextAssignments = state.assignments.map((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return assignment;
+      const externalId = String(assignment?.id || assignment?.externalId || '').trim();
+      if (!externalId || !nextSnapshotByExternalId.has(externalId)) return assignment;
+      const nextSnapshot = nextSnapshotByExternalId.get(externalId);
+      const nextTotalSeconds = nextSnapshot.totalCtSeconds;
+      const nextAssignment = {
+        ...assignment,
+        contractedSeconds: nextTotalSeconds,
+        totalSeconds: nextTotalSeconds,
+        basis: 'ST',
+        ctSnapshot: nextSnapshot,
+        version: toPositiveInt(assignment?.version ?? 1, 1) + 1,
+        versionUpdatedAt: updatedAtIso,
+      };
+      const isMeaningfullyChanged =
+        normalizeJson(normalizeBoardAssignmentForComparison(assignment)) !==
+        normalizeJson(normalizeBoardAssignmentForComparison(nextAssignment));
+      if (!isMeaningfullyChanged) {
+        return assignment;
+      }
+      changed = true;
+      return nextAssignment;
+    });
+
+    if (!changed) continue;
+    await prisma.assignmentBoardState.update({
+      where: { id: state.id },
+      data: {
+        assignments: nextAssignments,
+      },
+    });
+    boardStateUpdateCount += 1;
+  }
+
+  const result = {
+    ok: true,
+    updatedAt: updatedAtIso,
+    summary: {
+      touchedStyleProcesses: touchedStyleProcessIds.size,
+      touchedStyles: touchedStyleUids.size,
+      updatedStyleMirrors: updatedStyleMirrorCount,
+      updatedAssignmentPlans: assignmentPlanUpdateCount,
+      updatedBoardStates: boardStateUpdateCount,
+    },
+  };
+
+  if (shouldLog) {
+    console.log(JSON.stringify(result, null, 2));
+  }
+
+  return result;
+}
+
 
 const prisma = new PrismaClient();
 
+function parseScriptJsonOutput(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return null;
+  const start = text.lastIndexOf('\n{');
+  const jsonText = start >= 0 ? text.slice(start + 1) : text;
+  return JSON.parse(jsonText);
+}
+
+function runStyleProcessMasterReplacement({ orgId, customerName }) {
+  const raw = execFileSync(
+    process.execPath,
+    [path.join(__dirname, '..', '..', 'scripts', 'replace-style-process-master.mjs')],
+    {
+      cwd: path.join(__dirname, '..', '..'),
+      env: {
+        ...process.env,
+        ORG_ID: String(orgId),
+        CUSTOMER_NAME: String(customerName || '').trim(),
+      },
+      encoding: 'utf8',
+    }
+  );
+
+  return parseScriptJsonOutput(raw);
+}
+
 const BASELINE_COLORS = [
-  { code: 'WHITE', name: 'White', nameEn: 'White', nameKo: '화이트', nameVi: 'Trắng' },
-  { code: 'BLACK', name: 'Black', nameEn: 'Black', nameKo: '블랙', nameVi: 'Đen' },
-  { code: 'NAVY', name: 'Navy', nameEn: 'Navy', nameKo: '네이비', nameVi: 'Xanh Navy' },
+  { code: 'WHITE', name: 'White', nameEn: 'White', nameKo: 'White', nameVi: 'Trang' },
+  { code: 'BLACK', name: 'Black', nameEn: 'Black', nameKo: 'Black', nameVi: 'Den' },
+  { code: 'NAVY', name: 'Navy', nameEn: 'Navy', nameKo: 'Navy', nameVi: 'Xanh Navy' },
   {
     code: 'DARK-MELANGE',
     name: 'Dark Melange',
     nameEn: 'Dark Melange',
-    nameKo: '다크 멜란지',
+    nameKo: 'Dark Melange',
     nameVi: 'Dark Melange',
   },
   {
     code: 'LT-BLUE',
     name: 'Light Blue',
     nameEn: 'Light Blue',
-    nameKo: '라이트 블루',
-    nameVi: 'Xanh nhạt',
+    nameKo: 'Light Blue',
+    nameVi: 'Xanh Nhat',
   },
   {
     code: 'MID-BLUE',
     name: 'Mid Blue',
     nameEn: 'Mid Blue',
-    nameKo: '미드 블루',
+    nameKo: 'Mid Blue',
     nameVi: 'Xanh trung',
   },
-  { code: 'INDIGO', name: 'Indigo', nameEn: 'Indigo', nameKo: '인디고', nameVi: 'Indigo' },
+  { code: 'INDIGO', name: 'Indigo', nameEn: 'Indigo', nameKo: 'Indigo', nameVi: 'Indigo' },
 ];
 
 const BASELINE_CATEGORIES = [
   {
     code: '01-CHEF',
     name: 'Chef Uniform',
-    nameKo: '쉐프복',
+    nameKo: 'Chef Uniform',
     nameEn: 'Chef Uniform',
-    nameVi: 'Đồng phục đầu bếp',
+    nameVi: 'Dong phuc bep',
   },
   {
     code: '02-APRON',
     name: 'Apron',
-    nameKo: '앞치마',
+    nameKo: 'Apron',
     nameEn: 'Apron',
-    nameVi: 'Tạp dề',
+    nameVi: 'Tap de',
   },
   {
     code: '03-WINDBREAKER',
     name: 'Windbreaker',
-    nameKo: '바람막이',
+    nameKo: 'Windbreaker',
     nameEn: 'Windbreaker',
-    nameVi: 'Áo khoác gió',
+    nameVi: 'Ao khoac gio',
   },
   {
     code: '04-SS-TSHIRT',
     name: 'Short Sleeve T-Shirt',
-    nameKo: '반팔 티셔츠',
+    nameKo: 'Short Sleeve T-Shirt',
     nameEn: 'Short Sleeve T-Shirt',
-    nameVi: 'Áo thun ngắn tay',
+    nameVi: 'Ao thun ngan tay',
   },
   {
     code: '05-LS-TSHIRT',
     name: 'Long Sleeve T-Shirt',
-    nameKo: '긴팔 티셔츠',
+    nameKo: 'Long Sleeve T-Shirt',
     nameEn: 'Long Sleeve T-Shirt',
-    nameVi: 'Áo thun dài tay',
+    nameVi: 'Ao thun dai tay',
   },
   {
     code: '06-SCRUB',
     name: 'Scrub',
-    nameKo: '스크럽',
+    nameKo: 'Scrub',
     nameEn: 'Scrub',
-    nameVi: 'Đồng phục scrub',
+    nameVi: 'Dong phuc scrub',
   },
 ];
 
@@ -96,8 +778,8 @@ const BASELINE_ROLES = [
 
 const TARGET_MONTHLY_WAGE = 8000000;
 const WAGE_PER_SECOND = TARGET_MONTHLY_WAGE / (26 * 8 * 3600);
-const SAMPLE_FACTORY_NAME = '샘플 공장';
-const SAMPLE_FACTORY_ADDRESS = '샘플 공장 주소';
+const SAMPLE_FACTORY_NAME = 'Sample Factory';
+const SAMPLE_FACTORY_ADDRESS = 'Sample Factory Address';
 const SAMPLE_WORKER_COUNT = 15;
 const LEGACY_BASELINE_STYLE_IDS = [
   'S-2025SS-T001',
@@ -168,7 +850,12 @@ const BRAND_MEMBERSHIPS = [
 ];
 
 const LINE_CONFIGS = [
-  { key: 'sample-line', lineName: '샘플 라인', workerPrefix: 'sample-worker-', workerLabel: '샘플 작업자' },
+  {
+    key: 'sample-line',
+    lineName: 'Sample Line',
+    workerPrefix: 'sample-worker-',
+    workerLabel: 'Sample Worker',
+  },
 ];
 
 const SAMPLE_API_BASE = process.env.API_BASE ?? 'http://localhost:4000';
@@ -1104,6 +1791,11 @@ async function runSampleOrders(options = {}) {
   );
   const estimatedLineDays =
     totalPtSeconds / (Math.max(1, context.assignedWorkerCount) * SAMPLE_WORK_LOG_SHIFT_SECONDS);
+  const timeModelRealign = await runTimeModelRealignment(prisma, {
+    orgIds: [manufacturer.id],
+    updatedBy: 'SYSTEM_SAMPLE_ORDERS',
+    log: false,
+  });
 
   const result = {
     ok: true,
@@ -1132,6 +1824,7 @@ async function runSampleOrders(options = {}) {
       totalPtSeconds,
       estimatedLineDays: Number(estimatedLineDays.toFixed(2)),
       orderMode: consolidatedOrder.mode,
+      timeModelRealign: timeModelRealign.summary,
     },
     order: {
       orderId: consolidatedOrder.order.id,
@@ -1540,6 +2233,11 @@ function sampleSummarizeProgress(rows, planByExternalId) {
 
 async function runSampleWorkLogs() {
   const random = sampleCreateRng(SAMPLE_WORK_LOG_SEED);
+  const timeModelRealign = await runTimeModelRealignment(prisma, {
+    orgIds: [SAMPLE_WORK_LOG_ORG_ID],
+    updatedBy: 'SYSTEM_SAMPLE_WORK_LOG',
+    log: false,
+  });
   const factoryIdFromEnv = sampleToPositiveIntOrNull(process.env.FACTORY_ID);
   const factories = await sampleApiRequest(
     `/factories${sampleBuildQuery({ orgId: SAMPLE_WORK_LOG_ORG_ID })}`,
@@ -1747,6 +2445,7 @@ async function runSampleWorkLogs() {
           lineDayCount: entries.length,
           createdCount,
           skippedCount,
+          timeModelRealign: timeModelRealign.summary,
         },
         verification: summary,
       },
@@ -1897,6 +2596,10 @@ async function runBaselineReset() {
     });
   }
 
+  const styleMasterReset = runStyleProcessMasterReplacement({
+    orgId: manufacturer.id,
+    customerName: brand.code,
+  });
   await ensureStyles(manufacturer.id);
   const cleanup = await clearOrderAndAssignmentData();
   let sampleOrderSeed = null;
@@ -1941,6 +2644,12 @@ async function runBaselineReset() {
     }
   }
 
+  const timeModelRealign = await runTimeModelRealignment(prisma, {
+    orgIds: [manufacturer.id],
+    updatedBy: 'SYSTEM_RESET_BASELINE',
+    log: false,
+  });
+
   summary.organizations = [manufacturer.code, brand.code].join(', ');
   summary.globalColors = BASELINE_COLORS.length;
   summary.processes = BASELINE_PROCESSES.length;
@@ -1950,6 +2659,7 @@ async function runBaselineReset() {
   summary.sampleFactoryCleanup = sampleCleanup;
   summary.legacyStyleCleanup = legacyStyleCleanup;
   summary.cleanup = cleanup;
+  summary.styleMasterReset = styleMasterReset;
   summary.sampleOrderSeed = sampleOrderSeed
     ? {
         orderNumber: sampleOrderSeed?.order?.orderNumber ?? null,
@@ -1957,6 +2667,7 @@ async function runBaselineReset() {
       }
     : null;
   summary.assignmentSnapshotRestore = assignmentRestore;
+  summary.timeModelRealign = timeModelRealign.summary;
 
   console.log('Baseline reset completed.');
   console.log(JSON.stringify(summary, null, 2));
@@ -1965,7 +2676,7 @@ async function runBaselineReset() {
 async function main() {
   const command = String(process.argv[2] || 'baseline').trim().toLowerCase();
 
-  if (command === 'baseline' || command === 'reset') {
+  if (command === 'baseline' || command === 'reset' || command === 'initialize' || command === 'init') {
     await runBaselineReset();
     return;
   }
@@ -1986,8 +2697,17 @@ async function main() {
     return;
   }
 
+  if (command === 'time-model' || command === 'realign-time-model') {
+    const orgIdFromEnv = sampleToPositiveIntOrNull(process.env.ORG_ID);
+    await runTimeModelRealignment(prisma, {
+      orgIds: orgIdFromEnv ? [orgIdFromEnv] : undefined,
+      updatedBy: 'SYSTEM_RESET_BASELINE',
+    });
+    return;
+  }
+
   throw new Error(
-    `unknown command "${command}". expected one of: baseline, orders, work-logs, sample-all`
+    `unknown command "${command}". expected one of: baseline, initialize, orders, work-logs, sample-all, time-model`
   );
 }
 
@@ -2000,4 +2720,5 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 

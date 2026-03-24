@@ -3,9 +3,11 @@
   "private": true,
   "scripts": {
     "dev": "concurrently -n frontend,backend -c green,blue \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
+    "initialize": "npm --prefix backend run initialize",
     "setup:env": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-env.ps1",
     "sample:work-logs": "node backend/scripts/reset-to-baseline.js work-logs",
     "sample:orders": "node backend/scripts/reset-to-baseline.js orders",
+    "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
     "check:encoding": "node scripts/check-encoding.mjs",
     "test:quantity-change": "node --test scripts/quantity-change-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
