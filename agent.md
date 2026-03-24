@@ -278,7 +278,6 @@
 - 실행 스크립트가 공유해서 쓰는 helper/data table은 `backend/scripts/lib` 아래에 둔다.
 - 현재 기준:
   - `backend/scripts/reset-to-baseline.js`: baseline reset 전용 단일 진입점
-  - `scripts/replace-style-process-master.mjs`: org `2` 스타일/공정 마스터를 통째로 교체하는 재생성 스크립트
   - `backend/scripts/normalize-process-master-names.js`: 이미 들어가 있는 운영 데이터를 **파괴 없이** 현재 명명 규칙으로 맞추는 유지보수 스크립트
   - `backend/scripts/lib/processNamingRules.js`: 실행 스크립트가 공용으로 쓰는 내부 규칙 모듈
 - 새로운 스크립트는 아래 중 하나일 때만 허용한다.
@@ -310,8 +309,8 @@
   - `AM01622`
   - `AM02053`
 - 공용 공정 마스터는 위 4개 스타일의 실제 공정표를 기준으로 새로 등록한다.
-- 스크립트:
-  - `scripts/replace-style-process-master.mjs`
+- 구현 위치:
+  - `backend/scripts/reset-to-baseline.js` 내부 로직 (별도 실행 파일 없음)
 - 이 스크립트는 아래를 한 번에 수행한다.
   - org `2` 기존 스타일 삭제
   - org `2` 기존 공정 마스터 삭제
@@ -335,7 +334,7 @@
   - 주문 전체 소요시간은 필요 시 `PT(q) * q`로 따로 계산한다.
 - 이전에 기록했던 `2,139,429초`, `1,616,028초` 같은 수치는 `q 주문 전체 총시간`으로 잘못 이해한 결과이므로 기준값으로 사용하지 않는다.
 - `StyleProcess.ptSeconds`와 `StyleProcessStandard.stSeconds`는 같은 정수값으로 같이 맞춘다.
-- `scripts/replace-style-process-master.mjs`는 `봉제 인원/월 생산량` 같은 전체 생산량 가정으로 `PT(1000)`을 다시 스케일링하면 안 된다.
+- `backend/scripts/reset-to-baseline.js`의 스타일/공정 마스터 재생성 로직은 `봉제 인원/월 생산량` 같은 전체 생산량 가정으로 `PT(1000)`을 다시 스케일링하면 안 된다.
   - 시드 스크립트는 공정표 기준 `개당 PT(1000)`만 저장한다.
 - 런타임 계산 원칙:
   - 스타일/공정 화면의 `PT(q) / AT(q) / ST(q) / CT(q)` 표시는 모두 `q 기준 개당 시간`
