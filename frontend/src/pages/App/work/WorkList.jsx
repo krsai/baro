@@ -23,18 +23,77 @@ import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 
-const formatSeconds = (value) => {
+const WORK_LIST_TEXT = {
+  prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
+  nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
+  addLog: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
+  workDate: { ko: '작업일자', en: 'Work Date', vi: 'Ngay lam viec' },
+  factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  workerCount: { ko: '작업자 수', en: 'Workers', vi: 'So cong nhan' },
+  itemCount: { ko: '품목 수', en: 'Items', vi: 'So muc' },
+  avgCt: { ko: '평균 CT', en: 'Avg CT', vi: 'CT trung binh' },
+  note: { ko: '비고', en: 'Note', vi: 'Ghi chu' },
+  delete: { ko: '삭제', en: 'Delete', vi: 'Xoa' },
+  loading: {
+    ko: '기록을 불러오는 중입니다.',
+    en: 'Loading logs...',
+    vi: 'Dang tai ghi chep...',
+  },
+  empty: {
+    ko: '등록된 기록이 없습니다.',
+    en: 'No logs found.',
+    vi: 'Chua co ghi chep nao.',
+  },
+  fetchError: {
+    ko: '기록 조회에 실패했습니다.',
+    en: 'Failed to load logs.',
+    vi: 'Khong the tai ghi chep.',
+  },
+  confirmDelete: {
+    ko: '기록 "{label}"을(를) 삭제하시겠습니까?',
+    en: 'Delete log "{label}"?',
+    vi: 'Xoa ghi chep "{label}"?',
+  },
+  deleteSuccess: { ko: '기록을 삭제했습니다.', en: 'Log deleted.', vi: 'Da xoa ghi chep.' },
+  deleteNotFound: {
+    ko: '삭제할 기록을 찾을 수 없습니다.',
+    en: 'Log not found.',
+    vi: 'Khong tim thay ghi chep de xoa.',
+  },
+  deleteError: {
+    ko: '기록 삭제에 실패했습니다.',
+    en: 'Failed to delete log.',
+    vi: 'Khong the xoa ghi chep.',
+  },
+  deleteAria: { ko: '기록 삭제', en: 'Delete log', vi: 'Xoa ghi chep' },
+  attendancePending: {
+    ko: '출결 연동 예정',
+    en: 'Attendance integration pending',
+    vi: 'Dang cho dong bo cham cong',
+  },
+};
+
+const resolveText = (bundle, languageCode, fallback = '') =>
+  bundle?.[languageCode] || bundle?.ko || fallback;
+
+const formatSeconds = (value, languageCode) => {
   const seconds = Number(value) || 0;
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
+  if (languageCode === 'en') return `${hours}h ${minutes}m`;
+  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
   return `${hours}시간 ${minutes}분`;
 };
 
-const formatNote = (note) => {
+const formatNote = (note, languageCode) => {
   if (!note) return '-';
-  if (note === 'Attendance integration pending') return '출결 연동 예정';
+  if (note === 'Attendance integration pending') {
+    return resolveText(WORK_LIST_TEXT.attendancePending, languageCode, note);
+  }
   return note;
 };
 
@@ -69,6 +128,7 @@ const addMonths = (date, amount) => {
 const WorkList = () => {
   const { navigateToPath, showNotification } = useApp();
   const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
   const [workLogs, setWorkLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
@@ -90,7 +150,7 @@ const WorkList = () => {
       } catch (_error) {
         if (!cancelled) {
           setWorkLogs([]);
-          showNotification('작업 기록 조회에 실패했습니다.', 'error');
+          showNotification(resolveText(WORK_LIST_TEXT.fetchError, languageCode, '기록 조회에 실패했습니다.'), 'error');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -101,7 +161,7 @@ const WorkList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, dateFrom, dateTo, showNotification]);
+  }, [activeOrgId, dateFrom, dateTo, languageCode, showNotification]);
 
   const sortedLogs = useMemo(
     () =>
@@ -114,13 +174,13 @@ const WorkList = () => {
   );
 
   const handleAdd = () => {
-    navigateToPath('/work-history/new', { label: '작업 상세' });
+    navigateToPath('/work-history/new', { label: resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가') });
   };
 
   const handleEdit = (log) => {
     if (!log?.id) return;
     navigateToPath(`/work-history/${log.id}`, {
-      label: '작업 상세',
+      label: resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가'),
     });
   };
 
@@ -131,7 +191,7 @@ const WorkList = () => {
 
     const labelSuffix = log.workDate || log.factoryName || workLogId;
     const confirmed = window.confirm(
-      `작업 기록 "${labelSuffix}"을(를) 삭제하시겠습니까?`
+      resolveText(WORK_LIST_TEXT.confirmDelete, languageCode, '기록 "{label}"을(를) 삭제하시겠습니까?').replace('{label}', labelSuffix)
     );
     if (!confirmed) return;
 
@@ -144,12 +204,12 @@ const WorkList = () => {
       );
       showNotification(
         deleted
-          ? '작업 기록을 삭제했습니다.'
-          : '삭제할 작업 기록을 찾을 수 없습니다.',
+          ? resolveText(WORK_LIST_TEXT.deleteSuccess, languageCode, '기록을 삭제했습니다.')
+          : resolveText(WORK_LIST_TEXT.deleteNotFound, languageCode, '삭제할 기록을 찾을 수 없습니다.'),
         deleted ? 'success' : 'warning'
       );
     } catch (_error) {
-      showNotification('작업 기록 삭제에 실패했습니다.', 'error');
+      showNotification(resolveText(WORK_LIST_TEXT.deleteError, languageCode, '기록 삭제에 실패했습니다.'), 'error');
     } finally {
       setDeletingId((prev) => (prev === currentId ? null : prev));
     }
@@ -157,13 +217,13 @@ const WorkList = () => {
 
   return (
     <AppPageContainer
-      title="작업 기록"
+      title={getUiMessage('menu.workHistory', '기록', languageCode)}
       toolbar={(
         <PageToolbar
           right={(
             <>
               <Stack direction="row" spacing={0.5} alignItems="center">
-                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} title="이전 달">
+                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, -1))} title={resolveText(WORK_LIST_TEXT.prevMonth, languageCode, '이전 달')}>
                   <ChevronLeftIcon sx={{ fontSize: 18 }} />
                 </IconButton>
                 <CustomDatePicker
@@ -177,7 +237,7 @@ const WorkList = () => {
                   onChange={(val) => { if (val?.isValid?.()) setMonthStart(getMonthStart(val.toDate())); }}
                   slotProps={{ textField: { sx: { width: 140 } } }}
                 />
-                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} title="다음 달">
+                <IconButton size="small" onClick={() => setMonthStart((prev) => addMonths(prev, 1))} title={resolveText(WORK_LIST_TEXT.nextMonth, languageCode, '다음 달')}>
                   <ChevronRightIcon sx={{ fontSize: 18 }} />
                 </IconButton>
                 <Stack sx={{ gap: '2px' }}>
@@ -190,7 +250,7 @@ const WorkList = () => {
                 startIcon={<AddIcon />}
                 onClick={handleAdd}
               >
-                작업 기록 추가
+                {resolveText(WORK_LIST_TEXT.addLog, languageCode, '기록 추가')}
               </Button>
             </>
           )}
@@ -203,14 +263,14 @@ const WorkList = () => {
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>작업일자</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>공장</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>작업자 수</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>품목 수</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>평균 CT</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>비고</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.workDate, languageCode, '작업일자')}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.factory, languageCode, '공장')}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.workerCount, languageCode, '작업자 수')}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.itemCount, languageCode, '품목 수')}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.avgCt, languageCode, '평균 CT')}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{resolveText(WORK_LIST_TEXT.note, languageCode, '비고')}</TableCell>
                   <TableCell sx={{ fontWeight: 700, width: 64, textAlign: 'center' }}>
-                    삭제
+                    {resolveText(WORK_LIST_TEXT.delete, languageCode, '삭제')}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -218,12 +278,12 @@ const WorkList = () => {
                 {loading ? (
                   <TableStatusRow
                     colSpan={7}
-                    message="작업 기록을 불러오는 중입니다."
+                    message={resolveText(WORK_LIST_TEXT.loading, languageCode, '기록을 불러오는 중입니다.')}
                   />
                 ) : sortedLogs.length === 0 ? (
                   <TableStatusRow
                     colSpan={7}
-                    message="등록된 작업 기록이 없습니다."
+                    message={resolveText(WORK_LIST_TEXT.empty, languageCode, '등록된 기록이 없습니다.')}
                   />
                 ) : (
                   sortedLogs.map((log) => {
@@ -240,15 +300,15 @@ const WorkList = () => {
                         <TableCell>{log.factoryName || '-'}</TableCell>
                         <TableCell>{log.workerCount ?? 0}</TableCell>
                         <TableCell>{log.itemCount ?? 0}</TableCell>
-                        <TableCell>{formatSeconds(Math.round((log.totalContractedSeconds ?? 0) / Math.max(1, log.workerCount ?? 1)))}</TableCell>
-                        <TableCell>{formatNote(log.note)}</TableCell>
+                        <TableCell>{formatSeconds(Math.round((log.totalContractedSeconds ?? 0) / Math.max(1, log.workerCount ?? 1)), languageCode)}</TableCell>
+                        <TableCell>{formatNote(log.note, languageCode)}</TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton
                             size="small"
                             color="error"
                             onClick={(event) => handleDelete(event, log)}
                             disabled={Boolean(deletingId) || isDeleting}
-                            aria-label="작업 기록 삭제"
+                            aria-label={resolveText(WORK_LIST_TEXT.deleteAria, languageCode, '기록 삭제')}
                           >
                             <DeleteOutlineIcon fontSize="small" />
                           </IconButton>

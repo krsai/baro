@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
+import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import WorkDetail from './WorkDetail';
 import { appendWorkLog, findWorkLogById, loadWorkLogs, updateWorkLog } from './workLogStorage';
 
@@ -20,10 +22,48 @@ const buildFactoryDateCacheKey = (factoryId, workDate) => {
   return `${normalizedFactoryId}:${normalizedWorkDate}`;
 };
 
+const WORK_ENTRY_TEXT = {
+  detailLabel: { ko: '기록 상세', en: 'Log Detail', vi: 'Chi tiet ghi chep' },
+  notFound: {
+    ko: '기록을 찾을 수 없습니다.',
+    en: 'Log not found.',
+    vi: 'Khong tim thay ghi chep.',
+  },
+  fetchError: {
+    ko: '기록 조회에 실패했습니다.',
+    en: 'Failed to load log.',
+    vi: 'Khong the tai ghi chep.',
+  },
+  updateError: {
+    ko: '기록 수정에 실패했습니다.',
+    en: 'Failed to update log.',
+    vi: 'Khong the cap nhat ghi chep.',
+  },
+  updateSuccess: {
+    ko: '기록을 수정했습니다.',
+    en: 'Log updated.',
+    vi: 'Da cap nhat ghi chep.',
+  },
+  createSuccess: {
+    ko: '기록을 저장했습니다.',
+    en: 'Log saved.',
+    vi: 'Da luu ghi chep.',
+  },
+  saveError: {
+    ko: '기록 저장에 실패했습니다.',
+    en: 'Failed to save log.',
+    vi: 'Khong the luu ghi chep.',
+  },
+};
+
+const resolveText = (bundle, languageCode, fallback = '') =>
+  bundle?.[languageCode] || bundle?.ko || fallback;
+
 const WorkEntry = () => {
   const { workLogId } = useParams();
   const { navigateToPath, showNotification } = useApp();
   const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
 
   const routeWorkLogId = normalizeWorkLogId(workLogId);
   const isEditMode = Boolean(routeWorkLogId) && routeWorkLogId !== 'new';
@@ -61,16 +101,16 @@ const WorkEntry = () => {
   const closeEntry = useCallback(() => {
     if (isEditMode && routeWorkLogId) {
       navigateToPath('/work-history', {
-        label: '작업 기록',
+        label: getUiMessage('menu.workHistory', 'Logs', languageCode),
         closeTabId: `/work-history/${routeWorkLogId}`,
       });
       return;
     }
     navigateToPath('/work-history', {
-      label: '작업 기록',
+      label: getUiMessage('menu.workHistory', 'Logs', languageCode),
       closeTabId: '/work-history/new',
     });
-  }, [isEditMode, navigateToPath, routeWorkLogId]);
+  }, [isEditMode, languageCode, navigateToPath, routeWorkLogId]);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -99,7 +139,7 @@ const WorkEntry = () => {
         });
         if (cancelled) return;
         if (!record) {
-          showNotification('작업 기록을 찾을 수 없습니다.', 'error');
+          showNotification(resolveText(WORK_ENTRY_TEXT.notFound, languageCode, 'Log not found.'), 'error');
           closeEntry();
           return;
         }
@@ -107,7 +147,10 @@ const WorkEntry = () => {
         setExistingLog(record);
       } catch (_error) {
         if (!cancelled) {
-          showNotification('작업 기록 조회에 실패했습니다.', 'error');
+          showNotification(
+            resolveText(WORK_ENTRY_TEXT.fetchError, languageCode, 'Failed to load log.'),
+            'error'
+          );
           closeEntry();
         }
       } finally {
@@ -125,6 +168,7 @@ const WorkEntry = () => {
     cachedCurrentLog,
     closeEntry,
     isEditMode,
+    languageCode,
     routeWorkLogId,
     showNotification,
   ]);
@@ -173,11 +217,17 @@ const WorkEntry = () => {
         if (isEditMode && routeWorkLogId) {
           const updated = await updateWorkLog(routeWorkLogId, payload, { orgId: activeOrgId });
           if (!updated) {
-            showNotification('작업 기록 수정에 실패했습니다.', 'error');
+            showNotification(
+              resolveText(WORK_ENTRY_TEXT.updateError, languageCode, 'Failed to update log.'),
+              'error'
+            );
             return;
           }
           cacheWorkLogDetail(updated);
-          showNotification('작업 기록을 수정했습니다.', 'success');
+          showNotification(
+            resolveText(WORK_ENTRY_TEXT.updateSuccess, languageCode, 'Log updated.'),
+            'success'
+          );
           closeEntry();
           return;
         }
@@ -186,13 +236,19 @@ const WorkEntry = () => {
         if (created?.id) {
           cacheWorkLogDetail(created);
         }
-        showNotification('작업 기록이 저장되었습니다.', 'success');
+        showNotification(
+          resolveText(WORK_ENTRY_TEXT.createSuccess, languageCode, 'Log saved.'),
+          'success'
+        );
         closeEntry();
       } catch (error) {
-        showNotification(error?.message || '작업 기록 저장에 실패했습니다.', 'error');
+        showNotification(
+          error?.message || resolveText(WORK_ENTRY_TEXT.saveError, languageCode, 'Failed to save log.'),
+          'error'
+        );
       }
     },
-    [activeOrgId, cacheWorkLogDetail, closeEntry, isEditMode, routeWorkLogId, showNotification]
+    [activeOrgId, cacheWorkLogDetail, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]
   );
 
   const handleSelectionContextChange = useCallback(
@@ -260,7 +316,7 @@ const WorkEntry = () => {
         setExistingLog(targetRecord);
 
         navigateToPath(`/work-history/${matchedLogId}`, {
-          label: '작업 상세',
+          label: resolveText(WORK_ENTRY_TEXT.detailLabel, languageCode, 'Log Detail'),
         });
       } catch (_error) {
         setSwitchingLogId('');
@@ -273,6 +329,7 @@ const WorkEntry = () => {
       cacheWorkLogDetail,
       displayedWorkLogId,
       isEditMode,
+      languageCode,
       navigateToPath,
       routeWorkLogId,
       switchingLogId,

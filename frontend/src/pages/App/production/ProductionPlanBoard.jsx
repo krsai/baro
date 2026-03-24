@@ -63,7 +63,10 @@ import {
   resolveAssignmentCtUpdatedAt,
   resolveAssignmentCtUpdatedBy,
 } from '../../../utils/assignmentCt';
-import { formatProcessNameWithQuantity } from '../../../utils/processDisplay';
+import {
+  formatProcessNameWithQuantity,
+  resolveLocalizedProcessName,
+} from '../../../utils/processDisplay';
 
 const STATUS_META = {
   UNSAVED: { label: 'CT 미저장', color: 'default' },
@@ -1295,7 +1298,10 @@ const ProductionPlanBoard = () => {
         const processKey = String(
           process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
         );
-        const processName = process?.name || process?.processName || process?.code || `공정 ${index + 1}`;
+        const processName =
+          resolveLocalizedProcessName(process, languageCode) ||
+          process?.code ||
+          `공정 ${index + 1}`;
         const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
         const ptInfo = resolveProcessPtInfo(process, orderQuantity);
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
@@ -1381,7 +1387,7 @@ const ProductionPlanBoard = () => {
         };
       });
     },
-    []
+    [languageCode]
   );
 
   const selectedProcessRows = useMemo(
@@ -2944,7 +2950,7 @@ const ProductionPlanBoard = () => {
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>
+                            <TableCell colSpan={4} align="left" sx={{ fontWeight: 700 }}>
                               공정 합(한 벌)
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>

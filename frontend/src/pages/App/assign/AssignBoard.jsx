@@ -69,7 +69,10 @@ import {
   resolveAssignmentCtUpdatedAt,
   resolveAssignmentCtUpdatedBy,
 } from '../../../utils/assignmentCt';
-import { formatProcessNameWithQuantity } from '../../../utils/processDisplay';
+import {
+  formatProcessNameWithQuantity,
+  resolveLocalizedProcessName,
+} from '../../../utils/processDisplay';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -3350,8 +3353,7 @@ const AssignBoard = () => {
         process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
       );
       const processName =
-        process?.name ||
-        process?.processName ||
+        resolveLocalizedProcessName(process, languageCode) ||
         process?.code ||
         getUiMessage('assign.fallbackProcessName', 'Process {index}', languageCode, {
           index: index + 1,
@@ -4655,7 +4657,7 @@ const AssignBoard = () => {
           PaperProps={{
             sx: {
               ...TOP_OFFSET_DRAWER_PAPER_SX,
-              width: { xs: '100%', md: '80%' },
+              width: { xs: '100%', md: '72%' },
               p: 2.5,
               overflowY: 'auto',
             },
@@ -4665,7 +4667,7 @@ const AssignBoard = () => {
             <Box
               sx={{
                 position: 'sticky',
-                top: 0,
+                top: (theme) => theme.spacing(-2.5),
                 zIndex: 2,
                 display: 'flex',
                 alignItems: 'center',
@@ -4932,7 +4934,7 @@ const AssignBoard = () => {
                             </TableRow>
                           ))}
                           <TableRow>
-                            <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>
+                            <TableCell colSpan={4} align="left" sx={{ fontWeight: 700 }}>
                               {getUiMessage(
                                 'assign.processSumPerPiece',
                                 'Process Total (per piece)',
@@ -4954,15 +4956,6 @@ const AssignBoard = () => {
                                     fallback: '0',
                                     maximumFractionDigits: 2,
                                   })}
-                            </TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700 }}>
-                              {detailSummary?.totalRequestedPerPieceSeconds != null &&
-                              detailSummary.totalRequestedPerPieceSeconds > 0
-                                ? formatNumberWithCommas(detailSummary.totalRequestedPerPieceSeconds, {
-                                    fallback: '0',
-                                    maximumFractionDigits: 2,
-                                  })
-                                : '-'}
                             </TableCell>
                             <TableCell align="right" sx={{ fontWeight: 700 }}>
                               {detailSummary?.wagePerSecond == null ? (
