@@ -104,6 +104,65 @@ const normalizeAttributePayload = (payload = {}) => {
   return normalized;
 };
 
+const PROCESS_MASTER_TYPE_BY_GROUP = {
+  parts: 'PART',
+  targets: 'TARGET',
+  actions: 'ACTION',
+  specs: 'SPEC',
+};
+
+const normalizeProcessMasterCode = (value) =>
+  String(value ?? '')
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_');
+
+const normalizeProcessMasterItem = (item = {}, defaultType = '') => ({
+  id: item.id ?? null,
+  type: String(item.type ?? defaultType).trim().toUpperCase(),
+  code: normalizeProcessMasterCode(item.code),
+  label: toTrimmedText(item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value),
+  nameKo: toTrimmedText(item.nameKo ?? item.label),
+  nameEn: toTrimmedText(item.nameEn),
+  nameVi: toTrimmedText(item.nameVi),
+  sortOrder: normalizeSortOrder(item.sortOrder),
+});
+
+const normalizeProcessMasterData = (data = {}) => ({
+  parts: normalizeArray(data?.parts).map((item) => normalizeProcessMasterItem(item, 'PART')),
+  targets: normalizeArray(data?.targets).map((item) =>
+    normalizeProcessMasterItem(item, 'TARGET')
+  ),
+  actions: normalizeArray(data?.actions).map((item) =>
+    normalizeProcessMasterItem(item, 'ACTION')
+  ),
+  specs: normalizeArray(data?.specs).map((item) => normalizeProcessMasterItem(item, 'SPEC')),
+});
+
+const normalizeProcessMasterPayload = (payload = {}) => {
+  const normalized = {};
+  Object.entries(PROCESS_MASTER_TYPE_BY_GROUP).forEach(([groupKey, type]) => {
+    if (!Array.isArray(payload?.[groupKey])) return;
+    normalized[groupKey] = payload[groupKey].map((item = {}, index) => ({
+      id: item.id ?? undefined,
+      type,
+      code: normalizeProcessMasterCode(item.code),
+      label: toTrimmedText(
+        item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value
+      ),
+      nameKo: toTrimmedText(item.nameKo ?? item.label),
+      nameEn: toTrimmedText(item.nameEn),
+      nameVi: toTrimmedText(item.nameVi),
+      sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
+    }));
+  });
+  return normalized;
+};
+
 const resolveAttributeSectionOptions = (options = {}) => ({
   includeColors: options?.includeColors !== false,
   includeCategories: options?.includeCategories !== false,
@@ -222,6 +281,35 @@ export const updateAttributes = async (payload, options = {}) => {
   const normalizedPartial = normalizePartialAttributes(data);
   clearAttributeCacheVariants(orgId, hasOrgScope);
   return normalizedPartial;
+};
+
+export const fetchProcessMasterOptions = async (options = {}) => {
+  const orgId = getEffectiveAttributeOrgId(options?.orgId);
+  const hasOrgScope = orgId !== null;
+  const data = await requestJSON(
+    `/process-master-options${buildQueryString({
+      orgId: hasOrgScope ? orgId : undefined,
+    })}`,
+    { skipGlobalLoading: Boolean(options?.skipGlobalLoading) }
+  );
+  return normalizeProcessMasterData(data);
+};
+
+export const updateProcessMasterOptions = async (payload, options = {}) => {
+  const orgId = getEffectiveAttributeOrgId(options?.orgId);
+  const hasOrgScope = orgId !== null;
+  const data = await requestJSON(
+    `/process-master-options${buildQueryString({
+      orgId: hasOrgScope ? orgId : undefined,
+    })}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizeProcessMasterPayload(payload)),
+      skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+    }
+  );
+  return normalizeProcessMasterData(data);
 };
 
 export const createColorAttribute = async (payload, options = {}) => {

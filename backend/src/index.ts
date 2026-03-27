@@ -6525,6 +6525,815 @@ const resolveManagedColorNameData = (item: any) => {
   };
 };
 
+type ProcessMasterOptionType = "PART" | "TARGET" | "ACTION" | "SPEC";
+
+type ProcessMasterOptionRow = {
+  id: number;
+  type: ProcessMasterOptionType;
+  code: string;
+  label: string;
+  nameKo: string | null;
+  nameEn: string | null;
+  nameVi: string | null;
+  sortOrder: number;
+};
+
+const PROCESS_MASTER_TYPE_KEYS = [
+  "PART",
+  "TARGET",
+  "ACTION",
+  "SPEC",
+] as const;
+
+const PROCESS_MASTER_GROUP_BY_TYPE: Record<
+  ProcessMasterOptionType,
+  "parts" | "targets" | "actions" | "specs"
+> = {
+  PART: "parts",
+  TARGET: "targets",
+  ACTION: "actions",
+  SPEC: "specs",
+};
+
+const PROCESS_MASTER_FALLBACK_CODE_BY_TYPE: Record<ProcessMasterOptionType, string> = {
+  PART: "PART",
+  TARGET: "TARGET",
+  ACTION: "ACTION",
+  SPEC: "SPEC",
+};
+
+type ProcessMasterSeedItem = {
+  ko: string;
+  en: string;
+  vi: string;
+};
+
+const PROCESS_MASTER_DEFAULT_OPTIONS: Record<
+  ProcessMasterOptionType,
+  ProcessMasterSeedItem[]
+> = {
+  PART: [
+    { ko: "앞여밈", en: "Front opening", vi: "Nep truoc" },
+    { ko: "앞목", en: "Front neckline", vi: "Co truoc" },
+    { ko: "앞판", en: "Front panel", vi: "Than truoc" },
+    { ko: "뒤목", en: "Back neckline", vi: "Co sau" },
+    { ko: "뒤판", en: "Back panel", vi: "Than sau" },
+    { ko: "소매", en: "Sleeve", vi: "Tay" },
+    { ko: "어깨", en: "Shoulder", vi: "Vai" },
+    { ko: "옆선", en: "Side seam", vi: "Suon" },
+    { ko: "허리", en: "Waist", vi: "Eo" },
+    { ko: "밑단", en: "Hem", vi: "Lai" },
+    { ko: "칼라", en: "Collar", vi: "Co ao" },
+    { ko: "주머니", en: "Pocket", vi: "Tui" },
+  ],
+  TARGET: [
+    { ko: "지퍼", en: "Zipper", vi: "Day keo" },
+    { ko: "페이싱", en: "Facing", vi: "Nep lot" },
+    { ko: "요크", en: "Yoke", vi: "Cau vai" },
+    { ko: "테이프", en: "Tape", vi: "Bang" },
+    { ko: "바이어스", en: "Bias", vi: "Vien xeo" },
+    { ko: "고무줄", en: "Elastic", vi: "Thun" },
+    { ko: "시보리", en: "Rib", vi: "Cua bo" },
+    { ko: "안감", en: "Lining", vi: "Lot trong" },
+    { ko: "겉감", en: "Outer fabric", vi: "Lot ngoai" },
+    { ko: "단추", en: "Button", vi: "Nut" },
+    { ko: "스냅", en: "Snap", vi: "Nut bam" },
+  ],
+  ACTION: [
+    { ko: "부착", en: "Attach", vi: "Gan" },
+    { ko: "상침", en: "Topstitch", vi: "Di top" },
+    { ko: "봉제", en: "Sew", vi: "May" },
+    { ko: "연결", en: "Join", vi: "Noi" },
+    { ko: "접기", en: "Fold", vi: "Gap" },
+    { ko: "뒤집어 박기", en: "Turn-and-stitch", vi: "Lat va may" },
+    { ko: "오버록", en: "Overlock", vi: "Vat so" },
+    { ko: "시접정리", en: "Seam finish", vi: "Hoan tat duong may" },
+    { ko: "검사", en: "Inspect", vi: "Kiem tra" },
+    { ko: "다림", en: "Press", vi: "Ui" },
+  ],
+  SPEC: [
+    { ko: "1줄", en: "1 line", vi: "1 duong" },
+    { ko: "2줄", en: "2 lines", vi: "2 duong" },
+    { ko: "3실", en: "3 threads", vi: "3 soi" },
+    { ko: "4실", en: "4 threads", vi: "4 soi" },
+    { ko: "5mm", en: "5mm", vi: "5mm" },
+    { ko: "7mm", en: "7mm", vi: "7mm" },
+    { ko: "10mm", en: "10mm", vi: "10mm" },
+    { ko: "완성", en: "Finished", vi: "Hoan tat" },
+  ],
+};
+
+const normalizeProcessMasterType = (value: any): ProcessMasterOptionType | null => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+  if (normalized === "PART" || normalized === "PARTS") return "PART";
+  if (normalized === "TARGET" || normalized === "TARGETS") return "TARGET";
+  if (normalized === "ACTION" || normalized === "ACTIONS") return "ACTION";
+  if (normalized === "SPEC" || normalized === "SPECS") return "SPEC";
+  return null;
+};
+
+const normalizeProcessMasterCode = (value: any): string =>
+  normalizeManagedAttributeCode(value).replace(/-/g, "_");
+
+const normalizeProcessMasterLabel = (value: any): string =>
+  resolveOptionalString(value, null) ?? "";
+
+const resolveProcessMasterNameData = (item: any) => {
+  const nameKo = normalizeProcessMasterLabel(item?.nameKo);
+  const nameEn = normalizeProcessMasterLabel(item?.nameEn);
+  const nameVi = normalizeProcessMasterLabel(item?.nameVi);
+  const fallback = normalizeProcessMasterLabel(
+    item?.label ?? item?.name ?? item?.value
+  );
+  const resolvedNameKo = nameKo || fallback;
+  const resolvedLabel = resolvedNameKo || nameEn || nameVi || fallback;
+
+  return {
+    nameKo: resolvedNameKo,
+    nameEn,
+    nameVi,
+    label: resolvedLabel,
+  };
+};
+
+const toProcessMasterOptionResponse = (row: any) => ({
+  id: toPositiveIntOrNull(row?.id),
+  type: normalizeProcessMasterType(row?.type),
+  code: normalizeProcessMasterCode(row?.code),
+  label: normalizeProcessMasterLabel(
+    row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi
+  ),
+  nameKo: normalizeProcessMasterLabel(row?.nameKo ?? row?.label),
+  nameEn: normalizeProcessMasterLabel(row?.nameEn),
+  nameVi: normalizeProcessMasterLabel(row?.nameVi),
+  sortOrder: toPositiveIntOrNull(row?.sortOrder) ?? 0,
+});
+
+const groupProcessMasterOptions = (rows: any[] = []) => {
+  const grouped = {
+    parts: [] as any[],
+    targets: [] as any[],
+    actions: [] as any[],
+    specs: [] as any[],
+  };
+
+  rows.forEach((row) => {
+    const normalized = toProcessMasterOptionResponse(row);
+    const type = normalizeProcessMasterType(normalized.type);
+    if (!type) return;
+    const groupKey = PROCESS_MASTER_GROUP_BY_TYPE[type];
+    if (!groupKey) return;
+    grouped[groupKey].push(normalized);
+  });
+
+  return grouped;
+};
+
+const generateUniqueProcessMasterCode = ({
+  type,
+  label,
+  usedCodes,
+}: {
+  type: ProcessMasterOptionType;
+  label: string;
+  usedCodes: Set<string>;
+}) => {
+  const fallback = PROCESS_MASTER_FALLBACK_CODE_BY_TYPE[type];
+  const baseCode = normalizeProcessMasterCode(label) || fallback;
+  let candidate = baseCode;
+  let suffix = 2;
+  while (usedCodes.has(candidate)) {
+    candidate = `${baseCode}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+};
+
+const listProcessMasterOptions = async (): Promise<ProcessMasterOptionRow[]> =>
+  prisma.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "type",
+      "code",
+      "label",
+      "nameKo",
+      "nameEn",
+      "nameVi",
+      "sortOrder"
+    FROM "ProcessMasterOption"
+    ORDER BY "type" ASC, "sortOrder" ASC, "id" ASC
+  `);
+
+const countProcessMasterOptions = async () => {
+  const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
+    SELECT COUNT(*)::bigint AS "count"
+    FROM "ProcessMasterOption"
+  `);
+  return Number(rows[0]?.count ?? 0);
+};
+
+const insertProcessMasterOptions = async (
+  rows: Array<{
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }>
+) => {
+  if (rows.length === 0) return;
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO "ProcessMasterOption" (
+      "type",
+      "code",
+      "label",
+      "nameKo",
+      "nameEn",
+      "nameVi",
+      "sortOrder",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES ${Prisma.join(
+      rows.map((row) => Prisma.sql`(
+        ${row.type}::"ProcessMasterOptionType",
+        ${row.code},
+        ${row.label},
+        ${row.nameKo || null},
+        ${row.nameEn || null},
+        ${row.nameVi || null},
+        ${row.sortOrder},
+        NOW(),
+        NOW()
+      )`)
+    )}
+    ON CONFLICT ("type", "code") DO NOTHING
+  `);
+};
+
+const deleteProcessMasterOptionsByIds = async (ids: number[]) => {
+  if (ids.length === 0) return;
+  await prisma.$executeRaw(
+    Prisma.sql`DELETE FROM "ProcessMasterOption" WHERE "id" IN (${Prisma.join(ids)})`
+  );
+};
+
+const updateProcessMasterOptionRow = async (row: {
+  id: number;
+  type: ProcessMasterOptionType;
+  code: string;
+  label: string;
+  nameKo: string;
+  nameEn: string;
+  nameVi: string;
+  sortOrder: number;
+}) => {
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "ProcessMasterOption"
+    SET
+      "type" = ${row.type}::"ProcessMasterOptionType",
+      "code" = ${row.code},
+      "label" = ${row.label},
+      "nameKo" = ${row.nameKo || null},
+      "nameEn" = ${row.nameEn || null},
+      "nameVi" = ${row.nameVi || null},
+      "sortOrder" = ${row.sortOrder},
+      "updatedAt" = NOW()
+    WHERE "id" = ${row.id}
+  `);
+};
+
+const ensureDefaultProcessMasterOptions = async () => {
+  const existingCount = await countProcessMasterOptions();
+  if (existingCount > 0) {
+    return listProcessMasterOptions();
+  }
+
+  const seedRows: Array<{
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }> = [];
+
+  PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+    const type = typeKey as ProcessMasterOptionType;
+    const usedCodes = new Set<string>();
+    PROCESS_MASTER_DEFAULT_OPTIONS[type].forEach((item, index) => {
+      const nameKo = normalizeProcessMasterLabel(item?.ko);
+      const nameEn = normalizeProcessMasterLabel(item?.en);
+      const nameVi = normalizeProcessMasterLabel(item?.vi);
+      const label = nameKo || nameEn || nameVi;
+      const codeSeedLabel = nameEn || nameKo || nameVi || label;
+      const code = generateUniqueProcessMasterCode({
+        type,
+        label: codeSeedLabel,
+        usedCodes,
+      });
+      usedCodes.add(code);
+      seedRows.push({
+        type,
+        code,
+        label,
+        nameKo,
+        nameEn,
+        nameVi,
+        sortOrder: index + 1,
+      });
+    });
+  });
+
+  if (seedRows.length > 0) {
+    await insertProcessMasterOptions(seedRows);
+  }
+
+  return listProcessMasterOptions();
+};
+
+const flattenProcessMasterPayloadItems = (payload: any) => {
+  const pushItems = (
+    items: any[],
+    type: ProcessMasterOptionType,
+    target: Array<{
+      id: number | null;
+      type: ProcessMasterOptionType;
+      code: string;
+      label: string;
+      nameKo: string;
+      nameEn: string;
+      nameVi: string;
+      sortOrder: number | null;
+    }>
+  ) => {
+    ensureArray(items).forEach((item: any, index: number) => {
+      if (typeof item === "string") {
+        target.push({
+          id: null,
+          type,
+          code: "",
+          label: normalizeProcessMasterLabel(item),
+          nameKo: normalizeProcessMasterLabel(item),
+          nameEn: "",
+          nameVi: "",
+          sortOrder: index + 1,
+        });
+        return;
+      }
+      const itemType = normalizeProcessMasterType(item?.type) ?? type;
+      if (!itemType) return;
+      const nameData = resolveProcessMasterNameData(item);
+      target.push({
+        id: isNumericId(item?.id) ? toId(item.id) : null,
+        type: itemType,
+        code: normalizeProcessMasterCode(item?.code),
+        label: nameData.label,
+        nameKo: nameData.nameKo,
+        nameEn: nameData.nameEn,
+        nameVi: nameData.nameVi,
+        sortOrder: toPositiveIntOrNull(item?.sortOrder),
+      });
+    });
+  };
+
+  const flattened: Array<{
+    id: number | null;
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number | null;
+  }> = [];
+
+  if (Array.isArray(payload)) {
+    payload.forEach((item: any, index: number) => {
+      const type = normalizeProcessMasterType(item?.type);
+      if (!type) return;
+      const nameData = resolveProcessMasterNameData(item);
+      flattened.push({
+        id: isNumericId(item?.id) ? toId(item.id) : null,
+        type,
+        code: normalizeProcessMasterCode(item?.code),
+        label: nameData.label,
+        nameKo: nameData.nameKo,
+        nameEn: nameData.nameEn,
+        nameVi: nameData.nameVi,
+        sortOrder: toPositiveIntOrNull(item?.sortOrder) ?? index + 1,
+      });
+    });
+    return flattened;
+  }
+
+  pushItems(payload?.parts, "PART", flattened);
+  pushItems(payload?.targets, "TARGET", flattened);
+  pushItems(payload?.actions, "ACTION", flattened);
+  pushItems(payload?.specs, "SPEC", flattened);
+  return flattened;
+};
+
+const syncProcessMasterOptions = async (payload: any) => {
+  const incomingItems = flattenProcessMasterPayloadItems(payload).filter(
+    (item) =>
+      item.type &&
+      (item.label || item.nameKo || item.nameEn || item.nameVi)
+  );
+  const incomingIds = incomingItems
+    .filter((item) => item.id !== null)
+    .map((item) => item.id as number);
+  const incomingIdSet = new Set(incomingIds);
+
+  const existing = await listProcessMasterOptions();
+  const deleteIds = existing
+    .map((row) => row.id)
+    .filter((id) => !incomingIdSet.has(id));
+  if (deleteIds.length > 0) {
+    await deleteProcessMasterOptionsByIds(deleteIds);
+  }
+
+  const existingById = new Map(
+    existing.map((row) => [row.id, { type: row.type, code: row.code }])
+  );
+  const usedCodesByType = PROCESS_MASTER_TYPE_KEYS.reduce((map, typeKey) => {
+    map.set(typeKey as ProcessMasterOptionType, new Set<string>());
+    return map;
+  }, new Map<ProcessMasterOptionType, Set<string>>());
+
+  existing.forEach((row) => {
+    if (deleteIds.includes(row.id)) return;
+    const type = normalizeProcessMasterType(row.type);
+    if (!type) return;
+    const used = usedCodesByType.get(type);
+    if (!used) return;
+    const code = normalizeProcessMasterCode(row.code);
+    if (code) used.add(code);
+  });
+
+  const nextSortOrderByType = new Map<ProcessMasterOptionType, number>();
+  const creates: Array<{
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }> = [];
+  const updates: Array<{
+    id: number;
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }> = [];
+
+  incomingItems.forEach((item) => {
+    const type = normalizeProcessMasterType(item.type);
+    if (!type) return;
+    const usedCodes = usedCodesByType.get(type) ?? new Set<string>();
+
+    const itemId = item.id;
+    const existingInfo = itemId ? existingById.get(itemId) : null;
+    if (existingInfo && normalizeProcessMasterType(existingInfo.type) === type) {
+      const currentCode = normalizeProcessMasterCode(existingInfo.code);
+      if (currentCode) {
+        usedCodes.delete(currentCode);
+      }
+    }
+
+    let code = normalizeProcessMasterCode(item.code);
+    if (!code || usedCodes.has(code)) {
+      const codeSeedLabel =
+        normalizeProcessMasterLabel(item.nameEn) ||
+        normalizeProcessMasterLabel(item.label) ||
+        normalizeProcessMasterLabel(item.nameKo) ||
+        normalizeProcessMasterLabel(item.nameVi);
+      code = generateUniqueProcessMasterCode({
+        type,
+        label: codeSeedLabel,
+        usedCodes,
+      });
+    }
+    usedCodes.add(code);
+    usedCodesByType.set(type, usedCodes);
+
+    const nextSortOrder =
+      item.sortOrder ?? ((nextSortOrderByType.get(type) || 0) + 1);
+    nextSortOrderByType.set(type, nextSortOrder);
+
+    if (itemId) {
+      updates.push({
+        id: itemId,
+        type,
+        code,
+        label: item.label,
+        nameKo: item.nameKo,
+        nameEn: item.nameEn,
+        nameVi: item.nameVi,
+        sortOrder: nextSortOrder,
+      });
+    } else {
+      creates.push({
+        type,
+        code,
+        label: item.label,
+        nameKo: item.nameKo,
+        nameEn: item.nameEn,
+        nameVi: item.nameVi,
+        sortOrder: nextSortOrder,
+      });
+    }
+  });
+
+  if (creates.length > 0) {
+    await insertProcessMasterOptions(creates);
+  }
+
+  if (updates.length > 0) {
+    for (const row of updates) {
+      await updateProcessMasterOptionRow(row);
+    }
+  }
+
+  return listProcessMasterOptions();
+};
+
+const PROCESS_TEXT_PLACEHOLDERS = {
+  ko: {
+    target: "((주대상 누락))",
+    action: "((작업 누락))",
+  },
+  en: {
+    target: "((Primary target missing))",
+    action: "((Action missing))",
+  },
+  vi: {
+    target: "((Thieu doi tuong chinh))",
+    action: "((Thieu thao tac))",
+  },
+} as const;
+
+const splitProcessTokens = (value: string, separatorPattern: RegExp): string[] =>
+  String(value ?? "")
+    .split(separatorPattern)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+const normalizeOptionalProcessDisplayText = (
+  value: any,
+  placeholders: { target: string; action: string }
+) => {
+  const text = resolveOptionalString(value, null);
+  if (!text) return null;
+  return normalizeProcessDisplayText(text, placeholders);
+};
+
+const normalizeProcessPlaceholderText = (
+  text: string,
+  placeholders: { target: string; action: string }
+) => {
+  const normalized = String(text ?? "").trim();
+  if (!normalized) return normalized;
+  const compact = normalized
+    .toLowerCase()
+    .replace(/[^a-z0-9\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    /(primary|주대상|doi tuong chinh)/i.test(compact) &&
+    /(missing|누락|thieu)/i.test(compact)
+  ) {
+    return placeholders.target;
+  }
+  if (
+    /(action|작업|thao tac)/i.test(compact) &&
+    /(missing|누락|thieu)/i.test(compact)
+  ) {
+    return placeholders.action;
+  }
+  return normalized;
+};
+
+const normalizeProcessDisplayText = (
+  value: any,
+  placeholders: { target: string; action: string }
+) => {
+  const rawText = resolveOptionalString(value, null);
+  if (!rawText) {
+    return `${placeholders.target} - ${placeholders.action}`;
+  }
+
+  const [leftChunk, rightChunk] = String(rawText).split(/\s*-\s*/, 2);
+  const rawLeft = normalizeProcessPlaceholderText(
+    resolveOptionalString(leftChunk, null) ?? placeholders.target,
+    placeholders
+  );
+  const rawRight = normalizeProcessPlaceholderText(
+    resolveOptionalString(rightChunk, null) ?? placeholders.action,
+    placeholders
+  );
+
+  let partText = rawLeft;
+  let targetText = "";
+  let shouldRequireTarget = false;
+  const hasHangul = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]/.test(rawLeft);
+  const isPlaceholderLeft = rawLeft.includes("((") && rawLeft.includes("))");
+
+  const colonIndex = rawLeft.indexOf(":");
+  if (!isPlaceholderLeft && colonIndex >= 0) {
+    partText = rawLeft.slice(0, colonIndex).trim();
+    targetText = rawLeft.slice(colonIndex + 1).trim();
+    shouldRequireTarget = true;
+  } else if (!isPlaceholderLeft && rawLeft.includes("/")) {
+    const slashTokens = splitProcessTokens(rawLeft, /[·/]/g);
+    if (slashTokens.length > 1) {
+      partText = slashTokens[0] ?? "";
+      targetText = slashTokens.slice(1).join("·");
+      shouldRequireTarget = true;
+    }
+  } else {
+    const firstSpaceMatch = rawLeft.match(/\s+/);
+    const firstSpaceIndex = firstSpaceMatch?.index ?? -1;
+    if (hasHangul && !isPlaceholderLeft && firstSpaceIndex > 0) {
+      partText = rawLeft.slice(0, firstSpaceIndex).trim();
+      targetText = rawLeft.slice(firstSpaceIndex + firstSpaceMatch![0].length).trim();
+      shouldRequireTarget = true;
+    }
+  }
+
+  const normalizedPart = partText || placeholders.target;
+  const normalizedTargets = splitProcessTokens(targetText, /[·/]/g).join("·");
+  const leftText =
+    shouldRequireTarget || normalizedTargets
+      ? `${normalizedPart}: ${normalizedTargets || placeholders.target}`
+      : normalizedPart;
+
+  const specTokens = Array.from(rawRight.matchAll(/\(([^)]*)\)/g))
+    .map((match) => match?.[1] ?? "")
+    .flatMap((specValue) => splitProcessTokens(specValue, /[·/+]/g));
+  const normalizedSpec = specTokens.join("·");
+  const actionChunk = rawRight.replace(/\([^)]*\)/g, " ");
+  const normalizedActions = splitProcessTokens(actionChunk, /[·+]/g).join("·");
+  const rightText = normalizedActions || placeholders.action;
+
+  return normalizedSpec
+    ? `${leftText} - ${rightText} (${normalizedSpec})`
+    : `${leftText} - ${rightText}`;
+};
+
+const resolveManagedProcessNameData = (item: any) => {
+  const base = resolveManagedAttributeNameData(item);
+  const nameEn = normalizeProcessDisplayText(
+    resolveOptionalString(base.nameEn, null) ?? base.name,
+    PROCESS_TEXT_PLACEHOLDERS.en
+  );
+  const nameKo = normalizeOptionalProcessDisplayText(
+    base.nameKo,
+    PROCESS_TEXT_PLACEHOLDERS.ko
+  );
+  const nameVi = normalizeOptionalProcessDisplayText(
+    base.nameVi,
+    PROCESS_TEXT_PLACEHOLDERS.vi
+  );
+  return {
+    name: nameEn,
+    nameKo,
+    nameEn,
+    nameVi,
+  };
+};
+
+const buildCombinedLocalizedProcessName = (item: {
+  code?: any;
+  nameEn?: any;
+  nameKo?: any;
+  nameVi?: any;
+}) => {
+  const nameKo = resolveOptionalString(item?.nameKo, null);
+  const nameVi = resolveOptionalString(item?.nameVi, null);
+  const nameEn = resolveOptionalString(item?.nameEn, null);
+  const code = resolveOptionalString(item?.code, null);
+  const localizedParts = [nameKo, nameVi].filter(Boolean);
+  if (localizedParts.length > 0) {
+    return localizedParts.join(" / ");
+  }
+  return (
+    nameEn ??
+    code ??
+    `${PROCESS_TEXT_PLACEHOLDERS.ko.target} / ${PROCESS_TEXT_PLACEHOLDERS.vi.target}`
+  );
+};
+
+const sameTrimmedText = (left: any, right: any) =>
+  resolveOptionalString(left, "") === resolveOptionalString(right, "");
+
+const syncStyleProcessNamesFromMaster = async ({
+  orgId,
+  processes,
+  db = prisma,
+}: {
+  orgId: number;
+  processes: any[];
+  db?: Prisma.TransactionClient | typeof prisma;
+}) => {
+  const codeToName = new Map<string, string>();
+
+  ensureArray(processes).forEach((item) => {
+    const codeKey = normalizeProcessCodeKey(item?.code);
+    if (!codeKey) return;
+    const normalized = resolveManagedProcessNameData(item);
+    const combinedName = buildCombinedLocalizedProcessName({
+      code: item?.code,
+      nameEn: normalized.nameEn,
+      nameKo: normalized.nameKo,
+      nameVi: normalized.nameVi,
+    });
+    if (!combinedName) return;
+    codeToName.set(codeKey, combinedName);
+  });
+
+  if (codeToName.size === 0) {
+    return {
+      touchedCodes: 0,
+      updatedStyleProcessCount: 0,
+      updatedStyleCount: 0,
+    };
+  }
+
+  const targetCodes = Array.from(codeToName.keys());
+  const styleProcessRows = await db.styleProcess.findMany({
+    where: {
+      orgId,
+      processCode: { in: targetCodes },
+    },
+    select: {
+      id: true,
+      processCode: true,
+      processName: true,
+    },
+  });
+
+  let updatedStyleProcessCount = 0;
+  for (const row of styleProcessRows) {
+    const nextName = codeToName.get(normalizeProcessCodeKey(row.processCode));
+    if (!nextName || sameTrimmedText(row.processName, nextName)) continue;
+    await db.styleProcess.update({
+      where: { id: row.id },
+      data: { processName: nextName },
+    });
+    updatedStyleProcessCount += 1;
+  }
+
+  const styleRows = await db.style.findMany({
+    where: { orgId },
+    select: { uid: true, processes: true },
+  });
+  let updatedStyleCount = 0;
+
+  for (const style of styleRows) {
+    const styleProcesses = Array.isArray(style.processes) ? style.processes : null;
+    if (!styleProcesses || styleProcesses.length === 0) continue;
+
+    let touched = false;
+    const nextProcesses = styleProcesses.map((process) => {
+      if (!process || typeof process !== "object" || Array.isArray(process)) return process;
+      const codeKey = normalizeProcessCodeKey((process as any)?.code);
+      if (!codeKey) return process;
+      const nextName = codeToName.get(codeKey);
+      if (!nextName || sameTrimmedText((process as any)?.name, nextName)) return process;
+      touched = true;
+      return {
+        ...(process as any),
+        name: nextName,
+      };
+    });
+
+    if (!touched) continue;
+    await db.style.update({
+      where: { uid: style.uid },
+      data: { processes: nextProcesses },
+    });
+    updatedStyleCount += 1;
+  }
+
+  return {
+    touchedCodes: targetCodes.length,
+    updatedStyleProcessCount,
+    updatedStyleCount,
+  };
+};
+
 const ensureDefaultEmployeeRoles = async (orgId: number) => {
   const existingRoles = await prisma.attrRole.findMany({
     where: { orgId },
@@ -6816,7 +7625,21 @@ const syncSection = async (model: any, orgId: number, items: any, options: any =
     }
 
     let code = (item.code ?? "").trim();
-    const { name, nameKo, nameEn, nameVi } = resolveManagedColorNameData(item);
+    const {
+      name,
+      nameKo,
+      nameEn,
+      nameVi,
+    } = (
+      typeof options.resolveNameData === "function"
+        ? options.resolveNameData(item, { orgId, itemId, existingCode })
+        : resolveManagedColorNameData(item)
+    ) as {
+      name: string;
+      nameKo: string | null;
+      nameEn: string | null;
+      nameVi: string | null;
+    };
     if (typeof options.resolveCode === "function") {
       code = options.resolveCode({
         code,
@@ -10449,6 +11272,38 @@ app.get("/attributes", async (req, res) => {
   });
 });
 
+app.get("/process-master-options", async (req, res) => {
+  const requesterEmail = getRequesterEmail(req);
+  if (!requesterEmail) {
+    return res.status(401).json({ ok: false, error: "request user email is required" });
+  }
+
+  const systemUser = await prisma.systemUser.findUnique({
+    where: { email: requesterEmail },
+    select: { systemRole: true },
+  });
+  const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
+  if (!isSystemAdmin) {
+    const accessContext = await requireOrgRole(req, res, {
+      allowedRoles: ORG_MANAGEMENT_ROLES,
+      allowSystemAdmin: false,
+    });
+    if (!accessContext) return;
+  }
+
+  const rows = await ensureDefaultProcessMasterOptions();
+  return res.json(groupProcessMasterOptions(rows));
+});
+
+app.put("/process-master-options", async (req, res) => {
+  const systemAdmin = await requireSystemAdmin(req, res);
+  if (!systemAdmin) return;
+
+  await ensureDefaultProcessMasterOptions();
+  const rows = await syncProcessMasterOptions(req.body ?? {});
+  return res.json(groupProcessMasterOptions(rows));
+});
+
 app.post("/attributes/colors", async (req, res) => {
   const systemAdmin = await requireSystemAdmin(req, res);
   if (!systemAdmin) return;
@@ -10485,15 +11340,33 @@ app.post("/attributes/colors", async (req, res) => {
 });
 
 app.put("/attributes", async (req, res) => {
-  const systemAdmin = await requireSystemAdmin(req, res);
-  if (!systemAdmin) return;
+  const payload = req.body ?? {};
+  const includesColors = payload.colors !== undefined;
+  const includesCategories = payload.categories !== undefined;
+  const includesRoles = payload.roles !== undefined;
+  const includesProcesses = payload.processes !== undefined;
+  const isProcessOnlyPayload =
+    includesProcesses && !includesColors && !includesCategories && !includesRoles;
 
-  const organization = await getOrganizationByQuery(req);
+  let accessContext: Awaited<ReturnType<typeof requireOrgRole>> | null = null;
+  if (isProcessOnlyPayload) {
+    accessContext = await requireOrgRole(req, res, {
+      allowedRoles: ORG_MANAGEMENT_ROLES,
+      allowSystemAdmin: true,
+    });
+    if (!accessContext) return;
+  } else {
+    const systemAdmin = await requireSystemAdmin(req, res);
+    if (!systemAdmin) return;
+  }
+
+  const organization =
+    accessContext?.organization ??
+    (await getOrganizationByQuery(req));
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
-  const payload = req.body ?? {};
 
   const tasks = [];
   const response: {
@@ -10543,9 +11416,15 @@ app.put("/attributes", async (req, res) => {
       });
     }
     tasks.push(
-      syncSection(prisma.attrProcess, organization.id, payload.processes).then(
-        (data) => {
+      syncSection(prisma.attrProcess, organization.id, payload.processes, {
+        resolveNameData: resolveManagedProcessNameData,
+      }).then(
+        async (data) => {
           response.processes = data;
+          await syncStyleProcessNamesFromMaster({
+            orgId: organization.id,
+            processes: data,
+          });
         }
       )
     );

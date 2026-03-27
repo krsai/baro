@@ -49,6 +49,7 @@ const MANUFACTURER_FEATURES = new Set([
   FEATURE_KEYS.LINE,
   FEATURE_KEYS.EMPLOYEE,
   FEATURE_KEYS.CUSTOMER,
+  FEATURE_KEYS.ATTRIBUTE,
   FEATURE_KEYS.PERMISSION,
   FEATURE_KEYS.HOLIDAY,
 ]);
@@ -184,7 +185,10 @@ const canAccessFeatureByContext = (featureKey, context) => {
         hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
       );
     case FEATURE_KEYS.ATTRIBUTE:
-      return false;
+      return (
+        isManufacturer &&
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
+      );
     case FEATURE_KEYS.PRODUCTION_PLAN:
       return (
         isManufacturer &&

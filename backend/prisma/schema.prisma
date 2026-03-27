@@ -73,12 +73,35 @@ enum SystemRole {
   USER
 }
 
+enum ProcessMasterOptionType {
+  PART
+  TARGET
+  ACTION
+  SPEC
+}
+
 model SystemUser {
   id         Int        @id @default(autoincrement())
   email      String     @unique
   systemRole SystemRole @default(USER)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+}
+
+model ProcessMasterOption {
+  id        Int                     @id @default(autoincrement())
+  type      ProcessMasterOptionType
+  code      String
+  label     String
+  nameKo    String?
+  nameEn    String?
+  nameVi    String?
+  sortOrder Int                     @default(0)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@unique([type, code])
+  @@index([type, sortOrder, id])
 }
 
 model Organization {

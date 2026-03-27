@@ -1929,8 +1929,347 @@ const runReplaceStyleProcessMaster = (() => {
   return runReplaceStyleProcessMaster;
 })();
 
+const COMPOSED_TIME_REF_QUANTITY = 1000;
+const COMPOSED_PROCESS_MASTER = [
+  {
+    code: 'FRONT_OPENING_ZIPPER_ATTACH_TOPSTITCH_1LINE',
+    nameKo: '앞여밈: 지퍼 - 부착·상침 (1줄)',
+    nameEn: 'Front opening: Zipper - Attach·Topstitch (1 line)',
+    nameVi: 'Nep truoc: Day keo - Gan·Di top (1 duong)',
+    defaultPtSeconds: 110,
+  },
+  {
+    code: 'FRONT_OPENING_FACING_ATTACH_TOPSTITCH_1LINE',
+    nameKo: '앞여밈: 페이싱 - 부착·상침 (1줄)',
+    nameEn: 'Front opening: Facing - Attach·Topstitch (1 line)',
+    nameVi: 'Nep truoc: Nep lot - Gan·Di top (1 duong)',
+    defaultPtSeconds: 105,
+  },
+  {
+    code: 'FRONT_NECKLINE_FACING_FOLD_5MM',
+    nameKo: '앞목: 페이싱 - 접기 (5mm)',
+    nameEn: 'Front neckline: Facing - Fold (5mm)',
+    nameVi: 'Co truoc: Nep lot - Gap (5mm)',
+    defaultPtSeconds: 60,
+  },
+  {
+    code: 'FRONT_NECKLINE_FACING_TOPSTITCH_1LINE',
+    nameKo: '앞목: 페이싱 - 상침 (1줄)',
+    nameEn: 'Front neckline: Facing - Topstitch (1 line)',
+    nameVi: 'Co truoc: Nep lot - Di top (1 duong)',
+    defaultPtSeconds: 70,
+  },
+  {
+    code: 'BACK_NECKLINE_FACING_ATTACH_TOPSTITCH_1LINE',
+    nameKo: '뒤목: 페이싱 - 부착·상침 (1줄)',
+    nameEn: 'Back neckline: Facing - Attach·Topstitch (1 line)',
+    nameVi: 'Co sau: Nep lot - Gan·Di top (1 duong)',
+    defaultPtSeconds: 78,
+  },
+  {
+    code: 'SHOULDER_YOKE_JOIN_SEAM_FINISH_5MM',
+    nameKo: '어깨: 요크 - 연결·시접정리 (5mm)',
+    nameEn: 'Shoulder: Yoke - Join·Seam finish (5mm)',
+    nameVi: 'Vai: Cau vai - Noi·Hoan tat duong may (5mm)',
+    defaultPtSeconds: 80,
+  },
+  {
+    code: 'SIDE_SEAM_OUTER_FABRIC_SEW_SEAM_FINISH_7MM',
+    nameKo: '옆선: 겉감 - 봉제·시접정리 (7mm)',
+    nameEn: 'Side seam: Outer fabric - Sew·Seam finish (7mm)',
+    nameVi: 'Suon: Lot ngoai - May·Hoan tat duong may (7mm)',
+    defaultPtSeconds: 95,
+  },
+  {
+    code: 'SLEEVE_OUTER_FABRIC_ATTACH_OVERLOCK_3THREADS',
+    nameKo: '소매: 겉감 - 부착·오버록 (3실)',
+    nameEn: 'Sleeve: Outer fabric - Attach·Overlock (3 threads)',
+    nameVi: 'Tay: Lot ngoai - Gan·Vat so (3 soi)',
+    defaultPtSeconds: 84,
+  },
+  {
+    code: 'HEM_OUTER_FABRIC_FOLD_TOPSTITCH_10MM',
+    nameKo: '밑단: 겉감 - 접기·상침 (10mm)',
+    nameEn: 'Hem: Outer fabric - Fold·Topstitch (10mm)',
+    nameVi: 'Lai: Lot ngoai - Gap·Di top (10mm)',
+    defaultPtSeconds: 94,
+  },
+  {
+    code: 'POCKET_OUTER_FABRIC_ATTACH_TOPSTITCH_1LINE',
+    nameKo: '주머니: 겉감 - 부착·상침 (1줄)',
+    nameEn: 'Pocket: Outer fabric - Attach·Topstitch (1 line)',
+    nameVi: 'Tui: Lot ngoai - Gan·Di top (1 duong)',
+    defaultPtSeconds: 88,
+  },
+  {
+    code: 'WAIST_ELASTIC_ATTACH_TOPSTITCH_FINISHED',
+    nameKo: '허리: 고무줄 - 부착·상침 (완성)',
+    nameEn: 'Waist: Elastic - Attach·Topstitch (Finished)',
+    nameVi: 'Eo: Thun - Gan·Di top (Hoan tat)',
+    defaultPtSeconds: 125,
+  },
+  {
+    code: 'FRONT_OPENING_BUTTON_ATTACH_FINISHED',
+    nameKo: '앞여밈: 단추 - 부착 (완성)',
+    nameEn: 'Front opening: Button - Attach (Finished)',
+    nameVi: 'Nep truoc: Nut - Gan (Hoan tat)',
+    defaultPtSeconds: 35,
+  },
+];
+
+const COMPOSED_STYLE_SEEDS = [
+  {
+    styleId: 'BL20',
+    styleCode: 'BL20',
+    name: 'BL20',
+    processes: [
+      { code: 'FRONT_OPENING_ZIPPER_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'FRONT_NECKLINE_FACING_FOLD_5MM', quantity: 1 },
+      { code: 'POCKET_OUTER_FABRIC_ATTACH_TOPSTITCH_1LINE', quantity: 2 },
+      { code: 'SHOULDER_YOKE_JOIN_SEAM_FINISH_5MM', quantity: 1 },
+      { code: 'SLEEVE_OUTER_FABRIC_ATTACH_OVERLOCK_3THREADS', quantity: 2 },
+      { code: 'HEM_OUTER_FABRIC_FOLD_TOPSTITCH_10MM', quantity: 1 },
+    ],
+  },
+  {
+    styleId: 'AM01160',
+    styleCode: 'AM01160',
+    name: 'AM01160',
+    processes: [
+      { code: 'FRONT_OPENING_FACING_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'BACK_NECKLINE_FACING_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'SIDE_SEAM_OUTER_FABRIC_SEW_SEAM_FINISH_7MM', quantity: 2 },
+      { code: 'WAIST_ELASTIC_ATTACH_TOPSTITCH_FINISHED', quantity: 1 },
+      { code: 'HEM_OUTER_FABRIC_FOLD_TOPSTITCH_10MM', quantity: 2 },
+      { code: 'FRONT_OPENING_BUTTON_ATTACH_FINISHED', quantity: 5 },
+    ],
+  },
+  {
+    styleId: 'AM01622',
+    styleCode: 'AM01622',
+    name: 'AM01622',
+    processes: [
+      { code: 'FRONT_OPENING_FACING_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'FRONT_NECKLINE_FACING_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'POCKET_OUTER_FABRIC_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'SHOULDER_YOKE_JOIN_SEAM_FINISH_5MM', quantity: 1 },
+      { code: 'SLEEVE_OUTER_FABRIC_ATTACH_OVERLOCK_3THREADS', quantity: 2 },
+      { code: 'SIDE_SEAM_OUTER_FABRIC_SEW_SEAM_FINISH_7MM', quantity: 2 },
+      { code: 'HEM_OUTER_FABRIC_FOLD_TOPSTITCH_10MM', quantity: 1 },
+    ],
+  },
+  {
+    styleId: 'AM02053',
+    styleCode: 'AM02053',
+    name: 'AM02053',
+    processes: [
+      { code: 'FRONT_OPENING_ZIPPER_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'FRONT_NECKLINE_FACING_FOLD_5MM', quantity: 1 },
+      { code: 'BACK_NECKLINE_FACING_ATTACH_TOPSTITCH_1LINE', quantity: 1 },
+      { code: 'POCKET_OUTER_FABRIC_ATTACH_TOPSTITCH_1LINE', quantity: 2 },
+      { code: 'SLEEVE_OUTER_FABRIC_ATTACH_OVERLOCK_3THREADS', quantity: 2 },
+      { code: 'WAIST_ELASTIC_ATTACH_TOPSTITCH_FINISHED', quantity: 1 },
+      { code: 'FRONT_OPENING_BUTTON_ATTACH_FINISHED', quantity: 4 },
+      { code: 'HEM_OUTER_FABRIC_FOLD_TOPSTITCH_10MM', quantity: 1 },
+    ],
+  },
+];
+
+const resolveComposedProcessLabel = (process) => {
+  const ko = String(process?.nameKo || '').trim();
+  const vi = String(process?.nameVi || '').trim();
+  return [ko, vi].filter(Boolean).join(' / ') || String(process?.nameEn || process?.code || '').trim();
+};
+
+const resolveComposedPtSeconds = (value, fallback) => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed * 10000) / 10000;
+  const nextFallback = Number(fallback);
+  if (Number.isFinite(nextFallback) && nextFallback > 0) {
+    return Math.round(nextFallback * 10000) / 10000;
+  }
+  return 30;
+};
+const summarizeComposedTotalSeconds = (processes) =>
+  (Array.isArray(processes) ? processes : []).reduce(
+    (sum, process) =>
+      sum + (Number(process?.quantity) || 0) * (Number(process?.pt) || 0),
+    0
+  );
+
+async function runComposedStyleProcessReplacement({
+  prismaClient = null,
+  orgId = Number(process.env.ORG_ID || 2),
+  customerName = 'TSBR',
+  runTimeModelRealignment = null,
+  log = true,
+} = {}) {
+  const prisma = prismaClient || new PrismaClient();
+  const shouldDisconnect = !prismaClient;
+  const resolvedOrgId =
+    Number.isFinite(Number(orgId)) && Number(orgId) > 0 ? Math.trunc(Number(orgId)) : 2;
+  const resolvedCustomerName = String(customerName || 'TSBR').trim() || 'TSBR';
+
+  try {
+    await prisma.style.deleteMany({ where: { orgId: resolvedOrgId } });
+    await prisma.attrProcess.deleteMany({ where: { orgId: resolvedOrgId } });
+
+    await prisma.attrProcess.createMany({
+      data: COMPOSED_PROCESS_MASTER.map((process) => ({
+        orgId: resolvedOrgId,
+        code: process.code,
+        name: process.nameEn,
+        nameKo: process.nameKo,
+        nameEn: process.nameEn,
+        nameVi: process.nameVi,
+      })),
+    });
+
+    const processRows = await prisma.attrProcess.findMany({
+      where: { orgId: resolvedOrgId },
+      select: { id: true, code: true },
+    });
+    const processIdByCode = new Map(processRows.map((item) => [item.code, item.id]));
+    const masterByCode = new Map(COMPOSED_PROCESS_MASTER.map((item) => [item.code, item]));
+
+    for (const style of COMPOSED_STYLE_SEEDS) {
+      const processPayloads = style.processes.map((item, index) => {
+        const master = masterByCode.get(item.code);
+        if (!master) {
+          throw new Error(`unknown composed process code: ${item.code}`);
+        }
+        const quantity = Math.max(1, toPositiveInt(item.quantity, 1));
+        const pt = resolveComposedPtSeconds(item.ptSeconds, master.defaultPtSeconds);
+        const name = resolveComposedProcessLabel(master);
+        return {
+          id: processIdByCode.get(master.code) ?? null,
+          code: master.code,
+          name,
+          nameKo: master.nameKo,
+          nameEn: master.nameEn,
+          nameVi: master.nameVi,
+          description: null,
+          quantity,
+          pt,
+          stValues: [
+            {
+              quantity: COMPOSED_TIME_REF_QUANTITY,
+              seconds: pt,
+              setBy: 'SEED',
+              setAt: null,
+              updatedAt: null,
+            },
+          ],
+          timeRefQuantity: COMPOSED_TIME_REF_QUANTITY,
+          ct: null,
+          stManual: false,
+          atParams: null,
+          instanceId: `${master.code}-${style.styleId}-${index + 1}`,
+        };
+      });
+
+      const createdStyle = await prisma.style.create({
+        data: {
+          orgId: resolvedOrgId,
+          styleId: style.styleId,
+          styleCode: style.styleCode,
+          name: style.name,
+          customer: resolvedCustomerName,
+          registrationDate: new Date().toISOString().slice(0, 10),
+          collection: 'VN_COMPOSED',
+          season: 'ALL',
+          imageUrls: [],
+          processes: processPayloads,
+          bom: [],
+          bomNotes: 'Composed process seed',
+        },
+      });
+
+      for (let index = 0; index < processPayloads.length; index += 1) {
+        const process = processPayloads[index];
+        const createdStyleProcess = await prisma.styleProcess.create({
+          data: {
+            orgId: resolvedOrgId,
+            styleUid: createdStyle.uid,
+            processCode: process.code,
+            processName: process.name,
+            processDescription: process.description,
+            processQuantity: process.quantity,
+            sortOrder: index,
+            ptSeconds: process.pt,
+            atParams: null,
+          },
+        });
+
+        await prisma.styleProcessStandard.create({
+          data: {
+            orgId: resolvedOrgId,
+            styleProcessId: createdStyleProcess.id,
+            quantity: COMPOSED_TIME_REF_QUANTITY,
+            stSeconds: process.pt,
+            setBy: 'SEED',
+          },
+        });
+      }
+    }
+
+    const timeModelRealign =
+      typeof runTimeModelRealignment === 'function'
+        ? await runTimeModelRealignment({
+            orgIds: [resolvedOrgId],
+            updatedBy: 'SYSTEM_RESET_BASELINE',
+          })
+        : null;
+
+    const [styles, processCount] = await Promise.all([
+      prisma.style.findMany({
+        where: {
+          orgId: resolvedOrgId,
+          styleId: { in: COMPOSED_STYLE_SEEDS.map((style) => style.styleId) },
+        },
+        orderBy: { styleId: 'asc' },
+        select: {
+          styleId: true,
+          styleCode: true,
+          name: true,
+          processes: true,
+        },
+      }),
+      prisma.attrProcess.count({
+        where: { orgId: resolvedOrgId },
+      }),
+    ]);
+
+    const summary = styles.map((style) => ({
+      styleId: style.styleId,
+      styleCode: style.styleCode,
+      name: style.name,
+      processCount: Array.isArray(style.processes) ? style.processes.length : 0,
+      totalPt1000: summarizeComposedTotalSeconds(
+        Array.isArray(style.processes) ? style.processes : []
+      ),
+    }));
+
+    const result = {
+      replacedProcessMasterCount: processCount,
+      timeModelRealign: timeModelRealign?.summary ?? null,
+      styles: summary,
+    };
+
+    if (log) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+
+    return result;
+  } finally {
+    if (shouldDisconnect) {
+      await prisma.$disconnect();
+    }
+  }
+}
+
 async function runStyleProcessMasterReplacement({ orgId, customerName }) {
-  return runReplaceStyleProcessMaster({
+  return runComposedStyleProcessReplacement({
     prismaClient: prisma,
     orgId,
     customerName,
@@ -1980,10 +2319,16 @@ const LEGACY_CATEGORY_CODE_ALIASES = [
   { legacyCode: 'SCRUB', canonicalCode: '06-SCRUB' },
 ];
 
-const BASELINE_PROCESSES = Array.from({ length: 10 }, (_, index) => ({
-  code: `P${String(index + 1).padStart(2, '0')}`,
-  name: `Test Process ${String(index + 1).padStart(2, '0')}`,
+const BASELINE_PROCESSES = COMPOSED_PROCESS_MASTER.map((process) => ({
+  code: process.code,
+  name: process.nameEn,
+  nameEn: process.nameEn,
+  nameKo: process.nameKo,
+  nameVi: process.nameVi,
 }));
+const LEGACY_BASELINE_PROCESS_CODES = Array.from({ length: 10 }, (_, index) =>
+  `P${String(index + 1).padStart(2, '0')}`
+);
 
 const BASELINE_ROLES = [
   { code: 'WORKER_CUTTING', name: '\uC7AC\uB2E8', defaultPayType: 'CT', sortOrder: 1 },
@@ -2362,7 +2707,12 @@ async function syncManufacturerAttributes(orgId) {
   for (const process of BASELINE_PROCESSES) {
     await prisma.attrProcess.upsert({
       where: { orgId_code: { orgId, code: process.code } },
-      update: { name: process.name },
+      update: {
+        name: process.name,
+        nameEn: process.nameEn,
+        nameKo: process.nameKo,
+        nameVi: process.nameVi,
+      },
       create: { orgId, ...process },
     });
   }
@@ -2378,6 +2728,25 @@ async function syncManufacturerAttributes(orgId) {
       create: { orgId, ...role },
     });
   }
+}
+
+async function cleanupLegacyProcessAliases(orgId) {
+  const deletedByCode = await prisma.attrProcess.deleteMany({
+    where: {
+      orgId,
+      code: { in: LEGACY_BASELINE_PROCESS_CODES },
+    },
+  });
+  const deletedByName = await prisma.attrProcess.deleteMany({
+    where: {
+      orgId,
+      code: { notIn: BASELINE_PROCESSES.map((item) => item.code) },
+      name: { startsWith: 'Test Process' },
+    },
+  });
+  return {
+    deletedProcesses: (deletedByCode?.count || 0) + (deletedByName?.count || 0),
+  };
 }
 
 async function cleanupLegacyCategoryAliases(orgId) {
@@ -2470,18 +2839,28 @@ async function cleanupLegacyBaselineStyles(orgId) {
   return { deletedStyles: result.count };
 }
 
-async function clearOrderAndAssignmentData() {
+async function clearOrderAndAssignmentData(orgId = null) {
+  const resolvedOrgId = sampleToPositiveIntOrNull(orgId);
+  const scopedWhere = resolvedOrgId ? { orgId: resolvedOrgId } : undefined;
+
   const detachedRecords = await prisma.workRecord.updateMany({
-    where: { assignmentPlanId: { not: null } },
+    where: {
+      ...(scopedWhere || {}),
+      assignmentPlanId: { not: null },
+    },
     data: { assignmentPlanId: null },
   });
-  const deletedCards = await prisma.assignmentCard.deleteMany();
-  const deletedPlans = await prisma.assignmentPlan.deleteMany();
-  const deletedBoardStates = await prisma.assignmentBoardState.deleteMany();
-  const deletedOrders = await prisma.workOrder.deleteMany();
+  const deletedWorkLogs = await prisma.workLog.deleteMany({ where: scopedWhere });
+  const deletedWorkRecords = await prisma.workRecord.deleteMany({ where: scopedWhere });
+  const deletedCards = await prisma.assignmentCard.deleteMany({ where: scopedWhere });
+  const deletedPlans = await prisma.assignmentPlan.deleteMany({ where: scopedWhere });
+  const deletedBoardStates = await prisma.assignmentBoardState.deleteMany({ where: scopedWhere });
+  const deletedOrders = await prisma.workOrder.deleteMany({ where: scopedWhere });
 
   return {
     detachedWorkRecords: detachedRecords.count,
+    workLogs: deletedWorkLogs.count,
+    workRecords: deletedWorkRecords.count,
     assignmentCards: deletedCards.count,
     assignmentPlans: deletedPlans.count,
     assignmentBoardStates: deletedBoardStates.count,
@@ -3456,19 +3835,27 @@ function sampleSummarizeProgress(rows, planByExternalId) {
     .sort((left, right) => left.dbId - right.dbId);
 }
 
-async function runSampleWorkLogs() {
+async function runSampleWorkLogs(options = {}) {
+  const workLogOrgId =
+    sampleToPositiveIntOrNull(options?.orgId) || SAMPLE_WORK_LOG_ORG_ID;
+  const isDryRun =
+    options?.dryRun === true || options?.dryRun === false
+      ? Boolean(options.dryRun)
+      : SAMPLE_WORK_LOG_DRY_RUN;
+  const replaceExisting = Boolean(options?.replaceExisting);
+  const silent = Boolean(options?.silent);
   const random = sampleCreateRng(SAMPLE_WORK_LOG_SEED);
   const timeModelRealign = await runTimeModelRealignment(prisma, {
-    orgIds: [SAMPLE_WORK_LOG_ORG_ID],
+    orgIds: [workLogOrgId],
     updatedBy: 'SYSTEM_SAMPLE_WORK_LOG',
     log: false,
   });
   const factoryIdFromEnv = sampleToPositiveIntOrNull(process.env.FACTORY_ID);
   const factories = await sampleApiRequest(
-    `/factories${sampleBuildQuery({ orgId: SAMPLE_WORK_LOG_ORG_ID })}`,
+    `/factories${sampleBuildQuery({ orgId: workLogOrgId })}`,
     {
       userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-      orgId: SAMPLE_WORK_LOG_ORG_ID,
+      orgId: workLogOrgId,
     }
   );
   const preferredFactoryName = String(SAMPLE_FACTORY_NAME || '').trim();
@@ -3480,27 +3867,27 @@ async function runSampleWorkLogs() {
       (item) => String(item?.name || '').trim() === preferredFactoryName
     ) ||
     (Array.isArray(factories) ? factories[0] : null);
-  sampleAssert(factory, `factory not found for org ${SAMPLE_WORK_LOG_ORG_ID}`);
+  sampleAssert(factory, `factory not found for org ${workLogOrgId}`);
 
   const [rawPlans, existingLogs] = await Promise.all([
     sampleApiRequest(
       `/assignment-plans${sampleBuildQuery({
-        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        orgId: workLogOrgId,
         factoryId: factory.id,
       })}`,
       {
         userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        orgId: workLogOrgId,
       }
     ),
     sampleApiRequest(
       `/work-logs${sampleBuildQuery({
-        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        orgId: workLogOrgId,
         factoryId: factory.id,
       })}`,
       {
         userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-        orgId: SAMPLE_WORK_LOG_ORG_ID,
+        orgId: workLogOrgId,
       }
     ),
   ]);
@@ -3512,11 +3899,22 @@ async function runSampleWorkLogs() {
 
   sampleAssert(plans.length > 0, 'no agreed assignment plans found');
 
-  const existingKeys = new Set(
-    (Array.isArray(existingLogs) ? existingLogs : []).map(
-      (log) => `${log.lineId ?? '?'}::${log.workDate ?? ''}`
-    )
-  );
+  const existingLogRows = Array.isArray(existingLogs) ? existingLogs : [];
+  let replacedLogCount = 0;
+  if (replaceExisting && !isDryRun) {
+    const existingLogIds = existingLogRows
+      .map((log) => sampleToPositiveIntOrNull(log?.id))
+      .filter((id) => Number.isFinite(id));
+    if (existingLogIds.length > 0) {
+      const deleted = await prisma.workLog.deleteMany({
+        where: { orgId: workLogOrgId, id: { in: existingLogIds } },
+      });
+      replacedLogCount = deleted.count;
+    }
+  }
+  const existingKeys = replaceExisting
+    ? new Set()
+    : new Set(existingLogRows.map((log) => `${log.lineId ?? '?'}::${log.workDate ?? ''}`));
 
   const workerCache = new Map();
   const getWorkersForLineDate = async (lineId, dateKey) => {
@@ -3526,14 +3924,14 @@ async function runSampleWorkLogs() {
         cacheKey,
         sampleApiRequest(
           `/line-workers${sampleBuildQuery({
-            orgId: SAMPLE_WORK_LOG_ORG_ID,
+            orgId: workLogOrgId,
             factoryId: factory.id,
             lineId,
             workDate: dateKey,
           })}`,
           {
             userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-            orgId: SAMPLE_WORK_LOG_ORG_ID,
+            orgId: workLogOrgId,
           }
         )
       );
@@ -3556,7 +3954,10 @@ async function runSampleWorkLogs() {
     }
 
     const workers = await getWorkersForLineDate(entry.lineId, entry.dateKey);
-    sampleAssert(workers.length > 0, `no line workers for line ${entry.lineId} on ${entry.dateKey}`);
+    if (workers.length === 0) {
+      skippedCount += 1;
+      continue;
+    }
 
     const tasks = entry.items
       .sort((left, right) => left.planOrder - right.planOrder || left.plan.dbId - right.plan.dbId)
@@ -3625,33 +4026,38 @@ async function runSampleWorkLogs() {
       note: `${SAMPLE_WORK_LOG_NOTE_PREFIX} seed=${SAMPLE_WORK_LOG_SEED}`,
     };
 
-    if (SAMPLE_WORK_LOG_DRY_RUN) {
+    if (isDryRun) {
       skippedCount += 1;
       continue;
     }
 
-    await sampleApiRequest(`/work-logs${sampleBuildQuery({ orgId: SAMPLE_WORK_LOG_ORG_ID })}`, {
-      method: 'POST',
-      userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-      orgId: SAMPLE_WORK_LOG_ORG_ID,
-      body,
-    });
+    try {
+      await sampleApiRequest(`/work-logs${sampleBuildQuery({ orgId: workLogOrgId })}`, {
+        method: 'POST',
+        userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
+        orgId: workLogOrgId,
+        body,
+      });
+    } catch (_error) {
+      skippedCount += 1;
+      continue;
+    }
 
     existingKeys.add(logKey);
     createdCount += 1;
   }
 
   const ids = plans.map((plan) => plan.externalId).filter(Boolean).join(',');
-  const progressRows = SAMPLE_WORK_LOG_DRY_RUN
+  const progressRows = isDryRun
     ? []
     : await sampleApiRequest(
         `/assignment-plan-progress${sampleBuildQuery({
-          orgId: SAMPLE_WORK_LOG_ORG_ID,
+          orgId: workLogOrgId,
           ids,
         })}`,
         {
           userEmail: SAMPLE_MANUFACTURER_OPERATOR_EMAIL,
-          orgId: SAMPLE_WORK_LOG_ORG_ID,
+          orgId: workLogOrgId,
         }
       );
   const summary = sampleSummarizeProgress(
@@ -3659,25 +4065,26 @@ async function runSampleWorkLogs() {
     planByExternalId
   );
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        dryRun: SAMPLE_WORK_LOG_DRY_RUN,
-        factory: { id: factory.id, name: factory.name },
-        summary: {
-          planCount: plans.length,
-          lineDayCount: entries.length,
-          createdCount,
-          skippedCount,
-          timeModelRealign: timeModelRealign.summary,
-        },
-        verification: summary,
-      },
-      null,
-      2
-    )
-  );
+  const result = {
+    ok: true,
+    dryRun: isDryRun,
+    factory: { id: factory.id, name: factory.name },
+    summary: {
+      planCount: plans.length,
+      lineDayCount: entries.length,
+      replacedLogCount,
+      createdCount,
+      skippedCount,
+      timeModelRealign: timeModelRealign.summary,
+    },
+    verification: summary,
+  };
+
+  if (!silent) {
+    console.log(JSON.stringify(result, null, 2));
+  }
+
+  return result;
 }
 
 async function runBaselineReset() {
@@ -3730,6 +4137,8 @@ async function runBaselineReset() {
 
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
+  const manufacturerProcessCleanup = await cleanupLegacyProcessAliases(manufacturer.id);
+  const brandProcessCleanup = await cleanupLegacyProcessAliases(brand.id);
   const manufacturerCategoryCleanup = await cleanupLegacyCategoryAliases(manufacturer.id);
   const brandCategoryCleanup = await cleanupLegacyCategoryAliases(brand.id);
   const sampleCleanup = await cleanupSampleFactoryData(manufacturer.id);
@@ -3828,8 +4237,9 @@ async function runBaselineReset() {
     customerName: brand.code,
   });
   await ensureStyles(manufacturer.id);
-  const cleanup = await clearOrderAndAssignmentData();
+  const cleanup = await clearOrderAndAssignmentData(manufacturer.id);
   let sampleOrderSeed = null;
+  let sampleWorkLogSeed = null;
   let assignmentRestore = {
     capturedAssignmentCount: Array.isArray(assignmentSnapshot?.assignments)
       ? assignmentSnapshot.assignments.length
@@ -3877,6 +4287,31 @@ async function runBaselineReset() {
     log: false,
   });
 
+  const assignmentPlanCount = await prisma.assignmentPlan.count({
+    where: { orgId: manufacturer.id },
+  });
+  if (assignmentPlanCount > 0) {
+    try {
+      sampleWorkLogSeed = await runSampleWorkLogs({
+        orgId: manufacturer.id,
+        replaceExisting: true,
+        silent: true,
+      });
+    } catch (error) {
+      sampleWorkLogSeed = {
+        ok: false,
+        reason: 'sample-work-log-seed-failed',
+        error: error?.message || 'failed to regenerate sample work logs',
+      };
+    }
+  } else {
+    sampleWorkLogSeed = {
+      ok: false,
+      reason: 'no-assignment-plans',
+      assignmentPlanCount,
+    };
+  }
+
   summary.organizations = [manufacturer.code, brand.code].join(', ');
   summary.globalColors = BASELINE_COLORS.length;
   summary.processes = BASELINE_PROCESSES.length;
@@ -3885,7 +4320,11 @@ async function runBaselineReset() {
     manufacturerDeleted: manufacturerCategoryCleanup.deletedCategories,
     brandDeleted: brandCategoryCleanup.deletedCategories,
   };
-  summary.styles = BASELINE_STYLES.length;
+  summary.processCleanup = {
+    manufacturerDeleted: manufacturerProcessCleanup.deletedProcesses,
+    brandDeleted: brandProcessCleanup.deletedProcesses,
+  };
+  summary.styles = COMPOSED_STYLE_SEEDS.length;
   summary.workers = baselineWorkerIds.length;
   summary.sampleFactoryCleanup = sampleCleanup;
   summary.legacyStyleCleanup = legacyStyleCleanup;
@@ -3899,6 +4338,7 @@ async function runBaselineReset() {
     : null;
   summary.assignmentSnapshotRestore = assignmentRestore;
   summary.timeModelRealign = timeModelRealign.summary;
+  summary.sampleWorkLogs = sampleWorkLogSeed;
 
   console.log('Baseline reset completed.');
   console.log(JSON.stringify(summary, null, 2));
@@ -3918,13 +4358,13 @@ async function main() {
   }
 
   if (command === 'work-logs') {
-    await runSampleWorkLogs();
+    await runSampleWorkLogs({ replaceExisting: true });
     return;
   }
 
   if (command === 'sample-all') {
     await runSampleOrders();
-    await runSampleWorkLogs();
+    await runSampleWorkLogs({ replaceExisting: true });
     return;
   }
 

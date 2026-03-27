@@ -23,7 +23,8 @@ const normalizeAppPath = (path) => {
   if (!raw) return '/';
   const withoutHash = raw.split('#')[0];
   const pathname = withoutHash.split('?')[0];
-  return pathname || '/';
+  const normalizedPathname = pathname.replace(/\/+$/, '');
+  return normalizedPathname || '/';
 };
 
 // AppProvider component

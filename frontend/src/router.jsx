@@ -293,7 +293,7 @@ const router = createBrowserRouter([
             element: <PayrollEntry />,
           },
           {
-            path: 'attribute',
+            path: 'attribute/*',
             element: <Attribute />,
           },
           {

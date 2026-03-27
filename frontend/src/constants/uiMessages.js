@@ -50,6 +50,13 @@ export const UI_MESSAGES = {
     subscription: { ko: '구독 관리', en: 'Subscription', vi: 'Goi dich vu' },
     system: { ko: '시스템 설정', en: 'System', vi: 'He thong' },
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
+    attributeColors: { ko: '색상 관리', en: 'Color Management', vi: 'Quan ly mau' },
+    attributeCategories: {
+      ko: '카테고리 관리',
+      en: 'Category Management',
+      vi: 'Quan ly danh muc',
+    },
+    attributeProcesses: { ko: '공정 관리', en: 'Process Management', vi: 'Quan ly cong doan' },
     staticOptions: { ko: '정적 사전', en: 'Static Dictionary', vi: 'Tu dien tinh' },
     onboardingApproval: { ko: '가입 승인', en: 'Onboarding Approval', vi: 'Duyet dang ky' },
     logout: { ko: '로그아웃', en: 'Logout', vi: 'Dang xuat' },

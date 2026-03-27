@@ -64,7 +64,8 @@ const toPathname = (path) => {
   if (!raw) return '/';
   const withoutHash = raw.split('#')[0];
   const pathname = withoutHash.split('?')[0];
-  return pathname || '/';
+  const normalizedPathname = pathname.replace(/\/+$/, '');
+  return normalizedPathname || '/';
 };
 const isKeepAliveCandidatePath = (path) => {
   const pathname = toPathname(path);
@@ -123,6 +124,7 @@ const MainLayout = () => {
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [miscOpen, setMiscOpen] = useState(false);
+  const [attributeOpen, setAttributeOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
@@ -141,6 +143,18 @@ const MainLayout = () => {
   useEffect(() => {
     setActivePath(currentPath);
   }, [currentPath, setActivePath]);
+
+  useEffect(() => {
+    if (currentPath.startsWith('/attribute')) {
+      setAttributeOpen(true);
+    }
+    if (
+      currentPath.startsWith('/system-setting') ||
+      currentPath.startsWith('/system-onboarding')
+    ) {
+      setSystemOpen(true);
+    }
+  }, [currentPath]);
 
   const schedulePendingNavigationCleanup = React.useCallback((sourcePath, nextPathname) => {
     window.setTimeout(() => {
@@ -171,6 +185,7 @@ const MainLayout = () => {
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
+  const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
   const activeOrgName = useMemo(() => {
     const orgName =
       typeof activeProfile?.orgName === 'string' ? activeProfile.orgName.trim() : '';
@@ -382,17 +397,40 @@ const MainLayout = () => {
         ],
       },
       {
+        label: getUiMessage('menu.attribute', '속성 관리', languageCode),
+        icon: <DnsIcon />,
+        isParent: true,
+        isOpen: attributeOpen,
+        setOpen: setAttributeOpen,
+        children: [
+          ...(isSystemProfile
+            ? [
+                {
+                  label: getUiMessage('menu.attributeColors', '색상 관리', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/colors',
+                },
+                {
+                  label: getUiMessage('menu.attributeCategories', '카테고리 관리', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/categories',
+                },
+              ]
+            : []),
+          {
+            label: getUiMessage('menu.attributeProcesses', '공정 관리', languageCode),
+            icon: <DnsIcon />,
+            path: '/attribute/processes',
+          },
+        ],
+      },
+      {
         label: getUiMessage('menu.system', '시스템 설정', languageCode),
         icon: <TuneIcon />,
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
         children: [
-          {
-            label: getUiMessage('menu.attribute', '속성 관리', languageCode),
-            icon: <DnsIcon />,
-            path: '/attribute',
-          },
           {
             label: getUiMessage('menu.staticOptions', '정적 사전', languageCode),
             icon: <DnsIcon />,
@@ -467,6 +505,7 @@ const MainLayout = () => {
   }, [
     accountingOpen,
     adminOpen,
+    attributeOpen,
     hasPathAccess,
     inventoryOpen,
     languageCode,
@@ -475,6 +514,7 @@ const MainLayout = () => {
     pendingEmployeeCount,
     pendingOnboardingCount,
     productionOpen,
+    isSystemProfile,
     systemOpen,
   ]);
   const flattenedMenuItems = useMemo(
