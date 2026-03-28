@@ -8,8 +8,6 @@ import {
   Stack,
   Divider,
   Paper,
-  Select,
-  MenuItem,
   IconButton,
   Chip,
   ToggleButton,
@@ -26,12 +24,15 @@ import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import { GENDER_CODES, SIZE_CODES, getGenderLabel } from '../../../../constants/productAttributes';
+import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
 const IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:']);
+const FABRIC_OPTIONS = ['Cotton', 'Polyester', 'Linen', 'Denim'];
+const COLORWAY_OPTIONS = ['Basic', 'Pastel', 'Vivid', 'Dark'];
 
 let customersCache = null;
 let customersCacheTimestamp = 0;
@@ -310,38 +311,78 @@ const StyleInfo = ({
     ],
     []
   );
+  const customerOptions = useMemo(() => {
+    const baseOptions = isBrandOrg ? [] : customers;
+    if (!resolvedCustomerValue) return baseOptions;
 
-  const handleDetailsChange = (event) => {
-    const { name, value } = event.target;
-    setStyleDetailsData((prev) => ({ ...prev, [name]: value }));
+    const hasResolvedCustomer = baseOptions.some(
+      (customer) => String(customer?.name || '').trim() === resolvedCustomerValue
+    );
+    if (hasResolvedCustomer) return baseOptions;
+
+    return [
+      {
+        id: formData.customerOrgId ?? `customer-${resolvedCustomerValue}`,
+        name: resolvedCustomerValue,
+        brandOrgId: formData.customerOrgId ?? null,
+      },
+      ...baseOptions,
+    ];
+  }, [customers, formData.customerOrgId, isBrandOrg, resolvedCustomerValue]);
+  const categoryOptions = useMemo(() => {
+    const collectionValue = String(formData.collection || '').trim();
+    if (!collectionValue) return categories;
+
+    const hasResolvedCategory = categories.some(
+      (category) => String(category?.name || '').trim() === collectionValue
+    );
+    if (hasResolvedCategory) return categories;
+
+    return [
+      {
+        id: `collection-${collectionValue}`,
+        name: collectionValue,
+        displayName: collectionValue,
+      },
+      ...categories,
+    ];
+  }, [categories, formData.collection]);
+  const selectedCustomer =
+    customerOptions.find((customer) => String(customer?.name || '').trim() === resolvedCustomerValue) ||
+    null;
+  const selectedCategory =
+    categoryOptions.find((category) => String(category?.name || '').trim() === String(formData.collection || '').trim()) ||
+    null;
+  const fieldControlSx = { width: '70%' };
+  const selectTextFieldProps = { placeholder: '선택' };
+
+  const emitInputChange = (name, value) => {
+    handleInputChange({
+      target: {
+        name,
+        value,
+      },
+    });
   };
 
-  const handleCustomerChange = (event) => {
-    const nextCustomerName = event.target.value;
+  const handleDetailsChange = (name, value) => {
+    setStyleDetailsData((prev) => ({ ...prev, [name]: value || '' }));
+  };
+
+  const handleCustomerChange = (_event, nextCustomer) => {
+    const nextCustomerName = String(nextCustomer?.name || '').trim();
     if (isBrandOrg) {
-      handleInputChange({
-        target: {
-          name: 'customer',
-          value: defaultCustomerName || nextCustomerName || '',
-        },
-      });
+      emitInputChange('customer', defaultCustomerName || nextCustomerName || '');
       return;
     }
 
-    const selected = customers.find((customer) => customer.name === nextCustomerName) || null;
-    const parsedOrgId = Number(selected?.brandOrgId ?? selected?.id);
-    handleInputChange({
-      target: {
-        name: 'customer',
-        value: nextCustomerName,
-      },
-    });
-    handleInputChange({
-      target: {
-        name: 'customerOrgId',
-        value: Number.isInteger(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null,
-      },
-    });
+    const parsedOrgId = Number(nextCustomer?.brandOrgId ?? nextCustomer?.id);
+    emitInputChange('customer', nextCustomerName);
+    emitInputChange('customerOrgId', Number.isInteger(parsedOrgId) && parsedOrgId > 0 ? parsedOrgId : null);
+  };
+
+  const handleCollectionChange = (_event, nextCategory) => {
+    emitInputChange('collection', String(nextCategory?.name || '').trim());
   };
 
   const sectionWidth = { xs: '100%', lg: '50%' };
@@ -617,65 +658,42 @@ const StyleInfo = ({
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">고객사</Typography>
-              <Select
-                name="customer"
-                value={resolvedCustomerValue}
+              <SearchableSelect
+                size="small"
+                options={customerOptions}
+                value={selectedCustomer}
                 onChange={handleCustomerChange}
-                displayEmpty
                 disabled={isBrandOrg}
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                {isBrandOrg && resolvedCustomerValue && (
-                  <MenuItem value={resolvedCustomerValue}>{resolvedCustomerValue}</MenuItem>
-                )}
-                {!isBrandOrg && loadingCustomers && (
-                  <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
-                  </MenuItem>
-                )}
-                {!isBrandOrg && !loadingCustomers && customers.length === 0 && (
-                  <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">등록된 고객사가 없습니다</Typography>
-                  </MenuItem>
-                )}
-                {!isBrandOrg && customers.map((customer) => (
-                  <MenuItem key={customer.id || customer.name} value={customer.name}>
-                    {customer.name}
-                  </MenuItem>
-                ))}
-              </Select>
+                loading={loadingCustomers}
+                loadingText="불러오는 중..."
+                noOptionsText="등록된 고객사가 없습니다"
+                getOptionLabel={(option) => option?.name || ''}
+                isOptionEqualToValue={(option, value) =>
+                  String(option?.id || '') === String(value?.id || '') ||
+                  String(option?.name || '').trim() === String(value?.name || '').trim()
+                }
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">카테고리</Typography>
-              <Select
-                name="collection"
-                value={formData.collection || ''}
-                onChange={handleInputChange}
-                displayEmpty
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                {loadingCategories && (
-                  <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">불러오는 중...</Typography>
-                  </MenuItem>
-                )}
-                {!loadingCategories && categories.length === 0 && (
-                  <MenuItem value="" disabled>
-                    <Typography variant="body2" color="text.secondary">등록된 카테고리가 없습니다</Typography>
-                  </MenuItem>
-                )}
-                {categories.map((category) => (
-                  <MenuItem key={category.id || category.code || category.name} value={category.name}>
-                    {category.displayName || category.name}
-                  </MenuItem>
-                ))}
-              </Select>
+              <SearchableSelect
+                size="small"
+                options={categoryOptions}
+                value={selectedCategory}
+                onChange={handleCollectionChange}
+                loading={loadingCategories}
+                loadingText="불러오는 중..."
+                noOptionsText="등록된 카테고리가 없습니다"
+                getOptionLabel={(option) => option?.displayName || option?.name || ''}
+                isOptionEqualToValue={(option, value) =>
+                  String(option?.id || option?.code || option?.name || '').trim() ===
+                  String(value?.id || value?.code || value?.name || '').trim()
+                }
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">스타일명</Typography>
@@ -724,77 +742,51 @@ const StyleInfo = ({
           <Stack spacing={2} mt={2.5}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Fabric</Typography>
-              <Select
-                name="Fabric"
-                value={styleDetailsData.Fabric}
-                onChange={handleDetailsChange}
-                displayEmpty
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                <MenuItem value="Cotton">Cotton</MenuItem>
-                <MenuItem value="Polyester">Polyester</MenuItem>
-                <MenuItem value="Linen">Linen</MenuItem>
-                <MenuItem value="Denim">Denim</MenuItem>
-              </Select>
+              <SearchableSelect
+                size="small"
+                options={FABRIC_OPTIONS}
+                value={styleDetailsData.Fabric || null}
+                onChange={(_event, value) => handleDetailsChange('Fabric', value)}
+                getOptionLabel={(option) => option || ''}
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Size Spec</Typography>
-              <Select
-                name="Size Spec"
-                value={styleDetailsData['Size Spec']}
-                onChange={handleDetailsChange}
-                displayEmpty
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                {sizeSpecOptions.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </Select>
+              <SearchableSelect
+                size="small"
+                options={sizeSpecOptions}
+                value={styleDetailsData['Size Spec'] || null}
+                onChange={(_event, value) => handleDetailsChange('Size Spec', value)}
+                getOptionLabel={(option) => option || ''}
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Gender</Typography>
-              <Select
-                name="Gender"
-                value={styleDetailsData.Gender}
-                onChange={handleDetailsChange}
-                displayEmpty
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                {GENDER_CODES.map((code) => (
-                  <MenuItem key={code} value={code}>
-                    {getGenderLabel(code, code, languageCode)}
-                  </MenuItem>
-                ))}
-              </Select>
+              <SearchableSelect
+                size="small"
+                options={GENDER_CODES}
+                value={styleDetailsData.Gender || null}
+                onChange={(_event, value) => handleDetailsChange('Gender', value)}
+                getOptionLabel={(option) => getGenderLabel(option, option, languageCode)}
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="body2" color="text.secondary">Colorway</Typography>
-              <Select
-                name="Colorway"
-                value={styleDetailsData.Colorway}
-                onChange={handleDetailsChange}
-                displayEmpty
-                sx={{ width: '70%' }}
-              >
-                <MenuItem value="" disabled>
-                  <Typography variant="body2" color="text.secondary">선택</Typography>
-                </MenuItem>
-                <MenuItem value="Basic">Basic</MenuItem>
-                <MenuItem value="Pastel">Pastel</MenuItem>
-                <MenuItem value="Vivid">Vivid</MenuItem>
-                <MenuItem value="Dark">Dark</MenuItem>
-              </Select>
+              <SearchableSelect
+                size="small"
+                options={COLORWAY_OPTIONS}
+                value={styleDetailsData.Colorway || null}
+                onChange={(_event, value) => handleDetailsChange('Colorway', value)}
+                getOptionLabel={(option) => option || ''}
+                sx={fieldControlSx}
+                textFieldProps={selectTextFieldProps}
+              />
             </Box>
           </Stack>
         </Paper>

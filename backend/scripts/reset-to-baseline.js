@@ -2465,11 +2465,26 @@ const SAMPLE_WORK_LOG_ORG_ID = Number(process.env.ORG_ID ?? 2);
 const SAMPLE_WORK_LOG_SHIFT_SECONDS = Number(process.env.SHIFT_SECONDS ?? 8 * 60 * 60);
 const SAMPLE_WORK_LOG_TARGET_VARIANCE = Math.max(
   0,
-  Math.min(5, Number(process.env.TARGET_VARIANCE ?? 4))
+  Math.round(Number(process.env.TARGET_VARIANCE ?? 0))
+);
+const SAMPLE_WORK_LOG_TARGET_VARIANCE_PERCENT = Math.max(
+  0,
+  Math.min(1, Number(process.env.TARGET_VARIANCE_PERCENT ?? 1))
 );
 const SAMPLE_WORK_LOG_SEED = Number(process.env.SEED ?? 20260306);
 const SAMPLE_WORK_LOG_DRY_RUN = /^(1|true|yes)$/i.test(process.env.DRY_RUN ?? '');
 const SAMPLE_WORK_LOG_NOTE_PREFIX = 'AUTO_SAMPLE_WORK_LOG';
+const SAMPLE_WORK_LOG_CLOCK_IN = '08:00';
+const SAMPLE_WORK_LOG_CLOCK_OUT = '17:00';
+const SAMPLE_WORK_LOG_ATTENDANCE_NOTE = '12:00-13:00 lunch break excluded';
+const SAMPLE_WORK_LOG_EXTRA_HOLIDAY_KEYS = String(process.env.HOLIDAYS ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+const SAMPLE_WORK_LOG_EXTRA_HOLIDAY_SET = new Set(SAMPLE_WORK_LOG_EXTRA_HOLIDAY_KEYS);
+const SAMPLE_LINE_ASSIGNMENT_START_AT = new Date(
+  process.env.LINE_ASSIGNMENT_START_AT ?? '2026-02-01T00:00:00Z'
+);
 
 const toWorkerEmail = (prefix, index) => `${prefix}${String(index).padStart(2, '0')}@baro.local`;
 const toWorkerName = (label, index) => `${label} ${String(index).padStart(2, '0')}`;
@@ -2636,6 +2651,22 @@ async function cleanupSampleFactoryData(orgId) {
       await tx.employee.updateMany({
         where: { orgId, factoryId: { in: sampleFactoryIds } },
         data: { factoryId: null, lineName: null },
+      });
+    }
+
+    const attendanceDeleteOr = [];
+    if (sampleFactoryIds.length > 0) {
+      attendanceDeleteOr.push({ factoryId: { in: sampleFactoryIds } });
+    }
+    if (baselineWorkerIds.length > 0) {
+      attendanceDeleteOr.push({ workerId: { in: baselineWorkerIds } });
+    }
+    if (attendanceDeleteOr.length > 0) {
+      await tx.attendanceEntry.deleteMany({
+        where: {
+          orgId,
+          OR: attendanceDeleteOr,
+        },
       });
     }
 
@@ -3627,6 +3658,14 @@ function sampleIsSunday(dateKey) {
   return sampleParseDateKey(dateKey).getUTCDay() === 0;
 }
 
+function sampleIsNonWorkingDate(dateKey) {
+  return sampleIsSunday(dateKey) || SAMPLE_WORK_LOG_EXTRA_HOLIDAY_SET.has(dateKey);
+}
+
+function sampleResolveWorkStartAt(dateKey) {
+  return new Date(`${dateKey}T00:00:00Z`);
+}
+
 function sampleExtractProcessCode(process, index) {
   const rawKey =
     typeof process?.processKey === 'string' && process.processKey.trim()
@@ -3680,7 +3719,7 @@ function sampleBuildDailyWeights(plan) {
     schedule.startDateKey,
     schedule.endDateKey
   );
-  const dateKeys = allDateKeys.filter((dateKey) => !sampleIsSunday(dateKey));
+  const dateKeys = allDateKeys.filter((dateKey) => !sampleIsNonWorkingDate(dateKey));
   const effectiveDateKeys = dateKeys.length > 0 ? dateKeys : allDateKeys;
   const startShare = sampleClamp(sampleToFiniteNumber(schedule.startDayPercent, 100), 1, 100);
   const endShare = sampleClamp(sampleToFiniteNumber(schedule.endDayPercent, 100), 1, 100);
@@ -3717,6 +3756,7 @@ function sampleNormalizePlan(plan, random) {
 
   const varianceLimit = Math.min(
     SAMPLE_WORK_LOG_TARGET_VARIANCE,
+    Math.floor((baselineQuantity * SAMPLE_WORK_LOG_TARGET_VARIANCE_PERCENT) / 100),
     Math.max(0, baselineQuantity - 1)
   );
   const variance =
@@ -3815,6 +3855,253 @@ function sampleBuildLineDayEntries(plans) {
   );
 }
 
+function sampleResolvePlanDateWindow(plans) {
+  const dateKeys = plans.flatMap((plan) =>
+    Array.isArray(plan?.dailyRows) ? plan.dailyRows.map((row) => row.dateKey) : []
+  );
+  if (dateKeys.length === 0) {
+    return {
+      earliestDateKey: null,
+      latestDateKey: null,
+    };
+  }
+
+  const sorted = Array.from(new Set(dateKeys)).sort();
+  return {
+    earliestDateKey: sorted[0] ?? null,
+    latestDateKey: sorted[sorted.length - 1] ?? null,
+  };
+}
+
+async function sampleEnsureLineAssignmentsCoverPlanDates(plans) {
+  const lineIds = Array.from(
+    new Set(
+      plans
+        .map((plan) => sampleToPositiveIntOrNull(plan?.lineId))
+        .filter((lineId) => Number.isFinite(lineId))
+    )
+  );
+  const { earliestDateKey, latestDateKey } = sampleResolvePlanDateWindow(plans);
+  if (lineIds.length === 0 || !earliestDateKey) {
+    return {
+      lineIds,
+      earliestDateKey,
+      latestDateKey,
+      updatedLineAssignmentCount: 0,
+    };
+  }
+
+  const earliestStartAt = sampleResolveWorkStartAt(earliestDateKey);
+  const updated = await prisma.lineAssignment.updateMany({
+    where: {
+      lineId: { in: lineIds },
+      startAt: { gt: earliestStartAt },
+      OR: [{ endAt: null }, { endAt: { gte: earliestStartAt } }],
+    },
+    data: {
+      startAt: earliestStartAt,
+    },
+  });
+
+  return {
+    lineIds,
+    earliestDateKey,
+    latestDateKey,
+    updatedLineAssignmentCount: updated.count,
+  };
+}
+
+async function sampleSeedAttendanceEntries({
+  orgId,
+  factoryId,
+  entries,
+  getWorkersForLineDate,
+  replaceExisting,
+  isDryRun,
+}) {
+  const draftByWorkerDate = new Map();
+
+  for (const entry of entries) {
+    const workers = await getWorkersForLineDate(entry.lineId, entry.dateKey);
+    workers.forEach((worker) => {
+      const workerId = sampleToPositiveIntOrNull(worker?.id);
+      if (!workerId) return;
+      draftByWorkerDate.set(`${entry.dateKey}::${workerId}`, {
+        orgId,
+        factoryId,
+        workerId,
+        workDate: entry.dateKey,
+        clockIn: SAMPLE_WORK_LOG_CLOCK_IN,
+        clockOut: SAMPLE_WORK_LOG_CLOCK_OUT,
+        workedSeconds: SAMPLE_WORK_LOG_SHIFT_SECONDS,
+        note: `${SAMPLE_WORK_LOG_NOTE_PREFIX} ${SAMPLE_WORK_LOG_ATTENDANCE_NOTE}`,
+      });
+    });
+  }
+
+  const rows = Array.from(draftByWorkerDate.values());
+  if (rows.length === 0) {
+    return {
+      createdAttendanceCount: 0,
+      replacedAttendanceCount: 0,
+      attendanceDateCount: 0,
+    };
+  }
+
+  if (isDryRun) {
+    return {
+      createdAttendanceCount: rows.length,
+      replacedAttendanceCount: 0,
+      attendanceDateCount: new Set(rows.map((row) => row.workDate)).size,
+    };
+  }
+
+  let replacedAttendanceCount = 0;
+  if (replaceExisting) {
+    const workerIds = Array.from(
+      new Set(rows.map((row) => row.workerId).filter((workerId) => Number.isFinite(workerId)))
+    );
+    const workDates = Array.from(new Set(rows.map((row) => row.workDate).filter(Boolean)));
+    const deleted = await prisma.attendanceEntry.deleteMany({
+      where: {
+        orgId,
+        factoryId,
+        workerId: { in: workerIds },
+        workDate: { in: workDates },
+      },
+    });
+    replacedAttendanceCount = deleted.count;
+  }
+
+  const created = await prisma.attendanceEntry.createMany({
+    data: rows,
+    skipDuplicates: true,
+  });
+
+  return {
+    createdAttendanceCount: created.count,
+    replacedAttendanceCount,
+    attendanceDateCount: new Set(rows.map((row) => row.workDate)).size,
+  };
+}
+
+function sampleBuildTaskUnits(tasks) {
+  const units = [];
+
+  tasks.forEach((task, taskIndex) => {
+    const quantity = sampleToPositiveInt(task?.quantity, 0);
+    for (let unitIndex = 0; unitIndex < quantity; unitIndex += 1) {
+      units.push({
+        ...task,
+        taskIndex,
+        unitIndex,
+      });
+    }
+  });
+
+  return units.sort(
+    (left, right) =>
+      right.ctSeconds - left.ctSeconds ||
+      left.plan.dbId - right.plan.dbId ||
+      left.taskIndex - right.taskIndex ||
+      left.unitIndex - right.unitIndex
+  );
+}
+
+function sampleAssignTaskUnitToWorker(unit, slot, recordsByKey) {
+  slot.totalSeconds += unit.ctSeconds;
+  slot.unitCount += 1;
+
+  const key = [
+    slot.worker.id,
+    unit.plan.dbId,
+    unit.processCode,
+    unit.colorId ?? '',
+    unit.styleId ?? '',
+  ].join('::');
+  if (!recordsByKey.has(key)) {
+    recordsByKey.set(key, {
+      workerId: slot.worker.id,
+      workerName: slot.worker.name,
+      customerName: unit.plan.customerName,
+      styleId: unit.plan.styleId,
+      styleName: unit.plan.styleName,
+      processCode: unit.processCode,
+      processName: unit.processName,
+      colorId: unit.plan.colorId,
+      colorName: unit.plan.colorName,
+      ctSeconds: unit.ctSeconds,
+      quantity: 0,
+      assignmentPlanId: unit.plan.dbId,
+    });
+  }
+
+  recordsByKey.get(key).quantity += 1;
+}
+
+function sampleAllocateTaskUnitsToWorkers(tasks, workers) {
+  if (!Array.isArray(tasks) || tasks.length === 0 || !Array.isArray(workers) || workers.length === 0) {
+    return {
+      records: [],
+      workerSeconds: [],
+    };
+  }
+
+  const units = sampleBuildTaskUnits(tasks);
+  if (units.length === 0) {
+    return {
+      records: [],
+      workerSeconds: workers.map((worker) => ({
+        workerId: worker.id,
+        workerName: worker.name,
+        totalSeconds: 0,
+        unitCount: 0,
+      })),
+    };
+  }
+
+  const slots = workers.map((worker, index) => ({
+    worker,
+    index,
+    totalSeconds: 0,
+    unitCount: 0,
+  }));
+  const recordsByKey = new Map();
+  const seedCount = Math.min(slots.length, units.length);
+
+  for (let index = 0; index < seedCount; index += 1) {
+    sampleAssignTaskUnitToWorker(units[index], slots[index], recordsByKey);
+  }
+
+  for (let index = seedCount; index < units.length; index += 1) {
+    let bestSlot = slots[0];
+    for (let slotIndex = 1; slotIndex < slots.length; slotIndex += 1) {
+      const candidate = slots[slotIndex];
+      if (
+        candidate.totalSeconds < bestSlot.totalSeconds ||
+        (candidate.totalSeconds === bestSlot.totalSeconds &&
+          candidate.unitCount < bestSlot.unitCount) ||
+        (candidate.totalSeconds === bestSlot.totalSeconds &&
+          candidate.unitCount === bestSlot.unitCount &&
+          candidate.index < bestSlot.index)
+      ) {
+        bestSlot = candidate;
+      }
+    }
+    sampleAssignTaskUnitToWorker(units[index], bestSlot, recordsByKey);
+  }
+
+  return {
+    records: Array.from(recordsByKey.values()),
+    workerSeconds: slots.map((slot) => ({
+      workerId: slot.worker.id,
+      workerName: slot.worker.name,
+      totalSeconds: slot.totalSeconds,
+      unitCount: slot.unitCount,
+    })),
+  };
+}
+
 function sampleSummarizeProgress(rows, planByExternalId) {
   return rows
     .map((row) => {
@@ -3898,6 +4185,7 @@ async function runSampleWorkLogs(options = {}) {
     .filter(Boolean);
 
   sampleAssert(plans.length > 0, 'no agreed assignment plans found');
+  const scheduleWindow = await sampleEnsureLineAssignmentsCoverPlanDates(plans);
 
   const existingLogRows = Array.isArray(existingLogs) ? existingLogs : [];
   let replacedLogCount = 0;
@@ -3942,6 +4230,14 @@ async function runSampleWorkLogs(options = {}) {
 
   const entries = sampleBuildLineDayEntries(plans);
   const planByExternalId = new Map(plans.map((plan) => [plan.externalId, plan]));
+  const attendanceSeed = await sampleSeedAttendanceEntries({
+    orgId: workLogOrgId,
+    factoryId: factory.id,
+    entries,
+    getWorkersForLineDate,
+    replaceExisting,
+    isDryRun,
+  });
 
   let createdCount = 0;
   let skippedCount = 0;
@@ -3969,44 +4265,15 @@ async function runSampleWorkLogs(options = {}) {
           processCode: process.processCode,
           processName: process.processName,
           ctSeconds: process.ctSeconds,
+          processIndex: process.processIndex ?? 0,
         }))
       );
-
-    const workerCounts = sampleAllocateWorkerCounts(tasks, workers.length);
-    const records = [];
-    let workerCursor = 0;
-
-    tasks.forEach((task, taskIndex) => {
-      const assignedWorkerCount = workerCounts[taskIndex] ?? 0;
-      if (assignedWorkerCount <= 0) return;
-
-      const assignedWorkers = workers.slice(workerCursor, workerCursor + assignedWorkerCount);
-      workerCursor += assignedWorkers.length;
-      if (assignedWorkers.length === 0) return;
-
-      const splitQuantities = sampleSplitQuantity(task.quantity, assignedWorkers.length, random);
-      assignedWorkers.forEach((worker, workerIndex) => {
-        records.push({
-          workerId: worker.id,
-          workerName: worker.name,
-          customerName: task.plan.customerName,
-          styleId: task.plan.styleId,
-          styleName: task.plan.styleName,
-          processCode: task.processCode,
-          processName: task.processName,
-          colorId: task.plan.colorId,
-          colorName: task.plan.colorName,
-          ctSeconds: task.ctSeconds,
-          quantity: splitQuantities[workerIndex],
-          assignmentPlanId: task.plan.dbId,
-        });
-      });
-    });
-
-    sampleAssert(
-      workerCursor === workers.length,
-      `worker allocation mismatch for line ${entry.lineId} on ${entry.dateKey}: ${workerCursor}/${workers.length}`
-    );
+    const allocated = sampleAllocateTaskUnitsToWorkers(tasks, workers);
+    const records = allocated.records;
+    if (records.length === 0) {
+      skippedCount += 1;
+      continue;
+    }
 
     const totalContractedSeconds = sampleSumBy(
       records,
@@ -4023,7 +4290,9 @@ async function runSampleWorkLogs(options = {}) {
       itemCount: records.length,
       totalContractedSeconds,
       records,
-      note: `${SAMPLE_WORK_LOG_NOTE_PREFIX} seed=${SAMPLE_WORK_LOG_SEED}`,
+      note:
+        `${SAMPLE_WORK_LOG_NOTE_PREFIX} shift=${SAMPLE_WORK_LOG_CLOCK_IN}-${SAMPLE_WORK_LOG_CLOCK_OUT} ` +
+        `workedSeconds=${SAMPLE_WORK_LOG_SHIFT_SECONDS} lunch=12:00-13:00 seed=${SAMPLE_WORK_LOG_SEED}`,
     };
 
     if (isDryRun) {
@@ -4072,9 +4341,13 @@ async function runSampleWorkLogs(options = {}) {
     summary: {
       planCount: plans.length,
       lineDayCount: entries.length,
+      earliestWorkDate: scheduleWindow.earliestDateKey,
+      latestWorkDate: scheduleWindow.latestDateKey,
       replacedLogCount,
       createdCount,
       skippedCount,
+      updatedLineAssignmentCount: scheduleWindow.updatedLineAssignmentCount,
+      attendanceSeed,
       timeModelRealign: timeModelRealign.summary,
     },
     verification: summary,
@@ -4228,6 +4501,7 @@ async function runBaselineReset() {
       data: workerIds.map((employeeId) => ({
         lineId: line.id,
         employeeId,
+        startAt: SAMPLE_LINE_ASSIGNMENT_START_AT,
       })),
     });
   }

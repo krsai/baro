@@ -21,6 +21,7 @@ const Style = React.lazy(() => import('./pages/App/Style'));
 const StyleBoard = React.lazy(() => import('./pages/App/style/StyleBoard'));
 const StyleDetail = React.lazy(() => import('./pages/App/style/StyleDetail'));
 const StReview = React.lazy(() => import('./pages/App/StReview'));
+const ShipmentReview = React.lazy(() => import('./pages/App/ShipmentReview'));
 const Assign = React.lazy(() => import('./pages/App/Assign'));
 const AssignDetail = React.lazy(() => import('./pages/App/assign/AssignDetail'));
 const Work = React.lazy(() => import('./pages/App/Work'));
@@ -239,6 +240,10 @@ const router = createBrowserRouter([
           {
             path: 'st-review',
             element: <StReview />,
+          },
+          {
+            path: 'shipment-review',
+            element: <ShipmentReview />,
           },
           {
             path: 'assignment',

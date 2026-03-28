@@ -42,6 +42,7 @@ import DnsIcon from '@mui/icons-material/Dns';
 import ContentCut from '@mui/icons-material/ContentCut';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -309,6 +310,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.workHistory', '기록', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
+          },
+          {
+            label: getUiMessage('menu.shipmentReview', '출고 검토', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/shipment-review',
           },
           {
             label: getUiMessage('menu.attendance', '출퇴근', languageCode),
