@@ -9082,6 +9082,9 @@ app.get("/work-logs", async (req, res) => {
       ...(hasFactoryFilter ? { factoryId } : {}),
       ...workDateFilter,
     },
+    include: {
+      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
+    },
     orderBy: [{ workDate: "desc" }, { id: "desc" }],
   });
 

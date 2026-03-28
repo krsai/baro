@@ -2343,7 +2343,7 @@ const TARGET_MONTHLY_WAGE = 8000000;
 const WAGE_PER_SECOND = TARGET_MONTHLY_WAGE / (26 * 8 * 3600);
 const SAMPLE_FACTORY_NAME = 'Sample Factory';
 const SAMPLE_FACTORY_ADDRESS = 'Sample Factory Address';
-const SAMPLE_WORKER_COUNT = 15;
+const SAMPLE_WORKER_COUNT = 10;
 const LEGACY_BASELINE_STYLE_IDS = [
   'S-2025SS-T001',
   'S-2025SS-P002',
@@ -4523,9 +4523,18 @@ async function runBaselineReset() {
     restoredAssignmentCount: 0,
   };
 
-  if (assignmentRestore.capturedAssignmentCount > 0) {
+  try {
+    sampleOrderSeed = await runSampleOrders({ silent: true });
+  } catch (error) {
+    sampleOrderSeed = {
+      ok: false,
+      reason: 'sample-order-seed-failed',
+      error: error?.message || 'failed to seed sample orders',
+    };
+  }
+
+  if (assignmentRestore.capturedAssignmentCount > 0 && sampleOrderSeed?.ok !== false) {
     try {
-      sampleOrderSeed = await runSampleOrders({ silent: true });
       assignmentRestore = {
         ...assignmentRestore,
         ...(await sampleRestoreAssignmentSnapshot({
@@ -4553,6 +4562,12 @@ async function runBaselineReset() {
         })),
       };
     }
+  } else if (assignmentRestore.capturedAssignmentCount === 0) {
+    assignmentRestore = {
+      ...assignmentRestore,
+      attempted: false,
+      reason: 'no-assignment-snapshot',
+    };
   }
 
   const timeModelRealign = await runTimeModelRealignment(prisma, {
