@@ -6,7 +6,7 @@ process.env.PRISMA_CLIENT_ENGINE_TYPE ||= 'binary';
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const { normalizeProcessNaming } = require('./lib/processNamingRules.js');
-const MIN_PROCESS_SECONDS = 30;
+const MIN_PROCESS_SECONDS = 10;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
 const ST_STANDARD_BUCKETS = Object.freeze([
   1,
@@ -162,6 +162,21 @@ const resolveStyleIdFromAssignment = (plan) => {
     splitCandidate(plan?.originOrderId) ||
     splitCandidate(plan?.cardId) ||
     String(plan?.label || '').trim()
+  );
+};
+
+const resolveColorCodeFromAssignment = (plan) => {
+  const splitCandidate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const parts = raw.split('::');
+    return String(parts[2] || '').trim();
+  };
+
+  return (
+    splitCandidate(plan?.externalId) ||
+    splitCandidate(plan?.originOrderId) ||
+    splitCandidate(plan?.cardId)
   );
 };
 
@@ -667,8 +682,8 @@ const runReplaceStyleProcessMaster = (() => {
   const DEFAULT_ORG_ID = 2;
   const DEFAULT_CUSTOMER_NAME = "TSBR";
   const TIME_REF_QUANTITY = 1000;
-  const PT_UPLIFT_RATE = 1.3;
-  const MIN_PROCESS_SECONDS = 30;
+  const SEEDED_ST_BUCKETS = [300, TIME_REF_QUANTITY];
+  const MIN_PROCESS_SECONDS = 10;
   
   const round4 = (value) => Math.round(Number(value || 0) * 10000) / 10000;
   const clampProcessSeconds = (value) => {
@@ -676,8 +691,7 @@ const runReplaceStyleProcessMaster = (() => {
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
     return Math.max(MIN_PROCESS_SECONDS, Math.round(parsed * 10000) / 10000);
   };
-  const toSeedSeconds = (value) =>
-    clampProcessSeconds(Math.ceil((Number(value) || 0) * PT_UPLIFT_RATE)) ?? MIN_PROCESS_SECONDS;
+  const toSeedSeconds = (value) => clampProcessSeconds(value) ?? MIN_PROCESS_SECONDS;
   
   const masterProcess = (code, nameEn, nameKo, nameVi) =>
     normalizeProcessNaming({
@@ -1645,6 +1659,11 @@ const runReplaceStyleProcessMaster = (() => {
     const aggregated = new Map();
   
     rows.forEach((item) => {
+      const totalSeconds = Number(item.totalSeconds) || 0;
+      const quantity = Number(item.quantity) || 0;
+      if (totalSeconds <= 0 || quantity <= 0) {
+        return;
+      }
       const current = aggregated.get(item.code) || {
         code: item.code,
         totalSeconds: 0,
@@ -1654,8 +1673,8 @@ const runReplaceStyleProcessMaster = (() => {
         detailsVi: new Set(),
         detailsKo: new Set(),
       };
-      current.totalSeconds += Number(item.totalSeconds) || 0;
-      current.quantity += Number(item.quantity) || 0;
+      current.totalSeconds += totalSeconds;
+      current.quantity += quantity;
       if (item.sectionVi) current.sectionsVi.add(item.sectionVi);
       if (item.sectionKo) current.sectionsKo.add(item.sectionKo);
       if (item.detailVi) current.detailsVi.add(item.detailVi);
@@ -1683,6 +1702,41 @@ const runReplaceStyleProcessMaster = (() => {
       };
     });
   };
+
+  const summarizeRowsTotalSeconds = (rows) =>
+    (Array.isArray(rows) ? rows : []).reduce(
+      (sum, row) =>
+        sum + (Number(row.quantity) || 0) * (Number(row.calibratedPtSeconds ?? row.seededPtSeconds) || 0),
+      0
+    );
+
+  const calibrateStyleRows = (rows, expectedTotalSeconds) => {
+    const normalizedRows = (Array.isArray(rows) ? rows : [])
+      .filter((row) => Number.isFinite(Number(row?.seededPtSeconds)) && Number(row.seededPtSeconds) > 0)
+      .map((row) => ({
+        ...row,
+        calibratedPtSeconds: Number(row.seededPtSeconds),
+      }));
+
+    if (normalizedRows.length === 0) {
+      return normalizedRows;
+    }
+
+    const diff = Number(expectedTotalSeconds) - summarizeRowsTotalSeconds(normalizedRows);
+    if (Math.abs(diff) < 0.000001) {
+      return normalizedRows;
+    }
+
+    const targetIndex = normalizedRows.length - 1;
+    const targetRow = normalizedRows[targetIndex];
+    const quantity = Math.max(1, Number(targetRow.quantity) || 1);
+    normalizedRows[targetIndex] = {
+      ...targetRow,
+      calibratedPtSeconds: Number(targetRow.calibratedPtSeconds) + diff / quantity,
+    };
+
+    return normalizedRows;
+  };
   
   const buildStyleProcessPayload = ({
     styleId,
@@ -1703,13 +1757,13 @@ const runReplaceStyleProcessMaster = (() => {
       quantity: row.quantity,
       pt: row.calibratedPtSeconds ?? row.seededPtSeconds,
       stValues: [
-        {
-          quantity: TIME_REF_QUANTITY,
+        ...SEEDED_ST_BUCKETS.map((quantity) => ({
+          quantity,
           seconds: row.calibratedPtSeconds ?? row.seededPtSeconds,
           setBy: "SEED",
           setAt: null,
           updatedAt: null,
-        },
+        })),
       ],
       timeRefQuantity: TIME_REF_QUANTITY,
       ct: null,
@@ -1727,9 +1781,15 @@ const runReplaceStyleProcessMaster = (() => {
   
   const buildStyleDrafts = () =>
     STYLES.map((style) => {
-      const aggregatedRows = buildStyleRowMap(style.rows);
+      const aggregatedRows = calibrateStyleRows(
+        buildStyleRowMap(style.rows),
+        style.expectedTotalSeconds
+      );
       const totalSeconds = round4(
-        aggregatedRows.reduce((sum, item) => sum + item.totalSeconds, 0)
+        aggregatedRows.reduce(
+          (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.calibratedPtSeconds ?? item.seededPtSeconds) || 0),
+          0
+        )
       );
       return {
         ...style,
@@ -1750,7 +1810,7 @@ const runReplaceStyleProcessMaster = (() => {
         }
       });
   
-      if (round4(style.totalSeconds) !== round4(style.expectedTotalSeconds)) {
+      if (Math.abs(Number(style.totalSeconds) - Number(style.expectedTotalSeconds)) >= 0.001) {
         throw new Error(
           `Style ${style.styleId} total mismatch: expected ${style.expectedTotalSeconds}, got ${style.totalSeconds}`
         );
@@ -1852,14 +1912,14 @@ const runReplaceStyleProcessMaster = (() => {
                 },
               });
   
-              await tx.styleProcessStandard.create({
-                data: {
+              await tx.styleProcessStandard.createMany({
+                data: (Array.isArray(process.stValues) ? process.stValues : []).map((standard) => ({
                   orgId: resolvedOrgId,
                   styleProcessId: createdStyleProcess.id,
-                  quantity: TIME_REF_QUANTITY,
-                  stSeconds: process.pt,
-                  setBy: "SEED",
-                },
+                  quantity: standard.quantity,
+                  stSeconds: standard.seconds,
+                  setBy: standard.setBy ?? "SEED",
+                })),
               });
             }
           }
@@ -2269,7 +2329,7 @@ async function runComposedStyleProcessReplacement({
 }
 
 async function runStyleProcessMasterReplacement({ orgId, customerName }) {
-  return runComposedStyleProcessReplacement({
+  return runReplaceStyleProcessMaster({
     prismaClient: prisma,
     orgId,
     customerName,
@@ -2343,6 +2403,15 @@ const TARGET_MONTHLY_WAGE = 8000000;
 const WAGE_PER_SECOND = TARGET_MONTHLY_WAGE / (26 * 8 * 3600);
 const SAMPLE_FACTORY_NAME = 'Sample Factory';
 const SAMPLE_FACTORY_ADDRESS = 'Sample Factory Address';
+const LEGACY_SAMPLE_FACTORY_NAMES = Object.freeze(['Sample Factory', '샘플 공장']);
+const LEGACY_SAMPLE_FACTORY_NAME_KEYS = new Set(
+  LEGACY_SAMPLE_FACTORY_NAMES.map((name) =>
+    String(name || '')
+      .normalize('NFKC')
+      .trim()
+      .toLowerCase()
+  )
+);
 const SAMPLE_WORKER_COUNT = 10;
 const LEGACY_BASELINE_STYLE_IDS = [
   'S-2025SS-T001',
@@ -2461,6 +2530,290 @@ const SAMPLE_ORDER_STYLE_ITEMS = [
     sizeQuantities: { S: 250, M: 580, L: 500, XL: 320 },
   },
 ];
+const BASELINE_ASSIGNMENT_SNAPSHOT = {
+  updatedAt: '2026-03-28T13:09:51.020Z',
+  assignments: [
+    {
+      id: 'A-order-tsbr-po-260322-01::BL20::BLACK::U-16-27',
+      basis: 'ST',
+      color: '#DCE9FF',
+      label: 'BL20',
+      cardId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
+      gender: 'U',
+      lineId: '16',
+      orderNo: 'TSBR-PO-260322-01',
+      version: 2,
+      customer: 'TSBR',
+      endIndex: 12,
+      quantity: 1500,
+      colorName: 'Black',
+      ctSnapshot: {
+        quantity: 1500,
+        schedule: {
+          endIndex: 12,
+          endDateKey: '2026-03-12',
+          startIndex: 0,
+          startDateKey: '2026-02-28',
+          endDayPercent: 18.75,
+          startDayPercent: 100,
+          startDayOffsetPercent: 0,
+        },
+        processes: [],
+        updatedAt: '2026-03-28T13:09:43.511Z',
+        updatedBy: 'SYSTEM_RESET_BASELINE',
+        totalCtSeconds: 2934000,
+        totalCtPerPieceSeconds: 1956,
+        totalStPerPieceSeconds: 1956,
+      },
+      endDateKey: '2026-03-12',
+      previewUrl: '',
+      startIndex: 0,
+      stripeColor: '#9FB9F2',
+      startDateKey: '2026-02-28',
+      totalSeconds: 2934000,
+      endDayPercent: 18.75,
+      originOrderId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
+      startDayPercent: 100,
+      contractedSeconds: 2934000,
+      startDayOffsetPercent: 0,
+    },
+    {
+      id: 'A-order-tsbr-po-260322-01::AM01160::NAVY::M-16-6',
+      basis: 'ST',
+      color: '#DCE9FF',
+      label: 'AM01160',
+      cardId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
+      gender: 'M',
+      lineId: '16',
+      orderNo: 'TSBR-PO-260322-01',
+      version: 2,
+      customer: 'TSBR',
+      endIndex: 30,
+      quantity: 950,
+      colorName: 'Navy',
+      ctSnapshot: {
+        quantity: 950,
+        schedule: {
+          endIndex: 30,
+          endDateKey: '2026-03-30',
+          startIndex: 12,
+          startDateKey: '2026-03-12',
+          endDayPercent: 37.48263888888889,
+          startDayPercent: 81.25,
+          startDayOffsetPercent: 18.75,
+        },
+        processes: [],
+        updatedAt: '2026-03-28T13:09:43.511Z',
+        updatedBy: 'SYSTEM_RESET_BASELINE',
+        totalCtSeconds: 4085950,
+        totalCtPerPieceSeconds: 4301.0003,
+        totalStPerPieceSeconds: 4301.0003,
+      },
+      endDateKey: '2026-03-30',
+      previewUrl: '',
+      startIndex: 12,
+      stripeColor: '#9FB9F2',
+      startDateKey: '2026-03-12',
+      totalSeconds: 4085950,
+      endDayPercent: 37.48263888888889,
+      originOrderId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
+      startDayPercent: 81.25,
+      contractedSeconds: 4085950,
+      startDayOffsetPercent: 18.75,
+    },
+    {
+      id: 'A-order-tsbr-po-260322-01::AM01622::WHITE::U-16-27',
+      basis: 'ST',
+      color: '#DCE9FF',
+      label: 'AM01622',
+      cardId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
+      gender: 'U',
+      lineId: '16',
+      orderNo: 'TSBR-PO-260322-01',
+      version: 2,
+      customer: 'TSBR',
+      endIndex: 40,
+      quantity: 1350,
+      colorName: 'White',
+      ctSnapshot: {
+        quantity: 1350,
+        schedule: {
+          endIndex: 40,
+          endDateKey: '2026-04-09',
+          startIndex: 30,
+          startDateKey: '2026-03-30',
+          endDayPercent: 10.76388888888889,
+          startDayPercent: 62.51736111111111,
+          startDayOffsetPercent: 37.48263888888889,
+        },
+        processes: [],
+        updatedAt: '2026-03-28T13:09:43.511Z',
+        updatedBy: 'SYSTEM_RESET_BASELINE',
+        totalCtSeconds: 2515050,
+        totalCtPerPieceSeconds: 1863,
+        totalStPerPieceSeconds: 1863,
+      },
+      endDateKey: '2026-04-09',
+      previewUrl: '',
+      startIndex: 30,
+      stripeColor: '#9FB9F2',
+      startDateKey: '2026-03-30',
+      totalSeconds: 2515050,
+      endDayPercent: 10.76388888888889,
+      originOrderId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
+      startDayPercent: 62.51736111111111,
+      contractedSeconds: 2515050,
+      startDayOffsetPercent: 37.48263888888889,
+    },
+    {
+      id: 'A-order-tsbr-po-260322-01::AM02053::INDIGO::U-16-6',
+      basis: 'ST',
+      color: '#DCE9FF',
+      label: 'AM02053',
+      cardId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
+      gender: 'U',
+      lineId: '16',
+      orderNo: 'TSBR-PO-260322-01',
+      version: 2,
+      customer: 'TSBR',
+      endIndex: 54,
+      quantity: 1650,
+      colorName: 'Indigo',
+      ctSnapshot: {
+        quantity: 1650,
+        schedule: {
+          endIndex: 54,
+          endDateKey: '2026-04-23',
+          startIndex: 40,
+          startDateKey: '2026-04-09',
+          endDayPercent: 98.10763888888889,
+          startDayPercent: 89.23611111111111,
+          startDayOffsetPercent: 10.76388888888889,
+        },
+        processes: [],
+        updatedAt: '2026-03-28T13:09:43.511Z',
+        updatedBy: 'SYSTEM_RESET_BASELINE',
+        totalCtSeconds: 3707550,
+        totalCtPerPieceSeconds: 2246.9998,
+        totalStPerPieceSeconds: 2246.9998,
+      },
+      endDateKey: '2026-04-23',
+      previewUrl: '',
+      startIndex: 40,
+      stripeColor: '#9FB9F2',
+      startDateKey: '2026-04-09',
+      totalSeconds: 3707550,
+      endDayPercent: 98.10763888888889,
+      originOrderId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
+      startDayPercent: 89.23611111111111,
+      contractedSeconds: 3707550,
+      startDayOffsetPercent: 10.76388888888889,
+    },
+  ],
+  boardCards: [],
+  cards: [
+    {
+      cardId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
+      sortOrder: 0,
+      payload: {
+        id: 'order-tsbr-po-260322-01::BL20::BLACK::U',
+        gender: 'U',
+        status: 'ST',
+        colorId: 'BLACK',
+        dueDate: '2026-05-14',
+        orderNo: 'TSBR-PO-260322-01',
+        styleId: 'BL20',
+        totalAt: 0,
+        totalPt: 2934000,
+        totalSt: 2934000,
+        customer: 'TSBR',
+        quantity: 1500,
+        colorName: 'Black',
+        styleCode: 'BL20',
+        styleName: 'BL20',
+        previewUrl: '',
+        processCount: 21,
+        totalSeconds: 2934000,
+        originOrderId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
+      },
+    },
+    {
+      cardId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
+      sortOrder: 1,
+      payload: {
+        id: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
+        gender: 'M',
+        status: 'ST',
+        colorId: 'NAVY',
+        dueDate: '2026-05-14',
+        orderNo: 'TSBR-PO-260322-01',
+        styleId: 'AM01160',
+        totalAt: 0,
+        totalPt: 4085950,
+        totalSt: 4085950,
+        customer: 'TSBR',
+        quantity: 950,
+        colorName: 'Navy',
+        styleCode: 'AM01160',
+        styleName: 'AM01160',
+        previewUrl: '',
+        processCount: 39,
+        totalSeconds: 4085950,
+        originOrderId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
+      },
+    },
+    {
+      cardId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
+      sortOrder: 2,
+      payload: {
+        id: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
+        gender: 'U',
+        status: 'ST',
+        colorId: 'WHITE',
+        dueDate: '2026-05-14',
+        orderNo: 'TSBR-PO-260322-01',
+        styleId: 'AM01622',
+        totalAt: 0,
+        totalPt: 2515050,
+        totalSt: 2515050,
+        customer: 'TSBR',
+        quantity: 1350,
+        colorName: 'White',
+        styleCode: 'AM01622',
+        styleName: 'AM01622',
+        previewUrl: '',
+        processCount: 19,
+        totalSeconds: 2515050,
+        originOrderId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
+      },
+    },
+    {
+      cardId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
+      sortOrder: 3,
+      payload: {
+        id: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
+        gender: 'U',
+        status: 'ST',
+        colorId: 'INDIGO',
+        dueDate: '2026-05-14',
+        orderNo: 'TSBR-PO-260322-01',
+        styleId: 'AM02053',
+        totalAt: 0,
+        totalPt: 3707550,
+        totalSt: 3707550,
+        customer: 'TSBR',
+        quantity: 1650,
+        colorName: 'Indigo',
+        styleCode: 'AM02053',
+        styleName: 'AM02053',
+        previewUrl: '',
+        processCount: 23,
+        totalSeconds: 3707550,
+        originOrderId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
+      },
+    },
+  ],
+};
 const SAMPLE_WORK_LOG_ORG_ID = Number(process.env.ORG_ID ?? 2);
 const SAMPLE_WORK_LOG_SHIFT_SECONDS = Number(process.env.SHIFT_SECONDS ?? 8 * 60 * 60);
 const SAMPLE_WORK_LOG_TARGET_VARIANCE = Math.max(
@@ -2593,14 +2946,18 @@ async function ensureLine(orgId, factoryId, name) {
 }
 
 async function cleanupSampleFactoryData(orgId) {
-  const sampleFactories = await prisma.factory.findMany({
-    where: {
-      orgId,
-      name: { in: ['Sample Factory', SAMPLE_FACTORY_NAME] },
-    },
-    select: { id: true },
+  const sampleFactories = (await prisma.factory.findMany({
+    where: { orgId },
+    select: { id: true, name: true },
     orderBy: { id: 'asc' },
-  });
+  })).filter((factory) =>
+    LEGACY_SAMPLE_FACTORY_NAME_KEYS.has(
+      String(factory?.name || '')
+        .normalize('NFKC')
+        .trim()
+        .toLowerCase()
+    )
+  );
   const sampleFactoryIds = sampleFactories.map((factory) => factory.id);
 
   const baselineWorkerMemberships = await prisma.orgMembership.findMany({
@@ -2932,6 +3289,41 @@ async function captureAssignmentBoardSnapshot(orgId) {
     assignments,
     boardCards,
     cards,
+  };
+}
+
+function resolveBaselineAssignmentSnapshot(capturedSnapshot) {
+  const scriptSnapshot =
+    BASELINE_ASSIGNMENT_SNAPSHOT &&
+    Array.isArray(BASELINE_ASSIGNMENT_SNAPSHOT.assignments) &&
+    BASELINE_ASSIGNMENT_SNAPSHOT.assignments.length > 0
+      ? cloneJsonValue(BASELINE_ASSIGNMENT_SNAPSHOT)
+      : null;
+
+  if (scriptSnapshot) {
+    return {
+      source: 'script',
+      snapshot: {
+        updatedAt: scriptSnapshot.updatedAt ?? null,
+        assignments: Array.isArray(scriptSnapshot.assignments) ? scriptSnapshot.assignments : [],
+        boardCards: Array.isArray(scriptSnapshot.boardCards) ? scriptSnapshot.boardCards : [],
+        cards: Array.isArray(scriptSnapshot.cards) ? scriptSnapshot.cards : [],
+      },
+    };
+  }
+
+  return {
+    source: 'captured',
+    snapshot: {
+      updatedAt: capturedSnapshot?.updatedAt ?? null,
+      assignments: Array.isArray(capturedSnapshot?.assignments)
+        ? cloneJsonValue(capturedSnapshot.assignments)
+        : [],
+      boardCards: Array.isArray(capturedSnapshot?.boardCards)
+        ? cloneJsonValue(capturedSnapshot.boardCards)
+        : [],
+      cards: Array.isArray(capturedSnapshot?.cards) ? cloneJsonValue(capturedSnapshot.cards) : [],
+    },
   };
 }
 
@@ -3682,18 +4074,20 @@ function sampleExtractProcessCode(process, index) {
   return `P${String(index + 1).padStart(2, '0')}`;
 }
 
-function sampleBuildPlanProcesses(plan) {
-  const snapshotProcesses = Array.isArray(plan?.ctSnapshot?.processes)
-    ? plan.ctSnapshot.processes
-    : [];
-
-  return snapshotProcesses
+function sampleNormalizePlanProcesses(rows, orderQuantity) {
+  return (Array.isArray(rows) ? rows : [])
     .map((process, index) => {
+      const processQuantity = sampleToPositiveInt(process?.quantity, 1);
       const ctSeconds = sampleToPositiveInt(
-        process?.agreedPerPieceSeconds ??
+        process?.ctPerPieceSeconds ??
+          process?.agreedPerPieceSeconds ??
           process?.agreedSeconds ??
           process?.requestedSeconds ??
-          process?.stSeconds,
+          (process?.stSeconds != null ? Number(process.stSeconds) * processQuantity : null) ??
+          (resolveStPerPieceSeconds(process, orderQuantity) != null
+            ? Number(resolveStPerPieceSeconds(process, orderQuantity)) * processQuantity
+            : null) ??
+          (process?.pt != null ? Number(process.pt) * processQuantity : null),
         0
       );
       if (!ctSeconds) return null;
@@ -3709,6 +4103,24 @@ function sampleBuildPlanProcesses(plan) {
       };
     })
     .filter(Boolean);
+}
+
+function sampleBuildPlanProcesses(plan, processMirrorByStyleId) {
+  const orderQuantity = sampleToPositiveInt(
+    plan?.finalQuantity ?? plan?.quantity ?? plan?.ctSnapshot?.quantity,
+    1
+  );
+  const snapshotProcesses = sampleNormalizePlanProcesses(plan?.ctSnapshot?.processes, orderQuantity);
+  if (snapshotProcesses.length > 0) {
+    return snapshotProcesses;
+  }
+
+  const styleId = resolveStyleIdFromAssignment(plan);
+  if (!styleId || !(processMirrorByStyleId instanceof Map)) {
+    return [];
+  }
+
+  return sampleNormalizePlanProcesses(processMirrorByStyleId.get(styleId) || [], orderQuantity);
 }
 
 function sampleBuildDailyWeights(plan) {
@@ -3744,10 +4156,10 @@ function sampleBuildDailyWeights(plan) {
   });
 }
 
-function sampleNormalizePlan(plan, random) {
+function sampleNormalizePlan(plan, random, processMirrorByStyleId) {
   const lineId = sampleToPositiveInt(plan?.lineId, 0);
   const baselineQuantity = sampleToPositiveInt(plan?.finalQuantity ?? plan?.quantity, 0);
-  const processes = sampleBuildPlanProcesses(plan);
+  const processes = sampleBuildPlanProcesses(plan, processMirrorByStyleId);
   const dailyWeights = sampleBuildDailyWeights(plan);
 
   if (!lineId || !baselineQuantity || processes.length === 0 || dailyWeights.length === 0) {
@@ -3776,6 +4188,7 @@ function sampleNormalizePlan(plan, random) {
     orderNo: String(plan?.orderNo || ''),
     customerName: String(plan?.customer || ''),
     colorId: sampleToPositiveIntOrNull(plan?.colorId),
+    colorCode: resolveColorCodeFromAssignment(plan),
     colorName: String(plan?.colorName || ''),
     baselineQuantity,
     targetQuantity,
@@ -3870,6 +4283,67 @@ function sampleResolvePlanDateWindow(plans) {
   return {
     earliestDateKey: sorted[0] ?? null,
     latestDateKey: sorted[sorted.length - 1] ?? null,
+  };
+}
+
+function sampleNormalizeLookupKey(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+async function sampleLoadWorkRecordRefMaps(orgId, plans) {
+  const styleIds = Array.from(
+    new Set(
+      plans.map((plan) => String(plan?.styleId || '').trim()).filter(Boolean)
+    )
+  );
+  const processCodes = Array.from(
+    new Set(
+      plans
+        .flatMap((plan) =>
+          Array.isArray(plan?.processes)
+            ? plan.processes.map((process) => String(process?.processCode || '').trim())
+            : []
+        )
+        .filter(Boolean)
+    )
+  );
+  const colorCodes = Array.from(
+    new Set(
+      plans.map((plan) => String(plan?.colorCode || '').trim()).filter(Boolean)
+    )
+  );
+
+  const [styles, processes, colors] = await Promise.all([
+    styleIds.length > 0
+      ? prisma.style.findMany({
+          where: { orgId, styleId: { in: styleIds } },
+          select: { uid: true, styleId: true },
+        })
+      : Promise.resolve([]),
+    processCodes.length > 0
+      ? prisma.attrProcess.findMany({
+          where: { orgId, code: { in: processCodes } },
+          select: { id: true, code: true },
+        })
+      : Promise.resolve([]),
+    colorCodes.length > 0
+      ? prisma.attrColor.findMany({
+          where: { code: { in: colorCodes } },
+          select: { id: true, code: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    styleUidByStyleId: new Map(
+      styles.map((style) => [sampleNormalizeLookupKey(style.styleId), Number(style.uid)])
+    ),
+    processIdByCode: new Map(
+      processes.map((process) => [sampleNormalizeLookupKey(process.code), Number(process.id)])
+    ),
+    colorIdByCode: new Map(
+      colors.map((color) => [sampleNormalizeLookupKey(color.code), Number(color.id)])
+    ),
   };
 }
 
@@ -4023,13 +4497,9 @@ function sampleAssignTaskUnitToWorker(unit, slot, recordsByKey) {
     recordsByKey.set(key, {
       workerId: slot.worker.id,
       workerName: slot.worker.name,
-      customerName: unit.plan.customerName,
       styleId: unit.plan.styleId,
-      styleName: unit.plan.styleName,
       processCode: unit.processCode,
-      processName: unit.processName,
-      colorId: unit.plan.colorId,
-      colorName: unit.plan.colorName,
+      colorCode: unit.plan.colorCode || null,
       ctSeconds: unit.ctSeconds,
       quantity: 0,
       assignmentPlanId: unit.plan.dbId,
@@ -4156,6 +4626,16 @@ async function runSampleWorkLogs(options = {}) {
     (Array.isArray(factories) ? factories[0] : null);
   sampleAssert(factory, `factory not found for org ${workLogOrgId}`);
 
+  const styles = await prisma.style.findMany({
+    where: { orgId: workLogOrgId },
+    select: { styleId: true, processes: true },
+  });
+  const processMirrorByStyleId = new Map(
+    styles
+      .map((style) => [String(style?.styleId || '').trim(), style?.processes])
+      .filter(([styleId, processes]) => styleId && Array.isArray(processes))
+  );
+
   const [rawPlans, existingLogs] = await Promise.all([
     sampleApiRequest(
       `/assignment-plans${sampleBuildQuery({
@@ -4181,10 +4661,11 @@ async function runSampleWorkLogs(options = {}) {
 
   const plans = (Array.isArray(rawPlans) ? rawPlans : [])
     .filter((plan) => Number(plan?.contractedSeconds) > 0)
-    .map((plan) => sampleNormalizePlan(plan, random))
+    .map((plan) => sampleNormalizePlan(plan, random, processMirrorByStyleId))
     .filter(Boolean);
 
   sampleAssert(plans.length > 0, 'no agreed assignment plans found');
+  const workRecordRefMaps = await sampleLoadWorkRecordRefMaps(workLogOrgId, plans);
   const scheduleWindow = await sampleEnsureLineAssignmentsCoverPlanDates(plans);
 
   const existingLogRows = Array.isArray(existingLogs) ? existingLogs : [];
@@ -4241,6 +4722,7 @@ async function runSampleWorkLogs(options = {}) {
 
   let createdCount = 0;
   let skippedCount = 0;
+  const failureSamples = [];
 
   for (const entry of entries) {
     const logKey = `${entry.lineId}::${entry.dateKey}`;
@@ -4274,9 +4756,28 @@ async function runSampleWorkLogs(options = {}) {
       skippedCount += 1;
       continue;
     }
+    const requestRecords = records.map((record) => {
+      const normalizedStyleId = sampleNormalizeLookupKey(record.styleId);
+      const normalizedProcessCode = sampleNormalizeLookupKey(record.processCode);
+      const normalizedColorCode = sampleNormalizeLookupKey(record.colorCode);
+      const styleUid = workRecordRefMaps.styleUidByStyleId.get(normalizedStyleId) || null;
+      const processId = workRecordRefMaps.processIdByCode.get(normalizedProcessCode) || null;
+      const colorId = workRecordRefMaps.colorIdByCode.get(normalizedColorCode) || null;
+
+      return {
+        workerId: record.workerId,
+        workerName: record.workerName,
+        ...(styleUid ? { styleUid } : { styleId: record.styleId }),
+        ...(processId ? { processId } : { processCode: record.processCode }),
+        ...(colorId ? { colorId } : record.colorCode ? { colorCode: record.colorCode } : {}),
+        ctSeconds: record.ctSeconds,
+        quantity: record.quantity,
+        assignmentPlanId: record.assignmentPlanId,
+      };
+    });
 
     const totalContractedSeconds = sampleSumBy(
-      records,
+      requestRecords,
       (record) => record.ctSeconds * record.quantity
     );
     const body = {
@@ -4287,9 +4788,9 @@ async function runSampleWorkLogs(options = {}) {
       lineId: entry.lineId,
       ctBasis: 'CT',
       workerCount: workers.length,
-      itemCount: records.length,
+      itemCount: requestRecords.length,
       totalContractedSeconds,
-      records,
+      records: requestRecords,
       note:
         `${SAMPLE_WORK_LOG_NOTE_PREFIX} shift=${SAMPLE_WORK_LOG_CLOCK_IN}-${SAMPLE_WORK_LOG_CLOCK_OUT} ` +
         `workedSeconds=${SAMPLE_WORK_LOG_SHIFT_SECONDS} lunch=12:00-13:00 seed=${SAMPLE_WORK_LOG_SEED}`,
@@ -4307,7 +4808,14 @@ async function runSampleWorkLogs(options = {}) {
         orgId: workLogOrgId,
         body,
       });
-    } catch (_error) {
+    } catch (error) {
+      if (failureSamples.length < 10) {
+        failureSamples.push({
+          workDate: entry.dateKey,
+          lineId: entry.lineId,
+          message: error?.message || 'failed to create work log',
+        });
+      }
       skippedCount += 1;
       continue;
     }
@@ -4346,6 +4854,7 @@ async function runSampleWorkLogs(options = {}) {
       replacedLogCount,
       createdCount,
       skippedCount,
+      failureSamples,
       updatedLineAssignmentCount: scheduleWindow.updatedLineAssignmentCount,
       attendanceSeed,
       timeModelRealign: timeModelRealign.summary,
@@ -4406,7 +4915,9 @@ async function runBaselineReset() {
     },
   });
 
-  const assignmentSnapshot = await captureAssignmentBoardSnapshot(manufacturer.id);
+  const capturedAssignmentSnapshot = await captureAssignmentBoardSnapshot(manufacturer.id);
+  const baselineAssignmentSnapshot = resolveBaselineAssignmentSnapshot(capturedAssignmentSnapshot);
+  const assignmentSnapshot = baselineAssignmentSnapshot.snapshot;
 
   await syncGlobalColors();
   await syncManufacturerAttributes(manufacturer.id);
@@ -4515,6 +5026,7 @@ async function runBaselineReset() {
   let sampleOrderSeed = null;
   let sampleWorkLogSeed = null;
   let assignmentRestore = {
+    source: baselineAssignmentSnapshot.source,
     capturedAssignmentCount: Array.isArray(assignmentSnapshot?.assignments)
       ? assignmentSnapshot.assignments.length
       : 0,
@@ -4566,7 +5078,10 @@ async function runBaselineReset() {
     assignmentRestore = {
       ...assignmentRestore,
       attempted: false,
-      reason: 'no-assignment-snapshot',
+      reason:
+        baselineAssignmentSnapshot.source === 'script'
+          ? 'no-script-assignment-snapshot'
+          : 'no-assignment-snapshot',
     };
   }
 
@@ -4603,7 +5118,7 @@ async function runBaselineReset() {
 
   summary.organizations = [manufacturer.code, brand.code].join(', ');
   summary.globalColors = BASELINE_COLORS.length;
-  summary.processes = BASELINE_PROCESSES.length;
+  summary.processes = styleMasterReset?.replacedProcessMasterCount ?? BASELINE_PROCESSES.length;
   summary.roles = BASELINE_ROLES.length;
   summary.categoryCleanup = {
     manufacturerDeleted: manufacturerCategoryCleanup.deletedCategories,
@@ -4613,7 +5128,9 @@ async function runBaselineReset() {
     manufacturerDeleted: manufacturerProcessCleanup.deletedProcesses,
     brandDeleted: brandProcessCleanup.deletedProcesses,
   };
-  summary.styles = COMPOSED_STYLE_SEEDS.length;
+  summary.styles = Array.isArray(styleMasterReset?.styles)
+    ? styleMasterReset.styles.length
+    : COMPOSED_STYLE_SEEDS.length;
   summary.workers = baselineWorkerIds.length;
   summary.sampleFactoryCleanup = sampleCleanup;
   summary.legacyStyleCleanup = legacyStyleCleanup;

@@ -329,7 +329,7 @@ const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
-const MIN_PROCESS_SECONDS = 30;
+const MIN_PROCESS_SECONDS = 10;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
   DEFAULT_ST_BUCKET_QUANTITY,
@@ -5163,8 +5163,8 @@ const calculateAssignmentCardTotalForOrderQuantity = (
   processes: any,
   key: "pt" | "at",
   orderQuantity = 1
-) =>
-  normalizeStyleProcesses(processes).reduce((acc, process) => {
+) => {
+  const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
     const processQuantity = toPositiveInt((process as any)?.quantity, 1);
     const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
     if (key === "at") {
@@ -5178,11 +5178,13 @@ const calculateAssignmentCardTotalForOrderQuantity = (
     if (time == null) return acc;
     return acc + processQuantity * time * resolvedOrderQuantity;
   }, 0);
+  return Math.round(total);
+};
 const calculateAssignmentCardStTotalForOrderQuantity = (
   processes: any,
   orderQuantity = 1
-) =>
-  normalizeStyleProcesses(processes).reduce((acc, process) => {
+) => {
+  const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
     const processQuantity = toPositiveInt((process as any)?.quantity, 1);
     const stPerPiece = resolveAssignmentCardStSeedSeconds({
       process,
@@ -5191,6 +5193,8 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
     if (stPerPiece == null) return acc;
     return acc + processQuantity * stPerPiece * toPositiveInt(orderQuantity, 1);
   }, 0);
+  return Math.round(total);
+};
 const resolveAssignmentCardStatus = ({
   totalPt,
   totalSt,
