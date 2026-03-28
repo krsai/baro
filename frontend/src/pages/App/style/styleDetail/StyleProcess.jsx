@@ -32,7 +32,6 @@ import {
   formatStBucketQuantityLabel,
   formatSeconds,
   hasAnyProcessTime,
-  MIN_PROCESS_SECONDS,
   normalizeProcess,
   normalizeProcesses,
   parseOptionalSecondsInput,
@@ -77,7 +76,7 @@ const toOptionalSeconds = (value) => {
   if (!Number.isFinite(parsed)) return null;
   if (parsed < 0) return 0;
   if (parsed === 0) return 0;
-  return Math.max(MIN_PROCESS_SECONDS, parsed);
+  return Math.max(0, Math.round(parsed));
 };
 
 const toDraftNumberText = (value) => {

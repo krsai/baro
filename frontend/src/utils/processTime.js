@@ -1,7 +1,6 @@
 ﻿import { formatNumberWithCommas } from './numberFormat';
 
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
-export const MIN_PROCESS_SECONDS = 30;
 export const ST_STANDARD_BUCKETS = Object.freeze([
   1,
   10,
@@ -80,7 +79,7 @@ const clampProcessSeconds = (value) => {
   const parsed = toOptionalNumber(value);
   if (parsed === null) return null;
   if (parsed <= 0) return 0;
-  return Math.max(MIN_PROCESS_SECONDS, parsed);
+  return Math.max(0, Math.round(parsed));
 };
 
 export const resolveStBucketQuantity = (orderQuantity = 1) => {
@@ -435,11 +434,10 @@ export const resolveStyleAtReliability = (processes = []) => {
       DEFAULT_TIME_REF_QUANTITY
     );
     const atPerPieceSeconds = resolveProcessAtPerPieceSeconds(process, referenceQuantity);
-    const processQuantity = toPositiveInt(process?.quantity, 1);
     const weight =
       Number.isFinite(atPerPieceSeconds) && atPerPieceSeconds > 0
-        ? atPerPieceSeconds * processQuantity
-        : processQuantity;
+        ? atPerPieceSeconds
+        : toPositiveInt(process?.quantity, 1);
     return {
       reliability: resolveProcessAtReliability(process, referenceQuantity),
       weight,
@@ -526,8 +524,7 @@ export const calculateProcessLineTotal = (process, key) => {
     );
     const atPerPiece = resolveProcessAtPerPieceSeconds(normalized, referenceQuantity);
     if (atPerPiece === null) return null;
-    const quantity = toPositiveInt(normalized.quantity, 1);
-    return quantity * atPerPiece;
+    return atPerPiece;
   }
   const time = toOptionalNumber(process[key]);
   if (time === null) return null;
@@ -541,20 +538,17 @@ export const calculateProcessLineTotal = (process, key) => {
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt(normalized?.quantity, 1);
-
   const atParams = resolveAtParams(normalized);
   if (!atParams) return null;
-  return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
+  return atParams.a * resolvedOrderQuantity + atParams.b;
 };
 
 export const resolveProcessAtPerPieceSeconds = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt(normalized?.quantity, 1);
   const totalAt = resolveProcessAtTotalSecondsForOrderQuantity(normalized, resolvedOrderQuantity);
   if (!Number.isFinite(totalAt) || totalAt <= 0) return null;
-  return totalAt / (processQuantity * resolvedOrderQuantity);
+  return totalAt / resolvedOrderQuantity;
 };
 
 export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
@@ -696,7 +690,9 @@ export const hasAnyCt = (processes) =>
 
 export const parseOptionalSecondsInput = (value) => {
   const parsed = toOptionalNumber(value);
-  return parsed === null ? null : roundToScale(parsed, 4);
+  if (parsed === null) return null;
+  if (parsed <= 0) return 0;
+  return Math.max(0, Math.round(parsed));
 };
 
 export const formatSeconds = (value) => {

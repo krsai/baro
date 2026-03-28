@@ -329,7 +329,6 @@ const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
-const MIN_PROCESS_SECONDS = 10;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
   DEFAULT_ST_BUCKET_QUANTITY,
@@ -810,8 +809,8 @@ const toOptionalSeconds = (value: any) => {
 const toOptionalProcessSeconds = (value: any) => {
   const parsed = toOptionalSeconds(value);
   if (parsed === null) return null;
-  if (parsed <= 0) return parsed;
-  return Math.max(MIN_PROCESS_SECONDS, parsed);
+  if (parsed <= 0) return 0;
+  return Math.max(0, Math.round(parsed));
 };
 
 const resolveStBucketQuantity = (
@@ -983,10 +982,9 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     return null;
   }
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt((process as any).quantity, 1);
   const atParams = toStyleAtParams((process as any).atParams);
   if (!atParams) return null;
-  return processQuantity * (atParams.a * resolvedOrderQuantity + atParams.b);
+  return atParams.a * resolvedOrderQuantity + atParams.b;
 };
 
 const resolveStyleProcessAtPerPieceSecondsForOrderQuantity = (
@@ -994,13 +992,12 @@ const resolveStyleProcessAtPerPieceSecondsForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt((process as any)?.quantity, 1);
   const totalAt = resolveStyleProcessAtTotalSecondsForOrderQuantity(
     process,
     resolvedOrderQuantity
   );
   if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
-  return totalAt / (processQuantity * resolvedOrderQuantity);
+  return totalAt / resolvedOrderQuantity;
 };
 
 const resolveStyleProcessAtPerPieceSecondsForReferenceQuantity = (process: any) => {
@@ -1449,13 +1446,18 @@ type AtTrainingBucketDraft = {
 const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
-const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) =>
-  toOptionalSeconds(processRow?.ptSeconds) ??
-  resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
+const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) => {
+  const processQuantity = toPositiveInt(processRow?.processQuantity, 1);
+  const ptSeconds = toOptionalSeconds(processRow?.ptSeconds);
+  if (ptSeconds != null) {
+    return roundToScale(ptSeconds * processQuantity, 4);
+  }
+  return resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
     quantity: processRow?.processQuantity,
     atParams: processRow?.atParams,
     timeRefQuantity: DEFAULT_TIME_REF_QUANTITY,
   });
+};
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -1506,10 +1508,11 @@ const loadAtTrainingSourceWorkLogs = async ({
       workRecords: {
         where: {
           quantity: { gt: 0 },
-          styleId: { not: null },
+          OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
         },
         select: {
           workerId: true,
+          styleUid: true,
           styleId: true,
           styleName: true,
           customerName: true,
@@ -1562,13 +1565,24 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         .filter((styleId) => styleId !== "")
     )
   );
-  if (styleIds.length === 0) return [];
+  const styleUids = Array.from(
+    new Set(
+      workLogs
+        .flatMap((item) => item.workRecords)
+        .map((record) => toPositiveIntOrNull((record as any).styleUid))
+        .filter((styleUid): styleUid is number => styleUid !== null)
+    )
+  );
+  if (styleIds.length === 0 && styleUids.length === 0) return [];
 
   const syncTargetOrgIds = await resolveStyleSyncTargetOrgIds(orgId);
   const styleCandidates = await db.style.findMany({
     where: {
       orgId: { in: syncTargetOrgIds },
-      styleId: { in: styleIds },
+      OR: [
+        ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
+        ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
+      ],
     },
     select: {
       uid: true,
@@ -1598,6 +1612,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     current.push(style);
     stylesByStyleId.set(styleIdKey, current);
   });
+  const stylesByUid = new Map(
+    styleCandidates.map((style) => [Number(style.uid), style])
+  );
 
   const processLookupByStyleUid = styleCandidates.reduce((map, style) => {
     const byCode = new Map<string, any>();
@@ -1617,10 +1634,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   }, new Map<number, { byCode: Map<string, any>; byName: Map<string, any> }>());
 
   const resolveCandidateStyle = (record: {
+    styleUid?: any;
     styleId: any;
     styleName: any;
     customerName: any;
   }) => {
+    const directStyleUid = toPositiveIntOrNull((record as any).styleUid);
+    if (directStyleUid !== null && stylesByUid.has(directStyleUid)) {
+      return stylesByUid.get(directStyleUid) ?? null;
+    }
     const styleId = String(record.styleId || "").trim();
     if (!styleId) return null;
     const candidates = stylesByStyleId.get(styleId) || [];
@@ -2245,6 +2267,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
   let updatedProcesses = 0;
   let clampAdjustedProcesses = 0;
   const changedStyleUids = new Set<number>();
+  const refreshedStyleUids = new Set<number>();
 
   for (const processRow of styleProcessRowsById.values()) {
     const styleProcessId = toPositiveIntOrNull(processRow?.id);
@@ -2254,6 +2277,7 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     const metricKey = toAtTrainingStyleProcessMetricKey(styleProcessId);
     const fittedRaw = fittedParamsByMetric.get(metricKey);
     if (!fittedRaw) continue;
+    refreshedStyleUids.add(styleUid);
 
     const currentAtParams = toStyleAtParams((processRow as any).atParams);
     const qualityStats = metricTrainingQualityByMetricKey.get(metricKey) || null;
@@ -2333,10 +2357,32 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     });
   }
 
-  if (changedStyleUids.size > 0) {
-    await refreshStyleProcessMirrorForStyleUids(Array.from(changedStyleUids.values()), {
+  if (refreshedStyleUids.size > 0) {
+    const targetStyleUids = Array.from(refreshedStyleUids.values());
+    const rowsByStyleUid = await refreshStyleProcessMirrorForStyleUids(targetStyleUids, {
       processOrgId: orgId,
     });
+    const styles = await prisma.style.findMany({
+      where: { uid: { in: targetStyleUids } },
+      select: { uid: true, processes: true },
+    });
+    for (const style of styles) {
+      const styleUid = Number(style.uid);
+      const nextProcesses = buildStyleProcessMirrorFromRows(
+        rowsByStyleUid.get(styleUid) || []
+      );
+      if (
+        JSON.stringify(normalizeStyleProcesses(style?.processes)) ===
+        JSON.stringify(nextProcesses)
+      ) {
+        continue;
+      }
+      await prisma.style.update({
+        where: { uid: styleUid },
+        data: { processes: nextProcesses },
+      });
+    }
+    await rebuildAssignmentCardsForOrgIds(await resolveStyleSyncTargetOrgIds(orgId));
   }
 
   return {
@@ -3924,6 +3970,9 @@ const syncWorkRecordRefs = async ({
         .filter((value): value is string => Boolean(value))
     )
   );
+  const styleUids = collectPositiveIntSet(
+    ...normalizedRecords.map((record) => record?.styleUid)
+  );
   const styleNames = Array.from(
     new Set(
       normalizedRecords
@@ -3967,11 +4016,12 @@ const syncWorkRecordRefs = async ({
   );
 
   const [styles, processes, colors] = await Promise.all([
-    styleIds.length > 0 || styleNames.length > 0
+    styleUids.length > 0 || styleIds.length > 0 || styleNames.length > 0
       ? prisma.style.findMany({
           where: {
             orgId,
             OR: [
+              ...(styleUids.length > 0 ? [{ uid: { in: styleUids } }] : []),
               ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
               ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
             ],

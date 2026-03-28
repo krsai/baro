@@ -1,5 +1,3 @@
-import { MIN_PROCESS_SECONDS } from './processTime';
-
 const toOptionalNumber = (value, fallback = null) => {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number(value);
@@ -16,7 +14,7 @@ const toOptionalPositiveNumber = (value, fallback = null) => {
 const toOptionalProcessSeconds = (value, fallback = null) => {
   const parsed = toOptionalPositiveNumber(value, fallback);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.max(MIN_PROCESS_SECONDS, parsed);
+  return Math.max(0, Math.round(parsed));
 };
 
 const toOptionalDateString = (value) => {

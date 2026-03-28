@@ -323,29 +323,26 @@
   - `AM01622 = 1,863`
   - `AM02053 = 2,247`
 
-### 2026-03-15 PT 조정 메모
+### 2026-03-28 시간모델/표시 기준 메모
 
-- org `2` 스타일 공정 PT는 소수 초를 쓰지 않고 **정수 초만 저장**한다.
-- 시드 스크립트 기준 1차 PT/ST는 원본 공정표 값을 정수 초로 보정해 저장한다.
-  - 현재 스크립트는 원본 공정표 값에 `+30%`를 적용한 정수 초를 시드 기본값으로 사용한다.
+- org `2` 스타일 공정 PT/ST 시드는 원본 공정표 총합 기준으로 저장한다.
+  - `BL20 = 1,956`
+  - `AM01160 = 4,301`
+  - `AM01622 = 1,863`
+  - `AM02053 = 2,247`
+- 이전에 남아 있던 `+30%` 가산 메모는 폐기한다.
+  - 현재 시드 스크립트는 원본 공정표 기준값을 그대로 사용한다.
 - `PT(1000)`을 `1,000장 주문 전체 총시간`으로 해석하는 것은 잘못이다.
   - `PT(1000)`은 `1,000장 주문 기준의 개당 시간`이다.
-  - 따라서 생산량/임금 기반 재보정도 `개당 시간` 기준으로만 계산해야 한다.
   - 주문 전체 소요시간은 필요 시 `PT(q) * q`로 따로 계산한다.
-- 이전에 기록했던 `2,139,429초`, `1,616,028초` 같은 수치는 `q 주문 전체 총시간`으로 잘못 이해한 결과이므로 기준값으로 사용하지 않는다.
-- `StyleProcess.ptSeconds`와 `StyleProcessStandard.stSeconds`는 같은 정수값으로 같이 맞춘다.
-- `backend/scripts/reset-to-baseline.js`의 스타일/공정 마스터 재생성 로직은 `봉제 인원/월 생산량` 같은 전체 생산량 가정으로 `PT(1000)`을 다시 스케일링하면 안 된다.
-  - 시드 스크립트는 공정표 기준 `개당 PT(1000)`만 저장한다.
 - 런타임 계산 원칙:
   - 스타일/공정 화면의 `PT(q) / AT(q) / ST(q) / CT(q)` 표시는 모두 `q 기준 개당 시간`
   - 일정/라인부하/공임 계산에서만 `개당 시간 * 수량 q`로 총시간을 만든다.
-- 2026-03-15 현재 재시드 후 스타일 총 PT(1000):
-  - `BL20 = 2,561`
-  - `AM01160 = 5,607`
-  - `AM01622 = 2,432`
-  - `AM02053 = 2,936`
-- 활성 스타일 공정의 `PT/ST`는 `0초`를 허용하지 않는다.
-  - 원본 시트가 `0`이더라도 시드 단계에서 최소 `1초` 이상으로 보정한다.
+- 스타일 목록(`StyleBoard`)은 `q` 선택기가 없으므로 `PT / ST / AT`를 모두 **`q=1000` 기준 개당 시간**으로 표시한다.
+- 공정시간 저장/정규화 원칙:
+  - `PT/ST/CT`와 시드용 공정시간은 **0 이상 정수 초**로 다룬다.
+  - 최소 `10초`, `30초` 같은 하한을 두지 않는다.
+  - `AT`의 `a,b` 파라미터는 학습 결과이므로 소수 초를 허용한다.
 - 기본 테스트 공정 `P01~P10`은 실제 공정 마스터가 존재할 때 다시 자동으로 주입되면 안 된다.
   - `seedAttributesIfEmpty()`는 이제 공정 마스터가 비어 있을 때만 기본 테스트 공정을 넣는다.
 
@@ -737,14 +734,14 @@
 - AT(q)가 나왔다고 ST를 바로 AT로 맞추지 않음 — 현장 충격(파업 등) 방지
 - 운영팀이 AT(q)를 참고해 ST를 점진적으로 조정
 - ST는 스타일+공정별 `q` 기준점으로 저장한다.
-- ST 버킷은 `0~10~30~100~300~1000~3000~10000~30000~100000` 구간으로 관리한다.
+- ST 버킷은 `1~10~30~100~300~1000~3000~10000~30000~100000` 구간으로 관리한다.
 - 예: 화면에서 `q=150`를 보면 `AT(150)`은 그대로 계산하고, `ST`는 `100 이상 300 미만` 구간이므로 `ST(100)`을 사용한다.
 - 같은 공정명이라도 스타일이 다르면 다른 ST 집합이다.
 - 새로운 수량 q가 처음 필요하면 초기값은 `PT(1000)`을 참고해 만든다.
 - 이후 운영팀이 수동으로 수정한 `ST(q)`는 그 스타일+공정+수량의 반복 사용 기준이 된다.
 - ST는 CT 합의 결과로 자동 갱신되지 않는다.
 - ST 값의 증가/감소 방향은 시스템이 강제하지 않고, 추후 `ST 검토` 메뉴에서 경고만 제공한다.
-- PT/ST/CT 기준 공정시간은 모두 최소 `30초` 미만으로 내려가지 않는다.
+- PT/ST/CT 기준 공정시간은 최소 하한을 두지 않고 `0 이상 정수 초`로만 관리한다.
 
 **CT (Contracted Time) — 카드 단위 확정 스냅샷**
 
@@ -1023,6 +1020,8 @@ Organization (MANUFACTURER | BRAND)
 ### 1) ST/PT/AT(q) 반영 상태
 - 스타일 공정 입력에서 공통 q(`timeRefQuantity`)를 먼저 지정하고 `PT(q) / AT(q, 자동) / ST(q)`를 표시/입력한다.
   - 파일: `frontend/src/pages/App/style/styleDetail/StyleProcess.jsx`
+- 스타일 목록(`StyleBoard`)은 q 선택기가 없으므로 `PT / ST / AT`를 모두 `q=1000` 기준 개당 시간으로 표시한다.
+  - 파일: `frontend/src/pages/App/style/StyleBoard.jsx`
 - 저장 모델은 `StyleProcess + StyleProcessStandard + Style.processes(호환용 미러)`를 사용한다.
   - `StyleProcess`는 `PT(1000)`과 `atParams`를 저장한다.
   - `StyleProcessStandard`는 `q`별 `ST(q)` 기준점을 저장한다.
@@ -1590,13 +1589,15 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
   - 루트 샘플 작업기록: `npm run sample:work-logs` -> 내부적으로 `node backend/scripts/reset-to-baseline.js work-logs`
   - 루트 시간모델 정렬: `npm run realign:time-model` -> 내부적으로 `node backend/scripts/reset-to-baseline.js time-model`
   - 백엔드: `npm run reset:baseline` (`prereset:baseline`에서 `prisma:prepare-client` 자동 실행)
-- `reset-to-baseline.js initialize`는 baseline reset 안에서 스타일 마스터 재생성까지 같이 수행한다.
+- `reset-to-baseline.js initialize`는 baseline reset 안에서 스타일 마스터 재생성, 고정 배정 스냅샷 복원, 샘플 작업기록/근태 재생성까지 같이 수행한다.
 - 별도 실행 파일 `backend/scripts/realign-time-model.js`는 제거되었고, 보정 로직은 `reset-to-baseline.js` 내부로 흡수되었다.
+- 샘플 초기화 정리 규칙:
+  - 레거시 `샘플 공장`/`샘플 라인`은 정리 대상이다.
+  - 초기화 후 샘플 제조사 쪽 공장/라인은 `Sample Factory` / `Sample Line` 한 벌만 남기는 것을 기준으로 본다.
 
-#### 작업기록 데이터 보호 원칙
-- baseline reset은 `WorkLog`, `WorkRecord` 데이터를 삭제/초기화하지 않는다.
-- reset 결과 요약 카운트에도 `WorkLog`, `WorkRecord` 항목은 포함하지 않는다.
-- 따라서 작업기록 기반 검증(AT/급여/이력 확인)은 reset 이후에도 유지되는 것이 정상 동작이다.
+#### 작업기록 재생성 원칙
+- baseline reset은 샘플 범위의 `WorkLog`, `WorkRecord`, `AttendanceEntry`를 삭제한 뒤 다시 생성한다.
+- 따라서 reset 이후 작업기록 기반 검증값(AT/급여/이력)은 **재현 가능한 샘플 데이터로 다시 맞춰진 상태**가 정상 동작이다.
 
 #### 운영 주의사항
 - Prisma 마이그레이션 이후에는 반드시 Prisma Client 재생성 상태를 확인한다.
@@ -1685,6 +1686,7 @@ Supabase 대시보드 → Project Settings → Infrastructure → Database passw
 - 화면 일관성:
   - AT 신뢰도 분류는 주문/카드 수량(`displayOrderQuantity`)이 아니라 공정의 `timeRefQuantity` 기준으로 계산한다.
   - 같은 공정/같은 `atParams`는 화면(스타일/생산계획/배정)과 관계없이 같은 신뢰도 상태를 가져야 한다.
+  - 단, 스타일 목록의 `PT/ST/AT` 숫자 표시는 신뢰도 계산 기준과 별개로 항상 `q=1000` 기준 개당 시간으로 보여준다.
 
 - LOW_SENSITIVITY 관련 메모:
   - 현재 코드에서 `LOW_SENSITIVITY`는 별도 상태명이 아니라 퍼센트 계산용 penalty 개념이다.

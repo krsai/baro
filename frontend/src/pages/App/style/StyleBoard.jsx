@@ -37,9 +37,10 @@ import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
-  calculateProcessTotal,
+  calculateProcessTotalForOrderQuantity,
   hasAnyProcessTime,
   normalizeProcesses,
+  resolveProcessStTotalSecondsForOrderQuantity,
   resolveStyleAtReliability,
   resolveProcessStPerPieceSeconds,
 } from '../../../utils/processTime';
@@ -268,17 +269,27 @@ const StyleBoard = () => {
           };
         }
         const processes = normalizeProcesses(style.processes);
-        const totalPT = calculateProcessTotal(processes, 'pt');
-        const totalAT = calculateProcessTotal(processes, 'at');
-        const totalST = processes.reduce((sum, process) => {
-          const processQuantity = toPositiveInt(process?.quantity, 1);
-          const stPerPieceSeconds = resolveProcessStPerPieceSeconds(
-            process,
+        const totalPT =
+          calculateProcessTotalForOrderQuantity(
+            processes,
+            'pt',
             DEFAULT_TIME_REF_QUANTITY
-          );
-          if (stPerPieceSeconds == null) return sum;
-          return sum + processQuantity * stPerPieceSeconds;
-        }, 0);
+          ) / DEFAULT_TIME_REF_QUANTITY;
+        const totalAT =
+          calculateProcessTotalForOrderQuantity(
+            processes,
+            'at',
+            DEFAULT_TIME_REF_QUANTITY
+          ) / DEFAULT_TIME_REF_QUANTITY;
+        const totalST =
+          processes.reduce((sum, process) => {
+            const stTotalSeconds = resolveProcessStTotalSecondsForOrderQuantity(
+              process,
+              DEFAULT_TIME_REF_QUANTITY
+            );
+            if (stTotalSeconds == null) return sum;
+            return sum + stTotalSeconds;
+          }, 0) / DEFAULT_TIME_REF_QUANTITY;
         const hasTotalST = processes.some(
           (process) =>
             resolveProcessStPerPieceSeconds(process, DEFAULT_TIME_REF_QUANTITY) != null

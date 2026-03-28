@@ -6,7 +6,6 @@ process.env.PRISMA_CLIENT_ENGINE_TYPE ||= 'binary';
 const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 const { normalizeProcessNaming } = require('./lib/processNamingRules.js');
-const MIN_PROCESS_SECONDS = 10;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
 const ST_STANDARD_BUCKETS = Object.freeze([
   1,
@@ -54,8 +53,9 @@ const normalizeJson = (value) => JSON.stringify(sortJsonValue(value ?? null));
 
 const clampProcessSeconds = (value) => {
   const parsed = roundToScale(value);
-  if (parsed === null || parsed <= 0) return null;
-  return Math.max(MIN_PROCESS_SECONDS, parsed);
+  if (parsed === null) return null;
+  if (parsed <= 0) return 0;
+  return Math.max(0, Math.round(parsed));
 };
 
 const resolveStBucketQuantity = (value) => {
@@ -683,15 +683,14 @@ const runReplaceStyleProcessMaster = (() => {
   const DEFAULT_CUSTOMER_NAME = "TSBR";
   const TIME_REF_QUANTITY = 1000;
   const SEEDED_ST_BUCKETS = [300, TIME_REF_QUANTITY];
-  const MIN_PROCESS_SECONDS = 10;
-  
   const round4 = (value) => Math.round(Number(value || 0) * 10000) / 10000;
   const clampProcessSeconds = (value) => {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return Math.max(MIN_PROCESS_SECONDS, Math.round(parsed * 10000) / 10000);
+    if (!Number.isFinite(parsed)) return null;
+    if (parsed <= 0) return 0;
+    return Math.max(0, Math.round(parsed));
   };
-  const toSeedSeconds = (value) => clampProcessSeconds(value) ?? MIN_PROCESS_SECONDS;
+  const toSeedSeconds = (value) => clampProcessSeconds(value) ?? 0;
   
   const masterProcess = (code, nameEn, nameKo, nameVi) =>
     normalizeProcessNaming({
@@ -4767,7 +4766,8 @@ async function runSampleWorkLogs(options = {}) {
       return {
         workerId: record.workerId,
         workerName: record.workerName,
-        ...(styleUid ? { styleUid } : { styleId: record.styleId }),
+        styleId: record.styleId || null,
+        ...(styleUid ? { styleUid } : {}),
         ...(processId ? { processId } : { processCode: record.processCode }),
         ...(colorId ? { colorId } : record.colorCode ? { colorCode: record.colorCode } : {}),
         ctSeconds: record.ctSeconds,
