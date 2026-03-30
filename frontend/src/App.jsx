@@ -7,8 +7,6 @@ import { AppProvider } from './context/AppContext';
 import { LanguageProvider } from './context/LanguageContext';
 import router from './router';
 import theme from './theme';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
 
 const RouteLoadingFallback = () => (
   <Box
@@ -34,15 +32,13 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AppProvider>
-        <DndProvider backend={HTML5Backend}>
-          <AuthProvider>
-            <LanguageProvider>
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <RouterProvider router={router} />
-              </Suspense>
-            </LanguageProvider>
-          </AuthProvider>
-        </DndProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <Suspense fallback={<RouteLoadingFallback />}>
+              <RouterProvider router={router} />
+            </Suspense>
+          </LanguageProvider>
+        </AuthProvider>
       </AppProvider>
     </ThemeProvider>
   );

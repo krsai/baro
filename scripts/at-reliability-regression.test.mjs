@@ -87,8 +87,8 @@ test('more observations increase reliability even when attendance fallback remai
     marchReliability.percent > februaryReliability.percent,
     `expected March reliability to exceed February (${marchReliability.percent} <= ${februaryReliability.percent})`
   );
-  assert.equal(februaryReliability.status, AT_RELIABILITY_STATUS.FALLBACK);
-  assert.equal(marchReliability.status, AT_RELIABILITY_STATUS.LEARNING);
+  assert.equal(februaryReliability.status, AT_RELIABILITY_STATUS.UNRELIABLE);
+  assert.equal(marchReliability.status, AT_RELIABILITY_STATUS.UNRELIABLE);
 });
 
 test('small samples stay low-confidence', () => {
@@ -114,8 +114,8 @@ test('mature fully-covered samples can become stable', () => {
     attendanceFallbackShare: 0,
   });
   const reliability = resolveProcessAtReliability(stableCandidate);
-  assert.equal(reliability.status, AT_RELIABILITY_STATUS.STABLE);
-  assert.ok(reliability.percent >= 78, `expected stable score, got ${reliability.percent}`);
+  assert.equal(reliability.status, AT_RELIABILITY_STATUS.VERIFIED);
+  assert.ok(reliability.percent >= 95, `expected verified score, got ${reliability.percent}`);
 });
 
 test('style reliability is weighted upward when mature processes dominate', () => {
@@ -141,5 +141,5 @@ test('style reliability is weighted upward when mature processes dominate', () =
   ]);
 
   assert.ok(styleReliability.percent >= 60, `expected mature process weight to dominate, got ${styleReliability.percent}`);
-  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.LEARNING);
+  assert.equal(styleReliability.status, AT_RELIABILITY_STATUS.INSUFFICIENT);
 });

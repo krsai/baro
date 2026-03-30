@@ -9,18 +9,9 @@ import './styles/table.css';
 import './styles/form.css';
 import App from './App';
 
-if (typeof window !== 'undefined' && window.location.pathname === '/auth/callback') {
-  const nextPath = `/login${window.location.search || ''}${window.location.hash || ''}`;
-  window.history.replaceState(null, '', nextPath);
-}
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals

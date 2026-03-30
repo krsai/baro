@@ -11,9 +11,6 @@ export default defineConfig({
           if (!id.includes('node_modules')) return undefined
           if (id.includes('@mui') || id.includes('@emotion')) return 'vendor-mui'
           if (
-            id.includes('react-dnd') ||
-            id.includes('dnd-core') ||
-            id.includes('html5-backend') ||
             id.includes('@dnd-kit') ||
             id.includes('@hello-pangea')
           ) {

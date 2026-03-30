@@ -5096,7 +5096,7 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
     return merged;
   });
 };
-const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|�/;
+const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|\uFFFD/u;
 type AssignmentDisplayReferenceMaps = {
   orderByOrderId: Map<string, any>;
   orderByOrderNo: Map<string, any>;
