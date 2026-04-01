@@ -97,6 +97,8 @@ const fetchStylesFromServer = async (options = {}) => {
     {
       forceRefresh: Boolean(options?.forceRefresh),
       skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+      skipCache: Boolean(options?.skipCache),
+      signal: options?.signal,
     }
   );
   if (!Array.isArray(data)) return [];
@@ -161,6 +163,8 @@ export const fetchStyles = async (options = {}) => {
     compact: Boolean(options?.compact),
     forceRefresh: Boolean(options?.forceRefresh),
     skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+    skipCache: Boolean(options?.skipCache),
+    signal: options?.signal,
   });
   styles.forEach((style) => {
     writeStyleToCache(style, {

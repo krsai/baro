@@ -27,6 +27,10 @@ import {
 } from "./middleware/access";
 import { payrollRouter } from "./payroll/payroll.routes";
 import {
+  getCurrentRequestActor,
+  runWithRequestActor,
+} from "./requestActor";
+import {
   parseDateKeyParts,
   resolveAtTrainingMonthKey,
   shiftMonthKey,
@@ -70,6 +74,67 @@ import {
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use((req, _res, next) =>
+  runWithRequestActor(getRequesterEmail(req), () => next())
+);
+
+const WORK_LOG_RECORD_INCLUDE = {
+  orderBy: { id: "asc" as const },
+  include: {
+    process: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        nameKo: true,
+        nameEn: true,
+        nameVi: true,
+      },
+    },
+    color: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
+const WORK_LOG_DETAIL_RECORD_SELECT = {
+  orderBy: { id: "asc" as const },
+  select: {
+    workerId: true,
+    workerName: true,
+    customerName: true,
+    styleUid: true,
+    styleId: true,
+    styleName: true,
+    processId: true,
+    processCode: true,
+    colorId: true,
+    colorCode: true,
+    assignmentPlanId: true,
+    ctSeconds: true,
+    quantity: true,
+    process: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        nameKo: true,
+        nameEn: true,
+        nameVi: true,
+      },
+    },
+    color: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+      },
+    },
+  },
+};
 
 function assertGeneratedPrismaClientShape() {
   const modelByName = new Map(
@@ -1916,6 +1981,7 @@ const replaceAtTrainingBucketsForMonth = async ({
   drafts: AtTrainingBucketDraft[];
   db?: AtTrainingBucketStoreClient;
 }) => {
+  const actor = getCurrentRequestActor();
   await db.$executeRaw(
     Prisma.sql`DELETE FROM "AtTrainingBucket" WHERE "orgId" = ${orgId} AND "monthKey" = ${trainingMonthKey}`
   );
@@ -1930,6 +1996,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         "factoryId",
         "totalSeconds",
         "attendanceCoverage",
+        "createdBy",
         "createdAt",
         "updatedAt"
       )
@@ -1941,6 +2008,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         ${draft.factoryId},
         ${draft.totalSeconds},
         ${draft.attendanceCoverage},
+        ${actor},
         NOW(),
         NOW()
       )
@@ -1957,6 +2025,7 @@ const replaceAtTrainingBucketsForMonth = async ({
           "styleUid",
           "styleProcessId",
           "quantity",
+          "createdBy",
           "createdAt",
           "updatedAt"
         )
@@ -1969,6 +2038,7 @@ const replaceAtTrainingBucketsForMonth = async ({
               ${processRow.styleUid},
               ${processRow.styleProcessId},
               ${quantity},
+              ${actor},
               NOW(),
               NOW()
             )`;
@@ -4175,6 +4245,9 @@ const resolveWorkLogRecordResponses = (workLog: any) => {
   if (Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0) {
     return workLog.workRecords.map(toWorkRecordResponse);
   }
+  if (Array.isArray(workLog?.records?.rows)) {
+    return ensureArray(workLog.records.rows);
+  }
   return Array.isArray(workLog?.records) ? ensureArray(workLog.records) : [];
 };
 const collectWorkRecordWorkerIds = (records: any): number[] =>
@@ -4685,6 +4758,12 @@ const toWorkRecordResponse = (record: any) => ({
   processId: toPositiveIntOrNull(record?.process?.id ?? record?.processId),
   processCode: record?.process?.code ?? record?.processCode ?? "",
   processName: resolveWorkRecordProcessName(record) ?? "",
+  processNameKo:
+    resolveOptionalString(record?.process?.nameKo ?? record?.processNameKo, null) ?? "",
+  processNameEn:
+    resolveOptionalString(record?.process?.nameEn ?? record?.processNameEn, null) ?? "",
+  processNameVi:
+    resolveOptionalString(record?.process?.nameVi ?? record?.processNameVi, null) ?? "",
   colorId: toPositiveIntOrNull(record?.color?.id ?? record?.colorId),
   colorCode: record?.color?.code ?? record?.colorCode ?? "",
   colorName: resolveWorkRecordColorName(record),
@@ -4763,7 +4842,193 @@ const toWorkLogResponse = (workLog: any) => {
     records: resolveWorkLogRecordResponses(workLog),
     createdAt: workLog.createdAt,
     updatedAt: workLog.updatedAt,
+    updatedBy: resolveOptionalString(workLog.updatedBy, null),
   };
+};
+const toWorkLogContextWorkerResponse = (row: any) => ({
+  id: row?.employee?.id ?? row?.employeeId ?? null,
+  orgMembershipId: row?.employee?.orgMembershipId ?? null,
+  name: resolveOptionalString(row?.employee?.name, "") ?? "",
+  email: resolveOptionalString(row?.employee?.membership?.email, "") ?? "",
+  factoryId: row?.employee?.factoryId ?? null,
+  currentLineId: row?.lineId ?? null,
+});
+const toWorkLogContextAssignmentResponse = (plan: any) => {
+  const normalizedSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  return {
+    dbId: plan?.id ?? null,
+    id: resolveOptionalString(plan?.externalId, "") ?? "",
+    lineId: String(plan?.lineId ?? ""),
+    styleId:
+      resolveOptionalString(plan?.label, null) ??
+      resolveOptionalString(plan?.orderNo, null) ??
+      "",
+    styleCode:
+      resolveOptionalString(plan?.label, null) ??
+      resolveOptionalString(plan?.orderNo, null) ??
+      "",
+    orderNo: resolveOptionalString(plan?.orderNo, "") ?? "",
+    label: resolveOptionalString(plan?.label, "") ?? "",
+    customer: resolveOptionalString(plan?.customer, "") ?? "",
+    colorId: toPositiveIntOrNull(plan?.colorId),
+    colorName: resolveAssignmentPlanColorName(plan),
+    color: resolveOptionalString(plan?.color, "") ?? "",
+    quantity: plan?.quantity ?? null,
+    contractedSeconds: resolveAssignmentContractedSeconds(plan),
+    ctSnapshot: normalizedSnapshot,
+    ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
+    ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
+    startIndex: plan?.startIndex ?? 0,
+    endIndex: plan?.endIndex ?? 0,
+    isCompleted: Boolean(plan?.isCompleted),
+    finalQuantity: plan?.finalQuantity ?? null,
+    completedAt: plan?.completedAt ?? null,
+  };
+};
+const buildWorkLogContextResponse = async ({
+  orgId,
+  factoryId = null,
+  lineId = null,
+  lineName = null,
+  workDate = null,
+}: {
+  orgId: number;
+  factoryId?: number | null;
+  lineId?: number | null;
+  lineName?: string | null;
+  workDate?: string | null;
+}) => {
+  const normalizedLineId = toPositiveIntOrNull(lineId);
+  const normalizedFactoryId = toPositiveIntOrNull(factoryId);
+  const normalizedWorkDate = normalizeDateKey(workDate);
+  if (!normalizedLineId || !normalizedWorkDate) {
+    return {
+      line: normalizedLineId
+        ? {
+            id: normalizedLineId,
+            name: resolveOptionalString(lineName, "") ?? "",
+          }
+        : null,
+      workers: [],
+      assignments: [],
+    };
+  }
+
+  const line = await prisma.line.findFirst({
+    where: {
+      id: normalizedLineId,
+      orgId,
+      ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+    },
+    select: { id: true, name: true, factoryId: true },
+  });
+  if (!line) {
+    return {
+      line: normalizedLineId
+        ? {
+            id: normalizedLineId,
+            name: resolveOptionalString(lineName, "") ?? "",
+          }
+        : null,
+      workers: [],
+      assignments: [],
+    };
+  }
+
+  const dateRange = buildWorkDateRange(normalizedWorkDate);
+  if (!dateRange) {
+    return {
+      line: { id: line.id, name: line.name ?? "" },
+      workers: [],
+      assignments: [],
+    };
+  }
+
+  const [lineAssignments, assignmentPlans] = await Promise.all([
+    prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        startAt: { lte: dateRange.endAt },
+        OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+        employee: {
+          is: {
+            orgId,
+            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+          },
+        },
+      },
+      select: {
+        employeeId: true,
+        lineId: true,
+        employee: {
+          select: {
+            id: true,
+            orgMembershipId: true,
+            name: true,
+            factoryId: true,
+            membership: {
+              select: {
+                email: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ employeeId: "asc" }],
+    }),
+    prisma.assignmentPlan.findMany({
+      where: {
+        orgId,
+        lineId: line.id,
+      },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        orderNo: true,
+        customer: true,
+        label: true,
+        colorId: true,
+        colorName: true,
+        quantity: true,
+        contractedSeconds: true,
+        ctSnapshot: true,
+        color: true,
+        startIndex: true,
+        endIndex: true,
+        isCompleted: true,
+        finalQuantity: true,
+        completedAt: true,
+      },
+      orderBy: [{ startIndex: "asc" }, { id: "asc" }],
+    }),
+  ]);
+
+  return {
+    line: { id: line.id, name: line.name ?? "" },
+    workers: lineAssignments.map(toWorkLogContextWorkerResponse),
+    assignments: assignmentPlans
+      .map(toWorkLogContextAssignmentResponse)
+      .filter((plan) => Boolean(plan?.ctSnapshot?.totalCtSeconds)),
+  };
+};
+const resolveWorkLogUpdatedBy = async (orgId: number, req: Request): Promise<string | null> => {
+  const requesterEmail = resolveOptionalString(getRequesterEmail(req), null);
+  if (!requesterEmail) return null;
+
+  const membership = await prisma.orgMembership.findFirst({
+    where: {
+      orgId,
+      email: requesterEmail,
+    },
+    include: {
+      employee: true,
+    },
+  });
+
+  const employeeName = resolveOptionalString(membership?.employee?.name, null);
+  if (employeeName) return employeeName;
+  return requesterEmail;
 };
 const toOptionalNonNegativeInt = (value: any, fallback: any = null) => {
   if (value === undefined) return fallback;
@@ -4839,6 +5104,18 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
         value?.name ?? value?.processName ?? value?.label,
         null
       ) ?? `공정 ${index + 1}`,
+    nameKo: resolveOptionalString(
+      value?.nameKo ?? value?.processNameKo ?? value?.labelKo,
+      null
+    ),
+    nameEn: resolveOptionalString(
+      value?.nameEn ?? value?.processNameEn ?? value?.labelEn,
+      null
+    ),
+    nameVi: resolveOptionalString(
+      value?.nameVi ?? value?.processNameVi ?? value?.labelVi,
+      null
+    ),
     quantity,
     basis: resolveOptionalString(value?.basis, null),
     stSeconds,
@@ -6801,6 +7078,7 @@ const insertProcessMasterOptions = async (
   }>
 ) => {
   if (rows.length === 0) return;
+  const actor = getCurrentRequestActor();
   await prisma.$executeRaw(Prisma.sql`
     INSERT INTO "ProcessMasterOption" (
       "type",
@@ -6810,6 +7088,7 @@ const insertProcessMasterOptions = async (
       "nameEn",
       "nameVi",
       "sortOrder",
+      "createdBy",
       "createdAt",
       "updatedAt"
     )
@@ -6822,6 +7101,7 @@ const insertProcessMasterOptions = async (
         ${row.nameEn || null},
         ${row.nameVi || null},
         ${row.sortOrder},
+        ${actor},
         NOW(),
         NOW()
       )`)
@@ -9101,6 +9381,9 @@ app.get("/work-logs", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
+  const includeRecords = !(
+    req.query.includeRecords === "0" || req.query.includeRecords === "false"
+  );
 
   const factoryId = Number(req.query.factoryId);
   const hasFactoryFilter = Number.isFinite(factoryId);
@@ -9136,13 +9419,43 @@ app.get("/work-logs", async (req, res) => {
       ...(hasFactoryFilter ? { factoryId } : {}),
       ...workDateFilter,
     },
-    include: {
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
-    },
+    ...(includeRecords
+      ? {
+          include: {
+            workRecords: WORK_LOG_RECORD_INCLUDE,
+          },
+        }
+      : {}),
     orderBy: [{ workDate: "desc" }, { id: "desc" }],
   });
 
   res.json(workLogs.map(toWorkLogResponse));
+});
+
+app.get("/work-log-context", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const lineId = toPositiveIntOrNull(req.query.lineId);
+  const factoryId = toPositiveIntOrNull(req.query.factoryId);
+  const workDate = normalizeDateKey(req.query.workDate);
+  if (!lineId) {
+    return res.status(400).json({ ok: false, error: "lineId is required" });
+  }
+  if (!workDate) {
+    return res.status(400).json({ ok: false, error: "invalid workDate" });
+  }
+
+  const context = await buildWorkLogContextResponse({
+    orgId: organization.id,
+    factoryId,
+    lineId,
+    workDate,
+  });
+
+  res.json(context);
 });
 
 app.get("/work-logs/:id", async (req, res) => {
@@ -9156,17 +9469,55 @@ app.get("/work-logs/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
-  const workLog = await prisma.workLog.findFirst({
+  const includeContext =
+    req.query.includeContext === "1" || req.query.includeContext === "true";
+
+  const baseWorkLog = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
-    include: {
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
+    select: {
+      id: true,
+      workDate: true,
+      factoryId: true,
+      factoryName: true,
+      factoryWagePerSecond: true,
+      ctBasis: true,
+      workerCount: true,
+      itemCount: true,
+      totalContractedSeconds: true,
+      note: true,
+      records: true,
+      createdAt: true,
+      updatedAt: true,
+      updatedBy: true,
+      workRecords: WORK_LOG_DETAIL_RECORD_SELECT,
     },
   });
-  if (!workLog) {
+  if (!baseWorkLog) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
 
-  res.json(toWorkLogResponse(workLog));
+  const lineMeta = resolveWorkLogLineMeta(baseWorkLog?.records);
+  const context = includeContext
+    ? await buildWorkLogContextResponse({
+        orgId: organization.id,
+        factoryId: toPositiveIntOrNull(baseWorkLog.factoryId),
+        lineId: toPositiveIntOrNull(lineMeta.lineId),
+        lineName: resolveOptionalString(lineMeta.lineName, null),
+        workDate: baseWorkLog.workDate,
+      })
+    : null;
+
+  const response = toWorkLogResponse({
+    ...baseWorkLog,
+  });
+  if (!includeContext) {
+    return res.json(response);
+  }
+
+  res.json({
+    ...response,
+    context,
+  });
 });
 
 app.post("/work-logs", async (req, res) => {
@@ -9239,6 +9590,7 @@ app.post("/work-logs", async (req, res) => {
       .status(quantityValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(quantityValidation.error) });
   }
+  const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
 
   const created = await prisma.$transaction(async (tx) => {
     const {
@@ -9252,6 +9604,7 @@ app.post("/work-logs", async (req, res) => {
       data: {
         orgId: organization.id,
         ...workLogData,
+        updatedBy,
         records: {
           lineId: lineValidation.line?.id ?? null,
           lineName: lineValidation.line?.name ?? null,
@@ -9386,6 +9739,7 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(quantityValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(quantityValidation.error) });
   }
+  const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
 
   const updated = await prisma.$transaction(async (tx) => {
     const {
@@ -9399,6 +9753,7 @@ app.put("/work-logs/:id", async (req, res) => {
       where: { id: existing.id },
       data: {
         ...workLogData,
+        updatedBy,
         records: {
           lineId: lineValidation.line?.id ?? null,
           lineName: lineValidation.line?.name ?? null,

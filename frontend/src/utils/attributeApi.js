@@ -250,7 +250,11 @@ export const fetchAttributes = async (options = {}) => {
         includeRoles: includeRoles ? undefined : 0,
         includeProcesses: includeProcesses ? undefined : 0,
       })}`,
-      { skipGlobalLoading, requestScheduler }
+      {
+        skipGlobalLoading,
+        requestScheduler,
+        signal: options?.signal,
+      }
     );
     writeAttributesCache(cacheKey, data);
     return normalizeAttributes(data);

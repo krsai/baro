@@ -33,6 +33,9 @@ export const WORK_RECORD_WITH_REFS_INCLUDE = {
         id: true,
         code: true,
         name: true,
+        nameKo: true,
+        nameEn: true,
+        nameVi: true,
       },
     },
     color: {

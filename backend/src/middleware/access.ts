@@ -31,7 +31,7 @@ type RequireOrgRoleOptions = OrganizationAccessOptions & {
   allowSystemAdmin?: boolean;
 };
 
-const ORG_ACCESS_CACHE_TTL_MS = 5_000;
+const ORG_ACCESS_CACHE_TTL_MS = 60_000;
 const MAX_ORG_ACCESS_CACHE_SIZE = 512;
 const organizationAccessCache = new Map<
   string,

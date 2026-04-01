@@ -1,63 +1,60 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
+import { CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
-import { getUiMessage } from '../../../constants/uiMessages';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import WorkDetail from './WorkDetail';
-import { appendWorkLog, findWorkLogById, loadWorkLogs, updateWorkLog } from './workLogStorage';
+import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage';
 
-const normalizeWorkLogId = (value) => String(value || '').trim();
-const normalizeWorkDateKey = (value) => {
-  const normalized = String(value || '').trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
-};
-const buildFactoryDateCacheKey = (factoryId, workDate) => {
-  const normalizedFactoryId = Number(factoryId);
-  const normalizedWorkDate = normalizeWorkDateKey(workDate);
-  if (!Number.isFinite(normalizedFactoryId) || normalizedFactoryId <= 0 || !normalizedWorkDate) {
-    return '';
-  }
-  return `${normalizedFactoryId}:${normalizedWorkDate}`;
-};
-
-const WORK_ENTRY_TEXT = {
-  detailLabel: { ko: '기록 상세', en: 'Log Detail', vi: 'Chi tiet ghi chep' },
+const TEXT = {
+  detailTitle: {
+    ko: '기록 상세',
+    en: 'Log Detail',
+    vi: 'Chi tiet ghi chep',
+  },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
     en: 'Log not found.',
     vi: 'Khong tim thay ghi chep.',
   },
-  fetchError: {
-    ko: '기록 조회에 실패했습니다.',
-    en: 'Failed to load log.',
+  loadError: {
+    ko: '기록을 불러오지 못했습니다.',
+    en: 'Failed to load the log.',
     vi: 'Khong the tai ghi chep.',
   },
-  updateError: {
-    ko: '기록 수정에 실패했습니다.',
-    en: 'Failed to update log.',
-    vi: 'Khong the cap nhat ghi chep.',
+  saveSuccess: {
+    ko: '기록을 저장했습니다.',
+    en: 'Log saved.',
+    vi: 'Da luu ghi chep.',
   },
   updateSuccess: {
     ko: '기록을 수정했습니다.',
     en: 'Log updated.',
     vi: 'Da cap nhat ghi chep.',
   },
-  createSuccess: {
-    ko: '기록을 저장했습니다.',
-    en: 'Log saved.',
-    vi: 'Da luu ghi chep.',
-  },
   saveError: {
     ko: '기록 저장에 실패했습니다.',
-    en: 'Failed to save log.',
+    en: 'Failed to save the log.',
     vi: 'Khong the luu ghi chep.',
+  },
+  loading: {
+    ko: '기록 상세를 불러오는 중입니다.',
+    en: 'Loading log detail...',
+    vi: 'Dang tai chi tiet ghi chep.',
   },
 };
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
+
+const normalizeWorkLogId = (value) => String(value || '').trim();
+const buildWorkListTabLabel = (languageCode) => {
+  if (languageCode === 'en') return 'Log List';
+  if (languageCode === 'vi') return 'Danh sach ghi chep';
+  return '기록 목록';
+};
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
@@ -69,63 +66,25 @@ const WorkEntry = () => {
   const isEditMode = Boolean(routeWorkLogId) && routeWorkLogId !== 'new';
 
   const [loading, setLoading] = useState(Boolean(isEditMode));
+  const [saving, setSaving] = useState(false);
   const [existingLog, setExistingLog] = useState(null);
-  const [workLogsByFactoryDateKey, setWorkLogsByFactoryDateKey] = useState({});
-  const [workLogDetailsById, setWorkLogDetailsById] = useState({});
-  const [switchingLogId, setSwitchingLogId] = useState('');
-
-  const displayedWorkLogId = normalizeWorkLogId(existingLog?.id);
-  const currentFactoryId = Number(existingLog?.factoryId);
-  const currentWorkDateKey = normalizeWorkDateKey(existingLog?.workDate);
-  const currentFactoryDateKey = buildFactoryDateCacheKey(currentFactoryId, currentWorkDateKey);
-  const cachedCurrentLog = routeWorkLogId ? workLogDetailsById[routeWorkLogId] || null : null;
-  const cachedFactoryDateLogs = currentFactoryDateKey
-    ? workLogsByFactoryDateKey[currentFactoryDateKey]
-    : undefined;
-
-  const cacheWorkLogDetail = useCallback((record) => {
-    const nextWorkLogId = normalizeWorkLogId(record?.id);
-    if (!nextWorkLogId) return null;
-
-    setWorkLogDetailsById((prev) => {
-      if (prev[nextWorkLogId] === record) return prev;
-      return {
-        ...prev,
-        [nextWorkLogId]: record,
-      };
-    });
-
-    return record;
-  }, []);
+  const [existingContext, setExistingContext] = useState(null);
 
   const closeEntry = useCallback(() => {
-    if (isEditMode && routeWorkLogId) {
-      navigateToPath('/work-history', {
-        label: getUiMessage('menu.workHistory', 'Logs', languageCode),
-        closeTabId: `/work-history/${routeWorkLogId}`,
-      });
-      return;
-    }
+    const closeTabId = isEditMode && routeWorkLogId
+      ? `/work-history/${routeWorkLogId}`
+      : '/work-history/new';
+
     navigateToPath('/work-history', {
-      label: getUiMessage('menu.workHistory', 'Logs', languageCode),
-      closeTabId: '/work-history/new',
+      label: buildWorkListTabLabel(languageCode),
+      closeTabId,
     });
   }, [isEditMode, languageCode, navigateToPath, routeWorkLogId]);
 
   useEffect(() => {
     if (!isEditMode) {
-      setLoading(false);
       setExistingLog(null);
-      setWorkLogsByFactoryDateKey({});
-      setWorkLogDetailsById({});
-      setSwitchingLogId('');
-      return;
-    }
-
-    if (cachedCurrentLog) {
-      setExistingLog((prev) =>
-        normalizeWorkLogId(prev?.id) === routeWorkLogId ? prev : cachedCurrentLog
-      );
+      setExistingContext(null);
       setLoading(false);
       return;
     }
@@ -136,25 +95,28 @@ const WorkEntry = () => {
       try {
         const record = await findWorkLogById(routeWorkLogId, {
           orgId: activeOrgId,
+          skipGlobalLoading: true,
+          requestTimeoutMs: 15000,
         });
+
         if (cancelled) return;
         if (!record) {
-          showNotification(resolveText(WORK_ENTRY_TEXT.notFound, languageCode, 'Log not found.'), 'error');
+          showNotification(resolveText(TEXT.notFound, languageCode, '기록을 찾을 수 없습니다.'), 'error');
           closeEntry();
           return;
         }
-        cacheWorkLogDetail(record);
+
         setExistingLog(record);
+        setExistingContext(null);
       } catch (_error) {
         if (!cancelled) {
-          showNotification(
-            resolveText(WORK_ENTRY_TEXT.fetchError, languageCode, 'Failed to load log.'),
-            'error'
-          );
+          showNotification(resolveText(TEXT.loadError, languageCode, '기록을 불러오지 못했습니다.'), 'error');
           closeEntry();
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
@@ -162,205 +124,75 @@ const WorkEntry = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    activeOrgId,
-    cacheWorkLogDetail,
-    cachedCurrentLog,
-    closeEntry,
-    isEditMode,
-    languageCode,
-    routeWorkLogId,
-    showNotification,
-  ]);
-
-  useEffect(() => {
-    if (!currentFactoryDateKey) return undefined;
-    if (Array.isArray(cachedFactoryDateLogs)) return undefined;
-
-    let cancelled = false;
-    loadWorkLogs({
-      orgId: activeOrgId,
-      factoryId: currentFactoryId,
-      workDate: currentWorkDateKey,
-    })
-      .then((rows) => {
-        if (cancelled) return;
-        setWorkLogsByFactoryDateKey((prev) => ({
-          ...prev,
-          [currentFactoryDateKey]: Array.isArray(rows) ? rows : [],
-        }));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setWorkLogsByFactoryDateKey((prev) => ({
-          ...prev,
-          [currentFactoryDateKey]: [],
-        }));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeOrgId, cachedFactoryDateLogs, currentFactoryDateKey, currentFactoryId, currentWorkDateKey]);
-
-  useEffect(() => {
-    if (!switchingLogId) return;
-    if (switchingLogId !== routeWorkLogId) return;
-    if (switchingLogId !== displayedWorkLogId) return;
-    if (loading) return;
-    setSwitchingLogId('');
-  }, [displayedWorkLogId, loading, routeWorkLogId, switchingLogId]);
+  }, [activeOrgId, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]);
 
   const handleSave = useCallback(
     async (payload) => {
+      setSaving(true);
       try {
         if (isEditMode && routeWorkLogId) {
           const updated = await updateWorkLog(routeWorkLogId, payload, { orgId: activeOrgId });
           if (!updated) {
-            showNotification(
-              resolveText(WORK_ENTRY_TEXT.updateError, languageCode, 'Failed to update log.'),
-              'error'
-            );
+            showNotification(resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'), 'error');
             return;
           }
-          cacheWorkLogDetail(updated);
-          showNotification(
-            resolveText(WORK_ENTRY_TEXT.updateSuccess, languageCode, 'Log updated.'),
-            'success'
-          );
+          showNotification(resolveText(TEXT.updateSuccess, languageCode, '기록을 수정했습니다.'), 'success');
           closeEntry();
           return;
         }
 
         const created = await appendWorkLog(payload, { orgId: activeOrgId });
-        if (created?.id) {
-          cacheWorkLogDetail(created);
+        if (!created?.id) {
+          showNotification(resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'), 'error');
+          return;
         }
-        showNotification(
-          resolveText(WORK_ENTRY_TEXT.createSuccess, languageCode, 'Log saved.'),
-          'success'
-        );
+
+        showNotification(resolveText(TEXT.saveSuccess, languageCode, '기록을 저장했습니다.'), 'success');
         closeEntry();
       } catch (error) {
         showNotification(
-          error?.message || resolveText(WORK_ENTRY_TEXT.saveError, languageCode, 'Failed to save log.'),
+          error?.message || resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'),
           'error'
         );
-      }
-    },
-    [activeOrgId, cacheWorkLogDetail, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]
-  );
-
-  const handleSelectionContextChange = useCallback(
-    async ({ factoryId, lineId, workDate, workLogId: activeWorkLogId }) => {
-      if (!isEditMode) return;
-      const workDateKey = normalizeWorkDateKey(workDate);
-      if (!factoryId || !lineId || !workDateKey) return;
-      const cacheKey = buildFactoryDateCacheKey(factoryId, workDateKey);
-      if (!cacheKey) return;
-
-      const currentVisibleWorkLogId = normalizeWorkLogId(
-        activeWorkLogId || displayedWorkLogId || routeWorkLogId
-      );
-      if (!currentVisibleWorkLogId) return;
-
-      try {
-        const cachedLogs = workLogsByFactoryDateKey[cacheKey];
-        const logs = Array.isArray(cachedLogs)
-          ? cachedLogs
-          : await loadWorkLogs({
-              orgId: activeOrgId,
-              factoryId,
-              workDate: workDateKey,
-            });
-
-        if (!Array.isArray(cachedLogs)) {
-          setWorkLogsByFactoryDateKey((prev) => ({
-            ...prev,
-            [cacheKey]: Array.isArray(logs) ? logs : [],
-          }));
-        }
-
-        const matchedLog = logs.find(
-          (log) =>
-            String(log?.workDate || '').trim() === workDateKey &&
-            Number(log?.lineId) === Number(lineId)
-        );
-        if (!matchedLog?.id) return;
-
-        const matchedLogId = normalizeWorkLogId(matchedLog.id);
-        if (
-          !matchedLogId ||
-          matchedLogId === currentVisibleWorkLogId ||
-          matchedLogId === switchingLogId
-        ) {
-          return;
-        }
-
-        setSwitchingLogId(matchedLogId);
-        setLoading(true);
-
-        const cachedDetail = workLogDetailsById[matchedLogId];
-        const targetRecord =
-          cachedDetail ||
-          (await findWorkLogById(matchedLogId, {
-            orgId: activeOrgId,
-          }));
-
-        if (!targetRecord?.id) {
-          setSwitchingLogId('');
-          return;
-        }
-
-        cacheWorkLogDetail(targetRecord);
-        setExistingLog(targetRecord);
-
-        navigateToPath(`/work-history/${matchedLogId}`, {
-          label: resolveText(WORK_ENTRY_TEXT.detailLabel, languageCode, 'Log Detail'),
-        });
-      } catch (_error) {
-        setSwitchingLogId('');
       } finally {
-        setLoading(false);
+        setSaving(false);
       }
     },
-    [
-      activeOrgId,
-      cacheWorkLogDetail,
-      displayedWorkLogId,
-      isEditMode,
-      languageCode,
-      navigateToPath,
-      routeWorkLogId,
-      switchingLogId,
-      workLogDetailsById,
-      workLogsByFactoryDateKey,
-    ]
+    [activeOrgId, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]
   );
 
-  const hasExistingLog = Boolean(existingLog?.id);
-  const isInitialLoading = loading && isEditMode && !hasExistingLog;
-  const isLogSwitching = useMemo(() => {
-    if (switchingLogId) return true;
-    if (!loading || !isEditMode || !hasExistingLog) return false;
-    return displayedWorkLogId !== routeWorkLogId;
-  }, [displayedWorkLogId, hasExistingLog, isEditMode, loading, routeWorkLogId, switchingLogId]);
-
-  if (isInitialLoading) {
-    return <AppPageContainer />;
+  if (loading) {
+    return (
+      <AppPageContainer title={resolveText(TEXT.detailTitle, languageCode, '기록 상세')}>
+        <Paper
+          variant="outlined"
+          sx={{
+            minHeight: 280,
+            borderRadius: 2.5,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Stack spacing={1.5} alignItems="center">
+            <CircularProgress size={28} />
+            <Typography variant="body2" color="text.secondary">
+              {resolveText(TEXT.loading, languageCode, '기록 상세를 불러오는 중입니다.')}
+            </Typography>
+          </Stack>
+        </Paper>
+      </AppPageContainer>
+    );
   }
 
   return (
-    <AppPageContainer>
-      <WorkDetail
-        mode="page"
-        initialLog={existingLog}
-        isLogSwitching={isLogSwitching}
-        onClose={closeEntry}
-        onSave={handleSave}
-        onSelectionContextChange={handleSelectionContextChange}
-      />
-    </AppPageContainer>
+    <WorkDetail
+      initialLog={existingLog}
+      initialContext={existingContext}
+      loading={loading}
+      saving={saving}
+      onSave={handleSave}
+    />
   );
 };
 

@@ -44,6 +44,9 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   return {
     processKey,
     name: String(process.name || process.processName || `공정 ${index + 1}`).trim() || `공정 ${index + 1}`,
+    nameKo: String(process.nameKo || process.processNameKo || '').trim(),
+    nameEn: String(process.nameEn || process.processNameEn || '').trim(),
+    nameVi: String(process.nameVi || process.processNameVi || '').trim(),
     quantity,
     basis: String(process.basis || '').trim() || null,
     stSeconds: toOptionalProcessSeconds(process.stSeconds),

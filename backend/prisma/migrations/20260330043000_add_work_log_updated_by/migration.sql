@@ -1,0 +1,2 @@
+ALTER TABLE "WorkLog"
+ADD COLUMN IF NOT EXISTS "updatedBy" TEXT;

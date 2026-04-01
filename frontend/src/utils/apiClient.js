@@ -412,7 +412,9 @@ export const requestJSON = async (path, options = {}) => {
   const method = String(requestOptions.method || 'GET')
     .trim()
     .toUpperCase();
+  const hasExternalAbortSignal = Boolean(requestOptions.signal);
   const shouldUseCache = method === 'GET' && !skipCache;
+  const shouldShareInFlight = shouldUseCache && !hasExternalAbortSignal;
   const normalizedCacheTtl = Number(cacheTtlMs);
   const effectiveCacheTtl =
     Number.isFinite(normalizedCacheTtl) && normalizedCacheTtl > 0
@@ -446,10 +448,12 @@ export const requestJSON = async (path, options = {}) => {
       if (cached && cached.expiresAt > Date.now()) {
         return cloneResponseData(cached.data);
       }
-      const inFlight = inFlightGetRequests.get(inFlightKey);
-      if (inFlight) {
-        const shared = await inFlight;
-        return cloneResponseData(shared);
+      if (shouldShareInFlight) {
+        const inFlight = inFlightGetRequests.get(inFlightKey);
+        if (inFlight) {
+          const shared = await inFlight;
+          return cloneResponseData(shared);
+        }
       }
     }
   }
@@ -594,7 +598,9 @@ export const requestJSON = async (path, options = {}) => {
         run: execute,
       })
     : execute();
-  inFlightGetRequests.set(inFlightKey, networkPromise);
+  if (shouldShareInFlight) {
+    inFlightGetRequests.set(inFlightKey, networkPromise);
+  }
   try {
     const data = await networkPromise;
     getResponseCache.set(cacheKey, {
@@ -603,6 +609,8 @@ export const requestJSON = async (path, options = {}) => {
     });
     return cloneResponseData(data);
   } finally {
-    inFlightGetRequests.delete(inFlightKey);
+    if (shouldShareInFlight) {
+      inFlightGetRequests.delete(inFlightKey);
+    }
   }
 };

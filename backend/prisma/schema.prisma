@@ -85,6 +85,7 @@ model SystemUser {
   email      String     @unique
   systemRole SystemRole @default(USER)
   createdAt  DateTime   @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt  DateTime   @updatedAt
 }
 
@@ -98,6 +99,7 @@ model ProcessMasterOption {
   nameVi    String?
   sortOrder Int                     @default(0)
   createdAt DateTime                @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt DateTime                @updatedAt
 
   @@unique([type, code])
@@ -120,6 +122,7 @@ model Organization {
   wagePerSecond     Float?
   type           OrganizationType @default(MANUFACTURER)
   createdAt      DateTime         @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt      DateTime         @updatedAt
 
   categories                AttrCategory[]
@@ -168,6 +171,7 @@ model OnboardingRequest {
   rejectionReason    String?
   organizationId     Int?
   createdAt          DateTime                @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt          DateTime                @updatedAt
 
   organization Organization? @relation(fields: [organizationId], references: [id])
@@ -189,6 +193,7 @@ model OrganizationSubscription {
   activeEndsAt    DateTime?
   suspendedAt     DateTime?
   createdAt       DateTime                       @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt       DateTime                       @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
@@ -206,6 +211,7 @@ model OrgMembership {
   approvedAt  DateTime?
   approvedBy  String?
   createdAt   DateTime            @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt   DateTime            @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
@@ -230,6 +236,7 @@ model Factory {
   targetMonthlyWage Float?
   wagePerSecond     Float?
   createdAt         DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt
 
   organization      Organization      @relation(fields: [orgId], references: [id])
@@ -248,6 +255,7 @@ model Line {
   managerEmployeeId Int?
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt
 
   organization    Organization     @relation(fields: [orgId], references: [id])
@@ -279,6 +287,7 @@ model Employee {
   leaveStartAt      DateTime?
   leaveEndAt        DateTime?
   createdAt         DateTime  @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt         DateTime  @updatedAt
 
   organization      Organization      @relation(fields: [orgId], references: [id])
@@ -305,6 +314,7 @@ model AttendanceEntry {
   workedSeconds Int?
   note          String?
   createdAt     DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt     DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
@@ -342,6 +352,7 @@ model OrgRelationship {
   managerEmail      String?
   memo              String?
   createdAt         DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt         DateTime @updatedAt
 
   manufacturer Organization @relation("ManufacturerOrgRelationships", fields: [manufacturerOrgId], references: [id])
@@ -428,6 +439,7 @@ model Style {
   bom              Json?
   bomNotes         String?
   createdAt        DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt        DateTime @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
@@ -453,6 +465,7 @@ model StyleProcess {
   ptSeconds          Float?
   atParams           Json?
   createdAt          DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt          DateTime @updatedAt
 
   organization Organization          @relation(fields: [orgId], references: [id])
@@ -493,6 +506,7 @@ model AtTrainingBucket {
   totalSeconds       Int
   attendanceCoverage Float?
   createdAt          DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt          DateTime @updatedAt
 
   organization Organization             @relation(fields: [orgId], references: [id])
@@ -511,6 +525,7 @@ model AtTrainingBucketProcess {
   styleProcessId Int
   quantity       Int
   createdAt      DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt      DateTime @updatedAt
 
   organization Organization     @relation(fields: [orgId], references: [id])
@@ -541,6 +556,7 @@ model WorkOrder {
   items         Json?
   totalQuantity Int             @default(0)
   createdAt     DateTime        @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt     DateTime        @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
@@ -568,6 +584,7 @@ model WorkOrderItem {
   totalQuantity  Int                  @default(0)
   sortOrder      Int                  @default(0)
   createdAt      DateTime             @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt      DateTime             @updatedAt
 
   workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
@@ -610,6 +627,7 @@ model AssignmentPlan {
   finalQuantity         Int?
   completedAt           DateTime?
   createdAt             DateTime  @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt             DateTime
 
   line         Line         @relation(fields: [lineId], references: [id])
@@ -635,7 +653,9 @@ model WorkLog {
   totalContractedSeconds Int      @default(0)
   note                   String?
   records                Json?
+  updatedBy              String?
   createdAt              DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt              DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
@@ -663,6 +683,7 @@ model WorkRecord {
   ctSeconds        Int      @default(0)
   quantity         Int      @default(0)
   createdAt        DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt        DateTime @updatedAt
 
   organization   Organization    @relation(fields: [orgId], references: [id])
@@ -690,6 +711,7 @@ model PayrollSnapshot {
   lockedAt  DateTime
   lockedBy  String
   createdAt DateTime @default(now())
+  createdBy String   @default("system@baro.local")
 
   organization Organization @relation(fields: [orgId], references: [id])
 
@@ -703,6 +725,7 @@ model AssignmentBoardState {
   cards       Json?
   assignments Json?
   createdAt   DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt   DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])
@@ -717,6 +740,7 @@ model AssignmentCard {
   sortOrder Int      @default(0)
   payload   Json
   createdAt DateTime @default(now())
+  createdBy String   @default("system@baro.local")
   updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [orgId], references: [id])

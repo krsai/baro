@@ -530,38 +530,57 @@ const MainLayout = () => {
       ),
     [menuItems]
   );
+  const resolveWorkHistoryTabLabel = React.useCallback(
+    (kind = 'list') => {
+      const baseLabel = getUiMessage('menu.workHistory', 'Work History', languageCode);
+      const suffixByKind =
+        languageCode === 'ko'
+          ? { list: '목록', new: '신규', detail: '상세' }
+          : languageCode === 'vi'
+            ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
+            : { list: 'List', new: 'New', detail: 'Detail' };
+      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
+      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
+      return `${baseLabel} - ${suffixByKind.list}`;
+    },
+    [languageCode]
+  );
   const resolveTabLabel = React.useCallback(
     (path) => {
       if (path === '/profile') {
-        return getUiMessage('menu.profile', '개인 정보', languageCode);
+        return getUiMessage('menu.profile', 'Profile', languageCode);
+      }
+      if (path === '/work-history') {
+        return resolveWorkHistoryTabLabel('list');
       }
       if (path === '/work-history/new') {
-        return getUiMessage('menu.workHistory', '기록', languageCode);
+        return resolveWorkHistoryTabLabel('new');
       }
       if (path.startsWith('/work-history/') && path !== '/work-history') {
-        return getUiMessage('menu.workHistory', '기록', languageCode);
+        return resolveWorkHistoryTabLabel('detail');
       }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||
         flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
       return matchedMenu?.label || path;
     },
-    [flattenedMenuItems, languageCode]
+    [flattenedMenuItems, languageCode, resolveWorkHistoryTabLabel]
   );
   const resolveRenderedTabLabel = React.useCallback(
     (tab) => {
       const tabPath = toPathname(tab?.id || tab?.path || '');
       if (!tabPath) return tab?.label || '';
 
-      const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
-      if (exactMenuItem?.label) return exactMenuItem.label;
-
       if (tabPath === '/profile') {
-        return getUiMessage('menu.profile', '개인 정보', languageCode);
+        return getUiMessage('menu.profile', 'Profile', languageCode);
+      }
+
+      if (tabPath === '/work-history') {
+        return resolveWorkHistoryTabLabel('list');
       }
 
       if (tabPath === '/work-history/new') {
-        return getUiMessage('menu.workHistory', '기록', languageCode);
+        return resolveWorkHistoryTabLabel('new');
       }
 
       if (
@@ -573,12 +592,15 @@ const MainLayout = () => {
         return tab.label;
       }
       if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
-        return getUiMessage('menu.workHistory', '기록', languageCode);
+        return resolveWorkHistoryTabLabel('detail');
       }
+
+      const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
+      if (exactMenuItem?.label) return exactMenuItem.label;
 
       return tab?.label || '';
     },
-    [flattenedMenuItems, languageCode]
+    [flattenedMenuItems, languageCode, resolveWorkHistoryTabLabel]
   );
   const tabsForRender = useMemo(() => {
     if (
@@ -761,27 +783,7 @@ const MainLayout = () => {
 
   useEffect(() => {
     openTabs.forEach((tab) => {
-      const matchedMenu = flattenedMenuItems.find((item) => item.path === tab.id);
-      const nextLabel = matchedMenu?.label || (() => {
-        if (tab.id === '/profile') {
-          return getUiMessage('menu.profile', '개인 정보', languageCode);
-        }
-        if (tab.id === '/work-history/new') {
-          return getUiMessage('menu.workHistory', '기록', languageCode);
-        }
-        if (
-          tab.id.startsWith('/work-history/') &&
-          tab.id !== '/work-history' &&
-          typeof tab.label === 'string' &&
-          tab.label.trim()
-        ) {
-          return tab.label;
-        }
-        if (tab.id.startsWith('/work-history/') && tab.id !== '/work-history') {
-          return getUiMessage('menu.workHistory', '기록', languageCode);
-        }
-        return '';
-      })();
+      const nextLabel = resolveRenderedTabLabel(tab);
       if (!nextLabel) return;
       if (tab.label === nextLabel) return;
       openTab({
@@ -790,7 +792,7 @@ const MainLayout = () => {
         path: tab.path || tab.id,
       });
     });
-  }, [flattenedMenuItems, languageCode, openTab, openTabs]);
+  }, [openTab, openTabs, resolveRenderedTabLabel]);
 
   useEffect(() => {
     if (
@@ -1341,5 +1343,4 @@ const MainLayout = () => {
 };
 
 export default MainLayout;
-
 
