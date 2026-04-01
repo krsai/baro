@@ -48,7 +48,10 @@ import {
   formatDivergencePercentLabel,
   resolveDivergenceMeta,
 } from '../../../../utils/timeDivergence';
-import { formatProcessLabelWithQuantity } from '../../../../utils/processDisplay';
+import {
+  formatProcessLabelWithQuantity,
+  resolveLocalizedProcessName,
+} from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
   process: null,
@@ -141,8 +144,8 @@ const normalizeProcessOption = (item) => {
   const nameEn = String(item?.nameEn ?? item?.processNameEn ?? '').trim();
   const nameVi = String(item?.nameVi ?? item?.processNameVi ?? '').trim();
   const baseName = String(item?.name ?? item?.processName ?? '').trim();
-  const name = baseName || nameEn || nameKo || nameVi;
-  const displayName = String(item?.displayName ?? name ?? code).trim();
+  const name = nameEn || nameKo || nameVi || baseName;
+  const displayName = String(item?.displayName ?? nameKo ?? nameEn ?? nameVi ?? name ?? code).trim();
   if (!code && !name) return null;
   return {
     id: item?.id ?? null,
@@ -178,7 +181,7 @@ const createInstanceId = (process) =>
     .toString(36)
     .slice(2, 8)}`;
 const toProcessOptionLabel = (process) =>
-  `[${process?.code || ''}] ${process?.displayName || process?.name || ''}`.trim();
+  `${process?.displayName || process?.name || process?.code || ''}`.trim();
 const compareProcessOptionTextAsc = (left, right) =>
   toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right));
 
@@ -267,7 +270,16 @@ const buildProcessPayload = (
     ...(existingProcess || {}),
     id: draft.process?.id ?? existingProcess?.id,
     code: draft.process?.code ?? existingProcess?.code,
-    name: draft.process?.name ?? existingProcess?.name,
+    name:
+      draft.process?.nameEn ??
+      draft.process?.displayName ??
+      draft.process?.nameKo ??
+      draft.process?.nameVi ??
+      draft.process?.name ??
+      existingProcess?.name,
+    nameKo: draft.process?.nameKo ?? existingProcess?.nameKo,
+    nameEn: draft.process?.nameEn ?? existingProcess?.nameEn,
+    nameVi: draft.process?.nameVi ?? existingProcess?.nameVi,
     description: draft.process?.description ?? existingProcess?.description,
     quantity: processQuantity,
     timeRefQuantity: resolvedTimeRefQuantity,
@@ -354,6 +366,16 @@ const StyleProcess = ({
     safeProcesses.forEach((process) => {
       const identity = getProcessIdentity(process);
       if (!identity || byIdentity.has(identity)) return;
+      const localizedDisplayName = resolveLocalizedProcessName(
+        {
+          code: process.code,
+          name: process.name,
+          nameKo: process.nameKo,
+          nameEn: process.nameEn,
+          nameVi: process.nameVi,
+        },
+        languageCode
+      );
       byIdentity.set(identity, {
         id: process.id,
         code: process.code,
@@ -361,12 +383,16 @@ const StyleProcess = ({
         nameKo: process.nameKo,
         nameEn: process.nameEn,
         nameVi: process.nameVi,
+        displayName:
+          localizedDisplayName ||
+          process.name ||
+          process.code,
         description: process.description || '',
         actualTime: process.actualTime ?? null,
       });
     });
     return Array.from(byIdentity.values()).sort(compareProcessOptionTextAsc);
-  }, [normalizedAttributeOptions, safeProcesses]);
+  }, [languageCode, normalizedAttributeOptions, safeProcesses]);
 
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
@@ -780,7 +806,7 @@ const StyleProcess = ({
                               setAddError('');
                             }}
                             getOptionLabel={(option) =>
-                              `[${option.code}] ${option.displayName || option.name}`
+                              `${option.displayName || option.name || option.code || ''}`
                             }
                             isOptionEqualToValue={(option, value) =>
                               option.id === value?.id || option.code === value?.code
