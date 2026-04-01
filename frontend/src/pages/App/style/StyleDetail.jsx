@@ -1,15 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Typography,
-  ToggleButton,
-  ToggleButtonGroup,
-  Button,
   Box,
+  Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
 } from '@mui/material';
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -20,6 +20,7 @@ import StyleProcess from './styleDetail/StyleProcess';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
 import {
@@ -28,6 +29,81 @@ import {
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
 import { todayDateKey } from '../../../utils/dateKey.mjs';
+
+const STYLE_DETAIL_MESSAGES = {
+  ko: {
+    tabStyleAnalysis: '스타일 분석',
+    tabBasicInfo: '기본 정보',
+    tabProcessInfo: '공정 정보',
+    tabBom: 'BOM',
+    save: '저장',
+    loading: '스타일 정보를 불러오는 중입니다.',
+    newTab: '스타일 추가',
+    detailTab: '스타일: {name}',
+    createSuccess: '새 스타일이 생성되었습니다.',
+    updateSuccess: '스타일이 업데이트되었습니다.',
+    saveError: '스타일을 저장하지 못했습니다.',
+    nameRequired: '스타일명을 입력해주세요.',
+    customerRequired: '고객사를 선택해주세요.',
+    confirmTitle: '변경 내용 확인',
+    confirmDescription: '아래 내용으로 스타일 정보를 저장하시겠습니까?',
+    confirmEmpty: '변경 사항이 없습니다.',
+    cancel: '취소',
+  },
+  en: {
+    tabStyleAnalysis: 'Style Analysis',
+    tabBasicInfo: 'Basic Info',
+    tabProcessInfo: 'Process Info',
+    tabBom: 'BOM',
+    save: 'Save',
+    loading: 'Loading style details...',
+    newTab: 'Add Style',
+    detailTab: 'Style: {name}',
+    createSuccess: 'A new style has been created.',
+    updateSuccess: 'Style updated.',
+    saveError: 'Failed to save the style.',
+    nameRequired: 'Enter a style name.',
+    customerRequired: 'Select a customer.',
+    confirmTitle: 'Review Changes',
+    confirmDescription: 'Save the style with the changes below?',
+    confirmEmpty: 'There are no changes.',
+    cancel: 'Cancel',
+  },
+  vi: {
+    tabStyleAnalysis: 'Phan tich style',
+    tabBasicInfo: 'Thong tin co ban',
+    tabProcessInfo: 'Thong tin cong doan',
+    tabBom: 'BOM',
+    save: 'Luu',
+    loading: 'Dang tai thong tin style...',
+    newTab: 'Them style',
+    detailTab: 'Style: {name}',
+    createSuccess: 'Da tao style moi.',
+    updateSuccess: 'Da cap nhat style.',
+    saveError: 'Khong the luu style.',
+    nameRequired: 'Hay nhap ten style.',
+    customerRequired: 'Hay chon khach hang.',
+    confirmTitle: 'Xac nhan thay doi',
+    confirmDescription: 'Luu thong tin style voi cac thay doi ben duoi?',
+    confirmEmpty: 'Khong co thay doi nao.',
+    cancel: 'Huy',
+  },
+};
+
+const getStyleDetailMessage = (languageCode, key, params = {}) => {
+  const locale =
+    languageCode === 'ko' || languageCode === 'vi' || languageCode === 'en'
+      ? languageCode
+      : 'en';
+  const template =
+    STYLE_DETAIL_MESSAGES[locale]?.[key] ??
+    STYLE_DETAIL_MESSAGES.en[key] ??
+    '';
+  return Object.entries(params).reduce(
+    (message, [token, value]) => message.replaceAll(`{${token}}`, String(value ?? '')),
+    template
+  );
+};
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -75,18 +151,24 @@ const StyleDetail = () => {
   const { styleId: styleIdParam } = useParams();
   const location = useLocation();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
+  const { languageCode } = useLanguage();
+  const { showNotification, navigateToPath } = useApp();
+
   const ownerOrgIdFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return toOrgId(params.get('ownerOrgId'));
   }, [location.search]);
+
   const isBrandOrg = activeOrgType === 'BRAND';
   const defaultBrandCustomerName = useMemo(
     () => (isBrandOrg ? String(activeProfile?.orgName || '').trim() : ''),
     [activeProfile?.orgName, isBrandOrg]
   );
+
   const canViewProcessInfo = !isBrandOrg;
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
+
   const [currentTab, setCurrentTab] = useState('basicInfo');
   const [loadedTabs, setLoadedTabs] = useState({
     basicInfo: true,
@@ -94,11 +176,12 @@ const StyleDetail = () => {
     processInfo: false,
     bom: false,
   });
-  const { showNotification, navigateToPath, markPathForRefresh } = useApp();
-
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
+  const [isConfirmOpen, setConfirmOpen] = useState(false);
+  const [changes, setChanges] = useState({});
+
   const resolvedOwnerOrgId = useMemo(
     () =>
       toOrgId(
@@ -116,10 +199,26 @@ const StyleDetail = () => {
       styleFormData.ownerOrgId,
     ]
   );
+
   const ownerOrgQuery = useMemo(
     () => buildQueryString({ ownerOrgId: ownerOrgIdFromQuery }),
     [ownerOrgIdFromQuery]
   );
+
+  const detailTabLabel = useMemo(
+    () =>
+      isNew
+        ? getStyleDetailMessage(languageCode, 'newTab')
+        : getStyleDetailMessage(languageCode, 'detailTab', {
+            name: styleFormData.name || originalData.name || styleId,
+          }),
+    [isNew, languageCode, originalData.name, styleFormData.name, styleId]
+  );
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/style')) return;
+    navigateToPath(`${location.pathname}${location.search}`, { label: detailTabLabel });
+  }, [detailTabLabel, location.pathname, location.search, navigateToPath]);
 
   useEffect(() => {
     let active = true;
@@ -168,7 +267,7 @@ const StyleDetail = () => {
         };
         setOriginalData(fallback);
         setStyleFormData(fallback);
-        showNotification(error?.message || '스타일 정보를 불러오지 못했습니다.', 'error');
+        showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
       } finally {
         if (active) {
           setLoadingStyle(false);
@@ -186,13 +285,11 @@ const StyleDetail = () => {
     defaultBrandCustomerName,
     isBrandOrg,
     isNew,
+    languageCode,
     ownerOrgIdFromQuery,
     showNotification,
     styleId,
   ]);
-
-  const [isConfirmOpen, setConfirmOpen] = useState(false);
-  const [changes, setChanges] = useState({});
 
   const originalSnapshot = useMemo(() => JSON.stringify(originalData), [originalData]);
   const formSnapshot = useMemo(() => JSON.stringify(styleFormData), [styleFormData]);
@@ -216,8 +313,8 @@ const StyleDetail = () => {
     }
   };
 
-  const handleStyleInputChange = (e) => {
-    const { name, value } = e.target;
+  const handleStyleInputChange = (event) => {
+    const { name, value } = event.target;
     setStyleFormData((prev) => {
       if (name !== 'customer') {
         return { ...prev, [name]: value };
@@ -235,24 +332,28 @@ const StyleDetail = () => {
     setStyleFormData((prev) => ({ ...prev, processes: newProcesses }));
   };
 
-  const fieldLabels = {
-    name: '스타일명',
-    customer: '고객사',
-    designer: '디자이너',
-    collection: '카테고리',
-    season: '시즌',
-    imageUrls: '스타일 사진',
-    processes: '공정 목록',
-    bom: 'BOM',
-  };
+  const fieldLabels = useMemo(
+    () => ({
+      name: getStyleDetailMessage(languageCode, 'tabBasicInfo'),
+      customer: languageCode === 'ko' ? '고객사' : languageCode === 'vi' ? 'Khach hang' : 'Customer',
+      designer: languageCode === 'ko' ? '디자이너' : languageCode === 'vi' ? 'Nha thiet ke' : 'Designer',
+      collection: languageCode === 'ko' ? '컬렉션' : languageCode === 'vi' ? 'Bo suu tap' : 'Collection',
+      season: languageCode === 'ko' ? '시즌' : languageCode === 'vi' ? 'Mua' : 'Season',
+      imageUrls: languageCode === 'ko' ? '스타일 사진' : languageCode === 'vi' ? 'Anh style' : 'Style Images',
+      processes:
+        languageCode === 'ko' ? '공정 목록' : languageCode === 'vi' ? 'Danh sach cong doan' : 'Process List',
+      bom: 'BOM',
+    }),
+    [languageCode]
+  );
 
   const handleSave = async () => {
     if (!styleFormData.name?.trim()) {
-      showNotification('스타일명을 입력하세요.', 'error');
+      showNotification(getStyleDetailMessage(languageCode, 'nameRequired'), 'error');
       return;
     }
     if (!isBrandOrg && !styleFormData.customer?.trim()) {
-      showNotification('고객사를 선택하세요.', 'error');
+      showNotification(getStyleDetailMessage(languageCode, 'customerRequired'), 'error');
       return;
     }
 
@@ -268,17 +369,14 @@ const StyleDetail = () => {
       });
       try {
         const saved = await createStyleOnApi(payload, { orgId: activeOrgId });
-        showNotification('신규 스타일이 생성되었습니다.', 'success');
+        showNotification(getStyleDetailMessage(languageCode, 'createSuccess'), 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
-        markPathForRefresh('/style');
-        markPathForRefresh('/order/styles');
         navigateToPath('/style', {
-          label: '스타일',
           closeTabId: '/style/new',
         });
       } catch (error) {
-        showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
+        showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
       }
       return;
     }
@@ -287,8 +385,8 @@ const StyleDetail = () => {
     Object.keys(styleFormData).forEach((key) => {
       if (JSON.stringify(originalData[key]) !== JSON.stringify(styleFormData[key])) {
         detectedChanges[key] = {
-          from: Array.isArray(originalData[key]) ? `${originalData[key].length}개 항목` : originalData[key],
-          to: Array.isArray(styleFormData[key]) ? `${styleFormData[key].length}개 항목` : styleFormData[key],
+          from: Array.isArray(originalData[key]) ? `${originalData[key].length}` : originalData[key],
+          to: Array.isArray(styleFormData[key]) ? `${styleFormData[key].length}` : styleFormData[key],
         };
       }
     });
@@ -315,23 +413,16 @@ const StyleDetail = () => {
         orgId: activeOrgId,
         ownerOrgId: resolvedOwnerOrgId,
       });
-      showNotification('스타일이 업데이트되었습니다.', 'success');
+      showNotification(getStyleDetailMessage(languageCode, 'updateSuccess'), 'success');
       setOriginalData(saved);
       setStyleFormData(saved);
       setConfirmOpen(false);
-      markPathForRefresh('/style');
-      markPathForRefresh('/order/styles');
       navigateToPath('/style', {
-        label: 'style',
         closeTabId: `/style/${styleId}${ownerOrgQuery}`,
       });
     } catch (error) {
-      showNotification(error?.message || '스타일을 저장하지 못했습니다.', 'error');
+      showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
     }
-  };
-
-  const handleRevert = () => {
-    setStyleFormData(originalData);
   };
 
   return (
@@ -343,25 +434,34 @@ const StyleDetail = () => {
           onChange={handleChange}
           aria-label="style management toggle"
         >
-          {canViewProcessInfo ? <ToggleButton value="styleAnalysis">스타일 분석</ToggleButton> : null}
-          <ToggleButton value="basicInfo">기본 정보</ToggleButton>
-          {canViewProcessInfo ? <ToggleButton value="processInfo">공정 정보</ToggleButton> : null}
-          <ToggleButton value="bom">BOM</ToggleButton>
+          {canViewProcessInfo ? (
+            <ToggleButton value="styleAnalysis">
+              {getStyleDetailMessage(languageCode, 'tabStyleAnalysis')}
+            </ToggleButton>
+          ) : null}
+          <ToggleButton value="basicInfo">
+            {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
+          </ToggleButton>
+          {canViewProcessInfo ? (
+            <ToggleButton value="processInfo">
+              {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
+            </ToggleButton>
+          ) : null}
+          <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
         </ToggleButtonGroup>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleSave}
-            disabled={loadingStyle || (!isNew && !isDirty)}
-          >
-            저장
-          </Button>
-        </Box>
+
+        <Button
+          variant="contained"
+          color="primary"
+          onClick={handleSave}
+          disabled={loadingStyle || (!isNew && !isDirty)}
+        >
+          {getStyleDetailMessage(languageCode, 'save')}
+        </Button>
       </Box>
 
       {loadingStyle && !isNew ? (
-        <Typography color="text.secondary">스타일 정보를 불러오는 중입니다.</Typography>
+        <Typography color="text.secondary">{getStyleDetailMessage(languageCode, 'loading')}</Typography>
       ) : (
         <>
           {loadedTabs.basicInfo && (
@@ -377,6 +477,7 @@ const StyleDetail = () => {
               </Box>
             </RequestScopeBoundary>
           )}
+
           {canViewProcessInfo && loadedTabs.styleAnalysis && (
             <RequestScopeBoundary scopeId="styleAnalysis" active={currentTab === 'styleAnalysis'}>
               <Box sx={{ display: currentTab === 'styleAnalysis' ? 'block' : 'none' }}>
@@ -384,6 +485,7 @@ const StyleDetail = () => {
               </Box>
             </RequestScopeBoundary>
           )}
+
           {canViewProcessInfo && loadedTabs.processInfo && (
             <RequestScopeBoundary scopeId="processInfo" active={currentTab === 'processInfo'}>
               <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
@@ -394,6 +496,7 @@ const StyleDetail = () => {
               </Box>
             </RequestScopeBoundary>
           )}
+
           {loadedTabs.bom && (
             <RequestScopeBoundary scopeId="bom" active={currentTab === 'bom'}>
               <Box sx={{ display: currentTab === 'bom' ? 'block' : 'none' }}>
@@ -405,30 +508,32 @@ const StyleDetail = () => {
       )}
 
       <Dialog open={isConfirmOpen} onClose={handleCloseConfirm}>
-        <DialogTitle>변경 내용 확인</DialogTitle>
+        <DialogTitle>{getStyleDetailMessage(languageCode, 'confirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            아래 내용으로 스타일 정보를 저장하시겠습니까?
+            {getStyleDetailMessage(languageCode, 'confirmDescription')}
           </DialogContentText>
           <Box sx={{ mt: 2, p: 2, border: '1px solid #ddd', borderRadius: '4px' }}>
             {Object.keys(changes).length > 0 ? (
               Object.entries(changes).map(([key, value]) => (
                 <Typography key={key} sx={{ mb: 1 }}>
                   <strong>{fieldLabels[key] || key}:</strong>{' '}
-                  <span style={{ textDecoration: 'line-through', color: 'red' }}>'{value.from}'</span>
+                  <span style={{ textDecoration: 'line-through', color: 'red' }}>
+                    '{String(value.from ?? '-')}'
+                  </span>
                   {' -> '}
-                  <span style={{ color: 'green' }}>'{value.to}'</span>
+                  <span style={{ color: 'green' }}>'{String(value.to ?? '-')}</span>
                 </Typography>
               ))
             ) : (
-              <Typography>변경 사항이 없습니다.</Typography>
+              <Typography>{getStyleDetailMessage(languageCode, 'confirmEmpty')}</Typography>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseConfirm}>취소</Button>
+          <Button onClick={handleCloseConfirm}>{getStyleDetailMessage(languageCode, 'cancel')}</Button>
           <Button onClick={handleConfirmSave} autoFocus>
-            저장
+            {getStyleDetailMessage(languageCode, 'save')}
           </Button>
         </DialogActions>
       </Dialog>

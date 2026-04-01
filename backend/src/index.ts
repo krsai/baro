@@ -1262,12 +1262,264 @@ const toOnboardingRequestSummary = (request: any) => ({
   approvedOrganizationType: request.organization?.type ?? null,
 });
 
+const normalizeStyleProcessCodeSegment = (value: any) =>
+  String(value ?? "")
+    .trim()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_");
+
+const hashStyleProcessText = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36).toUpperCase();
+};
+
+const buildCustomStyleSpecCode = (value: any) => {
+  const text = resolveOptionalString(value, null);
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, "").toLowerCase();
+  const numberMatch = compact.match(/\d+(?:\.\d+)?/);
+  const numericToken = numberMatch ? numberMatch[0].replace(/\./g, "_") : "";
+  if (numericToken) {
+    if (/(mm)/i.test(compact)) return `${numericToken}MM`;
+    if (/(cm)/i.test(compact)) return `${numericToken}CM`;
+    if (/(line|needle|ly|줄|선)/i.test(compact)) return `${numericToken}N`;
+    if (/(thread|chi|실|soi)/i.test(compact)) return `${numericToken}T`;
+  }
+  const normalized = normalizeStyleProcessCodeSegment(text);
+  if (normalized) return normalized;
+  return `SPEC_${hashStyleProcessText(text).slice(0, 6)}`;
+};
+
+const normalizeStyleProcessCompositionEntry = (
+  value: any,
+  kind: "part" | "target" | "action" | "spec"
+) => {
+  if (value === null || value === undefined) return null;
+  const fallbackText =
+    typeof value === "object" && !Array.isArray(value)
+      ? resolveOptionalString(
+          value?.label ??
+            value?.nameKo ??
+            value?.nameEn ??
+            value?.nameVi ??
+            value?.name ??
+            value?.value,
+          null
+        )
+      : resolveOptionalString(value, null);
+  const codeSource =
+    typeof value === "object" && !Array.isArray(value)
+      ? resolveOptionalString(value?.code, null)
+      : null;
+  const code =
+    normalizeStyleProcessCodeSegment(codeSource) ||
+    (kind === "spec" ? buildCustomStyleSpecCode(fallbackText) : "");
+  const label = fallbackText ?? code;
+  if (!label && !code) return null;
+
+  const nameKo =
+    (typeof value === "object" && !Array.isArray(value)
+      ? resolveOptionalString(value?.nameKo, null)
+      : null) ??
+    label ??
+    "";
+  const nameEn =
+    (typeof value === "object" && !Array.isArray(value)
+      ? resolveOptionalString(value?.nameEn, null)
+      : null) ??
+    label ??
+    "";
+  const nameVi =
+    (typeof value === "object" && !Array.isArray(value)
+      ? resolveOptionalString(value?.nameVi, null)
+      : null) ??
+    label ??
+    "";
+
+  return {
+    code: code || null,
+    label: label || code,
+    nameKo,
+    nameEn,
+    nameVi,
+    isCustom:
+      Boolean(
+        typeof value === "object" &&
+          !Array.isArray(value) &&
+          (value as any)?.isCustom
+      ) || (kind === "spec" && !codeSource),
+  };
+};
+
+const normalizeStyleProcessCompositionEntries = (
+  value: any,
+  kind: "target" | "action" | "spec"
+) => {
+  const entries = ensureArray(value)
+    .map((item) => normalizeStyleProcessCompositionEntry(item, kind))
+    .filter(Boolean);
+  const used = new Set<string>();
+  return entries.filter((entry) => {
+    const labelText = resolveOptionalString(entry?.label, "") ?? "";
+    const dedupeKey = `${resolveOptionalString(entry?.code, null) ?? ""}::${labelText.toLowerCase()}`;
+    if (!dedupeKey || used.has(dedupeKey)) return false;
+    used.add(dedupeKey);
+    return true;
+  });
+};
+
+const normalizeStyleProcessComposition = (value: any) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const part = normalizeStyleProcessCompositionEntry((value as any)?.part, "part");
+  const targets = normalizeStyleProcessCompositionEntries((value as any)?.targets, "target");
+  const actions = normalizeStyleProcessCompositionEntries((value as any)?.actions, "action");
+  const specs = normalizeStyleProcessCompositionEntries((value as any)?.specs, "spec");
+  if (!part && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+    return null;
+  }
+  return { part, targets, actions, specs };
+};
+
+const resolveStyleProcessCompositionText = (
+  entry: any,
+  language: "ko" | "en" | "vi"
+) => {
+  if (!entry || typeof entry !== "object") return "";
+  if (language === "ko") {
+    return resolveOptionalString(entry?.nameKo ?? entry?.label ?? entry?.code, "") ?? "";
+  }
+  if (language === "vi") {
+    return resolveOptionalString(entry?.nameVi ?? entry?.label ?? entry?.code, "") ?? "";
+  }
+  return resolveOptionalString(entry?.nameEn ?? entry?.label ?? entry?.code, "") ?? "";
+};
+
+const buildStyleProcessNameFromComposition = (
+  composition: any,
+  language: "ko" | "en" | "vi",
+  fallback: any = null
+) => {
+  const normalizedComposition = normalizeStyleProcessComposition(composition);
+  if (!normalizedComposition) {
+    return resolveOptionalString(fallback, null);
+  }
+
+  const partText = resolveStyleProcessCompositionText(normalizedComposition.part, language);
+  const targetText = normalizedComposition.targets
+    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+    .filter(Boolean)
+    .join("·");
+  const actionText = normalizedComposition.actions
+    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+    .filter(Boolean)
+    .join(" + ");
+  const specText = normalizedComposition.specs
+    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+    .filter(Boolean)
+    .join("·");
+
+  const targetWithSpec = targetText
+    ? `${targetText}${specText ? `(${specText})` : ""}`
+    : specText
+      ? `(${specText})`
+      : "";
+  const leftText =
+    partText && targetWithSpec
+      ? `${partText}: ${targetWithSpec}`
+      : partText || targetWithSpec;
+  const baseText =
+    leftText && actionText ? `${leftText} - ${actionText}` : leftText || actionText;
+  if (!baseText) {
+    return resolveOptionalString(fallback, null);
+  }
+  return baseText;
+};
+
+const buildStyleProcessLocalizedNamesFromComposition = (
+  composition: any,
+  fallback: {
+    name?: any;
+    nameKo?: any;
+    nameEn?: any;
+    nameVi?: any;
+  } = {}
+) => ({
+  nameKo:
+    buildStyleProcessNameFromComposition(composition, "ko", fallback.nameKo ?? fallback.name) ?? "",
+  nameEn:
+    buildStyleProcessNameFromComposition(composition, "en", fallback.nameEn ?? fallback.name) ?? "",
+  nameVi:
+    buildStyleProcessNameFromComposition(composition, "vi", fallback.nameVi ?? fallback.name) ?? "",
+});
+
+const buildStyleProcessCodeFromComposition = (
+  composition: any,
+  fallback: any = null
+) => {
+  const normalizedComposition = normalizeStyleProcessComposition(composition);
+  if (!normalizedComposition) {
+    return normalizeStyleProcessCodeSegment(fallback);
+  }
+  const tokens = [
+    resolveOptionalString(normalizedComposition.part?.code, null),
+    ...normalizedComposition.targets.map((entry: any) =>
+      resolveOptionalString(entry?.code, null)
+    ),
+    ...normalizedComposition.actions.map((entry: any) =>
+      resolveOptionalString(entry?.code, null)
+    ),
+    ...normalizedComposition.specs.map((entry: any) =>
+      resolveOptionalString(entry?.code, null) ||
+      buildCustomStyleSpecCode(entry?.label)
+    ),
+  ]
+    .map((token) => normalizeStyleProcessCodeSegment(token))
+    .filter(Boolean);
+
+  if (tokens.length > 0) return tokens.join("_");
+  return normalizeStyleProcessCodeSegment(fallback);
+};
+
 const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
   }
   const { st: _legacySt, processQuantity: _legacyProcessQuantity, ...rest } = process;
   const next = { ...rest };
+  const normalizedComposition = normalizeStyleProcessComposition(
+    (next as any).processComposition
+  );
+  if (normalizedComposition) {
+    const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
+      normalizedComposition,
+      {
+        name: (next as any).name,
+        nameKo: (next as any).nameKo,
+        nameEn: (next as any).nameEn,
+        nameVi: (next as any).nameVi,
+      }
+    );
+    (next as any).processComposition = normalizedComposition;
+    (next as any).code =
+      buildStyleProcessCodeFromComposition(
+        normalizedComposition,
+        (next as any).code ?? (next as any).name
+      ) ||
+      (next as any).code;
+    (next as any).name = localizedNames.nameEn || (next as any).name;
+    (next as any).nameKo = localizedNames.nameKo;
+    (next as any).nameEn = localizedNames.nameEn;
+    (next as any).nameVi = localizedNames.nameVi;
+  } else if ("processComposition" in next) {
+    delete (next as any).processComposition;
+  }
   const normalizedStValues = normalizeStyleProcessStValues(
     (next as any).stValues,
     next
@@ -2830,7 +3082,11 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
 };
 
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
-  const codeKey = normalizeProcessCodeKey(process?.code);
+  const compositionCode = buildStyleProcessCodeFromComposition(
+    process?.processComposition,
+    null
+  );
+  const codeKey = normalizeProcessCodeKey(compositionCode || process?.code);
   if (codeKey) return codeKey;
   const nameKey = normalizeProcessNameKey(process?.name);
   if (nameKey) return nameKey.toUpperCase();
@@ -2838,24 +3094,117 @@ const resolveStyleProcessStorageCode = (process: any, index: number) => {
 };
 
 const buildStyleProcessStorageDrafts = (processes: any): any[] =>
-  normalizeStyleProcesses(processes).map((process, index) => ({
-    processCode: resolveStyleProcessStorageCode(process, index),
-    processName:
-      resolveOptionalString((process as any)?.name, null) ??
-      resolveOptionalString((process as any)?.code, null) ??
-      resolveStyleProcessStorageCode(process, index),
-    processDescription: resolveOptionalString((process as any)?.description, null),
-    processQuantity: toPositiveInt(
-      (process as any)?.quantity ?? (process as any)?.processQuantity,
-      1
-    ),
-    sortOrder: index,
-    ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
-    atParams: toStyleAtParams((process as any)?.atParams),
-    stValues: normalizeStyleProcessStValues((process as any)?.stValues, process),
-  }));
+  normalizeStyleProcesses(processes).map((process, index) => {
+    const normalizedComposition = normalizeStyleProcessComposition(
+      (process as any)?.processComposition
+    );
+    const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
+      normalizedComposition,
+      {
+        name: (process as any)?.name,
+        nameKo: (process as any)?.nameKo,
+        nameEn: (process as any)?.nameEn,
+        nameVi: (process as any)?.nameVi,
+      }
+    );
+    return {
+      processCode: resolveStyleProcessStorageCode(process, index),
+      processName:
+        resolveOptionalString(localizedNames.nameEn, null) ??
+        resolveOptionalString((process as any)?.nameEn, null) ??
+        resolveOptionalString((process as any)?.name, null) ??
+        resolveOptionalString((process as any)?.code, null) ??
+        resolveStyleProcessStorageCode(process, index),
+      processComposition: normalizedComposition,
+      processDescription: resolveOptionalString((process as any)?.description, null),
+      processQuantity: toPositiveInt(
+        (process as any)?.quantity ?? (process as any)?.processQuantity,
+        1
+      ),
+      sortOrder: index,
+      ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
+      atParams: toStyleAtParams((process as any)?.atParams),
+      stValues: normalizeStyleProcessStValues((process as any)?.stValues, process),
+    };
+  });
 
-const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
+const loadStyleProcessNameLookup = async ({
+  orgId,
+  processCodes,
+  db = prisma,
+}: {
+  orgId?: number | null;
+  processCodes: any[];
+  db?: StyleStorageClient;
+}) => {
+  const resolvedOrgId = toPositiveIntOrNull(orgId);
+  const codes = Array.from(
+    new Set(
+      ensureArray(processCodes)
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (resolvedOrgId === null || codes.length === 0) {
+    return new Map<
+      string,
+      {
+        name: string | null;
+        nameKo: string | null;
+        nameEn: string | null;
+        nameVi: string | null;
+      }
+    >();
+  }
+
+  const rows = await db.attrProcess.findMany({
+    where: {
+      orgId: resolvedOrgId,
+      code: { in: codes },
+    },
+    select: {
+      code: true,
+      name: true,
+      nameKo: true,
+      nameEn: true,
+      nameVi: true,
+    },
+  });
+
+  return rows.reduce((map, row) => {
+    const codeKey = normalizeProcessCodeKey(row.code);
+    if (!codeKey) return map;
+    const fallbackName = resolveOptionalString(row.name, null);
+    map.set(codeKey, {
+      name: fallbackName,
+      nameKo: resolveOptionalString(row.nameKo, null),
+      nameEn: resolveOptionalString(row.nameEn, null) ?? fallbackName,
+      nameVi: resolveOptionalString(row.nameVi, null),
+    });
+    return map;
+  }, new Map<
+    string,
+    {
+      name: string | null;
+      nameKo: string | null;
+      nameEn: string | null;
+      nameVi: string | null;
+    }
+  >());
+};
+
+const buildStyleProcessMirrorFromRows = (
+  rows: any[] = [],
+  processNameLookup = new Map<
+    string,
+    {
+      name: string | null;
+      nameKo: string | null;
+      nameEn: string | null;
+      nameVi: string | null;
+    }
+  >()
+) =>
   ensureArray(rows)
     .slice()
     .sort(
@@ -2863,10 +3212,29 @@ const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
         Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
         Number(left?.id ?? 0) - Number(right?.id ?? 0)
     )
-    .map((row, index) =>
-      normalizeStyleProcess({
+    .map((row, index) => {
+      const normalizedComposition = normalizeStyleProcessComposition(
+        row.processComposition
+      );
+      const masterNames =
+        processNameLookup.get(normalizeProcessCodeKey(row.processCode)) ?? null;
+      const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
+        normalizedComposition,
+        {
+          name: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
+          nameKo: masterNames?.nameKo ?? null,
+          nameEn: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
+          nameVi: masterNames?.nameVi ?? null,
+        }
+      );
+      return normalizeStyleProcess({
         code: row.processCode,
-        name: row.processName,
+        name: localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
+        nameKo: localizedNames.nameKo || masterNames?.nameKo,
+        nameEn:
+          localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
+        nameVi: localizedNames.nameVi || masterNames?.nameVi,
+        processComposition: normalizedComposition,
         description: row.processDescription ?? null,
         quantity: row.processQuantity ?? 1,
         pt: toOptionalProcessSeconds(row.ptSeconds),
@@ -2889,8 +3257,8 @@ const buildStyleProcessMirrorFromRows = (rows: any[] = []) =>
         timeRefQuantity:
           ensureArray(row.standards)[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
         instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
-      })
-    );
+      });
+    });
 
 const loadStyleProcessRowsByStyleUid = async (
   styleUids: number[],
@@ -2978,6 +3346,7 @@ const syncStyleProcessStorageForStyle = async ({
           data: {
             processCode: draft.processCode,
             processName: draft.processName,
+            processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             processQuantity: draft.processQuantity,
             sortOrder: draft.sortOrder,
@@ -2995,6 +3364,7 @@ const syncStyleProcessStorageForStyle = async ({
           },
           update: {
             processName: draft.processName,
+            processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             processQuantity: draft.processQuantity,
             sortOrder: draft.sortOrder,
@@ -3006,6 +3376,7 @@ const syncStyleProcessStorageForStyle = async ({
             styleUid,
             processCode: draft.processCode,
             processName: draft.processName,
+            processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
             processQuantity: draft.processQuantity,
             sortOrder: draft.sortOrder,
@@ -3037,7 +3408,13 @@ const syncStyleProcessStorageForStyle = async ({
     processOrgId,
     db,
   });
-  return buildStyleProcessMirrorFromRows(rowsByStyleUid.get(styleUid) || []);
+  const rows = rowsByStyleUid.get(styleUid) || [];
+  const processNameLookup = await loadStyleProcessNameLookup({
+    orgId: processOrgId,
+    processCodes: rows.map((row) => row?.processCode),
+    db,
+  });
+  return buildStyleProcessMirrorFromRows(rows, processNameLookup);
 };
 
 const ensureStyleProcessStorageForStyles = async (
@@ -3081,13 +3458,21 @@ const ensureStyleProcessStorageForStyles = async (
     );
   }
 
+  const processNameLookup = await loadStyleProcessNameLookup({
+    orgId: processOrgId,
+    processCodes: Array.from(rowsByStyleUid.values()).flatMap((rows) =>
+      ensureArray(rows).map((row) => row?.processCode)
+    ),
+    db,
+  });
+
   return styleRows.reduce((map, style) => {
     const styleUid = Number(style.uid);
     const rows = rowsByStyleUid.get(styleUid) || [];
     map.set(
       styleUid,
       rows.length > 0
-        ? buildStyleProcessMirrorFromRows(rows)
+        ? buildStyleProcessMirrorFromRows(rows, processNameLookup)
         : processOrgId !== null && Number(style.orgId) !== processOrgId
           ? []
           : normalizeStyleProcesses(style.processes)

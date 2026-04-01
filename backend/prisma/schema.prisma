@@ -459,6 +459,7 @@ model StyleProcess {
   styleUid           Int
   processCode        String
   processName        String
+  processComposition Json?
   processDescription String?
   processQuantity    Int      @default(1)
   sortOrder          Int      @default(0)

@@ -135,6 +135,13 @@ const formatLocalizedCurrency = (value, languageCode) => {
   })} ${resolveCurrencyUnitLabel(languageCode)}`;
 };
 
+const resolveStyleWorkspaceTabLabel = (languageCode, name) => {
+  const resolvedName = String(name || '').trim() || '-';
+  if (languageCode === 'ko') return `스타일: ${resolvedName}`;
+  if (languageCode === 'vi') return `Style: ${resolvedName}`;
+  return `Style: ${resolvedName}`;
+};
+
 const StyleBoard = () => {
   const { styleId } = useParams();
   if (styleId) {
@@ -143,7 +150,7 @@ const StyleBoard = () => {
 
   const { activeOrgId, activeOrgType } = useAuth();
   const { languageCode } = useLanguage();
-  const { navigateToPath, showNotification, activePath, refreshSignals, markPathForRefresh } = useApp();
+  const { navigateToPath, showNotification } = useApp();
   const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');
@@ -152,9 +159,6 @@ const StyleBoard = () => {
   const [loading, setLoading] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
-  const handledStyleRefreshRef = useRef(0);
-  const styleRefreshSignal = refreshSignals['/style'] || 0;
-
   const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
     setLoading(true);
     try {
@@ -180,21 +184,15 @@ const StyleBoard = () => {
   }, [activeOrgId, canViewProcessSummary, languageCode, showNotification]);
 
   useEffect(() => {
-    handledStyleRefreshRef.current = styleRefreshSignal;
     refreshStyles();
   }, [refreshStyles]);
-
-  useEffect(() => {
-    if (activePath !== '/style') return;
-    if (styleRefreshSignal <= handledStyleRefreshRef.current) return;
-    handledStyleRefreshRef.current = styleRefreshSignal;
-    refreshStyles({ forceRefresh: true });
-  }, [activePath, refreshStyles, styleRefreshSignal]);
 
   const handleRowDoubleClick = (style) => {
     const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
     const query = buildQueryString({ ownerOrgId });
-    navigateToPath(`/style/${style.id}${query}`, { label: `스타일: ${style.name || style.id}` });
+    navigateToPath(`/style/${style.id}${query}`, {
+      label: resolveStyleWorkspaceTabLabel(languageCode, style?.name || style?.id),
+    });
   };
 
   const handleAddNewClick = () => {
@@ -223,7 +221,6 @@ const StyleBoard = () => {
         ownerOrgId: toOrgId(styleToDelete?.ownerOrgId ?? styleToDelete?.customerOrgId),
       });
       setStyles((prevStyles) => prevStyles.filter((s) => s.id !== styleToDelete.id));
-      markPathForRefresh('/order/styles');
       showNotification(
         getUiMessage('styleBoard.deleteSuccess', '스타일이 삭제되었습니다.', languageCode),
         'success'

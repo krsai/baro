@@ -1,5 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue } from 'react';
 import {
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -19,13 +21,10 @@ import {
 } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
-import CheckIcon from '@mui/icons-material/Check';
-import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
-import { fetchProcessAttributes } from '../../../../utils/attributeApi';
+import { fetchProcessMasterOptions } from '../../../../utils/attributeApi';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
@@ -36,7 +35,6 @@ import {
   normalizeProcesses,
   parseOptionalSecondsInput,
   resolveProcessAtPerPieceSeconds,
-  resolveProcessAtReliability,
   resolveProcessExactStPerPieceSeconds,
   resolveStBucketQuantity,
   resolveStyleAtReliability,
@@ -49,16 +47,154 @@ import {
   resolveDivergenceMeta,
 } from '../../../../utils/timeDivergence';
 import {
-  formatProcessLabelWithQuantity,
+  formatProcessNameWithQuantity,
   resolveLocalizedProcessName,
 } from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
-  process: null,
+  part: null,
+  target: null,
+  actions: [],
+  spec: null,
   pt: '',
   st: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
+
+const STYLE_PROCESS_MESSAGES = {
+  ko: {
+    title: '스타일 공정 목록',
+    addRow: '공정 추가',
+    addingTitle: '새 공정 추가',
+    loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
+    missingMasterOptions: '공정 사전에서 부위, 대상, 작업을 먼저 등록해주세요.',
+    partLabel: '부위',
+    targetLabel: '대상',
+    actionLabel: '작업',
+    specLabel: '규격',
+    specPlaceholder: '예: 3선',
+    previewLabel: '미리보기',
+    previewEmpty: '부위, 대상, 작업을 선택하면 공정명이 만들어집니다.',
+    ptLabel: 'PT(1000)',
+    stLabel: 'ST',
+    atLabel: 'AT',
+    save: '저장',
+    cancel: '취소',
+    delete: '삭제',
+    orderColumn: '순서',
+    processColumn: '공정명',
+    actionColumn: '작업',
+    empty: '등록된 공정이 없습니다. 상단의 공정 추가로 바로 입력해보세요.',
+    total: '개당 시간 합계',
+    newRow: '신규',
+    timeRefLabel: '기준 수량 q',
+    timeRefTooltip:
+      'PT는 항상 1,000장 주문 기준의 개당 시간으로 입력하고, 기준 수량 q는 AT/ST 확인 문맥으로 사용합니다.',
+    ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
+    atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
+    stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
+    validatePart: '부위를 선택해주세요.',
+    validateTarget: '대상을 선택해주세요.',
+    validateAction: '작업을 하나 이상 선택해주세요.',
+    validateInvalid: '유효한 공정 조합을 입력해주세요.',
+    validateDuplicate: '이미 등록된 공정입니다.',
+    stGapReview: 'AT와 ST 차이가 {label}로 커서 ST 조정 검토가 필요합니다.',
+    stGapNormal: 'AT와 ST 차이율 {label}',
+  },
+  en: {
+    title: 'Style Process List',
+    addRow: 'Add Process',
+    addingTitle: 'New Process',
+    loadingOptions: 'Loading process composition options...',
+    missingMasterOptions: 'Register part, target, and action options first.',
+    partLabel: 'Part',
+    targetLabel: 'Target',
+    actionLabel: 'Action',
+    specLabel: 'Spec',
+    specPlaceholder: 'e.g. 3-line',
+    previewLabel: 'Preview',
+    previewEmpty: 'Select part, target, and action to build the process name.',
+    ptLabel: 'PT(1000)',
+    stLabel: 'ST',
+    atLabel: 'AT',
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    orderColumn: 'Order',
+    processColumn: 'Process',
+    actionColumn: 'Action',
+    empty: 'No processes yet. Add one from the panel above.',
+    total: 'Per-piece Total',
+    newRow: 'New',
+    timeRefLabel: 'Ref qty q',
+    timeRefTooltip:
+      'PT is always entered as per-piece expected seconds at 1,000 pcs. q is used for the AT/ST viewing context.',
+    ptTooltip: 'PT({quantity}): per-piece expected seconds at 1,000 pcs.',
+    atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
+    stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
+    validatePart: 'Select a part.',
+    validateTarget: 'Select a target.',
+    validateAction: 'Select at least one action.',
+    validateInvalid: 'Enter a valid process composition.',
+    validateDuplicate: 'This process is already registered.',
+    stGapReview: 'AT and ST differ by {label}, so ST review is recommended.',
+    stGapNormal: 'AT/ST gap {label}',
+  },
+  vi: {
+    title: 'Danh sach cong doan style',
+    addRow: 'Them cong doan',
+    addingTitle: 'Cong doan moi',
+    loadingOptions: 'Dang tai tu dien to hop cong doan...',
+    missingMasterOptions: 'Hay dang ky truoc bo phan, doi tuong va thao tac.',
+    partLabel: 'Bo phan',
+    targetLabel: 'Doi tuong',
+    actionLabel: 'Thao tac',
+    specLabel: 'Quy cach',
+    specPlaceholder: 'vi du: 3 kim',
+    previewLabel: 'Xem truoc',
+    previewEmpty: 'Chon bo phan, doi tuong va thao tac de tao ten cong doan.',
+    ptLabel: 'PT(1000)',
+    stLabel: 'ST',
+    atLabel: 'AT',
+    save: 'Luu',
+    cancel: 'Huy',
+    delete: 'Xoa',
+    orderColumn: 'Thu tu',
+    processColumn: 'Ten cong doan',
+    actionColumn: 'Tac vu',
+    empty: 'Chua co cong doan nao. Hay them o khung ben tren.',
+    total: 'Tong thoi gian moi san pham',
+    newRow: 'Moi',
+    timeRefLabel: 'So luong q',
+    timeRefTooltip:
+      'PT luon duoc nhap theo thoi gian du kien moi san pham o moc 1.000 san pham. q duoc dung de xem AT/ST.',
+    ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
+    atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
+    stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
+    validatePart: 'Hay chon bo phan.',
+    validateTarget: 'Hay chon doi tuong.',
+    validateAction: 'Hay chon it nhat mot thao tac.',
+    validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
+    validateDuplicate: 'Cong doan nay da duoc dang ky.',
+    stGapReview: 'AT va ST lech {label}, nen xem lai ST.',
+    stGapNormal: 'Do lech AT/ST {label}',
+  },
+};
+
+const getStyleProcessMessage = (languageCode, key, params = {}) => {
+  const locale =
+    languageCode === 'ko' || languageCode === 'vi' || languageCode === 'en'
+      ? languageCode
+      : 'en';
+  const template =
+    STYLE_PROCESS_MESSAGES[locale]?.[key] ??
+    STYLE_PROCESS_MESSAGES.en[key] ??
+    '';
+  return Object.entries(params).reduce(
+    (message, [token, value]) => message.replaceAll(`{${token}}`, String(value ?? '')),
+    template
+  );
+};
 
 const toPositiveInt = (value, fallback = 1) => {
   const parsed = Number.parseInt(value, 10);
@@ -83,6 +219,7 @@ const toOptionalSeconds = (value) => {
 };
 
 const toDraftNumberText = (value) => {
+  if (value === '' || value === null || value === undefined) return '';
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '';
   return String(roundToScale(parsed, 4));
@@ -136,40 +273,253 @@ const resolveAtReliabilityPercentLabel = (reliability) => {
 const resolveStAtGapPalette = (meta) =>
   ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
 
-const normalizeProcessOption = (item) => {
-  const code = String(item?.code ?? '')
+const normalizeStyleProcessCodeSegment = (value) =>
+  String(value ?? '')
     .trim()
-    .toUpperCase();
-  const nameKo = String(item?.nameKo ?? item?.processNameKo ?? '').trim();
-  const nameEn = String(item?.nameEn ?? item?.processNameEn ?? '').trim();
-  const nameVi = String(item?.nameVi ?? item?.processNameVi ?? '').trim();
-  const baseName = String(item?.name ?? item?.processName ?? '').trim();
-  const name = nameEn || nameKo || nameVi || baseName;
-  const displayName = String(item?.displayName ?? nameKo ?? nameEn ?? nameVi ?? name ?? code).trim();
-  if (!code && !name) return null;
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_');
+
+const hashStyleProcessText = (value) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36).toUpperCase();
+};
+
+const buildCustomStyleSpecCode = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const compact = text.replace(/\s+/g, '').toLowerCase();
+  const numberMatch = compact.match(/\d+(?:\.\d+)?/);
+  const numericToken = numberMatch ? numberMatch[0].replace(/\./g, '_') : '';
+  if (numericToken) {
+    if (/(mm)/i.test(compact)) return `${numericToken}MM`;
+    if (/(cm)/i.test(compact)) return `${numericToken}CM`;
+    if (/(line|needle|ly|줄|선)/i.test(compact)) return `${numericToken}N`;
+    if (/(thread|chi|실|soi)/i.test(compact)) return `${numericToken}T`;
+  }
+  const normalized = normalizeStyleProcessCodeSegment(text);
+  if (normalized) return normalized;
+  return `SPEC_${hashStyleProcessText(text).slice(0, 6)}`;
+};
+
+const normalizeProcessMasterOption = (item, defaultType = '') => {
+  if (item === null || item === undefined) return null;
+  const label =
+    typeof item === 'string'
+      ? item.trim()
+      : String(
+          item?.label ??
+            item?.nameKo ??
+            item?.nameEn ??
+            item?.nameVi ??
+            item?.name ??
+            item?.value ??
+            ''
+        ).trim();
+  const type = String(item?.type ?? defaultType).trim().toUpperCase();
+  const codeSource = typeof item === 'string' ? '' : item?.code;
+  const code =
+    normalizeStyleProcessCodeSegment(codeSource) ||
+    (type === 'SPEC' ? buildCustomStyleSpecCode(label) : '');
+  if (!label && !code) return null;
+
   return {
-    id: item?.id ?? null,
-    code: code || name,
-    name: name || code,
-    nameKo,
-    nameEn: nameEn || name || code,
-    nameVi,
-    displayName: displayName || name || code,
-    searchText: String(item?.searchText || '').trim(),
-    description: String(item?.description ?? '').trim(),
-    actualTime: item?.actualTime ?? null,
+    id: typeof item === 'object' && !Array.isArray(item) ? item?.id ?? null : null,
+    type,
+    code: code || null,
+    label: label || code,
+    nameKo:
+      (typeof item === 'object' && !Array.isArray(item) ? String(item?.nameKo ?? '').trim() : '') ||
+      label ||
+      code,
+    nameEn:
+      (typeof item === 'object' && !Array.isArray(item) ? String(item?.nameEn ?? '').trim() : '') ||
+      label ||
+      code,
+    nameVi:
+      (typeof item === 'object' && !Array.isArray(item) ? String(item?.nameVi ?? '').trim() : '') ||
+      label ||
+      code,
+    sortOrder:
+      typeof item === 'object' && !Array.isArray(item) && Number.isFinite(Number(item?.sortOrder))
+        ? Number(item.sortOrder)
+        : 0,
+    isCustom:
+      Boolean(typeof item === 'object' && !Array.isArray(item) && item?.isCustom) ||
+      (type === 'SPEC' && !codeSource),
   };
+};
+
+const getProcessMasterOptionIdentity = (item, defaultType = '') => {
+  const normalized = normalizeProcessMasterOption(item, defaultType);
+  if (!normalized) return '';
+  return `${normalized.type}:${normalized.code ?? ''}:${String(normalized.label ?? '')
+    .trim()
+    .toLowerCase()}`;
+};
+
+const compareProcessMasterOptionAsc = (left, right) => {
+  const leftSort = Number.isFinite(Number(left?.sortOrder)) ? Number(left.sortOrder) : 0;
+  const rightSort = Number.isFinite(Number(right?.sortOrder)) ? Number(right.sortOrder) : 0;
+  if (leftSort !== rightSort) return leftSort - rightSort;
+  return String(left?.label ?? left?.code ?? '').localeCompare(String(right?.label ?? right?.code ?? ''));
+};
+
+const normalizeProcessCompositionEntry = (value, kind) => {
+  const normalized = normalizeProcessMasterOption(value, kind.toUpperCase());
+  if (!normalized) return null;
+  const code =
+    normalizeStyleProcessCodeSegment(normalized.code) ||
+    (kind === 'spec' ? buildCustomStyleSpecCode(normalized.label) : '');
+  const label = String(normalized.label ?? code ?? '').trim();
+  if (!label && !code) return null;
+
+  return {
+    code: code || null,
+    label: label || code,
+    nameKo: normalized.nameKo || label || code,
+    nameEn: normalized.nameEn || label || code,
+    nameVi: normalized.nameVi || label || code,
+    isCustom: Boolean(normalized.isCustom),
+  };
+};
+
+const normalizeProcessCompositionEntries = (values, kind) => {
+  const entries = (Array.isArray(values) ? values : [])
+    .map((value) => normalizeProcessCompositionEntry(value, kind))
+    .filter(Boolean);
+  const used = new Set();
+
+  return entries.filter((entry) => {
+    const dedupeKey = `${String(entry?.code ?? '')}::${String(entry?.label ?? '')
+      .trim()
+      .toLowerCase()}`;
+    if (!dedupeKey || used.has(dedupeKey)) return false;
+    used.add(dedupeKey);
+    return true;
+  });
+};
+
+const buildProcessComposition = (draft) => {
+  const part = normalizeProcessCompositionEntry(draft?.part, 'part');
+  const target = normalizeProcessCompositionEntry(draft?.target, 'target');
+  const actions = normalizeProcessCompositionEntries(draft?.actions, 'action');
+  const spec = normalizeProcessCompositionEntry(draft?.spec, 'spec');
+  const targets = target ? [target] : [];
+  const specs = spec ? [spec] : [];
+
+  if (!part && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+    return null;
+  }
+
+  return { part, targets, actions, specs };
+};
+
+const resolveProcessCompositionText = (entry, languageCode) => {
+  if (!entry || typeof entry !== 'object') return '';
+  if (languageCode === 'ko') {
+    return String(entry?.nameKo ?? entry?.label ?? entry?.code ?? '').trim();
+  }
+  if (languageCode === 'vi') {
+    return String(entry?.nameVi ?? entry?.label ?? entry?.code ?? '').trim();
+  }
+  return String(entry?.nameEn ?? entry?.label ?? entry?.code ?? '').trim();
+};
+
+const buildProcessNameFromComposition = (composition, languageCode, fallback = '') => {
+  if (!composition || typeof composition !== 'object') {
+    return String(fallback ?? '').trim();
+  }
+
+  const partText = resolveProcessCompositionText(composition.part, languageCode);
+  const targetText = (Array.isArray(composition.targets) ? composition.targets : [])
+    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .filter(Boolean)
+    .join('·');
+  const actionText = (Array.isArray(composition.actions) ? composition.actions : [])
+    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .filter(Boolean)
+    .join(' + ');
+  const specText = (Array.isArray(composition.specs) ? composition.specs : [])
+    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .filter(Boolean)
+    .join('·');
+
+  const targetWithSpec = targetText
+    ? `${targetText}${specText ? `(${specText})` : ''}`
+    : specText
+      ? `(${specText})`
+      : '';
+  const leftText = partText && targetWithSpec ? `${partText}: ${targetWithSpec}` : partText || targetWithSpec;
+  const baseText = leftText && actionText ? `${leftText} - ${actionText}` : leftText || actionText;
+  if (!baseText) return String(fallback ?? '').trim();
+  return baseText;
+};
+
+const buildProcessLocalizedNamesFromComposition = (composition, fallback = {}) => ({
+  nameKo: buildProcessNameFromComposition(composition, 'ko', fallback.nameKo ?? fallback.name),
+  nameEn: buildProcessNameFromComposition(composition, 'en', fallback.nameEn ?? fallback.name),
+  nameVi: buildProcessNameFromComposition(composition, 'vi', fallback.nameVi ?? fallback.name),
+});
+
+const buildProcessCodeFromComposition = (composition, fallback = null) => {
+  if (!composition || typeof composition !== 'object') {
+    return normalizeStyleProcessCodeSegment(fallback);
+  }
+
+  const tokens = [
+    composition?.part?.code ?? null,
+    ...(Array.isArray(composition?.targets) ? composition.targets : []).map((entry) => entry?.code),
+    ...(Array.isArray(composition?.actions) ? composition.actions : []).map((entry) => entry?.code),
+    ...(Array.isArray(composition?.specs) ? composition.specs : []).map(
+      (entry) => entry?.code || buildCustomStyleSpecCode(entry?.label)
+    ),
+  ]
+    .map((token) => normalizeStyleProcessCodeSegment(token))
+    .filter(Boolean);
+
+  if (tokens.length > 0) return tokens.join('_');
+  return normalizeStyleProcessCodeSegment(fallback);
+};
+
+const resolveProcessMasterLabel = (value, languageCode) => {
+  if (typeof value === 'string') return value.trim();
+  const normalized = normalizeProcessMasterOption(value);
+  return resolveProcessCompositionText(normalized, languageCode);
+};
+
+const resolveLocalizedProcessDisplayLabel = (process, languageCode, fallback = 'Process') => {
+  const composedName = buildProcessNameFromComposition(process?.processComposition, languageCode, '');
+  const localizedName =
+    composedName ||
+    resolveLocalizedProcessName(
+      {
+        code: process?.code,
+        name: process?.name,
+        nameKo: process?.nameKo,
+        nameEn: process?.nameEn,
+        nameVi: process?.nameVi,
+      },
+      languageCode
+    );
+  return formatProcessNameWithQuantity(localizedName || process?.name || process?.code, process?.quantity) || fallback;
 };
 
 const getProcessIdentity = (process) => {
   if (!process || typeof process !== 'object') return '';
-  if (process.id !== null && process.id !== undefined && process.id !== '') {
-    return `id:${String(process.id)}`;
-  }
   const code = String(process.code ?? '')
     .trim()
     .toUpperCase();
   if (code) return `code:${code}`;
+  if (process.id !== null && process.id !== undefined && process.id !== '') {
+    return `id:${String(process.id)}`;
+  }
   const name = String(process.name ?? '')
     .trim()
     .toLowerCase();
@@ -180,10 +530,6 @@ const createInstanceId = (process) =>
   `${process?.code || process?.name || 'PROC'}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
-const toProcessOptionLabel = (process) =>
-  `${process?.displayName || process?.name || process?.code || ''}`.trim();
-const compareProcessOptionTextAsc = (left, right) =>
-  toProcessOptionLabel(left).localeCompare(toProcessOptionLabel(right));
 
 const normalizeStValues = (process) => {
   const normalized = normalizeProcess(process);
@@ -219,14 +565,24 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
   });
 };
 
-const resolveDraftStInputValue = (draft, autoStTotalSeconds) =>
-  String(draft?.st ?? '').trim() !== '' ? draft.st : toDraftNumberText(autoStTotalSeconds);
+const resolveDraftStInputValue = (draft) => String(draft?.st ?? '').trim();
 
 const buildProcessPayload = (
   draft,
   existingProcess = null,
   timeRefQuantity = DEFAULT_TIME_REF_QUANTITY
 ) => {
+  const composition = buildProcessComposition(draft);
+  const localizedNames = buildProcessLocalizedNamesFromComposition(composition, {
+    name: existingProcess?.name,
+    nameKo: existingProcess?.nameKo,
+    nameEn: existingProcess?.nameEn,
+    nameVi: existingProcess?.nameVi,
+  });
+  const processCode = buildProcessCodeFromComposition(
+    composition,
+    localizedNames.nameEn || localizedNames.nameKo || existingProcess?.code || existingProcess?.name
+  );
   const resolvedTimeRefQuantity = toPositiveInt(
     timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
@@ -268,19 +624,14 @@ const buildProcessPayload = (
 
   return normalizeProcess({
     ...(existingProcess || {}),
-    id: draft.process?.id ?? existingProcess?.id,
-    code: draft.process?.code ?? existingProcess?.code,
-    name:
-      draft.process?.nameEn ??
-      draft.process?.displayName ??
-      draft.process?.nameKo ??
-      draft.process?.nameVi ??
-      draft.process?.name ??
-      existingProcess?.name,
-    nameKo: draft.process?.nameKo ?? existingProcess?.nameKo,
-    nameEn: draft.process?.nameEn ?? existingProcess?.nameEn,
-    nameVi: draft.process?.nameVi ?? existingProcess?.nameVi,
-    description: draft.process?.description ?? existingProcess?.description,
+    id: existingProcess?.id ?? null,
+    code: processCode || existingProcess?.code,
+    name: localizedNames.nameEn || existingProcess?.name || processCode,
+    nameKo: localizedNames.nameKo || existingProcess?.nameKo || processCode,
+    nameEn: localizedNames.nameEn || existingProcess?.nameEn || processCode,
+    nameVi: localizedNames.nameVi || existingProcess?.nameVi || processCode,
+    processComposition: composition,
+    description: existingProcess?.description ?? null,
     quantity: processQuantity,
     timeRefQuantity: resolvedTimeRefQuantity,
     pt: ptPerPiece,
@@ -288,7 +639,12 @@ const buildProcessPayload = (
     ct: null,
     stManual: false,
     atParams: existingProcess?.atParams ?? null,
-    instanceId: existingProcess?.instanceId || createInstanceId(draft.process),
+    instanceId:
+      existingProcess?.instanceId ||
+      createInstanceId({
+        code: processCode,
+        name: localizedNames.nameEn || localizedNames.nameKo || processCode,
+      }),
   });
 };
 
@@ -309,24 +665,45 @@ const StyleProcess = ({
   );
   const [timeRefQuantityInput, setTimeRefQuantityInput] = useState('');
   const [isTimeRefQuantityEditing, setIsTimeRefQuantityEditing] = useState(false);
-  const [attributeProcesses, setAttributeProcesses] = useState([]);
+  const [processMasterOptions, setProcessMasterOptions] = useState({
+    parts: [],
+    targets: [],
+    actions: [],
+    specs: [],
+  });
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
 
   useEffect(() => {
     let active = true;
 
-    const loadAttributeProcesses = async () => {
+    const loadProcessMasterOptions = async () => {
       setIsLoadingOptions(true);
       setOptionsError('');
       try {
-        const data = await fetchProcessAttributes();
+        const data = await fetchProcessMasterOptions();
         if (!active) return;
-        setAttributeProcesses(Array.isArray(data) ? data : []);
+        setProcessMasterOptions({
+          parts: Array.isArray(data?.parts) ? data.parts : [],
+          targets: Array.isArray(data?.targets) ? data.targets : [],
+          actions: Array.isArray(data?.actions) ? data.actions : [],
+          specs: Array.isArray(data?.specs) ? data.specs : [],
+        });
       } catch (_error) {
         if (!active) return;
-        setAttributeProcesses([]);
-        setOptionsError('표준 공정 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        setProcessMasterOptions({
+          parts: [],
+          targets: [],
+          actions: [],
+          specs: [],
+        });
+        setOptionsError(
+          languageCode === 'ko'
+            ? '공정 조합 사전을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+            : languageCode === 'vi'
+              ? 'Khong the tai tu dien to hop cong doan. Hay thu lai sau.'
+              : 'Failed to load process composition options. Please try again later.'
+        );
       } finally {
         if (active) {
           setIsLoadingOptions(false);
@@ -334,68 +711,49 @@ const StyleProcess = ({
       }
     };
 
-    loadAttributeProcesses();
+    loadProcessMasterOptions();
 
     return () => {
       active = false;
     };
   }, [languageCode]);
 
-  const normalizedAttributeOptions = useMemo(
-    () => attributeProcesses.map((item) => normalizeProcessOption(item)).filter(Boolean),
-    [attributeProcesses]
+  const partOptions = useMemo(
+    () =>
+      (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : [])
+        .map((item) => normalizeProcessMasterOption(item, 'PART'))
+        .filter(Boolean)
+        .sort(compareProcessMasterOptionAsc),
+    [processMasterOptions.parts]
   );
-  const processLocalizationByCode = useMemo(() => {
-    const byCode = new Map();
-    normalizedAttributeOptions.forEach((process) => {
-      const code = String(process?.code ?? '')
-        .trim()
-        .toUpperCase();
-      if (!code || byCode.has(code)) return;
-      byCode.set(code, process);
-    });
-    return byCode;
-  }, [normalizedAttributeOptions]);
-  const processOptions = useMemo(() => {
-    const byIdentity = new Map();
-    normalizedAttributeOptions.forEach((process) => {
-      const identity = getProcessIdentity(process);
-      if (!identity || byIdentity.has(identity)) return;
-      byIdentity.set(identity, process);
-    });
-    safeProcesses.forEach((process) => {
-      const identity = getProcessIdentity(process);
-      if (!identity || byIdentity.has(identity)) return;
-      const localizedDisplayName = resolveLocalizedProcessName(
-        {
-          code: process.code,
-          name: process.name,
-          nameKo: process.nameKo,
-          nameEn: process.nameEn,
-          nameVi: process.nameVi,
-        },
-        languageCode
-      );
-      byIdentity.set(identity, {
-        id: process.id,
-        code: process.code,
-        name: process.name,
-        nameKo: process.nameKo,
-        nameEn: process.nameEn,
-        nameVi: process.nameVi,
-        displayName:
-          localizedDisplayName ||
-          process.name ||
-          process.code,
-        description: process.description || '',
-        actualTime: process.actualTime ?? null,
-      });
-    });
-    return Array.from(byIdentity.values()).sort(compareProcessOptionTextAsc);
-  }, [languageCode, normalizedAttributeOptions, safeProcesses]);
+  const targetOptions = useMemo(
+    () =>
+      (Array.isArray(processMasterOptions.targets) ? processMasterOptions.targets : [])
+        .map((item) => normalizeProcessMasterOption(item, 'TARGET'))
+        .filter(Boolean)
+        .sort(compareProcessMasterOptionAsc),
+    [processMasterOptions.targets]
+  );
+  const actionOptions = useMemo(
+    () =>
+      (Array.isArray(processMasterOptions.actions) ? processMasterOptions.actions : [])
+        .map((item) => normalizeProcessMasterOption(item, 'ACTION'))
+        .filter(Boolean)
+        .sort(compareProcessMasterOptionAsc),
+    [processMasterOptions.actions]
+  );
+  const specOptions = useMemo(
+    () =>
+      (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
+        .map((item) => normalizeProcessMasterOption(item, 'SPEC'))
+        .filter(Boolean)
+        .sort(compareProcessMasterOptionAsc),
+    [processMasterOptions.specs]
+  );
 
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
+  const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
@@ -473,16 +831,9 @@ const StyleProcess = ({
     [hasAT, hasST, totalAT, totalST]
   );
 
-  const addDisabledIdentitySet = useMemo(() => {
-    const set = new Set();
-    safeProcesses.forEach((process) => {
-      const identity = getProcessIdentity(process);
-      if (identity) set.add(identity);
-    });
-    return set;
-  }, [safeProcesses]);
-
-  const canStartAdd = !isLoadingOptions && processOptions.length > 0;
+  const hasRequiredMasterOptions =
+    partOptions.length > 0 && targetOptions.length > 0 && actionOptions.length > 0;
+  const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
 
   useEffect(() => {
     if (safeProcesses.length === 0) {
@@ -540,16 +891,21 @@ const StyleProcess = ({
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
-    if (!draft.process) return '공정을 선택해주세요.';
+    if (!draft.part) return getStyleProcessMessage(languageCode, 'validatePart');
+    if (!draft.target) return getStyleProcessMessage(languageCode, 'validateTarget');
+    if (!Array.isArray(draft.actions) || draft.actions.length === 0) {
+      return getStyleProcessMessage(languageCode, 'validateAction');
+    }
 
-    const identity = getProcessIdentity(draft.process);
-    if (!identity) return '유효한 공정을 선택해주세요.';
+    const previewProcess = buildProcessPayload(draft, null, timeRefQuantity);
+    const identity = getProcessIdentity(previewProcess);
+    if (!identity) return getStyleProcessMessage(languageCode, 'validateInvalid');
 
     const duplicated = safeProcesses.some((process) => {
       if (ignoreInstanceId && process.instanceId === ignoreInstanceId) return false;
       return getProcessIdentity(process) === identity;
     });
-    if (duplicated) return '이미 등록된 공정입니다.';
+    if (duplicated) return getStyleProcessMessage(languageCode, 'validateDuplicate');
     return '';
   };
 
@@ -577,7 +933,7 @@ const StyleProcess = ({
     handleCancelAddRow();
   };
 
-  const handleInlineChange = (process, field, rawValue) => {
+  const handleInlineChange = useCallback((process, field, rawValue) => {
     let updatedProcess;
     if (field === 'pt') {
       const parsed = parseOptionalSecondsInput(rawValue);
@@ -606,13 +962,13 @@ const StyleProcess = ({
       return;
     }
     onProcessesChange(safeProcesses.map((p) => p.instanceId === process.instanceId ? updatedProcess : p));
-  };
+  }, [displayOrderQuantity, onProcessesChange, safeProcesses]);
 
-  const handleRemoveProcess = (instanceId) => {
+  const handleRemoveProcess = useCallback((instanceId) => {
     onProcessesChange(safeProcesses.filter((process) => process.instanceId !== instanceId));
-  };
+  }, [onProcessesChange, safeProcesses]);
 
-  const onDragEnd = (result) => {
+  const onDragEnd = useCallback((result) => {
     if (isAddingRow) return;
     if (!result.destination) return;
 
@@ -620,18 +976,18 @@ const StyleProcess = ({
     const [reorderedItem] = nextProcesses.splice(result.source.index, 1);
     nextProcesses.splice(result.destination.index, 0, reorderedItem);
     onProcessesChange(nextProcesses);
-  };
+  }, [isAddingRow, onProcessesChange, safeProcesses]);
 
-  const renderRowActions = (process) => (
-    <Tooltip title="삭제">
+  const renderRowActions = useCallback((process) => (
+    <Tooltip title={getStyleProcessMessage(languageCode, 'delete')}>
       <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
         <DeleteIcon fontSize="small" />
       </IconButton>
     </Tooltip>
-  );
+  ), [handleRemoveProcess, languageCode]);
 
   const addPreviewProcess = isAddingRow
-    ? buildProcessPayload(addDraft, null, timeRefQuantity)
+    ? buildProcessPayload(deferredAddDraft, null, timeRefQuantity)
     : null;
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
@@ -647,14 +1003,130 @@ const StyleProcess = ({
           addPreviewProcess,
           displayOrderQuantity
         );
+  const processRows = useMemo(
+    () =>
+      safeProcesses.map((process, index) => (
+        <Draggable
+          key={process.instanceId}
+          draggableId={process.instanceId}
+          index={index}
+          isDragDisabled={Boolean(isAddingRow)}
+        >
+          {(dragProvided) => {
+            const previewAtTotalSeconds =
+              resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
+            const previewStTotalSeconds =
+              resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
+
+            return (
+              <TableRow
+                ref={dragProvided.innerRef}
+                {...dragProvided.draggableProps}
+                hover
+              >
+                <TableCell
+                  align="center"
+                  {...dragProvided.dragHandleProps}
+                  sx={{
+                    cursor: isAddingRow ? 'not-allowed' : 'grab',
+                    color: 'text.secondary',
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    spacing={0.25}
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <DragIndicatorIcon fontSize="small" />
+                    <Typography variant="caption">{index + 1}</Typography>
+                  </Stack>
+                </TableCell>
+
+                <TableCell>
+                  {resolveLocalizedProcessDisplayLabel(
+                    process,
+                    languageCode,
+                    getStyleProcessMessage(languageCode, 'processColumn')
+                  )}
+                </TableCell>
+
+                <TableCell align="right">
+                  <TextField
+                    key={process.instanceId + '_pt'}
+                    size="small"
+                    type="number"
+                    defaultValue={toDraftNumberText(process.pt)}
+                    onBlur={(e) => handleInlineChange(process, 'pt', e.target.value)}
+                    onWheel={(e) => e.target.blur()}
+                    inputProps={{ min: 0 }}
+                    placeholder="-"
+                    sx={{ width: 86 }}
+                  />
+                </TableCell>
+
+                <TableCell align="right">
+                  {formatSeconds(previewAtTotalSeconds)}
+                </TableCell>
+                <TableCell align="right">
+                  <TextField
+                    key={process.instanceId + '_st'}
+                    size="small"
+                    type="number"
+                    defaultValue={
+                      resolveExactStPerPiece(process, displayOrderQuantity) == null
+                        ? ''
+                        : toDraftNumberText(
+                            resolveExactStPerPiece(
+                              process,
+                              displayOrderQuantity
+                            )
+                          )
+                    }
+                    onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
+                    onWheel={(e) => e.target.blur()}
+                    inputProps={{ min: 0 }}
+                    placeholder={
+                      previewStTotalSeconds == null
+                        ? '-'
+                        : toDraftNumberText(previewStTotalSeconds)
+                    }
+                    sx={{
+                      width: 86,
+                      '& input': {
+                        fontWeight:
+                          resolveExactStPerPiece(process, displayOrderQuantity) != null
+                            ? 700
+                            : 400,
+                      },
+                    }}
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  {renderRowActions(process)}
+                </TableCell>
+              </TableRow>
+            );
+          }}
+        </Draggable>
+      )),
+    [
+      displayOrderQuantity,
+      handleInlineChange,
+      isAddingRow,
+      languageCode,
+      renderRowActions,
+      safeProcesses,
+    ]
+  );
   const renderStGapChip = (percent) => {
     if (percent == null) return null;
     const gapMeta = resolveDivergenceMeta(percent);
     const palette = resolveStAtGapPalette(gapMeta);
     const label = formatDivergencePercentLabel(percent);
     const tooltipTitle = gapMeta.needsReview
-      ? `AT와 ST 차이가 ${label}로 커서 ST 조정 검토가 필요합니다.`
-      : `AT와 ST 차이율 ${label}`;
+      ? getStyleProcessMessage(languageCode, 'stGapReview', { label })
+      : getStyleProcessMessage(languageCode, 'stGapNormal', { label });
 
     return (
       <Tooltip title={tooltipTitle}>
@@ -679,13 +1151,13 @@ const StyleProcess = ({
         sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', md: 'center' }, mb: 1.25 }}
       >
         <Stack direction="row" spacing={1.25} alignItems="center">
-          <Typography variant="h6">스타일 공정 목록</Typography>
-          <Tooltip title="PT는 항상 1,000장 주문 기준의 개당 시간으로 입력하고, 기준 수량 q는 AT/ST 확인 문맥으로 사용합니다.">
+          <Typography variant="h6">{getStyleProcessMessage(languageCode, 'title')}</Typography>
+          <Tooltip title={getStyleProcessMessage(languageCode, 'timeRefTooltip')}>
             <TextField
               size="small"
               type="text"
               inputMode="numeric"
-              label="기준 수량 q"
+              label={getStyleProcessMessage(languageCode, 'timeRefLabel')}
               value={isTimeRefQuantityEditing ? timeRefQuantityInput : ''}
               onChange={handleTimeRefQuantityChange}
               onFocus={handleTimeRefQuantityFocus}
@@ -710,13 +1182,13 @@ const StyleProcess = ({
             borderRadius: 1.5,
           }}
         >
-          행 추가
+          {getStyleProcessMessage(languageCode, 'addRow')}
         </Button>
       </Stack>
 
       {isLoadingOptions && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          표준 공정 목록을 불러오는 중입니다.
+          {getStyleProcessMessage(languageCode, 'loadingOptions')}
         </Typography>
       )}
       {!isLoadingOptions && optionsError && (
@@ -724,10 +1196,217 @@ const StyleProcess = ({
           {optionsError}
         </Typography>
       )}
-      {!isLoadingOptions && !optionsError && processOptions.length === 0 && (
+      {!isLoadingOptions && !optionsError && !hasRequiredMasterOptions && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          속성 관리에서 공정을 먼저 등록해주세요.
+          {getStyleProcessMessage(languageCode, 'missingMasterOptions')}
         </Typography>
+      )}
+
+      {isAddingRow && (
+        <Paper
+          variant="outlined"
+          sx={{
+            borderRadius: 2,
+            p: 2,
+            mb: 1.5,
+            backgroundColor: '#f8fafc',
+          }}
+        >
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              {getStyleProcessMessage(languageCode, 'addingTitle')}
+            </Typography>
+            <Stack
+              direction={{ xs: 'column', lg: 'row' }}
+              spacing={1}
+              sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
+            >
+              <Autocomplete
+                size="small"
+                options={partOptions}
+                value={addDraft.part}
+                onChange={(_event, value) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    part: normalizeProcessCompositionEntry(value, 'part'),
+                  }));
+                  setAddError('');
+                }}
+                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                isOptionEqualToValue={(option, value) =>
+                  getProcessMasterOptionIdentity(option, 'PART') ===
+                  getProcessMasterOptionIdentity(value, 'PART')
+                }
+                renderInput={(params) => (
+                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'partLabel')} />
+                )}
+                sx={{ flex: 1, minWidth: 180 }}
+              />
+              <Autocomplete
+                size="small"
+                options={targetOptions}
+                value={addDraft.target}
+                onChange={(_event, value) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    target: normalizeProcessCompositionEntry(value, 'target'),
+                  }));
+                  setAddError('');
+                }}
+                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                isOptionEqualToValue={(option, value) =>
+                  getProcessMasterOptionIdentity(option, 'TARGET') ===
+                  getProcessMasterOptionIdentity(value, 'TARGET')
+                }
+                renderInput={(params) => (
+                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'targetLabel')} />
+                )}
+                sx={{ flex: 1, minWidth: 180 }}
+              />
+              <Autocomplete
+                freeSolo
+                forcePopupIcon
+                size="small"
+                options={specOptions}
+                value={addDraft.spec}
+                onChange={(_event, value) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    spec: normalizeProcessCompositionEntry(value, 'spec'),
+                  }));
+                  setAddError('');
+                }}
+                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                isOptionEqualToValue={(option, value) =>
+                  getProcessMasterOptionIdentity(option, 'SPEC') ===
+                  getProcessMasterOptionIdentity(value, 'SPEC')
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={getStyleProcessMessage(languageCode, 'specLabel')}
+                    placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                  />
+                )}
+                sx={{ flex: 1, minWidth: 180 }}
+              />
+            </Stack>
+
+            <Autocomplete
+              multiple
+              size="small"
+              options={actionOptions}
+              value={addDraft.actions}
+              disableCloseOnSelect
+              onChange={(_event, value) => {
+                setAddDraft((prev) => ({
+                  ...prev,
+                  actions: normalizeProcessCompositionEntries(value, 'action'),
+                }));
+                setAddError('');
+              }}
+              getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+              isOptionEqualToValue={(option, value) =>
+                getProcessMasterOptionIdentity(option, 'ACTION') ===
+                getProcessMasterOptionIdentity(value, 'ACTION')
+              }
+              filterSelectedOptions
+              renderInput={(params) => (
+                <TextField {...params} label={getStyleProcessMessage(languageCode, 'actionLabel')} />
+              )}
+            />
+
+            <Stack
+              direction={{ xs: 'column', xl: 'row' }}
+              spacing={1}
+              sx={{ alignItems: { xs: 'stretch', xl: 'center' } }}
+            >
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 56,
+                  px: 1.5,
+                  py: 1.25,
+                  borderRadius: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'common.white',
+                }}
+              >
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
+                  {getStyleProcessMessage(languageCode, 'previewLabel')}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {addPreviewProcess
+                    ? resolveLocalizedProcessDisplayLabel(
+                        addPreviewProcess,
+                        languageCode,
+                        getStyleProcessMessage(languageCode, 'processColumn')
+                      )
+                    : getStyleProcessMessage(languageCode, 'previewEmpty')}
+                </Typography>
+              </Box>
+
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <TextField
+                  size="small"
+                  type="number"
+                  label={getStyleProcessMessage(languageCode, 'ptLabel')}
+                  value={addDraft.pt}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
+                  }}
+                  onWheel={(e) => e.target.blur()}
+                  inputProps={{ min: 0 }}
+                  placeholder="-"
+                  sx={{ width: 120 }}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label={`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
+                  value={resolveDraftStInputValue(addDraft)}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      st: event.target.value,
+                    }));
+                  }}
+                  onWheel={(e) => e.target.blur()}
+                  inputProps={{ min: 0 }}
+                  placeholder={
+                    addPreviewStTotalSeconds == null
+                      ? '-'
+                      : toDraftNumberText(addPreviewStTotalSeconds)
+                  }
+                  sx={{ width: 132 }}
+                />
+                <TextField
+                  size="small"
+                  label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
+                  value={formatSeconds(addPreviewAtTotalSeconds)}
+                  InputProps={{ readOnly: true }}
+                  inputProps={{ tabIndex: -1 }}
+                  sx={{ width: 132 }}
+                />
+                <Stack direction="row" spacing={0.75}>
+                  <Button variant="contained" onClick={handleSaveAddRow}>
+                    {getStyleProcessMessage(languageCode, 'save')}
+                  </Button>
+                  <Button variant="outlined" onClick={handleCancelAddRow}>
+                    {getStyleProcessMessage(languageCode, 'cancel')}
+                  </Button>
+                </Stack>
+              </Stack>
+            </Stack>
+
+            {addError && (
+              <Typography variant="caption" color="error">
+                {addError}
+              </Typography>
+            )}
+          </Stack>
+        </Paper>
       )}
 
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
@@ -736,11 +1415,13 @@ const StyleProcess = ({
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ width: 70 }}>순서</TableCell>
-                  <TableCell sx={{ minWidth: 250 }}>공정명</TableCell>
+                  <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
+                  <TableCell sx={{ minWidth: 250 }}>{getStyleProcessMessage(languageCode, 'processColumn')}</TableCell>
                   <TableCell align="right" sx={{ width: 110 }}>
                     <Tooltip
-                      title={`PT(${ptTimeRefQuantityLabel}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.`}
+                      title={getStyleProcessMessage(languageCode, 'ptTooltip', {
+                        quantity: ptTimeRefQuantityLabel,
+                      })}
                       placement="top"
                     >
                       <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
@@ -750,7 +1431,12 @@ const StyleProcess = ({
                   </TableCell>
                   <TableCell align="right" sx={{ width: 120 }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
-                      <Tooltip title={`AT(${timeRefQuantityLabel}): ${timeRefQuantityLabel}장 주문 기준의 개당 실측 시간(초)입니다.`} placement="top">
+                      <Tooltip
+                        title={getStyleProcessMessage(languageCode, 'atTooltip', {
+                          quantity: timeRefQuantityLabel,
+                        })}
+                        placement="top"
+                      >
                         <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
@@ -771,7 +1457,9 @@ const StyleProcess = ({
                   <TableCell align="right" sx={{ width: 190 }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
                       <Tooltip
-                        title={`ST(${stBucketQuantityLabel}): ${timeRefQuantityLabel}장 주문은 ${stBucketQuantityLabel} 구간 기준의 개당 표준 시간(초)입니다.`}
+                        title={getStyleProcessMessage(languageCode, 'stTooltip', {
+                          quantity: stBucketQuantityLabel,
+                        })}
                         placement="top"
                       >
                         <Box component="span" sx={{ cursor: 'help', borderBottom: '1px dashed', borderColor: 'text.secondary' }}>
@@ -782,7 +1470,7 @@ const StyleProcess = ({
                     </Stack>
                   </TableCell>
                   <TableCell align="center" sx={{ width: 120 }}>
-                    작업
+                    {getStyleProcessMessage(languageCode, 'actionColumn')}
                   </TableCell>
                 </TableRow>
               </TableHead>
@@ -790,219 +1478,14 @@ const StyleProcess = ({
               <Droppable droppableId="style-processes">
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
-                    {isAddingRow && (
-                      <TableRow sx={{ backgroundColor: '#f8fafc' }}>
-                        <TableCell align="center" sx={{ color: 'text.secondary' }}>
-                          신규
-                        </TableCell>
-                        <TableCell>
-                          <SearchableSelect
-                            size="small"
-                            label="공정 선택"
-                            options={processOptions}
-                            value={addDraft.process}
-                            onChange={(_event, value) => {
-                              setAddDraft((prev) => ({ ...prev, process: value }));
-                              setAddError('');
-                            }}
-                            getOptionLabel={(option) =>
-                              `${option.displayName || option.name || option.code || ''}`
-                            }
-                            isOptionEqualToValue={(option, value) =>
-                              option.id === value?.id || option.code === value?.code
-                            }
-                            getOptionDisabled={(option) =>
-                              addDisabledIdentitySet.has(getProcessIdentity(option))
-                            }
-                            sx={{ width: '100%' }}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={addDraft.pt}
-                            onChange={(event) => {
-                              setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
-                            }}
-                            onWheel={(e) => e.target.blur()}
-                            inputProps={{ min: 0 }}
-                            placeholder="-"
-                            sx={{ width: 86 }}
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          {formatSeconds(addPreviewAtTotalSeconds)}
-                        </TableCell>
-                        <TableCell align="right">
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={resolveDraftStInputValue(
-                              addDraft,
-                              addPreviewStTotalSeconds
-                            )}
-                            onChange={(event) => {
-                              setAddDraft((prev) => ({
-                                ...prev,
-                                st: event.target.value,
-                              }));
-                            }}
-                            onWheel={(e) => e.target.blur()}
-                            inputProps={{ min: 0 }}
-                            placeholder="-"
-                            sx={{ width: 86 }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <Stack direction="row" spacing={0.5} justifyContent="center">
-                            <Tooltip title="저장">
-                              <IconButton size="small" onClick={handleSaveAddRow}>
-                                <CheckIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="취소">
-                              <IconButton size="small" onClick={handleCancelAddRow}>
-                                <CloseIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {addError && isAddingRow && (
-                      <TableRow sx={{ backgroundColor: '#f8fafc' }}>
-                        <TableCell colSpan={6} sx={{ py: 0.75 }}>
-                          <Typography variant="caption" color="error">
-                            {addError}
-                          </Typography>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {safeProcesses.length === 0 && !isAddingRow ? (
+                    {safeProcesses.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                          등록된 공정이 없습니다. 상단의 행 추가로 바로 입력해보세요.
+                          {getStyleProcessMessage(languageCode, 'empty')}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      safeProcesses.map((process, index) => (
-                        <Draggable
-                          key={process.instanceId}
-                          draggableId={process.instanceId}
-                          index={index}
-                          isDragDisabled={Boolean(isAddingRow)}
-                        >
-                          {(dragProvided) => {
-                            const processCode = String(process?.code ?? '')
-                              .trim()
-                              .toUpperCase();
-                            const localizedSource = processLocalizationByCode.get(processCode);
-                            const previewAtTotalSeconds =
-                              resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
-                            const previewStTotalSeconds =
-                              resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
-
-                            return (
-                              <>
-                                <TableRow
-                                  ref={dragProvided.innerRef}
-                                  {...dragProvided.draggableProps}
-                                  hover
-                                >
-                                  <TableCell
-                                    align="center"
-                                    {...dragProvided.dragHandleProps}
-                                    sx={{
-                                      cursor: isAddingRow ? 'not-allowed' : 'grab',
-                                      color: 'text.secondary',
-                                    }}
-                                  >
-                                    <Stack
-                                      direction="row"
-                                      spacing={0.25}
-                                      alignItems="center"
-                                      justifyContent="center"
-                                    >
-                                      <DragIndicatorIcon fontSize="small" />
-                                      <Typography variant="caption">{index + 1}</Typography>
-                                    </Stack>
-                                  </TableCell>
-
-                                  <TableCell>
-                                    {formatProcessLabelWithQuantity({
-                                      code: process.code,
-                                      name: process.name,
-                                      nameKo: process?.nameKo || localizedSource?.nameKo,
-                                      nameEn: process?.nameEn || localizedSource?.nameEn,
-                                      nameVi: process?.nameVi || localizedSource?.nameVi,
-                                      quantity: process.quantity,
-                                      languageCode,
-                                    })}
-                                  </TableCell>
-
-                                  <TableCell align="right">
-                                    <TextField
-                                      key={process.instanceId + '_pt'}
-                                      size="small"
-                                      type="number"
-                                      defaultValue={toDraftNumberText(process.pt)}
-                                      onBlur={(e) => handleInlineChange(process, 'pt', e.target.value)}
-                                      onWheel={(e) => e.target.blur()}
-                                      inputProps={{ min: 0 }}
-                                      placeholder="-"
-                                      sx={{ width: 86 }}
-                                    />
-                                  </TableCell>
-
-                                  <TableCell align="right">
-                                    {formatSeconds(previewAtTotalSeconds)}
-                                  </TableCell>
-                                  <TableCell align="right">
-                                    <TextField
-                                      key={process.instanceId + '_st'}
-                                      size="small"
-                                      type="number"
-                                      defaultValue={
-                                        resolveExactStPerPiece(process, displayOrderQuantity) == null
-                                          ? ''
-                                          : toDraftNumberText(
-                                              resolveExactStPerPiece(
-                                                process,
-                                                displayOrderQuantity
-                                              )
-                                            )
-                                      }
-                                      onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
-                                      onWheel={(e) => e.target.blur()}
-                                      inputProps={{ min: 0 }}
-                                      placeholder={
-                                        previewStTotalSeconds == null
-                                          ? '-'
-                                          : toDraftNumberText(previewStTotalSeconds)
-                                      }
-                                      sx={{
-                                        width: 86,
-                                        '& input': {
-                                          fontWeight:
-                                            resolveExactStPerPiece(process, displayOrderQuantity) != null
-                                              ? 700
-                                              : 400,
-                                        },
-                                      }}
-                                    />
-                                  </TableCell>
-                                  <TableCell align="center">
-                                    {renderRowActions(process)}
-                                  </TableCell>
-                                </TableRow>
-                              </>
-                            );
-                          }}
-                        </Draggable>
-                      ))
+                      processRows
                     )}
                     {provided.placeholder}
                   </TableBody>
@@ -1012,7 +1495,7 @@ const StyleProcess = ({
               <TableFooter>
                 <TableRow>
                   <TableCell colSpan={2} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    개당 시간 합계
+                    {getStyleProcessMessage(languageCode, 'total')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {hasPT ? formatSeconds(totalPT) : '-'}

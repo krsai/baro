@@ -41,6 +41,18 @@ const splitKoAndLatinProcessName = (value) => {
   return { ko, latin };
 };
 
+const resolveSplitLocalizedName = (value, languageCode) => {
+  const text = toTrimmedText(value);
+  if (!text) return '';
+
+  const splitName = splitKoAndLatinProcessName(text);
+  if (!splitName) return text;
+
+  if (languageCode === 'ko') return splitName.ko || text;
+  if (languageCode === 'vi') return splitName.latin || splitName.ko || text;
+  return splitName.latin || splitName.ko || text;
+};
+
 export const resolveLocalizedProcessName = (process, languageCode = 'en') => {
   if (!process || typeof process !== 'object') return '';
 
@@ -58,9 +70,9 @@ export const resolveLocalizedProcessName = (process, languageCode = 'en') => {
     process?.name ?? process?.processName ?? process?.label ?? process?.code
   );
 
-  if (code === 'ko' && nameKo) return nameKo;
-  if (code === 'en' && nameEn) return nameEn;
-  if (code === 'vi' && nameVi) return nameVi;
+  if (code === 'ko' && nameKo) return resolveSplitLocalizedName(nameKo, code);
+  if (code === 'en' && nameEn) return resolveSplitLocalizedName(nameEn, code);
+  if (code === 'vi' && nameVi) return resolveSplitLocalizedName(nameVi, code);
 
   const splitName = splitKoAndLatinProcessName(baseName);
   if (splitName) {

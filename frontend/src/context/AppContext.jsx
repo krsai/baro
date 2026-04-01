@@ -18,22 +18,11 @@ const TOAST_DURATION = {
   info: 3000,
 };
 
-const normalizeAppPath = (path) => {
-  const raw = typeof path === 'string' ? path.trim() : '';
-  if (!raw) return '/';
-  const withoutHash = raw.split('#')[0];
-  const pathname = withoutHash.split('?')[0];
-  const normalizedPathname = pathname.replace(/\/+$/, '');
-  return normalizedPathname || '/';
-};
-
 // AppProvider component
 export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activePath, setActivePathState] = useState('/');
-  const [refreshSignals, setRefreshSignals] = useState({});
 
   // --- Tab State ---
   const [openTabs, setOpenTabs] = useState([]);
@@ -126,17 +115,6 @@ export const AppProvider = ({ children }) => {
   const [factories, setFactories] = useState([]);
 
   const [roles, setRoles] = useState([]);
-  const setActivePath = useCallback((path) => {
-    const normalizedPath = normalizeAppPath(path);
-    setActivePathState((prev) => (prev === normalizedPath ? prev : normalizedPath));
-  }, []);
-  const markPathForRefresh = useCallback((path) => {
-    const normalizedPath = normalizeAppPath(path);
-    setRefreshSignals((prev) => ({
-      ...prev,
-      [normalizedPath]: (prev[normalizedPath] || 0) + 1,
-    }));
-  }, []);
 
   // Keep navigation handler in a ref to avoid function identity churn across renders.
   const navigateToPathRef = useRef((..._args) => {
@@ -180,12 +158,6 @@ export const AppProvider = ({ children }) => {
       roles,
       setRoles,
 
-      // Active path and explicit refresh signals
-      activePath,
-      setActivePath,
-      refreshSignals,
-      markPathForRefresh,
-
       // Centralized navigation
       navigateToPath,
       setNavigateToPath,
@@ -199,15 +171,11 @@ export const AppProvider = ({ children }) => {
       notification,
       openTab,
       openTabs,
-      activePath,
-      refreshSignals,
       resetWorkspace,
       roles,
       setNavigateToPath,
       showNotification,
       sidebarOpen,
-      setActivePath,
-      markPathForRefresh,
       toggleSidebar,
     ]
   );

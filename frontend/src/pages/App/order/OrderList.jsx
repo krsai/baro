@@ -770,8 +770,7 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const currentOrderRoutePath = isDetailMode ? `/order/${orderId}` : '/order';
-  const { showNotification, navigateToPath, activePath, refreshSignals, markPathForRefresh } = useApp();
+  const { showNotification, navigateToPath } = useApp();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const orderPageText = useMemo(
@@ -1256,10 +1255,6 @@ const OrderList = () => {
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
   const sizeInputRefs = useRef(new Map());
-  const handledOrderRefreshRef = useRef(0);
-  const handledOrderStylesRefreshRef = useRef(0);
-  const orderRefreshSignal = refreshSignals['/order'] || 0;
-  const orderStylesRefreshSignal = refreshSignals['/order/styles'] || 0;
   const dueDateFilterStartKey = useMemo(
     () => buildDateKey(dueDateFilterStart),
     [dueDateFilterStart]
@@ -1290,16 +1285,8 @@ const OrderList = () => {
   }, [orderPageText.stylesLoadError, showNotification]);
 
   useEffect(() => {
-    handledOrderStylesRefreshRef.current = orderStylesRefreshSignal;
     refreshStyles(activeOrgId);
   }, [activeOrgId, refreshStyles]);
-
-  useEffect(() => {
-    if (activePath !== currentOrderRoutePath) return;
-    if (orderStylesRefreshSignal <= handledOrderStylesRefreshRef.current) return;
-    handledOrderStylesRefreshRef.current = orderStylesRefreshSignal;
-    refreshStyles(activeOrgId, { forceRefresh: true });
-  }, [activePath, activeOrgId, currentOrderRoutePath, orderStylesRefreshSignal, refreshStyles]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1349,7 +1336,6 @@ const OrderList = () => {
 
   useEffect(() => {
     const cancelledRef = { current: false };
-    handledOrderRefreshRef.current = orderRefreshSignal;
     loadOrdersFromDb({ cancelledRef });
     return () => {
       cancelledRef.current = true;
@@ -1382,13 +1368,6 @@ const OrderList = () => {
     setDueDateFilterStart(bounds.minDate);
     setDueDateFilterEnd(bounds.maxDate);
   }, [orders, ordersLoaded, dueDateFilterStartKey, dueDateFilterEndKey]);
-
-  useEffect(() => {
-    if (activePath !== '/order') return;
-    if (orderRefreshSignal <= handledOrderRefreshRef.current) return;
-    handledOrderRefreshRef.current = orderRefreshSignal;
-    loadOrdersFromDb({ forceRefresh: true });
-  }, [activePath, loadOrdersFromDb, orderRefreshSignal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2092,7 +2071,6 @@ const OrderList = () => {
         { orgId: activeOrgId }
       );
       mergeOrderIntoState(updated);
-      markPathForRefresh('/order');
       showNotification(
         nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
         'success'
@@ -2688,7 +2666,6 @@ const OrderList = () => {
       }
 
       clearOrderDraft();
-      markPathForRefresh('/order');
       showNotification(orderPageText.orderSaved, 'success');
       closeDetailAndGoList();
     } catch (error) {
