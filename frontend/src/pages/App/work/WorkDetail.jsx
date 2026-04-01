@@ -1022,7 +1022,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const handleQuantityChange = useCallback((rowId, nextQuantity) => updateRow(rowId, (row) => ({ ...row, quantity: nextQuantity })), [updateRow]);
   const buildNextRowFromTemplate = useCallback((templateRow = null) => {
     if (!templateRow) return createBlankRow();
-    return createBlankRow({ worker: templateRow?.worker || null, assignment: templateRow?.assignment || null, process: null, quantity: '' });
+    return createBlankRow({ worker: templateRow?.worker || null, assignment: null, process: null, quantity: '' });
   }, []);
   const handleAddBelow = useCallback((rowId) => {
     let nextEditingId = '';
