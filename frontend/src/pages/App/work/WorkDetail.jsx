@@ -923,7 +923,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const totalContractedAmountText = hasFactoryWage
     ? `${formatNumberWithCommas(totalContractedAmount, {
         fallback: '0',
-        maximumFractionDigits: 2,
+        maximumFractionDigits: 0,
       })}${LABELS.amountUnit}`
     : '-';
 
@@ -1213,7 +1213,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                         hasFactoryWage && rowContractedSeconds > 0
                           ? `${formatNumberWithCommas(rowContractedSeconds * selectedFactoryWagePerSecond, {
                               fallback: '0',
-                              maximumFractionDigits: 2,
+                              maximumFractionDigits: 0,
                             })}${LABELS.amountUnit}`
                           : '-';
                       const quantityValue =
