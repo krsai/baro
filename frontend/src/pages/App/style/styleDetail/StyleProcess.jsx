@@ -364,11 +364,45 @@ const getProcessMasterOptionIdentity = (item, defaultType = '') => {
     .toLowerCase()}`;
 };
 
-const compareProcessMasterOptionAsc = (left, right) => {
+const LANGUAGE_SORT_LOCALE_BY_CODE = {
+  ko: 'ko-KR',
+  en: 'en-US',
+  vi: 'vi-VN',
+};
+
+const resolveProcessMasterSortLabel = (item, languageCode) => {
+  if (!item || typeof item !== 'object') return '';
+  if (languageCode === 'ko') {
+    return String(item?.nameKo ?? item?.label ?? item?.code ?? '').trim();
+  }
+  if (languageCode === 'vi') {
+    return String(item?.nameVi ?? item?.label ?? item?.code ?? '').trim();
+  }
+  return String(item?.nameEn ?? item?.label ?? item?.code ?? '').trim();
+};
+
+const compareProcessMasterOptionAsc = (left, right, languageCode = 'en') => {
+  const locale = LANGUAGE_SORT_LOCALE_BY_CODE[languageCode] || 'en-US';
+  const leftLabel = resolveProcessMasterSortLabel(left, languageCode);
+  const rightLabel = resolveProcessMasterSortLabel(right, languageCode);
+
+  const labelCompare = leftLabel.localeCompare(rightLabel, locale, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+  if (labelCompare !== 0) return labelCompare;
+
+  const leftCode = String(left?.code ?? '').trim();
+  const rightCode = String(right?.code ?? '').trim();
+  const codeCompare = leftCode.localeCompare(rightCode, locale, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+  if (codeCompare !== 0) return codeCompare;
+
   const leftSort = Number.isFinite(Number(left?.sortOrder)) ? Number(left.sortOrder) : 0;
   const rightSort = Number.isFinite(Number(right?.sortOrder)) ? Number(right.sortOrder) : 0;
-  if (leftSort !== rightSort) return leftSort - rightSort;
-  return String(left?.label ?? left?.code ?? '').localeCompare(String(right?.label ?? right?.code ?? ''));
+  return leftSort - rightSort;
 };
 
 const normalizeProcessCompositionEntry = (value, kind) => {
@@ -723,32 +757,32 @@ const StyleProcess = ({
       (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : [])
         .map((item) => normalizeProcessMasterOption(item, 'PART'))
         .filter(Boolean)
-        .sort(compareProcessMasterOptionAsc),
-    [processMasterOptions.parts]
+        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
+    [languageCode, processMasterOptions.parts]
   );
   const targetOptions = useMemo(
     () =>
       (Array.isArray(processMasterOptions.targets) ? processMasterOptions.targets : [])
         .map((item) => normalizeProcessMasterOption(item, 'TARGET'))
         .filter(Boolean)
-        .sort(compareProcessMasterOptionAsc),
-    [processMasterOptions.targets]
+        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
+    [languageCode, processMasterOptions.targets]
   );
   const actionOptions = useMemo(
     () =>
       (Array.isArray(processMasterOptions.actions) ? processMasterOptions.actions : [])
         .map((item) => normalizeProcessMasterOption(item, 'ACTION'))
         .filter(Boolean)
-        .sort(compareProcessMasterOptionAsc),
-    [processMasterOptions.actions]
+        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
+    [languageCode, processMasterOptions.actions]
   );
   const specOptions = useMemo(
     () =>
       (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
         .map((item) => normalizeProcessMasterOption(item, 'SPEC'))
         .filter(Boolean)
-        .sort(compareProcessMasterOptionAsc),
-    [processMasterOptions.specs]
+        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
+    [languageCode, processMasterOptions.specs]
   );
 
   const [isAddingRow, setIsAddingRow] = useState(false);
@@ -888,6 +922,12 @@ const StyleProcess = ({
       event.currentTarget.blur();
     }
   };
+  const handleNumberInputEnterKeyDown = useCallback((event) => {
+    if (event.key === 'Enter' || event.key === 'NumpadEnter') {
+      event.preventDefault();
+      event.currentTarget.blur();
+    }
+  }, []);
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
@@ -1058,6 +1098,7 @@ const StyleProcess = ({
                     type="number"
                     defaultValue={toDraftNumberText(process.pt)}
                     onBlur={(e) => handleInlineChange(process, 'pt', e.target.value)}
+                    onKeyDown={handleNumberInputEnterKeyDown}
                     onWheel={(e) => e.target.blur()}
                     inputProps={{ min: 0 }}
                     placeholder="-"
@@ -1084,6 +1125,7 @@ const StyleProcess = ({
                           )
                     }
                     onBlur={(e) => handleInlineChange(process, 'st', e.target.value)}
+                    onKeyDown={handleNumberInputEnterKeyDown}
                     onWheel={(e) => e.target.blur()}
                     inputProps={{ min: 0 }}
                     placeholder={
@@ -1356,6 +1398,7 @@ const StyleProcess = ({
                   onChange={(event) => {
                     setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
                   }}
+                  onKeyDown={handleNumberInputEnterKeyDown}
                   onWheel={(e) => e.target.blur()}
                   inputProps={{ min: 0 }}
                   placeholder="-"
@@ -1372,6 +1415,7 @@ const StyleProcess = ({
                       st: event.target.value,
                     }));
                   }}
+                  onKeyDown={handleNumberInputEnterKeyDown}
                   onWheel={(e) => e.target.blur()}
                   inputProps={{ min: 0 }}
                   placeholder={

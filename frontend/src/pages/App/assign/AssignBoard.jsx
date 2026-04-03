@@ -74,6 +74,7 @@ import {
   formatProcessNameWithQuantity,
   resolveLocalizedProcessName,
 } from '../../../utils/processDisplay';
+import { subscribeOrderModificationLockChanged } from '../../../utils/orderSyncEvents';
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -2044,6 +2045,7 @@ const AssignBoard = () => {
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
   const [persistReady, setPersistReady] = useState(false);
+  const [externalReloadTick, setExternalReloadTick] = useState(0);
   const hasLoadedSourceDataRef = useRef(false);
   const lastLoadedOrgIdRef = useRef(null);
   const detailStyleFetchAttemptRef = useRef(new Set());
@@ -2146,6 +2148,25 @@ const AssignBoard = () => {
     });
   }, []);
   const isAssignmentRouteActive = location.pathname === '/assignment';
+
+  useEffect(() => {
+    return subscribeOrderModificationLockChanged((detail) => {
+      const eventOrgId = Number(detail?.orgId);
+      const currentOrgId = Number(activeOrgId);
+      if (
+        Number.isFinite(eventOrgId) &&
+        eventOrgId > 0 &&
+        Number.isFinite(currentOrgId) &&
+        currentOrgId > 0 &&
+        eventOrgId !== currentOrgId
+      ) {
+        return;
+      }
+      hasLoadedSourceDataRef.current = false;
+      lastLoadedOrgIdRef.current = null;
+      setExternalReloadTick((prev) => prev + 1);
+    });
+  }, [activeOrgId]);
 
   const serializeAssignmentsForSnapshot = useCallback((nextAssignments) => {
     const baseDate = startDateRef.current;
@@ -2746,6 +2767,7 @@ const AssignBoard = () => {
     applyLoadedBoardData,
     createBoardSnapshotText,
     createPersistSnapshotText,
+    externalReloadTick,
     isAssignmentRouteActive,
     syncHistoryStatus,
   ]);

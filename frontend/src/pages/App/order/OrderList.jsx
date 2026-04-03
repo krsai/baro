@@ -22,7 +22,7 @@ import {
   Autocomplete,
   Stack,
   CircularProgress,
-  Switch,
+  Tooltip,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -30,6 +30,8 @@ import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
@@ -61,11 +63,8 @@ import {
   ORDER_CONFIRMATION_TEXT,
   ORDER_CONFIRMATION_STATUS_KEYS,
   ORDER_CONFIRMATION_STATUS_OPTIONS,
-  getOrderConfirmationDeleteOnlyMessage,
-  getOrderConfirmationDeleteTooltip,
   getOrderConfirmationStatusLabel as getOrderConfirmationStatusLabelFromConst,
   hasOrderProgressStage,
-  isOrderConfirmationPlanned,
   normalizeOrderConfirmationStatus as normalizeOrderConfirmationStatusFromConst,
 } from '../../../constants/orderConfirmationStatus';
 import {
@@ -88,6 +87,10 @@ import {
   deleteOrder as deleteOrderToApi,
   toggleOrderModificationLock as toggleOrderModificationLockToApi,
 } from '../../../utils/orderApi';
+import {
+  emitOrderModificationLockChanged,
+  subscribeOrderModificationLockChanged,
+} from '../../../utils/orderSyncEvents';
 import {
   calculateProcessTotalForOrderQuantity,
   normalizeProcesses,
@@ -156,7 +159,6 @@ const getOrderConfirmationLabel = (status, languageCode) =>
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
 const getOrderProgressStageLabel = (status, languageCode) =>
   getOrderStatusLabelFromConst(status, String(status || '').trim() || '-', languageCode);
-const isOrderDeletable = (confirmationStatus) => isOrderConfirmationPlanned(confirmationStatus);
 const normalizeFilterDate = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -1344,6 +1346,24 @@ const OrderList = () => {
   }, [activeOrgId, loadOrdersFromDb]);
 
   useEffect(() => {
+    if (isDetailMode) return undefined;
+    return subscribeOrderModificationLockChanged((detail) => {
+      const eventOrgId = Number(detail?.orgId);
+      const currentOrgId = Number(activeOrgId);
+      if (
+        Number.isFinite(eventOrgId) &&
+        eventOrgId > 0 &&
+        Number.isFinite(currentOrgId) &&
+        currentOrgId > 0 &&
+        eventOrgId !== currentOrgId
+      ) {
+        return;
+      }
+      loadOrdersFromDb({ forceRefresh: true });
+    });
+  }, [activeOrgId, isDetailMode, loadOrdersFromDb]);
+
+  useEffect(() => {
     hasTouchedDueDateFilterRef.current = false;
     setDueDateFilterStart(getMonthStart(new Date()));
     setDueDateFilterEnd(getMonthEnd(new Date()));
@@ -1906,7 +1926,7 @@ const OrderList = () => {
     currentDetailOrder?.modificationLockedAt,
     currentDetailOrder?.modificationLockedBy,
   ]);
-  const currentOrderLockHelperText = useMemo(() => {
+  const currentOrderLockTooltipText = useMemo(() => {
     if (isNewOrder) {
       return getUiMessage(
         'orderDetail.lockHelperNew',
@@ -1963,39 +1983,6 @@ const OrderList = () => {
     isCurrentOrderManualModificationLocked,
     isNewOrder,
   ]);
-  const currentOrderLockAlertText = useMemo(() => {
-    if (isCurrentOrderConfirmedModificationLocked) {
-      return getUiMessage(
-        'orderDetail.lockAlertConfirmed',
-        'This order is confirmed, so the basic information is automatically locked.',
-        languageCode
-      );
-    }
-    if (isCurrentOrderAssignmentModificationLocked) {
-      return getUiMessage(
-        'orderDetail.lockAlertAssignment',
-        'This order is automatically locked because assignment contract data exists.',
-        languageCode
-      );
-    }
-    if (isCurrentOrderManualModificationLocked) {
-      return getUiMessage(
-        'orderDetail.lockAlertManual',
-        'This order is manually locked. Turn off the switch above to edit it again.',
-        languageCode
-      );
-    }
-    return getUiMessage(
-      'orderDetail.modificationLocked',
-      'Locked orders cannot be edited or deleted.',
-      languageCode
-    );
-  }, [
-    languageCode,
-    isCurrentOrderAssignmentModificationLocked,
-    isCurrentOrderConfirmedModificationLocked,
-    isCurrentOrderManualModificationLocked,
-  ]);
   const isModificationLockToggleDisabled =
     isNewOrder ||
     isSavingOrder ||
@@ -2048,9 +2035,12 @@ const OrderList = () => {
     });
   };
 
-  const handleModificationLockToggle = async (event) => {
+  const handleModificationLockToggle = async (nextLockedInput = null) => {
     if (isNewOrder || !currentDetailOrder?.id) return;
-    const nextLocked = Boolean(event.target.checked);
+    const nextLocked =
+      typeof nextLockedInput === 'boolean'
+        ? nextLockedInput
+        : !isCurrentOrderModificationLocked;
 
     if (nextLocked && hasFormChanges) {
       showNotification(orderPageText.lockSaveFirstWarning, 'warning');
@@ -2072,6 +2062,11 @@ const OrderList = () => {
         { orgId: activeOrgId }
       );
       mergeOrderIntoState(updated);
+      emitOrderModificationLockChanged({
+        orgId: activeOrgId,
+        orderId: updated?.id || currentDetailOrder.id,
+        locked: nextLocked,
+      });
       showNotification(
         nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
         'success'
@@ -2094,16 +2089,6 @@ const OrderList = () => {
     if (!order?.id) return;
     if (order?.isModificationLocked) {
       showNotification(orderPageText.modificationLocked, 'warning');
-      return;
-    }
-    if (!isOrderDeletable(order.confirmationStatus)) {
-      showNotification(
-        getOrderConfirmationDeleteOnlyMessage(
-          ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
-          languageCode
-        ),
-        'warning'
-      );
       return;
     }
 
@@ -2888,8 +2873,7 @@ const OrderList = () => {
                   <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
-                    const deletable =
-                      !order?.isModificationLocked && isOrderDeletable(order.confirmationStatus);
+                    const deletable = !order?.isModificationLocked;
                     const progressStageLabel = hasOrderProgressStage(order.confirmationStatus)
                       ? getOrderProgressStageLabel(order.status, languageCode)
                       : ORDER_STATUS_TEXT.noneLabel;
@@ -2932,10 +2916,7 @@ const OrderList = () => {
                             title={
                               deletable
                                 ? orderPageText.deleteOrder
-                                : getOrderConfirmationDeleteTooltip(
-                                    ORDER_CONFIRMATION_STATUS_KEYS.PLANNED,
-                                    languageCode
-                                  )
+                                : orderPageText.modificationLocked
                             }
                             onClick={(event) => {
                               event.stopPropagation();
@@ -2977,54 +2958,47 @@ const OrderList = () => {
           </Typography>
         </Box>
         <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-          {!isNewOrder && (
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ alignItems: 'center', justifyContent: { xs: 'space-between', md: 'flex-end' } }}
-            >
-              <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {getUiMessage('orderDetail.lockLabel', 'Order Edit Lock', languageCode)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 320 }}>
-                  {currentOrderLockHelperText}
-                </Typography>
-              </Stack>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexShrink: 0 }}>
-                {isTogglingModificationLock && <CircularProgress size={16} />}
-                <Switch
-                  checked={isCurrentOrderModificationLocked}
-                  onChange={handleModificationLockToggle}
-                  disabled={isModificationLockToggleDisabled}
-                  inputProps={{
-                    'aria-label': getUiMessage(
-                      'orderDetail.lockSwitchAria',
-                      'Order edit lock switch',
-                      languageCode
-                    ),
-                  }}
-                />
-              </Stack>
-            </Stack>
-          )}
           <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-end', md: 'flex-end' }}>
-          {isNewOrder && (
-            <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
-              {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
+            {isNewOrder && (
+              <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
+                {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
+              </Button>
+            )}
+            {!isNewOrder && (
+              <Tooltip title={currentOrderLockTooltipText}>
+                <span>
+                  <Button
+                    size="small"
+                    variant={isCurrentOrderModificationLocked ? 'contained' : 'outlined'}
+                    color={isCurrentOrderModificationLocked ? 'warning' : 'inherit'}
+                    startIcon={
+                      isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
+                    }
+                    onClick={() =>
+                      handleModificationLockToggle(!isCurrentOrderModificationLocked)
+                    }
+                    disabled={isModificationLockToggleDisabled}
+                    sx={{ minWidth: 108 }}
+                  >
+                    {isCurrentOrderModificationLocked
+                      ? getUiMessage('orderDetail.lockedShort', 'Locked', languageCode)
+                      : getUiMessage('orderDetail.unlockedShort', 'Unlocked', languageCode)}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+            {isTogglingModificationLock && <CircularProgress size={16} />}
+            <LastUpdaterLabel />
+            <Button
+              onClick={handleSave}
+              variant="contained"
+              disabled={
+                isSavingOrder ||
+                (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
+              }
+            >
+              {getUiMessage('common.save', 'Save', languageCode)}
             </Button>
-          )}
-          <LastUpdaterLabel />
-          <Button
-            onClick={handleSave}
-            variant="contained"
-            disabled={
-              isSavingOrder ||
-              (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
-            }
-          >
-            {getUiMessage('common.save', 'Save', languageCode)}
-          </Button>
           </Stack>
         </Stack>
       </Box>
@@ -3036,12 +3010,6 @@ const OrderList = () => {
             'No linked order partners. Register the customer relationship first.',
             languageCode
           )}
-        </Alert>
-      )}
-
-      {isCurrentOrderModificationLocked && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {currentOrderLockAlertText}
         </Alert>
       )}
 

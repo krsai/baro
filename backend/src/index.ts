@@ -381,8 +381,6 @@ const resolveWorkOrderConfirmationStatus = (
 };
 const isWorkOrderConfirmed = (value: unknown) =>
   resolveWorkOrderConfirmationStatus(value, "PLANNED") === "CONFIRMED";
-const isWorkOrderDeletableStatus = (value: unknown) =>
-  resolveWorkOrderConfirmationStatus(value, "PLANNED") === "PLANNED";
 const toSortOrder = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -11242,12 +11240,6 @@ app.delete("/orders/:orderId", async (req, res) => {
     return res.status(409).json({
       ok: false,
       error: ORDER_MODIFICATION_LOCK_ERROR,
-    });
-  }
-  if (!isWorkOrderDeletableStatus((existing as any).confirmationStatus)) {
-    return res.status(409).json({
-      ok: false,
-      error: "only planned orders can be deleted",
     });
   }
 

@@ -63,6 +63,11 @@ const resolveCountryForForm = (customer) => {
   if (fromCode) return fromCode;
   return DEFAULT_COUNTRY;
 };
+const resolveCountryForDisplay = (customer) => {
+  const fromPayload = normalizeCountry(customer?.country);
+  if (fromPayload) return fromPayload;
+  return inferCountryFromCountryCode(customer?.countryCode);
+};
 
 const formatDate = (value, languageCode) => {
   if (!value) return '-';
@@ -200,6 +205,10 @@ const CustomerList = () => {
     if (!searchTerm) return customers;
     const lowerTerm = searchTerm.toLowerCase();
     return customers.filter((customer) => {
+      const countryCodeForDisplay = resolveCountryForDisplay(customer);
+      const localizedCountryLabel = countryCodeForDisplay
+        ? getStaticOptionLabel('country', countryCodeForDisplay, countryCodeForDisplay, languageCode)
+        : '';
       const searchable = [
         customer?.name,
         customer?.code,
@@ -207,13 +216,14 @@ const CustomerList = () => {
         customer?.address,
         customer?.email,
         customer?.country,
+        localizedCountryLabel,
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return searchable.includes(lowerTerm);
     });
-  }, [customers, searchTerm]);
+  }, [customers, languageCode, searchTerm]);
 
   const handleAdd = () => {
     setEditingCustomer(null);
@@ -353,22 +363,33 @@ const CustomerList = () => {
                   onDoubleClick={() => handleRowDoubleClick(customer)}
                   sx={{ cursor: 'pointer' }}
                 >
+                  {/*
+                    목록은 country가 비어 있어도 countryCode로 국가를 추론해 표시한다.
+                  */}
+                  {(() => {
+                    const countryCodeForDisplay = resolveCountryForDisplay(customer);
+                    const countryLabel = countryCodeForDisplay
+                      ? getStaticOptionLabel(
+                          'country',
+                          countryCodeForDisplay,
+                          countryCodeForDisplay,
+                          languageCode
+                        )
+                      : '-';
+                    return (
+                      <>
                   <TableCell>{customer.code || '-'}</TableCell>
                   <TableCell>{customer.name || '-'}</TableCell>
-                  <TableCell>
-                    {getStaticOptionLabel(
-                      'country',
-                      customer?.country,
-                      customer?.country || '-',
-                      languageCode
-                    )}
-                  </TableCell>
+                  <TableCell>{countryLabel || '-'}</TableCell>
                   <TableCell>{customer.manager || '-'}</TableCell>
                   <TableCell>
                     {customer.phone || combinePhone(customer.countryCode, customer.phoneNumber) || '-'}
                   </TableCell>
                   <TableCell>{customer.email || '-'}</TableCell>
                   <TableCell>{formatDate(customer.registeredAt, languageCode)}</TableCell>
+                      </>
+                    );
+                  })()}
                 </TableRow>
               ))}
             </TableBody>
