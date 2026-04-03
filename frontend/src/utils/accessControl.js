@@ -1,3 +1,5 @@
+import { PROCESS_MANAGEMENT_ENABLED } from '../constants/featureFlags';
+
 const ORG_TYPES = {
   MANUFACTURER: 'MANUFACTURER',
   BRAND: 'BRAND',
@@ -250,6 +252,13 @@ const resolveFeatureByPath = (pathname) => {
 export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
   const path = normalizePathname(pathname);
+  if (
+    !PROCESS_MANAGEMENT_ENABLED &&
+    path.startsWith('/attribute/processes') &&
+    context?.entryType !== 'SYSTEM'
+  ) {
+    return false;
+  }
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);
   const featureKey = resolveFeatureByPath(path);

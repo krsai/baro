@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Stack } from '@mui/material';
+import LastUpdaterLabel from './LastUpdaterLabel';
 
 const PageToolbar = ({ left = null, right = null, sx = {} }) => {
   if (!left && !right) return null;
@@ -30,6 +31,7 @@ const PageToolbar = ({ left = null, right = null, sx = {} }) => {
             flexShrink: 0,
           }}
         >
+          <LastUpdaterLabel />
           {right}
         </Stack>
       ) : null}

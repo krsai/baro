@@ -75,7 +75,7 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',
     previewEmpty: '부위, 대상, 작업을 선택하면 공정명이 만들어집니다.',
-    ptLabel: 'PT(1000)',
+    ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
     save: '저장',
@@ -114,7 +114,7 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'e.g. 3-line',
     previewLabel: 'Preview',
     previewEmpty: 'Select part, target, and action to build the process name.',
-    ptLabel: 'PT(1000)',
+    ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
     save: 'Save',
@@ -153,7 +153,7 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'vi du: 3 kim',
     previewLabel: 'Xem truoc',
     previewEmpty: 'Chon bo phan, doi tuong va thao tac de tao ten cong doan.',
-    ptLabel: 'PT(1000)',
+    ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
     save: 'Luu',
@@ -1290,31 +1290,31 @@ const StyleProcess = ({
                 )}
                 sx={{ flex: 1, minWidth: 180 }}
               />
+              <Autocomplete
+                multiple
+                size="small"
+                options={actionOptions}
+                value={addDraft.actions}
+                disableCloseOnSelect
+                onChange={(_event, value) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    actions: normalizeProcessCompositionEntries(value, 'action'),
+                  }));
+                  setAddError('');
+                }}
+                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                isOptionEqualToValue={(option, value) =>
+                  getProcessMasterOptionIdentity(option, 'ACTION') ===
+                  getProcessMasterOptionIdentity(value, 'ACTION')
+                }
+                filterSelectedOptions
+                renderInput={(params) => (
+                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'actionLabel')} />
+                )}
+                sx={{ flex: 1, minWidth: 220 }}
+              />
             </Stack>
-
-            <Autocomplete
-              multiple
-              size="small"
-              options={actionOptions}
-              value={addDraft.actions}
-              disableCloseOnSelect
-              onChange={(_event, value) => {
-                setAddDraft((prev) => ({
-                  ...prev,
-                  actions: normalizeProcessCompositionEntries(value, 'action'),
-                }));
-                setAddError('');
-              }}
-              getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-              isOptionEqualToValue={(option, value) =>
-                getProcessMasterOptionIdentity(option, 'ACTION') ===
-                getProcessMasterOptionIdentity(value, 'ACTION')
-              }
-              filterSelectedOptions
-              renderInput={(params) => (
-                <TextField {...params} label={getStyleProcessMessage(languageCode, 'actionLabel')} />
-              )}
-            />
 
             <Stack
               direction={{ xs: 'column', xl: 'row' }}
@@ -1351,7 +1351,7 @@ const StyleProcess = ({
                 <TextField
                   size="small"
                   type="number"
-                  label={getStyleProcessMessage(languageCode, 'ptLabel')}
+                  label={`${getStyleProcessMessage(languageCode, 'ptLabel')}(${ptTimeRefQuantityLabel})`}
                   value={addDraft.pt}
                   onChange={(event) => {
                     setAddDraft((prev) => ({ ...prev, pt: event.target.value }));

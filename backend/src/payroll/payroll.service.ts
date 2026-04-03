@@ -244,6 +244,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       bankName: string | null;
       bankAccountNumber: string | null;
       baseEarnings: number;
+      fixedSalary: number;
       processes: Map<
         string,
         {
@@ -260,16 +261,18 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   payrollEmployees.forEach((employee) => {
     const workerName = resolvePayrollEmployeeName(employee);
     const employeeKey = buildPayrollEmployeeKey(employee?.id, workerName);
+    const payType = resolveEmployeeEffectivePayType(employee);
     employeeMap.set(employeeKey, {
       employeeKey,
       workerId: employee?.id ?? null,
       workerName,
       orgRole: String(employee?.membership?.role || "").trim().toUpperCase(),
       roleName: resolvePayrollRoleName(employee),
-      payType: resolveEmployeeEffectivePayType(employee),
+      payType,
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       baseEarnings: 0,
+      fixedSalary: payType === "FIXED" ? toPayrollAmount(employee?.fixedSalary, 0) : 0,
       processes: new Map(),
     });
   });
@@ -295,6 +298,8 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           : 0;
 
       if (!employeeMap.has(key)) {
+        const employeeFixedSalary =
+          effectivePayType === "FIXED" ? toPayrollAmount(employee?.fixedSalary, 0) : 0;
         employeeMap.set(key, {
           employeeKey: key,
           workerId: record.workerId ?? null,
@@ -305,6 +310,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
           baseEarnings: 0,
+          fixedSalary: employeeFixedSalary,
           processes: new Map(),
         });
       }
@@ -331,33 +337,37 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   }
 
   const employees = Array.from(employeeMap.values())
-    .map((emp) => ({
-      employeeKey: emp.employeeKey,
-      workerId: emp.workerId,
-      workerName: emp.workerName,
-      orgRole: emp.orgRole,
-      roleName: emp.roleName,
-      payType: emp.payType,
-      bankName: emp.bankName,
-      bankAccountNumber: emp.bankAccountNumber,
-      baseEarnings: emp.baseEarnings,
-      fixedSalary: 0,
-      bonus: 0,
-      deduction: 0,
-      finalEarnings: emp.baseEarnings,
-      totalEarnings: emp.baseEarnings,
-      processes: Array.from(emp.processes.values()).map((process) => ({
-        processCode: process.processCode,
-        processName: process.processName,
-        totalQuantity: process.totalQuantity,
-        totalCtSeconds: process.totalCtSeconds,
-        wagePerSecond:
-          process.totalCtSeconds > 0
-            ? process.totalEarnings / process.totalCtSeconds
-            : 0,
-        totalEarnings: process.totalEarnings,
-      })),
-    }))
+    .map((emp) => {
+      const resolvedBaseEarnings =
+        emp.payType === "FIXED" ? toPayrollAmount(emp.fixedSalary, 0) : emp.baseEarnings;
+      return {
+        employeeKey: emp.employeeKey,
+        workerId: emp.workerId,
+        workerName: emp.workerName,
+        orgRole: emp.orgRole,
+        roleName: emp.roleName,
+        payType: emp.payType,
+        bankName: emp.bankName,
+        bankAccountNumber: emp.bankAccountNumber,
+        baseEarnings: resolvedBaseEarnings,
+        fixedSalary: emp.payType === "FIXED" ? toPayrollAmount(emp.fixedSalary, 0) : 0,
+        bonus: 0,
+        deduction: 0,
+        finalEarnings: resolvedBaseEarnings,
+        totalEarnings: resolvedBaseEarnings,
+        processes: Array.from(emp.processes.values()).map((process) => ({
+          processCode: process.processCode,
+          processName: process.processName,
+          totalQuantity: process.totalQuantity,
+          totalCtSeconds: process.totalCtSeconds,
+          wagePerSecond:
+            process.totalCtSeconds > 0
+              ? process.totalEarnings / process.totalCtSeconds
+              : 0,
+          totalEarnings: process.totalEarnings,
+        })),
+      };
+    })
     .sort((a, b) => b.finalEarnings - a.finalEarnings);
 
   return { locked: false, month, employees };

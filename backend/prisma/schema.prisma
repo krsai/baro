@@ -276,6 +276,7 @@ model Employee {
   factoryId         Int?
   roleId            Int?
   payType           String?
+  fixedSalary       Int?
   name              String?
   phone             String?
   bankName          String?

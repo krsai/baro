@@ -7257,8 +7257,8 @@ type ProcessMasterOptionRow = {
 const PROCESS_MASTER_TYPE_KEYS = [
   "PART",
   "TARGET",
-  "ACTION",
   "SPEC",
+  "ACTION",
 ] as const;
 
 const PROCESS_MASTER_GROUP_BY_TYPE: Record<
@@ -7300,9 +7300,9 @@ const PROCESS_MASTER_DEFAULT_OPTIONS: Record<
     { ko: "허리", en: "Waist", vi: "Eo" },
     { ko: "밑단", en: "Hem", vi: "Lai" },
     { ko: "칼라", en: "Collar", vi: "Co ao" },
-    { ko: "주머니", en: "Pocket", vi: "Tui" },
   ],
   TARGET: [
+    { ko: "주머니", en: "Pocket", vi: "Tui" },
     { ko: "지퍼", en: "Zipper", vi: "Day keo" },
     { ko: "페이싱", en: "Facing", vi: "Nep lot" },
     { ko: "요크", en: "Yoke", vi: "Cau vai" },
@@ -7392,8 +7392,8 @@ const groupProcessMasterOptions = (rows: any[] = []) => {
   const grouped = {
     parts: [] as any[],
     targets: [] as any[],
-    actions: [] as any[],
     specs: [] as any[],
+    actions: [] as any[],
   };
 
   rows.forEach((row) => {
@@ -7527,54 +7527,152 @@ const updateProcessMasterOptionRow = async (row: {
   `);
 };
 
+const normalizeProcessMasterMatchToken = (value: any): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const buildProcessMasterMatchTokenSet = (row: Partial<ProcessMasterOptionRow>) => {
+  const tokens = new Set<string>();
+  [
+    row?.code,
+    row?.label,
+    row?.nameKo,
+    row?.nameEn,
+    row?.nameVi,
+  ].forEach((value) => {
+    const token = normalizeProcessMasterMatchToken(value);
+    if (token) tokens.add(token);
+  });
+  return tokens;
+};
+
+const PROCESS_MASTER_TYPE_CORRECTIONS: Array<{
+  expectedType: ProcessMasterOptionType;
+  aliases: string[];
+}> = [
+  {
+    expectedType: "TARGET",
+    aliases: ["주머니", "Pocket", "Tui", "POCKET"],
+  },
+];
+
+const rowMatchesAliases = (row: Partial<ProcessMasterOptionRow>, aliases: Set<string>) => {
+  const rowTokens = buildProcessMasterMatchTokenSet(row);
+  for (const token of rowTokens) {
+    if (aliases.has(token)) return true;
+  }
+  return false;
+};
+
+const applyProcessMasterTypeCorrections = async () => {
+  const existing = await listProcessMasterOptions();
+  if (existing.length === 0) return existing;
+
+  let workingRows = [...existing];
+  let hasChanges = false;
+
+  for (const correction of PROCESS_MASTER_TYPE_CORRECTIONS) {
+    const aliasSet = new Set(
+      correction.aliases
+        .map((alias) => normalizeProcessMasterMatchToken(alias))
+        .filter(Boolean)
+    );
+    if (aliasSet.size === 0) continue;
+
+    const misplacedRows = workingRows.filter(
+      (row) =>
+        row.type !== correction.expectedType &&
+        rowMatchesAliases(row, aliasSet)
+    );
+
+    for (const row of misplacedRows) {
+      const normalizedCode = normalizeProcessMasterCode(row.code);
+      const duplicateInExpectedType = workingRows.find(
+        (candidate) =>
+          candidate.id !== row.id &&
+          candidate.type === correction.expectedType &&
+          (rowMatchesAliases(candidate, aliasSet) ||
+            (normalizedCode &&
+              normalizeProcessMasterCode(candidate.code) === normalizedCode))
+      );
+
+      if (duplicateInExpectedType) {
+        await deleteProcessMasterOptionsByIds([row.id]);
+        workingRows = workingRows.filter((candidate) => candidate.id !== row.id);
+      } else {
+        await updateProcessMasterOptionRow({
+          id: row.id,
+          type: correction.expectedType,
+          code: row.code,
+          label: row.label,
+          nameKo: row.nameKo || "",
+          nameEn: row.nameEn || "",
+          nameVi: row.nameVi || "",
+          sortOrder: row.sortOrder,
+        });
+        workingRows = workingRows.map((candidate) =>
+          candidate.id === row.id
+            ? { ...candidate, type: correction.expectedType }
+            : candidate
+        );
+      }
+
+      hasChanges = true;
+    }
+  }
+
+  if (!hasChanges) return existing;
+  return listProcessMasterOptions();
+};
+
 const ensureDefaultProcessMasterOptions = async () => {
   const existingCount = await countProcessMasterOptions();
-  if (existingCount > 0) {
-    return listProcessMasterOptions();
-  }
+  if (existingCount === 0) {
+    const seedRows: Array<{
+      type: ProcessMasterOptionType;
+      code: string;
+      label: string;
+      nameKo: string;
+      nameEn: string;
+      nameVi: string;
+      sortOrder: number;
+    }> = [];
 
-  const seedRows: Array<{
-    type: ProcessMasterOptionType;
-    code: string;
-    label: string;
-    nameKo: string;
-    nameEn: string;
-    nameVi: string;
-    sortOrder: number;
-  }> = [];
-
-  PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
-    const type = typeKey as ProcessMasterOptionType;
-    const usedCodes = new Set<string>();
-    PROCESS_MASTER_DEFAULT_OPTIONS[type].forEach((item, index) => {
-      const nameKo = normalizeProcessMasterLabel(item?.ko);
-      const nameEn = normalizeProcessMasterLabel(item?.en);
-      const nameVi = normalizeProcessMasterLabel(item?.vi);
-      const label = nameKo || nameEn || nameVi;
-      const codeSeedLabel = nameEn || nameKo || nameVi || label;
-      const code = generateUniqueProcessMasterCode({
-        type,
-        label: codeSeedLabel,
-        usedCodes,
-      });
-      usedCodes.add(code);
-      seedRows.push({
-        type,
-        code,
-        label,
-        nameKo,
-        nameEn,
-        nameVi,
-        sortOrder: index + 1,
+    PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+      const type = typeKey as ProcessMasterOptionType;
+      const usedCodes = new Set<string>();
+      PROCESS_MASTER_DEFAULT_OPTIONS[type].forEach((item, index) => {
+        const nameKo = normalizeProcessMasterLabel(item?.ko);
+        const nameEn = normalizeProcessMasterLabel(item?.en);
+        const nameVi = normalizeProcessMasterLabel(item?.vi);
+        const label = nameKo || nameEn || nameVi;
+        const codeSeedLabel = nameEn || nameKo || nameVi || label;
+        const code = generateUniqueProcessMasterCode({
+          type,
+          label: codeSeedLabel,
+          usedCodes,
+        });
+        usedCodes.add(code);
+        seedRows.push({
+          type,
+          code,
+          label,
+          nameKo,
+          nameEn,
+          nameVi,
+          sortOrder: index + 1,
+        });
       });
     });
-  });
 
-  if (seedRows.length > 0) {
-    await insertProcessMasterOptions(seedRows);
+    if (seedRows.length > 0) {
+      await insertProcessMasterOptions(seedRows);
+    }
   }
 
-  return listProcessMasterOptions();
+  return applyProcessMasterTypeCorrections();
 };
 
 const flattenProcessMasterPayloadItems = (payload: any) => {
@@ -7654,8 +7752,8 @@ const flattenProcessMasterPayloadItems = (payload: any) => {
 
   pushItems(payload?.parts, "PART", flattened);
   pushItems(payload?.targets, "TARGET", flattened);
-  pushItems(payload?.actions, "ACTION", flattened);
   pushItems(payload?.specs, "SPEC", flattened);
+  pushItems(payload?.actions, "ACTION", flattened);
   return flattened;
 };
 
@@ -12032,7 +12130,8 @@ app.get("/attributes", async (req, res) => {
   await seedAttributesIfEmpty(organization.id, {
     includeColors,
     includeCategories,
-    includeProcesses,
+    // Keep process master deletion persistent; do not auto-reseed processes on read.
+    includeProcesses: false,
   });
 
   const [colors, categories, roles, processes] = await Promise.all([

@@ -1,10 +1,12 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Box, MenuItem, TextField } from '@mui/material';
+import { Alert, Box, MenuItem, TextField } from '@mui/material';
+import AppPageContainer from '../../components/AppPageContainer';
 import AttrBoard from './attribute/AttrBoard';
 import ProcessMasterBoard from './attribute/ProcessMasterBoard';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
+import { PROCESS_MANAGEMENT_ENABLED } from '../../constants/featureFlags';
 
 const resolveAttributeSectionKey = (pathname, isSystemAdmin) => {
   if (!isSystemAdmin) return 'processes';
@@ -29,6 +31,16 @@ const Attribute = () => {
   const isProcessMasterRoute = sectionKey === 'processes';
   const [organizations, setOrganizations] = React.useState([]);
   const [selectedOrgId, setSelectedOrgId] = React.useState('');
+
+  if (!PROCESS_MANAGEMENT_ENABLED && isProcessMasterRoute && !isSystemAdmin) {
+    return (
+      <AppPageContainer title="공정 관리">
+        <Alert severity="info" sx={{ maxWidth: 640 }}>
+          공정 관리 페이지는 현재 비활성화되어 있습니다.
+        </Alert>
+      </AppPageContainer>
+    );
+  }
 
   React.useEffect(() => {
     if (!isSystemAdmin) return;

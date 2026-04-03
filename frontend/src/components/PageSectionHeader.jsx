@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Button, Typography } from '@mui/material';
+import LastUpdaterLabel from './LastUpdaterLabel';
 
 const PageSectionHeader = ({
   title,
@@ -39,7 +40,20 @@ const PageSectionHeader = ({
       <Typography variant={titleVariant} sx={{ fontWeight: 700 }}>
         {title}
       </Typography>
-      {resolvedActions}
+      {resolvedActions ? (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            flexWrap: 'wrap',
+            gap: 1,
+          }}
+        >
+          <LastUpdaterLabel />
+          {resolvedActions}
+        </Box>
+      ) : null}
     </Box>
   );
 };

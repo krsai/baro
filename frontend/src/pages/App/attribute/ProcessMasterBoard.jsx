@@ -22,6 +22,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
+import { useLanguage } from '../../../context/LanguageContext';
+import { resolveLocalizedAttributeName } from '../../../utils/appLanguage';
 import {
   fetchProcessMasterOptions,
   updateProcessMasterOptions,
@@ -30,8 +32,8 @@ import {
 const MASTER_SECTIONS = [
   { key: 'parts', title: '부위' },
   { key: 'targets', title: '대상' },
-  { key: 'actions', title: '작업' },
   { key: 'specs', title: '규격' },
+  { key: 'actions', title: '작업' },
 ];
 
 const createEmptyMasterData = () => ({
@@ -42,6 +44,33 @@ const createEmptyMasterData = () => ({
 });
 
 const toTrimmedText = (value) => String(value ?? '').trim();
+const LANGUAGE_SORT_LOCALE_BY_CODE = {
+  ko: 'ko-KR',
+  en: 'en-US',
+  vi: 'vi-VN',
+};
+
+const compareMasterRowsByLanguage = (leftRow, rightRow, languageCode) => {
+  const locale = LANGUAGE_SORT_LOCALE_BY_CODE[languageCode] || 'en-US';
+  const leftLabel = toTrimmedText(resolveLocalizedAttributeName(leftRow, languageCode));
+  const rightLabel = toTrimmedText(resolveLocalizedAttributeName(rightRow, languageCode));
+
+  const labelCompare = leftLabel.localeCompare(rightLabel, locale, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+  if (labelCompare !== 0) return labelCompare;
+
+  const leftCode = toTrimmedText(leftRow?.code);
+  const rightCode = toTrimmedText(rightRow?.code);
+  const codeCompare = leftCode.localeCompare(rightCode, locale, {
+    sensitivity: 'base',
+    numeric: true,
+  });
+  if (codeCompare !== 0) return codeCompare;
+
+  return Number(leftRow?.sortOrder || 0) - Number(rightRow?.sortOrder || 0);
+};
 
 const normalizeMasterRows = (rows = []) =>
   (Array.isArray(rows) ? rows : []).map((item, index) => ({
@@ -82,14 +111,15 @@ const areMasterRowsEqual = (leftRows = [], rightRows = []) => {
 const ProcessMasterSection = ({
   title,
   rows,
+  languageCode,
   sectionKey,
   onAddRow,
   onDeleteRow,
   onRowChange,
 }) => {
   const sortedRows = useMemo(
-    () => [...rows].sort((left, right) => left.sortOrder - right.sortOrder),
-    [rows]
+    () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
+    [languageCode, rows]
   );
 
   return (
@@ -181,6 +211,7 @@ const ProcessMasterSection = ({
 
 const ProcessMasterBoard = () => {
   const { showNotification } = useApp();
+  const { languageCode } = useLanguage();
   const [formData, setFormData] = useState(() => createEmptyMasterData());
   const [originalData, setOriginalData] = useState(() => createEmptyMasterData());
   const [isLoading, setIsLoading] = useState(true);
@@ -297,7 +328,7 @@ const ProcessMasterBoard = () => {
     >
       <Stack spacing={2}>
         <Alert severity="info">
-          시스템 관리자가 공정 마스터(부위/대상/작업/규격)를 다국어로 관리합니다.
+          시스템 관리자가 공정 마스터(부위/대상/규격/작업)를 다국어로 관리합니다.
         </Alert>
         <Grid container spacing={2}>
           {MASTER_SECTIONS.map((section) => (
@@ -306,6 +337,7 @@ const ProcessMasterBoard = () => {
                 sectionKey={section.key}
                 title={section.title}
                 rows={formData[section.key] || []}
+                languageCode={languageCode}
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteRow}
                 onRowChange={handleRowChange}
@@ -319,3 +351,4 @@ const ProcessMasterBoard = () => {
 };
 
 export default ProcessMasterBoard;
+

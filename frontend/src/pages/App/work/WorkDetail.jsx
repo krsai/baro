@@ -34,6 +34,7 @@ import {
   viVN as datePickerViVN,
 } from '@mui/x-date-pickers/locales';
 import AppPageContainer from '../../../components/AppPageContainer';
+import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -1124,7 +1125,10 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         <Typography variant="h5" sx={{ fontWeight: 700 }}>{`${LABELS.title}: ${workDateKey}`}</Typography>
         <Typography variant="body2" color="text.secondary">{`${LABELS.lastUpdated}: ${formatRecentUpdate({ initialLog, unknownLabel: '-' })}`}</Typography>
       </Stack>
-      <Button variant="contained" onClick={handleSave} disabled={saving || loading || baseLoading || lineDataLoading || isAggregateLegacyLog}>{saving ? LABELS.saving : LABELS.save}</Button>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <LastUpdaterLabel />
+        <Button variant="contained" onClick={handleSave} disabled={saving || loading || baseLoading || lineDataLoading || isAggregateLegacyLog}>{saving ? LABELS.saving : LABELS.save}</Button>
+      </Stack>
     </Box>
   );
 

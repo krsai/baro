@@ -1,3 +1,5 @@
+import { recordLastUpdaterForCurrentPath } from './lastUpdater';
+
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
@@ -556,6 +558,12 @@ export const requestJSON = async (path, options = {}) => {
         // Mutating requests invalidate related cached GET responses.
         invalidateCacheByPath(path);
       }
+
+      recordLastUpdaterForCurrentPath({
+        method,
+        responseData: data,
+        fallbackUpdater: requestContext.userEmail,
+      });
 
       return data;
     } catch (error) {

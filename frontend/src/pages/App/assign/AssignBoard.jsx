@@ -29,6 +29,7 @@ import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
+import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
@@ -4345,6 +4346,7 @@ const AssignBoard = () => {
             {getUiMessage('assign.pageTitle', '작업 배정', languageCode)}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <LastUpdaterLabel />
             <Button
               variant="contained"
               onMouseDown={preventToolbarButtonFocus}

@@ -77,6 +77,21 @@ const formatDate = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
 };
+const sanitizeMoneyInput = (value) => String(value ?? '').replace(/[^\d]/g, '');
+const formatMoneyInput = (value) => {
+  const sanitized = sanitizeMoneyInput(value);
+  if (!sanitized) return '';
+  const parsed = Number(sanitized);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return parsed.toLocaleString('en-US');
+};
+const parseMoneyInput = (value) => {
+  const sanitized = sanitizeMoneyInput(value);
+  if (!sanitized) return null;
+  const parsed = Number(sanitized);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed);
+};
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 
 const resolveNameFromEmail = (email) => {
@@ -98,6 +113,7 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     orgRole,
     jobRoleId: employee?.roleId ? String(employee.roleId) : '',
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
+    fixedSalary: formatMoneyInput(employee?.fixedSalary),
     factoryId: employee?.factoryId ? String(employee.factoryId) : '',
     status: member.status,
   };
@@ -265,6 +281,23 @@ const EmployeeRow = React.memo(
               </MenuItem>
             ))}
           </TextField>
+        </TableCell>
+
+        <TableCell>
+          {draft.payType === 'FIXED' ? (
+            <TextField
+              size="small"
+              value={draft.fixedSalary}
+              onChange={(e) => handleDraftChange({ fixedSalary: formatMoneyInput(e.target.value) })}
+              disabled={isUpdating || isBulkSaving}
+              placeholder="예: 8,000,000"
+              sx={{ minWidth: 150 }}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              -
+            </Typography>
+          )}
         </TableCell>
 
         <TableCell>
@@ -589,6 +622,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
           payType: draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED'),
+          fixedSalary:
+            (draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED')) === 'FIXED'
+              ? parseMoneyInput(draft.fixedSalary)
+              : null,
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
@@ -944,6 +981,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>권한</TableCell>
                   <TableCell>직무</TableCell>
                   <TableCell>급여 타입</TableCell>
+                  <TableCell>고정급 금액</TableCell>
                   <TableCell>상태</TableCell>
                   <TableCell>입사일</TableCell>
                   <TableCell>퇴사일</TableCell>
@@ -952,7 +990,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={10}
+                    colSpan={11}
                     message={searchTerm ? '검색 결과가 없습니다.' : '표시할 직원이 없습니다.'}
                     sx={{ py: 2 }}
                   />

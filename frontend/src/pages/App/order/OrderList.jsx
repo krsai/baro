@@ -32,6 +32,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteIcon from '@mui/icons-material/Delete';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
+import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
@@ -3013,6 +3014,7 @@ const OrderList = () => {
               {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
             </Button>
           )}
+          <LastUpdaterLabel />
           <Button
             onClick={handleSave}
             variant="contained"
