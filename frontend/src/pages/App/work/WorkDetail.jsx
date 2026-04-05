@@ -75,6 +75,9 @@ const LABELS = {
   workerPlaceholder: '작업자를 선택하세요.',
   assignment: '배정카드',
   assignmentPlaceholder: '배정카드를 선택하세요.',
+  assignmentException: '예외',
+  assignmentCurrentLine: '현재 라인 배정',
+  assignmentOtherLine: '다른 라인 배정',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
   noAssignmentsAvailable: '선택 가능한 배정카드가 없습니다.',
   process: '공정',
@@ -154,6 +157,31 @@ const formatAssignmentLabel = (assignment) => {
   if (assignment?.dbId) return `배정카드 #${assignment.dbId}`;
   return '배정카드';
 };
+const isOtherLineAssignmentOption = (assignment, currentLineId) => {
+  const assignmentLineId = toPositiveIdOrNull(assignment?.lineId);
+  const normalizedCurrentLineId = toPositiveIdOrNull(currentLineId);
+  return Boolean(
+    assignmentLineId !== null &&
+      normalizedCurrentLineId !== null &&
+      assignmentLineId !== normalizedCurrentLineId
+  );
+};
+const formatAssignmentAutocompleteLabel = (assignment, currentLineId) => {
+  const baseLabel = formatAssignmentLabel(assignment);
+  if (!isOtherLineAssignmentOption(assignment, currentLineId)) return baseLabel;
+  const lineName = toText(assignment?.lineName);
+  return [LABELS.assignmentException, lineName, baseLabel].filter(Boolean).join(' · ');
+};
+const sortAssignmentOptionsByLineContext = (options = [], currentLineId = null) =>
+  [...(Array.isArray(options) ? options : [])].sort((left, right) => {
+    const leftIsException = isOtherLineAssignmentOption(left, currentLineId);
+    const rightIsException = isOtherLineAssignmentOption(right, currentLineId);
+    if (leftIsException !== rightIsException) return leftIsException ? 1 : -1;
+
+    const lineCompare = COLLATOR.compare(toText(left?.lineName), toText(right?.lineName));
+    if (lineCompare !== 0) return lineCompare;
+    return COLLATOR.compare(formatAssignmentLabel(left), formatAssignmentLabel(right));
+  });
 const sortRowsByWorker = (sourceRows = []) => {
   const safeRows = Array.isArray(sourceRows) ? sourceRows : [];
   return [...safeRows].sort((left, right) => {
@@ -841,7 +869,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       const process = resolveProcessForRow(row, assignment) || row?.process || null;
       const searchText = [
         row?.worker?.name,
-        formatAssignmentLabel(assignment),
+        formatAssignmentAutocompleteLabel(assignment, selectedLineId),
         process?.name,
         process?.nameKo,
         process?.nameEn,
@@ -939,8 +967,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     [lineWorkers]
   );
   const resolveAssignmentOptions = useCallback(
-    (row) => ensureOptionIncluded(assignmentOptions, row?.assignment, (item) => item?.dbId || item?.id),
-    [assignmentOptions]
+    (row) =>
+      sortAssignmentOptionsByLineContext(
+        ensureOptionIncluded(assignmentOptions, row?.assignment, (item) => item?.dbId || item?.id),
+        selectedLineId
+      ),
+    [assignmentOptions, selectedLineId]
   );
   const resolveProcessOptions = useCallback((row) => {
     const assignment = resolveAssignmentForRow(row);
@@ -1025,6 +1057,81 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!templateRow) return createBlankRow();
     return createBlankRow({ worker: templateRow?.worker || null, assignment: null, process: null, quantity: '' });
   }, []);
+  const renderAssignmentOption = useCallback(
+    (props, option) => {
+      const isException = isOtherLineAssignmentOption(option, selectedLineId);
+      const lineName = toText(option?.lineName);
+      const lineCaption = lineName
+        ? `${lineName} · ${isException ? LABELS.assignmentOtherLine : LABELS.assignmentCurrentLine}`
+        : isException
+          ? LABELS.assignmentOtherLine
+          : '';
+
+      return (
+        <Box
+          component="li"
+          {...props}
+          sx={{
+            display: 'block',
+            px: 1,
+            py: 0.75,
+          }}
+        >
+          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+            <Stack
+              direction="row"
+              spacing={0.75}
+              alignItems="center"
+              sx={{ minWidth: 0, flexWrap: 'wrap' }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: isException ? 700 : 500,
+                  minWidth: 0,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {formatAssignmentLabel(option)}
+              </Typography>
+              {isException ? (
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={LABELS.assignmentException}
+                  sx={{
+                    height: 20,
+                    '& .MuiChip-label': {
+                      px: 0.75,
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                    },
+                  }}
+                />
+              ) : null}
+            </Stack>
+            {lineCaption ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  display: 'block',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {lineCaption}
+              </Typography>
+            ) : null}
+          </Stack>
+        </Box>
+      );
+    },
+    [selectedLineId]
+  );
   const handleAddBelow = useCallback((rowId) => {
     let nextEditingId = '';
     let nextRowIndex = -1;
@@ -1354,8 +1461,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 selectOnFocus
                                 clearOnBlur={false}
                                 handleHomeEndKeys
-                                getOptionLabel={formatAssignmentLabel}
+                                getOptionLabel={(option) =>
+                                  formatAssignmentAutocompleteLabel(option, selectedLineId)
+                                }
                                 isOptionEqualToValue={(option, value) => String(option?.dbId || option?.id || '') === String(value?.dbId || value?.id || '')}
+                                renderOption={renderAssignmentOption}
                                 textFieldProps={{
                                   size: 'small',
                                   placeholder: assignmentPlaceholder,

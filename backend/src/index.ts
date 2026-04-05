@@ -202,9 +202,11 @@ const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["접수", "ORDER_RECEIVED"],
   ["작업중", "IN_PROGRESS"],
   ["제작", "IN_PROGRESS"],
-  ["생산완료", "SHIPPED"],
+  ["생산", "IN_PROGRESS"],
+  ["생산완료", "PRODUCTION_DONE"],
   ["출고완료", "SHIPPED"],
   ["출고", "SHIPPED"],
+  ["정산완료", "SETTLED"],
   ["정산", "SETTLED"],
 ]);
 const WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
@@ -3497,6 +3499,7 @@ const collectStyleQuantityRequirementsFromOrders = ({
   }, new Map<string, any[]>());
 
   ensureArray(orders).forEach((order) => {
+    const quantityByStyleUidInOrder = new Map<number, number>();
     const itemsFromRelation =
       Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
         ? [...order.workOrderItems]
@@ -3512,13 +3515,18 @@ const collectStyleQuantityRequirementsFromOrders = ({
       });
       const styleUid = toPositiveIntOrNull(style?.uid);
       if (styleUid === null) return;
-      resolveAssignmentCardVariantBuckets(item).forEach(({ quantity }) => {
-        const normalizedQuantity = toPositiveIntOrNull(quantity);
-        if (normalizedQuantity === null) return;
-        const current = quantityByStyleUid.get(styleUid) || new Set<number>();
-        current.add(resolveStBucketQuantity(normalizedQuantity));
-        quantityByStyleUid.set(styleUid, current);
-      });
+      const normalizedQuantity = toPositiveIntOrNull(sumOrderItemQuantity(item));
+      if (normalizedQuantity === null) return;
+      quantityByStyleUidInOrder.set(
+        styleUid,
+        (quantityByStyleUidInOrder.get(styleUid) || 0) + normalizedQuantity
+      );
+    });
+
+    quantityByStyleUidInOrder.forEach((quantity, styleUid) => {
+      const current = quantityByStyleUid.get(styleUid) || new Set<number>();
+      current.add(resolveStBucketQuantity(quantity));
+      quantityByStyleUid.set(styleUid, current);
     });
   });
 
@@ -3876,23 +3884,13 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   );
   const resolvedCustomerName = customerName ?? buyerOrgName;
   const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
-  const previousConfirmationStatus = resolveWorkOrderConfirmationStatus(
-    fallback?.confirmationStatus,
-    "PLANNED"
-  );
   const confirmationStatus = resolveWorkOrderConfirmationStatus(
     payload?.confirmationStatus !== undefined
       ? payload?.confirmationStatus
       : fallback?.confirmationStatus,
     "PLANNED"
   );
-  let status = resolveWorkOrderStatus(
-    payload?.status !== undefined ? payload?.status : fallback?.status,
-    "ORDER_RECEIVED"
-  );
-  if (confirmationStatus === "CONFIRMED" && previousConfirmationStatus !== "CONFIRMED") {
-    status = "ORDER_RECEIVED";
-  }
+  const status: "ORDER_RECEIVED" = "ORDER_RECEIVED";
 
   return {
     orderId,
@@ -4649,6 +4647,125 @@ const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
         .filter((planId): planId is number => planId !== null)
     )
   );
+const resolveOrderIdFromAssignmentBoardItem = (item: any): string | null =>
+  extractOrderIdFromAssignmentCardText(item?.originOrderId) ??
+  extractOrderIdFromAssignmentCardText(item?.cardId) ??
+  extractOrderIdFromAssignmentCardText(item?.id);
+const buildOrderProgressCoverageByOrderId = ({
+  cards,
+  assignments,
+}: {
+  cards: any;
+  assignments: any;
+}) => {
+  const coverageByOrderId = new Map<
+    string,
+    { hasUnassignedCards: boolean; hasAssignments: boolean }
+  >();
+  const ensureCoverage = (orderId: string) => {
+    const current = coverageByOrderId.get(orderId);
+    if (current) return current;
+    const next = { hasUnassignedCards: false, hasAssignments: false };
+    coverageByOrderId.set(orderId, next);
+    return next;
+  };
+
+  ensureArray(cards).forEach((card) => {
+    if ((resolveOptionalString(card?.type, "") ?? "").toUpperCase() === "DELTA") {
+      return;
+    }
+    const orderId = resolveOrderIdFromAssignmentBoardItem(card);
+    if (!orderId) return;
+    ensureCoverage(orderId).hasUnassignedCards = true;
+  });
+
+  normalizeStateAssignments(assignments).forEach((assignment) => {
+    const orderId = resolveOrderIdFromAssignmentBoardItem(assignment);
+    if (!orderId) return;
+    ensureCoverage(orderId).hasAssignments = true;
+  });
+
+  return coverageByOrderId;
+};
+const resolveAutoOrderProgressStatus = ({
+  isManualLocked: _isManualLocked,
+  coverage: _coverage,
+}: {
+  isManualLocked: boolean;
+  coverage?: { hasUnassignedCards: boolean; hasAssignments: boolean } | null;
+}): "ORDER_RECEIVED" => {
+  return "ORDER_RECEIVED";
+};
+const syncOrderProgressStatusesForOrg = async ({
+  orgId,
+  orderIds = null,
+  cards = null,
+  assignments = null,
+  includeTerminalStages = false,
+}: {
+  orgId: number;
+  orderIds?: string[] | null;
+  cards?: any;
+  assignments?: any;
+  includeTerminalStages?: boolean;
+}) => {
+  const resolvedCards =
+    cards != null ? ensureArray(cards) : await loadAssignmentCardsForOrg({ orgId });
+  const resolvedAssignments =
+    assignments != null
+      ? normalizeStateAssignments(assignments)
+      : normalizeStateAssignments(
+          (
+            await prisma.assignmentBoardState.findUnique({
+              where: { orgId },
+              select: { assignments: true },
+            })
+          )?.assignments
+        );
+  const coverageByOrderId = buildOrderProgressCoverageByOrderId({
+    cards: resolvedCards,
+    assignments: resolvedAssignments,
+  });
+  const normalizedOrderIds = Array.from(
+    new Set(
+      ensureArray(orderIds)
+        .map((orderId) => resolveOptionalString(orderId, null))
+        .filter((orderId): orderId is string => Boolean(orderId))
+    )
+  );
+  const orders = await prisma.workOrder.findMany({
+    where: {
+      OR: getOrderAccessWhere(orgId),
+      ...(normalizedOrderIds.length > 0 ? { orderId: { in: normalizedOrderIds } } : {}),
+    },
+    select: {
+      id: true,
+      orderId: true,
+      status: true,
+      modificationLockedAt: true,
+    },
+  });
+  void includeTerminalStages;
+  const updates = orders.flatMap((order) => {
+    const currentStatus = resolveWorkOrderStatus(order?.status, "ORDER_RECEIVED");
+    const nextStatus = resolveAutoOrderProgressStatus({
+      isManualLocked: Boolean(order?.modificationLockedAt),
+      coverage: coverageByOrderId.get(order.orderId) ?? null,
+    });
+    if (currentStatus === nextStatus) return [];
+    return [{ id: order.id, status: nextStatus }];
+  });
+  if (updates.length === 0) return;
+
+  await prisma.$transaction(
+    updates.map((item) =>
+      prisma.workOrder.update({
+        where: { id: item.id },
+        data: { status: item.status },
+      })
+    )
+  );
+};
 const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
   orgId,
   records,
@@ -4678,17 +4795,9 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
     )
   );
   if (orderIds.length === 0) return;
-
-  await prisma.workOrder.updateMany({
-    where: {
-      orderId: { in: orderIds },
-      OR: getOrderAccessWhere(orgId),
-      confirmationStatus: "CONFIRMED",
-      status: "ORDER_RECEIVED",
-    },
-    data: {
-      status: "IN_PROGRESS",
-    },
+  await syncOrderProgressStatusesForOrg({
+    orgId,
+    orderIds,
   });
 };
 const toAssignmentProcessBucketKey = (
@@ -4796,6 +4905,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   if (assignmentPlanIds.length === 0) {
     return { status: 200, error: null as string | null };
   }
+  void lineId;
 
   const plans = await prisma.assignmentPlan.findMany({
     where: { orgId, id: { in: assignmentPlanIds } },
@@ -4820,16 +4930,6 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
       status: 400,
       error: `assignment plan not found (${missingPlanIds.join(",")})`,
     };
-  }
-
-  if (lineId !== null) {
-    const mismatchedPlan = plans.find((plan) => plan.lineId !== lineId);
-    if (mismatchedPlan) {
-      return {
-        status: 400,
-        error: `assignment plan line mismatch (${formatAssignmentPlanLabel(mismatchedPlan)})`,
-      };
-    }
   }
 
   const missingSnapshotPlans = plans.filter((plan) => {
@@ -4868,6 +4968,7 @@ const validateWorkLogAssignmentProcessQuantities = async ({
   if (incomingBuckets.size === 0) {
     return { status: 200, error: null as string | null };
   }
+  void lineId;
 
   const assignmentPlanIds = Array.from(
     new Set(
@@ -4899,16 +5000,6 @@ const validateWorkLogAssignmentProcessQuantities = async ({
       status: 400,
       error: `assignment plan not found (${missingPlanIds.join(",")})`,
     };
-  }
-
-  if (lineId !== null) {
-    const mismatchedPlan = plans.find((plan) => plan.lineId !== lineId);
-    if (mismatchedPlan) {
-      return {
-        status: 400,
-        error: `assignment plan line mismatch (${formatAssignmentPlanLabel(mismatchedPlan)})`,
-      };
-    }
   }
 
   const existingRows = await prisma.workRecord.groupBy({
@@ -5242,6 +5333,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     dbId: plan?.id ?? null,
     id: resolveOptionalString(plan?.externalId, "") ?? "",
     lineId: String(plan?.lineId ?? ""),
+    lineName: resolveOptionalString(plan?.lineName, "") ?? "",
     styleId:
       resolveOptionalString(plan?.label, null) ??
       resolveOptionalString(plan?.orderNo, null) ??
@@ -5327,6 +5419,24 @@ const buildWorkLogContextResponse = async ({
     };
   }
 
+  const factoryLines = await prisma.line.findMany({
+    where: {
+      orgId,
+      factoryId: line.factoryId,
+    },
+    select: { id: true, name: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+  const factoryLineIds = factoryLines
+    .map((item) => toPositiveIntOrNull(item?.id))
+    .filter((item): item is number => item !== null);
+  const lineNameById = new Map(
+    factoryLines.map((item) => [
+      Number(item.id),
+      resolveOptionalString(item.name, "") ?? "",
+    ])
+  );
+
   const [lineAssignments, assignmentPlans] = await Promise.all([
     prisma.lineAssignment.findMany({
       where: {
@@ -5359,39 +5469,46 @@ const buildWorkLogContextResponse = async ({
       },
       orderBy: [{ employeeId: "asc" }],
     }),
-    prisma.assignmentPlan.findMany({
-      where: {
-        orgId,
-        lineId: line.id,
-      },
-      select: {
-        id: true,
-        externalId: true,
-        lineId: true,
-        orderNo: true,
-        customer: true,
-        label: true,
-        colorId: true,
-        colorName: true,
-        quantity: true,
-        contractedSeconds: true,
-        ctSnapshot: true,
-        color: true,
-        startIndex: true,
-        endIndex: true,
-        isCompleted: true,
-        finalQuantity: true,
-        completedAt: true,
-      },
-      orderBy: [{ startIndex: "asc" }, { id: "asc" }],
-    }),
+    factoryLineIds.length > 0
+      ? prisma.assignmentPlan.findMany({
+          where: {
+            orgId,
+            lineId: { in: factoryLineIds },
+          },
+          select: {
+            id: true,
+            externalId: true,
+            lineId: true,
+            orderNo: true,
+            customer: true,
+            label: true,
+            colorId: true,
+            colorName: true,
+            quantity: true,
+            contractedSeconds: true,
+            ctSnapshot: true,
+            color: true,
+            startIndex: true,
+            endIndex: true,
+            isCompleted: true,
+            finalQuantity: true,
+            completedAt: true,
+          },
+          orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+        })
+      : [],
   ]);
 
   return {
     line: { id: line.id, name: line.name ?? "" },
     workers: lineAssignments.map(toWorkLogContextWorkerResponse),
     assignments: assignmentPlans
-      .map(toWorkLogContextAssignmentResponse)
+      .map((plan) =>
+        toWorkLogContextAssignmentResponse({
+          ...plan,
+          lineName: lineNameById.get(Number(plan?.lineId)) || "",
+        })
+      )
       .filter((plan) => Boolean(plan?.ctSnapshot?.totalCtSeconds)),
   };
 };
@@ -5916,15 +6033,8 @@ const resolveAssignmentCardStatus = ({
   if (Number(totalPt) > 0) return "PT";
   return "NONE";
 };
-const createAssignmentCardId = (
-  orderId: any,
-  styleId: any,
-  colorId: any,
-  gender: any
-) =>
-  `${String(orderId ?? "").trim()}::${String(styleId ?? "").trim()}::${normalizeAssignmentCardColorKey(
-    colorId
-  )}::${normalizeAssignmentCardGender(gender)}`;
+const createAssignmentCardId = (orderId: any, styleId: any) =>
+  `${String(orderId ?? "").trim()}::${String(styleId ?? "").trim()}`;
 const resolveStyleCandidateForAssignmentCard = ({
   order,
   item,
@@ -5960,14 +6070,11 @@ const resolveStyleCandidateForAssignmentCard = ({
 const buildAssignmentCardsFromOrders = ({
   orders,
   styles,
-  colorNameByCode,
 }: {
   orders: any[];
   styles: any[];
-  colorNameByCode: Map<string, string>;
 }) => {
   const cards: any[] = [];
-  const cardById = new Map<string, any>();
   const styleCandidatesById = ensureArray(styles).reduce((map, style) => {
     const styleId = resolveOptionalString(style?.styleId, null);
     if (!styleId) return map;
@@ -5977,40 +6084,6 @@ const buildAssignmentCardsFromOrders = ({
     return map;
   }, new Map<string, any[]>());
 
-  const upsertCard = (nextCard: any) => {
-    const existing = cardById.get(nextCard.id);
-    if (!existing) {
-      cardById.set(nextCard.id, nextCard);
-      cards.push(nextCard);
-      return;
-    }
-    const mergedTotalPt = Number(existing.totalPt || 0) + Number(nextCard.totalPt || 0);
-    const mergedTotalAt = Number(existing.totalAt || 0) + Number(nextCard.totalAt || 0);
-    const mergedTotalSt = Number(existing.totalSt || 0) + Number(nextCard.totalSt || 0);
-    const merged = {
-      ...existing,
-      quantity: Number(existing.quantity || 0) + Number(nextCard.quantity || 0),
-      totalSeconds: Number(existing.totalSeconds || 0) + Number(nextCard.totalSeconds || 0),
-      totalPt: mergedTotalPt,
-      totalAt: mergedTotalAt,
-      totalSt: mergedTotalSt,
-      status: resolveAssignmentCardStatus({
-        totalPt: mergedTotalPt,
-        totalSt: mergedTotalSt,
-      }),
-      dueDate: existing.dueDate || nextCard.dueDate || "",
-      processCount: Math.max(
-        toNonNegativeInt(existing.processCount, 0),
-        toNonNegativeInt(nextCard.processCount, 0)
-      ),
-    };
-    cardById.set(nextCard.id, merged);
-    const index = cards.findIndex((item) => item.id === nextCard.id);
-    if (index >= 0) {
-      cards[index] = merged;
-    }
-  };
-
   ensureArray(orders).forEach((order, orderIndex) => {
     const itemsFromRelation = Array.isArray(order?.workOrderItems) && order.workOrderItems.length > 0
       ? [...order.workOrderItems]
@@ -6018,84 +6091,102 @@ const buildAssignmentCardsFromOrders = ({
           .map(workOrderItemToItemShape)
       : null;
     const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
+    const groupedByStyleId = new Map<
+      string,
+      {
+        quantity: number;
+        itemIndex: number;
+        style: any;
+        styleName: string | null;
+        styleCode: string | null;
+      }
+    >();
+
     items.forEach((item, itemIndex) => {
       const styleId = resolveOptionalString(item?.styleId, "");
       if (!styleId) return;
+      const quantity = toPositiveIntOrNull(sumOrderItemQuantity(item));
+      if (quantity === null) return;
 
       const style = resolveStyleCandidateForAssignmentCard({
         order,
         item,
         styleCandidatesById,
       });
-      const processes = normalizeStyleProcesses(style?.processes);
+      const current = groupedByStyleId.get(styleId);
+      if (!current) {
+        groupedByStyleId.set(styleId, {
+          quantity,
+          itemIndex,
+          style,
+          styleName: resolveOptionalString(item?.styleName, null),
+          styleCode: resolveOptionalString(item?.styleCode, null),
+        });
+        return;
+      }
+      current.quantity += quantity;
+      if (!current.style && style) current.style = style;
+      if (!current.styleName) {
+        current.styleName = resolveOptionalString(item?.styleName, null);
+      }
+      if (!current.styleCode) {
+        current.styleCode = resolveOptionalString(item?.styleCode, null);
+      }
+    });
+
+    groupedByStyleId.forEach((group, styleId) => {
+      const processes = normalizeStyleProcesses(group.style?.processes);
       const processCount = processes.length;
       const previewUrl =
-        ensureArray(style?.imageUrls).length > 0 ? style.imageUrls[0] : "";
-      const variantBuckets = resolveAssignmentCardVariantBuckets(item);
-      if (variantBuckets.length === 0) return;
+        ensureArray(group.style?.imageUrls).length > 0 ? group.style.imageUrls[0] : "";
+      const totalPt = calculateAssignmentCardTotalForOrderQuantity(
+        processes,
+        "pt",
+        group.quantity
+      );
+      const totalAt = calculateAssignmentCardTotalForOrderQuantity(
+        processes,
+        "at",
+        group.quantity
+      );
+      const totalSt = calculateAssignmentCardStTotalForOrderQuantity(
+        processes,
+        group.quantity
+      );
+      const status = resolveAssignmentCardStatus({ totalPt, totalSt });
+      const totalSeconds = status === "ST" ? totalSt : totalPt;
+      const resolvedOrderId =
+        resolveOptionalString(order?.orderId ?? order?.id, null) ??
+        `order-${orderIndex}`;
+      const cardId = createAssignmentCardId(resolvedOrderId, styleId);
 
-      variantBuckets.forEach(({ colorId, gender, quantity }) => {
-        if ((Number(quantity) || 0) <= 0) return;
-
-        const normalizedColor = normalizeAssignmentCardColorKey(colorId);
-        const normalizedGender = normalizeAssignmentCardGender(gender);
-        const colorName =
-          colorNameByCode.get(normalizedColor) ||
-          resolveOptionalString(item?.colorName, null) ||
-          normalizedColor ||
-          "색상 없음";
-        const totalPt = calculateAssignmentCardTotalForOrderQuantity(
-          processes,
-          "pt",
-          quantity
-        );
-        const totalAt = calculateAssignmentCardTotalForOrderQuantity(
-          processes,
-          "at",
-          quantity
-        );
-        const totalSt = calculateAssignmentCardStTotalForOrderQuantity(processes, quantity);
-        const status = resolveAssignmentCardStatus({ totalPt, totalSt });
-        const totalSeconds = status === "ST" ? totalSt : totalPt;
-
-        const resolvedOrderId =
-          resolveOptionalString(order?.orderId ?? order?.id, null) ??
-          `order-${orderIndex}`;
-        const cardId = createAssignmentCardId(
-          resolvedOrderId,
-          styleId,
-          normalizedColor,
-          normalizedGender
-        );
-
-        upsertCard({
-          id: cardId,
-          originOrderId: cardId,
-          orderNo: resolveOptionalString(order?.orderNumber, null) || resolvedOrderId || "-",
-          dueDate: resolveOptionalString(order?.dueDate, null) || "",
-          customer:
-            resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
-          styleId,
-          styleName:
-            resolveOptionalString(item?.styleName, null) ||
-            resolveOptionalString(style?.name, null) ||
-            `스타일 ${itemIndex + 1}`,
-          styleCode:
-            resolveOptionalString(item?.styleCode, null) ||
-            resolveOptionalString(style?.styleCode, null) ||
-            "",
-          colorId: normalizedColor,
-          colorName,
-          gender: normalizedGender,
-          quantity,
-          processCount,
-          status,
-          totalSeconds,
-          totalPt,
-          totalAt,
-          totalSt,
-          previewUrl,
-        });
+      cards.push({
+        id: cardId,
+        originOrderId: cardId,
+        orderNo: resolveOptionalString(order?.orderNumber, null) || resolvedOrderId || "-",
+        dueDate: resolveOptionalString(order?.dueDate, null) || "",
+        customer:
+          resolveOptionalString(order?.customerName ?? order?.customer, null) || "-",
+        styleId,
+        styleName:
+          group.styleName ??
+          resolveOptionalString(group.style?.name, null) ??
+          `스타일 ${group.itemIndex + 1}`,
+        styleCode:
+          group.styleCode ??
+          resolveOptionalString(group.style?.styleCode, null) ??
+          "",
+        colorId: null,
+        colorName: null,
+        gender: null,
+        quantity: group.quantity,
+        processCount,
+        status,
+        totalSeconds,
+        totalPt,
+        totalAt,
+        totalSt,
+        previewUrl,
       });
     });
   });
@@ -6274,18 +6365,6 @@ const loadAssignmentCardsForOrg = async ({
     .filter((row): row is Record<string, unknown> => Boolean(row));
   return cards;
 };
-const buildAssignmentCardColorNameMap = async () => {
-  const colors = await prisma.attrColor.findMany({
-    select: { code: true, name: true },
-    orderBy: { id: "asc" },
-  });
-  return colors.reduce((map, row) => {
-    const key = normalizeAssignmentCardColorKey(row?.code);
-    if (!key || map.has(key)) return map;
-    map.set(key, resolveOptionalString(row?.name, null) || key);
-    return map;
-  }, new Map<string, string>());
-};
 const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const organization = await prisma.organization.findUnique({
     where: { id: orgId },
@@ -6294,7 +6373,7 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   if (!organization) return [];
 
   const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const [styles, orders, savedCards, colorNameByCode] = await Promise.all([
+  const [styles, orders, savedCards] = await Promise.all([
     prisma.style.findMany({
       where: { orgId: { in: accessibleOwnerOrgIds } },
       orderBy: { uid: "asc" },
@@ -6323,7 +6402,6 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
       },
     }),
     loadAssignmentCardsForOrg({ orgId }),
-    buildAssignmentCardColorNameMap(),
   ]);
   const initialProcessMirrorMap = await ensureStyleProcessStorageForStyles(styles, {
     processOrgId: orgId,
@@ -6354,10 +6432,14 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   const baseCards = buildAssignmentCardsFromOrders({
     orders,
     styles: hydratedStyles,
-    colorNameByCode,
   });
   const cards = mergeAssignmentCardsWithSaved(baseCards, savedCards);
-  return syncAssignmentCardsForOrg({ orgId, cards });
+  const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards });
+  await syncOrderProgressStatusesForOrg({
+    orgId,
+    cards: syncedCards,
+  });
+  return syncedCards;
 };
 const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | undefined>) => {
   const uniqueOrgIds = Array.from(
@@ -6429,7 +6511,7 @@ const parseAssignmentCardIdentity = (
   const raw = resolveOptionalString(value, null);
   if (!raw) return null;
   const parts = raw.split("::");
-  if (parts.length < 4) return null;
+  if (parts.length < 2) return null;
   const orderId = resolveOptionalString(parts[0], null);
   const styleId = resolveOptionalString(parts[1], null);
   if (!orderId || !styleId) return null;
@@ -6621,10 +6703,14 @@ const resolveAssignmentDisplayFallback = (
     null;
   const orderItem = findOrderItemByAssignmentIdentity(order, identity);
   const style = identity?.styleId ? refs.styleByStyleId.get(identity.styleId) ?? null : null;
+  const hasVariantIdentity = Boolean(
+    normalizeAssignmentDisplayKey(identity?.colorKey) ||
+      normalizeAssignmentDisplayGender(identity?.gender)
+  );
   const gender =
     normalizeAssignmentDisplayGender(identity?.gender) ||
-    normalizeAssignmentDisplayGender(orderItem?.gender) ||
-    normalizeAssignmentDisplayGender(target?.gender);
+    normalizeAssignmentDisplayGender(target?.gender) ||
+    (hasVariantIdentity ? normalizeAssignmentDisplayGender(orderItem?.gender) : "");
   const styleName =
     resolveOptionalString(orderItem?.styleName, null) ??
     resolveOptionalString(style?.name, null) ??
@@ -6639,7 +6725,7 @@ const resolveAssignmentDisplayFallback = (
       resolveOptionalString(target?.customer, null),
     styleName,
     colorName:
-      resolveOptionalString(orderItem?.colorName, null) ??
+      (hasVariantIdentity ? resolveOptionalString(orderItem?.colorName, null) : null) ??
       resolveOptionalString(target?.colorName, null),
     label: styleName ? `${styleName}${gender ? ` [${gender}]` : ""}` : null,
     gender: gender || null,
@@ -10563,6 +10649,11 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
       where: { orgId: organization.id, externalId },
     });
   }
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+    cards: currentCards,
+    assignments: nextAssignments,
+  });
 
   res.json({
     ok: true,
@@ -10591,6 +10682,11 @@ app.delete("/assignment-board-state", async (req, res) => {
     }
     await tx.assignmentCard.deleteMany({ where: { orgId: organization.id } });
     await tx.assignmentPlan.deleteMany({ where: { orgId: organization.id } });
+  });
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+    cards: [],
+    assignments: [],
   });
 
   res.json({ ok: true });
@@ -10842,6 +10938,11 @@ app.put("/assignment-board-state", async (req, res) => {
       }
     }
   }
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+    cards: updatedCards,
+    assignments: updatedState?.assignments,
+  });
   res.json(toAssignmentBoardStateResponse(updatedState, null, updatedCards));
 });
 
@@ -11197,16 +11298,27 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
       ? {
           modificationLockedAt: new Date(),
           modificationLockedBy: lockedBy,
+          status: "ORDER_RECEIVED",
         }
       : {
           modificationLockedAt: null,
           modificationLockedBy: null,
+          status: "ORDER_RECEIVED",
         },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+  });
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+    orderIds: [updated.orderId],
+    includeTerminalStages: true,
+  });
+  const refreshed = await prisma.workOrder.findUnique({
+    where: { id: updated.id },
     include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
   });
 
   res.json(
-    toOrderResponse(updated, {
+    toOrderResponse(refreshed ?? updated, {
       isAssignmentModificationLocked: currentLockState.isAssignmentLocked,
     })
   );

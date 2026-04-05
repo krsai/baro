@@ -43,8 +43,8 @@ export const ORDER_STATUS_DEFAULT_LABELS = {
     vi: 'Da nhan',
   },
   [ORDER_STATUS_KEYS.IN_PROGRESS]: {
-    ko: '\uC81C\uC791',
-    en: 'In Production',
+    ko: '\uC0DD\uC0B0',
+    en: 'Production',
     vi: 'Dang san xuat',
   },
   [ORDER_STATUS_KEYS.PRODUCTION_DONE]: {
@@ -66,9 +66,9 @@ export const ORDER_STATUS_DEFAULT_LABELS = {
 
 const ORDER_STATUS_TEXT_DEFAULTS = {
   fieldLabel: {
-    ko: '\uC9C4\uD589 \uB2E8\uACC4',
-    en: 'Progress Stage',
-    vi: 'Tien do',
+    ko: '\uC8FC\uBB38 \uC0C1\uD0DC',
+    en: 'Order Status',
+    vi: 'Trang thai don hang',
   },
   filterAllLabel: {
     ko: '\uC804\uCCB4',
@@ -81,19 +81,19 @@ const ORDER_STATUS_TEXT_DEFAULTS = {
     vi: '---',
   },
   confirmedOnlyHelper: {
-    ko: '\uD655\uC815\uB41C \uC8FC\uBB38\uB9CC \uC9C4\uD589 \uB2E8\uACC4\uAC00 \uC788\uC2B5\uB2C8\uB2E4.',
-    en: 'Only confirmed orders have a progress stage.',
-    vi: 'Chi don hang da xac nhan moi co tien do.',
+    ko: '\uD604\uC7AC \uC8FC\uBB38 \uC0C1\uD0DC\uB294 \uC811\uC218\uB9CC \uC0AC\uC6A9\uD569\uB2C8\uB2E4.',
+    en: 'Only Received is currently used for order status.',
+    vi: 'Hien tai chi su dung trang thai Da nhan cho don hang.',
   },
   autoUpdateHelper: {
-    ko: '\uC811\uC218/\uC81C\uC791/\uCD9C\uACE0/\uC815\uC0B0 \uB2E8\uACC4\uB294 \uC8FC\uBB38 \uD655\uC815\uACFC \uC2E4\uC81C \uC791\uC5C5 \uC774\uBCA4\uD2B8\uC5D0 \uB530\uB77C \uC790\uB3D9 \uC5C5\uB370\uC774\uD2B8\uB429\uB2C8\uB2E4.',
-    en: 'Received/In Production/Shipped/Settled stages update automatically from order confirmation and work events.',
-    vi: 'Cac giai doan Received/In Production/Shipped/Settled duoc cap nhat tu dong theo xac nhan don hang va su kien san xuat.',
+    ko: '\uC644\uB8CC \uAE30\uB2A5\uC744 \uB9CC\uB4E4\uAE30 \uC804\uAE4C\uC9C0\uB294 \uBAA8\uB4E0 \uC8FC\uBB38 \uC0C1\uD0DC\uB97C \uC811\uC218\uB85C \uC720\uC9C0\uD569\uB2C8\uB2E4.',
+    en: 'Until the completion feature exists, all orders stay in Received.',
+    vi: 'Truoc khi co tinh nang hoan thanh, tat ca don hang deu giu o trang thai Da nhan.',
   },
   lockedEditHelper: {
-    ko: '\uD655\uC815\uB41C \uC8FC\uBB38\uC740 \uAE30\uBCF8 \uC815\uBCF4\uB294 \uC7A0\uAE30\uACE0, \uC9C4\uD589 \uB2E8\uACC4\uB9CC \uBCC0\uACBD\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
-    en: 'Confirmed orders lock the base info, and only the progress stage can be changed.',
-    vi: 'Don hang da xac nhan se khoa thong tin co ban, chi co the doi tien do.',
+    ko: '\uC9C0\uAE08\uC740 Lock \uC5EC\uBD80\uC640 \uBB34\uAD00\uD558\uAC8C \uC0C1\uD0DC\uB97C \uC811\uC218\uB85C \uB454\uB2E4.',
+    en: 'For now, the status stays Received regardless of lock state.',
+    vi: 'Hien tai trang thai van la Da nhan bat ke trang thai khoa.',
   },
 };
 
@@ -123,18 +123,6 @@ export const ORDER_STATUS_OPTIONS = [
     value: ORDER_STATUS_KEYS.ORDER_RECEIVED,
     labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.ORDER_RECEIVED],
   }),
-  createLocalizedOption({
-    value: ORDER_STATUS_KEYS.IN_PROGRESS,
-    labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.IN_PROGRESS],
-  }),
-  createLocalizedOption({
-    value: ORDER_STATUS_KEYS.SHIPPED,
-    labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.SHIPPED],
-  }),
-  createLocalizedOption({
-    value: ORDER_STATUS_KEYS.SETTLED,
-    labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.SETTLED],
-  }),
 ];
 
 const normalizeOrderStatusToken = (value) =>
@@ -147,9 +135,11 @@ const ORDER_STATUS_LEGACY_CODE_MAP = {
   '\uC811\uC218': ORDER_STATUS_KEYS.ORDER_RECEIVED,
   '\uC791\uC5C5\uC911': ORDER_STATUS_KEYS.IN_PROGRESS,
   '\uC81C\uC791': ORDER_STATUS_KEYS.IN_PROGRESS,
-  '\uC0DD\uC0B0\uC644\uB8CC': ORDER_STATUS_KEYS.SHIPPED,
+  '\uC0DD\uC0B0': ORDER_STATUS_KEYS.IN_PROGRESS,
+  '\uC0DD\uC0B0\uC644\uB8CC': ORDER_STATUS_KEYS.PRODUCTION_DONE,
   '\uCD9C\uACE0\uC644\uB8CC': ORDER_STATUS_KEYS.SHIPPED,
   '\uCD9C\uACE0': ORDER_STATUS_KEYS.SHIPPED,
+  '\uC815\uC0B0\uC644\uB8CC': ORDER_STATUS_KEYS.SETTLED,
   '\uC815\uC0B0': ORDER_STATUS_KEYS.SETTLED,
 };
 

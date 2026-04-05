@@ -64,7 +64,6 @@ import {
   ORDER_CONFIRMATION_STATUS_KEYS,
   ORDER_CONFIRMATION_STATUS_OPTIONS,
   getOrderConfirmationStatusLabel as getOrderConfirmationStatusLabelFromConst,
-  hasOrderProgressStage,
   normalizeOrderConfirmationStatus as normalizeOrderConfirmationStatusFromConst,
 } from '../../../constants/orderConfirmationStatus';
 import {
@@ -157,8 +156,11 @@ const getOrderConfirmationLabel = (status, languageCode) =>
     languageCode
   );
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
-const getOrderProgressStageLabel = (status, languageCode) =>
-  getOrderStatusLabelFromConst(status, String(status || '').trim() || '-', languageCode);
+const getOrderProgressStageLabel = (
+  status,
+  fallback = String(status || '').trim() || '-',
+  languageCode
+) => getOrderStatusLabelFromConst(status, fallback, languageCode);
 const normalizeFilterDate = (value) => {
   const date = value instanceof Date ? new Date(value) : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -247,21 +249,10 @@ const getItemColorIdentity = (item) => {
   return colorCode ? `code:${colorCode}` : '';
 };
 const normalizeBoardKey = (value) => String(value ?? '').trim();
-const normalizeBoardGender = (value) => {
-  const code = normalizeGenderCode(value, '').toUpperCase();
-  return GENDER_OPTIONS.includes(code) ? code : 'U';
-};
-const buildAssignmentOriginCardId = (orderId, styleId, colorId, gender) =>
-  `${normalizeBoardKey(orderId)}::${normalizeBoardKey(styleId)}::${normalizeColorCode(colorId)}::${normalizeBoardGender(gender)}`;
+const buildAssignmentOriginCardId = (orderId, styleId) =>
+  `${normalizeBoardKey(orderId)}::${normalizeBoardKey(styleId)}`;
 const sumLegacyQuantities = (rows = []) =>
   rows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
-const resolveLegacyRowColorKeyForBoard = (row) => {
-  const fromCode = normalizeColorCode(row?.colorCode || row?.color || row?.colorName);
-  if (fromCode) return fromCode;
-  const fromId = normalizeColorCode(row?.colorId);
-  if (!fromId || GENDER_OPTIONS.includes(fromId)) return 'UNSPEC';
-  return fromId;
-};
 const resolveOrderItemQuantityForBoard = (item) => {
   if (Number(item?.totalQuantity) > 0) return Number(item.totalQuantity);
   if (item?.sizeQuantities && typeof item.sizeQuantities === 'object') {
@@ -274,35 +265,6 @@ const resolveOrderItemQuantityForBoard = (item) => {
   }
   return 0;
 };
-const resolveVariantBucketsFromLegacyRowsForBoard = (rows = []) => {
-  const bucket = new Map();
-  rows.forEach((row) => {
-    const quantity = Number(row?.quantity) || 0;
-    if (quantity <= 0) return;
-    const colorId = resolveLegacyRowColorKeyForBoard(row);
-    const gender = normalizeBoardGender(row?.gender || row?.colorId);
-    const bucketKey = `${colorId}::${gender}`;
-    const current = bucket.get(bucketKey);
-    if (!current) {
-      bucket.set(bucketKey, { colorId, gender, quantity });
-      return;
-    }
-    current.quantity += quantity;
-  });
-  return Array.from(bucket.values());
-};
-const resolveOrderItemVariantBucketsForBoard = (item) => {
-  const fromLegacyRows = resolveVariantBucketsFromLegacyRowsForBoard(
-    Array.isArray(item?.quantities) ? item.quantities : []
-  );
-  if (fromLegacyRows.length > 0) return fromLegacyRows;
-
-  const fallbackQuantity = resolveOrderItemQuantityForBoard(item);
-  if (fallbackQuantity <= 0) return [];
-  const fallbackColor = normalizeColorCode(item?.colorCode || item?.colorId || item?.color || 'UNSPEC');
-  const fallbackGender = normalizeBoardGender(item?.gender);
-  return [{ colorId: fallbackColor || 'UNSPEC', gender: fallbackGender, quantity: fallbackQuantity }];
-};
 const buildOrderVariantMapForBoard = ({ orderId, items }) => {
   const normalizedOrderId = normalizeBoardKey(orderId);
   if (!normalizedOrderId) return new Map();
@@ -313,38 +275,26 @@ const buildOrderVariantMapForBoard = ({ orderId, items }) => {
 
     const styleName = String(item?.styleName || '').trim();
     const styleCode = String(item?.styleCode || '').trim();
-    const colorName = String(item?.colorName || item?.color || '').trim();
-    const variantBuckets = resolveOrderItemVariantBucketsForBoard(item);
-    variantBuckets.forEach(({ colorId, gender, quantity }) => {
-      const qty = Number(quantity) || 0;
-      if (qty <= 0) return;
-      const normalizedColor = normalizeColorCode(colorId || 'UNSPEC') || 'UNSPEC';
-      const normalizedGender = normalizeBoardGender(gender);
-      const originId = buildAssignmentOriginCardId(
-        normalizedOrderId,
+    const qty = Number(resolveOrderItemQuantityForBoard(item)) || 0;
+    if (qty <= 0) return map;
+    const originId = buildAssignmentOriginCardId(normalizedOrderId, styleId);
+    const current = map.get(originId);
+    if (!current) {
+      map.set(originId, {
+        originId,
         styleId,
-        normalizedColor,
-        normalizedGender
-      );
-      const current = map.get(originId);
-      if (!current) {
-        map.set(originId, {
-          originId,
-          styleId,
-          styleName,
-          styleCode,
-          colorId: normalizedColor,
-          colorName,
-          gender: normalizedGender,
-          quantity: qty,
-        });
-        return;
-      }
-      current.quantity += qty;
-      if (!current.styleName && styleName) current.styleName = styleName;
-      if (!current.styleCode && styleCode) current.styleCode = styleCode;
-      if (!current.colorName && colorName) current.colorName = colorName;
-    });
+        styleName,
+        styleCode,
+        colorId: '',
+        colorName: '',
+        gender: '',
+        quantity: qty,
+      });
+      return map;
+    }
+    current.quantity += qty;
+    if (!current.styleName && styleName) current.styleName = styleName;
+    if (!current.styleCode && styleCode) current.styleCode = styleCode;
     return map;
   }, new Map());
 };
@@ -719,9 +669,7 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
     confirmationStatus: normalizedConfirmationStatus,
-    status: hasOrderProgressStage(normalizedConfirmationStatus)
-      ? normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT
-      : '',
+    status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
     items: normalizedItems,
   };
 };
@@ -1533,21 +1481,6 @@ const OrderList = () => {
     saveOrderDraft(formData);
   }, [formData, isDetailMode, isNewOrder]);
 
-  useEffect(() => {
-    if (
-      confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.PLANNED &&
-      progressFilter !== ORDER_PROGRESS_STAGE_NONE
-    ) {
-      setProgressFilter(ORDER_PROGRESS_STAGE_NONE);
-    }
-    if (
-      confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.CONFIRMED &&
-      progressFilter === ORDER_PROGRESS_STAGE_NONE
-    ) {
-      setProgressFilter(ORDER_FILTER_ALL);
-    }
-  }, [confirmationFilter, progressFilter]);
-
   const filteredOrders = useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
@@ -1558,17 +1491,13 @@ const OrderList = () => {
           : normalizedConfirmation === normalizeOrderConfirmation(confirmationFilter);
       if (!matchesStatus) return false;
 
-      const orderHasProgressStage = hasOrderProgressStage(order.confirmationStatus);
-      const normalizedProgressStage = orderHasProgressStage
-        ? normalizeOrderProgressStage(order.status)
-        : '';
+      const normalizedProgressStage = normalizeOrderProgressStage(order.status);
       const matchesProgress =
         progressFilter === ORDER_FILTER_ALL
           ? true
           : progressFilter === ORDER_PROGRESS_STAGE_NONE
-            ? !orderHasProgressStage
-          : orderHasProgressStage &&
-            normalizedProgressStage === normalizeOrderProgressStage(progressFilter);
+            ? !normalizedProgressStage
+            : normalizedProgressStage === normalizeOrderProgressStage(progressFilter);
       if (!matchesProgress) return false;
 
       const dueDateKey = normalizeDateKey(order.dueDate);
@@ -1689,10 +1618,6 @@ const OrderList = () => {
       {
         value: ORDER_FILTER_ALL,
         label: ORDER_STATUS_TEXT.filterAllLabel,
-      },
-      {
-        value: ORDER_PROGRESS_STAGE_NONE,
-        label: ORDER_STATUS_TEXT.noneLabel,
       },
       ...ORDER_STATUS_OPTIONS.map((option) => ({
         value: option.value,
@@ -2553,9 +2478,7 @@ const OrderList = () => {
       customerName: formData.buyerOrgName,
       customer: formData.buyerOrgName,
       confirmationStatus: formData.confirmationStatus,
-      status: hasOrderProgressStage(formData.confirmationStatus)
-        ? normalizeOrderProgressStage(formData.status) || ORDER_PROGRESS_STAGE_DEFAULT
-        : undefined,
+      status: normalizeOrderProgressStage(formData.status) || ORDER_PROGRESS_STAGE_DEFAULT,
       items: sanitizedItems,
       totalQuantity,
       updatedAt: new Date().toISOString(),
@@ -2576,33 +2499,55 @@ const OrderList = () => {
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
 
-        // 수량 변경 감지 → 기존 배정 취소 후 미배정 카드 재생성
-        const oldVariantMap = buildOrderVariantMapForBoard({
-          orderId: existingOrder.id,
-          items: existingOrder.items || [],
-        });
-        const nextVariantMap = buildOrderVariantMapForBoard({
-          orderId: existingOrder.id,
-          items: sanitizedItems,
-        });
-        const changedVariantIds = Array.from(
-          new Set([...oldVariantMap.keys(), ...nextVariantMap.keys()])
-        ).filter((originId) => {
-          const oldQty = Number(oldVariantMap.get(originId)?.quantity) || 0;
-          const nextQty = Number(nextVariantMap.get(originId)?.quantity) || 0;
-          return oldQty !== nextQty;
-        });
+        try {
+          const oldVariantMap = buildOrderVariantMapForBoard({
+            orderId: existingOrder.id,
+            items: existingOrder.items || [],
+          });
+          const nextVariantMap = buildOrderVariantMapForBoard({
+            orderId: existingOrder.id,
+            items: sanitizedItems,
+          });
+          const boardQuery = buildQueryString({ orgId: activeOrgId });
+          const boardState = await requestJSON('/assignment-board-view' + boardQuery).catch(
+            () => ({ cards: [], assignments: [] })
+          );
+          const currentCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+          const currentAssignments = Array.isArray(boardState?.assignments)
+            ? boardState.assignments
+            : [];
+          const orderPrefix = `${normalizeBoardKey(existingOrder.id)}::`;
+          const currentOrderOriginIds = Array.from(
+            new Set(
+              [
+                ...currentCards.map((card) => normalizeBoardKey(card?.originOrderId || card?.id)),
+                ...currentAssignments.map((assignment) =>
+                  normalizeBoardKey(
+                    assignment?.originOrderId || assignment?.cardId || assignment?.id
+                  )
+                ),
+              ].filter((originId) => originId && originId.startsWith(orderPrefix))
+            )
+          );
+          const changedVariantIdSet = new Set(
+            Array.from(new Set([...oldVariantMap.keys(), ...nextVariantMap.keys()])).filter(
+              (originId) => {
+                const oldQty = Number(oldVariantMap.get(originId)?.quantity) || 0;
+                const nextQty = Number(nextVariantMap.get(originId)?.quantity) || 0;
+                return oldQty !== nextQty;
+              }
+            )
+          );
+          const needsLegacyRegroup = currentOrderOriginIds.some(
+            (originId) => !nextVariantMap.has(originId)
+          );
+          if (needsLegacyRegroup) {
+            currentOrderOriginIds.forEach((originId) => changedVariantIdSet.add(originId));
+            nextVariantMap.forEach((_value, originId) => changedVariantIdSet.add(originId));
+          }
 
-        if (changedVariantIds.length > 0) {
-          try {
-            const boardQuery = buildQueryString({ orgId: activeOrgId });
-            const boardState = await requestJSON('/assignment-board-view' + boardQuery).catch(
-              () => ({ cards: [], assignments: [] })
-            );
-            const currentCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
-            const currentAssignments = Array.isArray(boardState?.assignments)
-              ? boardState.assignments
-              : [];
+          const changedVariantIds = Array.from(changedVariantIdSet);
+          if (changedVariantIds.length > 0) {
             const customerName =
               formData.buyerOrgName ||
               formData.customerName ||
@@ -2640,9 +2585,9 @@ const OrderList = () => {
                 'info'
               );
             }
-          } catch (_boardUpdateErr) {
-            // Keep order save successful even if board sync fails.
           }
+        } catch (_boardUpdateErr) {
+          // Keep order save successful even if board sync fails.
         }
       } else {
         payload.id = createId('order');
@@ -2727,17 +2672,7 @@ const OrderList = () => {
               onChange={(event) => setProgressFilter(event.target.value)}
             >
               {orderProgressFilterOptions.map((option) => (
-                <MenuItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={
-                    (confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.PLANNED &&
-                      option.value !== ORDER_FILTER_ALL &&
-                      option.value !== ORDER_PROGRESS_STAGE_NONE) ||
-                    (confirmationFilter === ORDER_CONFIRMATION_STATUS_KEYS.CONFIRMED &&
-                      option.value === ORDER_PROGRESS_STAGE_NONE)
-                  }
-                >
+                <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
               ))}
@@ -2874,9 +2809,11 @@ const OrderList = () => {
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
-                    const progressStageLabel = hasOrderProgressStage(order.confirmationStatus)
-                      ? getOrderProgressStageLabel(order.status, languageCode)
-                      : ORDER_STATUS_TEXT.noneLabel;
+                    const progressStageLabel = getOrderProgressStageLabel(
+                      order.status,
+                      ORDER_STATUS_TEXT.noneLabel,
+                      languageCode
+                    );
                     return (
                       <TableRow
                         key={order.id}

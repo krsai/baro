@@ -33,7 +33,7 @@ const parseCardIdentity = (value) => {
   const text = normalizeText(value);
   if (!text) return null;
   const parts = text.split("::");
-  if (parts.length < 4) return null;
+  if (parts.length < 2) return null;
   const [orderId, styleId, color, gender] = parts;
   if (!orderId || !styleId) return null;
   return {
@@ -90,10 +90,13 @@ const resolveFallbackDisplay = ({
     null;
   const orderItem = findOrderItemByIdentity(order, cardIdentity);
   const style = styleIdFromIdentity ? styleByStyleId.get(styleIdFromIdentity) || null : null;
+  const hasVariantIdentity = Boolean(
+    normalizeKey(cardIdentity?.colorKey) || normalizeGender(cardIdentity?.gender)
+  );
   const gender =
     normalizeGender(cardIdentity?.gender) ||
-    normalizeGender(orderItem?.gender) ||
-    normalizeGender(target?.gender);
+    normalizeGender(target?.gender) ||
+    (hasVariantIdentity ? normalizeGender(orderItem?.gender) : "");
 
   const resolvedStyleName =
     normalizeText(orderItem?.styleName) ||
@@ -108,7 +111,8 @@ const resolveFallbackDisplay = ({
   const resolvedOrderNo =
     normalizeText(order?.orderNumber) || normalizeText(target?.orderNo);
   const resolvedColorName =
-    normalizeText(orderItem?.colorName) || normalizeText(target?.colorName);
+    (hasVariantIdentity ? normalizeText(orderItem?.colorName) : "") ||
+    normalizeText(target?.colorName);
   const resolvedLabel = buildLabel(resolvedStyleName, gender);
 
   return {

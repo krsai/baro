@@ -121,27 +121,11 @@ const RAW_STATIC_OPTION_GROUPS = [
   },
   {
     key: 'orderStatus',
-    title: '주문 진행 상태',
+    title: '주문 상태',
     items: [
-      createItem('ORDER_RECEIVED', { ko: '주문 접수', en: 'Order Received', vi: 'Da nhan don' }, [
+      createItem('ORDER_RECEIVED', { ko: '접수', en: 'Received', vi: 'Da nhan' }, [
         '주문접수',
         '접수',
-      ]),
-      createItem('IN_PROGRESS', { ko: '작업 중', en: 'In Progress', vi: 'Dang san xuat' }, [
-        '작업중',
-        '제작',
-      ]),
-      createItem(
-        'PRODUCTION_DONE',
-        { ko: '생산 완료', en: 'Production Done', vi: 'Hoan tat san xuat' },
-        ['생산완료']
-      ),
-      createItem('SHIPPED', { ko: '출고 완료', en: 'Shipped', vi: 'Da giao hang' }, [
-        '출고완료',
-        '출고',
-      ]),
-      createItem('SETTLED', { ko: '정산 완료', en: 'Settled', vi: 'Da quyet toan' }, [
-        '정산',
       ]),
     ],
   },

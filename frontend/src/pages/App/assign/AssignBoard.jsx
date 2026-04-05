@@ -580,20 +580,12 @@ const buildAssignmentPersistenceWindow = ({
 };
 
 const normalizeKey = (value) => String(value ?? '').trim();
-const normalizeColorKey = (value) => normalizeKey(value).toUpperCase();
 const normalizeGenderKey = (value) => {
   const raw = normalizeKey(value).toUpperCase();
   if (raw === 'M' || raw === 'MEN' || raw === 'MALE' || raw === '남성') return 'M';
   if (raw === 'W' || raw === 'WOMEN' || raw === 'FEMALE' || raw === '여성') return 'W';
   if (raw === 'U' || raw === 'UNISEX' || raw === '공용') return 'U';
   return 'U';
-};
-const resolveLegacyRowColorKey = (row) => {
-  const fromCode = normalizeColorKey(row?.colorCode || row?.color || row?.colorName);
-  if (fromCode) return fromCode;
-  const fromId = normalizeColorKey(row?.colorId);
-  if (!fromId || fromId === 'M' || fromId === 'W' || fromId === 'U') return 'UNSPEC';
-  return fromId;
 };
 
 const sumSizeQuantities = (sizeQuantities = {}) =>
@@ -613,44 +605,6 @@ const resolveItemQuantity = (item) => {
     if (qty > 0) return qty;
   }
   return 0;
-};
-
-const resolveVariantBucketsFromLegacyRows = (rows = [], itemGender = 'U') => {
-  const bucket = new Map();
-  rows.forEach((row) => {
-    const quantity = Number(row?.quantity) || 0;
-    if (quantity <= 0) return;
-    const colorId = resolveLegacyRowColorKey(row);
-    const rawGender = normalizeKey(row?.gender ?? '').toUpperCase();
-    const gender =
-      rawGender === 'M' || rawGender === 'W' || rawGender === 'U'
-        ? rawGender
-        : itemGender;
-    const bucketKey = `${colorId}::${gender}`;
-    const existing = bucket.get(bucketKey);
-    if (!existing) {
-      bucket.set(bucketKey, { colorId, gender, quantity });
-      return;
-    }
-    existing.quantity += quantity;
-  });
-  return Array.from(bucket.values());
-};
-
-const resolveItemVariantBuckets = (item) => {
-  const itemGender = normalizeGenderKey(item?.gender);
-  const fromLegacyRows = resolveVariantBucketsFromLegacyRows(
-    Array.isArray(item?.quantities) ? item.quantities : [],
-    itemGender
-  );
-  if (fromLegacyRows.length > 0) return fromLegacyRows;
-
-  const fallbackQuantity = resolveItemQuantity(item);
-  if (fallbackQuantity <= 0) return [];
-
-  const fallbackColor = normalizeColorKey(item?.colorCode || item?.colorId || item?.color || 'UNSPEC');
-  const fallbackGender = normalizeGenderKey(item?.gender);
-  return [{ colorId: fallbackColor || 'UNSPEC', gender: fallbackGender, quantity: fallbackQuantity }];
 };
 
 const mergeFactorySeconds = (first = [], second = []) => {
@@ -682,14 +636,12 @@ const getTotalStForOrderQuantity = (processes, orderQuantity) =>
     return sum + processQuantity * stPerPiece * orderQuantity;
   }, 0);
 
-const createCardId = (orderId, styleId, colorId, gender) =>
-  `${normalizeKey(orderId)}::${normalizeKey(styleId)}::${normalizeColorKey(colorId)}::${normalizeGenderKey(gender)}`;
+const createCardId = (orderId, styleId) =>
+  `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
 
-const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
+const buildCardsFromOrders = ({ orders, styles }) => {
   const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
   const cards = [];
-  const cardMap = new Map();
-  const cardIndexMap = new Map();
   const styleProcessSummaryMap = new Map();
 
   styleMap.forEach((style, styleId) => {
@@ -702,95 +654,81 @@ const buildCardsFromOrders = ({ orders, styles, colorNameMap }) => {
     });
   });
 
-  const upsertCard = (nextCard) => {
-    const existing = cardMap.get(nextCard.id);
-    if (!existing) {
-      cardMap.set(nextCard.id, nextCard);
-      cardIndexMap.set(nextCard.id, cards.length);
-      cards.push(nextCard);
-      return;
-    }
-
-    const mergedTotalPt = (existing.totalPt ?? 0) + (nextCard.totalPt ?? 0);
-    const mergedTotalAt = (existing.totalAt ?? 0) + (nextCard.totalAt ?? 0);
-    const mergedTotalSt = (existing.totalSt ?? 0) + (nextCard.totalSt ?? 0);
-    const mergedHasPt = mergedTotalPt > 0;
-    const mergedHasSt = mergedTotalSt > 0;
-    const mergedStatus = mergedHasSt ? 'ST' : mergedHasPt ? 'PT' : 'NONE';
-
-    const merged = {
-      ...existing,
-      quantity: (existing.quantity ?? 0) + (nextCard.quantity ?? 0),
-      totalSeconds: (existing.totalSeconds ?? 0) + (nextCard.totalSeconds ?? 0),
-      totalPt: mergedTotalPt,
-      totalAt: mergedTotalAt,
-      totalSt: mergedTotalSt,
-      status: mergedStatus,
-      dueDate: existing.dueDate || nextCard.dueDate || '',
-      processCount: Math.max(existing.processCount ?? 0, nextCard.processCount ?? 0),
-    };
-    cardMap.set(nextCard.id, merged);
-    const index = cardIndexMap.get(nextCard.id);
-    if (index != null) cards[index] = merged;
-  };
-
   (Array.isArray(orders) ? orders : []).forEach((order, orderIndex) => {
     const items = Array.isArray(order?.items) ? order.items : [];
+    const groupedByStyleId = new Map();
+
     items.forEach((item, itemIndex) => {
       const styleId = item?.styleId || '';
       if (!styleId) return;
+      const quantity = resolveItemQuantity(item);
+      if ((Number(quantity) || 0) <= 0) return;
 
       const style = styleMap.get(styleId);
+      const current = groupedByStyleId.get(styleId);
+      if (!current) {
+        groupedByStyleId.set(styleId, {
+          quantity,
+          itemIndex,
+          style,
+          styleName: item?.styleName || '',
+          styleCode: item?.styleCode || '',
+        });
+        return;
+      }
+      current.quantity += quantity;
+      if (!current.style && style) current.style = style;
+      if (!current.styleName && item?.styleName) current.styleName = item.styleName;
+      if (!current.styleCode && item?.styleCode) current.styleCode = item.styleCode;
+    });
+
+    groupedByStyleId.forEach((group, styleId) => {
+      const style = group.style || styleMap.get(styleId);
       const processSummary = styleProcessSummaryMap.get(styleId);
       const processCount = processSummary?.processCount ?? 0;
-      const variantBuckets = resolveItemVariantBuckets(item);
-if (variantBuckets.length === 0) return;
+      const totalPt = getTotalForOrderQuantity(
+        processSummary?.processes || [],
+        'pt',
+        group.quantity
+      );
+      const totalAt = getTotalForOrderQuantity(
+        processSummary?.processes || [],
+        'at',
+        group.quantity
+      );
+      const totalSt = getTotalStForOrderQuantity(
+        processSummary?.processes || [],
+        group.quantity
+      );
+      const hasSt = totalSt > 0;
+      const hasPt = totalPt > 0;
+      const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
+      const totalSeconds = hasSt ? totalSt : totalPt;
+      const cardId = createCardId(
+        order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
+        styleId
+      );
 
-      variantBuckets.forEach(({ colorId, gender, quantity }) => {
-        if ((Number(quantity) || 0) <= 0) return;
-
-        const normalizedColor = normalizeColorKey(colorId);
-        const normalizedGender = normalizeGenderKey(gender);
-        const colorName = colorNameMap.get(normalizedColor) || normalizedColor || '색상 없음';
-        const totalPt = getTotalForOrderQuantity(processSummary?.processes || [], 'pt', quantity);
-        const totalAt = getTotalForOrderQuantity(processSummary?.processes || [], 'at', quantity);
-        const totalSt = getTotalStForOrderQuantity(processSummary?.processes || [], quantity);
-        const hasSt = totalSt > 0;
-        const hasPt = totalPt > 0;
-        const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-        const totalSeconds = hasSt ? totalSt : totalPt;
-
-        upsertCard({
-          id: createCardId(
-            order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
-            styleId,
-            normalizedColor,
-            normalizedGender
-          ),
-          originOrderId: createCardId(
-            order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
-            styleId,
-            normalizedColor,
-            normalizedGender
-          ),
-          orderNo: order?.orderNumber || order?.id || '-',
-          dueDate: order?.dueDate || '',
-          customer: order?.customerName || order?.customer || '-',
-          styleId,
-          styleName: item?.styleName || style?.name || `스타일 ${itemIndex + 1}`,
-          styleCode: item?.styleCode || style?.styleCode || '',
-          colorId: normalizedColor,
-          colorName,
-          gender: normalizedGender,
-          quantity,
-          processCount,
-          status,
-          totalSeconds,
-          totalPt,
-          totalAt,
-          totalSt,
-          previewUrl: processSummary?.previewUrl ?? '',
-        });
+      cards.push({
+        id: cardId,
+        originOrderId: cardId,
+        orderNo: order?.orderNumber || order?.id || '-',
+        dueDate: order?.dueDate || '',
+        customer: order?.customerName || order?.customer || '-',
+        styleId,
+        styleName: group.styleName || style?.name || `스타일 ${group.itemIndex + 1}`,
+        styleCode: group.styleCode || style?.styleCode || '',
+        colorId: '',
+        colorName: '',
+        gender: '',
+        quantity: group.quantity,
+        processCount,
+        status,
+        totalSeconds,
+        totalPt,
+        totalAt,
+        totalSt,
+        previewUrl: processSummary?.previewUrl ?? '',
       });
     });
   });

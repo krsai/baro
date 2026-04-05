@@ -175,14 +175,9 @@ export const reconcileBoardStateForQuantityChanges = ({
           previousCardBase.styleCode ||
           'STYLE',
         styleCode: nextVariant?.styleCode || previousCardBase.styleCode || '',
-        colorId: nextVariant?.colorId || previousCardBase.colorId || '',
-        colorName:
-          nextVariant?.colorName ||
-          previousCardBase.colorName ||
-          nextVariant?.colorId ||
-          previousCardBase.colorId ||
-          '',
-        gender: nextVariant?.gender || previousCardBase.gender || 'U',
+        colorId: nextVariant?.colorId ?? previousCardBase.colorId ?? '',
+        colorName: nextVariant?.colorName ?? previousCardBase.colorName ?? '',
+        gender: nextVariant?.gender ?? previousCardBase.gender ?? '',
         quantity: nextQty,
         processCount: hasProcessSummary
           ? toNumber(processSummary.processCount, 0)
