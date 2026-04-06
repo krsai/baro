@@ -27,6 +27,7 @@ const AssignDetail = React.lazy(() => import('./pages/App/assign/AssignDetail'))
 const Work = React.lazy(() => import('./pages/App/Work'));
 const Attendance = React.lazy(() => import('./pages/App/Attendance'));
 const WorkEntry = React.lazy(() => import('./pages/App/work/WorkEntry'));
+const WorkerWorkHistory = React.lazy(() => import('./pages/App/work/WorkerWorkHistory'));
 const Payroll = React.lazy(() => import('./pages/App/Payroll'));
 const PayrollEntry = React.lazy(() => import('./pages/App/payroll/PayrollEntry'));
 const Onboarding = React.lazy(() => import('./pages/Auth/Onboarding'));
@@ -260,6 +261,10 @@ const router = createBrowserRouter([
           {
             path: 'work-history',
             element: <Work />,
+          },
+          {
+            path: 'worker-work-history',
+            element: <WorkerWorkHistory />,
           },
           {
             path: 'attendance',

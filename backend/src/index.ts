@@ -192,7 +192,6 @@ const WORK_ORDER_STATUS_CODES = new Set([
   "SHIPPED",
   "SETTLED",
 ]);
-const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set(["PLANNED", "CONFIRMED"]);
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
 const ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR =
@@ -208,10 +207,6 @@ const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["출고", "SHIPPED"],
   ["정산완료", "SETTLED"],
   ["정산", "SETTLED"],
-]);
-const WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
-  ["계획", "PLANNED"],
-  ["확정", "CONFIRMED"],
 ]);
 const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
 const DEFAULT_EMPLOYEE_ROLES = [
@@ -367,22 +362,6 @@ const resolveWorkOrderStatus = (
     | "SHIPPED"
     | "SETTLED";
 };
-const resolveWorkOrderConfirmationStatus = (
-  value: unknown,
-  fallback: "PLANNED" | "CONFIRMED" = "PLANNED"
-): "PLANNED" | "CONFIRMED" => {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const normalized = String(value).replace(/\s+/g, "").trim();
-  if (!normalized) return fallback;
-  const upper = normalized.toUpperCase();
-  if (WORK_ORDER_CONFIRMATION_STATUS_CODES.has(upper)) {
-    return upper as "PLANNED" | "CONFIRMED";
-  }
-  return (WORK_ORDER_CONFIRMATION_STATUS_LEGACY_CODE_MAP.get(normalized) ??
-    fallback) as "PLANNED" | "CONFIRMED";
-};
-const isWorkOrderConfirmed = (value: unknown) =>
-  resolveWorkOrderConfirmationStatus(value, "PLANNED") === "CONFIRMED";
 const toSortOrder = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -397,15 +376,18 @@ const DEFAULT_TIME_REF_QUANTITY = 1000;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
   DEFAULT_ST_BUCKET_QUANTITY,
+  3,
+  5,
   10,
   30,
+  50,
   100,
   300,
+  500,
   1000,
   3000,
+  5000,
   10000,
-  30000,
-  100000,
 ]);
 // 출퇴근 입력값을 AT 계산에 반영한다.
 // 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
@@ -3884,12 +3866,7 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   );
   const resolvedCustomerName = customerName ?? buyerOrgName;
   const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
-  const confirmationStatus = resolveWorkOrderConfirmationStatus(
-    payload?.confirmationStatus !== undefined
-      ? payload?.confirmationStatus
-      : fallback?.confirmationStatus,
-    "PLANNED"
-  );
+  const confirmationStatus: "PLANNED" = "PLANNED";
   const status: "ORDER_RECEIVED" = "ORDER_RECEIVED";
 
   return {
@@ -3978,22 +3955,6 @@ const resolveOrderPartiesOrThrow = async ({
   }
 
   return { buyer, seller };
-};
-const assertOrderConfirmationStatusChangeAllowed = ({
-  organization,
-  requestedStatus,
-  existingStatus = null,
-}: {
-  organization: any;
-  requestedStatus: unknown;
-  existingStatus?: unknown;
-}) => {
-  if (!isManufacturerOrg(organization)) return;
-  const currentStatus = resolveWorkOrderConfirmationStatus(existingStatus, "PLANNED");
-  const nextStatus = resolveWorkOrderConfirmationStatus(requestedStatus, currentStatus);
-  if (nextStatus !== currentStatus) {
-    throw createHttpError(403, "manufacturer cannot change confirmation status");
-  }
 };
 
 const findSharedOrderConflict = async ({
@@ -4153,11 +4114,9 @@ const toOrderResponse = (
   const items = itemsFromRelation ?? normalizeOrderItems(order?.items);
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
   const isManualModificationLocked = Boolean(order?.modificationLockedAt);
-  const isConfirmedModificationLocked = isWorkOrderConfirmed(order?.confirmationStatus);
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
   const isModificationLocked =
     isManualModificationLocked ||
-    isConfirmedModificationLocked ||
     isAssignmentModificationLocked;
   return {
     id: order.orderId,
@@ -4172,18 +4131,14 @@ const toOrderResponse = (
     customer: order.customerName ?? order.buyerOrgName ?? "",
     dueDate: order.dueDate ?? "",
     status: resolveWorkOrderStatus(order.status, "ORDER_RECEIVED"),
-    confirmationStatus: resolveWorkOrderConfirmationStatus(
-      order.confirmationStatus,
-      "PLANNED"
-    ),
+    confirmationStatus: "PLANNED",
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     isModificationLocked,
     isManualModificationLocked,
-    isConfirmedModificationLocked,
     isAssignmentModificationLocked,
     canToggleModificationLock:
-      !isConfirmedModificationLocked && !isAssignmentModificationLocked,
+      !isAssignmentModificationLocked,
     modificationLockedAt: order.modificationLockedAt ?? null,
     modificationLockedBy: order.modificationLockedBy ?? "",
     createdAt: order.createdAt,
@@ -5597,8 +5552,13 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
       ctSeconds * quantity,
     quantity * ctSeconds
   );
+  const processCode = resolveOptionalString(
+    value?.processCode ?? value?.code,
+    null
+  );
   return {
     processKey,
+    processCode,
     name:
       resolveOptionalString(
         value?.name ?? value?.processName ?? value?.label,
@@ -6540,14 +6500,12 @@ const buildOrderModificationLockState = ({
   isAssignmentLocked?: boolean;
 }) => {
   const isManualLocked = Boolean(order?.modificationLockedAt);
-  const isConfirmedLocked = isWorkOrderConfirmed(order?.confirmationStatus);
   const assignmentLocked = Boolean(isAssignmentLocked);
   return {
     isManualLocked,
-    isConfirmedLocked,
     isAssignmentLocked: assignmentLocked,
-    canToggle: !isConfirmedLocked && !assignmentLocked,
-    isLocked: isManualLocked || isConfirmedLocked || assignmentLocked,
+    canToggle: !assignmentLocked,
+    isLocked: isManualLocked || assignmentLocked,
   };
 };
 const loadOrderAssignmentModificationLockMap = async (
@@ -7013,6 +6971,217 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       acc.rows.push(item);
       return acc;
     }, { seen: new Set<string>(), rows: [] as any[] }).rows;
+const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] => {
+  const bucket = new Set<string>();
+  const pushCode = (value: any) => {
+    const key = normalizeProcessCodeKey(value);
+    if (key) bucket.add(key);
+  };
+
+  pushCode(process?.processCode);
+  pushCode(process?.code);
+  const processKey = resolveOptionalString(process?.processKey, null);
+  if (processKey) {
+    pushCode(processKey);
+    const instancePatternMatch = processKey.match(/^(.*)-\d+-\d+$/);
+    if (instancePatternMatch?.[1]) {
+      pushCode(instancePatternMatch[1]);
+    }
+  }
+  return Array.from(bucket.values());
+};
+const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
+  organization,
+  cards = [],
+  assignments = [],
+}: {
+  organization: any;
+  cards?: any[];
+  assignments?: any[];
+}) => {
+  const normalizedAssignments = ensureArray(assignments).filter(
+    (item) => item && typeof item === "object"
+  );
+  if (normalizedAssignments.length === 0) return;
+
+  const cardById = ensureArray(cards).reduce((map, card) => {
+    const cardId = resolveOptionalString(card?.id, null);
+    if (!cardId || map.has(cardId)) return map;
+    map.set(cardId, card);
+    return map;
+  }, new Map<string, any>());
+
+  const snapshotTargets = normalizedAssignments
+    .map((assignment) => {
+      const ctSnapshot = normalizeAssignmentCtSnapshot(assignment?.ctSnapshot);
+      if (!ctSnapshot || !Array.isArray(ctSnapshot?.processes) || ctSnapshot.processes.length === 0) {
+        return null;
+      }
+      const cardId = resolveOptionalString(
+        assignment?.cardId ?? assignment?.originOrderId,
+        null
+      );
+      const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
+      const parsedCardIdentity = cardId ? parseAssignmentCardIdentity(cardId) : null;
+      const styleId = resolveOptionalString(
+        linkedCard?.styleId ?? parsedCardIdentity?.styleId ?? assignment?.styleId,
+        null
+      );
+      if (!styleId) return null;
+      const quantityBucket = resolveStBucketQuantity(
+        toPositiveInt(
+          assignment?.quantity ?? ctSnapshot?.quantity ?? linkedCard?.quantity,
+          1
+        )
+      );
+      return {
+        styleId,
+        quantityBucket,
+        processes: ctSnapshot.processes,
+      };
+    })
+    .filter((item): item is any => Boolean(item));
+  if (snapshotTargets.length === 0) return;
+
+  const styleIds = Array.from(
+    new Set(
+      snapshotTargets
+        .map((item) => resolveOptionalString(item?.styleId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (styleIds.length === 0) return;
+
+  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
+  const styles = await prisma.style.findMany({
+    where: {
+      orgId: { in: accessibleOwnerOrgIds },
+      styleId: { in: styleIds },
+    },
+    orderBy: { uid: "asc" },
+    select: {
+      uid: true,
+      orgId: true,
+      styleId: true,
+      processes: true,
+    },
+  });
+  if (styles.length === 0) return;
+
+  await ensureStyleProcessStorageForStyles(styles, {
+    processOrgId: organization.id,
+  });
+
+  const styleUidByStyleId = styles.reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId, null);
+    const styleUid = toPositiveIntOrNull(style?.uid);
+    if (!styleId || styleUid === null || map.has(styleId)) return map;
+    map.set(styleId, styleUid);
+    return map;
+  }, new Map<string, number>());
+  const styleUids = Array.from(new Set(Array.from(styleUidByStyleId.values())));
+  if (styleUids.length === 0) return;
+
+  const styleProcessRows = await prisma.styleProcess.findMany({
+    where: {
+      orgId: organization.id,
+      styleUid: { in: styleUids },
+    },
+    select: {
+      id: true,
+      styleUid: true,
+      processCode: true,
+      processName: true,
+    },
+  });
+  if (styleProcessRows.length === 0) return;
+
+  const styleProcessIdByCode = new Map<string, number>();
+  const styleProcessIdByName = new Map<string, number>();
+  styleProcessRows.forEach((row) => {
+    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    const rowId = toPositiveIntOrNull(row?.id);
+    if (styleUid === null || rowId === null) return;
+    const codeKey = normalizeProcessCodeKey(row?.processCode);
+    if (codeKey) {
+      styleProcessIdByCode.set(`${styleUid}::${codeKey}`, rowId);
+    }
+    const nameKey = normalizeProcessNameKey(row?.processName);
+    if (nameKey) {
+      styleProcessIdByName.set(`${styleUid}::${nameKey}`, rowId);
+    }
+  });
+
+  const standardUpsertByIdentity = new Map<
+    string,
+    { styleProcessId: number; quantity: number; stSeconds: number }
+  >();
+  snapshotTargets.forEach((target) => {
+    const styleUid = styleUidByStyleId.get(target.styleId);
+    if (!styleUid) return;
+    ensureArray(target.processes).forEach((process) => {
+      const stSeconds = toOptionalProcessSeconds(process?.stSeconds);
+      if (stSeconds == null || stSeconds <= 0) return;
+
+      let styleProcessId: number | null = null;
+      const codeCandidates = resolveAssignmentSnapshotProcessCodeCandidates(process);
+      for (const codeKey of codeCandidates) {
+        const matchedId = styleProcessIdByCode.get(`${styleUid}::${codeKey}`) ?? null;
+        if (matchedId != null) {
+          styleProcessId = matchedId;
+          break;
+        }
+      }
+      if (styleProcessId === null) {
+        const processNameKey = normalizeProcessNameKey(
+          process?.name ?? process?.processName ?? process?.label
+        );
+        if (processNameKey) {
+          styleProcessId =
+            styleProcessIdByName.get(`${styleUid}::${processNameKey}`) ?? null;
+        }
+      }
+      if (styleProcessId === null) return;
+
+      standardUpsertByIdentity.set(
+        `${styleProcessId}::${target.quantityBucket}`,
+        {
+          styleProcessId,
+          quantity: target.quantityBucket,
+          stSeconds,
+        }
+      );
+    });
+  });
+  if (standardUpsertByIdentity.size === 0) return;
+
+  const now = new Date();
+  await prisma.$transaction(
+    Array.from(standardUpsertByIdentity.values()).map((item) =>
+      prisma.styleProcessStandard.upsert({
+        where: {
+          styleProcessId_quantity: {
+            styleProcessId: item.styleProcessId,
+            quantity: item.quantity,
+          },
+        },
+        create: {
+          orgId: organization.id,
+          styleProcessId: item.styleProcessId,
+          quantity: item.quantity,
+          stSeconds: item.stSeconds,
+          setBy: "ASSIGNMENT_DETAIL",
+          setAt: now,
+        },
+        update: {
+          stSeconds: item.stSeconds,
+          setBy: "ASSIGNMENT_DETAIL",
+          setAt: now,
+        },
+      })
+    )
+  );
+};
 const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
   const normalizedItems = ensureArray(items).filter(
     (item) => item && typeof item === "object"
@@ -10938,6 +11107,13 @@ app.put("/assignment-board-state", async (req, res) => {
       }
     }
   }
+  if (changedPlanTargetAssignments.length > 0) {
+    await syncStyleProcessStandardsFromAssignmentSnapshots({
+      organization,
+      cards: cardsForSave,
+      assignments: changedPlanTargetAssignments,
+    });
+  }
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     cards: updatedCards,
@@ -11060,17 +11236,6 @@ app.post("/orders", async (req, res) => {
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
   }
-  try {
-    assertOrderConfirmationStatusChangeAllowed({
-      organization,
-      requestedStatus: normalized.confirmationStatus,
-    });
-  } catch (error) {
-    return res.status(403).json({
-      ok: false,
-      error: getErrorMessage(error, "manufacturer cannot change confirmation status"),
-    });
-  }
   const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
   const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);
   const { buyer, seller } = await resolveOrderPartiesOrThrow({
@@ -11143,18 +11308,6 @@ app.put("/orders/:orderId", async (req, res) => {
   const normalized = normalizeOrderPayload(req.body ?? {}, existing);
   if (!normalized.orderNumber) {
     return res.status(400).json({ ok: false, error: "orderNumber is required" });
-  }
-  try {
-    assertOrderConfirmationStatusChangeAllowed({
-      organization,
-      requestedStatus: normalized.confirmationStatus,
-      existingStatus: (existing as any).confirmationStatus,
-    });
-  } catch (error) {
-    return res.status(403).json({
-      ok: false,
-      error: getErrorMessage(error, "manufacturer cannot change confirmation status"),
-    });
   }
   const buyerOrgId = toPositiveIntOrNull(normalized.buyerOrgId);
   const sellerOrgId = toPositiveIntOrNull(normalized.sellerOrgId);

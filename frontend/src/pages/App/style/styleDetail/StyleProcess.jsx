@@ -60,6 +60,8 @@ const createEmptyDraft = () => ({
   st: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
+const PROCESS_TIME_COLUMN_WIDTH = 140;
+const PROCESS_ACTION_COLUMN_WIDTH = 120;
 
 const STYLE_PROCESS_MESSAGES = {
   ko: {
@@ -682,21 +684,13 @@ const buildProcessPayload = (
   });
 };
 
-const resolveCommonTimeRefQuantity = (rows = []) => {
-  if (!Array.isArray(rows) || rows.length === 0) return DEFAULT_TIME_REF_QUANTITY;
-  const first = rows.find((row) => Number.isFinite(Number(row?.timeRefQuantity)));
-  return toPositiveInt(first?.timeRefQuantity, DEFAULT_TIME_REF_QUANTITY);
-};
-
 const StyleProcess = ({
   processes = [],
   onProcessesChange,
 }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
-  const [timeRefQuantity, setTimeRefQuantity] = useState(() =>
-    resolveCommonTimeRefQuantity(safeProcesses)
-  );
+  const [timeRefQuantity, setTimeRefQuantity] = useState(DEFAULT_TIME_REF_QUANTITY);
   const [timeRefQuantityInput, setTimeRefQuantityInput] = useState('');
   const [isTimeRefQuantityEditing, setIsTimeRefQuantityEditing] = useState(false);
   const [processMasterOptions, setProcessMasterOptions] = useState({
@@ -868,19 +862,6 @@ const StyleProcess = ({
   const hasRequiredMasterOptions =
     partOptions.length > 0 && targetOptions.length > 0 && actionOptions.length > 0;
   const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
-
-  useEffect(() => {
-    if (safeProcesses.length === 0) {
-      setTimeRefQuantity(DEFAULT_TIME_REF_QUANTITY);
-      setTimeRefQuantityInput('');
-      setIsTimeRefQuantityEditing(false);
-      return;
-    }
-    const nextRef = resolveCommonTimeRefQuantity(safeProcesses);
-    setTimeRefQuantity((prev) => (prev === nextRef ? prev : nextRef));
-    setTimeRefQuantityInput('');
-    setIsTimeRefQuantityEditing(false);
-  }, [safeProcesses]);
 
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
   const handleTimeRefQuantityChange = (event) => {
@@ -1091,7 +1072,7 @@ const StyleProcess = ({
                   )}
                 </TableCell>
 
-                <TableCell align="right">
+                <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <TextField
                     key={process.instanceId + '_pt'}
                     size="small"
@@ -1106,10 +1087,10 @@ const StyleProcess = ({
                   />
                 </TableCell>
 
-                <TableCell align="right">
+                <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   {formatSeconds(previewAtTotalSeconds)}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <TextField
                     key={process.instanceId + '_st'}
                     size="small"
@@ -1144,7 +1125,7 @@ const StyleProcess = ({
                     }}
                   />
                 </TableCell>
-                <TableCell align="center">
+                <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
                   {renderRowActions(process)}
                 </TableCell>
               </TableRow>
@@ -1461,7 +1442,7 @@ const StyleProcess = ({
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
                   <TableCell sx={{ minWidth: 250 }}>{getStyleProcessMessage(languageCode, 'processColumn')}</TableCell>
-                  <TableCell align="right" sx={{ width: 110 }}>
+                  <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Tooltip
                       title={getStyleProcessMessage(languageCode, 'ptTooltip', {
                         quantity: ptTimeRefQuantityLabel,
@@ -1473,7 +1454,7 @@ const StyleProcess = ({
                       </Box>
                     </Tooltip>
                   </TableCell>
-                  <TableCell align="right" sx={{ width: 120 }}>
+                  <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
                       <Tooltip
                         title={getStyleProcessMessage(languageCode, 'atTooltip', {
@@ -1498,7 +1479,7 @@ const StyleProcess = ({
                       )}
                     </Stack>
                   </TableCell>
-                  <TableCell align="right" sx={{ width: 190 }}>
+                  <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.75}>
                       <Tooltip
                         title={getStyleProcessMessage(languageCode, 'stTooltip', {
@@ -1513,7 +1494,7 @@ const StyleProcess = ({
                       {hasAT && hasST && totalStGapPercent != null ? renderStGapChip(totalStGapPercent) : null}
                     </Stack>
                   </TableCell>
-                  <TableCell align="center" sx={{ width: 120 }}>
+                  <TableCell align="center" sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }}>
                     {getStyleProcessMessage(languageCode, 'actionColumn')}
                   </TableCell>
                 </TableRow>
@@ -1550,7 +1531,7 @@ const StyleProcess = ({
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
                     {hasST ? formatSeconds(totalST) : '-'}
                   </TableCell>
-                  <TableCell />
+                  <TableCell sx={{ width: PROCESS_ACTION_COLUMN_WIDTH }} />
                 </TableRow>
               </TableFooter>
             </Table>

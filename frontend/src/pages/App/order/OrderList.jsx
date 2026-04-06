@@ -60,13 +60,6 @@ import {
 } from '../../../constants/productAttributes';
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName } from '../../../utils/appLanguage';
 import {
-  ORDER_CONFIRMATION_TEXT,
-  ORDER_CONFIRMATION_STATUS_KEYS,
-  ORDER_CONFIRMATION_STATUS_OPTIONS,
-  getOrderConfirmationStatusLabel as getOrderConfirmationStatusLabelFromConst,
-  normalizeOrderConfirmationStatus as normalizeOrderConfirmationStatusFromConst,
-} from '../../../constants/orderConfirmationStatus';
-import {
   ORDER_STATUS_OPTIONS,
   ORDER_STATUS_TEXT,
   getOrderStatusLabel as getOrderStatusLabelFromConst,
@@ -97,9 +90,6 @@ import {
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_CONFIRMATION_STATUSES = ORDER_CONFIRMATION_STATUS_OPTIONS.map(
-  (option) => option.value
-);
 const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
 const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
@@ -121,12 +111,11 @@ const GENDER_OPTION_LABELS = {
   U: '공용',
 };
 const ORDER_LIST_COLUMN_WIDTHS = {
-  confirmation: '8%',
   progress: '8%',
   orderNumber: '10%',
   buyer: '16%',
   seller: '16%',
-  style: '18%',
+  style: '26%',
   totalQuantity: '10%',
   dueDate: '10%',
   actions: '4%',
@@ -147,14 +136,6 @@ const GENDER_PASTEL_STYLES = {
   U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
   default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
 };
-const normalizeOrderConfirmation = (status) =>
-  normalizeOrderConfirmationStatusFromConst(status);
-const getOrderConfirmationLabel = (status, languageCode) =>
-  getOrderConfirmationStatusLabelFromConst(
-    status,
-    String(status || '').trim() || '-',
-    languageCode
-  );
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
 const getOrderProgressStageLabel = (
   status,
@@ -421,16 +402,12 @@ const hasDuplicateOrderNumberByCustomer = ({
 const resolveOrderSaveErrorMessage = (error, options = {}) => {
   const {
     modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
-    manufacturerCannotConfirmMessage = '공장은 주문을 확정할 수 없습니다.',
     duplicateOrderNumberMessage = '같은 고객사에는 동일한 주문번호를 사용할 수 없습니다.',
     fallbackMessage = '주문 저장 중 오류가 발생했습니다.',
   } = options;
   const message = String(error?.message || '').trim();
   if (message.includes('order modification is locked')) {
     return modificationLockedMessage;
-  }
-  if (message.includes('manufacturer cannot change confirmation status')) {
-    return manufacturerCannotConfirmMessage;
   }
   if (message === 'order number already exists for this customer') {
     return duplicateOrderNumberMessage;
@@ -439,7 +416,7 @@ const resolveOrderSaveErrorMessage = (error, options = {}) => {
 };
 const resolveOrderModificationLockToggleErrorMessage = (error, options = {}) => {
   const {
-    lockChangeNotAllowedMessage = '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+    lockChangeNotAllowedMessage = '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
     modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
     fallbackMessage = '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
   } = options;
@@ -598,7 +575,6 @@ const buildInitialFormData = () => ({
   customerId: '',
   customerName: '',
   dueDate: '',
-  confirmationStatus: ORDER_CONFIRMATION_STATUSES[0],
   status: ORDER_PROGRESS_STAGE_DEFAULT,
   items: [createOrderItem()],
 });
@@ -619,7 +595,6 @@ const normalizeOrderForm = (order) => {
     customerName:
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
     items: items.map(normalizeOrderItem),
-    confirmationStatus: normalizeOrderConfirmation(order.confirmationStatus) || base.confirmationStatus,
     status: normalizeOrderProgressStage(order.status) || base.status,
   };
 };
@@ -638,8 +613,6 @@ const toStableJsonText = (value) => {
 const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
   const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? source?.sellerOrgId);
   const resolvedSellerOrgName = String(fixedSellerOrg?.name || source?.sellerOrgName || '').trim();
-  const normalizedConfirmationStatus =
-    normalizeOrderConfirmation(source?.confirmationStatus) || ORDER_CONFIRMATION_STATUSES[0];
   const normalizedItems = (Array.isArray(source?.items) ? source.items : []).map((item) => {
     const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
     const sizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
@@ -668,7 +641,6 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgId: resolvedSellerOrgId,
     sellerOrgName: resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
-    confirmationStatus: normalizedConfirmationStatus,
     status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
     items: normalizedItems,
   };
@@ -964,10 +936,10 @@ const OrderList = () => {
             : '변경사항을 먼저 저장한 뒤 잠가 주세요.',
       lockChangeNotAllowed:
         languageCode === 'vi'
-          ? 'Khong the doi trang thai khoa o day voi don da xac nhan hoac da co hop dong phan cong.'
+          ? 'Khong the doi trang thai khoa o day voi don da co hop dong phan cong.'
           : languageCode === 'en'
-            ? 'You cannot change lock status here for confirmed orders or orders with assignment contracts.'
-            : '확정되었거나 배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+            ? 'You cannot change lock status here for orders with assignment contracts.'
+            : '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
       lockEnabledSuccess:
         languageCode === 'vi'
           ? 'Da khoa sua don hang.'
@@ -1118,12 +1090,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'An error occurred while saving the order.'
             : '주문 저장 중 오류가 발생했습니다.',
-      confirmManufacturerCannotConfirm:
-        languageCode === 'vi'
-          ? 'Nha may khong the xac nhan don hang.'
-          : languageCode === 'en'
-            ? 'Manufacturer cannot confirm the order.'
-            : '공장은 주문을 확정할 수 없습니다.',
       lockToggleErrorFallback:
         languageCode === 'vi'
           ? 'Da xay ra loi khi thay doi trang thai khoa don hang.'
@@ -1194,7 +1160,6 @@ const OrderList = () => {
   const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [confirmationFilter, setConfirmationFilter] = useState(ORDER_FILTER_ALL);
   const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
@@ -1484,13 +1449,6 @@ const OrderList = () => {
   const filteredOrders = useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
     return orders.filter((order) => {
-      const normalizedConfirmation = normalizeOrderConfirmation(order.confirmationStatus);
-      const matchesStatus =
-        confirmationFilter === ORDER_FILTER_ALL
-          ? true
-          : normalizedConfirmation === normalizeOrderConfirmation(confirmationFilter);
-      if (!matchesStatus) return false;
-
       const normalizedProgressStage = normalizeOrderProgressStage(order.status);
       const matchesProgress =
         progressFilter === ORDER_FILTER_ALL
@@ -1525,7 +1483,6 @@ const OrderList = () => {
       );
     });
   }, [
-    confirmationFilter,
     dueDateFilterEndKey,
     dueDateFilterStartKey,
     languageCode,
@@ -1598,19 +1555,6 @@ const OrderList = () => {
         code,
         label: getGenderLabel(code, GENDER_OPTION_LABELS[code] || code, languageCode),
       })),
-    [languageCode]
-  );
-  const orderConfirmationFilterOptions = useMemo(
-    () => [
-      {
-        value: ORDER_FILTER_ALL,
-        label: ORDER_CONFIRMATION_TEXT.filterAllLabel,
-      },
-      ...ORDER_CONFIRMATION_STATUS_OPTIONS.map((option) => ({
-        value: option.value,
-        label: option.label,
-      })),
-    ],
     [languageCode]
   );
   const orderProgressFilterOptions = useMemo(
@@ -1776,7 +1720,6 @@ const OrderList = () => {
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
-  const [pendingConfirmationStatus, setPendingConfirmationStatus] = useState('');
   const mergeOrderIntoState = useCallback((nextOrder) => {
     if (!nextOrder?.id) return;
     setOrders((prev) => {
@@ -1831,9 +1774,6 @@ const OrderList = () => {
   const isCurrentOrderManualModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isManualModificationLocked
   );
-  const isCurrentOrderConfirmedModificationLocked = Boolean(
-    !isNewOrder && currentDetailOrder?.isConfirmedModificationLocked
-  );
   const isCurrentOrderAssignmentModificationLocked = Boolean(
     !isNewOrder && currentDetailOrder?.isAssignmentModificationLocked
   );
@@ -1856,13 +1796,6 @@ const OrderList = () => {
       return getUiMessage(
         'orderDetail.lockHelperNew',
         'Save the order before using the lock switch.',
-        languageCode
-      );
-    }
-    if (isCurrentOrderConfirmedModificationLocked) {
-      return getUiMessage(
-        'orderDetail.lockHelperConfirmed',
-        'This order is auto-locked because it is confirmed.',
         languageCode
       );
     }
@@ -1904,7 +1837,6 @@ const OrderList = () => {
     currentOrderLockMetaText,
     hasFormChanges,
     isCurrentOrderAssignmentModificationLocked,
-    isCurrentOrderConfirmedModificationLocked,
     isCurrentOrderManualModificationLocked,
     isNewOrder,
   ]);
@@ -1914,10 +1846,6 @@ const OrderList = () => {
     isTogglingModificationLock ||
     !canToggleCurrentOrderModificationLock ||
     (!isCurrentOrderManualModificationLocked && hasFormChanges);
-  const displayedConfirmationStatus =
-    pendingConfirmationStatus ||
-    normalizeOrderConfirmation(formData.confirmationStatus) ||
-    ORDER_CONFIRMATION_STATUSES[0];
   const handleAdd = () => {
     navigateToPath('/order/new', { label: orderPageText.newOrderTab });
   };
@@ -2477,7 +2405,6 @@ const OrderList = () => {
       customerId: toOrgId(formData.buyerOrgId),
       customerName: formData.buyerOrgName,
       customer: formData.buyerOrgName,
-      confirmationStatus: formData.confirmationStatus,
       status: normalizeOrderProgressStage(formData.status) || ORDER_PROGRESS_STAGE_DEFAULT,
       items: sanitizedItems,
       totalQuantity,
@@ -2486,6 +2413,7 @@ const OrderList = () => {
 
     setIsSavingOrder(true);
     try {
+      let createdOrder = null;
       if (!isNewOrder) {
         const existingOrder = orders.find((order) => order.id === orderId);
         if (!existingOrder) {
@@ -2593,17 +2521,21 @@ const OrderList = () => {
         payload.id = createId('order');
         payload.createdAt = payload.updatedAt;
         const created = await createOrderToApi(payload, { orgId: activeOrgId });
+        createdOrder = created;
         setOrders((prev) => [created, ...prev]);
       }
 
       clearOrderDraft();
       showNotification(orderPageText.orderSaved, 'success');
-      closeDetailAndGoList();
+      if (isNewOrder && createdOrder?.id) {
+        navigateToPath(`/order/${createdOrder.id}`, {
+          label: buildOrderTabLabel(createdOrder, orderPageText.listTitle),
+        });
+      }
     } catch (error) {
       showNotification(
         resolveOrderSaveErrorMessage(error, {
           modificationLockedMessage: orderPageText.modificationLocked,
-          manufacturerCannotConfirmMessage: orderPageText.confirmManufacturerCannotConfirm,
           duplicateOrderNumberMessage: orderPageText.validationDuplicateOrderNumber,
           fallbackMessage: orderPageText.saveErrorFallback,
         }),
@@ -2646,23 +2578,6 @@ const OrderList = () => {
               flex: 1,
             }}
           />
-          <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
-            <InputLabel id="order-confirmation-filter-label">
-              {ORDER_CONFIRMATION_TEXT.fieldLabel}
-            </InputLabel>
-            <Select
-              labelId="order-confirmation-filter-label"
-              value={confirmationFilter}
-              label={ORDER_CONFIRMATION_TEXT.fieldLabel}
-              onChange={(event) => setConfirmationFilter(event.target.value)}
-            >
-              {orderConfirmationFilterOptions.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
             <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>
             <Select
@@ -2752,11 +2667,6 @@ const OrderList = () => {
             <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 980 }}>
               <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                 <TableRow>
-                  <TableCell
-                    sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.confirmation }}
-                  >
-                    {ORDER_CONFIRMATION_TEXT.fieldLabel}
-                  </TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: ORDER_LIST_COLUMN_WIDTHS.progress }}>
                     {ORDER_STATUS_TEXT.fieldLabel}
                   </TableCell>
@@ -2803,9 +2713,9 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
+                  <TableStatusRow colSpan={8} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={8} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
@@ -2821,9 +2731,6 @@ const OrderList = () => {
                         onDoubleClick={() => handleEdit(order)}
                         sx={{ cursor: 'pointer' }}
                       >
-                        <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {getOrderConfirmationLabel(order.confirmationStatus, languageCode)}
-                        </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {progressStageLabel}
                         </TableCell>
@@ -2887,12 +2794,44 @@ const OrderList = () => {
           mb: 2,
         }}
       >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h6">
+        <Box
+          sx={{
+            minWidth: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            flexWrap: 'wrap',
+          }}
+        >
+          <Typography variant="h6" sx={{ mr: 0.5 }}>
             {isNewOrder
               ? getUiMessage('orderDetail.newTitle', 'New Order', languageCode)
               : getUiMessage('orderDetail.editTitle', 'Edit Order', languageCode)}
           </Typography>
+          {!isNewOrder && (
+            <Tooltip title={currentOrderLockTooltipText}>
+              <span>
+                <Button
+                  size="small"
+                  variant={isCurrentOrderModificationLocked ? 'contained' : 'outlined'}
+                  color={isCurrentOrderModificationLocked ? 'warning' : 'inherit'}
+                  startIcon={
+                    isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
+                  }
+                  onClick={() =>
+                    handleModificationLockToggle(!isCurrentOrderModificationLocked)
+                  }
+                  disabled={isModificationLockToggleDisabled}
+                  sx={{ minWidth: 108 }}
+                >
+                  {isCurrentOrderModificationLocked
+                    ? getUiMessage('orderDetail.lockedShort', 'Locked', languageCode)
+                    : getUiMessage('orderDetail.unlockedShort', 'Unlocked', languageCode)}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+          {isTogglingModificationLock && <CircularProgress size={16} />}
         </Box>
         <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
           <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-end', md: 'flex-end' }}>
@@ -2901,30 +2840,6 @@ const OrderList = () => {
                 {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
               </Button>
             )}
-            {!isNewOrder && (
-              <Tooltip title={currentOrderLockTooltipText}>
-                <span>
-                  <Button
-                    size="small"
-                    variant={isCurrentOrderModificationLocked ? 'contained' : 'outlined'}
-                    color={isCurrentOrderModificationLocked ? 'warning' : 'inherit'}
-                    startIcon={
-                      isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
-                    }
-                    onClick={() =>
-                      handleModificationLockToggle(!isCurrentOrderModificationLocked)
-                    }
-                    disabled={isModificationLockToggleDisabled}
-                    sx={{ minWidth: 108 }}
-                  >
-                    {isCurrentOrderModificationLocked
-                      ? getUiMessage('orderDetail.lockedShort', 'Locked', languageCode)
-                      : getUiMessage('orderDetail.unlockedShort', 'Unlocked', languageCode)}
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-            {isTogglingModificationLock && <CircularProgress size={16} />}
             <LastUpdaterLabel />
             <Button
               onClick={handleSave}

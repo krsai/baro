@@ -13,6 +13,7 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -112,6 +113,13 @@ const toOptionalPositiveNumber = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+};
+const toCtInputText = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return String(Math.round(parsed * 100) / 100)
+    .replace(/\.0+$/, '')
+    .replace(/(\.\d*?[1-9])0+$/, '$1');
 };
 const resolveCtUnitCost = (seconds, wagePerSecond) => {
   const resolvedSeconds = Number(seconds);
@@ -984,6 +992,7 @@ const buildAssignmentCtSnapshotForSave = ({
       if (!processKey) return null;
 
       const snapshotProcess = existingProcessMap.get(processKey) ?? null;
+      const ctDraftSeconds = toOptionalPositiveNumber(draftByProcess?.[processKey]);
       const stDraftSeconds = toOptionalPositiveNumber(stDraftByProcess?.[processKey]);
       const stSeedInfo =
         seed.source === 'STYLE'
@@ -995,16 +1004,32 @@ const buildAssignmentCtSnapshotForSave = ({
               seconds: toOptionalPositiveNumber(snapshotProcess?.stSeconds),
               source: seed.process?.basis || snapshotProcess?.basis || 'CT',
             };
+      const snapshotStSeconds = toOptionalPositiveNumber(snapshotProcess?.stSeconds);
+      const snapshotCtSeconds = toOptionalPositiveNumber(
+        snapshotProcess?.ctSeconds ??
+          snapshotProcess?.agreedSeconds ??
+          snapshotProcess?.requestedSeconds ??
+          snapshotProcess?.proposedSeconds
+      );
       const stSeconds =
         stDraftSeconds ??
-        toOptionalPositiveNumber(snapshotProcess?.stSeconds) ??
+        snapshotStSeconds ??
         toOptionalPositiveNumber(stSeedInfo?.seconds);
-      if (stSeconds == null) return null;
+      const ctSeconds = ctDraftSeconds ?? snapshotCtSeconds ?? stSeconds;
+      if (ctSeconds == null) return null;
+      const resolvedStSeconds = stSeconds ?? ctSeconds;
+      const resolvedCtSeconds = ctSeconds;
+      const processCode =
+        String(
+          seed?.process?.code ??
+            snapshotProcess?.processCode ??
+            snapshotProcess?.code ??
+            ''
+        ).trim() || null;
 
-      const resolvedStSeconds = stSeconds;
-      const resolvedCtSeconds = resolvedStSeconds;
       return {
         processKey,
+        processCode,
         name: seed.processName || `공정 ${index + 1}`,
         quantity: seed.processQuantity,
         basis: 'ST',
@@ -1123,7 +1148,9 @@ const hasAssignmentCtDraftChange = ({
   baseDate = null,
 }) => {
   if (!hasSavedCtSnapshot(assignment)) return false;
-  const hasDraftInput = Object.keys(stDraftByProcess || {}).length > 0;
+  const hasDraftInput =
+    Object.keys(stDraftByProcess || {}).length > 0 ||
+    Object.keys(draftByProcess || {}).length > 0;
   if (!hasDraftInput) return false;
 
   const savedSnapshotComparable = toComparableCtSnapshot(
@@ -1713,6 +1740,26 @@ const rebuildLineWithInsert = ({
 
   for (const item of queue) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
+    if (item?.isCompleted) {
+      const fixedStartIndex = toNonNegativeInt(item?.startIndex, 0);
+      const fixedEndIndex = Math.max(
+        fixedStartIndex,
+        toNonNegativeInt(item?.endIndex, fixedStartIndex)
+      );
+      if (cursorStart > fixedStartIndex) return null;
+      placed.push({
+        ...item,
+        lineId,
+        startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
+        endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
+      });
+      cursorStart = getNextStartIndex(
+        placed[placed.length - 1],
+        days,
+        lineCapacityById
+      );
+      continue;
+    }
     const totalSeconds =
       item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
     planned = planAssignment({
@@ -1853,17 +1900,38 @@ const rebuildLineWithChain = ({
 
   for (const item of after) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
-      const totalSeconds =
-        item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
-      const planned = planAssignment({
-        startIndex: cursorStart,
-        totalSeconds,
+    if (item?.isCompleted) {
+      const fixedStartIndex = toNonNegativeInt(item?.startIndex, 0);
+      const fixedEndIndex = Math.max(
+        fixedStartIndex,
+        toNonNegativeInt(item?.endIndex, fixedStartIndex)
+      );
+      if (cursorStart > fixedStartIndex) return null;
+      placed.push({
+        ...item,
         lineId,
-        assignments: placed,
-        totalDays,
-        days,
-        lineCapacityById,
+        startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
+        endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
       });
+      cursorStart = getNextStartIndex(
+        placed[placed.length - 1],
+        days,
+        lineCapacityById
+      );
+      continue;
+    }
+
+    const totalSeconds =
+      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
+    const planned = planAssignment({
+      startIndex: cursorStart,
+      totalSeconds,
+      lineId,
+      assignments: placed,
+      totalDays,
+      days,
+      lineCapacityById,
+    });
 
     if (!planned) return null;
 
@@ -1875,12 +1943,12 @@ const rebuildLineWithChain = ({
       endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
     });
 
-      cursorStart = getNextStartIndex(
-        placed[placed.length - 1],
-        days,
-        lineCapacityById
-      );
-    }
+    cursorStart = getNextStartIndex(
+      placed[placed.length - 1],
+      days,
+      lineCapacityById
+    );
+  }
 
   return [
     ...assignments.filter((item) => item.lineId !== lineId),
@@ -1936,6 +2004,26 @@ const rebuildLineWithReplace = ({
   );
   for (const item of after) {
     if (cursorStart == null || cursorStart >= totalDays) return null;
+    if (item?.isCompleted) {
+      const fixedStartIndex = toNonNegativeInt(item?.startIndex, 0);
+      const fixedEndIndex = Math.max(
+        fixedStartIndex,
+        toNonNegativeInt(item?.endIndex, fixedStartIndex)
+      );
+      if (cursorStart > fixedStartIndex) return null;
+      placed.push({
+        ...item,
+        lineId,
+        startDateKey: days[fixedStartIndex]?.key ?? item.startDateKey,
+        endDateKey: days[fixedEndIndex]?.key ?? item.endDateKey,
+      });
+      cursorStart = getNextStartIndex(
+        placed[placed.length - 1],
+        days,
+        lineCapacityById
+      );
+      continue;
+    }
     const totalSeconds =
       item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
     const nextPlanned = planAssignment({
@@ -2608,7 +2696,7 @@ const AssignBoard = () => {
         const orgQuery = buildQueryString({ orgId: activeOrgId });
         const assignmentCardsQuery = buildQueryString({
           orgId: activeOrgId,
-          includeProcesses: 0,
+          includeProcesses: 1,
         });
         const boardViewQuery = buildQueryString({
           orgId: activeOrgId,
@@ -3300,6 +3388,7 @@ const AssignBoard = () => {
       const processKey = String(item?.processKey || '').trim();
       if (!processKey) return map;
       map.set(processKey, {
+        stSeconds: toOptionalPositiveNumber(item?.stSeconds),
         ctSeconds: toOptionalPositiveNumber(
           item?.ctSeconds ??
             item?.agreedSeconds ??
@@ -3327,15 +3416,17 @@ const AssignBoard = () => {
         process,
         orderQuantity,
       });
+      const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
+      const savedSnapshotStSeconds = savedSnapshotEntry?.stSeconds ?? null;
+      const savedSnapshotCtSeconds = savedSnapshotEntry?.ctSeconds ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
-      const baseSeconds = stDraftSeconds ?? baseStSeedInfo.seconds;
+      const ctDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
+      const baseSeconds = stDraftSeconds ?? savedSnapshotStSeconds ?? baseStSeedInfo.seconds;
       const hasStDraftChange =
         stDraftSeconds != null &&
-        Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
-      const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
-      const savedSnapshotSeconds = savedSnapshotEntry?.ctSeconds ?? baseSeconds;
-      const proposedSeconds = savedSnapshotSeconds ?? baseSeconds;
-      const savedSeconds = proposedSeconds;
+        Math.abs(stDraftSeconds - (savedSnapshotStSeconds ?? baseStSeedInfo.seconds)) > 1e-6;
+      const proposedSeconds = ctDraftSeconds ?? savedSnapshotCtSeconds ?? baseSeconds;
+      const savedSeconds = savedSnapshotCtSeconds ?? baseSeconds;
       const basePerPieceSeconds = baseSeconds * processQuantity;
       const proposedPerPieceSeconds = proposedSeconds * processQuantity;
       const savedPerPieceSeconds =
@@ -3493,15 +3584,22 @@ const AssignBoard = () => {
     if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
     return cardById.get(String(contextMenuState.id)) || null;
   }, [contextMenuState, cardById]);
+  const contextMenuTargetAssignmentCompleted = Boolean(contextMenuTargetAssignment?.isCompleted);
   const contextSplitDisabled = useMemo(() => {
     if (!contextMenuState) return true;
     if (contextMenuState.targetType === 'assignment') {
       if (!contextMenuTargetAssignment) return true;
+      if (contextMenuTargetAssignmentCompleted) return true;
       return Number(contextMenuTargetAssignment.quantity ?? 0) <= 1;
     }
     if (!contextMenuTargetCard) return true;
     return Number(contextMenuTargetCard.quantity ?? 0) <= 1;
-  }, [contextMenuState, contextMenuTargetAssignment, contextMenuTargetCard]);
+  }, [
+    contextMenuState,
+    contextMenuTargetAssignment,
+    contextMenuTargetAssignmentCompleted,
+    contextMenuTargetCard,
+  ]);
 
   const handleContextMenuOpen = useCallback((payload) => {
     if (!persistReady || loading) return;
@@ -3514,6 +3612,32 @@ const AssignBoard = () => {
     });
   }, [loading, persistReady]);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
+  const handleContextToggleAssignmentCompletion = useCallback(() => {
+    if (!contextMenuTargetAssignment) return;
+    const targetId = String(contextMenuTargetAssignment.id);
+    const nextCompleted = !Boolean(contextMenuTargetAssignment.isCompleted);
+    const nowIso = new Date().toISOString();
+
+    setAssignments((prev) =>
+      prev.map((item) => {
+        if (String(item?.id) !== targetId) return item;
+        const baseQuantity = Number(item?.quantity);
+        const resolvedFinalQuantity =
+          Number.isFinite(baseQuantity) && baseQuantity > 0
+            ? Math.round(baseQuantity)
+            : null;
+        return normalizeAssignmentLayout({
+          ...item,
+          isCompleted: nextCompleted,
+          finalQuantity: nextCompleted
+            ? item?.finalQuantity ?? resolvedFinalQuantity
+            : null,
+          completedAt: nextCompleted ? item?.completedAt || nowIso : null,
+        });
+      })
+    );
+    setContextMenuState(null);
+  }, [contextMenuTargetAssignment]);
   const handleContextOpenDetail = useCallback(() => {
     if (!contextMenuState) return;
     if (contextMenuState.targetType === 'assignment') {
@@ -3574,27 +3698,6 @@ const AssignBoard = () => {
         },
       };
     });
-    // ST를 바꾸면 현재 입력 CT 초안도 같은 값으로 맞춰 화면 기준을 바로 동기화한다.
-    setDetailDraftsByTarget((prev) => {
-      const currentForTarget = prev[detailTargetKey] || {};
-      if (value === '') {
-        if (!(processKey in currentForTarget)) return prev;
-        const nextForTarget = { ...currentForTarget };
-        delete nextForTarget[processKey];
-        return {
-          ...prev,
-          [detailTargetKey]: nextForTarget,
-        };
-      }
-      if (currentForTarget[processKey] === value) return prev;
-      return {
-        ...prev,
-        [detailTargetKey]: {
-          ...currentForTarget,
-          [processKey]: value,
-        },
-      };
-    });
   }, [detailTargetKey]);
 
   const handleDragEnd = (event) => {
@@ -3606,7 +3709,10 @@ const AssignBoard = () => {
     if (!over) {
       if (String(active.id).startsWith('assign-')) {
         const assignmentId = String(active.id).replace('assign-', '');
-        setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
+        const targetAssignment = assignmentById.get(assignmentId);
+        if (!targetAssignment?.isCompleted) {
+          setAssignments((prev) => prev.filter((item) => item.id !== assignmentId));
+        }
       }
       setActiveDrag(null);
       return;
@@ -3617,6 +3723,10 @@ const AssignBoard = () => {
     if (activeId.startsWith('assign-')) {
       const movingAssignmentId = activeId.replace('assign-', '');
       const movingAssignment = assignmentById.get(movingAssignmentId);
+      if (movingAssignment?.isCompleted) {
+        setActiveDrag(null);
+        return;
+      }
     }
 
     if (overId.startsWith('card-drop-')) {
@@ -3640,6 +3750,10 @@ const AssignBoard = () => {
     if (overId.startsWith('assign-drop-')) {
       const targetId = overId.replace('assign-drop-', '');
       const targetAssignment = assignmentById.get(targetId);
+      if (targetAssignment?.isCompleted) {
+        setActiveDrag(null);
+        return;
+      }
       if (targetAssignment && activeId.startsWith('card-')) {
         const sourceCardId = activeId.replace('card-', '');
         const sourceCard = cardById.get(sourceCardId);
@@ -3715,6 +3829,10 @@ const AssignBoard = () => {
       setActiveDrag(null);
       return;
     }
+    if (targetOnDay?.isCompleted) {
+      setActiveDrag(null);
+      return;
+    }
 
     if (activeId.startsWith('card-')) {
       const cardId = activeId.replace('card-', '');
@@ -3783,7 +3901,7 @@ const AssignBoard = () => {
         }
 
         const nextAssignment = getNextAssignmentAfterDay(assignments, lineId, dayIndex);
-        if (nextAssignment) {
+        if (nextAssignment && !nextAssignment.isCompleted) {
           const pushed = tryRebuildLineWithInsert({
             lineId,
             insertIndex: dayIndex,
@@ -3820,6 +3938,7 @@ const AssignBoard = () => {
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
+        if (target?.isCompleted) return prev;
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
@@ -3865,7 +3984,7 @@ const AssignBoard = () => {
           }
         } else {
           const nextAssignment = getNextAssignmentAfterDay(filtered, lineId, dayIndex, assignmentId);
-          if (nextAssignment) insertBeforeId = nextAssignment.id;
+          if (nextAssignment && !nextAssignment.isCompleted) insertBeforeId = nextAssignment.id;
         }
 
         if (insertAfterId || insertBeforeId) {
@@ -4320,6 +4439,38 @@ const AssignBoard = () => {
                 getUiMessage('common.save', '저장', languageCode)
               )}
             </Button>
+          </Stack>
+        </Box>
+      }
+    >
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+        autoScroll={false}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            flexWrap: 'wrap',
+            mb: 1.5,
+          }}
+        >
+          <SearchInput
+            placeholder={getUiMessage(
+              'assign.searchPlaceholder',
+              '스타일/고객사/색상 검색',
+              languageCode
+            )}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            sx={{ flex: 1, minWidth: { xs: '100%', sm: 320 } }}
+          />
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', ml: 'auto' }}>
             <Button
               variant="outlined"
               onMouseDown={preventToolbarButtonFocus}
@@ -4346,27 +4497,9 @@ const AssignBoard = () => {
             </Button>
           </Stack>
         </Box>
-      }
-    >
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onDragCancel={handleDragCancel}
-        autoScroll={false}
-      >
         <Grid container spacing={2} sx={{ minWidth: 0 }}>
           <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>
-              <SearchInput
-                placeholder={getUiMessage(
-                  'assign.searchPlaceholder',
-                  '스타일/고객사/색상 검색',
-                  languageCode
-                )}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle2">
                   {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
@@ -4606,6 +4739,48 @@ const AssignBoard = () => {
           <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>
             {getUiMessage('assign.contextOpenDetail', 'Open Detail', languageCode)}
           </MenuItem>
+          {contextMenuState?.targetType === 'assignment' ? (
+            <MenuItem
+              onClick={handleContextToggleAssignmentCompletion}
+              disabled={controlsDisabled || !contextMenuTargetAssignment}
+              sx={{ minWidth: 240 }}
+            >
+              <Box
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                }}
+              >
+                <Typography variant="inherit">
+                  {getUiMessage('assign.contextStatusToggle', '진행/완료', languageCode)}
+                </Typography>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Typography variant="caption" color="text.secondary">
+                    {contextMenuTargetAssignmentCompleted
+                      ? getUiMessage('assign.statusCompleted', '완료', languageCode)
+                      : getUiMessage('assign.statusInProgress', '진행', languageCode)}
+                  </Typography>
+                  <Switch
+                    size="small"
+                    edge="end"
+                    checked={contextMenuTargetAssignmentCompleted}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={handleContextToggleAssignmentCompletion}
+                    inputProps={{
+                      'aria-label': getUiMessage(
+                        'assign.contextStatusToggle',
+                        '진행/완료',
+                        languageCode
+                      ),
+                    }}
+                  />
+                </Stack>
+              </Box>
+            </MenuItem>
+          ) : null}
           <Divider />
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}
@@ -4867,22 +5042,56 @@ const AssignBoard = () => {
                                 </Stack>
                               </TableCell>
                               <TableCell align="right">
-                                <Typography variant="body2" color="text.secondary">
-                                  {row.baseSeconds > 0
-                                    ? formatNumberWithCommas(row.baseSeconds, {
-                                        fallback: '0',
-                                        maximumFractionDigits: 2,
-                                      })
-                                    : '-'}
-                                </Typography>
+                                <TextField
+                                  value={
+                                    Object.prototype.hasOwnProperty.call(
+                                      detailStDraftByProcess,
+                                      row.processKey
+                                    )
+                                      ? detailStDraftByProcess[row.processKey]
+                                      : toCtInputText(row.baseSeconds)
+                                  }
+                                  onChange={(event) =>
+                                    handleDetailStDraftInput(row.processKey, event.target.value)
+                                  }
+                                  size="small"
+                                  placeholder="-"
+                                  inputProps={{ inputMode: 'decimal' }}
+                                  sx={{
+                                    width: 100,
+                                    '& .MuiInputBase-input': {
+                                      textAlign: 'right',
+                                      py: 0.5,
+                                      fontSize: '0.8125rem',
+                                    },
+                                  }}
+                                />
                               </TableCell>
                               <TableCell align="right">
-                                {row.ctSeconds == null
-                                  ? '-'
-                                  : formatNumberWithCommas(row.ctSeconds, {
-                                      fallback: '0',
-                                      maximumFractionDigits: 2,
-                                    })}
+                                <TextField
+                                  value={
+                                    Object.prototype.hasOwnProperty.call(
+                                      detailDraftByProcess,
+                                      row.processKey
+                                    )
+                                      ? detailDraftByProcess[row.processKey]
+                                      : toCtInputText(row.ctSeconds)
+                                  }
+                                  onChange={(event) =>
+                                    handleDetailDraftInput(row.processKey, event.target.value)
+                                  }
+                                  size="small"
+                                  placeholder="-"
+                                  inputProps={{ inputMode: 'decimal' }}
+                                  sx={{
+                                    width: 100,
+                                    '& .MuiInputBase-input': {
+                                      textAlign: 'right',
+                                      py: 0.5,
+                                      fontSize: '0.8125rem',
+                                    },
+                                  }}
+                                />
                               </TableCell>
                               <TableCell align="right">
                                 {detailSummary?.wagePerSecond == null ? (
@@ -4940,10 +5149,10 @@ const AssignBoard = () => {
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
                     {languageCode === 'ko'
-                      ? '저장하면 현재 ST 기준으로 CT snapshot이 저장됩니다.'
+                      ? '저장하면 현재 입력한 ST/CT 값으로 snapshot이 저장됩니다.'
                       : languageCode === 'vi'
-                        ? 'Khi luu, CT se duoc luu theo ST hien tai thanh CT snapshot.'
-                        : 'When you save the assignment, CT is stored as the current ST snapshot.'}
+                        ? 'Khi luu, ST/CT vua nhap se duoc luu vao snapshot.'
+                        : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
                   </Typography>
                 </Paper>
               </>

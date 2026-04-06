@@ -4,14 +4,26 @@ import useLastUpdaterName from '../hooks/useLastUpdaterName';
 import { useLanguage } from '../context/LanguageContext';
 
 const LABEL_BY_LANGUAGE = {
-  ko: '최근 업데이트',
+  ko: '최종 업데이트',
   en: 'Last Updated By',
   vi: 'Nguoi cap nhat gan nhat',
 };
 
-const LastUpdaterLabel = ({ path = '', sx = {} }) => {
+const sanitizeUpdaterName = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (!text.includes('@')) return text;
+  const [localPart] = text.split('@');
+  return String(localPart || '').trim();
+};
+
+const LastUpdaterLabel = ({ path = '', fallbackName = '', sx = {} }) => {
   const { languageCode } = useLanguage();
-  const updaterName = useLastUpdaterName(path);
+  const updaterNameFromPath = useLastUpdaterName(path);
+  const updaterName = useMemo(
+    () => sanitizeUpdaterName(updaterNameFromPath || fallbackName),
+    [fallbackName, updaterNameFromPath]
+  );
   const label = useMemo(
     () => LABEL_BY_LANGUAGE[languageCode] || LABEL_BY_LANGUAGE.ko,
     [languageCode]

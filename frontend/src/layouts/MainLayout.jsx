@@ -307,6 +307,11 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
+            label: getUiMessage('menu.workerWorkHistory', '작업자별 기록', languageCode),
+            icon: <HistoryIcon />,
+            path: '/worker-work-history',
+          },
+          {
             label: getUiMessage('menu.shipmentReview', '출고 검토', languageCode),
             icon: <LocalShippingIcon />,
             path: '/shipment-review',
@@ -682,21 +687,24 @@ const MainLayout = () => {
         typeof options?.closeTabId === 'string' && options.closeTabId.trim()
           ? toPathname(options.closeTabId)
           : null;
-      // For style detail pages, ensure only one is open at a time.
-      if (nextPathname.startsWith('/style/') && nextPathname !== '/style') {
-        openOptions.replacePrefix = '/style/';
-      }
-      // For order detail pages, ensure only one is open at a time.
-      if (nextPathname.startsWith('/order/') && nextPathname !== '/order') {
-        openOptions.replacePrefix = '/order/';
-      }
-      // For work history detail pages, ensure only one detail tab is open.
-      if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
-        openOptions.replacePrefix = '/work-history/';
-      }
-      // For payroll detail pages, ensure only one detail tab is open.
-      if (nextPathname.startsWith('/payroll/') && nextPathname !== '/payroll') {
-        openOptions.replacePrefix = '/payroll/';
+      const isSamePathNavigation = nextPathname === currentPath;
+      if (!isSamePathNavigation) {
+        // For style detail pages, ensure only one is open at a time.
+        if (nextPathname.startsWith('/style/') && nextPathname !== '/style') {
+          openOptions.replacePrefix = '/style/';
+        }
+        // For order detail pages, ensure only one is open at a time.
+        if (nextPathname.startsWith('/order/') && nextPathname !== '/order') {
+          openOptions.replacePrefix = '/order/';
+        }
+        // For work history detail pages, ensure only one detail tab is open.
+        if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
+          openOptions.replacePrefix = '/work-history/';
+        }
+        // For payroll detail pages, ensure only one detail tab is open.
+        if (nextPathname.startsWith('/payroll/') && nextPathname !== '/payroll') {
+          openOptions.replacePrefix = '/payroll/';
+        }
       }
 
       // The `openTab` function from context already checks for duplicates,

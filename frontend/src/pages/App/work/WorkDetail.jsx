@@ -18,7 +18,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import dayjs from 'dayjs';
@@ -54,7 +56,6 @@ const ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = 3;
 const ROWS_PER_PAGE = 30;
 const LABELS = {
   title: '기록 상세',
-  lastUpdated: '마지막 업데이트',
   save: '저장',
   saving: '저장 중...',
   workDate: '작업일자',
@@ -66,23 +67,18 @@ const LABELS = {
   note: '비고',
   notePlaceholder: '메모를 입력하세요.',
   autoNote: '자동 메모',
-  saveCount: '저장 대상 {count}건',
-  workerCount: '작업자 {count}명',
-  totalCt: '총 CT {value}',
-  totalAmount: '총 공임 {value}',
-  searchPlaceholder: '작업자/배정카드/공정 검색',
+  searchPlaceholder: '작업자/스타일/공정 검색',
   worker: '작업자',
   workerPlaceholder: '작업자를 선택하세요.',
-  assignment: '배정카드',
-  assignmentPlaceholder: '배정카드를 선택하세요.',
+  style: '스타일',
+  stylePlaceholder: '스타일을 선택하세요.',
+  noStylesAvailable: '선택 가능한 스타일이 없습니다.',
+  selectStyleFirst: '스타일을 먼저 선택하세요.',
   assignmentException: '예외',
-  assignmentCurrentLine: '현재 라인 배정',
   assignmentOtherLine: '다른 라인 배정',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
-  noAssignmentsAvailable: '선택 가능한 배정카드가 없습니다.',
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
-  selectAssignmentFirst: '배정카드를 먼저 선택하세요.',
   noProcessesAvailable: '선택 가능한 공정이 없습니다.',
   quantity: '생산량',
   ct: 'CT',
@@ -108,7 +104,15 @@ const toPositiveIdOrNull = (value) => {
   return rounded > 0 ? rounded : null;
 };
 const createRowId = () => `work-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const createBlankRow = (patch = {}) => ({ id: createRowId(), worker: null, assignment: null, process: null, quantity: '', ...patch });
+const createBlankRow = (patch = {}) => ({
+  id: createRowId(),
+  worker: null,
+  styleOptionId: '',
+  assignment: null,
+  process: null,
+  quantity: '',
+  ...patch,
+});
 const sortByLabel = (items, getLabel) => [...(Array.isArray(items) ? items : [])].sort((left, right) => COLLATOR.compare(toText(getLabel(left)), toText(getLabel(right))));
 const buildDatePickerLocaleText = (languageCode) => {
   if (languageCode === 'ko') return datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText;
@@ -143,17 +147,9 @@ const buildCombinedNote = ({ manualNote, autoNote }) => {
   if (trimmedAuto) return `${AUTO_NOTE_PREFIX}\n${trimmedAuto}`;
   return trimmedManual;
 };
-const formatDuration = (seconds, languageCode) => {
-  const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (languageCode === 'en') return `${hours}h ${minutes}m`;
-  if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
-  return `${hours}시간 ${minutes}분`;
-};
 const formatAssignmentLabel = (assignment) => {
-  const parts = [assignment?.customer, assignment?.label, assignment?.colorName].map((value) => toText(value)).filter(Boolean);
-  if (parts.length > 0) return parts.join(' / ');
+  const styleLabel = toText(assignment?.label || assignment?.styleName || assignment?.styleId);
+  if (styleLabel) return styleLabel;
   if (assignment?.dbId) return `배정카드 #${assignment.dbId}`;
   return '배정카드';
 };
@@ -172,6 +168,8 @@ const formatAssignmentAutocompleteLabel = (assignment, currentLineId) => {
   const lineName = toText(assignment?.lineName);
   return [LABELS.assignmentException, lineName, baseLabel].filter(Boolean).join(' · ');
 };
+const resolveStyleOptionId = (assignment) =>
+  toText(assignment?.dbId || assignment?.id || '');
 const sortAssignmentOptionsByLineContext = (options = [], currentLineId = null) =>
   [...(Array.isArray(options) ? options : [])].sort((left, right) => {
     const leftIsException = isOtherLineAssignmentOption(left, currentLineId);
@@ -207,11 +205,6 @@ const sortRowsByWorker = (sourceRows = []) => {
     return COLLATOR.compare(toText(left?.id), toText(right?.id));
   });
 };
-const formatRecentUpdate = ({ initialLog, unknownLabel = '-' }) => {
-  const updatedBy = toText(initialLog?.updatedBy);
-  const updatedAt = initialLog?.updatedAt ? dayjs(initialLog.updatedAt).format('YYYY-MM-DD HH:mm') : '';
-  return [updatedBy, updatedAt].filter(Boolean).join(' / ') || unknownLabel;
-};
 const ensureOptionIncluded = (options = [], current, getKey) => {
   if (!current) return options;
   const currentKey = toText(getKey(current));
@@ -222,7 +215,7 @@ const ensureOptionIncluded = (options = [], current, getKey) => {
 const buildPlanProcessOptions = (plan) => {
   const snapshot = resolveAssignmentCtSnapshot(plan);
   const sourceProcesses = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
-  return sourceProcesses.map((process, index) => {
+  const mappedProcesses = sourceProcesses.map((process, index) => {
     const fallbackName = toText(process?.name) || toText(process?.processName) || `공정 ${index + 1}`;
     const processKey = toText(process?.processKey) || toText(process?.code) || fallbackName || `process-${index + 1}`;
     return {
@@ -240,6 +233,7 @@ const buildPlanProcessOptions = (plan) => {
       ),
     };
   });
+  return mappedProcesses;
 };
 const enrichAssignmentPlan = (plan) => ({ ...plan, processes: buildPlanProcessOptions(plan) });
 const buildLegacyProcess = (record, index = 0) => {
@@ -400,6 +394,7 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
 
     return createBlankRow({
       worker: matchedWorker,
+      styleOptionId: resolveStyleOptionId(assignment),
       assignment,
       process,
       quantity: Number(record?.quantity) > 0 ? Math.round(Number(record.quantity)) : '',
@@ -411,7 +406,7 @@ const normalizeWorkerOptions = (workers = []) =>
 const normalizeAssignmentPlanOptions = (plans = []) =>
   sortByLabel(
     (Array.isArray(plans) ? plans : [])
-      .filter((plan) => hasAssignmentCtSnapshot(plan))
+      .filter((plan) => hasAssignmentCtSnapshot(plan) && !Boolean(plan?.isCompleted))
       .map((plan) => enrichAssignmentPlan(plan)),
     (plan) => formatAssignmentLabel(plan)
   );
@@ -435,6 +430,17 @@ const buildDisplayCtText = (process, labels) =>
         maximumFractionDigits: 0,
       })}${labels.ctUnit}`
     : '-';
+const buildProcessIdentityKey = (process) => {
+  const processKey = toText(process?.processKey || process?.id);
+  if (processKey) return processKey;
+  const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
+  if (processId) return `id:${processId}`;
+  const processCode = normalizeProcessCode(process?.code || process?.processCode);
+  if (processCode) return `code:${processCode}`;
+  const processName = toText(process?.name || process?.processName);
+  if (processName) return `name:${toKey(processName)}`;
+  return '';
+};
 const resolveAssignmentOption = (rowAssignment, assignmentMap) => {
   if (!rowAssignment) return null;
   const assignmentKey = toText(rowAssignment?.dbId || rowAssignment?.id);
@@ -548,6 +554,8 @@ const mergeProcessWithCatalog = (process, processCatalogById, processCatalogByCo
 const WorkDetail = ({ initialLog = null, initialContext = null, loading = false, saving = false, onSave }) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { languageCode } = useLanguage();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
   const [lineDataLoading, setLineDataLoading] = useState(false);
   const [factories, setFactories] = useState(() => {
@@ -946,16 +954,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     const totalContractedSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
     return { records, workerCount, totalContractedSeconds };
   }, [resolveAssignmentForRow, resolveProcessForRow, rows]);
-  const totalContractedAmount = hasFactoryWage
-    ? summary.totalContractedSeconds * selectedFactoryWagePerSecond
-    : 0;
-  const totalContractedAmountText = hasFactoryWage
-    ? `${formatNumberWithCommas(totalContractedAmount, {
-        fallback: '0',
-        maximumFractionDigits: 0,
-      })}${LABELS.amountUnit}`
-    : '-';
-
   const autoExceededNote = useMemo(() => summary.records.map((record) => {
     const plan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
     const baselineQuantity = resolveBaselineQuantity(plan);
@@ -966,43 +964,263 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     (row) => ensureOptionIncluded(lineWorkers, row?.worker, (item) => item?.id || item?.name),
     [lineWorkers]
   );
-  const resolveAssignmentOptions = useCallback(
-    (row) =>
-      sortAssignmentOptionsByLineContext(
-        ensureOptionIncluded(assignmentOptions, row?.assignment, (item) => item?.dbId || item?.id),
+  const resolveStyleOptions = useCallback(
+    (row) => {
+      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const includedAssignments = ensureOptionIncluded(
+        assignmentOptions,
+        currentAssignment,
+        (item) => item?.dbId || item?.id
+      );
+      const sortedAssignments = sortAssignmentOptionsByLineContext(
+        includedAssignments,
         selectedLineId
-      ),
-    [assignmentOptions, selectedLineId]
-  );
-  const resolveProcessOptions = useCallback((row) => {
-    const assignment = resolveAssignmentForRow(row);
-    const process = resolveProcessForRow(row, assignment);
-    const baseOptions = (Array.isArray(assignment?.processes) ? assignment.processes : [])
-      .map((option) => mergeProcessWithCatalog(option, processCatalogById, processCatalogByCode));
-    return ensureOptionIncluded(baseOptions, process, (item) => item?.processKey || item?.id);
-  }, [processCatalogByCode, processCatalogById, resolveAssignmentForRow, resolveProcessForRow]);
-  const resolveDuplicateProcessKeys = useCallback(
-    (targetRow) => {
-      const workerId = toPositiveIdOrNull(targetRow?.worker?.id);
-      const targetAssignment = resolveAssignmentForRow(targetRow);
-      const assignmentPlanId = toPositiveIdOrNull(targetAssignment?.dbId);
-      if (!workerId || !assignmentPlanId) return new Set();
-
-      const duplicateKeys = new Set();
-      rows.forEach((row) => {
-        if (row?.id === targetRow?.id) return;
-        if (toPositiveIdOrNull(row?.worker?.id) !== workerId) return;
-        const rowAssignment = resolveAssignmentForRow(row);
-        if (toPositiveIdOrNull(rowAssignment?.dbId) !== assignmentPlanId) return;
-        const rowProcess = resolveProcessForRow(row, rowAssignment);
-        const processKey =
-          toText(rowProcess?.processKey || rowProcess?.id) ||
-          normalizeProcessCode(rowProcess?.code || rowProcess?.processCode);
-        if (processKey) duplicateKeys.add(processKey);
-      });
-      return duplicateKeys;
+      );
+      return sortedAssignments;
     },
-    [resolveAssignmentForRow, resolveProcessForRow, rows]
+    [
+      assignmentOptions,
+      resolveAssignmentForRow,
+      selectedLineId,
+    ]
+  );
+  const resolveSelectedStyleOption = useCallback(
+    (row, options) => {
+      const selectedStyleId = toText(row?.styleOptionId);
+      if (selectedStyleId) {
+        const matchedById = options.find(
+          (option) =>
+            resolveStyleOptionId(option) === selectedStyleId ||
+            toText(option?.id) === selectedStyleId
+        );
+        if (matchedById) return matchedById;
+      }
+
+      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      if (!currentAssignment) return null;
+      const assignmentId = resolveStyleOptionId(currentAssignment);
+      if (assignmentId) {
+        const matchedAssignment = options.find(
+          (option) =>
+            resolveStyleOptionId(option) === assignmentId ||
+            toText(option?.id) === assignmentId
+        );
+        if (matchedAssignment) return matchedAssignment;
+      }
+      return currentAssignment;
+    },
+    [resolveAssignmentForRow]
+  );
+  const isStyleExceptionForWorker = useCallback(
+    (styleOption, workerOption) => {
+      if (!styleOption) return false;
+      if (isOtherLineAssignmentOption(styleOption, selectedLineId)) return true;
+
+      const workerLineId = toPositiveIdOrNull(
+        workerOption?.currentLineId ?? workerOption?.lineId
+      );
+      const styleLineId = toPositiveIdOrNull(styleOption?.lineId);
+      return Boolean(
+        workerLineId !== null && styleLineId !== null && workerLineId !== styleLineId
+      );
+    },
+    [selectedLineId]
+  );
+  const getStyleOptionStatusLabel = useCallback(
+    (styleOption, workerOption) => {
+      if (!styleOption) return '';
+      if (!isStyleExceptionForWorker(styleOption, workerOption)) {
+        return '';
+      }
+      const lineName = toText(styleOption?.lineName);
+      return [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
+        .filter(Boolean)
+        .join(' · ');
+    },
+    [isStyleExceptionForWorker]
+  );
+  const getStyleOptionLabel = useCallback((option) => {
+    if (!option) return '';
+    return formatAssignmentLabel(option);
+  }, []);
+  const renderStyleOption = useCallback(
+    (props, option) => {
+      const isException = isOtherLineAssignmentOption(option, selectedLineId);
+      const lineName = toText(option?.lineName);
+      const description = formatAssignmentLabel(option);
+      return (
+        <Box
+          component="li"
+          {...props}
+          sx={{
+            display: 'block',
+            px: 1,
+            py: 0.75,
+          }}
+        >
+          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  minWidth: 0,
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {description}
+              </Typography>
+              {isException ? (
+                <Chip
+                  size="small"
+                  color="warning"
+                  label={LABELS.assignmentException}
+                  sx={{
+                    height: 20,
+                    '& .MuiChip-label': {
+                      px: 0.75,
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                    },
+                  }}
+                />
+              ) : null}
+            </Stack>
+            {lineName ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  display: 'block',
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {lineName}
+              </Typography>
+            ) : null}
+          </Stack>
+        </Box>
+      );
+    },
+    [selectedLineId]
+  );
+  const resolveProcessOptions = useCallback(
+    (row) => {
+      const selectedStyleId = toText(row?.styleOptionId);
+      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const assignmentPool = ensureOptionIncluded(
+        assignmentOptions,
+        currentAssignment,
+        (item) => item?.dbId || item?.id
+      );
+      const selectedAssignment = selectedStyleId
+        ? assignmentPool.find(
+            (option) =>
+              resolveStyleOptionId(option) === selectedStyleId ||
+              toText(option?.id) === selectedStyleId
+          ) || null
+        : currentAssignment || null;
+      const sourceProcesses = Array.isArray(selectedAssignment?.processes)
+        ? selectedAssignment.processes
+        : [];
+      const options = [];
+      const seenOptionIds = new Set();
+
+      sourceProcesses.forEach((processOption, processIndex) => {
+        const mergedProcess = mergeProcessWithCatalog(
+          processOption,
+          processCatalogById,
+          processCatalogByCode
+        );
+        const optionId =
+          buildProcessIdentityKey(mergedProcess) || `process-${processIndex + 1}`;
+        if (!optionId || seenOptionIds.has(optionId)) return;
+        seenOptionIds.add(optionId);
+        options.push({
+          id: optionId,
+          process: mergedProcess,
+        });
+      });
+
+      const currentProcess =
+        resolveProcessForRow(row, selectedAssignment) || row?.process || null;
+      if (currentProcess) {
+        const currentOptionId = buildProcessIdentityKey(currentProcess);
+        if (currentOptionId && !seenOptionIds.has(currentOptionId)) {
+          options.push({
+            id: currentOptionId,
+            process: currentProcess,
+          });
+        }
+      }
+
+      return options;
+    },
+    [
+      assignmentOptions,
+      processCatalogByCode,
+      processCatalogById,
+      resolveAssignmentForRow,
+      resolveProcessForRow,
+    ]
+  );
+  const resolveSelectedProcessOption = useCallback(
+    (row, options) => {
+      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const currentProcess = resolveProcessForRow(row, currentAssignment) || row?.process || null;
+      const targetOptionId = buildProcessIdentityKey(currentProcess);
+      if (!targetOptionId) return null;
+      return options.find((option) => String(option?.id || '') === targetOptionId) || null;
+    },
+    [resolveAssignmentForRow, resolveProcessForRow]
+  );
+  const getProcessOptionLabel = useCallback(
+    (option) => buildDisplayProcessName(option?.process, languageCode),
+    [languageCode]
+  );
+  const renderProcessOption = useCallback(
+    (props, option) => (
+      <Box
+        component="li"
+        {...props}
+        sx={{
+          display: 'block',
+          px: 1,
+          py: 0.75,
+        }}
+      >
+        <Stack spacing={0.2} sx={{ minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontWeight: 600,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {buildDisplayProcessName(option?.process, languageCode)}
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              display: 'block',
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {buildDisplayCtText(option?.process, LABELS)}
+          </Typography>
+        </Stack>
+      </Box>
+    ),
+    [languageCode]
   );
   const updateRow = useCallback((rowId, updater) => {
     setRows((currentRows) => currentRows.map((row) => (row.id === rowId ? updater(row) : row)));
@@ -1050,88 +1268,39 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       )
     );
   }, []);
-  const handleAssignmentChange = useCallback((rowId, nextAssignment) => updateRow(rowId, (row) => ({ ...row, assignment: nextAssignment || null, process: null, quantity: '' })), [updateRow]);
-  const handleProcessChange = useCallback((rowId, nextProcess) => updateRow(rowId, (row) => ({ ...row, process: nextProcess || null, quantity: nextProcess ? row.quantity : '' })), [updateRow]);
+  const handleStyleChange = useCallback(
+    (rowId, nextOption) =>
+      updateRow(rowId, (row) => ({
+        ...row,
+        styleOptionId: nextOption
+          ? toText(nextOption?.id || nextOption?.dbId)
+          : '',
+        assignment: nextOption || null,
+        process: null,
+        quantity: '',
+      })),
+    [updateRow]
+  );
+  const handleProcessChange = useCallback(
+    (rowId, nextOption) =>
+      updateRow(rowId, (row) => ({
+        ...row,
+        process: nextOption?.process || null,
+        quantity: nextOption ? row.quantity : '',
+      })),
+    [updateRow]
+  );
   const handleQuantityChange = useCallback((rowId, nextQuantity) => updateRow(rowId, (row) => ({ ...row, quantity: nextQuantity })), [updateRow]);
   const buildNextRowFromTemplate = useCallback((templateRow = null) => {
     if (!templateRow) return createBlankRow();
-    return createBlankRow({ worker: templateRow?.worker || null, assignment: null, process: null, quantity: '' });
+    return createBlankRow({
+      worker: templateRow?.worker || null,
+      styleOptionId: '',
+      assignment: null,
+      process: null,
+      quantity: '',
+    });
   }, []);
-  const renderAssignmentOption = useCallback(
-    (props, option) => {
-      const isException = isOtherLineAssignmentOption(option, selectedLineId);
-      const lineName = toText(option?.lineName);
-      const lineCaption = lineName
-        ? `${lineName} · ${isException ? LABELS.assignmentOtherLine : LABELS.assignmentCurrentLine}`
-        : isException
-          ? LABELS.assignmentOtherLine
-          : '';
-
-      return (
-        <Box
-          component="li"
-          {...props}
-          sx={{
-            display: 'block',
-            px: 1,
-            py: 0.75,
-          }}
-        >
-          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
-            <Stack
-              direction="row"
-              spacing={0.75}
-              alignItems="center"
-              sx={{ minWidth: 0, flexWrap: 'wrap' }}
-            >
-              <Typography
-                variant="body2"
-                sx={{
-                  fontWeight: isException ? 700 : 500,
-                  minWidth: 0,
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {formatAssignmentLabel(option)}
-              </Typography>
-              {isException ? (
-                <Chip
-                  size="small"
-                  color="warning"
-                  label={LABELS.assignmentException}
-                  sx={{
-                    height: 20,
-                    '& .MuiChip-label': {
-                      px: 0.75,
-                      fontSize: '0.68rem',
-                      fontWeight: 700,
-                    },
-                  }}
-                />
-              ) : null}
-            </Stack>
-            {lineCaption ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  display: 'block',
-                  minWidth: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {lineCaption}
-              </Typography>
-            ) : null}
-          </Stack>
-        </Box>
-      );
-    },
-    [selectedLineId]
-  );
   const handleAddBelow = useCallback((rowId) => {
     let nextEditingId = '';
     let nextRowIndex = -1;
@@ -1195,10 +1364,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       setFormError('중복된 작업 조합이 있습니다.');
       return;
     }
-    if (assignmentOptions.length > 0 && summary.records.some((record) => toPositiveIdOrNull(record?.assignmentPlanId) === null)) {
-      setFormError('배정카드를 선택해 주세요.');
-      return;
-    }
     const excessiveProcess = collectAssignmentProcessRows(summary.records).find((row) => {
       const matchedPlan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === row.assignmentPlanId);
       const baselineQuantity = resolveBaselineQuantity(matchedPlan);
@@ -1230,10 +1395,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
       <Stack spacing={0.5} sx={{ minWidth: 0 }}>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>{`${LABELS.title}: ${workDateKey}`}</Typography>
-        <Typography variant="body2" color="text.secondary">{`${LABELS.lastUpdated}: ${formatRecentUpdate({ initialLog, unknownLabel: '-' })}`}</Typography>
       </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <LastUpdaterLabel />
+        <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <Button variant="contained" onClick={handleSave} disabled={saving || loading || baseLoading || lineDataLoading || isAggregateLegacyLog}>{saving ? LABELS.saving : LABELS.save}</Button>
       </Stack>
     </Box>
@@ -1269,13 +1433,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
             {autoExceededNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{LABELS.autoNote}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{autoExceededNote}</Typography></Box></Alert> : null}
             {isAggregateLegacyLog ? <Alert severity="warning">라인 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
-            {findDuplicateRow(summary.records) ? <Alert severity="warning">같은 작업자/배정카드/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.</Alert> : null}
-            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-              <Chip label={LABELS.saveCount.replace('{count}', String(summary.records.length))} />
-              <Chip variant="outlined" label={LABELS.workerCount.replace('{count}', String(summary.workerCount))} />
-              <Chip variant="outlined" label={LABELS.totalCt.replace('{value}', formatDuration(summary.totalContractedSeconds, languageCode))} />
-              <Chip variant="outlined" label={LABELS.totalAmount.replace('{value}', totalContractedAmountText)} />
-            </Stack>
+            {findDuplicateRow(summary.records) ? <Alert severity="warning">같은 작업자/스타일/공정 조합이 중복되어 있습니다. 수량으로 합산해 주세요.</Alert> : null}
           </Stack>
         </Paper>
 
@@ -1285,7 +1443,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           {!selectedFactoryId ? (
             <Alert severity="info">공장을 선택하면 라인과 작업자를 불러옵니다.</Alert>
           ) : !selectedLineId ? (
-            <Alert severity="info">라인을 선택하면 해당 라인의 작업자와 배정카드를 불러옵니다.</Alert>
+            <Alert severity="info">라인을 선택하면 해당 라인의 작업자/스타일/공정 옵션을 불러옵니다.</Alert>
           ) : lineDataLoading && rows.length === 0 ? (
             <Alert severity="info">라인 데이터를 불러오는 중입니다.</Alert>
           ) : lineWorkers.length === 0 && rows.length === 0 ? (
@@ -1300,16 +1458,251 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           ) : (
             <Stack spacing={1.25}>
               {assignmentOptions.length === 0 ? <Alert severity="warning">CT가 저장된 배정카드가 없습니다.</Alert> : null}
-              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+              {isMobile ? (
+                <Stack spacing={1}>
+                  {pagedRows.map((row) => {
+                    const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+                    const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
+                    const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
+                    const rowCtSeconds = Math.max(0, Math.round(Number(rowProcess?.ctSeconds) || 0));
+                    const rowContractedSeconds = rowCtSeconds * quantityNumber;
+                    const rowAmountText =
+                      hasFactoryWage && rowContractedSeconds > 0
+                        ? `${formatNumberWithCommas(rowContractedSeconds * selectedFactoryWagePerSecond, {
+                            fallback: '0',
+                            maximumFractionDigits: 0,
+                          })}${LABELS.amountUnit}`
+                        : '-';
+                    const ctText = buildDisplayCtText(rowProcess, LABELS);
+                    const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
+                    const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
+                    const styleOptions = resolveStyleOptions(rowForOptions);
+                    const selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
+                    const selectedStyleStatusLabel = selectedStyleOption
+                      ? getStyleOptionStatusLabel(selectedStyleOption, row?.worker)
+                      : '';
+                    const processOptions = resolveProcessOptions(rowForOptions);
+                    const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
+                    const workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
+                    const styleDisabled = isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
+                    const processDisabled =
+                      isAggregateLegacyLog ||
+                      !row?.worker ||
+                      !selectedStyleOption ||
+                      (processOptions?.length || 0) === 0;
+                    const shouldFocusWorker = Boolean(
+                      editingField?.rowId === row.id &&
+                      editingField?.field === 'worker'
+                    );
+                    const shouldFocusStyle = Boolean(
+                      editingField?.rowId === row.id &&
+                      editingField?.field === 'style'
+                    );
+                    const shouldFocusProcess = Boolean(
+                      editingField?.rowId === row.id &&
+                      editingField?.field === 'process'
+                    );
+                    const shouldFocusQuantity = Boolean(
+                      editingField?.rowId === row.id &&
+                      editingField?.field === 'quantity'
+                    );
+                    const stylePlaceholder = !row?.worker
+                      ? LABELS.selectWorkerFirst
+                      : (styleOptions?.length || 0) === 0
+                        ? LABELS.noStylesAvailable
+                        : LABELS.stylePlaceholder;
+                    const processPlaceholder = !row?.worker
+                      ? LABELS.selectWorkerFirst
+                      : !selectedStyleOption
+                        ? LABELS.selectStyleFirst
+                        : (processOptions?.length || 0) === 0
+                        ? LABELS.noProcessesAvailable
+                        : LABELS.processPlaceholder;
+                    const rowGroupMeta = workerGroupMetaByRowId.get(row?.id) || {
+                      groupId: 0,
+                      isGroupStart: false,
+                    };
+                    const groupBackgroundColor =
+                      rowGroupMeta.groupId % 2 === 0 ? '#ffffff' : '#f8fbff';
+
+                    return (
+                      <Paper
+                        key={row.id}
+                        variant="outlined"
+                        sx={{
+                          p: 1.25,
+                          borderRadius: 2,
+                          backgroundColor: groupBackgroundColor,
+                          borderColor: rowGroupMeta.isGroupStart ? '#9fb3c8' : undefined,
+                          borderWidth: rowGroupMeta.isGroupStart ? 2 : 1,
+                        }}
+                      >
+                        <Stack spacing={1}>
+                          <SearchableSelect
+                            label={LABELS.worker}
+                            options={rowWorkerOptions}
+                            value={row?.worker || null}
+                            onChange={(_event, value) => handleWorkerChange(row.id, value)}
+                            autoSelect={false}
+                            disabled={workerDisabled}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            clearOnBlur={false}
+                            handleHomeEndKeys
+                            getOptionLabel={(option) => option?.name || ''}
+                            isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                            textFieldProps={{
+                              size: 'small',
+                              placeholder: LABELS.workerPlaceholder,
+                              autoFocus: shouldFocusWorker,
+                            }}
+                          />
+                          <SearchableSelect
+                            label={LABELS.style}
+                            options={styleOptions}
+                            value={selectedStyleOption}
+                            onChange={(_event, value) => handleStyleChange(row.id, value)}
+                            autoSelect={false}
+                            disabled={styleDisabled}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            clearOnBlur={false}
+                            handleHomeEndKeys
+                            getOptionLabel={getStyleOptionLabel}
+                            isOptionEqualToValue={(option, value) =>
+                              toText(option?.id || option?.dbId) ===
+                              toText(value?.id || value?.dbId)
+                            }
+                            renderOption={renderStyleOption}
+                            textFieldProps={{
+                              size: 'small',
+                              placeholder: stylePlaceholder,
+                              autoFocus: shouldFocusStyle,
+                            }}
+                          />
+                          {selectedStyleStatusLabel ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+                              {selectedStyleStatusLabel}
+                            </Typography>
+                          ) : null}
+                          <SearchableSelect
+                            label={LABELS.process}
+                            options={processOptions}
+                            value={selectedProcessOption}
+                            onChange={(_event, value) => handleProcessChange(row.id, value)}
+                            autoSelect={false}
+                            disabled={processDisabled}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            clearOnBlur={false}
+                            handleHomeEndKeys
+                            getOptionLabel={getProcessOptionLabel}
+                            isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                            renderOption={renderProcessOption}
+                            textFieldProps={{
+                              size: 'small',
+                              placeholder: processPlaceholder,
+                              autoFocus: shouldFocusProcess,
+                            }}
+                          />
+                          <TextField
+                            label={LABELS.quantity}
+                            type="number"
+                            size="small"
+                            value={row?.quantity ?? ''}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              if (nextValue === '') {
+                                handleQuantityChange(row.id, '');
+                                return;
+                              }
+                              const parsed = Number.parseInt(nextValue, 10);
+                              if (Number.isFinite(parsed) && parsed > 0) {
+                                handleQuantityChange(row.id, parsed);
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (['-', '+', 'e', 'E', '.'].includes(event.key)) {
+                                event.preventDefault();
+                                return;
+                              }
+                              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                                event.preventDefault();
+                                handleAddBelow(row.id);
+                              }
+                            }}
+                            disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
+                            inputProps={{ min: 1 }}
+                            fullWidth
+                            autoFocus={shouldFocusQuantity}
+                          />
+                          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                            <TextField
+                              label={LABELS.ct}
+                              size="small"
+                              value={ctText}
+                              InputProps={{ readOnly: true }}
+                            />
+                            <TextField
+                              label={LABELS.amount}
+                              size="small"
+                              value={rowAmountText}
+                              InputProps={{ readOnly: true }}
+                            />
+                          </Box>
+                          <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                            <Tooltip title={LABELS.addBelow}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleAddBelow(row.id);
+                                  }}
+                                  disabled={isAggregateLegacyLog}
+                                  aria-label={LABELS.addBelow}
+                                >
+                                  <AddIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title={LABELS.remove}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleRemoveRow(row.id);
+                                  }}
+                                  disabled={isAggregateLegacyLog || rows.length <= 1}
+                                  aria-label={LABELS.remove}
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              ) : (
+                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                 <Table size="small" sx={{ tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ width: '15%' }}>{LABELS.worker}</TableCell>
-                      <TableCell sx={{ width: '24%' }}>{LABELS.assignment}</TableCell>
-                      <TableCell sx={{ width: '24%' }}>{LABELS.process}</TableCell>
-                      <TableCell sx={{ width: '10%' }} align="right">{LABELS.quantity}</TableCell>
+                      <TableCell sx={{ width: '16%' }}>{LABELS.worker}</TableCell>
+                      <TableCell sx={{ width: '26%' }}>{LABELS.style}</TableCell>
+                      <TableCell sx={{ width: '23%' }}>{LABELS.process}</TableCell>
+                      <TableCell sx={{ width: '9%' }} align="right">{LABELS.quantity}</TableCell>
                       <TableCell sx={{ width: '8%' }}>{LABELS.ct}</TableCell>
-                      <TableCell sx={{ width: '11%' }} align="right">{LABELS.amount}</TableCell>
+                      <TableCell sx={{ width: '10%' }} align="right">{LABELS.amount}</TableCell>
                       <TableCell sx={{ width: 88 }} align="right">&nbsp;</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1346,26 +1739,35 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                         ? { ...row, assignment: rowAssignment, process: rowProcess }
                         : row;
                       const rowWorkerOptions = isEditingRow ? resolveWorkerOptions(rowForOptions) : [];
-                      const rowAssignmentOptions = isEditingRow ? resolveAssignmentOptions(rowForOptions) : [];
-                      const rowProcessOptions = isEditingRow ? resolveProcessOptions(rowForOptions) : [];
-                      const assignmentDisabled =
-                        isAggregateLegacyLog || !row?.worker || (rowAssignmentOptions?.length || 0) === 0;
+                      const styleOptions = isEditingRow ? resolveStyleOptions(rowForOptions) : [];
+                      const selectedStyleOption = isEditingRow
+                        ? resolveSelectedStyleOption(rowForOptions, styleOptions)
+                        : null;
+                      const selectedStyleStatusLabel = selectedStyleOption
+                        ? getStyleOptionStatusLabel(selectedStyleOption, row?.worker)
+                        : '';
+                      const processOptions = isEditingRow ? resolveProcessOptions(rowForOptions) : [];
+                      const selectedProcessOption = isEditingRow
+                        ? resolveSelectedProcessOption(rowForOptions, processOptions)
+                        : null;
+                      const styleDisabled =
+                        isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
                       const processDisabled =
-                        isAggregateLegacyLog || !rowAssignment || (rowProcessOptions?.length || 0) === 0;
+                        isAggregateLegacyLog ||
+                        !row?.worker ||
+                        !selectedStyleOption ||
+                        (processOptions?.length || 0) === 0;
                       const workerDisabled =
                         isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
-                      const duplicateProcessKeys = isEditingRow
-                        ? resolveDuplicateProcessKeys(row)
-                        : null;
                       const shouldFocusWorker = Boolean(
                         isEditingRow &&
                           editingField?.rowId === row.id &&
                           editingField?.field === 'worker'
                       );
-                      const shouldFocusAssignment = Boolean(
+                      const shouldFocusStyle = Boolean(
                         isEditingRow &&
                           editingField?.rowId === row.id &&
-                          editingField?.field === 'assignment'
+                          editingField?.field === 'style'
                       );
                       const shouldFocusProcess = Boolean(
                         isEditingRow &&
@@ -1377,14 +1779,16 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           editingField?.rowId === row.id &&
                           editingField?.field === 'quantity'
                       );
-                      const assignmentPlaceholder = !row?.worker
+                      const stylePlaceholder = !row?.worker
                         ? LABELS.selectWorkerFirst
-                        : (rowAssignmentOptions?.length || 0) === 0
-                          ? LABELS.noAssignmentsAvailable
-                          : LABELS.assignmentPlaceholder;
-                      const processPlaceholder = !rowAssignment
-                        ? LABELS.selectAssignmentFirst
-                        : (rowProcessOptions?.length || 0) === 0
+                        : (styleOptions?.length || 0) === 0
+                          ? LABELS.noStylesAvailable
+                          : LABELS.stylePlaceholder;
+                      const processPlaceholder = !row?.worker
+                        ? LABELS.selectWorkerFirst
+                        : !selectedStyleOption
+                          ? LABELS.selectStyleFirst
+                          : (processOptions?.length || 0) === 0
                           ? LABELS.noProcessesAvailable
                           : LABELS.processPlaceholder;
 
@@ -1450,33 +1854,34 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <SearchableSelect
-                                label={LABELS.assignment}
-                                options={rowAssignmentOptions}
-                                value={rowAssignment || null}
-                                onChange={(_event, value) => handleAssignmentChange(row.id, value)}
+                                label={LABELS.style}
+                                options={styleOptions}
+                                value={selectedStyleOption}
+                                onChange={(_event, value) => handleStyleChange(row.id, value)}
                                 autoSelect={false}
-                                disabled={assignmentDisabled}
+                                disabled={styleDisabled}
                                 autoHighlight
                                 openOnFocus
                                 selectOnFocus
                                 clearOnBlur={false}
                                 handleHomeEndKeys
-                                getOptionLabel={(option) =>
-                                  formatAssignmentAutocompleteLabel(option, selectedLineId)
+                                getOptionLabel={getStyleOptionLabel}
+                                isOptionEqualToValue={(option, value) =>
+                                  toText(option?.id || option?.dbId) ===
+                                  toText(value?.id || value?.dbId)
                                 }
-                                isOptionEqualToValue={(option, value) => String(option?.dbId || option?.id || '') === String(value?.dbId || value?.id || '')}
-                                renderOption={renderAssignmentOption}
+                                renderOption={renderStyleOption}
                                 textFieldProps={{
                                   size: 'small',
-                                  placeholder: assignmentPlaceholder,
-                                  autoFocus: shouldFocusAssignment,
+                                  placeholder: stylePlaceholder,
+                                  autoFocus: shouldFocusStyle,
                                 }}
                               />
                             ) : (
                               <Box
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  beginFieldEdit(row.id, 'assignment');
+                                  beginFieldEdit(row.id, 'style');
                                 }}
                                 sx={{
                                   minHeight: 24,
@@ -1485,16 +1890,21 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {rowAssignment ? formatAssignmentLabel(rowAssignment) : '-'}
+                                {selectedStyleOption ? getStyleOptionLabel(selectedStyleOption) : '-'}
                               </Box>
                             )}
+                            {selectedStyleStatusLabel ? (
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.4, display: 'block' }}>
+                                {selectedStyleStatusLabel}
+                              </Typography>
+                            ) : null}
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <SearchableSelect
                                 label={LABELS.process}
-                                options={rowProcessOptions}
-                                value={rowProcess || null}
+                                options={processOptions}
+                                value={selectedProcessOption}
                                 onChange={(_event, value) => handleProcessChange(row.id, value)}
                                 autoSelect={false}
                                 disabled={processDisabled}
@@ -1503,14 +1913,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 selectOnFocus
                                 clearOnBlur={false}
                                 handleHomeEndKeys
-                                getOptionLabel={(option) => buildDisplayProcessName(option, languageCode)}
-                                isOptionEqualToValue={(option, value) => String(option?.processKey || option?.id || '') === String(value?.processKey || value?.id || '')}
-                                getOptionDisabled={(option) => {
-                                  if (!duplicateProcessKeys) return false;
-                                  const optionKey = toText(option?.processKey || option?.id);
-                                  const currentKey = toText(rowProcess?.processKey || rowProcess?.id);
-                                  return Boolean(optionKey && optionKey !== currentKey && duplicateProcessKeys.has(optionKey));
-                                }}
+                                getOptionLabel={getProcessOptionLabel}
+                                isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                                renderOption={renderProcessOption}
                                 textFieldProps={{
                                   size: 'small',
                                   placeholder: processPlaceholder,
@@ -1530,7 +1935,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {buildDisplayProcessName(rowProcess, languageCode)}
+                                {selectedProcessOption
+                                  ? getProcessOptionLabel(selectedProcessOption)
+                                  : '-'}
                               </Box>
                             )}
                           </TableCell>
@@ -1562,7 +1969,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                     handleAddBelow(row.id);
                                   }
                                 }}
-                                disabled={isAggregateLegacyLog || !rowProcess}
+                                disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
                                 inputProps={{ min: 1 }}
                                 fullWidth
                                 autoFocus={shouldFocusQuantity}
@@ -1640,6 +2047,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                   </TableBody>
                 </Table>
               </TableContainer>
+              )}
               <Box
                 sx={{
                   display: 'flex',

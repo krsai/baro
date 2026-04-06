@@ -3,15 +3,18 @@
 export const DEFAULT_TIME_REF_QUANTITY = 1000;
 export const ST_STANDARD_BUCKETS = Object.freeze([
   1,
+  3,
+  5,
   10,
   30,
+  50,
   100,
   300,
+  500,
   1000,
   3000,
+  5000,
   10000,
-  30000,
-  100000,
 ]);
 const AT_RELIABILITY_SETUP_SHARE_THRESHOLD = 0.03;
 const AT_RELIABILITY_ATTENDANCE_FALLBACK_PENALTY_MAX = 18;

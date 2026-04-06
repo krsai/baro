@@ -4,6 +4,7 @@ import {
   Button,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -42,9 +43,9 @@ import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
 const TEXT = {
   add: { ko: '기록 추가', en: 'Add Log', vi: 'Them ghi chep' },
   searchPlaceholder: {
-    ko: '날짜, 공장, 라인, 비고 검색',
-    en: 'Search date, factory, line, note',
-    vi: 'Tim ngay, nha may, chuyen, ghi chu',
+    ko: '날짜, 공장, 라인 검색',
+    en: 'Search date, factory, line',
+    vi: 'Tim ngay, nha may, chuyen',
   },
   workDate: { ko: '작업일자', en: 'Work Date', vi: 'Ngay lam viec' },
   factory: { ko: '공장', en: 'Factory', vi: 'Nha may' },
@@ -52,8 +53,6 @@ const TEXT = {
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
   totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
-  note: { ko: '비고', en: 'Note', vi: 'Ghi chu' },
-  updatedAt: { ko: '최근 수정', en: 'Updated', vi: 'Cap nhat' },
   loading: { ko: '기록을 불러오는 중입니다.', en: 'Loading logs...', vi: 'Dang tai ghi chep...' },
   empty: { ko: '해당 기간에 기록이 없습니다.', en: 'No logs found for this period.', vi: 'Khong co ghi chep trong giai doan nay.' },
   fetchError: { ko: '기록을 불러오지 못했습니다.', en: 'Failed to load logs.', vi: 'Khong the tai ghi chep.' },
@@ -172,7 +171,6 @@ const WorkList = () => {
         log?.workDate,
         log?.factoryName,
         log?.lineName,
-        log?.note,
         log?.updatedBy,
       ]
         .filter(Boolean)
@@ -226,7 +224,7 @@ const WorkList = () => {
         <SearchInput
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장, 라인, 비고 검색')}
+          placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장, 라인 검색')}
         />
       }
       right={[
@@ -277,7 +275,73 @@ const WorkList = () => {
       toolbar={toolbar}
     >
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <TableContainer>
+        <Box sx={{ display: { xs: 'block', sm: 'none' }, p: 1.25 }}>
+          {loading ? (
+            <Typography variant="body2" color="text.secondary">
+              {resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')}
+            </Typography>
+          ) : filteredLogs.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')}
+            </Typography>
+          ) : (
+            <Stack spacing={1}>
+              {filteredLogs.map((log) => (
+                <Paper
+                  key={log.id}
+                  variant="outlined"
+                  onClick={() => handleOpen(log)}
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 1.5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Stack spacing={0.75}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {log.workDate || '-'}
+                      </Typography>
+                      <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={(event) => handleDelete(event, log)}
+                            disabled={deletingId === String(log.id)}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {[log.factoryName, log.lineName].filter(Boolean).join(' / ') || '-'}
+                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gap: 0.75,
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.workers, languageCode, '작업자')} ${log.workerCount || 0}`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.items, languageCode, '기록 건수')} ${log.itemCount || 0}`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatDuration(log.totalContractedSeconds, languageCode)}`}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </Box>
+        <TableContainer sx={{ display: { xs: 'none', sm: 'block' } }}>
           <Table size="small">
             <TableHead>
               <TableRow>
@@ -287,16 +351,14 @@ const WorkList = () => {
                 <TableCell align="right">{resolveText(TEXT.workers, languageCode, '작업자')}</TableCell>
                 <TableCell align="right">{resolveText(TEXT.items, languageCode, '기록 건수')}</TableCell>
                 <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
-                <TableCell>{resolveText(TEXT.note, languageCode, '비고')}</TableCell>
-                <TableCell>{resolveText(TEXT.updatedAt, languageCode, '최근 수정')}</TableCell>
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={9} message={resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')} />
+                <TableStatusRow colSpan={7} message={resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')} />
               ) : filteredLogs.length === 0 ? (
-                <TableStatusRow colSpan={9} message={resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')} />
+                <TableStatusRow colSpan={7} message={resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')} />
               ) : (
                 filteredLogs.map((log) => (
                   <TableRow
@@ -315,23 +377,6 @@ const WorkList = () => {
                     <TableCell align="right">{log.itemCount || 0}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {formatDuration(log.totalContractedSeconds, languageCode)}
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          maxWidth: 360,
-                        }}
-                      >
-                        {log.note || '-'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {log.updatedAt ? dayjs(log.updatedAt).format('YYYY-MM-DD HH:mm') : '-'}
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>

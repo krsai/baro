@@ -1,4 +1,4 @@
-const toOptionalNumber = (value, fallback = null) => {
+﻿const toOptionalNumber = (value, fallback = null) => {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -27,8 +27,9 @@ const toOptionalDateString = (value) => {
 
 const normalizeSnapshotProcess = (process, index = 0) => {
   if (!process || typeof process !== 'object' || Array.isArray(process)) return null;
-  const processKey =
-    String(process.processKey || process.code || process.id || `PROCESS-${index + 1}`).trim();
+  const processKey = String(
+    process.processKey || process.processCode || process.code || process.id || `PROCESS-${index + 1}`
+  ).trim();
   if (!processKey) return null;
 
   const quantity = Math.max(1, Math.round(toOptionalNumber(process.quantity, 1) || 1));
@@ -41,9 +42,11 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   );
   if (ctSeconds == null) return null;
 
+  const fallbackName = `\uACF5\uC815 ${index + 1}`;
   return {
     processKey,
-    name: String(process.name || process.processName || `공정 ${index + 1}`).trim() || `공정 ${index + 1}`,
+    processCode: String(process.processCode || process.code || '').trim() || null,
+    name: String(process.name || process.processName || fallbackName).trim() || fallbackName,
     nameKo: String(process.nameKo || process.processNameKo || '').trim(),
     nameEn: String(process.nameEn || process.processNameEn || '').trim(),
     nameVi: String(process.nameVi || process.processNameVi || '').trim(),
@@ -120,11 +123,7 @@ export const resolveAssignmentCtTotalSeconds = (item) => {
 };
 
 export const resolveAssignmentCtUpdatedBy = (item) =>
-  String(
-    item?.ctUpdatedBy ??
-      resolveAssignmentCtSnapshot(item)?.updatedBy ??
-      ''
-  ).trim() || null;
+  String(item?.ctUpdatedBy ?? resolveAssignmentCtSnapshot(item)?.updatedBy ?? '').trim() || null;
 
 export const resolveAssignmentCtUpdatedAt = (item) =>
   toOptionalDateString(item?.ctUpdatedAt ?? resolveAssignmentCtSnapshot(item)?.updatedAt);

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+﻿import React, { useCallback } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { getUiMessage } from '../../../../constants/uiMessages';
@@ -34,15 +34,18 @@ const joinText = (parts) => parts.filter(Boolean).join(' / ');
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
   const { languageCode } = useLanguage();
+  const isCompleted = Boolean(assignment?.isCompleted);
   const isClippedLeft = Boolean(assignment.isClippedLeft);
   const isClippedRight = Boolean(assignment.isClippedRight);
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `assign-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment' },
+    disabled: isCompleted,
   });
   const { setNodeRef: setDropRef } = useDroppable({
     id: `assign-drop-${assignment.id}`,
     data: { assignmentId: assignment.id, type: 'assignment-drop' },
+    disabled: isCompleted,
   });
   const setNodeRef = useCallback(
     (node) => {
@@ -136,10 +139,16 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         display: 'flex',
         alignItems: 'center',
         backgroundColor: ctMeta.cardBg,
+        ...(isCompleted
+          ? {
+              backgroundColor: '#E6E9EE',
+              borderColor: 'rgba(71,85,105,0.35)',
+            }
+          : {}),
         color: '#1f2a3a',
         minWidth: 0,
         overflow: 'visible',
-        cursor: isDragging ? 'grabbing' : 'grab',
+        cursor: isCompleted ? 'default' : isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
         border: '1px solid rgba(0,0,0,0.08)',
         borderLeft: isClippedLeft ? '2px dashed rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
@@ -147,7 +156,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         outline: 'none',
         '&:focus': { outline: 'none' },
         '&:focus-visible': { boxShadow: '0 2px 6px rgba(0,0,0,0.12)' },
-        zIndex: showLinkPrev ? (theme) => theme.zIndex.appBar + 3 : 20,
+        zIndex: showLinkPrev && !isCompleted ? (theme) => theme.zIndex.appBar + 3 : 20,
       }}
       style={style}
       title={joinText([
@@ -248,7 +257,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         </Box>
       )}
 
-      {showLinkPrev && (
+      {showLinkPrev && !isCompleted && (
         <Box
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
@@ -278,6 +287,26 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           title={getUiMessage('assign.connectPrev', 'Link to previous task', languageCode)}
         >
           {'<'}
+        </Box>
+      )}
+
+      {isCompleted && (
+        <Box
+          sx={{
+            position: 'absolute',
+            left: 8,
+            top: 8,
+            zIndex: 2,
+            px: 0.8,
+            py: 0.2,
+            borderRadius: 1,
+            backgroundColor: 'rgba(255,255,255,0.9)',
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#334155',
+          }}
+        >
+          {getUiMessage('assign.statusCompleted', '완료', languageCode)}
         </Box>
       )}
 
@@ -407,3 +436,4 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
 };
 
 export default AssignBar;
+

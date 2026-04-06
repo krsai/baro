@@ -12,6 +12,7 @@ import StyleInfo from './styleDetail/StyleInfo';
 import StyleAnalysis from './styleDetail/StyleAnalysis';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
+import StyleTimeMatrix from './styleDetail/StyleTimeMatrix';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useApp } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -30,6 +31,7 @@ const STYLE_DETAIL_MESSAGES = {
     tabStyleAnalysis: '스타일 분석',
     tabBasicInfo: '기본 정보',
     tabProcessInfo: '공정 정보',
+    tabTimeMatrix: '수량별 시간',
     tabBom: 'BOM',
     save: '저장',
     loading: '스타일 정보를 불러오는 중입니다.',
@@ -45,6 +47,7 @@ const STYLE_DETAIL_MESSAGES = {
     tabStyleAnalysis: 'Style Analysis',
     tabBasicInfo: 'Basic Info',
     tabProcessInfo: 'Process Info',
+    tabTimeMatrix: 'Time Matrix',
     tabBom: 'BOM',
     save: 'Save',
     loading: 'Loading style details...',
@@ -60,6 +63,7 @@ const STYLE_DETAIL_MESSAGES = {
     tabStyleAnalysis: 'Phan tich style',
     tabBasicInfo: 'Thong tin co ban',
     tabProcessInfo: 'Thong tin cong doan',
+    tabTimeMatrix: 'Bang thoi gian',
     tabBom: 'BOM',
     save: 'Luu',
     loading: 'Dang tai thong tin style...',
@@ -157,6 +161,7 @@ const StyleDetail = () => {
     basicInfo: true,
     styleAnalysis: false,
     processInfo: false,
+    timeMatrix: false,
     bom: false,
   });
   const [originalData, setOriginalData] = useState(createEmptyStyle);
@@ -273,7 +278,10 @@ const StyleDetail = () => {
   useUnsavedChanges(isDirty);
 
   const handleChange = (_event, newValue) => {
-    if ((newValue === 'styleAnalysis' || newValue === 'processInfo') && !canViewProcessInfo) {
+    if (
+      (newValue === 'styleAnalysis' || newValue === 'processInfo' || newValue === 'timeMatrix') &&
+      !canViewProcessInfo
+    ) {
       return;
     }
     if (newValue !== null) {
@@ -388,6 +396,11 @@ const StyleDetail = () => {
               {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
             </ToggleButton>
           ) : null}
+          {canViewProcessInfo ? (
+            <ToggleButton value="timeMatrix">
+              {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
+            </ToggleButton>
+          ) : null}
           <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
         </ToggleButtonGroup>
 
@@ -431,6 +444,17 @@ const StyleDetail = () => {
             <RequestScopeBoundary scopeId="processInfo" active={currentTab === 'processInfo'}>
               <Box sx={{ display: currentTab === 'processInfo' ? 'block' : 'none' }}>
                 <StyleProcess
+                  processes={styleFormData.processes}
+                  onProcessesChange={handleProcessesChange}
+                />
+              </Box>
+            </RequestScopeBoundary>
+          )}
+
+          {canViewProcessInfo && loadedTabs.timeMatrix && (
+            <RequestScopeBoundary scopeId="timeMatrix" active={currentTab === 'timeMatrix'}>
+              <Box sx={{ display: currentTab === 'timeMatrix' ? 'block' : 'none' }}>
+                <StyleTimeMatrix
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
                 />

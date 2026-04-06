@@ -130,14 +130,6 @@ const RAW_STATIC_OPTION_GROUPS = [
     ],
   },
   {
-    key: 'orderConfirmationStatus',
-    title: '주문 확정 상태',
-    items: [
-      createItem('PLANNED', { ko: '계획', en: 'Planned', vi: 'Ke hoach' }, ['계획']),
-      createItem('CONFIRMED', { ko: '확정', en: 'Confirmed', vi: 'Da xac nhan' }, ['확정']),
-    ],
-  },
-  {
     key: 'orderPartyRole',
     title: '주문 당사자 역할',
     items: [

@@ -9,15 +9,18 @@ const { normalizeProcessNaming } = require('./lib/processNamingRules.js');
 const DEFAULT_TIME_REF_QUANTITY = 1000;
 const ST_STANDARD_BUCKETS = Object.freeze([
   1,
+  3,
+  5,
   10,
   30,
+  50,
   100,
   300,
+  500,
   1000,
   3000,
+  5000,
   10000,
-  30000,
-  100000,
 ]);
 const DEFAULT_UPDATED_BY = 'SYSTEM_REALIGN';
 
