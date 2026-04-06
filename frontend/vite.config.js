@@ -9,7 +9,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
-          if (id.includes('@mui') || id.includes('@emotion')) return 'vendor-mui'
+          if (id.includes('@mui/icons-material')) return 'vendor-mui-icons'
+          if (id.includes('@mui/x-date-pickers')) return 'vendor-mui-x'
+          if (id.includes('@emotion')) return 'vendor-emotion'
+          if (id.includes('@mui')) return 'vendor-mui'
           if (
             id.includes('@dnd-kit') ||
             id.includes('@hello-pangea')

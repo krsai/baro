@@ -33,7 +33,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
@@ -846,7 +846,7 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 };
 
 const ProductionPlanBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const [loading, setLoading] = useState(false);

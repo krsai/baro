@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeLabel as getLocalizedPayTypeLabel } from '../../../constants/payType';
@@ -87,7 +87,7 @@ const amountFieldSx = {
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
 

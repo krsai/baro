@@ -40,7 +40,7 @@ import {
   getStaticOptionLabel,
   getStaticOptionOptions,
 } from '../../../constants/staticOptionRegistry';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 
@@ -140,7 +140,7 @@ const getSubscriptionServiceContactEmail = (subscription) =>
   subscription?.serviceContactEmail || subscription?.membershipEmail || '';
 
 const OrganizationSubscriptionBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
 
   const [organizations, setOrganizations] = useState([]);

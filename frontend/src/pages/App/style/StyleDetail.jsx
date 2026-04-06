@@ -14,7 +14,7 @@ import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import StyleTimeMatrix from './styleDetail/StyleTimeMatrix';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
@@ -139,7 +139,7 @@ const StyleDetail = () => {
   const location = useLocation();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
-  const { showNotification, navigateToPath } = useApp();
+  const { showNotification, navigateToPath } = useAppActions();
 
   const ownerOrgIdFromQuery = useMemo(() => {
     const params = new URLSearchParams(location.search);

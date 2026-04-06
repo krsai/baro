@@ -42,7 +42,7 @@ import SearchableSelect from '../../../components/SearchableSelect';
 import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
@@ -693,7 +693,7 @@ const OrderList = () => {
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
-  const { showNotification, navigateToPath } = useApp();
+  const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const orderPageText = useMemo(

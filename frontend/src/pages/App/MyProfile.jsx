@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../components/AppPageContainer';
-import { useApp } from '../../context/AppContext';
+import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 
@@ -59,7 +59,7 @@ const TEXT = {
 };
 
 const MyProfile = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { updateActiveProfile, user, activeProfile } = useAuth();
   const [formData, setFormData] = useState(buildProfileInfo());
   const [savedFormData, setSavedFormData] = useState(buildProfileInfo());

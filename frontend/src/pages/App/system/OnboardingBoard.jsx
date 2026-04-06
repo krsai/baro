@@ -23,7 +23,7 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { requestJSON } from '../../../utils/apiClient';
 import { getOrganizationTypeLabel } from '../../../constants/organizationType';
 import {
@@ -56,7 +56,7 @@ const toDisplayText = (value) => {
 };
 
 const OnboardingBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

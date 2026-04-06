@@ -2,7 +2,7 @@
 import { CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import WorkDetail from './WorkDetail';
@@ -58,7 +58,7 @@ const buildWorkListTabLabel = (languageCode) => {
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
 

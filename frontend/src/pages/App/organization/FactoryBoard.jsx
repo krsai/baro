@@ -18,7 +18,7 @@ import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
 import FactoryDetail from './factoryDetail/FactoryDetail';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
 
@@ -30,7 +30,7 @@ const FactoryList = () => {
   const [saving, setSaving] = useState(false);
   const [deletingFactoryId, setDeletingFactoryId] = useState(null);
   const { languageCode } = useLanguage();
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
 
   const text = {
     title: getUiMessage('factoryBoard.title', 'Factory', languageCode),

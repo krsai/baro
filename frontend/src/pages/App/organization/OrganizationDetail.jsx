@@ -9,7 +9,7 @@ import {
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
@@ -26,7 +26,7 @@ const buildCompanyInfo = (data = {}) => ({
 
 const OrganizationDetail = () => {
   const { languageCode } = useLanguage();
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { updateActiveProfile } = useAuth();
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());

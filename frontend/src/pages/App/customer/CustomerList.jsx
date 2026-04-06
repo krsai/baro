@@ -27,7 +27,7 @@ import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { getStaticOptionLabel, getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
@@ -97,7 +97,7 @@ const buildFormData = (customer) => {
 };
 
 const CustomerList = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
 

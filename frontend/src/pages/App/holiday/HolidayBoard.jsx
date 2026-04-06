@@ -21,7 +21,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { loadHolidays, saveHolidays } from '../../../utils/localData';
 
@@ -87,7 +87,7 @@ const HolidayDay = (props) => {
 };
 
 const HolidayBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
 
   const [selectedDate, setSelectedDate] = useState(dayjs());

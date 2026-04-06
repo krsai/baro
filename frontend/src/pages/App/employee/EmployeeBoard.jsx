@@ -19,7 +19,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeOptions } from '../../../constants/payType';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
@@ -342,7 +342,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     activeOrgRole,
     activeFactoryId,
   } = useAuth();
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
   const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;

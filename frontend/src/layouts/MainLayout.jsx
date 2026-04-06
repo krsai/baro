@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useApp } from '../context/AppContext';
+import { useAppActions, useAppState } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import {
   AppBar,
@@ -101,15 +101,17 @@ const MainLayout = () => {
   } = useAuth();
   const {
     sidebarOpen,
+    openTabs,
+    notification,
+  } = useAppState();
+  const {
     toggleSidebar,
     setSidebarOpen,
-    openTabs,
     openTab,
     closeTab,
     resetWorkspace,
     setNavigateToPath,
-    notification,
-  } = useApp();
+  } = useAppActions();
   const { languageCode, setLanguageCode } = useLanguage();
   const networkLoading = useNetworkLoading();
 

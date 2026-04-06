@@ -7,8 +7,8 @@ import React, {
   useMemo,
 } from 'react';
 
-// Create the App Context
-const AppContext = createContext();
+const AppStateContext = createContext(null);
+const AppActionsContext = createContext(null);
 
 // 타입별 토스트 표시 시간 (ms) — 여기서 전역 관리
 const TOAST_DURATION = {
@@ -128,66 +128,73 @@ export const AppProvider = ({ children }) => {
         : () => console.warn('navigateToPath is not implemented');
   }, []);
 
-  const value = useMemo(
+  const stateValue = useMemo(
     () => ({
-      // Loading state
       isLoading,
-      setIsLoading,
-
-      // Notification state
       notification,
+      sidebarOpen,
+      openTabs,
+      factories,
+      roles,
+    }),
+    [
+      factories,
+      isLoading,
+      notification,
+      openTabs,
+      roles,
+      sidebarOpen,
+    ]
+  );
+
+  const actionsValue = useMemo(
+    () => ({
+      setIsLoading,
       showNotification,
       dismissNotification,
-
-      // Sidebar state
-      sidebarOpen,
       setSidebarOpen,
       toggleSidebar,
-
-      // Tab state
-      openTabs,
       openTab,
       closeTab,
       resetWorkspace,
-
-      // Factories state
-      factories,
       setFactories,
-
-      // Roles state
-      roles,
       setRoles,
-
-      // Centralized navigation
       navigateToPath,
       setNavigateToPath,
     }),
     [
       closeTab,
       dismissNotification,
-      factories,
-      isLoading,
       navigateToPath,
-      notification,
       openTab,
-      openTabs,
       resetWorkspace,
-      roles,
       setNavigateToPath,
       showNotification,
-      sidebarOpen,
       toggleSidebar,
     ]
   );
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppActionsContext.Provider value={actionsValue}>
+      <AppStateContext.Provider value={stateValue}>
+        {children}
+      </AppStateContext.Provider>
+    </AppActionsContext.Provider>
+  );
 };
 
-// useApp hook
-export const useApp = () => {
-  const context = useContext(AppContext);
+export const useAppState = () => {
+  const context = useContext(AppStateContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error('useAppState must be used within an AppProvider');
+  }
+  return context;
+};
+
+export const useAppActions = () => {
+  const context = useContext(AppActionsContext);
+  if (!context) {
+    throw new Error('useAppActions must be used within an AppProvider');
   }
   return context;
 };

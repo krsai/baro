@@ -26,7 +26,7 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
@@ -59,7 +59,7 @@ const formatWorkedHours = (minutes) => {
 };
 
 const AttendanceBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [factories, setFactories] = useState([]);

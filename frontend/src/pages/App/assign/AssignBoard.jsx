@@ -35,7 +35,7 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
@@ -2057,7 +2057,7 @@ const rebuildLineWithReplace = ({
 };
 
 const AssignBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const location = useLocation();

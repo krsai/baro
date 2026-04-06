@@ -21,7 +21,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { resolveLocalizedAttributeName } from '../../../utils/appLanguage';
 import {
@@ -210,7 +210,7 @@ const ProcessMasterSection = ({
 };
 
 const ProcessMasterBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
   const [formData, setFormData] = useState(() => createEmptyMasterData());
   const [originalData, setOriginalData] = useState(() => createEmptyMasterData());

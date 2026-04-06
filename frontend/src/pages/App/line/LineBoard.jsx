@@ -31,7 +31,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 
@@ -99,7 +99,7 @@ const buildDraftSnapshot = (lineRows = [], workerRows = []) =>
 const EMPTY_SNAPSHOT = buildDraftSnapshot([], []);
 
 const LineBoard = () => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');

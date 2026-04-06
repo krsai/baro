@@ -20,7 +20,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -150,7 +150,7 @@ const StyleBoard = () => {
 
   const { activeOrgId, activeOrgType } = useAuth();
   const { languageCode } = useLanguage();
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useAppActions();
   const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
   const [searchTerm, setSearchTerm] = useState('');

@@ -28,7 +28,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import {
   fetchAttributes,
   fetchProcessMasterOptions,
@@ -630,7 +630,7 @@ const ProcessComposerDialog = memo(function ProcessComposerDialog({
 });
 
 const AttrBoard = ({ sectionKey = null, orgId = null }) => {
-  const { showNotification } = useApp();
+  const { showNotification } = useAppActions();
   const [canManageProcesses, setCanManageProcesses] = useState(true);
   const [isProcessGuideOpen, setIsProcessGuideOpen] = useState(false);
   const [isProcessComposerOpen, setIsProcessComposerOpen] = useState(false);

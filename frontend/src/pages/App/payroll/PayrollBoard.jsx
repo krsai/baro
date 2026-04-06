@@ -15,7 +15,7 @@ import AddIcon from '@mui/icons-material/Add';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
@@ -27,7 +27,7 @@ const formatDong = (value) =>
   })} 동`;
 
 const PayrollBoard = () => {
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const [snapshots, setSnapshots] = useState([]);
   const [loading, setLoading] = useState(false);

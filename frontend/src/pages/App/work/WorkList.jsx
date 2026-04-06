@@ -35,7 +35,7 @@ import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
-import { useApp } from '../../../context/AppContext';
+import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { deleteWorkLog, loadWorkLogs } from './workLogStorage';
@@ -107,7 +107,7 @@ const getDatePickerLocaleText = (languageCode) => {
 };
 
 const WorkList = () => {
-  const { navigateToPath, showNotification } = useApp();
+  const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
 
