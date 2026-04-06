@@ -89,6 +89,8 @@ import {
 } from '../../../utils/processTime';
 import { reconcileBoardStateForQuantityChanges } from '../../../utils/quantityChangeBoard.mjs';
 
+const { useDeferredValue } = React;
+
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
 const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
@@ -1160,6 +1162,7 @@ const OrderList = () => {
   const [creatingColorItemId, setCreatingColorItemId] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
@@ -1447,7 +1450,7 @@ const OrderList = () => {
   }, [formData, isDetailMode, isNewOrder]);
 
   const filteredOrders = useMemo(() => {
-    const lowerTerm = searchTerm.toLowerCase();
+    const lowerTerm = deferredSearchTerm.toLowerCase();
     return orders.filter((order) => {
       const normalizedProgressStage = normalizeOrderProgressStage(order.status);
       const matchesProgress =
@@ -1467,7 +1470,7 @@ const OrderList = () => {
         return false;
       }
 
-      if (!searchTerm) return true;
+      if (!deferredSearchTerm) return true;
 
       const orderNumber = order.orderNumber || '';
       const buyer = order.buyerOrgName || order.customerName || order.customer || '';
@@ -1488,7 +1491,7 @@ const OrderList = () => {
     languageCode,
     orders,
     progressFilter,
-    searchTerm,
+    deferredSearchTerm,
   ]);
 
   const styleOptions = useMemo(

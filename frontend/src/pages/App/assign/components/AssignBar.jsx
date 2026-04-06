@@ -435,5 +435,11 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   );
 };
 
-export default AssignBar;
+export default React.memo(AssignBar, (prevProps, nextProps) => (
+  prevProps.assignment === nextProps.assignment &&
+  prevProps.showLinkPrev === nextProps.showLinkPrev &&
+  prevProps.shiftPx === nextProps.shiftPx &&
+  prevProps.onLinkPrev === nextProps.onLinkPrev &&
+  prevProps.onOpenContextMenu === nextProps.onOpenContextMenu
+));
 

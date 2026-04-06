@@ -1,6 +1,10 @@
 import { loadStyles } from './localData';
 import { normalizeProcesses } from './processTime';
 import { buildQueryString, createHttpError, requestJSON } from './apiClient';
+import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from './workspaceDataEvents';
 const STYLE_MIGRATION_KEY = 'baro_style_migrated_to_api_v1';
 const STYLE_BY_ID_CACHE_TTL_MS = 30 * 1000;
 
@@ -256,6 +260,11 @@ export const createStyle = async (style, options = {}) => {
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
   });
+  emitWorkspaceDataChanged({
+    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    orgId: toPositiveOrgId(options?.orgId),
+    styleIds: [normalized?.id],
+  });
   return normalized;
 };
 
@@ -275,6 +284,11 @@ export const updateStyle = async (styleId, style, options = {}) => {
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: normalized?.ownerOrgId ?? normalized?.customerOrgId,
   });
+  emitWorkspaceDataChanged({
+    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    orgId: toPositiveOrgId(options?.orgId),
+    styleIds: [normalized?.id || styleId],
+  });
   return normalized;
 };
 
@@ -290,5 +304,10 @@ export const deleteStyle = async (styleId, options = {}) => {
   removeStyleFromCache(styleId, {
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
+  });
+  emitWorkspaceDataChanged({
+    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    orgId: toPositiveOrgId(options?.orgId),
+    styleIds: [styleId],
   });
 };

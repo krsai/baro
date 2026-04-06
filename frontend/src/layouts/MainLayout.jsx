@@ -83,6 +83,119 @@ const resolveNameFromEmail = (email) => {
   return normalized.split('@')[0];
 };
 
+const buildTabLoadingCounts = (scopes = []) => {
+  const next = new Map();
+  (scopes || []).forEach((entry) => {
+    if (entry?.groupId !== 'workspace') return;
+    const rootScopeId = String(entry?.scopeId || '').split('::')[0];
+    const tabId = toPathname(rootScopeId);
+    if (!tabId || tabId === '/' || tabId === EMPTY_WORKSPACE_PATH) return;
+    const activeRequestCount = Number(entry?.activeRequestCount) || 0;
+    if (activeRequestCount <= 0) return;
+    next.set(tabId, (next.get(tabId) || 0) + activeRequestCount);
+  });
+  return next;
+};
+
+const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
+  currentPath,
+  pendingTabPath,
+  tabsForRender,
+  onTabChange,
+  onCloseTab,
+  resolveRenderedTabLabel,
+}) {
+  const networkLoading = useNetworkLoading();
+  const tabLoadingCounts = useMemo(
+    () => buildTabLoadingCounts(networkLoading.scopes),
+    [networkLoading.scopes]
+  );
+  const activeTabValue = tabsForRender.some((tab) => tab.id === currentPath)
+    ? currentPath
+    : false;
+
+  return (
+    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
+      <Tabs
+        value={activeTabValue}
+        onChange={onTabChange}
+        variant="scrollable"
+        scrollButtons="auto"
+        aria-label="open pages tabs"
+        sx={{
+          minHeight: '40px',
+          '& .MuiTabs-indicator': {
+            height: '2px',
+          },
+        }}
+      >
+        {tabsForRender.map((tab) => {
+          const isTabLoading =
+            (tabLoadingCounts.get(tab.id) || 0) > 0 || pendingTabPath === tab.id;
+
+          return (
+            <Tab
+              key={tab.id}
+              value={tab.id}
+              component="div"
+              sx={{
+                minHeight: '40px',
+                textTransform: 'none',
+                borderRight: 1,
+                borderColor: 'divider',
+                opacity: 1,
+                '&.Mui-selected': {
+                  bgcolor: 'white',
+                  fontWeight: 'bold',
+                },
+                '&:not(.Mui-selected)': {
+                  bgcolor: '#f4f6f8',
+                },
+                '& .MuiTab-wrapper': {
+                  flexDirection: 'row',
+                },
+                p: '0 16px',
+                minWidth: '120px',
+              }}
+              label={
+                <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
+                  {resolveRenderedTabLabel(tab)}
+                  {isTabLoading && (
+                    <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
+                      <CircularProgress size={13} thickness={5} color="inherit" />
+                    </Box>
+                  )}
+                  {!tab.isOptimistic && (
+                    <IconButton
+                      component="span"
+                      size="small"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={(e) => onCloseTab(e, tab.id)}
+                      sx={{
+                        ml: 1,
+                        mr: -1.5,
+                        p: '2px',
+                        '&:hover': {
+                          bgcolor: 'rgba(0, 0, 0, 0.08)',
+                        },
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  )}
+                </Box>
+              }
+            />
+          );
+        })}
+      </Tabs>
+    </Box>
+  );
+});
+
 const MainLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -113,7 +226,6 @@ const MainLayout = () => {
     setNavigateToPath,
   } = useAppActions();
   const { languageCode, setLanguageCode } = useLanguage();
-  const networkLoading = useNetworkLoading();
 
   const [mountedTabOutlets, setMountedTabOutlets] = useState(() => {
     if (!isKeepAliveCandidatePath(currentPath) || !routeOutlet) return new Map();
@@ -634,19 +746,6 @@ const MainLayout = () => {
       },
     ];
   }, [currentPath, currentRoutePath, openTabs, resolveTabLabel]);
-  const tabLoadingCounts = useMemo(() => {
-    const next = new Map();
-    (networkLoading.scopes || []).forEach((entry) => {
-      if (entry?.groupId !== 'workspace') return;
-      const rootScopeId = String(entry?.scopeId || '').split('::')[0];
-      const tabId = toPathname(rootScopeId);
-      if (!tabId || tabId === '/' || tabId === EMPTY_WORKSPACE_PATH) return;
-      const activeRequestCount = Number(entry?.activeRequestCount) || 0;
-      if (activeRequestCount <= 0) return;
-      next.set(tabId, (next.get(tabId) || 0) + activeRequestCount);
-    });
-    return next;
-  }, [networkLoading.scopes]);
   useEffect(() => {
     if (!canViewEmployeeMenu) {
       setPendingEmployeeCount(0);
@@ -899,16 +998,16 @@ const MainLayout = () => {
     }
   };
 
-  const handleTabChange = (event, newValue) => {
+  const handleTabChange = React.useCallback((event, newValue) => {
     // User clicks a tab: make URL the only source of truth.
     const selectedTab = tabsForRender.find((tab) => tab.id === newValue);
     // Pass the existing label so tabs with custom labels (e.g. style detail) are not reset.
     handleNavigation(selectedTab?.path || newValue, {
       label: selectedTab ? resolveRenderedTabLabel(selectedTab) : selectedTab?.label,
     });
-  };
+  }, [handleNavigation, resolveRenderedTabLabel, tabsForRender]);
 
-  const handleCloseTab = (e, tabIdToClose) => {
+  const handleCloseTab = React.useCallback((e, tabIdToClose) => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -959,7 +1058,14 @@ const MainLayout = () => {
 
     // After (potentially) setting the new active tab, remove the closed tab from the list.
     closeTab(tabIdToClose);
-  };
+  }, [
+    closeTab,
+    currentPath,
+    navigate,
+    openTabs,
+    resolveAccessiblePath,
+    schedulePendingNavigationCleanup,
+  ]);
 
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
@@ -1227,84 +1333,14 @@ const MainLayout = () => {
           boxSizing: 'border-box',
         }}
       >
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
-          <Tabs
-            value={tabsForRender.some((tab) => tab.id === currentPath) ? currentPath : false}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            aria-label="open pages tabs"
-            sx={{
-              minHeight: '40px',
-              '& .MuiTabs-indicator': {
-                height: '2px',
-              },
-            }}
-          >
-            {tabsForRender.map((tab) => {
-              const isTabLoading =
-                (tabLoadingCounts.get(tab.id) || 0) > 0 || pendingTabPath === tab.id;
-
-              return (
-                <Tab
-                  key={tab.id}
-                  value={tab.id}
-                  component="div"
-                  sx={{
-                    minHeight: '40px',
-                    textTransform: 'none',
-                    borderRight: 1,
-                    borderColor: 'divider',
-                    opacity: 1,
-                    '&.Mui-selected': {
-                      bgcolor: 'white',
-                      fontWeight: 'bold',
-                    },
-                    '&:not(.Mui-selected)': {
-                      bgcolor: '#f4f6f8',
-                    },
-                    '& .MuiTab-wrapper': {
-                      flexDirection: 'row',
-                    },
-                    p: '0 16px',
-                    minWidth: '120px',
-                  }}
-                  label={
-                    <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
-                      {resolveRenderedTabLabel(tab)}
-                      {isTabLoading && (
-                        <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
-                          <CircularProgress size={13} thickness={5} color="inherit" />
-                        </Box>
-                      )}
-                      {!tab.isOptimistic && (
-                        <IconButton
-                          component="span"
-                          size="small"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => handleCloseTab(e, tab.id)}
-                          sx={{
-                            ml: 1,
-                            mr: -1.5,
-                            p: '2px',
-                            '&:hover': {
-                              bgcolor: 'rgba(0, 0, 0, 0.08)',
-                            },
-                          }}
-                        >
-                          <CloseIcon sx={{ fontSize: '1rem' }} />
-                        </IconButton>
-                      )}
-                    </Box>
-                  }
-                />
-              );
-            })}
-          </Tabs>
-        </Box>
+        <WorkspaceTabsBar
+          currentPath={currentPath}
+          pendingTabPath={pendingTabPath}
+          tabsForRender={tabsForRender}
+          onTabChange={handleTabChange}
+          onCloseTab={handleCloseTab}
+          resolveRenderedTabLabel={resolveRenderedTabLabel}
+        />
 
         <Box
           sx={{

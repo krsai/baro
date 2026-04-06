@@ -33,6 +33,7 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import SearchInput from '../../../components/SearchInput';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -76,6 +77,15 @@ import {
   resolveLocalizedProcessName,
 } from '../../../utils/processDisplay';
 import { subscribeOrderModificationLockChanged } from '../../../utils/orderSyncEvents';
+import {
+  emitWorkspaceDataChanged,
+  hasWorkspaceDataTopic,
+  WORKSPACE_DATA_TOPICS,
+} from '../../../utils/workspaceDataEvents';
+
+const { useDeferredValue } = React;
+const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
+
 const DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 const toNonNegativeNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -140,6 +150,162 @@ const formatCurrencyDong = (value, languageCode = 'en') =>
     'dong',
     languageCode
   )}`;
+const buildAssignableCardSearchText = (card) =>
+  [
+    card?.styleName,
+    card?.customer,
+    card?.colorName,
+    card?.gender,
+    card?.orderNo,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+const UnassignedCardItem = React.memo(function UnassignedCardItem({
+  card,
+  isSelected,
+  onSelect,
+  onOpenContextMenu,
+}) {
+  return (
+    <Box
+      sx={{
+        minWidth: { xs: 250, sm: 280 },
+        maxWidth: 320,
+        flex: '0 0 auto',
+        border: isSelected ? '1px solid' : '1px solid transparent',
+        borderColor: isSelected ? 'primary.main' : 'transparent',
+        borderRadius: 1,
+      }}
+    >
+      <StyleCard
+        card={card}
+        onSelect={onSelect}
+        onOpenContextMenu={onOpenContextMenu}
+      />
+    </Box>
+  );
+});
+
+const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel({
+  filteredCardCount,
+  groupedFilteredCards,
+  loading,
+  selectedCardId,
+  languageCode,
+  onSelectCard,
+  onOpenContextMenu,
+}) {
+  const summaryText = loading
+    ? getUiMessage('assign.cardsSyncing', '카드 동기화 중...', languageCode)
+    : getUiMessage(
+        'assign.cardSummary',
+        `${filteredCardCount}개 · ${groupedFilteredCards.length}주문`,
+        languageCode,
+        {
+          cardCount: filteredCardCount,
+          orderCount: groupedFilteredCards.length,
+        }
+      );
+
+  return (
+    <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="subtitle2">
+          {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {summaryText}
+        </Typography>
+      </Box>
+      <Stack
+        spacing={1}
+        sx={{
+          maxHeight: { xs: 360, md: 520 },
+          overflowY: 'auto',
+          pr: 0.5,
+        }}
+      >
+        {groupedFilteredCards.map((group) => (
+          <Box
+            key={group.orderNo}
+            sx={{
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1.5,
+              p: 1,
+              backgroundColor: '#FAFAFB',
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 1,
+              }}
+            >
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                {getUiMessage(
+                  'assign.orderWithNumber',
+                  `주문 ${group.orderNo}`,
+                  languageCode,
+                  { orderNo: group.orderNo }
+                )}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {group.dueDate
+                  ? getUiMessage(
+                      'common.dueDate',
+                      `납기 ${group.dueDate}`,
+                      languageCode,
+                      { date: group.dueDate }
+                    )
+                  : getUiMessage(
+                      'common.dueDateUndecided',
+                      '납기 미정',
+                      languageCode
+                    )}{' '}
+                ·{' '}
+                {getUiMessage(
+                  'common.itemCountSuffix',
+                  `${group.cards.length}개`,
+                  languageCode,
+                  { count: group.cards.length }
+                )}
+              </Typography>
+            </Box>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                overflowX: 'auto',
+                pb: 0.5,
+              }}
+            >
+              {group.cards.map((card) => (
+                <UnassignedCardItem
+                  key={card.id}
+                  card={card}
+                  isSelected={card.id === selectedCardId}
+                  onSelect={onSelectCard}
+                  onOpenContextMenu={onOpenContextMenu}
+                />
+              ))}
+            </Stack>
+          </Box>
+        ))}
+        {!loading && groupedFilteredCards.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {getUiMessage('assign.noUnassignedCards', '미배정 카드가 없습니다.', languageCode)}
+          </Typography>
+        ) : null}
+      </Stack>
+    </Stack>
+  );
+});
+
 const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const formatSecondsLabel = (value, fallback = '-', languageCode = 'en') => {
   const parsed = Number(value);
@@ -2062,6 +2228,7 @@ const AssignBoard = () => {
   const { languageCode } = useLanguage();
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [cards, setCards] = useState(() => initialCards);
   const [styles, setStyles] = useState([]);
@@ -2294,6 +2461,53 @@ const AssignBoard = () => {
     ]
   );
   const isDirty = persistReady && currentPersistSnapshot !== lastSavedSnapshotRef.current;
+  const requestExternalBoardReload = useCallback(() => {
+    hasLoadedSourceDataRef.current = false;
+    lastLoadedOrgIdRef.current = null;
+    setExternalReloadTick((prev) => prev + 1);
+  }, []);
+  const shouldHandleWorkspaceRefresh = useCallback((detail) => {
+    if (hasWorkspaceDataTopic(detail, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD)) {
+      return detail?.source !== ASSIGN_BOARD_SYNC_SOURCE;
+    }
+
+    if (!hasWorkspaceDataTopic(detail, WORKSPACE_DATA_TOPICS.STYLES)) {
+      return false;
+    }
+
+    const changedStyleIds = Array.isArray(detail?.styleIds)
+      ? detail.styleIds.map((styleId) => String(styleId || '').trim()).filter(Boolean)
+      : [];
+    if (changedStyleIds.length === 0) return true;
+
+    const currentStyleIdSet = new Set(
+      (Array.isArray(cardsRef.current) ? cardsRef.current : [])
+        .map((card) => String(card?.styleId || '').trim())
+        .filter(Boolean)
+    );
+    return changedStyleIds.some((styleId) => currentStyleIdSet.has(styleId));
+  }, []);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    isActive: isAssignmentRouteActive,
+    isBlocked: loading || persisting || isDirty,
+    onRefresh: requestExternalBoardReload,
+    shouldHandle: shouldHandleWorkspaceRefresh,
+    onBlocked: () => {
+      if (!isDirty) return;
+      showNotification(
+        getUiMessage(
+          'assign.externalDataPending',
+          '관련 데이터가 변경되었습니다. 현재 미저장 배정이 있어 저장 또는 초기화 후 최신 상태를 반영합니다.',
+          languageCode
+        ),
+        'info'
+      );
+    },
+  });
+
   const resolvePersistedBoardState = useCallback(
     (payload, fallbackCards, fallbackAssignments) => {
       const persistedCards = Array.isArray(payload?.cards)
@@ -2967,6 +3181,12 @@ const AssignBoard = () => {
         {}
       );
       resetBoardHistory(persistedCards, persistedAssignments, {}, {});
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+        orgId: activeOrgId,
+        assignmentIds: persistedAssignments.map((item) => item?.id),
+        source: ASSIGN_BOARD_SYNC_SOURCE,
+      });
       showNotification(
         getUiMessage('assign.saveSuccess', 'Assignment saved.', languageCode),
         'success'
@@ -3201,19 +3421,21 @@ const AssignBoard = () => {
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
     [cards, assignedCardIds]
   );
+  const cardSearchTextById = useMemo(
+    () =>
+      new Map(
+        unassignedCards.map((card) => [String(card.id), buildAssignableCardSearchText(card)])
+      ),
+    [unassignedCards]
+  );
 
   const filteredCards = useMemo(() => {
-    if (!searchTerm) return unassignedCards;
-    const lower = searchTerm.toLowerCase();
+    if (!deferredSearchTerm) return unassignedCards;
+    const lower = deferredSearchTerm.toLowerCase();
     return unassignedCards.filter(
-      (card) =>
-        card.styleName.toLowerCase().includes(lower) ||
-        card.customer.toLowerCase().includes(lower) ||
-        (card.colorName ? card.colorName.toLowerCase().includes(lower) : false) ||
-        (card.gender ? String(card.gender).toLowerCase().includes(lower) : false) ||
-        (card.orderNo ? card.orderNo.toLowerCase().includes(lower) : false)
+      (card) => (cardSearchTextById.get(String(card.id)) || '').includes(lower)
     );
-  }, [unassignedCards, searchTerm]);
+  }, [cardSearchTextById, deferredSearchTerm, unassignedCards]);
 
   const groupedFilteredCards = useMemo(() => {
     const groups = new Map();
@@ -3611,6 +3833,9 @@ const AssignBoard = () => {
       mouseY: Number(payload.mouseY) || 0,
     });
   }, [loading, persistReady]);
+  const handleSelectCard = useCallback((cardId) => {
+    setSelectedCardId(cardId);
+  }, []);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
   const handleContextToggleAssignmentCompletion = useCallback(() => {
     if (!contextMenuTargetAssignment) return;
@@ -4499,119 +4724,15 @@ const AssignBoard = () => {
         </Box>
         <Grid container spacing={2} sx={{ minWidth: 0 }}>
           <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
-            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">
-                  {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {loading
-                    ? getUiMessage('assign.cardsSyncing', '카드 동기화 중...', languageCode)
-                    : getUiMessage(
-                        'assign.cardSummary',
-                        `${filteredCards.length}개 · ${groupedFilteredCards.length}주문`,
-                        languageCode,
-                        {
-                          cardCount: filteredCards.length,
-                          orderCount: groupedFilteredCards.length,
-                        }
-                      )}
-                </Typography>
-              </Box>
-              <Stack
-                spacing={1}
-                sx={{
-                  maxHeight: { xs: 360, md: 520 },
-                  overflowY: 'auto',
-                  pr: 0.5,
-                }}
-              >
-                {groupedFilteredCards.map((group) => (
-                  <Box
-                    key={group.orderNo}
-                    sx={{
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1.5,
-                      p: 1,
-                      backgroundColor: '#FAFAFB',
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        mb: 1,
-                      }}
-                    >
-                      <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                        {getUiMessage(
-                          'assign.orderWithNumber',
-                          `주문 ${group.orderNo}`,
-                          languageCode,
-                          { orderNo: group.orderNo }
-                        )}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {group.dueDate
-                          ? getUiMessage(
-                              'common.dueDate',
-                              `납기 ${group.dueDate}`,
-                              languageCode,
-                              { date: group.dueDate }
-                            )
-                          : getUiMessage(
-                              'common.dueDateUndecided',
-                              '납기 미정',
-                              languageCode
-                            )}{' '}
-                        ·{' '}
-                        {getUiMessage(
-                          'common.itemCountSuffix',
-                          `${group.cards.length}개`,
-                          languageCode,
-                          { count: group.cards.length }
-                        )}
-                      </Typography>
-                    </Box>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{
-                        overflowX: 'auto',
-                        pb: 0.5,
-                      }}
-                    >
-                      {group.cards.map((card) => (
-                        <Box
-                          key={card.id}
-                          sx={{
-                            minWidth: { xs: 250, sm: 280 },
-                            maxWidth: 320,
-                            flex: '0 0 auto',
-                            border: card.id === selectedCardId ? '1px solid' : '1px solid transparent',
-                            borderColor: card.id === selectedCardId ? 'primary.main' : 'transparent',
-                            borderRadius: 1,
-                          }}
-                        >
-                          <StyleCard
-                            card={card}
-                            onSelect={setSelectedCardId}
-                            onOpenContextMenu={handleContextMenuOpen}
-                          />
-                        </Box>
-                      ))}
-                    </Stack>
-                  </Box>
-                ))}
-                {!loading && groupedFilteredCards.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    {getUiMessage('assign.noUnassignedCards', '미배정 카드가 없습니다.', languageCode)}
-                  </Typography>
-                ) : null}
-              </Stack>
-            </Stack>
+            <UnassignedCardGroupsPanel
+              filteredCardCount={filteredCards.length}
+              groupedFilteredCards={groupedFilteredCards}
+              loading={loading}
+              selectedCardId={selectedCardId}
+              languageCode={languageCode}
+              onSelectCard={handleSelectCard}
+              onOpenContextMenu={handleContextMenuOpen}
+            />
           </Grid>
           <Grid item xs={12} md={8} sx={{ minWidth: 0 }}>
             <Stack spacing={1.5} sx={{ minWidth: 0 }}>

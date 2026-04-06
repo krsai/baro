@@ -49,6 +49,8 @@ import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../u
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
 import { loadWorkLogContext } from './workLogStorage';
 
+const { useDeferredValue } = React;
+
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
@@ -581,6 +583,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const [editingField, setEditingField] = useState(null);
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
   const initialRowsHydratedRef = useRef(false);
@@ -869,7 +872,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     return mergeProcessWithCatalog(linkedProcess, processCatalogById, processCatalogByCode);
   }, [processCatalogByCode, processCatalogById, resolveAssignmentForRow]);
   const filteredRows = useMemo(() => {
-    const keyword = toText(searchTerm).toLowerCase();
+    const keyword = toText(deferredSearchTerm).toLowerCase();
     if (!keyword) return rows;
 
     return rows.filter((row) => {
@@ -890,7 +893,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         .toLowerCase();
       return searchText.includes(keyword);
     });
-  }, [resolveAssignmentForRow, resolveProcessForRow, rows, searchTerm]);
+  }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rows]);
   const totalRowPages = useMemo(
     () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / ROWS_PER_PAGE)),
     [filteredRows]

@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import {
   Paper,
   Button,
@@ -26,6 +26,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { getUiMessage } from '../../../constants/uiMessages';
 import StyleDetail from './StyleDetail';
 import {
@@ -34,6 +35,7 @@ import {
 } from '../../../utils/styleApi';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
@@ -50,6 +52,8 @@ import {
   formatDivergencePercentLabel,
   resolveDivergenceMeta,
 } from '../../../utils/timeDivergence';
+
+const { useDeferredValue } = React;
 
 // 생산계획 카드 상태 라벨과 동일한 커스텀 팔레트 사용 (공유 팔레트 — agent.md 참조)
 const AT_RELIABILITY_PALETTE = {
@@ -143,6 +147,7 @@ const resolveStyleWorkspaceTabLabel = (languageCode, name) => {
 };
 
 const StyleBoard = () => {
+  const location = useLocation();
   const { styleId } = useParams();
   if (styleId) {
     return <StyleDetail />;
@@ -153,7 +158,9 @@ const StyleBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const isBrandOrg = activeOrgType === 'BRAND';
   const canViewProcessSummary = !isBrandOrg;
+  const isStyleRouteActive = location.pathname === '/style';
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [styles, setStyles] = useState([]);
   const [factoryWagePerSecond, setFactoryWagePerSecond] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -186,6 +193,14 @@ const StyleBoard = () => {
   useEffect(() => {
     refreshStyles();
   }, [refreshStyles]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    isActive: isStyleRouteActive,
+    isBlocked: loading,
+    onRefresh: () => refreshStyles({ forceRefresh: true }),
+  });
 
   const handleRowDoubleClick = (style) => {
     const ownerOrgId = toOrgId(style?.ownerOrgId ?? style?.customerOrgId);
@@ -237,10 +252,10 @@ const StyleBoard = () => {
   };
 
   const filteredStyles = useMemo(() => {
-    if (!searchTerm) {
+    if (!deferredSearchTerm) {
       return styles;
     }
-    const lower = searchTerm.toLowerCase();
+    const lower = deferredSearchTerm.toLowerCase();
     return styles.filter(
       (style) =>
         (style.name || '').toLowerCase().includes(lower) ||
@@ -248,7 +263,7 @@ const StyleBoard = () => {
         (style.styleCode || '').toLowerCase().includes(lower) ||
         (style.id || '').toLowerCase().includes(lower)
     );
-  }, [styles, searchTerm]);
+  }, [deferredSearchTerm, styles]);
 
   const rows = useMemo(
     () =>

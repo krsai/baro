@@ -30,9 +30,11 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { useLocation } from 'react-router-dom';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import AppPageContainer from '../../../components/AppPageContainer';
 import TableStatusRow from '../../../components/TableStatusRow';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -67,6 +69,10 @@ import {
   formatProcessNameWithQuantity,
   resolveLocalizedProcessName,
 } from '../../../utils/processDisplay';
+import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from '../../../utils/workspaceDataEvents';
 
 const STATUS_META = {
   UNSAVED: { label: 'CT 미저장', color: 'default' },
@@ -79,6 +85,7 @@ const CALENDAR_CT_STATUS_META = {
 const CALENDAR_BAR_HEIGHT = 64;
 const CALENDAR_BAR_GAP = 6;
 const CALENDAR_LANE_EPSILON = 1e-4;
+const PRODUCTION_PLAN_SYNC_SOURCE = 'production-plan';
 const PT_REFERENCE_QUANTITY_LABEL = DEFAULT_TIME_REF_QUANTITY.toLocaleString('ko-KR');
 const resolveCtStatusChipSx = (status) => {
   const meta = CALENDAR_CT_STATUS_META[status] || CALENDAR_CT_STATUS_META.UNSAVED;
@@ -496,7 +503,7 @@ const assignCalendarLanes = (items) => {
   });
 };
 
-const CalendarAssignmentBar = ({
+const CalendarAssignmentBar = React.memo(function CalendarAssignmentBar({
   assignment,
   startUnit,
   endUnit,
@@ -506,7 +513,7 @@ const CalendarAssignmentBar = ({
   isClippedLeft,
   isClippedRight,
   onClick,
-}) => {
+}) {
   const snapshotState = resolveAssignmentSnapshotState(assignment);
   const ctLabel = STATUS_META[snapshotState]?.label || STATUS_META.UNSAVED.label;
   const previewUrl =
@@ -805,7 +812,16 @@ const CalendarAssignmentBar = ({
       )}
     </Box>
   );
-};
+}, (prevProps, nextProps) => (
+  prevProps.assignment === nextProps.assignment &&
+  prevProps.startUnit === nextProps.startUnit &&
+  prevProps.endUnit === nextProps.endUnit &&
+  prevProps.laneIndex === nextProps.laneIndex &&
+  prevProps.statusMeta === nextProps.statusMeta &&
+  prevProps.isSelected === nextProps.isSelected &&
+  prevProps.isClippedLeft === nextProps.isClippedLeft &&
+  prevProps.isClippedRight === nextProps.isClippedRight
+));
 
 const isNonWorkingDate = (date, holidaySet) => {
   if (!date) return false;
@@ -846,9 +862,11 @@ const getAssignmentWorkingDays = (assignment, baseDate, holidaySet) => {
 };
 
 const ProductionPlanBoard = () => {
+  const location = useLocation();
   const { showNotification } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const isProductionPlanRouteActive = location.pathname === '/production-plan';
   const [loading, setLoading] = useState(false);
   const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
@@ -1617,6 +1635,54 @@ const ProductionPlanBoard = () => {
     });
     return true;
   }, [activeOrgId]);
+  const refreshStyles = useCallback(async () => {
+    try {
+      const nextStyles = await fetchStylesFromApi({
+        orgId: activeOrgId,
+        forceRefresh: true,
+      }).catch(() => []);
+      setStyles(Array.isArray(nextStyles) ? nextStyles : []);
+      return true;
+    } catch (error) {
+      showNotification(
+        error?.message ||
+          '관련 스타일 정보를 다시 불러오지 못했습니다.',
+        'error'
+      );
+      return false;
+    }
+  }, [activeOrgId, showNotification]);
+  const shouldRefreshStyles = useCallback((detail) => {
+    const changedStyleIds = Array.isArray(detail?.styleIds)
+      ? detail.styleIds.map((styleId) => String(styleId || '').trim()).filter(Boolean)
+      : [];
+    if (changedStyleIds.length === 0) return true;
+
+    const currentStyleIdSet = new Set(
+      cards
+        .map((card) => String(card?.styleId || '').trim())
+        .filter(Boolean)
+    );
+    return changedStyleIds.some((styleId) => currentStyleIdSet.has(styleId));
+  }, [cards]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    isActive: isProductionPlanRouteActive,
+    isBlocked: loading || Boolean(savingAssignmentId),
+    onRefresh: refreshStyles,
+    shouldHandle: shouldRefreshStyles,
+  });
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    isActive: isProductionPlanRouteActive,
+    isBlocked: loading || Boolean(savingAssignmentId),
+    onRefresh: refreshBoardState,
+    shouldHandle: (detail) => detail?.source !== PRODUCTION_PLAN_SYNC_SOURCE,
+  });
 
   const persistBoardState = useCallback(
     async (nextAssignments, nextCards = cards) => {
@@ -1726,6 +1792,12 @@ const ProductionPlanBoard = () => {
           : assignmentsForSave;
         setCards(persistedCards);
         setAssignments(persistedAssignments);
+        emitWorkspaceDataChanged({
+          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+          orgId: activeOrgId,
+          assignmentIds: persistedAssignments.map((item) => item?.id),
+          source: PRODUCTION_PLAN_SYNC_SOURCE,
+        });
       } catch (error) {
         if (isAssignmentVersionConflictError(error)) {
           await refreshBoardState();
@@ -1783,6 +1855,12 @@ const ProductionPlanBoard = () => {
           };
         })
       );
+      emitWorkspaceDataChanged({
+        topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+        orgId: activeOrgId,
+        assignmentIds: [assignmentId],
+        source: PRODUCTION_PLAN_SYNC_SOURCE,
+      });
 
       const progressRows = await requestJSON(
         '/assignment-plan-progress' +
