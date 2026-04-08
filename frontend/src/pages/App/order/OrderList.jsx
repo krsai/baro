@@ -419,12 +419,20 @@ const resolveOrderSaveErrorMessage = (error, options = {}) => {
 const resolveOrderModificationLockToggleErrorMessage = (error, options = {}) => {
   const {
     lockChangeNotAllowedMessage = '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+    unlockReleaseRequiredMessage = '잠금을 해제하려면 관련 배정을 먼저 해제해야 합니다.',
+    unlockPastReleaseConfirmMessage = '배정 시작일이 지난 배정이 있어 추가 확인이 필요합니다.',
     modificationLockedMessage = ORDER_MODIFICATION_LOCK_MESSAGE,
     fallbackMessage = '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
   } = options;
   const message = String(error?.message || '').trim();
   if (message.includes('order modification lock cannot be changed')) {
     return lockChangeNotAllowedMessage;
+  }
+  if (message.includes('order unlock requires assignment release')) {
+    return unlockReleaseRequiredMessage;
+  }
+  if (message.includes('order unlock requires past assignment release confirmation')) {
+    return unlockPastReleaseConfirmMessage;
   }
   if (message.includes('order modification is locked')) {
     return modificationLockedMessage;
@@ -942,6 +950,30 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'You cannot change lock status here for orders with assignment contracts.'
             : '배정 계약이 있는 주문은 여기서 잠금 상태를 바꿀 수 없습니다.',
+      lockUnlockReleaseAssignmentsConfirm:
+        languageCode === 'vi'
+          ? 'Mo khoa don hang se huy cac phan cong lien quan va chuyen ve trang thai chua phan cong. Ban co tiep tuc khong?'
+          : languageCode === 'en'
+            ? 'Unlocking this order will unassign related assignment cards. Continue?'
+            : '주문 잠금을 해제하면 관련 배정 카드가 미배정으로 전환됩니다. 계속할까요?',
+      lockUnlockPastAssignmentsConfirm:
+        languageCode === 'vi'
+          ? 'Co {count} phan cong co ngay bat dau truoc hom nay ({date}). Ban co chac chan muon huy phan cong khong?'
+          : languageCode === 'en'
+            ? '{count} assignments started before today ({date}). Do you still want to unassign them?'
+            : '시작일이 오늘보다 이전인 배정이 {count}건 있습니다. ({date}) 그래도 배정을 해제할까요?',
+      lockReleaseSummaryInfo:
+        languageCode === 'vi'
+          ? 'Da huy {count} phan cong lien quan va mo khoa don hang.'
+          : languageCode === 'en'
+            ? 'Unassigned {count} related assignments and unlocked the order.'
+            : '관련 배정 {count}건을 해제하고 주문 잠금을 해제했습니다.',
+      lockReleaseSummaryWithDetachedInfo:
+        languageCode === 'vi'
+          ? 'Da huy {count} phan cong, tach lien ket {detached} ban ghi cong viec va mo khoa don hang.'
+          : languageCode === 'en'
+            ? 'Unassigned {count} assignments, detached {detached} work records, and unlocked the order.'
+            : '배정 {count}건을 해제하고 작업기록 {detached}건의 연결을 분리한 뒤 잠금을 해제했습니다.',
       lockEnabledSuccess:
         languageCode === 'vi'
           ? 'Da khoa sua don hang.'
@@ -1098,6 +1130,18 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'An error occurred while changing order lock status.'
             : '주문 잠금 상태를 변경하는 중 오류가 발생했습니다.',
+      lockUnlockReleaseRequired:
+        languageCode === 'vi'
+          ? 'De mo khoa, truoc tien hay huy cac phan cong lien quan.'
+          : languageCode === 'en'
+            ? 'To unlock this order, release related assignments first.'
+            : '잠금을 해제하려면 관련 배정을 먼저 해제해야 합니다.',
+      lockUnlockPastReleaseConfirmRequired:
+        languageCode === 'vi'
+          ? 'Co phan cong da bat dau truoc hom nay. Hay xac nhan them mot lan nua.'
+          : languageCode === 'en'
+            ? 'Some assignments started before today. One more confirmation is required.'
+            : '오늘보다 이전에 시작한 배정이 있어 한 번 더 확인이 필요합니다.',
       lockSaveErrorFallback:
         languageCode === 'vi'
           ? 'Da xay ra loi khi luu don hang.'
@@ -1783,6 +1827,11 @@ const OrderList = () => {
   const canToggleCurrentOrderModificationLock = Boolean(
     !isNewOrder && currentDetailOrder?.canToggleModificationLock
   );
+  const canUnlockCurrentOrderByReleasingAssignments = Boolean(
+    !isNewOrder &&
+      isCurrentOrderModificationLocked &&
+      isCurrentOrderAssignmentModificationLocked
+  );
   const currentOrderLockMetaText = useMemo(() => {
     if (!currentDetailOrder) return '';
     const parts = [
@@ -1847,7 +1896,8 @@ const OrderList = () => {
     isNewOrder ||
     isSavingOrder ||
     isTogglingModificationLock ||
-    !canToggleCurrentOrderModificationLock ||
+    (!canToggleCurrentOrderModificationLock &&
+      !canUnlockCurrentOrderByReleasingAssignments) ||
     (!isCurrentOrderManualModificationLocked && hasFormChanges);
   const handleAdd = () => {
     navigateToPath('/order/new', { label: orderPageText.newOrderTab });
@@ -1897,26 +1947,72 @@ const OrderList = () => {
       typeof nextLockedInput === 'boolean'
         ? nextLockedInput
         : !isCurrentOrderModificationLocked;
+    const shouldUnlock = !nextLocked;
 
     if (nextLocked && hasFormChanges) {
       showNotification(orderPageText.lockSaveFirstWarning, 'warning');
       return;
     }
-    if (!canToggleCurrentOrderModificationLock) {
+    const shouldReleaseAssignments =
+      shouldUnlock && isCurrentOrderAssignmentModificationLocked;
+    if (!canToggleCurrentOrderModificationLock && !shouldReleaseAssignments) {
       showNotification(orderPageText.lockChangeNotAllowed, 'warning');
+      return;
+    }
+    if (
+      shouldReleaseAssignments &&
+      !window.confirm(orderPageText.lockUnlockReleaseAssignmentsConfirm)
+    ) {
       return;
     }
 
     setIsTogglingModificationLock(true);
     try {
-      const updated = await toggleOrderModificationLockToApi(
-        currentDetailOrder.id,
-        {
-          locked: nextLocked,
-          lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
-        },
-        { orgId: activeOrgId }
-      );
+      const basePayload = {
+        locked: nextLocked,
+        lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
+        releaseAssignments: shouldReleaseAssignments,
+      };
+      let updated;
+      try {
+        updated = await toggleOrderModificationLockToApi(
+          currentDetailOrder.id,
+          {
+            ...basePayload,
+            confirmPastAssignmentRelease: false,
+          },
+          { orgId: activeOrgId }
+        );
+      } catch (error) {
+        const message = String(error?.message || '').trim();
+        if (
+          shouldReleaseAssignments &&
+          message.includes('order unlock requires past assignment release confirmation')
+        ) {
+          const meta =
+            error?.details && typeof error.details === 'object' && error.details.meta
+              ? error.details.meta
+              : null;
+          const pastStartedCount = Number(meta?.pastStartedAssignmentCount || 0);
+          const earliestPastStartDate = String(meta?.earliestPastStartDate || '').trim();
+          const confirmMessage = orderPageText.lockUnlockPastAssignmentsConfirm
+            .replace('{count}', String(pastStartedCount > 0 ? pastStartedCount : 1))
+            .replace('{date}', earliestPastStartDate || '-');
+          if (!window.confirm(confirmMessage)) {
+            return;
+          }
+          updated = await toggleOrderModificationLockToApi(
+            currentDetailOrder.id,
+            {
+              ...basePayload,
+              confirmPastAssignmentRelease: true,
+            },
+            { orgId: activeOrgId }
+          );
+        } else {
+          throw error;
+        }
+      }
       mergeOrderIntoState(updated);
       emitOrderModificationLockChanged({
         orgId: activeOrgId,
@@ -1927,10 +2023,31 @@ const OrderList = () => {
         nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
         'success'
       );
+      const releasedAssignmentCount = Number(
+        updated?.assignmentReleaseSummary?.releasedAssignmentCount || 0
+      );
+      const detachedWorkRecordCount = Number(
+        updated?.assignmentReleaseSummary?.detachedWorkRecordCount || 0
+      );
+      if (!nextLocked && releasedAssignmentCount > 0) {
+        const summaryMessage =
+          detachedWorkRecordCount > 0
+            ? orderPageText.lockReleaseSummaryWithDetachedInfo
+                .replace('{count}', String(releasedAssignmentCount))
+                .replace('{detached}', String(detachedWorkRecordCount))
+            : orderPageText.lockReleaseSummaryInfo.replace(
+                '{count}',
+                String(releasedAssignmentCount)
+              );
+        showNotification(summaryMessage, 'info');
+      }
     } catch (error) {
       showNotification(
         resolveOrderModificationLockToggleErrorMessage(error, {
           lockChangeNotAllowedMessage: orderPageText.lockChangeNotAllowed,
+          unlockReleaseRequiredMessage: orderPageText.lockUnlockReleaseRequired,
+          unlockPastReleaseConfirmMessage:
+            orderPageText.lockUnlockPastReleaseConfirmRequired,
           modificationLockedMessage: orderPageText.modificationLocked,
           fallbackMessage: orderPageText.lockToggleErrorFallback,
         }),

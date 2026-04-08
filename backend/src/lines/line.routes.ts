@@ -385,9 +385,20 @@ export const createLineRouter = ({
         await tx.lineAssignment.deleteMany({
           where: { lineId: { in: deletedLineIds } },
         });
-        await tx.assignmentPlan.deleteMany({
+        const planRows = await tx.assignmentPlan.findMany({
           where: { orgId: organization.id, lineId: { in: deletedLineIds } },
+          select: { id: true },
         });
+        const planIds = planRows.map((plan) => plan.id);
+        if (planIds.length > 0) {
+          await tx.workRecord.updateMany({
+            where: { assignmentPlanId: { in: planIds } },
+            data: { assignmentPlanId: null },
+          });
+          await tx.assignmentPlan.deleteMany({
+            where: { id: { in: planIds } },
+          });
+        }
         await tx.line.deleteMany({
           where: { orgId: organization.id, id: { in: deletedLineIds } },
         });
@@ -678,9 +689,20 @@ export const createLineRouter = ({
         where: { lineId: existing.id },
       });
 
-      await tx.assignmentPlan.deleteMany({
+      const planRows = await tx.assignmentPlan.findMany({
         where: { lineId: existing.id, orgId: organization.id },
+        select: { id: true },
       });
+      const planIds = planRows.map((plan) => plan.id);
+      if (planIds.length > 0) {
+        await tx.workRecord.updateMany({
+          where: { assignmentPlanId: { in: planIds } },
+          data: { assignmentPlanId: null },
+        });
+        await tx.assignmentPlan.deleteMany({
+          where: { id: { in: planIds } },
+        });
+      }
 
       await tx.line.delete({
         where: { id: existing.id },

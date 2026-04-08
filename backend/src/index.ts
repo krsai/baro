@@ -196,6 +196,10 @@ const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
 const ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR =
   "order modification lock cannot be changed";
+const ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR =
+  "order unlock requires assignment release";
+const ORDER_MODIFICATION_UNLOCK_PAST_ASSIGNMENT_CONFIRMATION_REQUIRED_ERROR =
+  "order unlock requires past assignment release confirmation";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["주문접수", "ORDER_RECEIVED"],
   ["접수", "ORDER_RECEIVED"],
@@ -6492,6 +6496,262 @@ const getOrderRelatedOrgIds = (order: any): number[] =>
         .filter((value): value is number => value !== null)
     )
   );
+const buildAssignmentPlanOrderMatchWhereOr = (
+  orderId: string
+): Prisma.AssignmentPlanWhereInput[] => {
+  const prefix = `${orderId}::`;
+  return [
+    { originOrderId: { startsWith: prefix } },
+    { cardId: { startsWith: prefix } },
+    { originOrderId: orderId },
+    { cardId: orderId },
+  ];
+};
+const resolveAssignmentStartDateKey = (assignment: any): string | null => {
+  const direct = normalizeDateKey(assignment?.startDateKey);
+  if (direct) return direct;
+  const snapshot = normalizeAssignmentCtSnapshot(assignment?.ctSnapshot);
+  return normalizeDateKey(snapshot?.schedule?.startDateKey);
+};
+const normalizePlanIdList = (planIds: any): number[] =>
+  Array.from(
+    new Set(
+      ensureArray(planIds)
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+const detachWorkRecordsAndDeleteAssignmentPlans = async ({
+  planIds,
+  db = prisma,
+}: {
+  planIds: any;
+  db?: any;
+}): Promise<{ detachedCount: number; deletedCount: number }> => {
+  const normalizedPlanIds = normalizePlanIdList(planIds);
+  if (normalizedPlanIds.length === 0) {
+    return { detachedCount: 0, deletedCount: 0 };
+  }
+  const detachedResult = await db.workRecord.updateMany({
+    where: { assignmentPlanId: { in: normalizedPlanIds } },
+    data: { assignmentPlanId: null },
+  });
+  const deletedResult = await db.assignmentPlan.deleteMany({
+    where: { id: { in: normalizedPlanIds } },
+  });
+  return {
+    detachedCount: toNonNegativeInt(detachedResult?.count, 0),
+    deletedCount: toNonNegativeInt(deletedResult?.count, 0),
+  };
+};
+const loadOrderAssignmentReleaseSummary = async ({
+  orderId,
+  orgIds,
+}: {
+  orderId: string;
+  orgIds: number[];
+}) => {
+  const normalizedOrderId = resolveOptionalString(orderId, null);
+  const normalizedOrgIds = Array.from(
+    new Set(
+      ensureArray(orgIds)
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  if (!normalizedOrderId || normalizedOrgIds.length === 0) {
+    return {
+      orderId: normalizedOrderId ?? "",
+      candidateAssignmentCount: 0,
+      candidatePlanCount: 0,
+      pastStartedAssignmentCount: 0,
+      earliestPastStartDate: null,
+      affectedOrgIds: [] as number[],
+    };
+  }
+
+  const todayKey = todayDateKey();
+  const planWhereOr = buildAssignmentPlanOrderMatchWhereOr(normalizedOrderId);
+  const rows = await Promise.all(
+    normalizedOrgIds.map(async (orgId) => {
+      const [state, planCount] = await Promise.all([
+        prisma.assignmentBoardState.findUnique({
+          where: { orgId },
+          select: { assignments: true },
+        }),
+        prisma.assignmentPlan.count({
+          where: {
+            orgId,
+            OR: planWhereOr,
+          },
+        }),
+      ]);
+      const matchingAssignments = normalizeStateAssignments(state?.assignments).filter(
+        (item) => resolveOrderIdFromAssignmentBoardItem(item) === normalizedOrderId
+      );
+      let pastStartedCount = 0;
+      let earliestPastStartDate: string | null = null;
+      matchingAssignments.forEach((assignment) => {
+        const startDateKey = resolveAssignmentStartDateKey(assignment);
+        if (!startDateKey || startDateKey >= todayKey) return;
+        pastStartedCount += 1;
+        if (!earliestPastStartDate || startDateKey < earliestPastStartDate) {
+          earliestPastStartDate = startDateKey;
+        }
+      });
+      return {
+        orgId,
+        assignmentCount: matchingAssignments.length,
+        planCount: toNonNegativeInt(planCount, 0),
+        pastStartedCount,
+        earliestPastStartDate,
+      };
+    })
+  );
+
+  let candidateAssignmentCount = 0;
+  let candidatePlanCount = 0;
+  let pastStartedAssignmentCount = 0;
+  let earliestPastStartDate: string | null = null;
+  const affectedOrgIds: number[] = [];
+  rows.forEach((row) => {
+    candidateAssignmentCount += row.assignmentCount;
+    candidatePlanCount += row.planCount;
+    pastStartedAssignmentCount += row.pastStartedCount;
+    const rowEarliestPastStartDate = resolveOptionalString(
+      row.earliestPastStartDate,
+      null
+    );
+    if (
+      rowEarliestPastStartDate &&
+      (!earliestPastStartDate || rowEarliestPastStartDate < earliestPastStartDate)
+    ) {
+      earliestPastStartDate = rowEarliestPastStartDate;
+    }
+    if (row.assignmentCount > 0 || row.planCount > 0) {
+      affectedOrgIds.push(row.orgId);
+    }
+  });
+
+  return {
+    orderId: normalizedOrderId,
+    candidateAssignmentCount,
+    candidatePlanCount,
+    pastStartedAssignmentCount,
+    earliestPastStartDate,
+    affectedOrgIds,
+  };
+};
+const releaseOrderAssignmentsForUnlock = async ({
+  orderId,
+  orgIds,
+}: {
+  orderId: string;
+  orgIds: number[];
+}) => {
+  const normalizedOrderId = resolveOptionalString(orderId, null);
+  const normalizedOrgIds = Array.from(
+    new Set(
+      ensureArray(orgIds)
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  if (!normalizedOrderId || normalizedOrgIds.length === 0) {
+    return {
+      orderId: normalizedOrderId ?? "",
+      releasedAssignmentCount: 0,
+      releasedPlanCount: 0,
+      detachedWorkRecordCount: 0,
+      affectedOrgIds: [] as number[],
+    };
+  }
+
+  const planWhereOr = buildAssignmentPlanOrderMatchWhereOr(normalizedOrderId);
+  let releasedAssignmentCount = 0;
+  let releasedPlanCount = 0;
+  let detachedWorkRecordCount = 0;
+  const affectedOrgIdSet = new Set<number>();
+
+  for (const orgId of normalizedOrgIds) {
+    const releasedForOrg = await prisma.$transaction(async (tx) => {
+      const state = await tx.assignmentBoardState.findUnique({
+        where: { orgId },
+        select: { id: true, assignments: true },
+      });
+      const currentAssignments = normalizeStateAssignments(state?.assignments);
+      const releasedAssignments = currentAssignments.filter(
+        (item) => resolveOrderIdFromAssignmentBoardItem(item) === normalizedOrderId
+      );
+      const releasedAssignmentCountForOrg = releasedAssignments.length;
+      const nextAssignments =
+        releasedAssignmentCountForOrg > 0
+          ? currentAssignments.filter(
+              (item) => resolveOrderIdFromAssignmentBoardItem(item) !== normalizedOrderId
+            )
+          : currentAssignments;
+
+      if (state && releasedAssignmentCountForOrg > 0) {
+        await tx.assignmentBoardState.update({
+          where: { id: state.id },
+          data: { assignments: nextAssignments },
+        });
+      }
+
+      const releasedExternalIds = Array.from(
+        new Set(
+          releasedAssignments
+            .map((item) => resolveAssignmentExternalId(item))
+            .filter((value): value is string => Boolean(value))
+        )
+      );
+      const lookupWhereOr: Prisma.AssignmentPlanWhereInput[] = [...planWhereOr];
+      if (releasedExternalIds.length > 0) {
+        lookupWhereOr.push({ externalId: { in: releasedExternalIds } });
+      }
+      const planRows = await tx.assignmentPlan.findMany({
+        where: {
+          orgId,
+          OR: lookupWhereOr,
+        },
+        select: { id: true },
+      });
+      const releaseResult = await detachWorkRecordsAndDeleteAssignmentPlans({
+        planIds: planRows.map((plan) => plan.id),
+        db: tx,
+      });
+      return {
+        releasedAssignmentCountForOrg,
+        releasedPlanCountForOrg: releaseResult.deletedCount,
+        detachedWorkRecordCountForOrg: releaseResult.detachedCount,
+      };
+    });
+
+    releasedAssignmentCount += releasedForOrg.releasedAssignmentCountForOrg;
+    releasedPlanCount += releasedForOrg.releasedPlanCountForOrg;
+    detachedWorkRecordCount += releasedForOrg.detachedWorkRecordCountForOrg;
+    if (
+      releasedForOrg.releasedAssignmentCountForOrg > 0 ||
+      releasedForOrg.releasedPlanCountForOrg > 0 ||
+      releasedForOrg.detachedWorkRecordCountForOrg > 0
+    ) {
+      affectedOrgIdSet.add(orgId);
+      await syncOrderProgressStatusesForOrg({
+        orgId,
+        orderIds: [normalizedOrderId],
+        includeTerminalStages: true,
+      });
+    }
+  }
+
+  return {
+    orderId: normalizedOrderId,
+    releasedAssignmentCount,
+    releasedPlanCount,
+    detachedWorkRecordCount,
+    affectedOrgIds: Array.from(affectedOrgIdSet.values()),
+  };
+};
 const buildOrderModificationLockState = ({
   order,
   isAssignmentLocked = false,
@@ -10814,8 +11074,12 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
   // 해당 assignment의 plan 레코드 제거
   const externalId = resolveAssignmentExternalId(targetAssignment);
   if (externalId) {
-    await prisma.assignmentPlan.deleteMany({
+    const planRows = await prisma.assignmentPlan.findMany({
       where: { orgId: organization.id, externalId },
+      select: { id: true },
+    });
+    await detachWorkRecordsAndDeleteAssignmentPlans({
+      planIds: planRows.map((plan) => plan.id),
     });
   }
   await syncOrderProgressStatusesForOrg({
@@ -10850,7 +11114,14 @@ app.delete("/assignment-board-state", async (req, res) => {
       });
     }
     await tx.assignmentCard.deleteMany({ where: { orgId: organization.id } });
-    await tx.assignmentPlan.deleteMany({ where: { orgId: organization.id } });
+    const planRows = await tx.assignmentPlan.findMany({
+      where: { orgId: organization.id },
+      select: { id: true },
+    });
+    await detachWorkRecordsAndDeleteAssignmentPlans({
+      planIds: planRows.map((plan) => plan.id),
+      db: tx,
+    });
   });
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
@@ -11088,23 +11359,9 @@ app.put("/assignment-board-state", async (req, res) => {
       removedExternalIdSet.has(plan.externalId)
     );
     if (removedPlanRows.length > 0) {
-      const removedPlanIds = removedPlanRows.map((plan) => plan.id);
-      const linkedRows = await prisma.workRecord.findMany({
-        where: { assignmentPlanId: { in: removedPlanIds } },
-        select: { assignmentPlanId: true },
-        distinct: ["assignmentPlanId"],
+      await detachWorkRecordsAndDeleteAssignmentPlans({
+        planIds: removedPlanRows.map((plan) => plan.id),
       });
-      const linkedPlanIdSet = new Set(
-        linkedRows.map((row) => Number(row.assignmentPlanId))
-      );
-      const deletablePlanIds = removedPlanIds.filter(
-        (planId) => !linkedPlanIdSet.has(planId)
-      );
-      if (deletablePlanIds.length > 0) {
-        await prisma.assignmentPlan.deleteMany({
-          where: { id: { in: deletablePlanIds } },
-        });
-      }
     }
   }
   if (changedPlanTargetAssignments.length > 0) {
@@ -11425,18 +11682,65 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
   }
 
   const currentLockState = await getOrderModificationLockState(existing);
-  if (!currentLockState.canToggle) {
+  const requestedLocked = Boolean(req.body.locked);
+  const shouldUnlock = !requestedLocked;
+  const releaseAssignmentsRequested = Boolean(req.body?.releaseAssignments);
+  const pastAssignmentReleaseConfirmed = Boolean(
+    req.body?.confirmPastAssignmentRelease
+  );
+  const relatedOrgIds = getOrderRelatedOrgIds(existing);
+  let assignmentReleaseSummary: {
+    orderId: string;
+    releasedAssignmentCount: number;
+    releasedPlanCount: number;
+    detachedWorkRecordCount: number;
+    affectedOrgIds: number[];
+  } | null = null;
+
+  if (shouldUnlock && currentLockState.isAssignmentLocked) {
+    const releaseSummary = await loadOrderAssignmentReleaseSummary({
+      orderId: existing.orderId,
+      orgIds: relatedOrgIds,
+    });
+    if (!releaseAssignmentsRequested) {
+      return res.status(409).json({
+        ok: false,
+        error: ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR,
+        meta: releaseSummary,
+      });
+    }
+    if (
+      releaseSummary.pastStartedAssignmentCount > 0 &&
+      !pastAssignmentReleaseConfirmed
+    ) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          ORDER_MODIFICATION_UNLOCK_PAST_ASSIGNMENT_CONFIRMATION_REQUIRED_ERROR,
+        meta: releaseSummary,
+      });
+    }
+    assignmentReleaseSummary = await releaseOrderAssignmentsForUnlock({
+      orderId: existing.orderId,
+      orgIds: relatedOrgIds,
+    });
+  }
+
+  if (requestedLocked && !currentLockState.canToggle) {
     return res.status(409).json({
       ok: false,
       error: ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR,
     });
   }
 
-  const requestedLocked = Boolean(req.body.locked);
-  if (requestedLocked === currentLockState.isManualLocked) {
+  if (
+    requestedLocked === currentLockState.isManualLocked &&
+    assignmentReleaseSummary === null
+  ) {
+    const refreshedLockState = await getOrderModificationLockState(existing);
     return res.json(
       toOrderResponse(existing, {
-        isAssignmentModificationLocked: currentLockState.isAssignmentLocked,
+        isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
       })
     );
   }
@@ -11445,36 +11749,52 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     resolveOptionalString(req.body?.lockedBy, null) ??
     getRequesterEmail(req) ??
     "unknown";
-  const updated = await prisma.workOrder.update({
-    where: { id: existing.id },
-    data: requestedLocked
-      ? {
-          modificationLockedAt: new Date(),
-          modificationLockedBy: lockedBy,
-          status: "ORDER_RECEIVED",
-        }
-      : {
-          modificationLockedAt: null,
-          modificationLockedBy: null,
-          status: "ORDER_RECEIVED",
-        },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
-  });
-  await syncOrderProgressStatusesForOrg({
-    orgId: organization.id,
-    orderIds: [updated.orderId],
-    includeTerminalStages: true,
-  });
-  const refreshed = await prisma.workOrder.findUnique({
-    where: { id: updated.id },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
-  });
+  let orderForResponse = existing;
+  if (requestedLocked !== currentLockState.isManualLocked) {
+    const updated = await prisma.workOrder.update({
+      where: { id: existing.id },
+      data: requestedLocked
+        ? {
+            modificationLockedAt: new Date(),
+            modificationLockedBy: lockedBy,
+            status: "ORDER_RECEIVED",
+          }
+        : {
+            modificationLockedAt: null,
+            modificationLockedBy: null,
+            status: "ORDER_RECEIVED",
+          },
+      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    });
+    await syncOrderProgressStatusesForOrg({
+      orgId: organization.id,
+      orderIds: [updated.orderId],
+      includeTerminalStages: true,
+    });
+    const refreshed = await prisma.workOrder.findUnique({
+      where: { id: updated.id },
+      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    });
+    orderForResponse = refreshed ?? updated;
+  } else {
+    const refreshed = await prisma.workOrder.findUnique({
+      where: { id: existing.id },
+      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+    });
+    orderForResponse = refreshed ?? existing;
+  }
 
-  res.json(
-    toOrderResponse(refreshed ?? updated, {
-      isAssignmentModificationLocked: currentLockState.isAssignmentLocked,
-    })
-  );
+  const refreshedLockState = await getOrderModificationLockState(orderForResponse);
+  const responsePayload = toOrderResponse(orderForResponse, {
+    isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
+  });
+  if (assignmentReleaseSummary) {
+    return res.json({
+      ...responsePayload,
+      assignmentReleaseSummary,
+    });
+  }
+  return res.json(responsePayload);
 });
 
 app.delete("/orders/:orderId", async (req, res) => {

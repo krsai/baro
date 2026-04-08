@@ -248,13 +248,27 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
         let deletedAssignmentPlans = 0;
         if (lineIds.length > 0) {
-          const result = await tx.assignmentPlan.deleteMany({
+          const planRows = await tx.assignmentPlan.findMany({
             where: {
               orgId: organization.id,
               lineId: { in: lineIds },
             },
+            select: { id: true },
           });
-          deletedAssignmentPlans = result.count;
+          const planIds = planRows.map((plan) => plan.id);
+          if (planIds.length > 0) {
+            await tx.workRecord.updateMany({
+              where: { assignmentPlanId: { in: planIds } },
+              data: { assignmentPlanId: null },
+            });
+          }
+          const result =
+            planIds.length > 0
+              ? await tx.assignmentPlan.deleteMany({
+                  where: { id: { in: planIds } },
+                })
+              : { count: 0 };
+          deletedAssignmentPlans = Number(result?.count || 0);
         }
 
         let deletedLineAssignments = 0;

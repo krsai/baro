@@ -35,7 +35,12 @@ export const deleteOrder = async (orderId, { orgId = null } = {}) => {
 
 export const toggleOrderModificationLock = async (
   orderId,
-  { locked, lockedBy = '' } = {},
+  {
+    locked,
+    lockedBy = '',
+    releaseAssignments = false,
+    confirmPastAssignmentRelease = false,
+  } = {},
   { orgId = null } = {}
 ) => {
   const query = buildQueryString({ orgId });
@@ -45,6 +50,8 @@ export const toggleOrderModificationLock = async (
     body: JSON.stringify({
       locked: Boolean(locked),
       lockedBy,
+      releaseAssignments: Boolean(releaseAssignments),
+      confirmPastAssignmentRelease: Boolean(confirmPastAssignmentRelease),
     }),
   });
 };
