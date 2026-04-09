@@ -3297,84 +3297,59 @@ const AssignBoard = () => {
     return next;
   };
 
-  const extendDays = (extra = 20) => {
-    return ensureDaysLength(days.length + extra);
+  const AUTO_EXTEND_STEP_DAYS = 14;
+  const AUTO_EXTEND_MAX_DAYS = 730;
+  const getNextAutoExtendLength = (currentLength) => {
+    const safeLength = Math.max(1, toNonNegativeInt(currentLength, 0));
+    if (safeLength >= AUTO_EXTEND_MAX_DAYS) return null;
+    return Math.min(AUTO_EXTEND_MAX_DAYS, safeLength + AUTO_EXTEND_STEP_DAYS);
   };
 
   const tryPlanAssignment = (params) => {
-    let planned = planAssignment({
-      ...params,
-      totalDays: days.length,
-      days,
-      lineCapacityById,
-    });
-    if (!planned) {
-      const extended = extendDays(10);
-      planned = planAssignment({
+    let candidateDays = days;
+    while (true) {
+      const planResult = planAssignmentDetailed({
         ...params,
-        totalDays: extended.length,
-        days: extended,
+        totalDays: candidateDays.length,
+        days: candidateDays,
         lineCapacityById,
       });
+      if (planResult?.planned) return planResult.planned;
+      if (!planResult?.needsMoreDays) return null;
+
+      const nextLength = getNextAutoExtendLength(candidateDays.length);
+      if (!nextLength) return null;
+      candidateDays = ensureDaysLength(nextLength);
     }
-    return planned;
+  };
+
+  const runRebuildWithAutoExtend = (builder, params) => {
+    let candidateDays = days;
+    while (true) {
+      const result = builder({
+        ...params,
+        totalDays: candidateDays.length,
+        days: candidateDays,
+        lineCapacityById,
+      });
+      if (result) return result;
+
+      const nextLength = getNextAutoExtendLength(candidateDays.length);
+      if (!nextLength) return null;
+      candidateDays = ensureDaysLength(nextLength);
+    }
   };
 
   const tryRebuildLineWithInsert = (params) => {
-    let result = rebuildLineWithInsert({
-      ...params,
-      totalDays: days.length,
-      days,
-      lineCapacityById,
-    });
-    if (!result) {
-      const extended = extendDays(10);
-      result = rebuildLineWithInsert({
-        ...params,
-        totalDays: extended.length,
-        days: extended,
-        lineCapacityById,
-      });
-    }
-    return result;
+    return runRebuildWithAutoExtend(rebuildLineWithInsert, params);
   };
 
   const tryRebuildLineWithChain = (params) => {
-    let result = rebuildLineWithChain({
-      ...params,
-      totalDays: days.length,
-      days,
-      lineCapacityById,
-    });
-    if (!result) {
-      const extended = extendDays(10);
-      result = rebuildLineWithChain({
-        ...params,
-        totalDays: extended.length,
-        days: extended,
-        lineCapacityById,
-      });
-    }
-    return result;
+    return runRebuildWithAutoExtend(rebuildLineWithChain, params);
   };
 
   const tryRebuildLineWithReplace = (params) => {
-    let result = rebuildLineWithReplace({
-      ...params,
-      totalDays: days.length,
-      days,
-      lineCapacityById,
-    });
-    if (!result) {
-      const extended = extendDays(10);
-      result = rebuildLineWithReplace({
-        ...params,
-        totalDays: extended.length,
-        days: extended,
-        lineCapacityById,
-      });
-    }
-    return result;
+    return runRebuildWithAutoExtend(rebuildLineWithReplace, params);
   };
   const assignedCardIds = useMemo(() => {
     return new Set(assignments.map((item) => item.cardId).filter(Boolean));

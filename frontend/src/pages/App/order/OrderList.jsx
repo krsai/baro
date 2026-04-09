@@ -23,6 +23,7 @@ import {
   Stack,
   CircularProgress,
   Tooltip,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -115,12 +116,13 @@ const GENDER_OPTION_LABELS = {
 const ORDER_LIST_COLUMN_WIDTHS = {
   progress: '8%',
   orderNumber: '10%',
-  buyer: '16%',
-  seller: '16%',
-  style: '26%',
+  buyer: '15%',
+  seller: '15%',
+  style: '24%',
   totalQuantity: '10%',
   dueDate: '10%',
-  actions: '4%',
+  lock: '5%',
+  actions: '3%',
 };
 const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   whiteSpace: 'nowrap',
@@ -986,6 +988,12 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Order edit lock disabled.'
             : '주문 수정 잠금이 해제되었습니다.',
+      lockColumn:
+        languageCode === 'vi'
+          ? 'Khoa'
+          : languageCode === 'en'
+            ? 'Lock'
+            : '잠금',
       deleteTargetOrder:
         languageCode === 'vi'
           ? 'Don'
@@ -1308,6 +1316,9 @@ const OrderList = () => {
   useEffect(() => {
     if (isDetailMode) return undefined;
     return subscribeOrderModificationLockChanged((detail) => {
+      if (String(detail?.source || '').trim() === orderLockEventSourceRef.current) {
+        return;
+      }
       const eventOrgId = Number(detail?.orgId);
       const currentOrgId = Number(activeOrgId);
       if (
@@ -1767,6 +1778,7 @@ const OrderList = () => {
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
+  const orderLockEventSourceRef = useRef(createId('order-lock'));
   const mergeOrderIntoState = useCallback((nextOrder) => {
     if (!nextOrder?.id) return;
     setOrders((prev) => {
@@ -1941,121 +1953,147 @@ const OrderList = () => {
     });
   };
 
+  const performOrderLockToggle = useCallback(
+    async ({ targetOrder, nextLocked, enforceDraftSaved = false }) => {
+      if (!targetOrder?.id) return;
+      const shouldUnlock = !nextLocked;
+
+      if (nextLocked && enforceDraftSaved && hasFormChanges) {
+        showNotification(orderPageText.lockSaveFirstWarning, 'warning');
+        return;
+      }
+
+      const isTargetLocked = Boolean(targetOrder?.isModificationLocked);
+      const isTargetAssignmentLocked = Boolean(targetOrder?.isAssignmentModificationLocked);
+      const canToggleTarget = Boolean(targetOrder?.canToggleModificationLock);
+      const shouldReleaseAssignments = shouldUnlock && isTargetLocked && isTargetAssignmentLocked;
+
+      if (!canToggleTarget && !shouldReleaseAssignments) {
+        showNotification(orderPageText.lockChangeNotAllowed, 'warning');
+        return;
+      }
+      if (
+        shouldReleaseAssignments &&
+        !window.confirm(orderPageText.lockUnlockReleaseAssignmentsConfirm)
+      ) {
+        return;
+      }
+
+      setIsTogglingModificationLock(true);
+      try {
+        const basePayload = {
+          locked: nextLocked,
+          lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
+          releaseAssignments: shouldReleaseAssignments,
+        };
+        let updated;
+        try {
+          updated = await toggleOrderModificationLockToApi(
+            targetOrder.id,
+            {
+              ...basePayload,
+              confirmPastAssignmentRelease: false,
+            },
+            { orgId: activeOrgId }
+          );
+        } catch (error) {
+          const message = String(error?.message || '').trim();
+          if (
+            shouldReleaseAssignments &&
+            message.includes('order unlock requires past assignment release confirmation')
+          ) {
+            const meta =
+              error?.details && typeof error.details === 'object' && error.details.meta
+                ? error.details.meta
+                : null;
+            const pastStartedCount = Number(meta?.pastStartedAssignmentCount || 0);
+            const earliestPastStartDate = String(meta?.earliestPastStartDate || '').trim();
+            const confirmMessage = orderPageText.lockUnlockPastAssignmentsConfirm
+              .replace('{count}', String(pastStartedCount > 0 ? pastStartedCount : 1))
+              .replace('{date}', earliestPastStartDate || '-');
+            if (!window.confirm(confirmMessage)) {
+              return;
+            }
+            updated = await toggleOrderModificationLockToApi(
+              targetOrder.id,
+              {
+                ...basePayload,
+                confirmPastAssignmentRelease: true,
+              },
+              { orgId: activeOrgId }
+            );
+          } else {
+            throw error;
+          }
+        }
+        mergeOrderIntoState(updated);
+        emitOrderModificationLockChanged({
+          orgId: activeOrgId,
+          orderId: updated?.id || targetOrder.id,
+          locked: nextLocked,
+          source: orderLockEventSourceRef.current,
+        });
+        showNotification(
+          nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
+          'success'
+        );
+        const releasedAssignmentCount = Number(
+          updated?.assignmentReleaseSummary?.releasedAssignmentCount || 0
+        );
+        const detachedWorkRecordCount = Number(
+          updated?.assignmentReleaseSummary?.detachedWorkRecordCount || 0
+        );
+        if (!nextLocked && releasedAssignmentCount > 0) {
+          const summaryMessage =
+            detachedWorkRecordCount > 0
+              ? orderPageText.lockReleaseSummaryWithDetachedInfo
+                  .replace('{count}', String(releasedAssignmentCount))
+                  .replace('{detached}', String(detachedWorkRecordCount))
+              : orderPageText.lockReleaseSummaryInfo.replace(
+                  '{count}',
+                  String(releasedAssignmentCount)
+                );
+          showNotification(summaryMessage, 'info');
+        }
+      } catch (error) {
+        showNotification(
+          resolveOrderModificationLockToggleErrorMessage(error, {
+            lockChangeNotAllowedMessage: orderPageText.lockChangeNotAllowed,
+            unlockReleaseRequiredMessage: orderPageText.lockUnlockReleaseRequired,
+            unlockPastReleaseConfirmMessage:
+              orderPageText.lockUnlockPastReleaseConfirmRequired,
+            modificationLockedMessage: orderPageText.modificationLocked,
+            fallbackMessage: orderPageText.lockToggleErrorFallback,
+          }),
+          'error'
+        );
+      } finally {
+        setIsTogglingModificationLock(false);
+      }
+    },
+    [activeOrgId, activeProfile?.email, activeProfile?.name, hasFormChanges, mergeOrderIntoState, orderPageText, showNotification]
+  );
+
   const handleModificationLockToggle = async (nextLockedInput = null) => {
     if (isNewOrder || !currentDetailOrder?.id) return;
     const nextLocked =
       typeof nextLockedInput === 'boolean'
         ? nextLockedInput
         : !isCurrentOrderModificationLocked;
-    const shouldUnlock = !nextLocked;
+    await performOrderLockToggle({
+      targetOrder: currentDetailOrder,
+      nextLocked,
+      enforceDraftSaved: true,
+    });
+  };
 
-    if (nextLocked && hasFormChanges) {
-      showNotification(orderPageText.lockSaveFirstWarning, 'warning');
-      return;
-    }
-    const shouldReleaseAssignments =
-      shouldUnlock && isCurrentOrderAssignmentModificationLocked;
-    if (!canToggleCurrentOrderModificationLock && !shouldReleaseAssignments) {
-      showNotification(orderPageText.lockChangeNotAllowed, 'warning');
-      return;
-    }
-    if (
-      shouldReleaseAssignments &&
-      !window.confirm(orderPageText.lockUnlockReleaseAssignmentsConfirm)
-    ) {
-      return;
-    }
-
-    setIsTogglingModificationLock(true);
-    try {
-      const basePayload = {
-        locked: nextLocked,
-        lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
-        releaseAssignments: shouldReleaseAssignments,
-      };
-      let updated;
-      try {
-        updated = await toggleOrderModificationLockToApi(
-          currentDetailOrder.id,
-          {
-            ...basePayload,
-            confirmPastAssignmentRelease: false,
-          },
-          { orgId: activeOrgId }
-        );
-      } catch (error) {
-        const message = String(error?.message || '').trim();
-        if (
-          shouldReleaseAssignments &&
-          message.includes('order unlock requires past assignment release confirmation')
-        ) {
-          const meta =
-            error?.details && typeof error.details === 'object' && error.details.meta
-              ? error.details.meta
-              : null;
-          const pastStartedCount = Number(meta?.pastStartedAssignmentCount || 0);
-          const earliestPastStartDate = String(meta?.earliestPastStartDate || '').trim();
-          const confirmMessage = orderPageText.lockUnlockPastAssignmentsConfirm
-            .replace('{count}', String(pastStartedCount > 0 ? pastStartedCount : 1))
-            .replace('{date}', earliestPastStartDate || '-');
-          if (!window.confirm(confirmMessage)) {
-            return;
-          }
-          updated = await toggleOrderModificationLockToApi(
-            currentDetailOrder.id,
-            {
-              ...basePayload,
-              confirmPastAssignmentRelease: true,
-            },
-            { orgId: activeOrgId }
-          );
-        } else {
-          throw error;
-        }
-      }
-      mergeOrderIntoState(updated);
-      emitOrderModificationLockChanged({
-        orgId: activeOrgId,
-        orderId: updated?.id || currentDetailOrder.id,
-        locked: nextLocked,
-      });
-      showNotification(
-        nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
-        'success'
-      );
-      const releasedAssignmentCount = Number(
-        updated?.assignmentReleaseSummary?.releasedAssignmentCount || 0
-      );
-      const detachedWorkRecordCount = Number(
-        updated?.assignmentReleaseSummary?.detachedWorkRecordCount || 0
-      );
-      if (!nextLocked && releasedAssignmentCount > 0) {
-        const summaryMessage =
-          detachedWorkRecordCount > 0
-            ? orderPageText.lockReleaseSummaryWithDetachedInfo
-                .replace('{count}', String(releasedAssignmentCount))
-                .replace('{detached}', String(detachedWorkRecordCount))
-            : orderPageText.lockReleaseSummaryInfo.replace(
-                '{count}',
-                String(releasedAssignmentCount)
-              );
-        showNotification(summaryMessage, 'info');
-      }
-    } catch (error) {
-      showNotification(
-        resolveOrderModificationLockToggleErrorMessage(error, {
-          lockChangeNotAllowedMessage: orderPageText.lockChangeNotAllowed,
-          unlockReleaseRequiredMessage: orderPageText.lockUnlockReleaseRequired,
-          unlockPastReleaseConfirmMessage:
-            orderPageText.lockUnlockPastReleaseConfirmRequired,
-          modificationLockedMessage: orderPageText.modificationLocked,
-          fallbackMessage: orderPageText.lockToggleErrorFallback,
-        }),
-        'error'
-      );
-    } finally {
-      setIsTogglingModificationLock(false);
-    }
+  const handleListModificationLockToggle = async (order, nextLocked) => {
+    if (!order?.id) return;
+    await performOrderLockToggle({
+      targetOrder: order,
+      nextLocked: Boolean(nextLocked),
+      enforceDraftSaved: false,
+    });
   };
 
   const handleDeleteOrder = async (order) => {
@@ -2823,6 +2861,15 @@ const OrderList = () => {
                   <TableCell
                     sx={{
                       fontWeight: 'bold',
+                      width: ORDER_LIST_COLUMN_WIDTHS.lock,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {orderPageText.lockColumn}
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 'bold',
                       width: ORDER_LIST_COLUMN_WIDTHS.actions,
                       textAlign: 'center',
                     }}
@@ -2833,12 +2880,19 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={8} message={orderPageText.loadingOrders} />
+                  <TableStatusRow colSpan={9} message={orderPageText.loadingOrders} />
                 ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={8} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={9} message={orderPageText.emptyOrders} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked;
+                    const canUnlockByReleasingAssignments = Boolean(
+                      order?.isModificationLocked && order?.isAssignmentModificationLocked
+                    );
+                    const listLockToggleDisabled =
+                      isTogglingModificationLock ||
+                      (!order?.canToggleModificationLock &&
+                        !canUnlockByReleasingAssignments);
                     const progressStageLabel = getOrderProgressStageLabel(
                       order.status,
                       ORDER_STATUS_TEXT.noneLabel,
@@ -2871,6 +2925,23 @@ const OrderList = () => {
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
                           {order.dueDate || '-'}
+                        </TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <Switch
+                            size="small"
+                            checked={Boolean(order?.isModificationLocked)}
+                            disabled={listLockToggleDisabled}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                            onChange={(event, checked) => {
+                              event.stopPropagation();
+                              handleListModificationLockToggle(order, checked);
+                            }}
+                            inputProps={{
+                              'aria-label': `${orderPageText.lockColumn} ${order.orderNumber || ''}`.trim(),
+                            }}
+                          />
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton

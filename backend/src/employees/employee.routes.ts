@@ -10,7 +10,6 @@ import {
 import { resolveOptionalString } from "../utils/common";
 
 type EmployeeRoutesDeps = {
-  ensureDefaultEmployeeRoles: (orgId: number) => Promise<any>;
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
   resolveDefaultEmployeeRoleId: (orgId: number) => Promise<number | null>;
   resolveEmployeeStoredPayType: (args: {
@@ -35,6 +34,32 @@ const toFixedSalaryOrNull = (
     return { ok: false };
   }
   return { ok: true, value: Math.round(parsed) };
+};
+const toOptionalDateOrNull = (
+  value: unknown
+):
+  | { ok: true; hasInput: false; value: null }
+  | { ok: true; hasInput: true; value: Date | null }
+  | { ok: false } => {
+  if (value === undefined) {
+    return { ok: true, hasInput: false, value: null };
+  }
+  if (value === null || value === "") {
+    return { ok: true, hasInput: true, value: null };
+  }
+
+  const normalizedText = String(value).trim();
+  if (!normalizedText) {
+    return { ok: true, hasInput: true, value: null };
+  }
+
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedText)
+    ? new Date(`${normalizedText}T00:00:00.000Z`)
+    : new Date(normalizedText);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return { ok: false };
+  }
+  return { ok: true, hasInput: true, value: parsedDate };
 };
 
 const toEmployeeResponse = (employee: any) => ({
@@ -64,7 +89,6 @@ const toEmployeeResponse = (employee: any) => ({
 });
 
 export const createEmployeeRouter = ({
-  ensureDefaultEmployeeRoles,
   isManufacturerOrg,
   resolveDefaultEmployeeRoleId,
   resolveEmployeeStoredPayType,
@@ -151,7 +175,6 @@ export const createEmployeeRouter = ({
       ...(Number.isFinite(factoryId) ? { factoryId } : {}),
       ...(membershipRole ? { membership: { role: membershipRole as any } } : {}),
     };
-    await ensureDefaultEmployeeRoles(organization.id);
     const employees = await prisma.employee.findMany({
       where,
       include: {
@@ -173,6 +196,8 @@ export const createEmployeeRouter = ({
       name,
       bankName,
       bankAccountNumber,
+      joinedAt,
+      leftAt,
     } = req.body ?? {};
     const orgMembershipIdNum = Number(orgMembershipId);
 
@@ -192,8 +217,6 @@ export const createEmployeeRouter = ({
     if (membership.status === "PENDING" || membership.status === "REJECTED") {
       return res.status(400).json({ ok: false, error: "membership is not editable yet" });
     }
-
-    await ensureDefaultEmployeeRoles(membership.orgId);
 
     let factoryIdNum = null;
     if (factoryId !== "" && factoryId !== null && factoryId !== undefined) {
@@ -250,6 +273,14 @@ export const createEmployeeRouter = ({
       return res.status(400).json({ ok: false, error: "invalid fixedSalary" });
     }
     const hasFixedSalaryInput = fixedSalary !== undefined;
+    const joinedAtParseResult = toOptionalDateOrNull(joinedAt);
+    if (!joinedAtParseResult.ok) {
+      return res.status(400).json({ ok: false, error: "invalid joinedAt" });
+    }
+    const leftAtParseResult = toOptionalDateOrNull(leftAt);
+    if (!leftAtParseResult.ok) {
+      return res.status(400).json({ ok: false, error: "invalid leftAt" });
+    }
 
     const existingEmployee = await prisma.employee.findUnique({
       where: { orgMembershipId: membership.id },
@@ -278,7 +309,7 @@ export const createEmployeeRouter = ({
           : existingEmployee?.fixedSalary ?? null
         : null;
 
-    const data = {
+    const data: any = {
       orgId: membership.orgId,
       orgMembershipId: membership.id,
       factoryId: resolvedFactoryId,
@@ -292,6 +323,8 @@ export const createEmployeeRouter = ({
         existingEmployee?.bankAccountNumber ?? null
       ),
       position: resolveOptionalString(position, existingEmployee?.position ?? null),
+      ...(joinedAtParseResult.hasInput ? { joinedAt: joinedAtParseResult.value } : {}),
+      ...(leftAtParseResult.hasInput ? { leftAt: leftAtParseResult.value } : {}),
     };
 
     const employee = await prisma.employee.upsert({

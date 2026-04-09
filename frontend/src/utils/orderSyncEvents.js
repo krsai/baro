@@ -10,6 +10,7 @@ export const emitOrderModificationLockChanged = ({
   orgId = null,
   orderId = '',
   locked = false,
+  source = '',
 } = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
     return;
@@ -23,6 +24,7 @@ export const emitOrderModificationLockChanged = ({
         orgId: toPositiveIntOrNull(orgId),
         orderId: normalizedOrderId,
         locked: Boolean(locked),
+        source: String(source || '').trim(),
         at: Date.now(),
       },
     })

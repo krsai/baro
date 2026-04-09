@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Drawer,
   MenuItem,
   Paper,
   Table,
@@ -14,7 +15,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -22,6 +22,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeOptions } from '../../../constants/payType';
+import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchAttributes } from '../../../utils/attributeApi';
 
@@ -39,6 +40,7 @@ const ORG_ROLE_OPTIONS = [
 ];
 
 const WORKER_JOB_ROLE_CODES = new Set([
+  'WORKER_SUPERVISOR',
   'WORKER_CUTTING',
   'WORKER_SEWING',
   'WORKER_IRONING',
@@ -51,17 +53,55 @@ const ORG_ROLE_LABELS = ORG_ROLE_OPTIONS.reduce((map, option) => {
   map[option.value] = option.label;
   return map;
 }, {});
+const ORG_ROLE_SORT_ORDER = {
+  ADMIN: 1,
+  OPERATOR: 2,
+  ACCOUNTANT: 3,
+  WORKER: 4,
+};
 
 const getRoleOptionsByOrgType = (orgType) =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? ORG_ROLE_OPTIONS.filter((option) => option.value !== 'WORKER')
     : ORG_ROLE_OPTIONS;
+const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR']);
+const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
+const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
+const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
+const resolveDefaultInviteRole = (roleOptions = []) => {
+  const workerOption = roleOptions.find((option) => option.value === 'WORKER');
+  if (workerOption?.value) return workerOption.value;
+  const firstOption = roleOptions[0];
+  if (firstOption?.value) return firstOption.value;
+  return 'WORKER';
+};
+const isInternalMemberEmail = (value) => {
+  const normalized = normalizeEmail(value);
+  return normalized.startsWith(INTERNAL_MEMBER_EMAIL_PREFIX)
+    && normalized.endsWith(`@${INTERNAL_MEMBER_EMAIL_DOMAIN}`);
+};
+const getMemberUniqueCode = (memberId, orgId) => {
+  const orgText = String(Math.max(0, Number(orgId) || 0)).padStart(3, '0');
+  const idText = String(Math.max(0, Number(memberId) || 0)).padStart(5, '0');
+  return `EMP-${orgText}-${idText}`;
+};
+const getMemberIdentityLabel = (member) =>
+  isInternalMemberEmail(member?.email)
+    ? getMemberUniqueCode(member?.id, member?.orgId)
+    : String(member?.email || '-');
+const isLoginRequiredRole = (role) =>
+  LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
 
 const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
 const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER';
 const isWorkerJobRoleOption = (role) =>
   WORKER_JOB_ROLE_CODES.has(String(role?.code || '').trim().toUpperCase());
 const getOrgRoleLabel = (value) => ORG_ROLE_LABELS[String(value || '').toUpperCase()] || '-';
+const getOrgRoleSortOrder = (value) =>
+  ORG_ROLE_SORT_ORDER[String(value || '').toUpperCase()] || Number.MAX_SAFE_INTEGER;
+const getEmployeeStatusLabel = (value) =>
+  EMPLOYEE_STATUS_OPTIONS.find((option) => option.value === String(value || '').toUpperCase())
+    ?.label || '-';
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 const sortJobRoleOptions = (rows = []) =>
@@ -71,11 +111,31 @@ const sortJobRoleOptions = (rows = []) =>
     if (aOrder !== bOrder) return aOrder - bOrder;
     return String(a?.name || a?.code || '').localeCompare(String(b?.name || b?.code || ''));
   });
+const resolveWorkerJobSortOrder = (employee, workerRoleOrderIndex) => {
+  const roleCode = String(employee?.roleCode || '').trim().toUpperCase();
+  if (roleCode === 'WORKER_SUPERVISOR') return -1;
+
+  const roleIdKey = String(employee?.roleId || '').trim();
+  if (roleIdKey && workerRoleOrderIndex.byId.has(roleIdKey)) {
+    return workerRoleOrderIndex.byId.get(roleIdKey);
+  }
+  if (roleCode && workerRoleOrderIndex.byCode.has(roleCode)) {
+    return workerRoleOrderIndex.byCode.get(roleCode);
+  }
+  return Number.MAX_SAFE_INTEGER;
+};
 
 const formatDate = (value) => {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
+};
+const formatDateInput = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const localMs = date.getTime() - date.getTimezoneOffset() * 60000;
+  return new Date(localMs).toISOString().slice(0, 10);
 };
 const sanitizeMoneyInput = (value) => String(value ?? '').replace(/[^\d]/g, '');
 const formatMoneyInput = (value) => {
@@ -91,6 +151,13 @@ const parseMoneyInput = (value) => {
   const parsed = Number(sanitized);
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return Math.round(parsed);
+};
+const isValidDateInput = (value) => {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const date = new Date(`${text}T00:00:00`);
+  return !Number.isNaN(date.getTime());
 };
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 
@@ -115,8 +182,18 @@ const buildEmployeeDraft = (member, employee, options = {}) => {
     payType: String(employee?.payType || employee?.effectivePayType || defaultPayType).toUpperCase(),
     fixedSalary: formatMoneyInput(employee?.fixedSalary),
     factoryId: employee?.factoryId ? String(employee.factoryId) : '',
+    joinedAt: formatDateInput(employee?.joinedAt || member?.approvedAt),
+    leftAt: formatDateInput(employee?.leftAt),
     status: member.status,
   };
+};
+const getEmployeeDisplayName = (member, employee, myEmail, currentUserName) => {
+  const normalizedMemberEmail = normalizeEmail(member?.email);
+  return (
+    String(employee?.name || '').trim() ||
+    (normalizedMemberEmail === normalizeEmail(myEmail) ? String(currentUserName || '').trim() : '') ||
+    '-'
+  );
 };
 
 const EmployeeRow = React.memo(
@@ -343,6 +420,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     activeFactoryId,
   } = useAuth();
   const { showNotification } = useAppActions();
+  const { languageCode } = useLanguage();
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
   const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;
@@ -362,19 +440,38 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [statusMessage, setStatusMessage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
-  const [isSavingAllRows, setIsSavingAllRows] = useState(false);
+  const [isDrawerSaving, setIsDrawerSaving] = useState(false);
+  const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState('create');
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [drawerEmail, setDrawerEmail] = useState('');
+  const [drawerDraft, setDrawerDraft] = useState({
+    name: '',
+    bankName: '',
+    bankAccountNumber: '',
+    orgRole: 'WORKER',
+    jobRoleId: '',
+    payType: 'CT',
+    fixedSalary: '',
+    factoryId: '',
+    joinedAt: '',
+    leftAt: '',
+    status: 'ACTIVE',
+  });
 
   const [pendingFactoryOverrides, setPendingFactoryOverrides] = useState({});
   const [pendingRoleOverrides, setPendingRoleOverrides] = useState({});
   const [updatingMembershipIds, setUpdatingMembershipIds] = useState({});
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
-  const [rowSaveRegistry, setRowSaveRegistry] = useState({});
 
   const roleOptions = useMemo(
     () => getRoleOptionsByOrgType(activeOrgType),
     [activeOrgType]
   );
   const isAdmin = overrideOrgId != null ? true : isAdminOrgRole(activeOrgRole);
+  const canManageMembers =
+    overrideOrgId != null ||
+    MEMBER_REVIEWER_ROLES.has(String(activeOrgRole || '').toUpperCase());
   const operatorFactoryId =
     !isAdmin && Number.isInteger(Number(activeFactoryId)) && Number(activeFactoryId) > 0
       ? String(activeFactoryId)
@@ -382,6 +479,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const canFilterByFactory = activeOrgType !== 'BRAND' && factories.length > 0;
   const defaultPendingFactoryId = operatorFactoryId || selectedFactoryFilterId || '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
+  const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
 
   const employeeByMembership = useMemo(() => {
     const map = new Map();
@@ -431,7 +529,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         ? allFactories
         : operatorFactoryId
           ? allFactories.filter((factory) => String(factory?.id) === operatorFactoryId)
-          : [];
+          : allFactories;
       setFactories(visibleFactories);
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '공장 정보를 불러오지 못했습니다.' });
@@ -440,7 +538,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   const fetchEmployees = useCallback(async (orgId, factoryId) => {
     if (!orgId) return;
-    if (!isAdmin && !factoryId && activeOrgType !== 'BRAND') {
+    if (!isAdmin && operatorFactoryId && !factoryId && activeOrgType !== 'BRAND') {
       setEmployees([]);
       return;
     }
@@ -452,7 +550,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     } catch (_error) {
       setStatusMessage({ type: 'error', text: '직원 정보를 불러오지 못했습니다.' });
     }
-  }, [activeOrgType, isAdmin]);
+  }, [activeOrgType, isAdmin, operatorFactoryId]);
 
   const fetchJobRoles = useCallback(async (orgId) => {
     if (!orgId) return;
@@ -541,8 +639,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           }),
         });
 
-        await fetchMemberships(activeOrgId);
-        await fetchEmployees(activeOrgId, selectedFactoryFilterId);
+        await Promise.all([
+          fetchMemberships(activeOrgId),
+          fetchEmployees(activeOrgId, selectedFactoryFilterId),
+        ]);
         setStatusMessage({ type: 'success', text: '승인을 완료했습니다.' });
       } catch (error) {
         setStatusMessage({ type: 'error', text: error?.message || '승인에 실패했습니다.' });
@@ -585,6 +685,42 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
   };
 
+  const upsertActiveMember = useCallback((nextMember) => {
+    if (!nextMember || !Number.isFinite(Number(nextMember.id))) return;
+    const memberId = Number(nextMember.id);
+    const normalizedStatus = String(nextMember.status || '').toUpperCase();
+
+    setPendingMembers((prev) => prev.filter((item) => Number(item?.id) !== memberId));
+    setActiveMembers((prev) => {
+      const filtered = prev.filter((item) => Number(item?.id) !== memberId);
+      if (normalizedStatus === 'PENDING' || normalizedStatus === 'REJECTED') {
+        return filtered;
+      }
+      return [...filtered, nextMember].sort((a, b) => Number(a?.id || 0) - Number(b?.id || 0));
+    });
+  }, []);
+
+  const upsertEmployeeForCurrentFilter = useCallback(
+    (nextEmployee) => {
+      if (!nextEmployee || !Number.isFinite(Number(nextEmployee.orgMembershipId))) return;
+      const membershipId = Number(nextEmployee.orgMembershipId);
+      const activeFilterId = String(selectedFactoryFilterId || '');
+      const nextFactoryId = String(nextEmployee?.factoryId || '');
+      const shouldInclude = !activeFilterId || nextFactoryId === activeFilterId;
+
+      setEmployees((prev) => {
+        const filtered = prev.filter(
+          (item) => Number(item?.orgMembershipId) !== membershipId
+        );
+        if (!shouldInclude) return filtered;
+        return [...filtered, nextEmployee].sort(
+          (a, b) => Number(a?.id || 0) - Number(b?.id || 0)
+        );
+      });
+    },
+    [selectedFactoryFilterId]
+  );
+
   const handleEmployeeSave = useCallback(
     async (member, draft) => {
       if (updatingEmployeeIds[member.id] || updatingMembershipIds[member.id]) return false;
@@ -595,24 +731,36 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
       try {
         const saveMembership = async () => {
-          if (draft.status === member.status && draft.orgRole === member.role) return;
-          await requestJSON(`/org-memberships/${member.id}`, {
+          const hasEmailPatch = typeof draft.email === 'string';
+          const normalizedMemberEmail = normalizeEmail(member?.email);
+          const normalizedDraftEmail = hasEmailPatch ? normalizeEmail(draft.email) : '';
+          const shouldUpdateEmail = hasEmailPatch && normalizedDraftEmail !== normalizedMemberEmail;
+          if (draft.status === member.status && draft.orgRole === member.role && !shouldUpdateEmail) {
+            return member;
+          }
+          const updatedMembership = await requestJSON(`/org-memberships/${member.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               status: draft.status,
               role: draft.orgRole,
               approvedBy: myEmail,
+              ...(hasEmailPatch ? { email: draft.email } : {}),
             }),
           });
+          return updatedMembership || member;
         };
         const shouldSaveMembershipFirst =
-          draft.orgRole !== member.role &&
-          draft.orgRole === 'WORKER' &&
-          draft.status === 'ACTIVE';
+          draft.status !== member.status ||
+          (
+            draft.orgRole !== member.role &&
+            draft.orgRole === 'WORKER' &&
+            draft.status === 'ACTIVE'
+          );
+        let savedMember = member;
 
         if (shouldSaveMembershipFirst) {
-          await saveMembership();
+          savedMember = await saveMembership();
         }
 
         const employeePayload = {
@@ -629,19 +777,21 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
+        if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
+        if (draft.leftAt) employeePayload.leftAt = draft.leftAt;
 
-        await requestJSON('/employees', {
+        const savedEmployee = await requestJSON('/employees', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(employeePayload),
         });
 
         if (!shouldSaveMembershipFirst) {
-          await saveMembership();
+          savedMember = await saveMembership();
         }
 
-        await fetchEmployees(activeOrgId, selectedFactoryFilterId);
-        await fetchMemberships(activeOrgId);
+        upsertActiveMember(savedMember);
+        upsertEmployeeForCurrentFilter(savedEmployee);
         setStatusMessage({ type: 'success', text: '직원 정보가 저장되었습니다.' });
         return true;
       } catch (error) {
@@ -652,96 +802,257 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         setUpdatingMembershipIds((prev) => ({ ...prev, [member.id]: false }));
       }
     },
-    [activeOrgId, fetchEmployees, fetchMemberships, myEmail, selectedFactoryFilterId, updatingEmployeeIds, updatingMembershipIds]
+    [
+      myEmail,
+      updatingEmployeeIds,
+      updatingMembershipIds,
+      upsertActiveMember,
+      upsertEmployeeForCurrentFilter,
+    ]
   );
 
-  const handleRowStateChange = useCallback((memberId, payload) => {
-    const key = String(memberId);
-    setRowSaveRegistry((prev) => {
-      if (!payload) {
-        if (!Object.prototype.hasOwnProperty.call(prev, key)) return prev;
-        const next = { ...prev };
-        delete next[key];
-        return next;
+  const defaultWorkerJobRoleId = useMemo(() => {
+    const matchedRole = jobRoleOptions.find(
+      (role) => String(role?.code || '').trim().toUpperCase() === DEFAULT_WORKER_JOB_ROLE_CODE
+    );
+    return matchedRole?.id ? String(matchedRole.id) : '';
+  }, [jobRoleOptions]);
+
+  const openAddDrawer = useCallback(() => {
+    const defaultRole = resolveDefaultInviteRole(roleOptions);
+    const defaultFactoryId =
+      activeOrgType === 'BRAND'
+        ? ''
+        : !isAdmin && operatorFactoryId
+          ? operatorFactoryId
+          : selectedFactoryFilterId || '';
+    setDrawerMode('create');
+    setSelectedMemberId(null);
+    setDrawerEmail('');
+    setDrawerDraft({
+      name: '',
+      bankName: '',
+      bankAccountNumber: '',
+      orgRole: defaultRole,
+      jobRoleId: defaultRole === 'WORKER' ? defaultWorkerJobRoleId : '',
+      payType: defaultRole === 'WORKER' ? 'CT' : 'FIXED',
+      fixedSalary: '',
+      factoryId: defaultFactoryId,
+      joinedAt: '',
+      leftAt: '',
+      status: 'ACTIVE',
+    });
+    setIsAddDrawerOpen(true);
+  }, [
+    activeOrgType,
+    defaultWorkerJobRoleId,
+    isAdmin,
+    operatorFactoryId,
+    roleOptions,
+    selectedFactoryFilterId,
+  ]);
+
+  const openEditDrawer = useCallback((member) => {
+    const employee = employeeByMembership.get(member.id) || null;
+    const normalizedMemberEmail = normalizeEmail(member?.email);
+    setDrawerMode('edit');
+    setSelectedMemberId(member.id);
+    setDrawerEmail(isInternalMemberEmail(member?.email) ? '' : (member.email || ''));
+    setDrawerDraft(
+      buildEmployeeDraft(member, employee, {
+        useEmailFallback: normalizedMemberEmail === myEmail,
+        currentUserName: normalizedMemberEmail === myEmail ? currentUserName : '',
+      })
+    );
+    setIsAddDrawerOpen(true);
+  }, [currentUserName, employeeByMembership, myEmail]);
+
+  const handleDrawerDraftChange = useCallback((patch) => {
+    setDrawerDraft((prev) => {
+      const next = { ...prev, ...patch };
+      const normalizedRole = String(next.orgRole || '').toUpperCase();
+      const normalizedPayType = String(next.payType || '').toUpperCase();
+
+      if (!isWorkerOrgRole(normalizedRole)) {
+        next.jobRoleId = '';
+        if (!normalizedPayType || normalizedPayType === 'CT') {
+          next.payType = 'FIXED';
+        }
+      } else if (!normalizedPayType) {
+        next.payType = 'CT';
       }
-      const current = prev[key];
-      if (current?.isDirty === payload.isDirty && current?.save === payload.save) {
-        return prev;
+
+      if (String(next.payType || '').toUpperCase() !== 'FIXED') {
+        next.fixedSalary = '';
       }
-      return {
-        ...prev,
-        [key]: payload,
-      };
+      return next;
     });
   }, []);
 
-  const dirtyRowIds = useMemo(
-    () =>
-      Object.keys(rowSaveRegistry).filter(
-        (key) => rowSaveRegistry[key] && rowSaveRegistry[key].isDirty
-      ),
-    [rowSaveRegistry]
-  );
+  const handleDrawerSave = useCallback(async () => {
+    if (isDrawerSaving || !activeOrgId) return;
 
-  const handleSaveAllRows = useCallback(async () => {
-    if (isSavingAllRows) return;
-
-    const targetRowIds = Object.keys(rowSaveRegistry).filter(
-      (key) => rowSaveRegistry[key] && rowSaveRegistry[key].isDirty
-    );
-    if (targetRowIds.length === 0) {
-      setStatusMessage({ type: 'info', text: '저장할 변경사항이 없습니다.' });
+    if (!canManageMembers) {
+      setStatusMessage({ type: 'error', text: '직원 수정 권한이 없습니다.' });
       return;
     }
 
-    setIsSavingAllRows(true);
-    setStatusMessage(null);
+    const normalizedOrgRole = String(drawerDraft.orgRole || '').toUpperCase();
+    const isWorker = isWorkerOrgRole(normalizedOrgRole);
+    const effectiveJobRoleId = isWorker
+      ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
+      : '';
+    const normalizedPayType = String(
+      drawerDraft.payType || (isWorker ? 'CT' : 'FIXED')
+    ).toUpperCase();
+    const normalizedStatus = String(drawerDraft.status || 'ACTIVE').toUpperCase();
+    const normalizedJoinedAt = String(drawerDraft.joinedAt || '').trim();
+    const normalizedLeftAt = String(drawerDraft.leftAt || '').trim();
+    const normalizedDrawerEmail = normalizeEmail(drawerEmail);
+    const roleNeedsLoginEmail = isLoginRequiredRole(normalizedOrgRole);
+    const selectedFactoryId =
+      !isAdmin && operatorFactoryId ? operatorFactoryId : drawerDraft.factoryId;
 
-    let savedCount = 0;
-    let failedCount = 0;
+    if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
+      setStatusMessage({ type: 'error', text: '유효한 이메일 형식이 아닙니다.' });
+      return;
+    }
+    if (roleNeedsLoginEmail && (!normalizedDrawerEmail || !normalizedDrawerEmail.includes('@'))) {
+      setStatusMessage({ type: 'error', text: '관리자/운영자는 로그인 이메일이 필요합니다.' });
+      return;
+    }
+    if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
+      setStatusMessage({ type: 'error', text: '입사일/퇴사일 형식이 올바르지 않습니다.' });
+      return;
+    }
+    if (normalizedJoinedAt && normalizedLeftAt && normalizedJoinedAt > normalizedLeftAt) {
+      setStatusMessage({ type: 'error', text: '퇴사일은 입사일 이후여야 합니다.' });
+      return;
+    }
 
-    for (const key of targetRowIds) {
-      const saveHandler = rowSaveRegistry[key]?.save;
-      if (typeof saveHandler !== 'function') continue;
-
-      try {
-        const didSave = await saveHandler();
-        if (didSave) {
-          savedCount += 1;
-        } else {
-          failedCount += 1;
-        }
-      } catch (_error) {
-        failedCount += 1;
+    if (activeOrgType !== 'BRAND') {
+      if (!selectedFactoryId) {
+        setStatusMessage({ type: 'error', text: '공장을 선택해 주세요.' });
+        return;
+      }
+      if (!Number.isFinite(Number(selectedFactoryId))) {
+        setStatusMessage({ type: 'error', text: '유효한 공장을 선택해 주세요.' });
+        return;
       }
     }
 
-    if (savedCount > 0 && failedCount === 0) {
-      setStatusMessage({ type: 'success', text: `직원 정보 ${savedCount}건을 저장했습니다.` });
-    } else if (savedCount > 0 && failedCount > 0) {
-      setStatusMessage({
-        type: 'warning',
-        text: `직원 정보 ${savedCount}건 저장, ${failedCount}건 실패했습니다.`,
+    setIsDrawerSaving(true);
+    setStatusMessage(null);
+
+    try {
+      let targetMember = null;
+      let membershipEmailForSave;
+
+      if (drawerMode === 'create') {
+        if (normalizedDrawerEmail) {
+          const duplicatedMember = [...pendingMembers, ...activeMembers].find(
+            (member) => normalizeEmail(member?.email) === normalizedDrawerEmail
+          );
+          if (duplicatedMember) {
+            throw new Error('이미 등록된 이메일입니다. 기존 직원을 선택해 수정해 주세요.');
+          }
+        }
+
+        targetMember = await requestJSON('/org-memberships', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId: activeOrgId,
+            role: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
+            ...(normalizedDrawerEmail ? { email: normalizedDrawerEmail } : {}),
+            ...(activeOrgType !== 'BRAND' && selectedFactoryId
+              ? { factoryId: Number(selectedFactoryId) }
+              : {}),
+          }),
+        });
+      } else {
+        targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
+        if (!targetMember) {
+          throw new Error('선택한 직원 정보를 찾을 수 없습니다.');
+        }
+
+        const currentMemberEmail = normalizeEmail(targetMember.email);
+        if (normalizedDrawerEmail && normalizedDrawerEmail !== currentMemberEmail) {
+          const duplicatedMember = [...pendingMembers, ...activeMembers].find(
+            (member) =>
+              member.id !== targetMember.id
+              && normalizeEmail(member?.email) === normalizedDrawerEmail
+          );
+          if (duplicatedMember) {
+            throw new Error('이미 등록된 이메일입니다.');
+          }
+          membershipEmailForSave = normalizedDrawerEmail;
+        } else if (
+          !normalizedDrawerEmail
+          && roleNeedsLoginEmail
+          && isInternalMemberEmail(currentMemberEmail)
+        ) {
+          throw new Error('관리자/운영자는 로그인 이메일이 필요합니다.');
+        } else if (
+          !normalizedDrawerEmail
+          && !roleNeedsLoginEmail
+          && !isInternalMemberEmail(currentMemberEmail)
+          && currentMemberEmail
+        ) {
+          membershipEmailForSave = '';
+        }
+      }
+
+      const didSave = await handleEmployeeSave(targetMember, {
+        ...drawerDraft,
+        orgRole: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
+        jobRoleId: effectiveJobRoleId,
+        payType: normalizedPayType,
+        status: normalizedStatus,
+        factoryId:
+          activeOrgType === 'BRAND'
+            ? ''
+            : selectedFactoryId
+              ? String(selectedFactoryId)
+              : '',
+        ...(typeof membershipEmailForSave === 'string'
+          ? { email: membershipEmailForSave }
+          : {}),
+        ...(normalizedJoinedAt ? { joinedAt: normalizedJoinedAt } : {}),
+        ...(normalizedLeftAt ? { leftAt: normalizedLeftAt } : {}),
       });
-    } else if (failedCount > 0) {
-      setStatusMessage({ type: 'error', text: '직원 정보 저장에 실패했습니다.' });
+
+      if (didSave) {
+        setIsAddDrawerOpen(false);
+      }
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error?.message || '직원 저장에 실패했습니다.' });
+    } finally {
+      setIsDrawerSaving(false);
     }
-
-    setIsSavingAllRows(false);
-  }, [isSavingAllRows, rowSaveRegistry]);
-
-  const factoryOrder = useMemo(() => {
-    const map = new Map();
-    factories.forEach((factory, index) => {
-      map.set(factory.id, index);
-    });
-    return map;
-  }, [factories]);
+  }, [
+    activeMembers,
+    activeOrgId,
+    activeOrgType,
+    canManageMembers,
+    defaultWorkerJobRoleId,
+    drawerDraft,
+    drawerEmail,
+    drawerMode,
+    handleEmployeeSave,
+    isAdmin,
+    isDrawerSaving,
+    operatorFactoryId,
+    pendingMembers,
+    roleOptions,
+    selectedMemberId,
+  ]);
 
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
     return activeMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id);
+      if (!employee) return true;
       return String(employee?.factoryId || '') === String(selectedFactoryFilterId);
     });
   }, [activeMembers, employeeByMembership, selectedFactoryFilterId]);
@@ -762,7 +1073,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         factoryById.get(String(employee?.factoryId || ''))?.name || '';
       const searchableText = [
         employee?.name,
-        member?.email,
+        getMemberIdentityLabel(member),
+        getMemberUniqueCode(member?.id, member?.orgId),
         employee?.bankName,
         employee?.bankAccountNumber,
         roleLabel,
@@ -776,45 +1088,282 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       return searchableText.includes(keyword);
     });
   }, [employeeByMembership, factoryById, jobRoleOptions, searchTerm, visibleActiveMembers]);
+  const workerRoleOrderIndex = useMemo(() => {
+    const byId = new Map();
+    const byCode = new Map();
+    jobRoleOptions.forEach((role, index) => {
+      const order = Number.isFinite(Number(role?.sortOrder))
+        ? Number(role.sortOrder)
+        : index + 1;
+      const roleIdKey = String(role?.id || '').trim();
+      const roleCodeKey = String(role?.code || '').trim().toUpperCase();
+      if (roleIdKey) byId.set(roleIdKey, order);
+      if (roleCodeKey) byCode.set(roleCodeKey, order);
+    });
+    return { byId, byCode };
+  }, [jobRoleOptions]);
 
   const sortedActiveMembers = useMemo(() => {
     return [...filteredActiveMembers].sort((a, b) => {
-      const aFactoryId = employeeByMembership.get(a.id)?.factoryId ?? null;
-      const bFactoryId = employeeByMembership.get(b.id)?.factoryId ?? null;
+      const aEmployee = employeeByMembership.get(a.id) || null;
+      const bEmployee = employeeByMembership.get(b.id) || null;
 
-      const aIndex = factoryOrder.has(aFactoryId)
-        ? factoryOrder.get(aFactoryId)
-        : Number.MAX_SAFE_INTEGER;
-      const bIndex = factoryOrder.has(bFactoryId)
-        ? factoryOrder.get(bFactoryId)
-        : Number.MAX_SAFE_INTEGER;
+      const roleOrderDiff = getOrgRoleSortOrder(a.role) - getOrgRoleSortOrder(b.role);
+      if (roleOrderDiff !== 0) return roleOrderDiff;
+      if (isWorkerOrgRole(a.role) && isWorkerOrgRole(b.role)) {
+        const workerJobDiff =
+          resolveWorkerJobSortOrder(aEmployee, workerRoleOrderIndex)
+          - resolveWorkerJobSortOrder(bEmployee, workerRoleOrderIndex);
+        if (workerJobDiff !== 0) return workerJobDiff;
+      }
 
-      if (aIndex !== bIndex) return aIndex - bIndex;
-      return String(a.email).localeCompare(String(b.email));
+      const aJoinedAt = new Date(aEmployee?.joinedAt || a?.approvedAt || '').getTime();
+      const bJoinedAt = new Date(bEmployee?.joinedAt || b?.approvedAt || '').getTime();
+      const safeAJoinedAt = Number.isFinite(aJoinedAt) ? aJoinedAt : Number.MAX_SAFE_INTEGER;
+      const safeBJoinedAt = Number.isFinite(bJoinedAt) ? bJoinedAt : Number.MAX_SAFE_INTEGER;
+      if (safeAJoinedAt !== safeBJoinedAt) return safeAJoinedAt - safeBJoinedAt;
+
+      const aName = getEmployeeDisplayName(a, aEmployee, myEmail, currentUserName);
+      const bName = getEmployeeDisplayName(b, bEmployee, myEmail, currentUserName);
+      const nameDiff = aName.localeCompare(bName, 'ko');
+      if (nameDiff !== 0) return nameDiff;
+
+      return getMemberIdentityLabel(a).localeCompare(getMemberIdentityLabel(b), 'ko');
     });
-  }, [employeeByMembership, factoryOrder, filteredActiveMembers]);
+  }, [
+    currentUserName,
+    employeeByMembership,
+    filteredActiveMembers,
+    myEmail,
+    workerRoleOrderIndex,
+  ]);
+  const isCreateDrawerMode = drawerMode === 'create';
+  const selectedMember = useMemo(
+    () => activeMembers.find((member) => member.id === selectedMemberId) || null,
+    [activeMembers, selectedMemberId]
+  );
+  const drawerIsWorker = isWorkerOrgRole(drawerDraft.orgRole);
+  const drawerEffectiveJobRoleId = drawerIsWorker
+    ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
+    : '';
 
   return (
     <AppPageContainer
       title="직원 관리"
       titleActions={(
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSaveAllRows}
-          disabled={isSavingAllRows || dirtyRowIds.length === 0}
-        >
-          {isSavingAllRows
-            ? '저장 중...'
-            : dirtyRowIds.length > 0
-              ? `저장 (${dirtyRowIds.length})`
-              : '저장'}
-        </Button>
+        canManageMembers ? (
+          <Button
+            variant="outlined"
+            onClick={openAddDrawer}
+            disabled={!activeOrgId}
+          >
+            직원 추가
+          </Button>
+        ) : null
       )}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
         {statusMessage && (
           <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
+        )}
+
+        {canManageMembers && (
+          <Drawer
+            anchor="right"
+            open={isAddDrawerOpen}
+            onClose={() => {
+              if (isDrawerSaving) return;
+              setIsAddDrawerOpen(false);
+            }}
+            PaperProps={{
+              sx: {
+                ...TOP_OFFSET_DRAWER_PAPER_SX,
+                width: { xs: '100%', sm: 420 },
+              },
+            }}
+          >
+            <Box
+              sx={{
+                width: '100%',
+                height: '100%',
+                overflowY: 'auto',
+                p: 3,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}
+            >
+              <Typography variant="h6">{isCreateDrawerMode ? '직원 추가' : '직원 수정'}</Typography>
+              <TextField
+                size="small"
+                label="로그인 이메일"
+                value={drawerEmail}
+                onChange={(e) => setDrawerEmail(e.target.value)}
+                placeholder="admin@company.com"
+                disabled={isDrawerSaving}
+                autoFocus
+                helperText={
+                  isLoginRequiredRole(drawerDraft.orgRole)
+                    ? '관리자/운영자는 로그인 이메일이 필요합니다.'
+                    : '작업자/회계사는 비워두면 사번(내부키)으로 생성됩니다.'
+                }
+              />
+              {!isCreateDrawerMode && isInternalMemberEmail(selectedMember?.email) && (
+                <Typography variant="caption" color="text.secondary">
+                  사번: {getMemberUniqueCode(selectedMember?.id, selectedMember?.orgId)}
+                </Typography>
+              )}
+              <TextField
+                size="small"
+                label="이름"
+                value={drawerDraft.name}
+                onChange={(e) => handleDrawerDraftChange({ name: e.target.value })}
+                disabled={isDrawerSaving}
+              />
+              <TextField
+                size="small"
+                label="은행"
+                value={drawerDraft.bankName}
+                onChange={(e) => handleDrawerDraftChange({ bankName: e.target.value })}
+                disabled={isDrawerSaving}
+              />
+              <TextField
+                size="small"
+                label="계좌번호"
+                value={drawerDraft.bankAccountNumber}
+                onChange={(e) => handleDrawerDraftChange({ bankAccountNumber: e.target.value })}
+                disabled={isDrawerSaving}
+              />
+              <TextField
+                select
+                size="small"
+                label="권한"
+                value={drawerDraft.orgRole}
+                onChange={(e) => handleDrawerDraftChange({ orgRole: e.target.value })}
+                disabled={isDrawerSaving}
+              >
+                {roleOptions.map((role) => (
+                  <MenuItem key={role.value} value={role.value}>
+                    {role.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {drawerIsWorker && (
+                <TextField
+                  select
+                  size="small"
+                  label="직무"
+                  value={drawerEffectiveJobRoleId}
+                  onChange={(e) => handleDrawerDraftChange({ jobRoleId: e.target.value })}
+                  disabled={isDrawerSaving}
+                >
+                  {jobRoleOptions.map((role) => (
+                    <MenuItem key={role.id} value={String(role.id)}>
+                      {role.name || role.code}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+              {activeOrgType !== 'BRAND' && (
+                <TextField
+                  select
+                  size="small"
+                  label="공장"
+                  value={drawerDraft.factoryId}
+                  onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
+                  disabled={isDrawerSaving || (!isAdmin && Boolean(operatorFactoryId))}
+                >
+                  {isAdmin && <MenuItem value="">공장 선택</MenuItem>}
+                  {factories.map((factory) => (
+                    <MenuItem key={factory.id} value={String(factory.id)}>
+                      {factory.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+              <TextField
+                select
+                size="small"
+                label="급여 타입"
+                value={drawerDraft.payType}
+                onChange={(e) => handleDrawerDraftChange({ payType: e.target.value })}
+                disabled={isDrawerSaving}
+              >
+                {payTypeOptions.map((option) => (
+                  <MenuItem key={option.value || 'default'} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {String(drawerDraft.payType || '').toUpperCase() === 'FIXED' && (
+                <TextField
+                  size="small"
+                  label="고정급 금액"
+                  value={drawerDraft.fixedSalary}
+                  onChange={(e) =>
+                    handleDrawerDraftChange({ fixedSalary: formatMoneyInput(e.target.value) })
+                  }
+                  disabled={isDrawerSaving}
+                  placeholder="예: 8,000,000"
+                />
+              )}
+              <TextField
+                size="small"
+                type="date"
+                label="입사일"
+                value={drawerDraft.joinedAt || ''}
+                onChange={(e) => handleDrawerDraftChange({ joinedAt: e.target.value })}
+                disabled={isDrawerSaving}
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                size="small"
+                type="date"
+                label="퇴사일"
+                value={drawerDraft.leftAt || ''}
+                onChange={(e) => handleDrawerDraftChange({ leftAt: e.target.value })}
+                disabled={isDrawerSaving}
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                select
+                size="small"
+                label="상태"
+                value={drawerDraft.status}
+                onChange={(e) => handleDrawerDraftChange({ status: e.target.value })}
+                disabled={isDrawerSaving}
+              >
+                {EMPLOYEE_STATUS_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Typography variant="caption" color="text.secondary">
+                직원 목록에서 선택한 항목을 여기서 수정하고 저장합니다.
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => setIsAddDrawerOpen(false)}
+                  disabled={isDrawerSaving}
+                >
+                  닫기
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleDrawerSave}
+                  disabled={isDrawerSaving || !activeOrgId}
+                >
+                  {isDrawerSaving
+                    ? '저장 중...'
+                    : isCreateDrawerMode
+                      ? '직원 추가'
+                      : '수정 저장'}
+                </Button>
+              </Box>
+            </Box>
+          </Drawer>
         )}
 
         {pendingMembers.length > 0 && (
@@ -975,13 +1524,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableHead>
                 <TableRow>
                   <TableCell>이름</TableCell>
-                  <TableCell>이메일</TableCell>
-                  <TableCell>은행</TableCell>
-                  <TableCell>계좌번호</TableCell>
+                  <TableCell>이메일/사번</TableCell>
                   <TableCell>권한</TableCell>
                   <TableCell>직무</TableCell>
                   <TableCell>급여 타입</TableCell>
-                  <TableCell>고정급 금액</TableCell>
                   <TableCell>상태</TableCell>
                   <TableCell>입사일</TableCell>
                   <TableCell>퇴사일</TableCell>
@@ -990,32 +1536,50 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={11}
+                    colSpan={8}
                     message={searchTerm ? '검색 결과가 없습니다.' : '표시할 직원이 없습니다.'}
                     sx={{ py: 2 }}
                   />
                 ) : (
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
-                    const normalizedMemberEmail = normalizeEmail(member?.email);
-                    const isUpdating =
-                      Boolean(updatingEmployeeIds[member.id]) ||
-                      Boolean(updatingMembershipIds[member.id]);
-
+                    const roleLabel = getOrgRoleLabel(member.role);
+                    const jobRoleLabel =
+                      employee?.roleName ||
+                      jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))
+                        ?.name ||
+                      '-';
+                    const payTypeValue = String(
+                      employee?.effectivePayType ||
+                      employee?.payType ||
+                      (isWorkerOrgRole(member.role) ? 'CT' : 'FIXED')
+                    ).toUpperCase();
+                    const payTypeLabel =
+                      payTypeOptions.find((option) => option.value === payTypeValue)?.label ||
+                      payTypeValue ||
+                      '-';
+                    const displayName = getEmployeeDisplayName(
+                      member,
+                      employee,
+                      myEmail,
+                      currentUserName
+                    );
                     return (
-                      <EmployeeRow
+                      <TableRow
                         key={member.id}
-                        member={member}
-                        employee={employee}
-                        roleOptions={roleOptions}
-                        jobRoleOptions={jobRoleOptions}
-                        useEmailFallback={normalizedMemberEmail === myEmail}
-                        currentUserName={normalizedMemberEmail === myEmail ? currentUserName : ''}
-                        isBulkSaving={isSavingAllRows}
-                        isUpdating={isUpdating}
-                        onSave={handleEmployeeSave}
-                        onRowStateChange={handleRowStateChange}
-                      />
+                        hover
+                        onClick={canManageMembers ? () => openEditDrawer(member) : undefined}
+                        sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
+                      >
+                        <TableCell>{displayName}</TableCell>
+                        <TableCell>{getMemberIdentityLabel(member)}</TableCell>
+                        <TableCell>{roleLabel}</TableCell>
+                        <TableCell>{jobRoleLabel}</TableCell>
+                        <TableCell>{payTypeLabel}</TableCell>
+                        <TableCell>{getEmployeeStatusLabel(member.status)}</TableCell>
+                        <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
+                        <TableCell>{formatDate(employee?.leftAt)}</TableCell>
+                      </TableRow>
                     );
                   })
                 )}

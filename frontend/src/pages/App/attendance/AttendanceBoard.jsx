@@ -2,6 +2,7 @@
 import {
   Alert,
   Button,
+  CircularProgress,
   Chip,
   FormControl,
   InputLabel,
@@ -19,6 +20,7 @@ import {
 } from '@mui/material';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/ko';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -30,6 +32,11 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import {
+  buildAttendanceImportPlan,
+  mergeImportedAttendanceEntries,
+  parseAttendanceImportFile,
+} from './attendanceFileImport';
 
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
 
@@ -58,10 +65,20 @@ const formatWorkedHours = (minutes) => {
   return `${(value / 60).toFixed(1)}h`;
 };
 
-const AttendanceBoard = () => {
+const resolveInitialDate = (value) => {
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.startOf('day') : dayjs().startOf('day');
+};
+
+const AttendanceBoard = ({
+  initialFactoryId = '',
+  initialWorkDate = '',
+  onClose = null,
+  closeOnSave = false,
+}) => {
   const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
-  const [selectedDate, setSelectedDate] = useState(dayjs());
+  const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [employees, setEmployees] = useState([]);
@@ -70,7 +87,9 @@ const AttendanceBoard = () => {
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [savingEntries, setSavingEntries] = useState(false);
+  const [importingFile, setImportingFile] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const fileInputRef = React.useRef(null);
 
   const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
   const filteredEmployees = useMemo(() => {
@@ -86,6 +105,10 @@ const AttendanceBoard = () => {
   }, [employees, searchTerm]);
 
   useEffect(() => {
+    setSelectedDate(resolveInitialDate(initialWorkDate));
+  }, [initialWorkDate]);
+
+  useEffect(() => {
     let cancelled = false;
     const loadFactories = async () => {
       setLoadingFactories(true);
@@ -97,6 +120,15 @@ const AttendanceBoard = () => {
         setFactories(list);
         if (list.length === 0) {
           setSelectedFactoryId('');
+          return;
+        }
+
+        const normalizedInitialFactoryId = String(initialFactoryId || '').trim();
+        const hasInitialFactory = normalizedInitialFactoryId
+          ? list.some((factory) => String(factory?.id) === normalizedInitialFactoryId)
+          : false;
+        if (hasInitialFactory) {
+          setSelectedFactoryId(normalizedInitialFactoryId);
           return;
         }
 
@@ -119,7 +151,7 @@ const AttendanceBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFactoryId, activeOrgId]);
+  }, [activeFactoryId, activeOrgId, initialFactoryId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +251,87 @@ const AttendanceBoard = () => {
     });
   };
 
+  const handleClickImport = () => {
+    if (!selectedFactoryId) {
+      showNotification('공장을 먼저 선택해 주세요.', 'warning');
+      return;
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event) => {
+    const file = event?.target?.files?.[0] || null;
+    if (event?.target) event.target.value = '';
+    if (!file) return;
+
+    if (!selectedFactoryId) {
+      showNotification('공장을 먼저 선택해 주세요.', 'warning');
+      return;
+    }
+    if (loadingEmployees) {
+      showNotification('작업자 목록을 불러온 후 업로드해 주세요.', 'warning');
+      return;
+    }
+    if (!employees.length) {
+      showNotification('매칭할 작업자 목록이 없습니다.', 'warning');
+      return;
+    }
+
+    setImportingFile(true);
+    try {
+      const parsed = await parseAttendanceImportFile(file);
+      if (!parsed.events.length) {
+        showNotification('가져올 출퇴근 이벤트가 없습니다.', 'warning');
+        return;
+      }
+
+      const plan = buildAttendanceImportPlan({
+        events: parsed.events,
+        employees,
+      });
+      const selectedDay = plan.dailyEntries.find((item) => item.workDate === dateKey);
+      if (!selectedDay || selectedDay.entries.length === 0) {
+        showNotification(`선택한 근무일(${dateKey})에 반영할 데이터가 없습니다.`, 'warning');
+        return;
+      }
+
+      setEntriesByWorker((prev) => {
+        const existingRows = Object.entries(prev).reduce((acc, [workerId, value]) => {
+          const parsedWorkerId = Number(workerId);
+          if (!Number.isFinite(parsedWorkerId) || parsedWorkerId <= 0) return acc;
+          acc.push({
+            workerId: Math.trunc(parsedWorkerId),
+            clockIn: String(value?.clockIn || '').trim() || null,
+            clockOut: String(value?.clockOut || '').trim() || null,
+            note: String(value?.note || '').trim() || null,
+          });
+          return acc;
+        }, []);
+
+        const mergedRows = mergeImportedAttendanceEntries(existingRows, selectedDay.entries);
+        return mergedRows.reduce((acc, row) => {
+          const key = String(row?.workerId || '');
+          if (!key) return acc;
+          acc[key] = {
+            clockIn: String(row?.clockIn || ''),
+            clockOut: String(row?.clockOut || ''),
+            note: String(row?.note || ''),
+          };
+          return acc;
+        }, {});
+      });
+
+      showNotification(
+        `업로드 반영 완료 (${dateKey}) - 반영 ${selectedDay.entries.length}명, 매칭 ${plan.matchedEventCount}건, 미매칭 ${plan.unmatchedEventCount}건`,
+        'success'
+      );
+    } catch (error) {
+      showNotification(error?.message || '파일 업로드에 실패했습니다.', 'error');
+    } finally {
+      setImportingFile(false);
+    }
+  };
+
   const handleSaveEntries = async () => {
     if (!selectedFactoryId) return;
     setSavingEntries(true);
@@ -260,6 +373,9 @@ const AttendanceBoard = () => {
       }, {});
       setEntriesByWorker(nextEntriesByWorker);
       showNotification('출퇴근 입력을 저장했습니다.', 'success');
+      if (closeOnSave && typeof onClose === 'function') {
+        onClose();
+      }
     } catch (error) {
       showNotification(
         error?.message || '출퇴근 입력 저장에 실패했습니다.',
@@ -296,15 +412,26 @@ const AttendanceBoard = () => {
 
   return (
     <AppPageContainer
-      title="출퇴근 기록"
+      title="출퇴근 상세"
       titleActions={(
-        <Button
-          variant="contained"
-          onClick={handleSaveEntries}
-          disabled={!selectedFactoryId || savingEntries}
-        >
-          저장
-        </Button>
+        <Stack direction="row" spacing={1}>
+          {typeof onClose === 'function' ? (
+            <Button
+              variant="outlined"
+              onClick={onClose}
+              disabled={savingEntries}
+            >
+              {closeOnSave ? '취소' : '목록'}
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            onClick={handleSaveEntries}
+            disabled={!selectedFactoryId || savingEntries}
+          >
+            저장
+          </Button>
+        </Stack>
       )}
       toolbar={(
         <PageToolbar
@@ -342,11 +469,27 @@ const AttendanceBoard = () => {
                   ))}
                 </Select>
               </FormControl>
+              <Button
+                variant="outlined"
+                startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
+                onClick={handleClickImport}
+                disabled={!selectedFactoryId || importingFile || loadingEmployees}
+              >
+                {importingFile ? '업로드 중...' : '파일 업로드'}
+              </Button>
             </>
           )}
         />
       )}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={handleImportFile}
+        style={{ display: 'none' }}
+      />
+
       <Alert severity="warning" sx={{ mb: 2 }}>
         AT 계산은 매월 5일 기준 직전 월 데이터를 반영하며, 출퇴근 미입력 작업자는 8시간 기준으로 자동 계산됩니다.
       </Alert>

@@ -215,40 +215,46 @@ const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
 const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
 const DEFAULT_EMPLOYEE_ROLES = [
   {
+    code: "WORKER_SUPERVISOR",
+    name: "감독",
+    defaultPayType: "CT",
+    sortOrder: 1,
+  },
+  {
     code: "WORKER_CUTTING",
     name: "재단",
     defaultPayType: "CT",
-    sortOrder: 1,
+    sortOrder: 2,
   },
   {
     code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
     name: "봉제",
     defaultPayType: "CT",
-    sortOrder: 2,
+    sortOrder: 3,
   },
   {
     code: "WORKER_IRONING",
     name: "다림",
     defaultPayType: "CT",
-    sortOrder: 3,
+    sortOrder: 4,
   },
   {
     code: "WORKER_INSPECTION",
     name: "검수",
     defaultPayType: "CT",
-    sortOrder: 4,
+    sortOrder: 5,
   },
   {
     code: "WORKER_PACKING",
     name: "포장",
     defaultPayType: "CT",
-    sortOrder: 5,
+    sortOrder: 6,
   },
   {
     code: "WORKER_OTHER",
     name: "기타",
     defaultPayType: "CT",
-    sortOrder: 6,
+    sortOrder: 7,
   },
 ] as const;
 const DEFAULT_EMPLOYEE_ROLE_CODES = new Set<string>(
@@ -722,58 +728,16 @@ const ensureHardcodedSystemAdmin = async () => {
   });
 };
 
-const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
-
 const combineOrganizationPhone = (countryCode: unknown, phoneNumber: unknown) => {
   const normalizedCountryCode = resolveOptionalString(countryCode, null);
   const normalizedPhoneNumber = resolveOptionalString(phoneNumber, null);
   return [normalizedCountryCode, normalizedPhoneNumber].filter(Boolean).join(" ");
 };
 
-const resolveSharedOrganizationWageFields = (
-  targetMonthlyWageInput: unknown,
-  wagePerSecondInput: unknown,
-  fallback: { targetMonthlyWage?: unknown; wagePerSecond?: unknown } = {}
-) => {
-  const hasTargetMonthlyWageInput = targetMonthlyWageInput !== undefined;
-  const hasWagePerSecondInput = wagePerSecondInput !== undefined;
-  if (!hasTargetMonthlyWageInput && !hasWagePerSecondInput) {
-    return {
-      targetMonthlyWage: toNumberOrNull(fallback.targetMonthlyWage),
-      wagePerSecond: toNumberOrNull(fallback.wagePerSecond),
-    };
-  }
-
-  const targetMonthlyWage = toNumberOrNull(targetMonthlyWageInput);
-  if (targetMonthlyWage !== null) {
-    return {
-      targetMonthlyWage,
-      wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
-    };
-  }
-
-  return {
-    targetMonthlyWage: hasTargetMonthlyWageInput
-      ? null
-      : toNumberOrNull(fallback.targetMonthlyWage),
-    wagePerSecond: hasWagePerSecondInput
-      ? toNumberOrNull(wagePerSecondInput)
-      : hasTargetMonthlyWageInput
-        ? null
-        : toNumberOrNull(fallback.wagePerSecond),
-  };
-};
-
 const buildSharedCustomerOrganizationData = (
   payload: any = {},
   fallbackOrganization: any = null
 ) => {
-  const wageFields = resolveSharedOrganizationWageFields(
-    payload?.targetMonthlyWage,
-    payload?.wagePerSecond,
-    fallbackOrganization
-  );
-
   return {
     code:
       payload?.code !== undefined
@@ -807,8 +771,6 @@ const buildSharedCustomerOrganizationData = (
       payload?.email !== undefined
         ? resolveOptionalString(payload.email, null)
         : resolveOptionalString(fallbackOrganization?.email, null),
-    targetMonthlyWage: wageFields.targetMonthlyWage,
-    wagePerSecond: wageFields.wagePerSecond,
   };
 };
 
@@ -3989,16 +3951,13 @@ const findSharedOrderConflict = async ({
 
 const createOrReuseSharedOrder = async ({
   normalized,
-  defaultManualLockBy = null,
 }: {
   normalized: any;
-  defaultManualLockBy?: string | null;
 }) => {
   const resolvedOwnerOrgId = toPositiveIntOrNull(normalized?.buyerOrgId);
   if (!resolvedOwnerOrgId) {
     throw createHttpError(400, "buyerOrgId is required");
   }
-  const manualLockBy = resolveOptionalString(defaultManualLockBy, null) ?? "system";
 
   for (let attempt = 0; attempt <= ORDER_CREATE_SERIALIZABLE_RETRIES; attempt += 1) {
     try {
@@ -4027,8 +3986,6 @@ const createOrReuseSharedOrder = async ({
             data: {
               orgId: resolvedOwnerOrgId,
               ...normalized,
-              modificationLockedAt: new Date(),
-              modificationLockedBy: manualLockBy,
             },
           });
           const itemsToCreate = normalizeOrderItems(normalized.items);
@@ -4668,23 +4625,9 @@ const syncOrderProgressStatusesForOrg = async ({
   assignments?: any;
   includeTerminalStages?: boolean;
 }) => {
-  const resolvedCards =
-    cards != null ? ensureArray(cards) : await loadAssignmentCardsForOrg({ orgId });
-  const resolvedAssignments =
-    assignments != null
-      ? normalizeStateAssignments(assignments)
-      : normalizeStateAssignments(
-          (
-            await prisma.assignmentBoardState.findUnique({
-              where: { orgId },
-              select: { assignments: true },
-            })
-          )?.assignments
-        );
-  const coverageByOrderId = buildOrderProgressCoverageByOrderId({
-    cards: resolvedCards,
-    assignments: resolvedAssignments,
-  });
+  void cards;
+  void assignments;
+  void includeTerminalStages;
   const normalizedOrderIds = Array.from(
     new Set(
       ensureArray(orderIds)
@@ -4704,12 +4647,11 @@ const syncOrderProgressStatusesForOrg = async ({
       modificationLockedAt: true,
     },
   });
-  void includeTerminalStages;
   const updates = orders.flatMap((order) => {
     const currentStatus = resolveWorkOrderStatus(order?.status, "ORDER_RECEIVED");
     const nextStatus = resolveAutoOrderProgressStatus({
       isManualLocked: Boolean(order?.modificationLockedAt),
-      coverage: coverageByOrderId.get(order.orderId) ?? null,
+      coverage: null,
     });
     if (currentStatus === nextStatus) return [];
     return [{ id: order.id, status: nextStatus }];
@@ -9791,7 +9733,6 @@ app.use(
 app.use(
   createOrgMembershipRouter({
     closeActiveLineAssignments,
-    ensureDefaultEmployeeRoles,
     isManufacturerOrg,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
@@ -9802,7 +9743,6 @@ app.use(
 
 app.use(
   createEmployeeRouter({
-    ensureDefaultEmployeeRoles,
     isManufacturerOrg,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
@@ -11515,12 +11455,8 @@ app.post("/orders", async (req, res) => {
     (sum: number, item: any) => sum + (Number(item?.totalQuantity) || 0),
     0
   );
-  const defaultManualLockBy =
-    resolveOptionalString(getRequesterEmail(req), null) ?? "system";
-
   const { order, created } = await createOrReuseSharedOrder({
     normalized,
-    defaultManualLockBy,
   });
   await rebuildAssignmentCardsForOrgIds([buyer.id, seller.id]);
   const orderLockState = await getOrderModificationLockState(order);
@@ -11909,8 +11845,6 @@ app.post("/customers", async (req, res) => {
         phone: nextTargetData.phone,
         representative: nextTargetData.representative,
         email: nextTargetData.email,
-        targetMonthlyWage: nextTargetData.targetMonthlyWage,
-        wagePerSecond: nextTargetData.wagePerSecond,
       },
     });
   } else {
@@ -11941,8 +11875,6 @@ app.post("/customers", async (req, res) => {
           phone: nextTargetData.phone,
           representative: nextTargetData.representative,
           email: nextTargetData.email,
-          targetMonthlyWage: nextTargetData.targetMonthlyWage,
-          wagePerSecond: nextTargetData.wagePerSecond,
         },
       });
     } else {
@@ -11956,8 +11888,6 @@ app.post("/customers", async (req, res) => {
           phone: nextTargetData.phone,
           representative: nextTargetData.representative,
           email: nextTargetData.email,
-          targetMonthlyWage: nextTargetData.targetMonthlyWage,
-          wagePerSecond: nextTargetData.wagePerSecond,
           type: targetType,
         },
       });
@@ -12092,8 +12022,6 @@ app.put("/customers/:id", async (req, res) => {
       phone: nextTargetData.phone,
       representative: nextTargetData.representative,
       email: nextTargetData.email,
-      targetMonthlyWage: nextTargetData.targetMonthlyWage,
-      wagePerSecond: nextTargetData.wagePerSecond,
     },
   });
 

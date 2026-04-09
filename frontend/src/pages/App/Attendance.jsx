@@ -1,8 +1,8 @@
 import React from 'react';
-import AttendanceBoard from './attendance/AttendanceBoard';
+import AttendanceList from './attendance/AttendanceList';
 
 const Attendance = () => {
-  return <AttendanceBoard />;
+  return <AttendanceList />;
 };
 
 export default Attendance;

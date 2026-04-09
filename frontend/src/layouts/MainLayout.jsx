@@ -659,6 +659,21 @@ const MainLayout = () => {
     },
     [languageCode]
   );
+  const resolveAttendanceTabLabel = React.useCallback(
+    (kind = 'list') => {
+      const baseLabel = getUiMessage('menu.attendance', 'Attendance', languageCode);
+      const suffixByKind =
+        languageCode === 'ko'
+          ? { list: '목록', new: '신규', detail: '상세' }
+          : languageCode === 'vi'
+            ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
+            : { list: 'List', new: 'New', detail: 'Detail' };
+      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
+      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
+      return `${baseLabel} - ${suffixByKind.list}`;
+    },
+    [languageCode]
+  );
   const resolveTabLabel = React.useCallback(
     (path) => {
       if (path === '/profile') {
@@ -673,12 +688,26 @@ const MainLayout = () => {
       if (path.startsWith('/work-history/') && path !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
+      if (path === '/attendance') {
+        return resolveAttendanceTabLabel('list');
+      }
+      if (path === '/attendance/new') {
+        return resolveAttendanceTabLabel('new');
+      }
+      if (path.startsWith('/attendance/') && path !== '/attendance') {
+        return resolveAttendanceTabLabel('detail');
+      }
       const matchedMenu =
         flattenedMenuItems.find((item) => item.path === path) ||
         flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
       return matchedMenu?.label || path;
     },
-    [flattenedMenuItems, languageCode, resolveWorkHistoryTabLabel]
+    [
+      flattenedMenuItems,
+      languageCode,
+      resolveAttendanceTabLabel,
+      resolveWorkHistoryTabLabel,
+    ]
   );
   const resolveRenderedTabLabel = React.useCallback(
     (tab) => {
@@ -708,13 +737,35 @@ const MainLayout = () => {
       if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
+      if (tabPath === '/attendance') {
+        return resolveAttendanceTabLabel('list');
+      }
+      if (tabPath === '/attendance/new') {
+        return resolveAttendanceTabLabel('new');
+      }
+      if (
+        tabPath.startsWith('/attendance/') &&
+        tabPath !== '/attendance' &&
+        typeof tab?.label === 'string' &&
+        tab.label.trim()
+      ) {
+        return tab.label;
+      }
+      if (tabPath.startsWith('/attendance/') && tabPath !== '/attendance') {
+        return resolveAttendanceTabLabel('detail');
+      }
 
       const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
       if (exactMenuItem?.label) return exactMenuItem.label;
 
       return tab?.label || '';
     },
-    [flattenedMenuItems, languageCode, resolveWorkHistoryTabLabel]
+    [
+      flattenedMenuItems,
+      languageCode,
+      resolveAttendanceTabLabel,
+      resolveWorkHistoryTabLabel,
+    ]
   );
   const tabsForRender = useMemo(() => {
     if (
@@ -801,6 +852,10 @@ const MainLayout = () => {
         // For work history detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
           openOptions.replacePrefix = '/work-history/';
+        }
+        // For attendance detail pages, ensure only one detail tab is open.
+        if (nextPathname.startsWith('/attendance/') && nextPathname !== '/attendance') {
+          openOptions.replacePrefix = '/attendance/';
         }
         // For payroll detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/payroll/') && nextPathname !== '/payroll') {
