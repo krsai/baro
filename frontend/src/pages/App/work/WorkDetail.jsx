@@ -297,9 +297,68 @@ const buildProcessMetric = (process) => {
   if (processId) return { key: `id:${processId}`, label: toText(process?.name) || toText(process?.code) || `ID:${processId}` };
   const code = toText(process?.code);
   if (code) return { key: `code:${code.toUpperCase()}`, label: toText(process?.name) || code };
-  const name = toText(process?.name);
-  if (name) return { key: `name:${name.toLowerCase()}`, label: name };
+  const name = toText(process?.name || process?.nameKo || process?.nameEn || process?.nameVi);
+  if (name) return { key: `name:${normalizeProcessNameKey(name)}`, label: name };
   return { key: 'unknown', label: '미정 공정' };
+};
+const buildStyleMetric = (value = {}) => {
+  const styleUid = toPositiveIdOrNull(value?.styleUid);
+  if (styleUid) {
+    return {
+      key: `uid:${styleUid}`,
+      label: toText(value?.styleId) || toText(value?.styleName) || `UID:${styleUid}`,
+    };
+  }
+  const styleId = toText(value?.styleId);
+  if (styleId) return { key: `id:${toKey(styleId)}`, label: styleId };
+  const styleName = toText(value?.styleName);
+  if (styleName) return { key: `name:${toKey(styleName)}`, label: styleName };
+  const assignmentPlanId = toPositiveIdOrNull(value?.assignmentPlanId);
+  if (assignmentPlanId) return { key: `plan:${assignmentPlanId}`, label: `PLAN:${assignmentPlanId}` };
+  return { key: '', label: '' };
+};
+const buildWorkerMetric = (value = {}) => {
+  const workerId = toPositiveIdOrNull(value?.workerId);
+  if (workerId) {
+    return { key: `id:${workerId}`, label: toText(value?.workerName) || `ID:${workerId}` };
+  }
+  const workerName = toText(value?.workerName);
+  if (workerName) return { key: `name:${toKey(workerName)}`, label: workerName };
+  return { key: '', label: '' };
+};
+const buildWorkerStyleProcessSignature = (value = {}) => {
+  const workerMetric = buildWorkerMetric({
+    workerId: value?.workerId ?? value?.worker?.id,
+    workerName: value?.workerName ?? value?.worker?.name,
+  });
+  const styleMetric = buildStyleMetric({
+    styleUid: value?.styleUid ?? value?.assignment?.styleUid,
+    styleId: value?.styleId ?? value?.assignment?.styleId,
+    styleName:
+      value?.styleName ??
+      value?.assignment?.label ??
+      value?.assignment?.styleName ??
+      value?.assignment?.styleId,
+    assignmentPlanId: value?.assignmentPlanId ?? value?.assignment?.dbId,
+  });
+  const processMetric = buildProcessMetric({
+    processId: value?.processId ?? value?.process?.processId ?? value?.process?.id,
+    code: value?.processCode ?? value?.process?.code ?? value?.process?.processCode,
+    name:
+      value?.processName ??
+      value?.process?.name ??
+      value?.process?.processName ??
+      value?.process?.nameKo ??
+      value?.process?.nameEn ??
+      value?.process?.nameVi,
+    nameKo: value?.process?.nameKo,
+    nameEn: value?.process?.nameEn,
+    nameVi: value?.process?.nameVi,
+  });
+  if (!workerMetric.key || !styleMetric.key || !processMetric.key || processMetric.key === 'unknown') {
+    return '';
+  }
+  return `${workerMetric.key}:${styleMetric.key}:${processMetric.key}`;
 };
 const collectAssignmentProcessRows = (records = []) => {
   const buckets = new Map();
@@ -322,11 +381,8 @@ const collectAssignmentProcessRows = (records = []) => {
 const findDuplicateRow = (records = []) => {
   const seen = new Set();
   for (const record of records) {
-    const workerId = toPositiveIdOrNull(record?.workerId);
-    const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-    const processKey = buildProcessMetric(record).key;
-    if (!workerId || !assignmentPlanId || !processKey) continue;
-    const signature = `${workerId}:${assignmentPlanId}:${processKey}`;
+    const signature = buildWorkerStyleProcessSignature(record);
+    if (!signature) continue;
     if (seen.has(signature)) return record;
     seen.add(signature);
   }
@@ -1052,6 +1108,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         workerId: toPositiveIdOrNull(row?.worker?.id),
         workerName: toText(row?.worker?.name),
         customerName: toText(assignment?.customer),
+        styleUid: toPositiveIdOrNull(assignment?.styleUid ?? row?.styleUid),
         styleId: toText(assignment?.styleId),
         styleName: toText(assignment?.label),
         processId: toPositiveIdOrNull(process?.processId),
@@ -1246,6 +1303,21 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         : [];
       const options = [];
       const seenOptionIds = new Set();
+      const reservedSignatures = new Set();
+
+      rows.forEach((otherRow) => {
+        if (toText(otherRow?.id) === toText(row?.id)) return;
+        const otherAssignment =
+          resolveAssignmentForRow(otherRow) || otherRow?.assignment || null;
+        const otherProcess =
+          resolveProcessForRow(otherRow, otherAssignment) || otherRow?.process || null;
+        const signature = buildWorkerStyleProcessSignature({
+          worker: otherRow?.worker,
+          assignment: otherAssignment,
+          process: otherProcess,
+        });
+        if (signature) reservedSignatures.add(signature);
+      });
 
       sourceProcesses.forEach((processOption, processIndex) => {
         const mergedProcess = mergeProcessWithCatalog(
@@ -1254,6 +1326,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           processCatalogByCode,
           processCatalogByName
         );
+        const candidateSignature = buildWorkerStyleProcessSignature({
+          worker: row?.worker,
+          assignment: selectedAssignment,
+          process: mergedProcess,
+        });
+        if (candidateSignature && reservedSignatures.has(candidateSignature)) return;
         const optionId =
           buildProcessIdentityKey(mergedProcess) || `process-${processIndex + 1}`;
         if (!optionId || seenOptionIds.has(optionId)) return;
@@ -1283,6 +1361,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       processCatalogByCode,
       processCatalogById,
       processCatalogByName,
+      rows,
       resolveAssignmentForRow,
       resolveProcessForRow,
     ]
@@ -1480,7 +1559,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       return;
     }
     if (findDuplicateRow(summary.records)) {
-      setFormError('중복된 작업 조합이 있습니다.');
+      setFormError('같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
       return;
     }
     const excessiveProcess = collectAssignmentProcessRows(summary.records).find((row) => {

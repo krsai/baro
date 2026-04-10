@@ -4735,6 +4735,60 @@ const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
     record?.processCode,
     resolveWorkRecordProcessName(record)
   );
+const resolveWorkRecordStyleMetric = (record: any) => {
+  const styleUid = toPositiveIntOrNull(record?.styleUid);
+  if (styleUid) {
+    return {
+      styleMetricKey: `uid:${styleUid}`,
+      styleLabel:
+        resolveOptionalString(record?.styleId, null) ??
+        resolveOptionalString(record?.styleName, null) ??
+        `UID:${styleUid}`,
+    };
+  }
+  const styleId = resolveOptionalString(record?.styleId, null);
+  if (styleId) {
+    return {
+      styleMetricKey: `id:${normalizeComparableText(styleId)}`,
+      styleLabel: styleId,
+    };
+  }
+  const styleName = resolveOptionalString(record?.styleName, null);
+  if (styleName) {
+    return {
+      styleMetricKey: `name:${normalizeComparableText(styleName)}`,
+      styleLabel: styleName,
+    };
+  }
+  const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+  if (assignmentPlanId) {
+    return {
+      styleMetricKey: `plan:${assignmentPlanId}`,
+      styleLabel: `assignmentPlan#${assignmentPlanId}`,
+    };
+  }
+  return { styleMetricKey: "", styleLabel: "미지정 스타일" };
+};
+const buildWorkRecordWorkerStyleProcessSignature = (record: any) => {
+  const workerId = toPositiveIntOrNull(record?.workerId);
+  if (!workerId) return null;
+  const styleMetric = resolveWorkRecordStyleMetric(record);
+  if (!styleMetric.styleMetricKey) return null;
+  const processMetric = resolveWorkRecordProcessMetricFromRecord(record);
+  if (!processMetric.processMetricKey || processMetric.processMetricKey === "unknown") {
+    return null;
+  }
+  return `${workerId}::${styleMetric.styleMetricKey}::${processMetric.processMetricKey}`;
+};
+const formatWorkerStyleProcessIdentityLabel = (record: any) => {
+  const workerId = toPositiveIntOrNull(record?.workerId);
+  const workerLabel =
+    resolveOptionalString(record?.workerName, null) ??
+    (workerId ? `worker#${workerId}` : "미지정 작업자");
+  const styleLabel = resolveWorkRecordStyleMetric(record).styleLabel;
+  const processLabel = resolveWorkRecordProcessMetricFromRecord(record).processLabel;
+  return [workerLabel, styleLabel, processLabel].filter(Boolean).join(" / ");
+};
 type AssignmentProcessQuantityBucket = {
   assignmentPlanId: number;
   processMetricKey: string;
@@ -4996,6 +5050,122 @@ const validateWorkLogAssignmentProcessQuantities = async ({
 
   return { status: 200, error: null as string | null };
 };
+const validateWorkLogWorkerStyleProcessDuplicates = async ({
+  orgId,
+  workDate,
+  records,
+  excludedWorkLogId = null,
+}: {
+  orgId: number;
+  workDate: string;
+  records: any;
+  excludedWorkLogId?: number | null;
+}) => {
+  const normalizedWorkDate = normalizeDateKey(workDate);
+  if (!normalizedWorkDate) {
+    return { status: 400, error: "invalid workDate" };
+  }
+
+  const incomingRecords = ensureArray(records).filter(
+    (record) => record && typeof record === "object"
+  );
+  if (incomingRecords.length === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const firstIncomingRecordBySignature = new Map<string, any>();
+  const incomingDuplicateRows: any[] = [];
+  incomingRecords.forEach((record) => {
+    const signature = buildWorkRecordWorkerStyleProcessSignature(record);
+    if (!signature) return;
+    if (firstIncomingRecordBySignature.has(signature)) {
+      incomingDuplicateRows.push(record);
+      return;
+    }
+    firstIncomingRecordBySignature.set(signature, record);
+  });
+
+  if (incomingDuplicateRows.length > 0) {
+    const preview = incomingDuplicateRows
+      .slice(0, 3)
+      .map((record) => formatWorkerStyleProcessIdentityLabel(record))
+      .join("; ");
+    const extraText =
+      incomingDuplicateRows.length > 3
+        ? ` (+${incomingDuplicateRows.length - 3} more)`
+        : "";
+    return {
+      status: 400,
+      error: `duplicate worker-style-process on workDate: ${preview}${extraText}`,
+    };
+  }
+
+  const workerIds = collectPositiveIntSet(
+    ...incomingRecords.map((record) => record?.workerId)
+  );
+  if (workerIds.length === 0 || firstIncomingRecordBySignature.size === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const existingRows = await prisma.workRecord.findMany({
+    where: {
+      orgId,
+      workerId: { in: workerIds },
+      workLog: {
+        orgId,
+        workDate: normalizedWorkDate,
+        ...(excludedWorkLogId ? { id: { not: excludedWorkLogId } } : {}),
+      },
+    },
+    select: {
+      workerId: true,
+      workerName: true,
+      styleUid: true,
+      styleId: true,
+      styleName: true,
+      processId: true,
+      processCode: true,
+      assignmentPlanId: true,
+      process: {
+        select: { name: true },
+      },
+    },
+  });
+
+  const existingSignatureSet = new Set<string>();
+  existingRows.forEach((row) => {
+    const signature = buildWorkRecordWorkerStyleProcessSignature({
+      workerId: row.workerId,
+      workerName: row.workerName,
+      styleUid: row.styleUid,
+      styleId: row.styleId,
+      styleName: row.styleName,
+      processId: row.processId,
+      processCode: row.processCode,
+      processName: row.process?.name ?? null,
+      assignmentPlanId: row.assignmentPlanId,
+    });
+    if (signature) existingSignatureSet.add(signature);
+  });
+
+  const conflictRows = Array.from(firstIncomingRecordBySignature.entries())
+    .filter(([signature]) => existingSignatureSet.has(signature))
+    .map(([, record]) => record);
+  if (conflictRows.length > 0) {
+    const preview = conflictRows
+      .slice(0, 3)
+      .map((record) => formatWorkerStyleProcessIdentityLabel(record))
+      .join("; ");
+    const extraText =
+      conflictRows.length > 3 ? ` (+${conflictRows.length - 3} more)` : "";
+    return {
+      status: 400,
+      error: `duplicate worker-style-process on workDate: ${preview}${extraText}`,
+    };
+  }
+
+  return { status: 200, error: null as string | null };
+};
 const validateWorkLogLineWorkers = async ({
   orgId,
   lineId,
@@ -5102,6 +5272,13 @@ const translateWorkLogErrorMessage = (error: any) => {
     return "선택한 라인이 현재 공장에 속하지 않습니다.";
   }
   if (text === "invalid workDate") return "작업일자가 올바르지 않습니다.";
+  if (text.startsWith("duplicate worker-style-process on workDate")) {
+    const detail = resolveOptionalString(text.split(":").slice(1).join(":").trim(), null);
+    if (detail) {
+      return `같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다. (${detail})`;
+    }
+    return "같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.";
+  }
   if (text.startsWith("line worker mismatch for workDate")) {
     return "선택한 작업일 기준으로 현재 라인에 속하지 않은 작업자가 포함되어 있습니다. 라인과 작업자를 다시 확인해 주세요.";
   }
@@ -10506,6 +10683,16 @@ app.post("/work-logs", async (req, res) => {
     orgId: organization.id,
     records: normalized.records,
   });
+  const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
+    orgId: organization.id,
+    workDate: normalized.workDate,
+    records: normalized.records,
+  });
+  if (duplicateValidation.error) {
+    return res
+      .status(duplicateValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(duplicateValidation.error) });
+  }
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -10654,6 +10841,17 @@ app.put("/work-logs/:id", async (req, res) => {
     orgId: organization.id,
     records: normalized.records,
   });
+  const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
+    orgId: organization.id,
+    workDate: normalized.workDate,
+    records: normalized.records,
+    excludedWorkLogId: existing.id,
+  });
+  if (duplicateValidation.error) {
+    return res
+      .status(duplicateValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(duplicateValidation.error) });
+  }
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
