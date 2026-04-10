@@ -99,6 +99,12 @@ const normalizeProcessCode = (value) =>
     .replace(/\[|\]/g, '')
     .replace(/\s+/g, '')
     .toUpperCase();
+const normalizeProcessNameKey = (value) =>
+  toText(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 const toPositiveIdOrNull = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -223,12 +229,14 @@ const buildPlanProcessOptions = (plan) => {
     return {
       id: `${toText(plan?.dbId || plan?.id || 'plan')}:${processKey}`,
       processKey,
-      processId: toPositiveIdOrNull(process?.id ?? process?.processId),
+      processId: toPositiveIdOrNull(
+        process?.id ?? process?.processId ?? process?.processAttributeId ?? process?.attributeId
+      ),
       code: toText(process?.code || process?.processKey),
       name: fallbackName,
-      nameKo: toText(process?.nameKo),
-      nameEn: toText(process?.nameEn),
-      nameVi: toText(process?.nameVi),
+      nameKo: toText(process?.nameKo || process?.processNameKo),
+      nameEn: toText(process?.nameEn || process?.processNameEn),
+      nameVi: toText(process?.nameVi || process?.processNameVi),
       ctSeconds: Math.max(
         0,
         Math.round(Number(process?.ctPerPieceSeconds ?? process?.ctSeconds) || 0)
@@ -469,10 +477,70 @@ const resolveAssignmentOption = (rowAssignment, assignmentMap) => {
         : [],
   };
 };
+const mergeMatchedProcessOption = (rowProcess, matchedProcess) => {
+  if (!matchedProcess) return rowProcess;
+  const resolvedCtSeconds = Math.max(
+    0,
+    Math.round(Number(matchedProcess?.ctSeconds ?? rowProcess?.ctSeconds) || 0)
+  );
+  return {
+    ...rowProcess,
+    ...matchedProcess,
+    processId: toPositiveIdOrNull(matchedProcess?.processId ?? rowProcess?.processId),
+    code: toText(
+      matchedProcess?.code ||
+        matchedProcess?.processCode ||
+        rowProcess?.code ||
+        rowProcess?.processCode
+    ),
+    name: toText(
+      matchedProcess?.name ||
+        matchedProcess?.processName ||
+        rowProcess?.name ||
+        rowProcess?.processName
+    ),
+    nameKo: toText(
+      matchedProcess?.nameKo ||
+        matchedProcess?.processNameKo ||
+        rowProcess?.nameKo ||
+        rowProcess?.processNameKo
+    ),
+    nameEn: toText(
+      matchedProcess?.nameEn ||
+        matchedProcess?.processNameEn ||
+        rowProcess?.nameEn ||
+        rowProcess?.processNameEn
+    ),
+    nameVi: toText(
+      matchedProcess?.nameVi ||
+        matchedProcess?.processNameVi ||
+        rowProcess?.nameVi ||
+        rowProcess?.processNameVi
+    ),
+    processKey: toText(
+      matchedProcess?.processKey ||
+        rowProcess?.processKey ||
+        matchedProcess?.id ||
+        rowProcess?.id
+    ),
+    ctSeconds: resolvedCtSeconds,
+  };
+};
 const resolveProcessOption = (rowProcess, assignment) => {
   if (!rowProcess) return null;
   const processOptions = Array.isArray(assignment?.processes) ? assignment.processes : [];
   if (processOptions.length === 0) return rowProcess;
+
+  const targetProcessKey = toText(rowProcess?.processKey || rowProcess?.id);
+  if (targetProcessKey) {
+    const matchedByKey = processOptions.find(
+      (processOption) =>
+        toText(processOption?.processKey || processOption?.id) === targetProcessKey
+    );
+    if (matchedByKey) {
+      return mergeMatchedProcessOption(rowProcess, matchedByKey);
+    }
+  }
 
   const targetProcessId = toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id);
   if (targetProcessId) {
@@ -480,13 +548,7 @@ const resolveProcessOption = (rowProcess, assignment) => {
       (processOption) => toPositiveIdOrNull(processOption?.processId ?? processOption?.id) === targetProcessId
     );
     if (matchedById) {
-      return {
-        ...matchedById,
-        ...rowProcess,
-        processId: toPositiveIdOrNull(rowProcess?.processId ?? matchedById?.processId),
-        code: toText(rowProcess?.code || rowProcess?.processCode || matchedById?.code),
-        name: toText(rowProcess?.name || rowProcess?.processName || matchedById?.name),
-      };
+      return mergeMatchedProcessOption(rowProcess, matchedById);
     }
   }
 
@@ -498,41 +560,62 @@ const resolveProcessOption = (rowProcess, assignment) => {
         targetProcessCode
     );
     if (matchedByCode) {
-      return {
-        ...matchedByCode,
-        ...rowProcess,
-        processId: toPositiveIdOrNull(rowProcess?.processId ?? matchedByCode?.processId),
-        code: toText(rowProcess?.code || rowProcess?.processCode || matchedByCode?.code),
-        name: toText(rowProcess?.name || rowProcess?.processName || matchedByCode?.name),
-      };
+      return mergeMatchedProcessOption(rowProcess, matchedByCode);
     }
   }
 
-  const targetProcessName = toText(rowProcess?.name || rowProcess?.processName);
-  if (targetProcessName) {
+  const targetProcessNameSet = new Set(
+    [
+      rowProcess?.name,
+      rowProcess?.processName,
+      rowProcess?.nameKo,
+      rowProcess?.processNameKo,
+      rowProcess?.nameEn,
+      rowProcess?.processNameEn,
+      rowProcess?.nameVi,
+      rowProcess?.processNameVi,
+    ]
+      .map((value) => normalizeProcessNameKey(value))
+      .filter(Boolean)
+  );
+  if (targetProcessNameSet.size > 0) {
     const matchedByName = processOptions.find(
-      (processOption) => equalsText(processOption?.name, targetProcessName)
+      (processOption) =>
+        [
+          processOption?.name,
+          processOption?.processName,
+          processOption?.nameKo,
+          processOption?.processNameKo,
+          processOption?.nameEn,
+          processOption?.processNameEn,
+          processOption?.nameVi,
+          processOption?.processNameVi,
+        ]
+          .map((value) => normalizeProcessNameKey(value))
+          .filter(Boolean)
+          .some((nameKey) => targetProcessNameSet.has(nameKey))
     );
     if (matchedByName) {
-      return {
-        ...matchedByName,
-        ...rowProcess,
-        processId: toPositiveIdOrNull(rowProcess?.processId ?? matchedByName?.processId),
-        code: toText(rowProcess?.code || rowProcess?.processCode || matchedByName?.code),
-        name: toText(rowProcess?.name || rowProcess?.processName || matchedByName?.name),
-      };
+      return mergeMatchedProcessOption(rowProcess, matchedByName);
     }
   }
 
   return rowProcess;
 };
-const mergeProcessWithCatalog = (process, processCatalogById, processCatalogByCode) => {
+const mergeProcessWithCatalog = (
+  process,
+  processCatalogById,
+  processCatalogByCode,
+  processCatalogByName
+) => {
   if (!process) return null;
   const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
   const processCode = normalizeProcessCode(process?.code || process?.processCode || process?.processKey);
+  const processNameKey = normalizeProcessNameKey(process?.name || process?.processName);
   const matchedProcess =
     (processId ? processCatalogById.get(processId) : null) ||
     (processCode ? processCatalogByCode.get(processCode) : null) ||
+    (processNameKey ? processCatalogByName.get(processNameKey) : null) ||
     null;
 
   if (!matchedProcess) return process;
@@ -853,6 +936,29 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       }, new Map()),
     [processAttributes]
   );
+  const processCatalogByName = useMemo(() => {
+    const map = new Map();
+    const duplicatedKeys = new Set();
+    const addProcessName = (rawName, process) => {
+      const nameKey = normalizeProcessNameKey(rawName);
+      if (!nameKey || duplicatedKeys.has(nameKey)) return;
+      if (map.has(nameKey)) {
+        map.delete(nameKey);
+        duplicatedKeys.add(nameKey);
+        return;
+      }
+      map.set(nameKey, process);
+    };
+
+    (Array.isArray(processAttributes) ? processAttributes : []).forEach((process) => {
+      addProcessName(process?.name, process);
+      addProcessName(process?.nameKo, process);
+      addProcessName(process?.nameEn, process);
+      addProcessName(process?.nameVi, process);
+    });
+
+    return map;
+  }, [processAttributes]);
   const assignmentOptionMap = useMemo(
     () =>
       assignmentOptions.reduce((map, assignment) => {
@@ -869,8 +975,13 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const resolveProcessForRow = useCallback((row, assignmentOverride = null) => {
     const assignment = assignmentOverride || resolveAssignmentForRow(row);
     const linkedProcess = resolveProcessOption(row?.process, assignment);
-    return mergeProcessWithCatalog(linkedProcess, processCatalogById, processCatalogByCode);
-  }, [processCatalogByCode, processCatalogById, resolveAssignmentForRow]);
+    return mergeProcessWithCatalog(
+      linkedProcess,
+      processCatalogById,
+      processCatalogByCode,
+      processCatalogByName
+    );
+  }, [processCatalogByCode, processCatalogById, processCatalogByName, resolveAssignmentForRow]);
   const filteredRows = useMemo(() => {
     const keyword = toText(deferredSearchTerm).toLowerCase();
     if (!keyword) return rows;
@@ -946,6 +1057,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         processId: toPositiveIdOrNull(process?.processId),
         processCode: toText(process?.code),
         processName: toText(process?.name),
+        processNameKo: toText(process?.nameKo),
+        processNameEn: toText(process?.nameEn),
+        processNameVi: toText(process?.nameVi),
         colorId: toPositiveIdOrNull(assignment?.colorId),
         colorCode: toText(assignment?.color),
         colorName: toText(assignment?.colorName),
@@ -1137,7 +1251,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         const mergedProcess = mergeProcessWithCatalog(
           processOption,
           processCatalogById,
-          processCatalogByCode
+          processCatalogByCode,
+          processCatalogByName
         );
         const optionId =
           buildProcessIdentityKey(mergedProcess) || `process-${processIndex + 1}`;
@@ -1167,6 +1282,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       assignmentOptions,
       processCatalogByCode,
       processCatalogById,
+      processCatalogByName,
       resolveAssignmentForRow,
       resolveProcessForRow,
     ]

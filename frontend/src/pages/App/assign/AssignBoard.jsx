@@ -1139,6 +1139,24 @@ const buildAssignmentCtSnapshotForSave = ({
           ).trim(),
           processName:
             process?.name || process?.processName || process?.code || `공정 ${index + 1}`,
+          processNameKo: String(
+            process?.nameKo ||
+              process?.processNameKo ||
+              resolveLocalizedProcessName(process, 'ko') ||
+              ''
+          ).trim(),
+          processNameEn: String(
+            process?.nameEn ||
+              process?.processNameEn ||
+              resolveLocalizedProcessName(process, 'en') ||
+              ''
+          ).trim(),
+          processNameVi: String(
+            process?.nameVi ||
+              process?.processNameVi ||
+              resolveLocalizedProcessName(process, 'vi') ||
+              ''
+          ).trim(),
           processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
         }))
       : (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
@@ -1148,6 +1166,24 @@ const buildAssignmentCtSnapshotForSave = ({
             processKey: String(process?.processKey || `PROCESS-${index + 1}`).trim(),
             processName:
               process?.name || process?.processName || process?.processKey || `공정 ${index + 1}`,
+            processNameKo: String(
+              process?.nameKo ||
+                process?.processNameKo ||
+                resolveLocalizedProcessName(process, 'ko') ||
+                ''
+            ).trim(),
+            processNameEn: String(
+              process?.nameEn ||
+                process?.processNameEn ||
+                resolveLocalizedProcessName(process, 'en') ||
+                ''
+            ).trim(),
+            processNameVi: String(
+              process?.nameVi ||
+                process?.processNameVi ||
+                resolveLocalizedProcessName(process, 'vi') ||
+                ''
+            ).trim(),
             processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
           })
         );
@@ -1192,11 +1228,27 @@ const buildAssignmentCtSnapshotForSave = ({
             snapshotProcess?.code ??
             ''
         ).trim() || null;
+      const resolvedProcessId = Number(
+        seed?.process?.id ?? snapshotProcess?.processId ?? snapshotProcess?.id
+      );
 
       return {
         processKey,
+        processId:
+          Number.isFinite(resolvedProcessId) && resolvedProcessId > 0
+            ? Math.trunc(resolvedProcessId)
+            : null,
         processCode,
         name: seed.processName || `공정 ${index + 1}`,
+        nameKo:
+          seed.processNameKo ||
+          String(snapshotProcess?.nameKo || snapshotProcess?.processNameKo || '').trim(),
+        nameEn:
+          seed.processNameEn ||
+          String(snapshotProcess?.nameEn || snapshotProcess?.processNameEn || '').trim(),
+        nameVi:
+          seed.processNameVi ||
+          String(snapshotProcess?.nameVi || snapshotProcess?.processNameVi || '').trim(),
         quantity: seed.processQuantity,
         basis: 'ST',
         stSeconds: resolvedStSeconds,

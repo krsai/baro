@@ -53,6 +53,7 @@ const TEXT = {
   workers: { ko: '작업자', en: 'Workers', vi: 'Cong nhan' },
   items: { ko: '기록 건수', en: 'Entries', vi: 'So dong' },
   totalCt: { ko: '총 CT', en: 'Total CT', vi: 'Tong CT' },
+  averageCtPerWorker: { ko: '1인 평균 CT', en: 'Avg CT / Worker', vi: 'CT trung binh / nguoi' },
   loading: { ko: '기록을 불러오는 중입니다.', en: 'Loading logs...', vi: 'Dang tai ghi chep...' },
   empty: { ko: '해당 기간에 기록이 없습니다.', en: 'No logs found for this period.', vi: 'Khong co ghi chep trong giai doan nay.' },
   fetchError: { ko: '기록을 불러오지 못했습니다.', en: 'Failed to load logs.', vi: 'Khong the tai ghi chep.' },
@@ -94,6 +95,12 @@ const formatDuration = (seconds, languageCode) => {
   if (languageCode === 'en') return `${hours}h ${minutes}m`;
   if (languageCode === 'vi') return `${hours} gio ${minutes} phut`;
   return `${hours}시간 ${minutes}분`;
+};
+const resolveAverageCtSecondsPerWorker = (log) => {
+  const workerCount = Math.max(0, Math.round(Number(log?.workerCount) || 0));
+  if (workerCount <= 0) return null;
+  const totalCtSeconds = Math.max(0, Math.round(Number(log?.totalContractedSeconds) || 0));
+  return Math.round(totalCtSeconds / workerCount);
 };
 
 const getDatePickerLocaleText = (languageCode) => {
@@ -334,6 +341,13 @@ const WorkList = () => {
                       <Typography variant="caption" color="text.secondary">
                         {`${resolveText(TEXT.totalCt, languageCode, '총 CT')} ${formatDuration(log.totalContractedSeconds, languageCode)}`}
                       </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {`${resolveText(TEXT.averageCtPerWorker, languageCode, '1인 평균 CT')} ${
+                          resolveAverageCtSecondsPerWorker(log) === null
+                            ? '-'
+                            : formatDuration(resolveAverageCtSecondsPerWorker(log), languageCode)
+                        }`}
+                      </Typography>
                     </Box>
                   </Stack>
                 </Paper>
@@ -351,14 +365,15 @@ const WorkList = () => {
                 <TableCell align="right">{resolveText(TEXT.workers, languageCode, '작업자')}</TableCell>
                 <TableCell align="right">{resolveText(TEXT.items, languageCode, '기록 건수')}</TableCell>
                 <TableCell>{resolveText(TEXT.totalCt, languageCode, '총 CT')}</TableCell>
+                <TableCell>{resolveText(TEXT.averageCtPerWorker, languageCode, '1인 평균 CT')}</TableCell>
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={7} message={resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')} />
+                <TableStatusRow colSpan={8} message={resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')} />
               ) : filteredLogs.length === 0 ? (
-                <TableStatusRow colSpan={7} message={resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')} />
+                <TableStatusRow colSpan={8} message={resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')} />
               ) : (
                 filteredLogs.map((log) => (
                   <TableRow
@@ -367,7 +382,7 @@ const WorkList = () => {
                     onClick={() => handleOpen(log)}
                     sx={{
                       cursor: 'pointer',
-                      '& td': { verticalAlign: 'top' },
+                      '& td': { verticalAlign: 'middle' },
                     }}
                   >
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{log.workDate || '-'}</TableCell>
@@ -377,6 +392,11 @@ const WorkList = () => {
                     <TableCell align="right">{log.itemCount || 0}</TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
                       {formatDuration(log.totalContractedSeconds, languageCode)}
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {resolveAverageCtSecondsPerWorker(log) === null
+                        ? '-'
+                        : formatDuration(resolveAverageCtSecondsPerWorker(log), languageCode)}
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
