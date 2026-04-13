@@ -13183,7 +13183,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   return res.status(500).json({ ok: false, error: "internal server error" });
 });
 
-const port = process.env.PORT || 4000;
+const port = Number(process.env.PORT) || 4000;
 const AT_AUTO_SYNC_INTERVAL_MS = 60 * 1000;
 const AT_AUTO_SYNC_DB_LOCK_NAMESPACE = 20260223;
 const AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
