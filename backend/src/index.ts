@@ -13184,6 +13184,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const port = Number(process.env.PORT) || 4000;
+const host = String(process.env.HOST || "0.0.0.0").trim() || "0.0.0.0";
 const AT_AUTO_SYNC_INTERVAL_MS = 60 * 1000;
 const AT_AUTO_SYNC_DB_LOCK_NAMESPACE = 20260223;
 const AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
@@ -13431,8 +13432,8 @@ const startServer = async () => {
   await ensureHardcodedSystemAdmin();
   await ensureAtAutoSyncRunHistoryTable();
   startAutoAtSyncScheduler();
-  app.listen(port, () => {
-    console.log(`API running on http://localhost:${port}`);
+  app.listen(port, host, () => {
+    console.log(`API running on http://${host}:${port}`);
   });
 };
 
