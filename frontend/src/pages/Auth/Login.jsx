@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import Copyright from '../../components/Copyright';
+import AppVersionLabel from '../../components/AppVersionLabel';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -432,6 +433,7 @@ const Login = () => {
       </Box>
 
       <Copyright sx={{ mt: 8, mb: 4 }} />
+      <AppVersionLabel sx={{ display: 'block', mb: 2 }} />
 
       {isTestPanelOpen && (
         <Paper
