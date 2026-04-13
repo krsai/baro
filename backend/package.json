@@ -15,7 +15,7 @@
     "reset:baseline": "node scripts/reset-to-baseline.js",
     "sample:orders": "node scripts/reset-to-baseline.js orders",
     "sample:work-logs": "node scripts/reset-to-baseline.js work-logs",
-    "predev": "npm run prisma:prepare-client",
+    "predev": "npm run prisma:prepare-client && npm run prisma:deploy:safe",
     "prestart": "npm run prisma:prepare-client && npm run build && npm run prisma:deploy:safe",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",

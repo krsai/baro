@@ -1,6 +1,8 @@
 const { spawnSync } = require("child_process");
+const dotenv = require("dotenv");
 
-const resolveNpxCommand = () => (process.platform === "win32" ? "npx.cmd" : "npx");
+dotenv.config({ override: true });
+const prismaCli = require.resolve("prisma/build/index.js");
 
 const effectiveDbUrl =
   String(process.env.DIRECT_URL || "").trim() ||
@@ -19,11 +21,9 @@ const commandEnv = {
   DATABASE_URL: String(process.env.DATABASE_URL || "").trim() || effectiveDbUrl,
 };
 
-const npxCommand = resolveNpxCommand();
-
 const runPrisma = (args, label) => {
   console.log(`[prisma-safe-deploy] ${label}`);
-  const result = spawnSync(npxCommand, ["prisma", ...args], {
+  const result = spawnSync(process.execPath, [prismaCli, ...args], {
     env: commandEnv,
     encoding: "utf8",
     stdio: "pipe",
@@ -35,50 +35,23 @@ const runPrisma = (args, label) => {
   return result;
 };
 
-const parseFailedMigrationName = (outputText) => {
-  const match = String(outputText || "").match(/The `([^`]+)` migration .* failed/i);
-  return match?.[1] ? String(match[1]).trim() : "";
-};
-
-const firstAttempt = runPrisma(["migrate", "deploy"], "Running prisma migrate deploy");
+const firstAttempt = runPrisma(
+  ["db", "push", "--accept-data-loss", "--skip-generate"],
+  "Running prisma db push --accept-data-loss --skip-generate"
+);
 if (firstAttempt.status === 0) {
   process.exit(0);
 }
 
-const firstOutput = `${firstAttempt.stdout || ""}\n${firstAttempt.stderr || ""}`;
-const isFailedMigrationState = /P3009|failed migrations in the target database/i.test(
-  firstOutput
-);
-
-if (isFailedMigrationState) {
-  const failedMigrationName = parseFailedMigrationName(firstOutput);
-  if (failedMigrationName) {
-    const resolveAttempt = runPrisma(
-      ["migrate", "resolve", "--rolled-back", failedMigrationName],
-      `Resolving failed migration as rolled back: ${failedMigrationName}`
-    );
-
-    if (resolveAttempt.status === 0) {
-      const retryAttempt = runPrisma(
-        ["migrate", "deploy"],
-        "Retrying prisma migrate deploy after resolve"
-      );
-      if (retryAttempt.status === 0) {
-        process.exit(0);
-      }
-    }
-  }
-}
-
 console.warn(
-  "[prisma-safe-deploy] migrate deploy could not complete. Falling back to prisma db push --accept-data-loss."
+  "[prisma-safe-deploy] db push failed. Falling back to force reset + db push."
 );
-const pushAttempt = runPrisma(
-  ["db", "push", "--accept-data-loss"],
-  "Running prisma db push --accept-data-loss"
+const resetAttempt = runPrisma(
+  ["db", "push", "--accept-data-loss", "--force-reset", "--skip-generate"],
+  "Running prisma db push --accept-data-loss --force-reset --skip-generate"
 );
-if (pushAttempt.status === 0) {
+if (resetAttempt.status === 0) {
   process.exit(0);
 }
 
-process.exit(pushAttempt.status || firstAttempt.status || 1);
+process.exit(resetAttempt.status || firstAttempt.status || 1);

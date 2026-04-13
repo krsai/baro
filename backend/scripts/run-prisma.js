@@ -1,6 +1,8 @@
 const { spawnSync } = require("child_process");
+const dotenv = require("dotenv");
 
-const resolveNpxCommand = () => (process.platform === "win32" ? "npx.cmd" : "npx");
+dotenv.config({ override: true });
+const prismaCli = require.resolve("prisma/build/index.js");
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -21,7 +23,7 @@ if (effectiveDbUrl) {
   env.DATABASE_URL = effectiveDbUrl;
 }
 
-const result = spawnSync(resolveNpxCommand(), ["prisma", ...args], {
+const result = spawnSync(process.execPath, [prismaCli, ...args], {
   env,
   stdio: "inherit",
 });
