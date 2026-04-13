@@ -1,28 +1,31 @@
 const fs = require("fs");
 const path = require("path");
 
-const target = path.join(
-  __dirname,
-  "..",
-  "node_modules",
-  ".prisma",
-  "client",
-  "default.js"
-);
+const targetFiles = [
+  path.join(__dirname, "..", "node_modules", ".prisma", "client", "default.js"),
+];
 
-const broken = "require('#main-entry-point')";
-const fixed = "require('./index.js')";
+const brokenRequirePattern = /require\((['"])#main-entry-point\1\)/g;
+let patchedCount = 0;
+let checkedCount = 0;
 
-if (!fs.existsSync(target)) {
+for (const target of targetFiles) {
+  if (!fs.existsSync(target)) continue;
+  checkedCount += 1;
+  const source = fs.readFileSync(target, "utf8");
+  const patched = source.replace(brokenRequirePattern, "require('./index.js')");
+  if (patched !== source) {
+    fs.writeFileSync(target, patched, "utf8");
+    patchedCount += 1;
+    console.log(`[prisma-entry-fix] patched ${path.relative(process.cwd(), target)}`);
+  }
+}
+
+if (checkedCount === 0) {
   console.log("[prisma-entry-fix] skip: generated client not found");
   process.exit(0);
 }
-
-const source = fs.readFileSync(target, "utf8");
-if (!source.includes(broken)) {
+if (patchedCount === 0) {
   console.log("[prisma-entry-fix] skip: no patch needed");
   process.exit(0);
 }
-
-fs.writeFileSync(target, source.replace(broken, fixed), "utf8");
-console.log("[prisma-entry-fix] patched node_modules/.prisma/client/default.js");
