@@ -4,8 +4,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prisma:prepare-client": "npx prisma generate && npm run prisma:fix-entry",
-    "prisma:migrate:deploy": "npx prisma migrate deploy",
+    "prisma:prepare-client": "node scripts/run-prisma.js generate && npm run prisma:fix-entry",
+    "prisma:migrate:deploy": "node scripts/run-prisma.js migrate deploy",
     "prisma:deploy:safe": "node scripts/prisma-safe-deploy.js",
     "prisma:fix-entry": "node scripts/fix-prisma-client-entry.js",
     "backfill:style-process-storage": "node scripts/backfill-style-process-storage.js",
