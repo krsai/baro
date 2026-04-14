@@ -31,33 +31,36 @@ const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
 
 const MESSAGES = {
   ko: {
-    title: '\uC218\uB7C9\uBCC4 PT/ST/AT',
+    title: '\uC218\uB7C9\uBCC4 PT/ST/AT (\uCD08)',
     processColumn: '\uACF5\uC815',
     metricColumn: '\uAD6C\uBD84',
     pt: 'PT',
     st: 'ST',
     at: 'AT',
     manualLegend: '\uD30C\uB780\uC0C9 ST\uB294 \uC218\uB3D9 \uC785\uB825\uAC12',
+    unitLegend: '\uBAA8\uB4E0 \uAC12 \uB2E8\uC704: \uCD08',
     empty: '\uB4F1\uB85D\uB41C \uACF5\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
   },
   en: {
-    title: 'PT/ST/AT by Quantity',
+    title: 'PT/ST/AT by Quantity (sec)',
     processColumn: 'Process',
     metricColumn: 'Metric',
     pt: 'PT',
     st: 'ST',
     at: 'AT',
     manualLegend: 'Blue ST means manual input',
+    unitLegend: 'All values are in seconds',
     empty: 'No process rows registered.',
   },
   vi: {
-    title: 'PT/ST/AT theo so luong',
+    title: 'PT/ST/AT theo so luong (giay)',
     processColumn: 'Cong doan',
     metricColumn: 'Muc',
     pt: 'PT',
     st: 'ST',
     at: 'AT',
     manualLegend: 'ST mau xanh la gia tri nhap tay',
+    unitLegend: 'Tat ca gia tri deu tinh theo giay',
     empty: 'Chua co cong doan nao.',
   },
 };
@@ -168,6 +171,38 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
 
 const buildDraftKey = (processInstanceId, quantity) =>
   `${String(processInstanceId || '')}::${String(quantity)}`;
+const SECONDS_CELL_WIDTH = 82;
+const SECONDS_DISPLAY_BOX_SX = {
+  width: SECONDS_CELL_WIDTH,
+  minHeight: 32,
+  mx: 'auto',
+  px: 1,
+  py: 0.6,
+  borderRadius: 1,
+  border: '1px solid',
+  borderColor: 'divider',
+  backgroundColor: 'grey.50',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.8125rem',
+  fontVariantNumeric: 'tabular-nums',
+  lineHeight: 1.2,
+};
+
+const renderReadonlySecondsBox = (value) => {
+  const hasValue = value != null;
+  return (
+    <Box
+      sx={{
+        ...SECONDS_DISPLAY_BOX_SX,
+        color: hasValue ? 'text.primary' : 'text.disabled',
+      }}
+    >
+      {hasValue ? formatSecondsPlain(value) : '-'}
+    </Box>
+  );
+};
 
 const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const { languageCode } = useLanguage();
@@ -227,7 +262,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     <Paper variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
-        spacing={1}
+        spacing={1.5}
         sx={{
           justifyContent: 'space-between',
           alignItems: { xs: 'flex-start', sm: 'center' },
@@ -251,6 +286,9 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
           <Typography variant="caption" color="text.secondary">
             {resolveMessage(languageCode, 'manualLegend')}
           </Typography>
+          <Typography variant="caption" color="text.secondary">
+            · {resolveMessage(languageCode, 'unitLegend')}
+          </Typography>
         </Stack>
       </Stack>
 
@@ -260,6 +298,9 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
           sx={{
             minWidth: Math.max(1040, 300 + quantityBuckets.length * 96),
             tableLayout: 'fixed',
+            '& .MuiTableCell-root': {
+              fontVariantNumeric: 'tabular-nums',
+            },
           }}
         >
           <TableHead>
@@ -307,7 +348,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       <TableCell sx={{ fontWeight: 700 }}>{resolveMessage(languageCode, 'pt')}</TableCell>
                       {quantityBuckets.map((quantity) => (
                         <TableCell key={`${processInstanceId}-pt-${quantity}`} align="center">
-                          {ptPerPiece == null ? '-' : formatSecondsPlain(ptPerPiece)}
+                          {renderReadonlySecondsBox(ptPerPiece)}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -328,11 +369,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           : toEditableSecondsText(resolvedStPerPiece);
 
                         return (
-                          <TableCell
-                            key={`${processInstanceId}-st-${quantity}`}
-                            align="center"
-                            sx={hasManualSt ? { backgroundColor: '#EAF2FF' } : undefined}
-                          >
+                          <TableCell key={`${processInstanceId}-st-${quantity}`} align="center">
                             <TextField
                               value={inputValue}
                               onChange={(event) =>
@@ -357,11 +394,17 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                 inputMode: 'decimal',
                               }}
                               sx={{
-                                width: 82,
+                                width: SECONDS_CELL_WIDTH,
                                 '& .MuiInputBase-input': {
                                   textAlign: 'center',
                                   py: 0.6,
                                   fontSize: '0.8125rem',
+                                  fontVariantNumeric: 'tabular-nums',
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  minHeight: 32,
+                                  borderRadius: 1,
+                                  backgroundColor: hasManualSt ? '#EAF2FF' : '#F8FAFC',
                                 },
                               }}
                             />
@@ -376,7 +419,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         const atPerPiece = resolveProcessAtPerPieceSeconds(process, quantity);
                         return (
                           <TableCell key={`${processInstanceId}-at-${quantity}`} align="center">
-                            {atPerPiece == null ? '-' : formatSecondsPlain(atPerPiece)}
+                            {renderReadonlySecondsBox(atPerPiece)}
                           </TableCell>
                         );
                       })}
