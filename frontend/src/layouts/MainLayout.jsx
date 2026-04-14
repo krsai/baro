@@ -243,12 +243,15 @@ const MainLayout = () => {
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
   const [pendingTabPath, setPendingTabPath] = useState('');
+  const [headerHeight, setHeaderHeight] = useState(64);
+  const appBarRef = useRef(null);
   const skipAutoOpenPathRef = useRef(null);
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
   const pendingCloseTabRef = useRef(null);
   const currentPathRef = useRef(currentPath);
   const recentTabHistoryRef = useRef([]);
+  const headerOffset = `${Math.max(56, Math.round(headerHeight || 64))}px`;
 
   useEffect(() => {
     currentPathRef.current = currentPath;
@@ -265,6 +268,34 @@ const MainLayout = () => {
       setSystemOpen(true);
     }
   }, [currentPath]);
+
+  useEffect(() => {
+    const element = appBarRef.current;
+    if (!element) return undefined;
+
+    const updateHeight = () => {
+      const nextHeight = element.getBoundingClientRect().height;
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+      setHeaderHeight((prev) => (Math.abs(prev - nextHeight) < 1 ? prev : nextHeight));
+    };
+
+    updateHeight();
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        updateHeight();
+      });
+      resizeObserver.observe(element);
+    }
+
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      resizeObserver?.disconnect();
+    };
+  }, []);
 
   const schedulePendingNavigationCleanup = React.useCallback((sourcePath, nextPathname) => {
     window.setTimeout(() => {
@@ -1261,7 +1292,7 @@ const MainLayout = () => {
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
       {/* Header */}
-      <AppBar position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
+      <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
         <Toolbar sx={{ position: 'relative' }}>
           <IconButton
             color="inherit"
@@ -1353,7 +1384,14 @@ const MainLayout = () => {
         variant="permanent"
         sx={{
           display: { xs: 'none', md: 'block' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box', top: '64px', height: 'calc(100% - 64px)', borderRight: '1px solid #ddd', overflowX: 'hidden' },
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            top: headerOffset,
+            height: `calc(100% - ${headerOffset})`,
+            borderRight: '1px solid #ddd',
+            overflowX: 'hidden',
+          },
         }}
       >
         {sidebarContent}
@@ -1367,8 +1405,8 @@ const MainLayout = () => {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
-            top: { xs: '56px', sm: '64px' },
-            height: { xs: 'calc(100% - 56px)', sm: 'calc(100% - 64px)' },
+            top: headerOffset,
+            height: `calc(100% - ${headerOffset})`,
           },
         }}
       >
@@ -1382,7 +1420,7 @@ const MainLayout = () => {
           flexGrow: 1,
           minWidth: 0,
           pl: { md: `${DRAWER_WIDTH}px` },
-          pt: '64px',
+          pt: headerOffset,
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
