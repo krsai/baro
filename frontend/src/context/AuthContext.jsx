@@ -13,6 +13,25 @@ const DEV_PROFILE_KEY = 'dev_bypass_profile';
 const AUTH_SESSION_TIMEOUT_MS = 10_000;
 const ACCESS_PROFILE_TIMEOUT_MS = 10_000;
 
+const resolveCanonicalOrigin = () => {
+  const raw = String(import.meta.env.VITE_CANONICAL_ORIGIN || '').trim();
+  if (!raw) return '';
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return '';
+  }
+};
+
+const resolveAuthCallbackUrl = () => {
+  const canonicalOrigin = resolveCanonicalOrigin();
+  if (canonicalOrigin) return `${canonicalOrigin}/auth/callback`;
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return `${window.location.origin}/auth/callback`;
+  }
+  return undefined;
+};
+
 const withTimeout = (promise, timeoutMs, timeoutMessage) =>
   new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -525,10 +544,11 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    const redirectTo = resolveAuthCallbackUrl();
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        ...(redirectTo ? { redirectTo } : {}),
         queryParams: {
           prompt: 'select_account',
         },
