@@ -59,6 +59,7 @@ import { RequestScopeBoundary } from '../context/RequestScopeContext';
 
 const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
+const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
@@ -371,9 +372,12 @@ const MainLayout = () => {
         })}`,
         { skipGlobalLoading: true }
       );
-      setPendingEmployeeCount(Array.isArray(data) ? data.length : 0);
+      const pendingCount = Array.isArray(data)
+        ? data.filter((item) => String(item?.status || '').toUpperCase() === 'PENDING').length
+        : 0;
+      setPendingEmployeeCount(pendingCount);
     } catch (_error) {
-      // ignore fetch errors for badge
+      setPendingEmployeeCount(0);
     }
   }, [activeOrgId, canViewEmployeeMenu]);
 
@@ -834,6 +838,34 @@ const MainLayout = () => {
     const intervalId = setInterval(fetchPendingEmployeeCount, 30000);
     return () => clearInterval(intervalId);
   }, [canViewEmployeeMenu, fetchPendingEmployeeCount]);
+  useEffect(() => {
+    if (!canViewEmployeeMenu) return () => {};
+    const activeOrgIdNumber = Number(activeOrgId);
+
+    const handleMembershipUpdated = (event) => {
+      const detail = event?.detail && typeof event.detail === 'object' ? event.detail : null;
+      const changedOrgId = Number(detail?.orgId);
+      if (
+        Number.isFinite(changedOrgId) &&
+        Number.isFinite(activeOrgIdNumber) &&
+        changedOrgId > 0 &&
+        activeOrgIdNumber > 0 &&
+        changedOrgId !== activeOrgIdNumber
+      ) {
+        return;
+      }
+
+      const pendingCount = Number(detail?.pendingCount);
+      if (Number.isFinite(pendingCount) && pendingCount >= 0) {
+        setPendingEmployeeCount(pendingCount);
+        return;
+      }
+      fetchPendingEmployeeCount();
+    };
+
+    window.addEventListener(ORG_MEMBERSHIPS_UPDATED_EVENT, handleMembershipUpdated);
+    return () => window.removeEventListener(ORG_MEMBERSHIPS_UPDATED_EVENT, handleMembershipUpdated);
+  }, [activeOrgId, canViewEmployeeMenu, fetchPendingEmployeeCount]);
   useEffect(() => {
     if (!canViewSystemOnboardingMenu) {
       setPendingOnboardingCount(0);

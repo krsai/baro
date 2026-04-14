@@ -68,6 +68,7 @@ const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
 const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
+const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const resolveDefaultInviteRole = (roleOptions = []) => {
   const workerOption = roleOptions.find((option) => option.value === 'WORKER');
   if (workerOption?.value) return workerOption.value;
@@ -103,6 +104,19 @@ const getEmployeeStatusLabel = (value) =>
   EMPLOYEE_STATUS_OPTIONS.find((option) => option.value === String(value || '').toUpperCase())
     ?.label || '-';
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const emitMembershipUpdated = ({ orgId, pendingCount }) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(ORG_MEMBERSHIPS_UPDATED_EVENT, {
+      detail: {
+        orgId: Number(orgId) || null,
+        pendingCount: Number.isFinite(Number(pendingCount))
+          ? Math.max(0, Number(pendingCount))
+          : undefined,
+      },
+    })
+  );
+};
 
 const sortJobRoleOptions = (rows = []) =>
   [...rows].sort((a, b) => {
@@ -506,11 +520,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     try {
       const data = await requestJSON(`/org-memberships${buildQueryString({ orgId })}`);
       const list = Array.isArray(data) ? data : [];
-      setPendingMembers(list.filter((item) => item.status === 'PENDING'));
-      setActiveMembers(
-        list.filter((item) => item.status !== 'PENDING' && item.status !== 'REJECTED')
+      const pendingList = list.filter(
+        (item) => String(item?.status || '').toUpperCase() === 'PENDING'
       );
+      setPendingMembers(pendingList);
+      setActiveMembers(
+        list.filter((item) => {
+          const status = String(item?.status || '').toUpperCase();
+          return status !== 'PENDING' && status !== 'REJECTED';
+        })
+      );
+      emitMembershipUpdated({ orgId, pendingCount: pendingList.length });
     } catch (_error) {
+      emitMembershipUpdated({ orgId, pendingCount: 0 });
       setStatusMessage({ type: 'error', text: '조직 멤버 정보를 불러오지 못했습니다.' });
     }
   }, []);
@@ -838,7 +860,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       payType: defaultRole === 'WORKER' ? 'CT' : 'FIXED',
       fixedSalary: '',
       factoryId: defaultFactoryId,
-      joinedAt: '',
+      joinedAt: formatDateInput(new Date()),
       leftAt: '',
       status: 'ACTIVE',
     });
@@ -898,6 +920,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     }
 
     const normalizedOrgRole = String(drawerDraft.orgRole || '').toUpperCase();
+    const normalizedName = String(drawerDraft.name || '').trim();
     const isWorker = isWorkerOrgRole(normalizedOrgRole);
     const effectiveJobRoleId = isWorker
       ? drawerDraft.jobRoleId || defaultWorkerJobRoleId
@@ -915,6 +938,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
     if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
       setStatusMessage({ type: 'error', text: '유효한 이메일 형식이 아닙니다.' });
+      return;
+    }
+    if (!normalizedName) {
+      setStatusMessage({ type: 'error', text: '이름은 필수 입력입니다.' });
       return;
     }
     if (roleNeedsLoginEmail && (!normalizedDrawerEmail || !normalizedDrawerEmail.includes('@'))) {
@@ -1005,6 +1032,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
       const didSave = await handleEmployeeSave(targetMember, {
         ...drawerDraft,
+        name: normalizedName,
         orgRole: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
         jobRoleId: effectiveJobRoleId,
         payType: normalizedPayType,
@@ -1194,6 +1222,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               }}
             >
               <Typography variant="h6">{isCreateDrawerMode ? '직원 추가' : '직원 수정'}</Typography>
+              <Typography variant="caption" color="error.main">
+                * 표시 항목은 필수 입력입니다.
+              </Typography>
               <TextField
                 size="small"
                 label="로그인 이메일"
@@ -1216,9 +1247,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 label="이름"
+                required
                 value={drawerDraft.name}
                 onChange={(e) => handleDrawerDraftChange({ name: e.target.value })}
                 disabled={isDrawerSaving}
+                helperText="필수 입력"
               />
               <TextField
                 size="small"
@@ -1269,9 +1302,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   select
                   size="small"
                   label="공장"
+                  required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving || (!isAdmin && Boolean(operatorFactoryId))}
+                  helperText={
+                    !isAdmin && Boolean(operatorFactoryId)
+                      ? '필수 항목(내 소속 공장으로 자동 설정)'
+                      : '필수 입력'
+                  }
                 >
                   {isAdmin && <MenuItem value="">공장 선택</MenuItem>}
                   {factories.map((factory) => (
