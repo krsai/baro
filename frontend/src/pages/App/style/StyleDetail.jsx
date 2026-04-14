@@ -353,6 +353,7 @@ const StyleDetail = () => {
         const savedStyleId = saved?.id || newId;
         navigateToPath(`/style/${savedStyleId}${savedQuery}`, {
           closeTabId: '/style/new',
+          skipUnsavedChangesCheck: true,
         });
       } catch (error) {
         showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');

@@ -901,8 +901,9 @@ const MainLayout = () => {
         typeof options?.closeTabId === 'string' && options.closeTabId.trim()
           ? toPathname(options.closeTabId)
           : null;
+      const skipUnsavedChangesCheck = options?.skipUnsavedChangesCheck === true;
       const isSamePathNavigation = nextPathname === currentPath;
-      if (!isSamePathNavigation) {
+      if (!isSamePathNavigation && !skipUnsavedChangesCheck) {
         const confirmed = confirmDiscardUnsavedChanges({ path: currentPath });
         if (!confirmed) return;
       }
