@@ -25,6 +25,10 @@ const CONTENT_TYPES = {
   ".woff2": "font/woff2",
 };
 
+const HTML_CACHE_CONTROL = "no-cache, no-store, must-revalidate";
+const IMMUTABLE_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const STATIC_CACHE_CONTROL = "public, max-age=3600";
+
 const sendJson = (res, statusCode, payload) => {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
@@ -35,7 +39,22 @@ const sendJson = (res, statusCode, payload) => {
   res.end(body);
 };
 
-const sendFile = (res, filePath) => {
+const resolveCacheControl = (filePath) => {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") return HTML_CACHE_CONTROL;
+
+  const relativePath = path
+    .relative(distDir, filePath)
+    .split(path.sep)
+    .join("/");
+  if (relativePath.startsWith("assets/")) {
+    return IMMUTABLE_ASSET_CACHE_CONTROL;
+  }
+
+  return STATIC_CACHE_CONTROL;
+};
+
+const sendFile = (res, filePath, statusCode = 200) => {
   fs.readFile(filePath, (error, buffer) => {
     if (error) {
       sendJson(res, error.code === "ENOENT" ? 404 : 500, {
@@ -46,8 +65,9 @@ const sendFile = (res, filePath) => {
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
+    res.writeHead(statusCode, {
       "Content-Type": CONTENT_TYPES[ext] || "application/octet-stream",
+      "Cache-Control": resolveCacheControl(filePath),
     });
     res.end(buffer);
   });
@@ -75,6 +95,12 @@ const server = http.createServer((req, res) => {
     fs.statSync(requestedPath).isFile()
   ) {
     sendFile(res, requestedPath);
+    return;
+  }
+
+  const requestedExt = path.extname(requestUrl.pathname);
+  if (requestedExt) {
+    sendJson(res, 404, { ok: false, error: "not found" });
     return;
   }
 
