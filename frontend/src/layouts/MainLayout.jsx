@@ -1198,7 +1198,7 @@ const MainLayout = () => {
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <List sx={{ flex: 1, overflowY: 'auto' }}>
+      <List sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 0 } }}>
         {menuItems.map((menu) => {
           const isMenuDisabled = Boolean(menu.disabled);
           const isMenuSelected = !menu.isParent && !isMenuDisabled && currentPath === menu.path;
@@ -1293,7 +1293,14 @@ const MainLayout = () => {
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
       {/* Header */}
       <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
-        <Toolbar sx={{ position: 'relative' }}>
+        <Toolbar
+          sx={{
+            position: 'relative',
+            minHeight: { xs: '56px', sm: '64px' },
+            height: { xs: '56px', sm: '64px' },
+            px: { xs: 1, sm: 2 },
+          }}
+        >
           <IconButton
             color="inherit"
             aria-label="toggle menu"
@@ -1304,7 +1311,21 @@ const MainLayout = () => {
             <MenuIcon />
           </IconButton>
           <Box sx={{ flexGrow: 1 }}>
-            <Button color="primary" sx={{ fontSize: '1.25rem', fontWeight: 'bold' }}>
+            <Button
+              color="primary"
+              sx={{
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                fontWeight: 'bold',
+                textTransform: 'none',
+                minWidth: 0,
+                maxWidth: { xs: 170, sm: 260, md: 360 },
+                px: 0.5,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                lineHeight: 1.2,
+              }}
+            >
               {activeOrgName || 'BARO'}
             </Button>
           </Box>
