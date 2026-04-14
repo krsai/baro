@@ -75,14 +75,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: '공정 추가',
     addingTitle: '새 공정 추가',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
-    missingMasterOptions: '공정 사전에서 부위, 대상, 작업을 먼저 등록해주세요.',
+    missingMasterOptions: '공정 사전에서 부위, 작업을 먼저 등록해주세요.',
     partLabel: '부위',
     targetLabel: '대상',
     actionLabel: '작업',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',
-    previewEmpty: '부위, 대상, 작업을 선택하면 공정명이 만들어집니다.',
+    previewEmpty: '부위와 작업을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -120,14 +120,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Add Process',
     addingTitle: 'New Process',
     loadingOptions: 'Loading process composition options...',
-    missingMasterOptions: 'Register part, target, and action options first.',
+    missingMasterOptions: 'Register part and action options first.',
     partLabel: 'Part',
     targetLabel: 'Target',
     actionLabel: 'Action',
     specLabel: 'Spec',
     specPlaceholder: 'e.g. 3-line',
     previewLabel: 'Preview',
-    previewEmpty: 'Select part, target, and action to build the process name.',
+    previewEmpty: 'Select part and action to build the process name. Target/spec are optional.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -165,14 +165,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Them cong doan',
     addingTitle: 'Cong doan moi',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
-    missingMasterOptions: 'Hay dang ky truoc bo phan, doi tuong va thao tac.',
+    missingMasterOptions: 'Hay dang ky truoc bo phan va thao tac.',
     partLabel: 'Bo phan',
     targetLabel: 'Doi tuong',
     actionLabel: 'Thao tac',
     specLabel: 'Quy cach',
     specPlaceholder: 'vi du: 3 kim',
     previewLabel: 'Xem truoc',
-    previewEmpty: 'Chon bo phan, doi tuong va thao tac de tao ten cong doan.',
+    previewEmpty: 'Chon bo phan va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -958,7 +958,7 @@ const StyleProcess = ({
   );
 
   const hasRequiredMasterOptions =
-    partOptions.length > 0 && targetOptions.length > 0 && actionOptions.length > 0;
+    partOptions.length > 0 && actionOptions.length > 0;
   const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
   const isEditingRow = Boolean(editingInstanceId);
   const isDraftOpen = isAddingRow || isEditingRow;
@@ -1020,7 +1020,6 @@ const StyleProcess = ({
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
     if (!draft.part) return getStyleProcessMessage(languageCode, 'validatePart');
-    if (!draft.target) return getStyleProcessMessage(languageCode, 'validateTarget');
     if (!Array.isArray(draft.actions) || draft.actions.length === 0) {
       return getStyleProcessMessage(languageCode, 'validateAction');
     }
