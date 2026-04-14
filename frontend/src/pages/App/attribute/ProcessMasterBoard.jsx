@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
   Grid,
   IconButton,
   Paper,
@@ -20,6 +19,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -355,14 +355,11 @@ const ProcessMasterBoard = () => {
     <AppPageContainer
       title="공정 마스터 관리"
       titleActions={(
-        <Button
-          variant="contained"
+        <SaveButton
           onClick={handleSave}
           disabled={!isDirty || isSaving || isLoading}
-          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
-        >
-          {isSaving ? '저장 중...' : '저장'}
-        </Button>
+          loading={isSaving}
+        />
       )}
     >
       <Stack spacing={2}>

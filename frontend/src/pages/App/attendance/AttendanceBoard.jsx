@@ -26,6 +26,7 @@ import 'dayjs/locale/ko';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
@@ -424,13 +425,11 @@ const AttendanceBoard = ({
               {closeOnSave ? '취소' : '목록'}
             </Button>
           ) : null}
-          <Button
-            variant="contained"
+          <SaveButton
             onClick={handleSaveEntries}
             disabled={!selectedFactoryId || savingEntries}
-          >
-            저장
-          </Button>
+            loading={savingEntries}
+          />
         </Stack>
       )}
       toolbar={(

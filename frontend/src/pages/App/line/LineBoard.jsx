@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   FormControl,
   Grid,
   IconButton,
@@ -30,6 +29,7 @@ import PersonOffOutlinedIcon from '@mui/icons-material/PersonOffOutlined';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -520,14 +520,11 @@ const LineBoard = () => {
           >
             초기화
           </Button>
-          <Button
-            variant="contained"
+          <SaveButton
             onClick={handleSaveChanges}
             disabled={saving || !selectedFactoryId || (!isDirty && !editingLineKey)}
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : null}
-          >
-            {saving ? '저장 중...' : '저장'}
-          </Button>
+            loading={saving}
+          />
         </Stack>
       )}
       toolbar={(

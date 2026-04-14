@@ -24,6 +24,7 @@ import {
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import { getUiMessage } from '../../../constants/uiMessages';
 import {
   ORG_ROLE_KEYS,
@@ -472,19 +473,12 @@ const OrganizationSubscriptionBoard = () => {
                                 </Typography>
 
                                 <Box sx={{ display: 'flex', gap: 1 }}>
-                                  <Button
-                                    variant="contained"
+                                  <SaveButton
                                     size="small"
                                     onClick={handleUpdateSubscription}
                                     disabled={savingSubscription}
-                                    startIcon={
-                                      savingSubscription ? (
-                                        <CircularProgress size={14} color="inherit" />
-                                      ) : null
-                                    }
-                                  >
-                                    {getUiMessage('common.save', '저장', languageCode)}
-                                  </Button>
+                                    loading={savingSubscription}
+                                  />
                                   <Button
                                     variant="outlined"
                                     size="small"
@@ -703,14 +697,11 @@ const OrganizationSubscriptionBoard = () => {
               </Grid>
 
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="contained"
+                <SaveButton
                   onClick={handleCreateOrganization}
                   disabled={savingOrg}
-                  startIcon={savingOrg ? <CircularProgress size={16} color="inherit" /> : null}
-                >
-                  {getUiMessage('common.save', '저장', languageCode)}
-                </Button>
+                  loading={savingOrg}
+                />
                 <Button
                   variant="outlined"
                   onClick={() => {

@@ -40,20 +40,18 @@ const PageSectionHeader = ({
       <Typography variant={titleVariant} sx={{ fontWeight: 700 }}>
         {title}
       </Typography>
-      {resolvedActions ? (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            flexWrap: 'wrap',
-            gap: 1,
-          }}
-        >
-          <LastUpdaterLabel />
-          {resolvedActions}
-        </Box>
-      ) : null}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          flexWrap: 'wrap',
+          gap: 1,
+        }}
+      >
+        <LastUpdaterLabel />
+        {resolvedActions}
+      </Box>
     </Box>
   );
 };

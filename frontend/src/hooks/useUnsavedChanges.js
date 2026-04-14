@@ -1,32 +1,68 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useAppActions } from '../context/AppContext';
+
+const DEFAULT_CONFIRM_MESSAGE = '저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?';
+
+const normalizePathname = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '/';
+  const withoutHash = raw.split('#')[0];
+  const pathname = withoutHash.split('?')[0] || '/';
+  const normalized = pathname.replace(/\/+$/, '');
+  return normalized || '/';
+};
 
 /**
- * 브라우저 탭 닫기 또는 새로고침 시 저장되지 않은 변경사항이 있을 경우 경고창을 띄우는 Hook
- * 
- * @param {boolean} isDirty - 변경사항 존재 여부 (true일 경우 경고)
+ * 브라우저 닫기/새로고침 및 앱 내부 이동 시 미저장 변경사항 경고를 연결합니다.
+ *
+ * @param {boolean} isDirty
+ * @param {{ message?: string }} options
  */
-const useUnsavedChanges = (isDirty) => {
-  // 이벤트 리스너가 최신 isDirty 값을 참조할 수 있도록 ref 사용
-  const isDirtyRef = useRef(isDirty);
+const useUnsavedChanges = (isDirty, options = {}) => {
+  const location = useLocation();
+  const { setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
+  const isDirtyRef = useRef(Boolean(isDirty));
+  const guardIdRef = useRef(
+    `unsaved:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`
+  );
+
+  const guardPath = useMemo(
+    () => normalizePathname(location.pathname || '/'),
+    [location.pathname]
+  );
+  const message = useMemo(() => {
+    const raw = typeof options?.message === 'string' ? options.message.trim() : '';
+    return raw || DEFAULT_CONFIRM_MESSAGE;
+  }, [options?.message]);
 
   useEffect(() => {
-    isDirtyRef.current = isDirty;
+    isDirtyRef.current = Boolean(isDirty);
   }, [isDirty]);
 
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
-      if (isDirtyRef.current) {
-        e.preventDefault();
-        // Chrome 등 최신 브라우저에서는 returnValue 설정이 필수입니다.
-        e.returnValue = ''; 
-      }
+    setUnsavedChangesGuard(guardIdRef.current, {
+      isDirty: Boolean(isDirty),
+      message,
+      path: guardPath,
+    });
+    return () => {
+      clearUnsavedChangesGuard(guardIdRef.current);
+    };
+  }, [clearUnsavedChangesGuard, guardPath, isDirty, message, setUnsavedChangesGuard]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (!isDirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = '';
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, []); // 컴포넌트 마운트 시 한 번만 등록/해제
+  }, []);
 };
 
 export default useUnsavedChanges;

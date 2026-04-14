@@ -32,6 +32,7 @@ import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import CustomDatePicker from '../../../components/CustomDatePicker';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
@@ -4707,19 +4708,13 @@ const AssignBoard = () => {
           </Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <LastUpdaterLabel />
-            <Button
-              variant="contained"
+            <SaveButton
               onMouseDown={preventToolbarButtonFocus}
               onClick={handleSaveBoard}
               disabled={persisting || !persistReady || !isDirty}
+              loading={persisting}
               sx={{ minWidth: 72 }}
-            >
-              {persisting ? (
-                <CircularProgress size={18} thickness={4.5} color="inherit" />
-              ) : (
-                getUiMessage('common.save', '저장', languageCode)
-              )}
-            </Button>
+            />
           </Stack>
         </Box>
       }

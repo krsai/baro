@@ -16,6 +16,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
@@ -1389,17 +1390,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 >
                   닫기
                 </Button>
-                <Button
-                  variant="contained"
+                <SaveButton
                   onClick={handleDrawerSave}
                   disabled={isDrawerSaving || !activeOrgId}
-                >
-                  {isDrawerSaving
-                    ? '저장 중...'
-                    : isCreateDrawerMode
-                      ? '직원 추가'
-                      : '수정 저장'}
-                </Button>
+                  loading={isDrawerSaving}
+                />
               </Box>
             </Box>
           </Drawer>

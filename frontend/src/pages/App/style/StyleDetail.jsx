@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
+  Stack,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
+import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import SaveButton from '../../../components/SaveButton';
 import StyleInfo from './styleDetail/StyleInfo';
 import StyleAnalysis from './styleDetail/StyleAnalysis';
 import StyleBom from './styleDetail/StyleBom';
@@ -404,14 +406,13 @@ const StyleDetail = () => {
           <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
         </ToggleButtonGroup>
 
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSave}
-          disabled={loadingStyle || (!isNew && !isDirty)}
-        >
-          {getStyleDetailMessage(languageCode, 'save')}
-        </Button>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <LastUpdaterLabel />
+          <SaveButton
+            onClick={handleSave}
+            disabled={loadingStyle || (!isNew && !isDirty)}
+          />
+        </Stack>
       </Box>
 
       {loadingStyle && !isNew ? (

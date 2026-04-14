@@ -20,9 +20,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
-import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -146,7 +146,6 @@ const CustomerList = () => {
       ),
       countryCode: getUiMessage('customerBoard.countryCode', 'Country Code', languageCode),
       phoneNumber: getUiMessage('customerBoard.phoneNumber', 'Phone Number', languageCode),
-      saveInProgress: getUiMessage('customerBoard.saveInProgress', 'Saving...', languageCode),
       fetchError: getUiMessage(
         'customerBoard.fetchError',
         'Failed to load customer list.',
@@ -526,17 +525,12 @@ const CustomerList = () => {
               <Button fullWidth variant="outlined" onClick={handleCloseDrawer} disabled={saving}>
                 {getUiMessage('common.close', 'Close', languageCode)}
               </Button>
-              <Button
+              <SaveButton
                 fullWidth
-                variant="contained"
                 onClick={handleSave}
                 disabled={saving}
-                startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
-              >
-                {saving
-                  ? customerText.saveInProgress
-                  : getUiMessage('common.save', 'Save', languageCode)}
-              </Button>
+                loading={saving}
+              />
             </Stack>
           </Box>
         </Box>

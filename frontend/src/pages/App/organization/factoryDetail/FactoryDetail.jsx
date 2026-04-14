@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
   Divider,
   Drawer,
   Grid,
@@ -11,7 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import SaveIcon from '@mui/icons-material/Save';
+import SaveButton from '../../../../components/SaveButton';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../../constants/uiMessages';
@@ -95,7 +94,6 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         'Automatically calculated from monthly target wage.',
         languageCode
       ),
-      save: getUiMessage('common.save', 'Save', languageCode),
     }),
     [languageCode]
   );
@@ -297,9 +295,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         </Grid>
 
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button variant="contained" startIcon={<SaveIcon />} onClick={handleSave}>
-            {text.save}
-          </Button>
+          <SaveButton onClick={handleSave} />
         </Box>
       </Box>
     </Drawer>

@@ -27,6 +27,7 @@ import AddIcon from '@mui/icons-material/Add';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 
 const INVENTORY_MOVEMENT_TYPES = [
@@ -859,17 +860,14 @@ const InventoryBoard = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setQuickCreateOpen(false)}>닫기</Button>
-          <Button
-            variant="contained"
+          <SaveButton
             onClick={handleQuickCreateSave}
             disabled={
               !quickCreateDraft.category.trim() ||
               !quickCreateDraft.name.trim() ||
               !quickCreateDraft.unit.trim()
             }
-          >
-            저장
-          </Button>
+          />
         </DialogActions>
       </Dialog>
     </AppPageContainer>

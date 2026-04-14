@@ -9,6 +9,7 @@ import React, {
 
 const AppStateContext = createContext(null);
 const AppActionsContext = createContext(null);
+const DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE = '저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?';
 
 // 타입별 토스트 표시 시간 (ms) — 여기서 전역 관리
 const TOAST_DURATION = {
@@ -26,6 +27,7 @@ export const AppProvider = ({ children }) => {
 
   // --- Tab State ---
   const [openTabs, setOpenTabs] = useState([]);
+  const unsavedGuardsRef = useRef(new Map());
 
   const openTab = useCallback((tab, options) => {
     setOpenTabs((prev) => {
@@ -35,6 +37,16 @@ export const AppProvider = ({ children }) => {
 
       // If a replacement pattern is given, first remove old tabs matching it.
       if (pattern) {
+        const removedTabs = tabs.filter((t) => t.id.startsWith(pattern));
+        removedTabs.forEach((removedTab) => {
+          const removedPath = String(removedTab?.id || '').trim();
+          if (!removedPath) return;
+          Array.from(unsavedGuardsRef.current.keys()).forEach((guardKey) => {
+            const guard = unsavedGuardsRef.current.get(guardKey);
+            if (!guard || String(guard.path || '').trim() !== removedPath) return;
+            unsavedGuardsRef.current.delete(guardKey);
+          });
+        });
         const filtered = tabs.filter((t) => !t.id.startsWith(pattern));
         if (filtered.length !== tabs.length) {
           changed = true;
@@ -70,6 +82,14 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const closeTab = useCallback((tabId) => {
+    const normalizedTabId = String(tabId || '').trim();
+    if (normalizedTabId) {
+      Array.from(unsavedGuardsRef.current.keys()).forEach((guardKey) => {
+        const guard = unsavedGuardsRef.current.get(guardKey);
+        if (!guard || String(guard.path || '').trim() !== normalizedTabId) return;
+        unsavedGuardsRef.current.delete(guardKey);
+      });
+    }
     setOpenTabs((prevOpenTabs) => {
       const nextTabs = prevOpenTabs.filter((t) => t.id !== tabId);
       return nextTabs.length === prevOpenTabs.length ? prevOpenTabs : nextTabs;
@@ -80,6 +100,60 @@ export const AppProvider = ({ children }) => {
     setOpenTabs([]);
     setSidebarOpen(false);
     setNotification(null);
+    unsavedGuardsRef.current.clear();
+  }, []);
+
+  const setUnsavedChangesGuard = useCallback((guardKey, options = {}) => {
+    const key = String(guardKey || '').trim();
+    if (!key) return;
+    const isDirty = Boolean(options?.isDirty);
+    if (!isDirty) {
+      unsavedGuardsRef.current.delete(key);
+      return;
+    }
+    unsavedGuardsRef.current.set(key, {
+      isDirty: true,
+      message:
+        typeof options?.message === 'string' ? options.message.trim() : '',
+      path: typeof options?.path === 'string' ? options.path.trim() : '',
+    });
+  }, []);
+
+  const clearUnsavedChangesGuard = useCallback((guardKey) => {
+    const key = String(guardKey || '').trim();
+    if (!key) return;
+    unsavedGuardsRef.current.delete(key);
+  }, []);
+
+  const hasUnsavedChanges = useCallback((options = {}) => {
+    const targetPath = typeof options?.path === 'string' ? options.path.trim() : '';
+    if (!targetPath) {
+      return Array.from(unsavedGuardsRef.current.values()).some((guard) => guard?.isDirty);
+    }
+    return Array.from(unsavedGuardsRef.current.values()).some(
+      (guard) => guard?.isDirty && String(guard?.path || '').trim() === targetPath
+    );
+  }, []);
+
+  const confirmDiscardUnsavedChanges = useCallback((options = {}) => {
+    const fallbackMessage =
+      typeof options?.message === 'string' ? options.message.trim() : '';
+    const targetPath = typeof options?.path === 'string' ? options.path.trim() : '';
+    const dirtyGuards = Array.from(unsavedGuardsRef.current.values()).filter((guard) => {
+      if (!guard?.isDirty) return false;
+      if (!targetPath) return true;
+      return String(guard?.path || '').trim() === targetPath;
+    });
+    if (dirtyGuards.length === 0) return true;
+    if (typeof window === 'undefined') return true;
+    const messageFromGuard = dirtyGuards
+      .map((guard) => String(guard?.message || '').trim())
+      .find(Boolean);
+    const confirmMessage =
+      fallbackMessage ||
+      messageFromGuard ||
+      DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE;
+    return window.confirm(confirmMessage);
   }, []);
 
   const notificationTimerRef = useRef(null);
@@ -161,13 +235,21 @@ export const AppProvider = ({ children }) => {
       setRoles,
       navigateToPath,
       setNavigateToPath,
+      setUnsavedChangesGuard,
+      clearUnsavedChangesGuard,
+      hasUnsavedChanges,
+      confirmDiscardUnsavedChanges,
     }),
     [
+      clearUnsavedChangesGuard,
       closeTab,
+      confirmDiscardUnsavedChanges,
       dismissNotification,
+      hasUnsavedChanges,
       navigateToPath,
       openTab,
       resetWorkspace,
+      setUnsavedChangesGuard,
       setNavigateToPath,
       showNotification,
       toggleSidebar,

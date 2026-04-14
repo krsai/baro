@@ -225,6 +225,7 @@ const MainLayout = () => {
     closeTab,
     resetWorkspace,
     setNavigateToPath,
+    confirmDiscardUnsavedChanges,
   } = useAppActions();
   const { languageCode, setLanguageCode } = useLanguage();
 
@@ -901,6 +902,10 @@ const MainLayout = () => {
           : null;
       const isSamePathNavigation = nextPathname === currentPath;
       if (!isSamePathNavigation) {
+        const confirmed = confirmDiscardUnsavedChanges({ path: currentPath });
+        if (!confirmed) return;
+      }
+      if (!isSamePathNavigation) {
         // For style detail pages, ensure only one is open at a time.
         if (nextPathname.startsWith('/style/') && nextPathname !== '/style') {
           openOptions.replacePrefix = '/style/';
@@ -938,6 +943,8 @@ const MainLayout = () => {
         navigate(nextPath);
         schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
       } else if (closeTabId && currentPath !== closeTabId) {
+        const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
+        if (!confirmed) return;
         setPendingTabPath('');
         pendingCloseTabRef.current = null;
         closeTab(closeTabId);
@@ -947,6 +954,7 @@ const MainLayout = () => {
       closeTab,
       currentPath,
       currentRoutePath,
+      confirmDiscardUnsavedChanges,
       hasPathAccess,
       navigate,
       openTab,
@@ -1128,6 +1136,8 @@ const MainLayout = () => {
 
     const closingTab = openTabs.find((tab) => tab.id === tabIdToClose);
     if (!closingTab) return;
+    const confirmed = confirmDiscardUnsavedChanges({ path: tabIdToClose });
+    if (!confirmed) return;
 
     const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);
     recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
@@ -1175,6 +1185,7 @@ const MainLayout = () => {
     closeTab(tabIdToClose);
   }, [
     closeTab,
+    confirmDiscardUnsavedChanges,
     currentPath,
     navigate,
     openTabs,

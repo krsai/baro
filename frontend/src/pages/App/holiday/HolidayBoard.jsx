@@ -3,12 +3,10 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Paper,
   Stack,
   Typography,
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -19,6 +17,7 @@ import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -102,8 +101,6 @@ const HolidayBoard = () => {
   const text = useMemo(
     () => ({
       title: getUiMessage('holidayBoard.title', 'Holiday Management', languageCode),
-      save: getUiMessage('common.save', 'Save', languageCode),
-      saveInProgress: getUiMessage('holidayBoard.saveInProgress', 'Saving...', languageCode),
       manualHolidayCount: getUiMessage(
         'holidayBoard.manualHolidayCount',
         'Manual holidays {count} days',
@@ -242,14 +239,11 @@ const HolidayBoard = () => {
     <AppPageContainer
       title={text.title}
       titleActions={(
-        <Button
-          variant="contained"
-          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+        <SaveButton
           onClick={handleSaveChanges}
           disabled={isSaving || !isDirty}
-        >
-          {isSaving ? text.saveInProgress : text.save}
-        </Button>
+          loading={isSaving}
+        />
       )}
       toolbar={(
         <PageToolbar

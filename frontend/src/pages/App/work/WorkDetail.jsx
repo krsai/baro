@@ -38,6 +38,7 @@ import {
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import PageToolbar from '../../../components/PageToolbar';
+import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { useAuth } from '../../../context/AuthContext';
@@ -58,8 +59,6 @@ const ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = 3;
 const ROWS_PER_PAGE = 30;
 const LABELS = {
   title: '기록 상세',
-  save: '저장',
-  saving: '저장 중...',
   workDate: '작업일자',
   factory: '공장',
   autoFactory: '공장 (자동선택)',
@@ -1596,7 +1595,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
-        <Button variant="contained" onClick={handleSave} disabled={saving || loading || baseLoading || lineDataLoading || isAggregateLegacyLog}>{saving ? LABELS.saving : LABELS.save}</Button>
+        <SaveButton
+          onClick={handleSave}
+          disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog}
+          loading={saving}
+        />
       </Stack>
     </Box>
   );

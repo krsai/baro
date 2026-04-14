@@ -4,7 +4,6 @@ import {
   Autocomplete,
   Box,
   Button,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -27,6 +26,7 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { useAppActions } from '../../../context/AppContext';
 import {
@@ -833,14 +833,11 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
     <AppPageContainer
       title={boardTitle}
       titleActions={(
-        <Button
-          variant="contained"
+        <SaveButton
           onClick={handleSave}
           disabled={!isDirty || isSaving}
-          startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : null}
-        >
-          {isSaving ? '저장 중...' : '저장'}
-        </Button>
+          loading={isSaving}
+        />
       )}
     >
       <Grid container spacing={3}>

@@ -36,10 +36,12 @@ import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import SaveButton from '../../../components/SaveButton';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -1815,6 +1817,15 @@ const OrderList = () => {
     const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
     return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
   }, [currentDetailOrder, fixedSellerOrg, formData, isNewOrder]);
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isDetailMode) return false;
+    if (!isNewOrder) return hasFormChanges;
+
+    const baselineSnapshot = toComparableOrderSnapshot(buildInitialFormData(), fixedSellerOrg);
+    const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
+    return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
+  }, [fixedSellerOrg, formData, hasFormChanges, isDetailMode, isNewOrder]);
+  useUnsavedChanges(hasUnsavedChanges);
   const hasChangesForForm = (candidateFormData) => {
     if (isNewOrder) return true;
     if (!currentDetailOrder) return false;
@@ -3032,16 +3043,14 @@ const OrderList = () => {
               </Button>
             )}
             <LastUpdaterLabel />
-            <Button
+            <SaveButton
               onClick={handleSave}
-              variant="contained"
               disabled={
                 isSavingOrder ||
                 (!isNewOrder && (!hasFormChanges || isCurrentOrderModificationLocked))
               }
-            >
-              {getUiMessage('common.save', 'Save', languageCode)}
-            </Button>
+              loading={isSavingOrder}
+            />
           </Stack>
         </Stack>
       </Box>

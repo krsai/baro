@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
   Paper,
   TextField,
   Typography,
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
+import SaveButton from '../../../components/SaveButton';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { requestJSON } from '../../../utils/apiClient';
 
 const buildCompanyInfo = (data = {}) => ({
@@ -35,7 +35,6 @@ const OrganizationDetail = () => {
   const text = useMemo(
     () => ({
       title: getUiMessage('organizationDetail.title', 'Company Info', languageCode),
-      save: getUiMessage('common.save', 'Save', languageCode),
       name: getUiMessage('organizationDetail.name', 'Company Name', languageCode),
       businessNumber: getUiMessage(
         'organizationDetail.businessNumber',
@@ -91,6 +90,7 @@ const OrganizationDetail = () => {
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
     [formData, savedFormData]
   );
+  useUnsavedChanges(isDirty);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -155,14 +155,11 @@ const OrganizationDetail = () => {
     <AppPageContainer
       title={text.title}
       titleActions={(
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
+        <SaveButton
           onClick={handleSave}
           disabled={!isDirty || isSaving}
-        >
-          {text.save}
-        </Button>
+          loading={isSaving}
+        />
       )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>

@@ -4,7 +4,9 @@ import {
   Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
+  FormControlLabel,
   IconButton,
   Paper,
   Stack,
@@ -22,7 +24,9 @@ import {
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import SaveButton from '../../../../components/SaveButton';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchProcessMasterOptions } from '../../../../utils/attributeApi';
 import {
@@ -58,6 +62,8 @@ const createEmptyDraft = () => ({
   spec: null,
   pt: '',
   st: '',
+  needsReview: false,
+  reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
@@ -82,7 +88,13 @@ const STYLE_PROCESS_MESSAGES = {
     atLabel: 'AT',
     save: '저장',
     cancel: '취소',
+    edit: '수정',
+    reviewRequiredLabel: '공정 검토 필요',
+    reviewCommentLabel: '검토 코멘트',
+    reviewCommentPlaceholder: '예: 주머니 입구 접기와 부착은 묶음 공정으로 재검토 필요',
+    reviewBadge: '검토',
     delete: '삭제',
+    editingTitle: '공정 수정',
     orderColumn: '순서',
     processColumn: '공정명',
     actionColumn: '작업',
@@ -121,7 +133,13 @@ const STYLE_PROCESS_MESSAGES = {
     atLabel: 'AT',
     save: 'Save',
     cancel: 'Cancel',
+    edit: 'Edit',
+    reviewRequiredLabel: 'Needs review',
+    reviewCommentLabel: 'Review comment',
+    reviewCommentPlaceholder: 'e.g. Folded pocket opening should be merged with pocket attach',
+    reviewBadge: 'Review',
     delete: 'Delete',
+    editingTitle: 'Edit Process',
     orderColumn: 'Order',
     processColumn: 'Process',
     actionColumn: 'Action',
@@ -160,7 +178,13 @@ const STYLE_PROCESS_MESSAGES = {
     atLabel: 'AT',
     save: 'Luu',
     cancel: 'Huy',
+    edit: 'Sua',
+    reviewRequiredLabel: 'Can xem lai cong doan',
+    reviewCommentLabel: 'Ghi chu xem lai',
+    reviewCommentPlaceholder: 'vi du: can gop cong doan gap mieng tui va rap tui',
+    reviewBadge: 'Can xem',
     delete: 'Xoa',
+    editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
     processColumn: 'Ten cong doan',
     actionColumn: 'Tac vu',
@@ -196,6 +220,42 @@ const getStyleProcessMessage = (languageCode, key, params = {}) => {
     (message, [token, value]) => message.replaceAll(`{${token}}`, String(value ?? '')),
     template
   );
+};
+
+const REVIEW_DESCRIPTION_PREFIX = '[REVIEW]';
+
+const parseProcessReviewMeta = (process) => {
+  const explicitNeedsReview =
+    typeof process?.needsReview === 'boolean' ? process.needsReview : null;
+  const explicitComment =
+    typeof process?.reviewComment === 'string' ? process.reviewComment.trim() : '';
+  const rawDescription =
+    typeof process?.description === 'string' ? process.description.trim() : '';
+
+  if (explicitNeedsReview !== null || explicitComment) {
+    return {
+      needsReview: explicitNeedsReview ?? false,
+      reviewComment: explicitComment || rawDescription,
+    };
+  }
+
+  if (rawDescription.startsWith(REVIEW_DESCRIPTION_PREFIX)) {
+    return {
+      needsReview: true,
+      reviewComment: rawDescription.slice(REVIEW_DESCRIPTION_PREFIX.length).trim(),
+    };
+  }
+
+  return {
+    needsReview: false,
+    reviewComment: rawDescription,
+  };
+};
+
+const buildReviewDescription = (needsReview, reviewComment) => {
+  const comment = String(reviewComment ?? '').trim();
+  if (!needsReview) return comment;
+  return comment ? `${REVIEW_DESCRIPTION_PREFIX} ${comment}` : REVIEW_DESCRIPTION_PREFIX;
 };
 
 const toPositiveInt = (value, fallback = 1) => {
@@ -627,6 +687,9 @@ const buildProcessPayload = (
   const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
+  const reviewNeedsCheck = Boolean(draft?.needsReview);
+  const reviewComment = String(draft?.reviewComment ?? '').trim();
+  const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece =
     ptTotalForDisplay == null
       ? null
@@ -667,7 +730,9 @@ const buildProcessPayload = (
     nameEn: localizedNames.nameEn || existingProcess?.nameEn || processCode,
     nameVi: localizedNames.nameVi || existingProcess?.nameVi || processCode,
     processComposition: composition,
-    description: existingProcess?.description ?? null,
+    description: reviewDescription || null,
+    needsReview: reviewNeedsCheck,
+    reviewComment: reviewComment || '',
     quantity: processQuantity,
     timeRefQuantity: resolvedTimeRefQuantity,
     pt: ptPerPiece,
@@ -682,6 +747,38 @@ const buildProcessPayload = (
         name: localizedNames.nameEn || localizedNames.nameKo || processCode,
       }),
   });
+};
+
+const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANTITY) => {
+  const safeProcess = normalizeProcess(process);
+  const composition = safeProcess?.processComposition || {};
+  const processQuantity = toPositiveInt(safeProcess?.quantity, 1);
+  const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
+  const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
+  const reviewMeta = parseProcessReviewMeta(safeProcess);
+
+  return {
+    part: normalizeProcessCompositionEntry(composition?.part, 'part'),
+    target: normalizeProcessCompositionEntry(
+      Array.isArray(composition?.targets) ? composition.targets[0] : null,
+      'target'
+    ),
+    actions: normalizeProcessCompositionEntries(composition?.actions, 'action'),
+    spec: normalizeProcessCompositionEntry(
+      Array.isArray(composition?.specs) ? composition.specs[0] : null,
+      'spec'
+    ),
+    pt:
+      ptPerPiece == null
+        ? ''
+        : toDraftNumberText(roundToScale(ptPerPiece * processQuantity, 4)),
+    st:
+      exactStPerPiece == null
+        ? ''
+        : toDraftNumberText(roundToScale(exactStPerPiece * processQuantity, 4)),
+    needsReview: reviewMeta.needsReview,
+    reviewComment: reviewMeta.reviewComment || '',
+  };
 };
 
 const StyleProcess = ({
@@ -780,6 +877,7 @@ const StyleProcess = ({
   );
 
   const [isAddingRow, setIsAddingRow] = useState(false);
+  const [editingInstanceId, setEditingInstanceId] = useState(null);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
@@ -862,6 +960,15 @@ const StyleProcess = ({
   const hasRequiredMasterOptions =
     partOptions.length > 0 && targetOptions.length > 0 && actionOptions.length > 0;
   const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
+  const isEditingRow = Boolean(editingInstanceId);
+  const isDraftOpen = isAddingRow || isEditingRow;
+  const editingProcess = useMemo(
+    () =>
+      isEditingRow
+        ? safeProcesses.find((process) => process.instanceId === editingInstanceId) || null
+        : null,
+    [editingInstanceId, isEditingRow, safeProcesses]
+  );
 
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
   const handleTimeRefQuantityChange = (event) => {
@@ -932,6 +1039,7 @@ const StyleProcess = ({
 
   const handleStartAddRow = () => {
     if (!canStartAdd) return;
+    setEditingInstanceId(null);
     setIsAddingRow(true);
     setAddDraft(createEmptyDraft());
     setAddError('');
@@ -939,18 +1047,37 @@ const StyleProcess = ({
 
   const handleCancelAddRow = () => {
     setIsAddingRow(false);
+    setEditingInstanceId(null);
     setAddDraft(createEmptyDraft());
     setAddError('');
   };
 
+  const handleStartEditRow = useCallback((process) => {
+    if (!process) return;
+    setIsAddingRow(false);
+    setEditingInstanceId(process.instanceId);
+    setAddDraft(buildDraftFromProcess(process, displayOrderQuantity));
+    setAddError('');
+  }, [displayOrderQuantity]);
+
   const handleSaveAddRow = () => {
-    const errorMessage = validateDraft(addDraft);
+    const errorMessage = validateDraft(addDraft, {
+      ignoreInstanceId: isEditingRow ? editingInstanceId : null,
+    });
     if (errorMessage) {
       setAddError(errorMessage);
       return;
     }
-    const nextProcess = buildProcessPayload(addDraft, null, timeRefQuantity);
-    onProcessesChange([...safeProcesses, nextProcess]);
+    const nextProcess = buildProcessPayload(addDraft, editingProcess, timeRefQuantity);
+    if (isEditingRow) {
+      onProcessesChange(
+        safeProcesses.map((process) =>
+          process.instanceId === editingInstanceId ? nextProcess : process
+        )
+      );
+    } else {
+      onProcessesChange([...safeProcesses, nextProcess]);
+    }
     handleCancelAddRow();
   };
 
@@ -990,25 +1117,38 @@ const StyleProcess = ({
   }, [onProcessesChange, safeProcesses]);
 
   const onDragEnd = useCallback((result) => {
-    if (isAddingRow) return;
+    if (isDraftOpen) return;
     if (!result.destination) return;
 
     const nextProcesses = Array.from(safeProcesses);
     const [reorderedItem] = nextProcesses.splice(result.source.index, 1);
     nextProcesses.splice(result.destination.index, 0, reorderedItem);
     onProcessesChange(nextProcesses);
-  }, [isAddingRow, onProcessesChange, safeProcesses]);
+  }, [isDraftOpen, onProcessesChange, safeProcesses]);
 
   const renderRowActions = useCallback((process) => (
-    <Tooltip title={getStyleProcessMessage(languageCode, 'delete')}>
-      <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
-        <DeleteIcon fontSize="small" />
-      </IconButton>
-    </Tooltip>
-  ), [handleRemoveProcess, languageCode]);
+    <Stack direction="row" spacing={0.25} justifyContent="center">
+      <Tooltip title={getStyleProcessMessage(languageCode, 'edit')}>
+        <span>
+          <IconButton
+            size="small"
+            onClick={() => handleStartEditRow(process)}
+            disabled={isAddingRow}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title={getStyleProcessMessage(languageCode, 'delete')}>
+        <IconButton size="small" onClick={() => handleRemoveProcess(process.instanceId)}>
+          <DeleteIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Stack>
+  ), [handleRemoveProcess, handleStartEditRow, isAddingRow, languageCode]);
 
-  const addPreviewProcess = isAddingRow
-    ? buildProcessPayload(deferredAddDraft, null, timeRefQuantity)
+  const addPreviewProcess = isDraftOpen
+    ? buildProcessPayload(deferredAddDraft, editingProcess, timeRefQuantity)
     : null;
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
@@ -1031,13 +1171,14 @@ const StyleProcess = ({
           key={process.instanceId}
           draggableId={process.instanceId}
           index={index}
-          isDragDisabled={Boolean(isAddingRow)}
+          isDragDisabled={Boolean(isDraftOpen)}
         >
           {(dragProvided) => {
             const previewAtTotalSeconds =
               resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
             const previewStTotalSeconds =
               resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
+            const reviewMeta = parseProcessReviewMeta(process);
 
             return (
               <TableRow
@@ -1048,10 +1189,10 @@ const StyleProcess = ({
                 <TableCell
                   align="center"
                   {...dragProvided.dragHandleProps}
-                  sx={{
-                    cursor: isAddingRow ? 'not-allowed' : 'grab',
-                    color: 'text.secondary',
-                  }}
+                    sx={{
+                      cursor: isDraftOpen ? 'not-allowed' : 'grab',
+                      color: 'text.secondary',
+                    }}
                 >
                   <Stack
                     direction="row"
@@ -1065,11 +1206,30 @@ const StyleProcess = ({
                 </TableCell>
 
                 <TableCell>
-                  {resolveLocalizedProcessDisplayLabel(
-                    process,
-                    languageCode,
-                    getStyleProcessMessage(languageCode, 'processColumn')
-                  )}
+                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                    <span>
+                      {resolveLocalizedProcessDisplayLabel(
+                        process,
+                        languageCode,
+                        getStyleProcessMessage(languageCode, 'processColumn')
+                      )}
+                    </span>
+                    {reviewMeta.needsReview ? (
+                      <Tooltip
+                        title={
+                          reviewMeta.reviewComment ||
+                          getStyleProcessMessage(languageCode, 'reviewRequiredLabel')
+                        }
+                      >
+                        <Chip
+                          size="small"
+                          label={getStyleProcessMessage(languageCode, 'reviewBadge')}
+                          color="warning"
+                          variant="outlined"
+                        />
+                      </Tooltip>
+                    ) : null}
+                  </Stack>
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
@@ -1136,7 +1296,7 @@ const StyleProcess = ({
     [
       displayOrderQuantity,
       handleInlineChange,
-      isAddingRow,
+      isDraftOpen,
       languageCode,
       renderRowActions,
       safeProcesses,
@@ -1196,7 +1356,7 @@ const StyleProcess = ({
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleStartAddRow}
-          disabled={isAddingRow || !canStartAdd}
+          disabled={isDraftOpen || !canStartAdd}
           sx={{
             minWidth: 108,
             height: 36,
@@ -1225,7 +1385,7 @@ const StyleProcess = ({
         </Typography>
       )}
 
-      {isAddingRow && (
+      {isDraftOpen && (
         <Paper
           variant="outlined"
           sx={{
@@ -1237,7 +1397,10 @@ const StyleProcess = ({
         >
           <Stack spacing={1.5}>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-              {getStyleProcessMessage(languageCode, 'addingTitle')}
+              {getStyleProcessMessage(
+                languageCode,
+                isEditingRow ? 'editingTitle' : 'addingTitle'
+              )}
             </Typography>
             <Stack
               direction={{ xs: 'column', lg: 'row' }}
@@ -1414,10 +1577,40 @@ const StyleProcess = ({
                   inputProps={{ tabIndex: -1 }}
                   sx={{ width: 132 }}
                 />
+                <Stack spacing={0.25} sx={{ minWidth: 260 }}>
+                  <FormControlLabel
+                    sx={{ m: 0, '.MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
+                    control={(
+                      <Checkbox
+                        size="small"
+                        checked={Boolean(addDraft.needsReview)}
+                        onChange={(event) => {
+                          setAddDraft((prev) => ({
+                            ...prev,
+                            needsReview: event.target.checked,
+                          }));
+                        }}
+                      />
+                    )}
+                    label={getStyleProcessMessage(languageCode, 'reviewRequiredLabel')}
+                  />
+                  <TextField
+                    size="small"
+                    value={addDraft.reviewComment || ''}
+                    onChange={(event) => {
+                      setAddDraft((prev) => ({
+                        ...prev,
+                        reviewComment: event.target.value,
+                      }));
+                    }}
+                    onBlur={() => setAddError('')}
+                    label={getStyleProcessMessage(languageCode, 'reviewCommentLabel')}
+                    placeholder={getStyleProcessMessage(languageCode, 'reviewCommentPlaceholder')}
+                    sx={{ minWidth: 240 }}
+                  />
+                </Stack>
                 <Stack direction="row" spacing={0.75}>
-                  <Button variant="contained" onClick={handleSaveAddRow}>
-                    {getStyleProcessMessage(languageCode, 'save')}
-                  </Button>
+                  <SaveButton onClick={handleSaveAddRow} />
                   <Button variant="outlined" onClick={handleCancelAddRow}>
                     {getStyleProcessMessage(languageCode, 'cancel')}
                   </Button>

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Button,
   Paper,
   TextField,
   Typography,
 } from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../components/AppPageContainer';
+import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { requestJSON } from '../../utils/apiClient';
 
 const resolveNameFromEmail = (email) => {
@@ -47,7 +47,6 @@ const buildProfileInfo = (data = {}, fallbackName = '') => ({
 
 const TEXT = {
   title: '\uAC1C\uC778 \uC815\uBCF4',
-  save: '\uC800\uC7A5',
   email: '\uC774\uBA54\uC77C',
   name: '\uC774\uB984',
   phone: '\uC5F0\uB77D\uCC98',
@@ -126,6 +125,7 @@ const MyProfile = () => {
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
     [formData, savedFormData]
   );
+  useUnsavedChanges(isDirty);
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -166,14 +166,11 @@ const MyProfile = () => {
     <AppPageContainer
       title={TEXT.title}
       titleActions={(
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
+        <SaveButton
           onClick={handleSave}
           disabled={!isDirty || isSaving}
-        >
-          {TEXT.save}
-        </Button>
+          loading={isSaving}
+        />
       )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
