@@ -325,10 +325,7 @@ const MainLayout = () => {
     const fallbackEmail = activeProfile?.email || user?.email || '';
     return resolveNameFromEmail(fallbackEmail);
   }, [activeProfile?.email, activeProfile?.employeeName, user?.email, user?.user_metadata]);
-  const activeUserSummary = useMemo(() => {
-    if (activeOrgName && activeUserName) return `${activeOrgName} | ${activeUserName}`;
-    return activeOrgName || activeUserName || '접속자 정보 없음';
-  }, [activeOrgName, activeUserName]);
+  const activeUserSummary = useMemo(() => activeUserName || '', [activeUserName]);
 
   const fetchPendingEmployeeCount = React.useCallback(async () => {
     if (!canViewEmployeeMenu) {
@@ -1367,7 +1364,12 @@ const MainLayout = () => {
         onClose={() => setSidebarOpen(false)}
         sx={{
           display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            top: { xs: '56px', sm: '64px' },
+            height: { xs: 'calc(100% - 56px)', sm: 'calc(100% - 64px)' },
+          },
         }}
       >
         {sidebarContent}

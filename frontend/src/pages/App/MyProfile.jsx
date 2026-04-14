@@ -58,6 +58,27 @@ const TEXT = {
   saveError: '\uC800\uC7A5 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.',
 };
 
+const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
+  <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
+    <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+      {label}
+      {disabled && (
+        <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.disabled' }}>
+          {readOnlyText}
+        </Typography>
+      )}
+    </Typography>
+    <TextField
+      fullWidth
+      name={name}
+      value={value}
+      onChange={disabled ? undefined : onChange}
+      InputProps={{ readOnly: disabled }}
+      sx={{ '& .MuiInputBase-input': { fontWeight: 500 } }}
+    />
+  </Box>
+);
+
 const MyProfile = () => {
   const { showNotification } = useAppActions();
   const { updateActiveProfile, user, activeProfile } = useAuth();
@@ -141,27 +162,6 @@ const MyProfile = () => {
     }
   };
 
-  const InfoRow = ({ label, value, name, disabled }) => (
-    <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
-      <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
-        {label}
-        {disabled && (
-          <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.disabled' }}>
-            {TEXT.readOnly}
-          </Typography>
-        )}
-      </Typography>
-      <TextField
-        fullWidth
-        name={name}
-        value={value}
-        onChange={disabled ? undefined : handleInputChange}
-        InputProps={{ readOnly: disabled }}
-        sx={{ '& .MuiInputBase-input': { fontWeight: 500 } }}
-      />
-    </Box>
-  );
-
   return (
     <AppPageContainer
       title={TEXT.title}
@@ -177,14 +177,39 @@ const MyProfile = () => {
       )}
     >
       <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
-        <InfoRow label={TEXT.email} value={formData.email} disabled />
-        <InfoRow label={TEXT.name} name="name" value={formData.name} />
-        <InfoRow label={TEXT.phone} name="phone" value={formData.phone} />
-        <InfoRow label={TEXT.bankName} name="bankName" value={formData.bankName} />
+        <InfoRow
+          label={TEXT.email}
+          value={formData.email}
+          disabled
+          readOnlyText={TEXT.readOnly}
+        />
+        <InfoRow
+          label={TEXT.name}
+          name="name"
+          value={formData.name}
+          onChange={handleInputChange}
+          readOnlyText={TEXT.readOnly}
+        />
+        <InfoRow
+          label={TEXT.phone}
+          name="phone"
+          value={formData.phone}
+          onChange={handleInputChange}
+          readOnlyText={TEXT.readOnly}
+        />
+        <InfoRow
+          label={TEXT.bankName}
+          name="bankName"
+          value={formData.bankName}
+          onChange={handleInputChange}
+          readOnlyText={TEXT.readOnly}
+        />
         <InfoRow
           label={TEXT.bankAccountNumber}
           name="bankAccountNumber"
           value={formData.bankAccountNumber}
+          onChange={handleInputChange}
+          readOnlyText={TEXT.readOnly}
         />
       </Paper>
     </AppPageContainer>
