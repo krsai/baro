@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -121,9 +121,48 @@ const ProcessMasterSection = ({
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
     [languageCode, rows]
   );
+  const sectionRef = useRef(null);
+  const blurTimeoutRef = useRef(null);
+  const [frozenRowOrder, setFrozenRowOrder] = useState(null);
+
+  const displayRows = useMemo(() => {
+    if (!frozenRowOrder) return sortedRows;
+    const rowMap = new Map(rows.map((row) => [row.id, row]));
+    const frozenRowIds = new Set(frozenRowOrder);
+    const frozenRows = frozenRowOrder.map((rowId) => rowMap.get(rowId)).filter(Boolean);
+    const appendedRows = rows.filter((row) => !frozenRowIds.has(row.id));
+    return [...frozenRows, ...appendedRows];
+  }, [frozenRowOrder, rows, sortedRows]);
+
+  const handleFocusWithinTable = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setFrozenRowOrder((previousOrder) => previousOrder || sortedRows.map((row) => row.id));
+  }, [sortedRows]);
+
+  const handleBlurWithinTable = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    blurTimeoutRef.current = window.setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (sectionRef.current && activeElement && sectionRef.current.contains(activeElement)) return;
+      setFrozenRowOrder(null);
+      blurTimeoutRef.current = null;
+    }, 0);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    },
+    []
+  );
 
   return (
-    <Paper variant="outlined" sx={{ p: 2, height: '100%' }}>
+    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
         <Typography variant="subtitle1" fontWeight={700}>
           {title}
@@ -149,8 +188,8 @@ const ProcessMasterSection = ({
               <TableCell sx={{ width: '10%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>
-            {sortedRows.map((row) => (
+          <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
+            {displayRows.map((row) => (
               <TableRow key={row.id} hover>
                 <TableCell>
                   <TextField
@@ -195,7 +234,7 @@ const ProcessMasterSection = ({
                 </TableCell>
               </TableRow>
             ))}
-            {sortedRows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   항목이 없습니다.
