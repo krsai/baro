@@ -198,10 +198,15 @@ const StyleDetail = () => {
     [isNew, languageCode, originalData.name, styleFormData.name, styleId]
   );
 
+  const isStyleDetailRoute = useMemo(
+    () => location.pathname.startsWith('/style/'),
+    [location.pathname]
+  );
+
   useEffect(() => {
-    if (!location.pathname.startsWith('/style')) return;
+    if (!isStyleDetailRoute) return;
     navigateToPath(`${location.pathname}${location.search}`, { label: detailTabLabel });
-  }, [detailTabLabel, location.pathname, location.search, navigateToPath]);
+  }, [detailTabLabel, isStyleDetailRoute, location.pathname, location.search, navigateToPath]);
 
   useEffect(() => {
     let active = true;

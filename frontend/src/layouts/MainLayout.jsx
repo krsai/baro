@@ -251,6 +251,7 @@ const MainLayout = () => {
   const isLoggingOutRef = useRef(false);
   const pendingNavigationPathRef = useRef(null);
   const pendingCloseTabRef = useRef(null);
+  const pendingManualTabCloseRef = useRef(null);
   const currentPathRef = useRef(currentPath);
   const recentTabHistoryRef = useRef([]);
   const headerOffset = `${Math.max(56, Math.round(headerHeight || 64))}px`;
@@ -977,6 +978,18 @@ const MainLayout = () => {
       }
     }
 
+    const pendingManualClose = pendingManualTabCloseRef.current;
+    if (pendingManualClose) {
+      if (currentPath === pendingManualClose.targetPath) {
+        pendingManualTabCloseRef.current = null;
+        if (openTabs.some((tab) => tab.id === pendingManualClose.tabId)) {
+          closeTab(pendingManualClose.tabId);
+        }
+      } else if (currentPath !== pendingManualClose.sourcePath) {
+        pendingManualTabCloseRef.current = null;
+      }
+    }
+
     if (skipAutoOpenPathRef.current && currentPath !== skipAutoOpenPathRef.current) {
       skipAutoOpenPathRef.current = null;
     }
@@ -1098,6 +1111,7 @@ const MainLayout = () => {
     skipAutoOpenPathRef.current = '/login';
     pendingNavigationPathRef.current = null;
     pendingCloseTabRef.current = null;
+    pendingManualTabCloseRef.current = null;
     recentTabHistoryRef.current = [];
     setMountedTabOutlets(new Map());
     cancelAllTrackedRequests('logout');
@@ -1138,6 +1152,7 @@ const MainLayout = () => {
     if (!closingTab) return;
     const confirmed = confirmDiscardUnsavedChanges({ path: tabIdToClose });
     if (!confirmed) return;
+    pendingManualTabCloseRef.current = null;
 
     const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);
     recentTabHistoryRef.current = recentTabHistoryRef.current.filter(
@@ -1151,6 +1166,11 @@ const MainLayout = () => {
         skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
         pendingCloseTabRef.current = tabIdToClose;
         pendingNavigationPathRef.current = EMPTY_WORKSPACE_PATH;
+        pendingManualTabCloseRef.current = {
+          tabId: tabIdToClose,
+          targetPath: EMPTY_WORKSPACE_PATH,
+          sourcePath: currentPath,
+        };
         navigate(EMPTY_WORKSPACE_PATH, { replace: true });
         schedulePendingNavigationCleanup(currentPathRef.current, EMPTY_WORKSPACE_PATH);
         return;
@@ -1170,11 +1190,17 @@ const MainLayout = () => {
       if (fallbackPathname === currentPath) {
         pendingCloseTabRef.current = null;
         pendingNavigationPathRef.current = null;
+        pendingManualTabCloseRef.current = null;
         closeTab(tabIdToClose);
         return;
       }
       pendingCloseTabRef.current = tabIdToClose;
       pendingNavigationPathRef.current = fallbackPathname;
+      pendingManualTabCloseRef.current = {
+        tabId: tabIdToClose,
+        targetPath: fallbackPathname,
+        sourcePath: currentPath,
+      };
       navigate(fallbackPath);
       schedulePendingNavigationCleanup(currentPathRef.current, fallbackPathname);
 
