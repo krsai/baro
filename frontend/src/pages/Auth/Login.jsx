@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import {
   Box,
@@ -122,6 +122,7 @@ const getLoginCopy = (languageCode) => LOGIN_COPY_BY_LANGUAGE[languageCode] || L
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { languageCode, setLanguageCode } = useLanguage();
   const {
     signInWithGoogle,
@@ -135,6 +136,7 @@ const Login = () => {
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isNavigatingAfterAuth, setIsNavigatingAfterAuth] = useState(false);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [orgRoleProfiles, setOrgRoleProfiles] = useState([]);
   const [isTestPanelOpen, setIsTestPanelOpen] = useState(false);
@@ -142,11 +144,39 @@ const Login = () => {
   const [testPanelPassword, setTestPanelPassword] = useState('');
   const [testPanelError, setTestPanelError] = useState('');
   const [lineLeaderStartAt] = useState(() => new Date().toISOString());
+  const hasOAuthCallbackParams = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search || '');
+    const hasSearchCallbackParam =
+      searchParams.has('code') ||
+      searchParams.has('state') ||
+      searchParams.has('error') ||
+      searchParams.has('error_code') ||
+      searchParams.has('error_description');
+    const hasHashToken =
+      typeof location.hash === 'string' && location.hash.includes('access_token');
+    return hasSearchCallbackParam || hasHashToken;
+  }, [location.hash, location.search]);
+  const [isOAuthReturnPending, setIsOAuthReturnPending] = useState(
+    () => hasOAuthCallbackParams
+  );
 
   const loginCopy = getLoginCopy(languageCode);
 
   useEffect(() => {
+    if (!hasOAuthCallbackParams) return;
+    setIsOAuthReturnPending(true);
+  }, [hasOAuthCallbackParams]);
+
+  useEffect(() => {
+    if (!isOAuthReturnPending) return;
+    if (loading) return;
+    if (isAuthenticated) return;
+    setIsOAuthReturnPending(false);
+  }, [isAuthenticated, isOAuthReturnPending, loading]);
+
+  useEffect(() => {
     if (!isAuthenticated || loading) return;
+    setIsNavigatingAfterAuth(true);
     if (hasWorkspaceAccess) {
       navigate(WORKSPACE_PATH, { replace: true });
       return;
@@ -166,6 +196,11 @@ const Login = () => {
     requiresOnboarding,
     requiresSubscriptionContact,
   ]);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+    setIsNavigatingAfterAuth(false);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isTestPanelUnlocked) {
@@ -326,8 +361,11 @@ const Login = () => {
   const handleGoogleLogin = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    await signInWithGoogle();
-    setIsSubmitting(false);
+    try {
+      await signInWithGoogle();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDevBypass = (profile) => {
@@ -369,6 +407,13 @@ const Login = () => {
       setTestPanelError('');
     }
   };
+
+  const isLoginLocked =
+    isSubmitting ||
+    loading ||
+    isOAuthReturnPending ||
+    isNavigatingAfterAuth ||
+    isAuthenticated;
 
   const profileFooterMessage = loadingProfiles
     ? loginCopy.testPanelLoading
@@ -416,12 +461,12 @@ const Login = () => {
               '&:hover': { backgroundColor: '#357ae8' },
             }}
             startIcon={
-              isSubmitting || loading ? <CircularProgress size={16} color="inherit" /> : null
+              isLoginLocked ? <CircularProgress size={16} color="inherit" /> : null
             }
             onClick={handleGoogleLogin}
-            disabled={isSubmitting || loading || !isSupabaseConfigured}
+            disabled={isLoginLocked || !isSupabaseConfigured}
           >
-            {isSubmitting || loading ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
+            {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
 
           {!isSupabaseConfigured && (
