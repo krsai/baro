@@ -44,6 +44,21 @@ const createEmptyMasterData = () => ({
 });
 
 const toTrimmedText = (value) => String(value ?? '').trim();
+const normalizeCodeKey = (value) => toTrimmedText(value).toUpperCase();
+const EMPTY_CODE_SET = new Set();
+const collectDuplicateCodeSet = (rows = []) => {
+  const codeCountMap = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const codeKey = normalizeCodeKey(row?.code);
+    if (!codeKey) return;
+    codeCountMap.set(codeKey, (codeCountMap.get(codeKey) || 0) + 1);
+  });
+  return new Set(
+    Array.from(codeCountMap.entries())
+      .filter(([, count]) => count > 1)
+      .map(([codeKey]) => codeKey)
+  );
+};
 const LANGUAGE_SORT_LOCALE_BY_CODE = {
   ko: 'ko-KR',
   en: 'en-US',
@@ -116,6 +131,9 @@ const ProcessMasterSection = ({
   onAddRow,
   onDeleteRow,
   onRowChange,
+  focusRowId = null,
+  onCodeFocusHandled,
+  duplicateCodeSet = EMPTY_CODE_SET,
 }) => {
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
@@ -123,6 +141,7 @@ const ProcessMasterSection = ({
   );
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
+  const focusInputRef = useRef(null);
   const [frozenRowOrder, setFrozenRowOrder] = useState(null);
 
   const displayRows = useMemo(() => {
@@ -161,6 +180,22 @@ const ProcessMasterSection = ({
     []
   );
 
+  useEffect(() => {
+    if (!focusRowId) return undefined;
+    const inputElement = focusInputRef.current;
+    if (!inputElement) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputElement.focus();
+      if (typeof inputElement.select === 'function') inputElement.select();
+      if (typeof onCodeFocusHandled === 'function') onCodeFocusHandled(focusRowId);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [displayRows, focusRowId, onCodeFocusHandled]);
+
   return (
     <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
@@ -198,6 +233,17 @@ const ProcessMasterSection = ({
                     value={row.code || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'code', event.target.value)}
                     placeholder="CODE"
+                    inputRef={focusRowId === row.id ? focusInputRef : undefined}
+                    error={
+                      Boolean(normalizeCodeKey(row.code)) &&
+                      duplicateCodeSet.has(normalizeCodeKey(row.code))
+                    }
+                    helperText={
+                      Boolean(normalizeCodeKey(row.code)) &&
+                      duplicateCodeSet.has(normalizeCodeKey(row.code))
+                        ? '중복 코드'
+                        : undefined
+                    }
                   />
                 </TableCell>
                 <TableCell>
@@ -255,6 +301,19 @@ const ProcessMasterBoard = () => {
   const [originalData, setOriginalData] = useState(() => createEmptyMasterData());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
+  const duplicateCodeMap = useMemo(
+    () =>
+      MASTER_SECTIONS.reduce((acc, section) => {
+        acc[section.key] = collectDuplicateCodeSet(formData[section.key]);
+        return acc;
+      }, {}),
+    [formData]
+  );
+  const hasDuplicateCodes = useMemo(
+    () => MASTER_SECTIONS.some((section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0),
+    [duplicateCodeMap]
+  );
 
   const isDirty = useMemo(
     () =>
@@ -301,12 +360,13 @@ const ProcessMasterBoard = () => {
   }, []);
 
   const handleAddRow = useCallback((sectionKey) => {
+    const rowId = `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setFormData((prev) => ({
       ...prev,
       [sectionKey]: [
         ...(prev[sectionKey] || []),
         {
-          id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: rowId,
           code: '',
           nameKo: '',
           nameEn: '',
@@ -315,6 +375,15 @@ const ProcessMasterBoard = () => {
         },
       ],
     }));
+    setPendingCodeFocus({ sectionKey, rowId });
+  }, []);
+
+  const handleCodeFocusHandled = useCallback((resolvedSectionKey, rowId) => {
+    setPendingCodeFocus((prev) => {
+      if (!prev) return null;
+      if (prev.sectionKey !== resolvedSectionKey || prev.rowId !== rowId) return prev;
+      return null;
+    });
   }, []);
 
   const handleDeleteRow = useCallback((sectionKey, rowId) => {
@@ -326,6 +395,13 @@ const ProcessMasterBoard = () => {
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
+    const duplicateSection = MASTER_SECTIONS.find(
+      (section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0
+    );
+    if (duplicateSection) {
+      showNotification(`${duplicateSection.title}에 중복 코드가 있습니다.`, 'error');
+      return;
+    }
     setIsSaving(true);
     try {
       const payload = MASTER_SECTIONS.reduce((acc, section) => {
@@ -349,7 +425,7 @@ const ProcessMasterBoard = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [formData, isSaving, showNotification]);
+  }, [duplicateCodeMap, formData, isSaving, showNotification]);
 
   return (
     <AppPageContainer
@@ -366,6 +442,9 @@ const ProcessMasterBoard = () => {
         <Alert severity="info">
           시스템 관리자가 공정 마스터(부위/대상/규격/작업)를 다국어로 관리합니다.
         </Alert>
+        {hasDuplicateCodes ? (
+          <Alert severity="warning">코드가 중복된 행이 있습니다. 코드명은 섹션 내에서 유일해야 합니다.</Alert>
+        ) : null}
         <Grid container spacing={2}>
           {MASTER_SECTIONS.map((section) => (
             <Grid item xs={12} md={6} key={section.key}>
@@ -377,6 +456,9 @@ const ProcessMasterBoard = () => {
                 onAddRow={handleAddRow}
                 onDeleteRow={handleDeleteRow}
                 onRowChange={handleRowChange}
+                focusRowId={pendingCodeFocus?.sectionKey === section.key ? pendingCodeFocus.rowId : null}
+                onCodeFocusHandled={(rowId) => handleCodeFocusHandled(section.key, rowId)}
+                duplicateCodeSet={duplicateCodeMap[section.key] || EMPTY_CODE_SET}
               />
             </Grid>
           ))}

@@ -103,7 +103,7 @@ const RAW_STATIC_OPTION_GROUPS = [
   {
     key: 'sizeCode',
     title: '사이즈 코드',
-    items: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'].map((code) =>
+    items: ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', 'FREE'].map((code) =>
       createItem(code, { ko: code, en: code, vi: code })
     ),
   },

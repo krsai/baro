@@ -72,6 +72,8 @@ export const UI_MESSAGES = {
       en: 'Order edit lock switch',
       vi: 'Cong tac khoa sua don hang',
     },
+    lockedShort: { ko: '잠금됨', en: 'Locked', vi: 'Da khoa' },
+    unlockedShort: { ko: '수정 가능', en: 'Editable', vi: 'Co the sua' },
     clearDraft: { ko: '임시 저장 삭제', en: 'Clear Draft', vi: 'Xoa ban nhap tam' },
     noPartners: {
       ko: '연결된 주문 파트너가 없습니다. 고객 관계를 먼저 등록해 주세요.',

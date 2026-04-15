@@ -98,7 +98,24 @@ const PROCESS_NAMING_XN_LINES = [
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value));
 
 const toTrimmedText = (value) => String(value ?? '').trim();
-const sortRowsByCode = (left, right) => left.code.localeCompare(right.code);
+const normalizeCodeKey = (value) => toTrimmedText(value).toUpperCase();
+const sortRowsByCode = (left, right) =>
+  normalizeCodeKey(left.code).localeCompare(normalizeCodeKey(right.code));
+const EMPTY_CODE_SET = new Set();
+
+const collectDuplicateCodeSet = (rows = []) => {
+  const codeCountMap = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const codeKey = normalizeCodeKey(row?.code);
+    if (!codeKey) return;
+    codeCountMap.set(codeKey, (codeCountMap.get(codeKey) || 0) + 1);
+  });
+  return new Set(
+    Array.from(codeCountMap.entries())
+      .filter(([, count]) => count > 1)
+      .map(([codeKey]) => codeKey)
+  );
+};
 
 const resolveBaseAttributeName = (item = {}) => {
   const name = toTrimmedText(item?.name);
@@ -109,14 +126,16 @@ const resolveBaseAttributeName = (item = {}) => {
 };
 
 const normalizeRows = (rows) =>
-  (Array.isArray(rows) ? rows : []).map((item = {}) => ({
-    id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    code: toTrimmedText(item.code),
-    name: resolveBaseAttributeName(item),
-    nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
-    nameKo: toTrimmedText(item.nameKo),
-    nameVi: toTrimmedText(item.nameVi),
-  }));
+  (Array.isArray(rows) ? rows : [])
+    .map((item = {}) => ({
+      id: item.id ?? `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      code: toTrimmedText(item.code),
+      name: resolveBaseAttributeName(item),
+      nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
+      nameKo: toTrimmedText(item.nameKo),
+      nameVi: toTrimmedText(item.nameVi),
+    }))
+    .sort(sortRowsByCode);
 
 const normalizeData = (data) => ({
   colors: normalizeRows(data?.colors),
@@ -299,20 +318,51 @@ const AttributeRow = memo(function AttributeRow({
   sectionKey,
   onRowChange,
   onDeleteRow,
+  shouldFocusCode = false,
+  onCodeFocusHandled,
+  duplicateCodeSet = EMPTY_CODE_SET,
 }) {
+  const codeInputRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!shouldFocusCode) return undefined;
+    const inputElement = codeInputRef.current;
+    if (!inputElement) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputElement.focus();
+      if (typeof inputElement.select === 'function') inputElement.select();
+      if (typeof onCodeFocusHandled === 'function') onCodeFocusHandled(row.id);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [onCodeFocusHandled, row.id, shouldFocusCode]);
+
   return (
     <TableRow hover>
-      {columns.map((col) => (
-        <TableCell key={col.field}>
-          <TextField
-            value={row[col.field] || ''}
-            onChange={(event) => onRowChange(sectionKey, row.id, col.field, event.target.value)}
-            fullWidth
-            size="small"
-            placeholder={col.label}
-          />
-        </TableCell>
-      ))}
+      {columns.map((col) => {
+        const isCodeField = col.field === 'code';
+        const normalizedCode = normalizeCodeKey(row.code);
+        const hasDuplicateCode =
+          isCodeField && Boolean(normalizedCode) && duplicateCodeSet.has(normalizedCode);
+
+        return (
+          <TableCell key={col.field}>
+            <TextField
+              value={row[col.field] || ''}
+              onChange={(event) => onRowChange(sectionKey, row.id, col.field, event.target.value)}
+              fullWidth
+              size="small"
+              placeholder={col.label}
+              inputRef={isCodeField ? codeInputRef : undefined}
+              error={hasDuplicateCode}
+              helperText={hasDuplicateCode ? '중복 코드' : undefined}
+            />
+          </TableCell>
+        );
+      })}
       <TableCell sx={{ textAlign: 'center' }}>
         <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
           <DeleteIcon fontSize="small" />
@@ -330,9 +380,10 @@ const AttributeSection = memo(function AttributeSection({
   onRowChange,
   onOpenGuide,
   onOpenComposer,
+  focusRowId = null,
+  onCodeFocusHandled,
+  duplicateCodeSet = EMPTY_CODE_SET,
 }) {
-  const sortedRows = useMemo(() => [...rows].sort(sortRowsByCode), [rows]);
-
   return (
     <Paper
       variant="outlined"
@@ -392,7 +443,7 @@ const AttributeSection = memo(function AttributeSection({
             </TableRow>
           </TableHead>
           <TableBody>
-            {sortedRows.map((row) => (
+            {rows.map((row) => (
               <AttributeRow
                 key={row.id}
                 row={row}
@@ -400,6 +451,9 @@ const AttributeSection = memo(function AttributeSection({
                 sectionKey={config.key}
                 onRowChange={onRowChange}
                 onDeleteRow={onDeleteRow}
+                shouldFocusCode={focusRowId === row.id}
+                onCodeFocusHandled={onCodeFocusHandled}
+                duplicateCodeSet={duplicateCodeSet}
               />
             ))}
 
@@ -634,6 +688,7 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
   const [canManageProcesses, setCanManageProcesses] = useState(true);
   const [isProcessGuideOpen, setIsProcessGuideOpen] = useState(false);
   const [isProcessComposerOpen, setIsProcessComposerOpen] = useState(false);
+  const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
   const enabledSectionSet = useMemo(() => {
     if (!sectionKey) return null;
     return new Set([sectionKey]);
@@ -675,6 +730,21 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
   const processComposerCatalog = useMemo(
     () => collectProcessComposerCatalog(formData.processes, processMasterOptions),
     [formData.processes, processMasterOptions]
+  );
+  const duplicateCodeMap = useMemo(
+    () =>
+      visibleSectionConfigs.reduce((acc, section) => {
+        acc[section.key] = collectDuplicateCodeSet(formData[section.key]);
+        return acc;
+      }, {}),
+    [formData, visibleSectionConfigs]
+  );
+  const hasDuplicateCodes = useMemo(
+    () =>
+      visibleSectionConfigs.some(
+        (section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0
+      ),
+    [duplicateCodeMap, visibleSectionConfigs]
   );
 
   useUnsavedChanges(isDirty);
@@ -751,12 +821,13 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
 
   const handleAddRow = useCallback((sectionKey) => {
     if (sectionKey === 'processes') return;
+    const rowId = `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setFormData((prev) => ({
       ...prev,
       [sectionKey]: [
         ...prev[sectionKey],
         {
-          id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: rowId,
           code: '',
           name: '',
           nameEn: '',
@@ -765,6 +836,15 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
         },
       ],
     }));
+    setPendingCodeFocus({ sectionKey, rowId });
+  }, []);
+
+  const handleCodeFocusHandled = useCallback((resolvedSectionKey, rowId) => {
+    setPendingCodeFocus((prev) => {
+      if (!prev) return null;
+      if (prev.sectionKey !== resolvedSectionKey || prev.rowId !== rowId) return prev;
+      return null;
+    });
   }, []);
 
   const handleDeleteRow = useCallback((sectionKey, id) => {
@@ -799,6 +879,13 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
 
   const handleSave = async () => {
     if (isSaving) return;
+    const duplicateSection = visibleSectionConfigs.find(
+      (section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0
+    );
+    if (duplicateSection) {
+      showNotification(`${duplicateSection.title}에 중복 코드가 있습니다.`, 'error');
+      return;
+    }
     setIsSaving(true);
 
     try {
@@ -840,6 +927,11 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
         />
       )}
     >
+      {hasDuplicateCodes ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          코드가 중복된 행이 있습니다. 코드명은 섹션 내에서 유일해야 합니다.
+        </Alert>
+      ) : null}
       <Grid container spacing={3}>
         {visibleSectionConfigs.map((config) => (
           <Grid item xs={12} key={config.key}>
@@ -849,6 +941,9 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
               onAddRow={handleAddRow}
               onDeleteRow={handleDeleteRow}
               onRowChange={handleRowChange}
+              focusRowId={pendingCodeFocus?.sectionKey === config.key ? pendingCodeFocus.rowId : null}
+              onCodeFocusHandled={(rowId) => handleCodeFocusHandled(config.key, rowId)}
+              duplicateCodeSet={duplicateCodeMap[config.key] || EMPTY_CODE_SET}
               onOpenGuide={
                 config.key === 'processes' ? () => setIsProcessGuideOpen(true) : undefined
               }

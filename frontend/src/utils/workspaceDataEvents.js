@@ -2,6 +2,7 @@ const WORKSPACE_DATA_CHANGED_EVENT = 'baro:workspace-data-changed';
 
 export const WORKSPACE_DATA_TOPICS = Object.freeze({
   STYLES: 'styles',
+  ORDERS: 'orders',
   ASSIGNMENT_BOARD: 'assignment-board',
 });
 

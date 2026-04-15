@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import {
   Box,
   Table,
@@ -27,6 +27,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -42,6 +43,7 @@ import PageSectionHeader from '../../../components/PageSectionHeader';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { createAutocompleteFilterOptions } from '../../../utils/autocompleteSearch';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -87,6 +89,10 @@ import {
   subscribeOrderModificationLockChanged,
 } from '../../../utils/orderSyncEvents';
 import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from '../../../utils/workspaceDataEvents';
+import {
   calculateProcessTotalForOrderQuantity,
   normalizeProcesses,
 } from '../../../utils/processTime';
@@ -130,6 +136,60 @@ const ORDER_LIST_TEXT_ELLIPSIS_SX = {
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+};
+const getOrderLockButtonSx = (isLocked) => (theme) => {
+  const primaryMain = theme.palette.primary.main;
+  const textPrimary = theme.palette.text.primary;
+
+  if (isLocked) {
+    return {
+      minWidth: 116,
+      height: 36,
+      px: 1.75,
+      borderRadius: 1.5,
+      border: `1px solid ${alpha(textPrimary, 0.9)}`,
+      backgroundColor: alpha(textPrimary, 0.9),
+      color: theme.palette.common.white,
+      fontWeight: 700,
+      '&:hover': {
+        borderColor: textPrimary,
+        backgroundColor: textPrimary,
+      },
+      '& .MuiButton-startIcon': {
+        marginLeft: 0,
+        marginRight: theme.spacing(0.75),
+      },
+      '&.Mui-disabled': {
+        borderColor: alpha(textPrimary, 0.38),
+        backgroundColor: alpha(textPrimary, 0.38),
+        color: alpha(theme.palette.common.white, 0.76),
+      },
+    };
+  }
+
+  return {
+    minWidth: 116,
+    height: 36,
+    px: 1.75,
+    borderRadius: 1.5,
+    border: `1px solid ${alpha(primaryMain, 0.38)}`,
+    backgroundColor: alpha(primaryMain, 0.08),
+    color: primaryMain,
+    fontWeight: 700,
+    '&:hover': {
+      borderColor: alpha(primaryMain, 0.55),
+      backgroundColor: alpha(primaryMain, 0.16),
+    },
+    '& .MuiButton-startIcon': {
+      marginLeft: 0,
+      marginRight: theme.spacing(0.75),
+    },
+    '&.Mui-disabled': {
+      borderColor: alpha(primaryMain, 0.22),
+      backgroundColor: alpha(primaryMain, 0.08),
+      color: alpha(primaryMain, 0.48),
+    },
+  };
 };
 const GENDER_SORT_ORDER = {
   M: 0,
@@ -216,11 +276,15 @@ const hasRelationshipPair = (pairs, buyerOrgId, sellerOrgId) => {
       Number(pair?.manufacturerOrgId) === sellerIdNum
   );
 };
-const getStyleGroupKey = (item) => {
+const getStyleGroupKey = (item, deferredMergeRowIdSet = null) => {
+  const rowId = String(item?.id || '').trim();
+  if (rowId && deferredMergeRowIdSet?.has(rowId)) {
+    return `item:${rowId}`;
+  }
   if (item?.styleId) return `style:${item.styleId}`;
   if (item?.styleName) return `style-name:${item.styleName}`;
   if (item?.styleCode) return `style-code:${item.styleCode}`;
-  return `item:${item?.id || ''}`;
+  return `item:${rowId}`;
 };
 const getStyleIdentity = (item) => item?.styleId || item?.styleName || item?.styleCode || '';
 const normalizeColorCode = (value) => String(value ?? '').trim().toUpperCase();
@@ -497,6 +561,7 @@ const normalizeSizeKey = (value) => {
   if (raw === 'XXL' || raw === '2X') return '2XL';
   if (raw === 'XXXL' || raw === '3X') return '3XL';
   if (raw === 'XXXXL' || raw === '4X') return '4XL';
+  if (raw === 'FREE' || raw === 'FREESIZE' || raw === 'ONESIZE' || raw === 'ONESZ' || raw === 'F') return 'FREE';
   return '';
 };
 const toNumericInputString = (value) => String(value ?? '').replace(/[^\d]/g, '');
@@ -704,9 +769,11 @@ const formatStyleSummary = (items = [], languageCode = 'ko') => {
 };
 
 const OrderList = () => {
+  const location = useLocation();
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
+  const isOrderListRouteActive = location.pathname === '/order';
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
@@ -1221,10 +1288,12 @@ const OrderList = () => {
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
+  const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
   const hasTouchedDueDateFilterRef = useRef(false);
   const styleAddButtonRef = useRef(null);
+  const styleInputRefs = useRef(new Map());
   const colorInputRefs = useRef(new Map());
   const genderInputRefs = useRef(new Map());
   const sizeInputRefs = useRef(new Map());
@@ -1314,6 +1383,15 @@ const OrderList = () => {
       cancelledRef.current = true;
     };
   }, [activeOrgId, loadOrdersFromDb]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS],
+    isActive: isOrderListRouteActive,
+    onRefresh: () => loadOrdersFromDb({ forceRefresh: true }),
+    shouldHandle: (detail) =>
+      String(detail?.source || '').trim() !== orderDataChangedEventSourceRef.current,
+  });
 
   useEffect(() => {
     if (isDetailMode) return undefined;
@@ -1519,11 +1597,7 @@ const OrderList = () => {
       if (!matchesProgress) return false;
 
       const dueDateKey = normalizeDateKey(order.dueDate);
-      if (
-        !dueDateKey ||
-        dueDateKey < dueDateFilterStartKey ||
-        dueDateKey > dueDateFilterEndKey
-      ) {
+      if (dueDateKey && (dueDateKey < dueDateFilterStartKey || dueDateKey > dueDateFilterEndKey)) {
         return false;
       }
 
@@ -1718,7 +1792,7 @@ const OrderList = () => {
     const groupMap = new Map();
 
     formData.items.forEach((item, sourceIndex) => {
-      const groupKey = getStyleGroupKey(item);
+      const groupKey = getStyleGroupKey(item, deferredMergeRowIds);
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: groupKey,
@@ -1773,6 +1847,26 @@ const OrderList = () => {
         rowItemIds: rows.map((row) => row.item.id),
       };
     });
+  }, [deferredMergeRowIds, formData.items]);
+
+  useEffect(() => {
+    const currentRowIdSet = new Set(
+      (Array.isArray(formData.items) ? formData.items : [])
+        .map((item) => String(item?.id || '').trim())
+        .filter(Boolean)
+    );
+    setDeferredMergeRowIds((prev) => {
+      let changed = false;
+      const next = new Set();
+      prev.forEach((rowId) => {
+        if (currentRowIdSet.has(rowId)) {
+          next.add(rowId);
+          return;
+        }
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
   }, [formData.items]);
   const currentDetailOrder = useMemo(() => {
     if (isNewOrder) return null;
@@ -1781,6 +1875,14 @@ const OrderList = () => {
   const [isSavingOrder, setIsSavingOrder] = useState(false);
   const [isTogglingModificationLock, setIsTogglingModificationLock] = useState(false);
   const orderLockEventSourceRef = useRef(createId('order-lock'));
+  const orderDataChangedEventSourceRef = useRef(createId('order-data'));
+  const emitOrderDataChanged = useCallback(() => {
+    emitWorkspaceDataChanged({
+      topics: [WORKSPACE_DATA_TOPICS.ORDERS],
+      orgId: activeOrgId,
+      source: orderDataChangedEventSourceRef.current,
+    });
+  }, [activeOrgId]);
   const mergeOrderIntoState = useCallback((nextOrder) => {
     if (!nextOrder?.id) return;
     setOrders((prev) => {
@@ -1807,7 +1909,11 @@ const OrderList = () => {
     orderPageText.listTitle,
   ]);
   const hasFormChanges = useMemo(() => {
-    if (isNewOrder) return true;
+    if (isNewOrder) {
+      const baselineSnapshot = toComparableOrderSnapshot(buildInitialFormData(), fixedSellerOrg);
+      const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
+      return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
+    }
     if (!currentDetailOrder) return false;
 
     const baselineSnapshot = toComparableOrderSnapshot(
@@ -1819,15 +1925,15 @@ const OrderList = () => {
   }, [currentDetailOrder, fixedSellerOrg, formData, isNewOrder]);
   const hasUnsavedChanges = useMemo(() => {
     if (!isDetailMode) return false;
-    if (!isNewOrder) return hasFormChanges;
-
-    const baselineSnapshot = toComparableOrderSnapshot(buildInitialFormData(), fixedSellerOrg);
-    const currentSnapshot = toComparableOrderSnapshot(formData, fixedSellerOrg);
-    return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
-  }, [fixedSellerOrg, formData, hasFormChanges, isDetailMode, isNewOrder]);
+    return hasFormChanges;
+  }, [hasFormChanges, isDetailMode]);
   useUnsavedChanges(hasUnsavedChanges);
   const hasChangesForForm = (candidateFormData) => {
-    if (isNewOrder) return true;
+    if (isNewOrder) {
+      const baselineSnapshot = toComparableOrderSnapshot(buildInitialFormData(), fixedSellerOrg);
+      const currentSnapshot = toComparableOrderSnapshot(candidateFormData, fixedSellerOrg);
+      return toStableJsonText(currentSnapshot) !== toStableJsonText(baselineSnapshot);
+    }
     if (!currentDetailOrder) return false;
 
     const baselineSnapshot = toComparableOrderSnapshot(
@@ -2124,6 +2230,7 @@ const OrderList = () => {
     try {
       await deleteOrderToApi(order.id, { orgId: activeOrgId });
       setOrders((prev) => prev.filter((target) => target.id !== order.id));
+      emitOrderDataChanged();
       showNotification(orderPageText.deleteSuccess, 'success');
     } catch (error) {
       showNotification(error?.message || orderPageText.deleteError, 'error');
@@ -2132,17 +2239,22 @@ const OrderList = () => {
 
   const closeDetailAndGoList = () => {
     if (isNewOrder) {
-      navigateToPath('/order', { label: orderPageText.listTitle, closeTabId: '/order/new' });
+      navigateToPath('/order', {
+        label: orderPageText.listTitle,
+        closeTabId: '/order/new',
+        skipUnsavedChangesCheck: true,
+      });
       return;
     }
     if (orderId) {
       navigateToPath('/order', {
         label: orderPageText.listTitle,
         closeTabId: `/order/${orderId}`,
+        skipUnsavedChangesCheck: true,
       });
       return;
     }
-    navigateToPath('/order', { label: orderPageText.listTitle });
+    navigateToPath('/order', { label: orderPageText.listTitle, skipUnsavedChangesCheck: true });
   };
 
   const handleBuyerChange = (_event, customer) => {
@@ -2190,7 +2302,9 @@ const OrderList = () => {
   };
 
   const handleAddItem = () => {
-    setFormData((prev) => ({ ...prev, items: [...prev.items, createOrderItem()] }));
+    const nextItem = createOrderItem();
+    setFormData((prev) => ({ ...prev, items: [...prev.items, nextItem] }));
+    focusStyleInput(nextItem.id);
   };
 
   const handleRemoveItem = (itemId) => {
@@ -2203,12 +2317,45 @@ const OrderList = () => {
   const focusColorInput = (itemId) => {
     focusInputElementInMap(colorInputRefs, itemId);
   };
+  const focusStyleInput = (itemId) => {
+    focusInputElementInMap(styleInputRefs, itemId);
+  };
   const focusGenderInput = (itemId) => {
     focusInputElementInMap(genderInputRefs, itemId);
   };
   const focusFirstSizeInput = (itemId) => {
     focusInputElementInMap(sizeInputRefs, `${itemId}::${SIZE_COLUMNS[0] || ''}`);
   };
+  const deferRowMergeUntilBlur = useCallback((itemId) => {
+    const normalizedItemId = String(itemId || '').trim();
+    if (!normalizedItemId) return;
+    setDeferredMergeRowIds((prev) => {
+      if (prev.has(normalizedItemId)) return prev;
+      const next = new Set(prev);
+      next.add(normalizedItemId);
+      return next;
+    });
+  }, []);
+  const clearDeferredRowMerge = useCallback((itemId) => {
+    const normalizedItemId = String(itemId || '').trim();
+    if (!normalizedItemId) return;
+    setDeferredMergeRowIds((prev) => {
+      if (!prev.has(normalizedItemId)) return prev;
+      const next = new Set(prev);
+      next.delete(normalizedItemId);
+      return next;
+    });
+  }, []);
+  const handleItemRowBlurCapture = useCallback((itemId, event) => {
+    const normalizedItemId = String(itemId || '').trim();
+    if (!normalizedItemId) return;
+    const rowElement = event.currentTarget;
+    window.requestAnimationFrame(() => {
+      const activeElement = document.activeElement;
+      if (rowElement && activeElement && rowElement.contains(activeElement)) return;
+      clearDeferredRowMerge(normalizedItemId);
+    });
+  }, [clearDeferredRowMerge]);
   const isTabAutocompleteSelection = (event, reason) =>
     event?.key === 'Tab' && reason === 'selectOption';
 
@@ -2257,6 +2404,18 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
+    if (targetIdSet.size === 1) {
+      const [singleTargetId = ''] = Array.from(targetIdSet);
+      if (nextStyleIdentity) {
+        deferRowMergeUntilBlur(singleTargetId);
+      } else {
+        clearDeferredRowMerge(singleTargetId);
+      }
+    } else {
+      targetIdSet.forEach((targetId) => {
+        clearDeferredRowMerge(targetId);
+      });
+    }
     if (options.focusNext && options.focusItemId) {
       focusColorInput(options.focusItemId);
     }
@@ -2423,7 +2582,10 @@ const OrderList = () => {
 
   const handleOpenStyleRegistration = () => {
     saveOrderDraft(formData);
-    navigateToPath('/style/new', { label: orderPageText.newStyleTab });
+    navigateToPath('/style/new', {
+      label: orderPageText.newStyleTab,
+      skipUnsavedChangesCheck: true,
+    });
   };
 
   const handleClearDraft = () => {
@@ -2480,9 +2642,6 @@ const OrderList = () => {
       })
     ) {
       return orderPageText.validationDuplicateOrderNumber;
-    }
-    if (!formData.dueDate) {
-      return orderPageText.validationDueDateRequired;
     }
     if (!formData.items.length) {
       return orderPageText.validationAddStyle;
@@ -2694,11 +2853,14 @@ const OrderList = () => {
         setOrders((prev) => [created, ...prev]);
       }
 
+      emitOrderDataChanged();
       clearOrderDraft();
       showNotification(orderPageText.orderSaved, 'success');
       if (isNewOrder && createdOrder?.id) {
         navigateToPath(`/order/${createdOrder.id}`, {
           label: buildOrderTabLabel(createdOrder, orderPageText.listTitle),
+          closeTabId: '/order/new',
+          skipUnsavedChangesCheck: true,
         });
       }
     } catch (error) {
@@ -3015,8 +3177,8 @@ const OrderList = () => {
               <span>
                 <Button
                   size="small"
-                  variant={isCurrentOrderModificationLocked ? 'contained' : 'outlined'}
-                  color={isCurrentOrderModificationLocked ? 'warning' : 'inherit'}
+                  variant="contained"
+                  color="inherit"
                   startIcon={
                     isCurrentOrderModificationLocked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />
                   }
@@ -3024,11 +3186,11 @@ const OrderList = () => {
                     handleModificationLockToggle(!isCurrentOrderModificationLocked)
                   }
                   disabled={isModificationLockToggleDisabled}
-                  sx={{ minWidth: 108 }}
+                  sx={getOrderLockButtonSx(isCurrentOrderModificationLocked)}
                 >
                   {isCurrentOrderModificationLocked
-                    ? getUiMessage('orderDetail.lockedShort', 'Locked', languageCode)
-                    : getUiMessage('orderDetail.unlockedShort', 'Unlocked', languageCode)}
+                    ? getUiMessage('orderDetail.lockedShort', '🔒', languageCode)
+                    : getUiMessage('orderDetail.unlockedShort', '🔓', languageCode)}
                 </Button>
               </span>
             </Tooltip>
@@ -3245,6 +3407,7 @@ const OrderList = () => {
                     return (
                       <TableRow
                         key={item.id}
+                        onBlurCapture={(event) => handleItemRowBlurCapture(item.id, event)}
                         sx={{
                           '& > td': {
                             backgroundColor: genderStyle.background,
@@ -3281,6 +3444,12 @@ const OrderList = () => {
                               textFieldProps={{
                                 size: 'small',
                                 placeholder: orderPageText.styleSearchPlaceholder,
+                                inputRef: (node) =>
+                                  setInputElementInMap(
+                                    styleInputRefs,
+                                    group.rows[0]?.item?.id || '',
+                                    node
+                                  ),
                               }}
                               noOptionsText={
                                 selectedBuyerName

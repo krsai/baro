@@ -1,6 +1,6 @@
 import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLanguage';
 
-export const SIZE_CODES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL'];
+export const SIZE_CODES = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', 'FREE'];
 
 export const GENDER_CODES = ['M', 'W', 'U'];
 
