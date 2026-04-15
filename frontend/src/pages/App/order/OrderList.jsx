@@ -311,10 +311,10 @@ const getItemColorIdentity = (item) => {
   const colorCode = normalizeColorCode(item?.colorCode || item?.colorId || item?.color || '');
   return colorCode ? `code:${colorCode}` : '';
 };
-const buildColorMergedRows = (rows = []) => {
+const buildColorMergedRows = (rows = [], getColorMergeKey = getItemColorIdentity) => {
   const safeRows = Array.isArray(rows) ? rows : [];
   return safeRows.map((row, index) => {
-    const colorIdentity = getItemColorIdentity(row?.item);
+    const colorIdentity = getColorMergeKey(row?.item);
     const itemId = String(row?.item?.id || '').trim();
     if (!colorIdentity) {
       return {
@@ -325,7 +325,7 @@ const buildColorMergedRows = (rows = []) => {
       };
     }
 
-    const previousColorIdentity = getItemColorIdentity(safeRows[index - 1]?.item);
+    const previousColorIdentity = getColorMergeKey(safeRows[index - 1]?.item);
     if (previousColorIdentity === colorIdentity) {
       return {
         ...row,
@@ -338,7 +338,7 @@ const buildColorMergedRows = (rows = []) => {
     const colorRowItemIds = itemId ? [itemId] : [];
     let colorRowSpan = 1;
     for (let nextIndex = index + 1; nextIndex < safeRows.length; nextIndex += 1) {
-      if (getItemColorIdentity(safeRows[nextIndex]?.item) !== colorIdentity) break;
+      if (getColorMergeKey(safeRows[nextIndex]?.item) !== colorIdentity) break;
       colorRowSpan += 1;
       const nextItemId = String(safeRows[nextIndex]?.item?.id || '').trim();
       if (nextItemId) {
@@ -471,6 +471,9 @@ const normalizeTargetItemIds = (itemIdOrIds) => {
     )
   );
 };
+const hasSameItemOrder = (currentItems = [], nextItems = []) =>
+  currentItems.length === nextItems.length &&
+  currentItems.every((item, index) => String(item?.id || '') === String(nextItems[index]?.id || ''));
 const setInputElementInMap = (mapRef, key, node) => {
   if (!key) return;
   if (node) {
@@ -1796,14 +1799,32 @@ const OrderList = () => {
     () => new Map(genderSelectOptions.map((item) => [item.code, item])),
     [genderSelectOptions]
   );
-  const getSelectedColorOption = (item) => {
+  const getResolvedColorOption = useCallback((item) => {
     const colorId = toPositiveColorId(item?.colorId);
     if (colorId) {
       return colorOptionById.get(colorId) || null;
     }
     const colorCode = getItemColorCode(item);
     return colorOptionByCode.get(colorCode) || null;
-  };
+  }, [colorOptionByCode, colorOptionById]);
+  const getResolvedColorLabel = useCallback((item) => {
+    const colorOption = getResolvedColorOption(item);
+    return String(
+      colorOption?.displayName ||
+        colorOption?.name ||
+        colorOption?.code ||
+        item?.colorName ||
+        item?.colorCode ||
+        item?.color ||
+        ''
+    ).trim();
+  }, [getResolvedColorOption]);
+  const getResolvedColorGroupKey = useCallback((item) => {
+    const labelKey = normalizeColorNameKey(getResolvedColorLabel(item));
+    if (labelKey) return `label:${labelKey}`;
+    return getItemColorIdentity(item);
+  }, [getResolvedColorLabel]);
+  const getSelectedColorOption = (item) => getResolvedColorOption(item);
   const getSelectedGenderOption = (item) =>
     genderOptionByCode.get(normalizeGenderCode(item?.gender, '')) || null;
   const filterColorAutocompleteOptions = (options, params) => {
@@ -1876,11 +1897,11 @@ const OrderList = () => {
     return null;
   }, [sellerOptions, formData.sellerOrgId, formData.sellerOrgName, fixedSellerOrg]);
 
-  const groupedStyleItems = useMemo(() => {
+  const buildSortedStyleItemGroups = useCallback((items = [], deferredMergeRowIdSet = null) => {
     const groupMap = new Map();
 
-    formData.items.forEach((item, sourceIndex) => {
-      const groupKey = getStyleGroupKey(item, deferredMergeRowIds);
+    (Array.isArray(items) ? items : []).forEach((item, sourceIndex) => {
+      const groupKey = getStyleGroupKey(item, deferredMergeRowIdSet);
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: groupKey,
@@ -1916,10 +1937,23 @@ const OrderList = () => {
     return sortedGroups.map((group) => {
       const rows = buildColorMergedRows([...group.rows]
         .sort((a, b) => {
-          const colorA = String(a.item?.colorName || a.item?.colorCode || '').toLowerCase();
-          const colorB = String(b.item?.colorName || b.item?.colorCode || '').toLowerCase();
-          const colorDiff = colorA.localeCompare(colorB);
-          if (colorDiff !== 0) return colorDiff;
+          const colorKeyA = getResolvedColorGroupKey(a.item);
+          const colorKeyB = getResolvedColorGroupKey(b.item);
+          const hasColorA = Boolean(colorKeyA);
+          const hasColorB = Boolean(colorKeyB);
+          if (hasColorA !== hasColorB) return hasColorA ? -1 : 1;
+          if (colorKeyA !== colorKeyB) {
+            const colorLabelA = getResolvedColorLabel(a.item);
+            const colorLabelB = getResolvedColorLabel(b.item);
+            const colorLabelDiff = colorLabelA.localeCompare(
+              colorLabelB,
+              languageCode === 'ko' ? 'ko' : undefined,
+              { numeric: true, sensitivity: 'base' }
+            );
+            if (colorLabelDiff !== 0) return colorLabelDiff;
+            const colorKeyDiff = colorKeyA.localeCompare(colorKeyB);
+            if (colorKeyDiff !== 0) return colorKeyDiff;
+          }
           const genderDiff = getGenderOrder(a.item.gender) - getGenderOrder(b.item.gender);
           if (genderDiff !== 0) return genderDiff;
           return a.sourceIndex - b.sourceIndex;
@@ -1927,7 +1961,7 @@ const OrderList = () => {
         .map((row) => ({
           ...row,
           displayNo: nextDisplayNo++,
-        })));
+        })), getResolvedColorGroupKey);
 
       return {
         ...group,
@@ -1935,7 +1969,15 @@ const OrderList = () => {
         rowItemIds: rows.map((row) => row.item.id),
       };
     });
-  }, [deferredMergeRowIds, formData.items]);
+  }, [
+    getResolvedColorGroupKey,
+    getResolvedColorLabel,
+    languageCode,
+  ]);
+  const groupedStyleItems = useMemo(
+    () => buildSortedStyleItemGroups(formData.items, deferredMergeRowIds),
+    [buildSortedStyleItemGroups, deferredMergeRowIds, formData.items]
+  );
 
   useEffect(() => {
     const currentRowIdSet = new Set(
@@ -2434,6 +2476,18 @@ const OrderList = () => {
       return next;
     });
   }, []);
+  const sortStyleItemsForDisplay = useCallback(() => {
+    setDeferredMergeRowIds((prev) => (prev.size ? new Set() : prev));
+    setFormData((prev) => {
+      const sortedItems = buildSortedStyleItemGroups(prev.items, null)
+        .flatMap((group) => group.rows.map((row) => row.item));
+      if (hasSameItemOrder(prev.items, sortedItems)) return prev;
+      return {
+        ...prev,
+        items: sortedItems,
+      };
+    });
+  }, [buildSortedStyleItemGroups]);
   const handleItemRowBlurCapture = useCallback((itemId, event) => {
     const normalizedItemId = String(itemId || '').trim();
     if (!normalizedItemId) return;
@@ -2441,9 +2495,9 @@ const OrderList = () => {
     window.requestAnimationFrame(() => {
       const activeElement = document.activeElement;
       if (rowElement && activeElement && rowElement.contains(activeElement)) return;
-      clearDeferredRowMerge(normalizedItemId);
+      sortStyleItemsForDisplay();
     });
-  }, [clearDeferredRowMerge]);
+  }, [sortStyleItemsForDisplay]);
   const isTabAutocompleteSelection = (event, reason) =>
     event?.key === 'Tab' && reason === 'selectOption';
 
@@ -3499,7 +3553,7 @@ const OrderList = () => {
                     const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
                     const isFirstRow = rowIndex === 0;
                     const rowStyleIdentity = getStyleIdentity(item);
-                    const rowColorCode = getItemColorCode(item);
+                    const rowColorGroupKey = getResolvedColorGroupKey(item);
                     const selectedColorOption = getSelectedColorOption(item);
                     const selectedGenderOption = getSelectedGenderOption(item);
                     const colorTargetIds =
@@ -3512,7 +3566,7 @@ const OrderList = () => {
                           (other) =>
                             other.id !== item.id &&
                             getStyleIdentity(other) === rowStyleIdentity &&
-                            getItemColorCode(other) === rowColorCode
+                            getResolvedColorGroupKey(other) === rowColorGroupKey
                         )
                         .map((other) => normalizeGenderCode(other.gender, ''))
                         .filter(Boolean)
@@ -3680,7 +3734,7 @@ const OrderList = () => {
                               isOptionEqualToValue={(option, value) => option?.code === value?.code}
                               getOptionDisabled={(option) =>
                                 Boolean(rowStyleIdentity) &&
-                                Boolean(rowColorCode) &&
+                                Boolean(rowColorGroupKey) &&
                                 disabledGenderSet.has(option?.code)
                               }
                               autoHighlight
