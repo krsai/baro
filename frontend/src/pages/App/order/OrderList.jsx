@@ -1898,23 +1898,59 @@ const OrderList = () => {
   }, [sellerOptions, formData.sellerOrgId, formData.sellerOrgName, fixedSellerOrg]);
 
   const buildSortedStyleItemGroups = useCallback((items = [], deferredMergeRowIdSet = null) => {
+    const preserveSourceOrder = Boolean(deferredMergeRowIdSet?.size);
     const groupMap = new Map();
+    const createGroup = (groupKey, item) => ({
+      key: groupKey,
+      styleId: item?.styleId || '',
+      styleName: item?.styleName || '',
+      styleCode: item?.styleCode || '',
+      rows: [],
+    });
+    const applyGroupMetadata = (group, item) => {
+      if (!group.styleId && item?.styleId) group.styleId = item.styleId;
+      if (!group.styleName && item?.styleName) group.styleName = item.styleName;
+      if (!group.styleCode && item?.styleCode) group.styleCode = item.styleCode;
+    };
+
+    if (preserveSourceOrder) {
+      const sourceOrderGroups = [];
+      (Array.isArray(items) ? items : []).forEach((item, sourceIndex) => {
+        const groupKey = getStyleGroupKey(item, deferredMergeRowIdSet);
+        let targetGroup = sourceOrderGroups[sourceOrderGroups.length - 1];
+        if (!targetGroup || targetGroup.key !== groupKey) {
+          targetGroup = createGroup(groupKey, item);
+          sourceOrderGroups.push(targetGroup);
+        }
+        applyGroupMetadata(targetGroup, item);
+        targetGroup.rows.push({ item, sourceIndex });
+      });
+
+      let nextSourceDisplayNo = 1;
+      return sourceOrderGroups.map((group) => {
+        const rows = buildColorMergedRows(
+          group.rows.map((row) => ({
+            ...row,
+            displayNo: nextSourceDisplayNo++,
+          })),
+          getResolvedColorGroupKey
+        );
+
+        return {
+          ...group,
+          rows,
+          rowItemIds: rows.map((row) => row.item.id),
+        };
+      });
+    }
 
     (Array.isArray(items) ? items : []).forEach((item, sourceIndex) => {
       const groupKey = getStyleGroupKey(item, deferredMergeRowIdSet);
       if (!groupMap.has(groupKey)) {
-        groupMap.set(groupKey, {
-          key: groupKey,
-          styleId: item.styleId || '',
-          styleName: item.styleName || '',
-          styleCode: item.styleCode || '',
-          rows: [],
-        });
+        groupMap.set(groupKey, createGroup(groupKey, item));
       }
       const targetGroup = groupMap.get(groupKey);
-      if (!targetGroup.styleId && item.styleId) targetGroup.styleId = item.styleId;
-      if (!targetGroup.styleName && item.styleName) targetGroup.styleName = item.styleName;
-      if (!targetGroup.styleCode && item.styleCode) targetGroup.styleCode = item.styleCode;
+      applyGroupMetadata(targetGroup, item);
       targetGroup.rows.push({ item, sourceIndex });
     });
 
@@ -2488,6 +2524,9 @@ const OrderList = () => {
       };
     });
   }, [buildSortedStyleItemGroups]);
+  const handleItemRowFocusCapture = useCallback((itemId) => {
+    deferRowMergeUntilBlur(itemId);
+  }, [deferRowMergeUntilBlur]);
   const handleItemRowBlurCapture = useCallback((itemId, event) => {
     const normalizedItemId = String(itemId || '').trim();
     if (!normalizedItemId) return;
@@ -2495,6 +2534,7 @@ const OrderList = () => {
     window.requestAnimationFrame(() => {
       const activeElement = document.activeElement;
       if (rowElement && activeElement && rowElement.contains(activeElement)) return;
+      if (activeElement?.closest?.('[data-order-style-item-row="true"]')) return;
       sortStyleItemsForDisplay();
     });
   }, [sortStyleItemsForDisplay]);
@@ -3575,6 +3615,8 @@ const OrderList = () => {
                     return (
                       <TableRow
                         key={item.id}
+                        data-order-style-item-row="true"
+                        onFocusCapture={() => handleItemRowFocusCapture(item.id)}
                         onBlurCapture={(event) => handleItemRowBlurCapture(item.id, event)}
                         sx={{
                           '& > td': {
