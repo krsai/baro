@@ -607,7 +607,7 @@ const createOrderItem = () => ({
   colorId: null,
   colorCode: '',
   colorName: '',
-  gender: 'M',
+  gender: '',
   sizeQuantities: createSizeQuantities(),
 });
 
@@ -637,7 +637,7 @@ const normalizeOrderItem = (item) => {
     colorId,
     colorCode,
     colorName,
-    gender: normalizedGender || legacyGender || 'M',
+    gender: normalizedGender || legacyGender || '',
     sizeQuantities:
       item?.sizeQuantities && typeof item.sizeQuantities === 'object'
         ? normalizeSizeQuantities(item.sizeQuantities)
@@ -708,7 +708,7 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
       colorId: toPositiveColorId(item?.colorId),
       colorCode: getItemColorCode(item),
       colorName: String(item?.colorName || '').trim(),
-      gender: normalizeGenderCode(item?.gender, 'M') || 'M',
+      gender: normalizeGenderCode(item?.gender, '') || '',
       sizeQuantities,
     };
   });
@@ -1741,7 +1741,7 @@ const OrderList = () => {
     return colorOptionByCode.get(colorCode) || null;
   };
   const getSelectedGenderOption = (item) =>
-    genderOptionByCode.get(normalizeGenderCode(item?.gender, 'M')) || null;
+    genderOptionByCode.get(normalizeGenderCode(item?.gender, '')) || null;
   const filterColorAutocompleteOptions = (options, params) => {
     const filtered = filterColorOptions(options, params);
     const inputValue = String(params?.inputValue || '').trim();
@@ -2305,7 +2305,7 @@ const OrderList = () => {
           colorId: null,
           colorCode: '',
           colorName: '',
-          gender: 'M',
+          gender: '',
           sizeQuantities: createSizeQuantities(),
         })),
       };
@@ -2410,7 +2410,7 @@ const OrderList = () => {
               colorId: styleChanged ? null : item.colorId,
               colorCode: styleChanged ? '' : getItemColorCode(item),
               colorName: styleChanged ? '' : String(item.colorName || '').trim(),
-              gender: styleChanged ? 'M' : normalizeGenderCode(item.gender, 'M'),
+              gender: styleChanged ? '' : normalizeGenderCode(item.gender, ''),
               sizeQuantities: styleChanged
                 ? createSizeQuantities()
                 : normalizeSizeQuantities(item.sizeQuantities),
@@ -2441,7 +2441,7 @@ const OrderList = () => {
       });
     }
     if (options.focusNext && options.focusItemId) {
-      focusGenderInput(options.focusItemId);
+      focusColorInput(options.focusItemId);
     }
   };
 
@@ -2751,7 +2751,7 @@ const OrderList = () => {
         colorId: safeColorId,
         colorCode: safeColorCode,
         colorName: safeColorName,
-        gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : 'M',
+        gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : '',
         sizeQuantities: numericSizeQuantities,
         quantities: legacyQuantities,
         totalQuantity,
