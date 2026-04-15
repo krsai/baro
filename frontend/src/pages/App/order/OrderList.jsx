@@ -774,6 +774,7 @@ const OrderList = () => {
   const isDetailMode = Boolean(orderId);
   const isNewOrder = orderId === 'new';
   const isOrderListRouteActive = location.pathname === '/order';
+  const isOrderDetailRouteActive = location.pathname.startsWith('/order/');
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId, activeOrgType, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
@@ -1393,6 +1394,13 @@ const OrderList = () => {
       String(detail?.source || '').trim() !== orderDataChangedEventSourceRef.current,
   });
 
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: isDetailMode ? [WORKSPACE_DATA_TOPICS.STYLES] : [],
+    isActive: isOrderDetailRouteActive,
+    onRefresh: () => refreshStyles(activeOrgId, { forceRefresh: true }),
+  });
+
   useEffect(() => {
     if (isDetailMode) return undefined;
     return subscribeOrderModificationLockChanged((detail) => {
@@ -1627,13 +1635,29 @@ const OrderList = () => {
 
   const styleOptions = useMemo(
     () =>
-      styles.map((style) => ({
-        id: style.id,
-        name: style.name || '',
-        styleCode: style.styleCode || '',
-        customer: style.customer || '',
-      })),
-    [styles]
+      styles
+        .map((style) => ({
+          id: style.id,
+          name: style.name || '',
+          styleCode: style.styleCode || '',
+          customer: style.customer || '',
+        }))
+        .sort((a, b) => {
+          const labelA = String(a.name || a.styleCode || '').trim();
+          const labelB = String(b.name || b.styleCode || '').trim();
+          const byLabel = labelA.localeCompare(
+            labelB,
+            languageCode === 'ko' ? 'ko' : undefined,
+            { numeric: true, sensitivity: 'base' }
+          );
+          if (byLabel !== 0) return byLabel;
+          return String(a.styleCode || '').localeCompare(
+            String(b.styleCode || ''),
+            undefined,
+            { numeric: true, sensitivity: 'base' }
+          );
+        }),
+    [languageCode, styles]
   );
   const selectedBuyerName = formData.buyerOrgName || formData.customerName || '';
 
@@ -2417,7 +2441,7 @@ const OrderList = () => {
       });
     }
     if (options.focusNext && options.focusItemId) {
-      focusColorInput(options.focusItemId);
+      focusGenderInput(options.focusItemId);
     }
   };
 
@@ -2446,7 +2470,13 @@ const OrderList = () => {
       items: previewItems,
     }));
     if (options.focusNext) {
-      focusGenderInput(itemId);
+      const targetItem = previewItems.find((item) => item.id === itemId) || null;
+      const targetGender = normalizeGenderCode(targetItem?.gender, '');
+      if (GENDER_OPTIONS.includes(targetGender)) {
+        focusFirstSizeInput(itemId);
+      } else {
+        focusGenderInput(itemId);
+      }
     }
     return true;
   };
@@ -2545,7 +2575,13 @@ const OrderList = () => {
       ),
     }));
     if (options.focusNext) {
-      focusFirstSizeInput(itemId);
+      const targetItem = previewItems.find((item) => item.id === itemId) || null;
+      const targetColorCode = getItemColorCode(targetItem);
+      if (targetColorCode) {
+        focusFirstSizeInput(itemId);
+      } else {
+        focusColorInput(itemId);
+      }
     }
   };
 
@@ -2754,6 +2790,7 @@ const OrderList = () => {
         setOrders((prev) =>
           prev.map((order) => (order.id === existingOrder.id ? updated : order))
         );
+        setFormData(normalizeOrderForm(updated));
 
         try {
           const oldVariantMap = buildOrderVariantMapForBoard({
@@ -3552,10 +3589,12 @@ const OrderList = () => {
                               getOptionLabel={(option) => option?.label || option?.code || ''}
                               isOptionEqualToValue={(option, value) => option?.code === value?.code}
                               getOptionDisabled={(option) =>
-                                Boolean(rowStyleIdentity) && disabledGenderSet.has(option?.code)
+                                Boolean(rowStyleIdentity) &&
+                                Boolean(rowColorCode) &&
+                                disabledGenderSet.has(option?.code)
                               }
                               autoHighlight
-                              disabled={!rowStyleIdentity || !rowColorCode}
+                              disabled={!rowStyleIdentity}
                               noOptionsText={orderPageText.noSelectableGender}
                               textFieldProps={{
                                 size: 'small',
