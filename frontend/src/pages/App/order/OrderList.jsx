@@ -196,11 +196,23 @@ const GENDER_SORT_ORDER = {
   W: 1,
   U: 2,
 };
-const GENDER_PASTEL_STYLES = {
-  M: { background: '#eaf4ff', border: '#cfe2ff', accent: '#7ab6ff' },
-  W: { background: '#ffeef3', border: '#ffd6e0', accent: '#ff9eb9' },
-  U: { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
-  default: { background: '#f7f7f7', border: '#ececec', accent: '#c6c6c6' },
+const STYLE_GROUP_PASTEL_STYLES = [
+  { background: '#eaf4ff', border: '#cfe2ff', accent: '#7ab6ff' },
+  { background: '#ffeef3', border: '#ffd6e0', accent: '#ff9eb9' },
+  { background: '#edf9f0', border: '#d4eedb', accent: '#8fcea0' },
+  { background: '#fff7e6', border: '#f1dfb8', accent: '#dba84a' },
+  { background: '#f3efff', border: '#ded5ff', accent: '#a58bf0' },
+  { background: '#eefafa', border: '#cfeaea', accent: '#69bebe' },
+];
+const STYLE_GROUP_PASTEL_FALLBACK = {
+  background: '#f7f7f7',
+  border: '#ececec',
+  accent: '#c6c6c6',
+};
+const getStyleGroupPastelStyle = (index) => {
+  if (!STYLE_GROUP_PASTEL_STYLES.length) return STYLE_GROUP_PASTEL_FALLBACK;
+  const safeIndex = Number.isFinite(index) ? Math.abs(index) : 0;
+  return STYLE_GROUP_PASTEL_STYLES[safeIndex % STYLE_GROUP_PASTEL_STYLES.length];
 };
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
 const getOrderProgressStageLabel = (
@@ -298,6 +310,49 @@ const getItemColorIdentity = (item) => {
   if (colorId) return `id:${colorId}`;
   const colorCode = normalizeColorCode(item?.colorCode || item?.colorId || item?.color || '');
   return colorCode ? `code:${colorCode}` : '';
+};
+const buildColorMergedRows = (rows = []) => {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  return safeRows.map((row, index) => {
+    const colorIdentity = getItemColorIdentity(row?.item);
+    const itemId = String(row?.item?.id || '').trim();
+    if (!colorIdentity) {
+      return {
+        ...row,
+        isColorFirstRow: true,
+        colorRowSpan: 1,
+        colorRowItemIds: itemId ? [itemId] : [],
+      };
+    }
+
+    const previousColorIdentity = getItemColorIdentity(safeRows[index - 1]?.item);
+    if (previousColorIdentity === colorIdentity) {
+      return {
+        ...row,
+        isColorFirstRow: false,
+        colorRowSpan: 0,
+        colorRowItemIds: [],
+      };
+    }
+
+    const colorRowItemIds = itemId ? [itemId] : [];
+    let colorRowSpan = 1;
+    for (let nextIndex = index + 1; nextIndex < safeRows.length; nextIndex += 1) {
+      if (getItemColorIdentity(safeRows[nextIndex]?.item) !== colorIdentity) break;
+      colorRowSpan += 1;
+      const nextItemId = String(safeRows[nextIndex]?.item?.id || '').trim();
+      if (nextItemId) {
+        colorRowItemIds.push(nextItemId);
+      }
+    }
+
+    return {
+      ...row,
+      isColorFirstRow: true,
+      colorRowSpan,
+      colorRowItemIds,
+    };
+  });
 };
 const normalizeBoardKey = (value) => String(value ?? '').trim();
 const buildAssignmentOriginCardId = (orderId, styleId) =>
@@ -405,6 +460,16 @@ const mergeColorOption = (items = [], nextItem) => {
     return normalizedNextItem;
   });
   return replaced ? merged : [...merged, normalizedNextItem];
+};
+const normalizeTargetItemIds = (itemIdOrIds) => {
+  const itemIds = Array.isArray(itemIdOrIds) ? itemIdOrIds : [itemIdOrIds];
+  return Array.from(
+    new Set(
+      itemIds
+        .map((itemId) => String(itemId || '').trim())
+        .filter(Boolean)
+    )
+  );
 };
 const setInputElementInMap = (mapRef, key, node) => {
   if (!key) return;
@@ -521,7 +586,6 @@ const formatOrderLockTimestamp = (value) => {
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
-const getGenderPastelStyle = (gender) => GENDER_PASTEL_STYLES[gender] || GENDER_PASTEL_STYLES.default;
 const getLegacyGenderCodeFromRows = (rows = []) => {
   for (const row of rows) {
     const code = normalizeGenderCode(row?.gender || row?.colorId, '');
@@ -1850,7 +1914,7 @@ const OrderList = () => {
 
     let nextDisplayNo = 1;
     return sortedGroups.map((group) => {
-      const rows = [...group.rows]
+      const rows = buildColorMergedRows([...group.rows]
         .sort((a, b) => {
           const colorA = String(a.item?.colorName || a.item?.colorCode || '').toLowerCase();
           const colorB = String(b.item?.colorName || b.item?.colorCode || '').toLowerCase();
@@ -1863,7 +1927,7 @@ const OrderList = () => {
         .map((row) => ({
           ...row,
           displayNo: nextDisplayNo++,
-        }));
+        })));
 
       return {
         ...group,
@@ -2445,14 +2509,18 @@ const OrderList = () => {
     }
   };
 
-  const applyColorSelection = (itemId, selectedColor, options = {}) => {
+  const applyColorSelection = (itemIdOrIds, selectedColor, options = {}) => {
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    const targetIdSet = new Set(targetIds);
+    if (!targetIdSet.size) return false;
+
     const nextColorId = toPositiveColorId(selectedColor?.id);
     const nextColorCode = normalizeColorCode(selectedColor?.code);
     const nextColorName = String(
       selectedColor?.displayName || selectedColor?.name || selectedColor?.code || ''
     ).trim();
     const previewItems = formData.items.map((item) =>
-      item.id === itemId
+      targetIdSet.has(String(item.id || '').trim())
         ? {
             ...item,
             colorId: nextColorId,
@@ -2470,18 +2538,23 @@ const OrderList = () => {
       items: previewItems,
     }));
     if (options.focusNext) {
-      const targetItem = previewItems.find((item) => item.id === itemId) || null;
+      const focusItemId = options.focusItemId || targetIds[0];
+      const targetItem =
+        previewItems.find((item) => String(item.id || '').trim() === focusItemId) || null;
       const targetGender = normalizeGenderCode(targetItem?.gender, '');
       if (GENDER_OPTIONS.includes(targetGender)) {
-        focusFirstSizeInput(itemId);
+        focusFirstSizeInput(focusItemId);
       } else {
-        focusGenderInput(itemId);
+        focusGenderInput(focusItemId);
       }
     }
     return true;
   };
 
-  const handleCreateColorOption = async (itemId, rawName, options = {}) => {
+  const handleCreateColorOption = async (itemIdOrIds, rawName, options = {}) => {
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    if (!targetIds.length) return;
+
     const colorName = String(rawName || '').trim();
     if (!colorName) {
       return;
@@ -2493,7 +2566,7 @@ const OrderList = () => {
     const existingColor =
       colorOptionByNameKey.get(normalizeColorNameKey(colorName)) || null;
     if (existingColor) {
-      applyColorSelection(itemId, existingColor, options);
+      applyColorSelection(targetIds, existingColor, options);
       return;
     }
 
@@ -2501,7 +2574,7 @@ const OrderList = () => {
       return;
     }
 
-    setCreatingColorItemId(itemId);
+    setCreatingColorItemId(targetIds[0]);
     try {
       const createPayload =
         languageCode === 'ko'
@@ -2515,7 +2588,7 @@ const OrderList = () => {
       );
       const normalizedCreatedColor = normalizeLocalizedColorOption(createdColor);
       setColorOptions((prev) => mergeColorOption(prev, normalizedCreatedColor));
-      const applied = applyColorSelection(itemId, normalizedCreatedColor, options);
+      const applied = applyColorSelection(targetIds, normalizedCreatedColor, options);
       if (applied) {
         showNotification(orderPageText.colorCreatedSuccess, 'success');
       }
@@ -2526,24 +2599,24 @@ const OrderList = () => {
     }
   };
 
-  const handleColorChange = async (itemId, value, options = {}) => {
+  const handleColorChange = async (itemIdOrIds, value, options = {}) => {
     if (!value) {
-      applyColorSelection(itemId, null, options);
+      applyColorSelection(itemIdOrIds, null, options);
       return;
     }
     if (typeof value === 'string') {
-      await handleCreateColorOption(itemId, value, options);
+      await handleCreateColorOption(itemIdOrIds, value, options);
       return;
     }
     if (value?.isCreateOption) {
       await handleCreateColorOption(
-        itemId,
+        itemIdOrIds,
         value.inputValue || value.name || '',
         options
       );
       return;
     }
-    applyColorSelection(itemId, value, options);
+    applyColorSelection(itemIdOrIds, value, options);
   };
 
   const handleGenderChange = (itemId, value, options = {}) => {
@@ -3409,8 +3482,9 @@ const OrderList = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {groupedStyleItems.map((group) =>
-                  group.rows.map(({ item, displayNo }, rowIndex) => {
+                {groupedStyleItems.map((group, groupIndex) => {
+                  const groupPastelStyle = getStyleGroupPastelStyle(groupIndex);
+                  return group.rows.map(({ item, displayNo, isColorFirstRow, colorRowSpan, colorRowItemIds }, rowIndex) => {
                     const itemTotal = getItemTotal(item);
                     const groupStyleOption =
                       availableStyleOptions.find((option) => option.id === group.styleId) ||
@@ -3423,12 +3497,15 @@ const OrderList = () => {
                           }
                         : null);
                     const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
-                    const genderStyle = getGenderPastelStyle(item.gender);
                     const isFirstRow = rowIndex === 0;
                     const rowStyleIdentity = getStyleIdentity(item);
                     const rowColorCode = getItemColorCode(item);
                     const selectedColorOption = getSelectedColorOption(item);
                     const selectedGenderOption = getSelectedGenderOption(item);
+                    const colorTargetIds =
+                      Array.isArray(colorRowItemIds) && colorRowItemIds.length > 0
+                        ? colorRowItemIds
+                        : [item.id];
                     const disabledGenderSet = new Set(
                       formData.items
                         .filter(
@@ -3447,11 +3524,11 @@ const OrderList = () => {
                         onBlurCapture={(event) => handleItemRowBlurCapture(item.id, event)}
                         sx={{
                           '& > td': {
-                            backgroundColor: genderStyle.background,
-                            borderBottomColor: genderStyle.border,
+                            backgroundColor: groupPastelStyle.background,
+                            borderBottomColor: groupPastelStyle.border,
                           },
                           '& > td:first-of-type': {
-                            borderLeft: `4px solid ${genderStyle.accent}`,
+                            borderLeft: `4px solid ${groupPastelStyle.accent}`,
                           },
                         }}
                       >
@@ -3462,7 +3539,8 @@ const OrderList = () => {
                             sx={{
                               verticalAlign: 'top',
                               pt: 1,
-                              backgroundColor: '#f8fafc !important',
+                              backgroundColor: `${groupPastelStyle.background} !important`,
+                              borderBottomColor: `${groupPastelStyle.border} !important`,
                             }}
                           >
                             <SearchableSelect
@@ -3502,7 +3580,8 @@ const OrderList = () => {
                             sx={{
                               verticalAlign: 'top',
                               pt: 1,
-                              backgroundColor: '#f8fafc !important',
+                              backgroundColor: `${groupPastelStyle.background} !important`,
+                              borderBottomColor: `${groupPastelStyle.border} !important`,
                             }}
                           >
                             <TextField
@@ -3521,61 +3600,72 @@ const OrderList = () => {
                             />
                           </TableCell>
                         )}
-                        <TableCell>
-                          <FormControl fullWidth size="small">
-                            <SearchableSelect
-                              options={normalizedColorOptions}
-                              value={selectedColorOption}
-                              disabled={!rowStyleIdentity || creatingColorItemId === item.id}
-                              loading={creatingColorItemId === item.id}
-                              onChange={(event, newValue, reason) => {
-                                void handleColorChange(item.id, newValue, {
-                                  focusNext: isTabAutocompleteSelection(event, reason),
-                                });
-                              }}
-                              filterOptions={filterColorAutocompleteOptions}
-                              getOptionLabel={(option) => {
-                                if (typeof option === 'string') return option;
-                                if (option?.isCreateOption) {
-                                  return option.inputValue || option.name || '';
+                        {isColorFirstRow && (
+                          <TableCell
+                            rowSpan={colorRowSpan || 1}
+                            sx={{
+                              verticalAlign: 'top',
+                              pt: 1,
+                              backgroundColor: `${groupPastelStyle.background} !important`,
+                              borderBottomColor: `${groupPastelStyle.border} !important`,
+                            }}
+                          >
+                            <FormControl fullWidth size="small">
+                              <SearchableSelect
+                                options={normalizedColorOptions}
+                                value={selectedColorOption}
+                                disabled={!rowStyleIdentity || creatingColorItemId === item.id}
+                                loading={creatingColorItemId === item.id}
+                                onChange={(event, newValue, reason) => {
+                                  void handleColorChange(colorTargetIds, newValue, {
+                                    focusNext: isTabAutocompleteSelection(event, reason),
+                                    focusItemId: item.id,
+                                  });
+                                }}
+                                filterOptions={filterColorAutocompleteOptions}
+                                getOptionLabel={(option) => {
+                                  if (typeof option === 'string') return option;
+                                  if (option?.isCreateOption) {
+                                    return option.inputValue || option.name || '';
+                                  }
+                                  return option?.displayName || option?.name || option?.code || '';
+                                }}
+                                isOptionEqualToValue={(option, value) => {
+                                  const optionId = toPositiveColorId(option?.id);
+                                  const valueId = toPositiveColorId(value?.id);
+                                  if (optionId && valueId) {
+                                    return optionId === valueId;
+                                  }
+                                  return normalizeColorCode(option?.code) === normalizeColorCode(value?.code);
+                                }}
+                                renderOption={(props, option) => (
+                                  <li {...props}>
+                                    {option?.isCreateOption
+                                      ? `${orderPageText.addNewColorPrefix} ${option.inputValue || option.name || ''}`
+                                      : option?.displayName || option?.name || option?.code || ''}
+                                  </li>
+                                )}
+                                autoHighlight
+                                selectOnFocus
+                                clearOnBlur
+                                handleHomeEndKeys
+                                noOptionsText={
+                                  canCreateColorAttribute
+                                    ? orderPageText.colorCreateHint
+                                    : orderPageText.noRegisteredColors
                                 }
-                                return option?.displayName || option?.name || option?.code || '';
-                              }}
-                              isOptionEqualToValue={(option, value) => {
-                                const optionId = toPositiveColorId(option?.id);
-                                const valueId = toPositiveColorId(value?.id);
-                                if (optionId && valueId) {
-                                  return optionId === valueId;
-                                }
-                                return normalizeColorCode(option?.code) === normalizeColorCode(value?.code);
-                              }}
-                              renderOption={(props, option) => (
-                                <li {...props}>
-                                  {option?.isCreateOption
-                                    ? `${orderPageText.addNewColorPrefix} ${option.inputValue || option.name || ''}`
-                                    : option?.displayName || option?.name || option?.code || ''}
-                                </li>
-                              )}
-                              autoHighlight
-                              selectOnFocus
-                              clearOnBlur
-                              handleHomeEndKeys
-                              noOptionsText={
-                                canCreateColorAttribute
-                                  ? orderPageText.colorCreateHint
-                                  : orderPageText.noRegisteredColors
-                              }
-                              textFieldProps={{
-                                size: 'small',
-                                placeholder: canCreateColorAttribute
-                                  ? orderPageText.colorSearchOrCreate
-                                  : orderPageText.colorSearch,
-                                inputRef: (node) =>
-                                  setInputElementInMap(colorInputRefs, item.id, node),
-                              }}
-                            />
-                          </FormControl>
-                        </TableCell>
+                                textFieldProps={{
+                                  size: 'small',
+                                  placeholder: canCreateColorAttribute
+                                    ? orderPageText.colorSearchOrCreate
+                                    : orderPageText.colorSearch,
+                                  inputRef: (node) =>
+                                    setInputElementInMap(colorInputRefs, item.id, node),
+                                }}
+                              />
+                            </FormControl>
+                          </TableCell>
+                        )}
                         <TableCell>
                           <FormControl fullWidth size="small">
                             <SearchableSelect
@@ -3643,8 +3733,8 @@ const OrderList = () => {
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
+                  });
+                })}
               </TableBody>
             </Table>
           </TableContainer>
