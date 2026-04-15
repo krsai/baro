@@ -62,6 +62,7 @@ const SearchableSelect = ({
     if (!highlightedOption) return;
     if (getOptionDisabled?.(highlightedOption)) return;
 
+    event.preventDefault();
     onChange?.(event, highlightedOption, 'selectOption');
   };
   const listboxSx = [
