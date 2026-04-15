@@ -84,6 +84,32 @@ const formatAtReliabilityLabel = (reliability) => {
 };
 const resolveStAtGapPalette = (meta) =>
   ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
+const toTimestamp = (value) => {
+  const timestamp = Date.parse(String(value || '').trim());
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+const compareStyleDefaultOrder = (left, right) => {
+  const registrationDiff =
+    toTimestamp(right?.registrationDate) - toTimestamp(left?.registrationDate);
+  if (registrationDiff !== 0) return registrationDiff;
+
+  const lifecycleDiff =
+    toTimestamp(right?.updatedAt || right?.createdAt) -
+    toTimestamp(left?.updatedAt || left?.createdAt);
+  if (lifecycleDiff !== 0) return lifecycleDiff;
+
+  const codeDiff = String(left?.styleCode || '').localeCompare(
+    String(right?.styleCode || ''),
+    undefined,
+    { numeric: true, sensitivity: 'base' }
+  );
+  if (codeDiff !== 0) return codeDiff;
+
+  return String(left?.name || '').localeCompare(String(right?.name || ''), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+};
 
 const toOrgId = (value) => {
   const parsed = Number(value);
@@ -267,7 +293,7 @@ const StyleBoard = () => {
 
   const rows = useMemo(
     () =>
-      filteredStyles.map((style) => {
+      [...filteredStyles].sort(compareStyleDefaultOrder).map((style) => {
         if (!canViewProcessSummary) {
           return {
             ...style,

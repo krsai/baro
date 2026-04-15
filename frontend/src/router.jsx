@@ -6,38 +6,76 @@ import { canAccessPath, resolveFirstAccessiblePath } from './utils/accessControl
 import Login from './pages/Auth/Login';
 import SubscriptionRequired from './pages/Auth/SubscriptionRequired';
 
-const MainLayout = React.lazy(() => import('./layouts/MainLayout'));
-const SignUp = React.lazy(() => import('./pages/Auth/SignUp'));
-const Organization = React.lazy(() => import('./pages/App/Organization'));
-const Employee = React.lazy(() => import('./pages/App/Employee'));
-const Permission = React.lazy(() => import('./pages/App/Permission'));
-const Line = React.lazy(() => import('./pages/App/Line'));
-const Holiday = React.lazy(() => import('./pages/App/Holiday'));
-const SystemBoard = React.lazy(() => import('./pages/App/system/systemBoard'));
-const StaticOptionBoard = React.lazy(() => import('./pages/App/system/StaticOptionBoard'));
-const OnboardingBoard = React.lazy(() => import('./pages/App/system/OnboardingBoard'));
-const Customer = React.lazy(() => import('./pages/App/Customer'));
-const Style = React.lazy(() => import('./pages/App/Style'));
-const StyleBoard = React.lazy(() => import('./pages/App/style/StyleBoard'));
-const StyleDetail = React.lazy(() => import('./pages/App/style/StyleDetail'));
-const StReview = React.lazy(() => import('./pages/App/StReview'));
-const ShipmentReview = React.lazy(() => import('./pages/App/ShipmentReview'));
-const Assign = React.lazy(() => import('./pages/App/Assign'));
-const AssignDetail = React.lazy(() => import('./pages/App/assign/AssignDetail'));
-const Work = React.lazy(() => import('./pages/App/Work'));
-const Attendance = React.lazy(() => import('./pages/App/Attendance'));
-const AttendanceEntry = React.lazy(() => import('./pages/App/attendance/AttendanceEntry'));
-const WorkEntry = React.lazy(() => import('./pages/App/work/WorkEntry'));
-const WorkerWorkHistory = React.lazy(() => import('./pages/App/work/WorkerWorkHistory'));
-const Payroll = React.lazy(() => import('./pages/App/Payroll'));
-const PayrollEntry = React.lazy(() => import('./pages/App/payroll/PayrollEntry'));
-const Onboarding = React.lazy(() => import('./pages/Auth/Onboarding'));
-const Attribute = React.lazy(() => import('./pages/App/Attribute'));
-const Order = React.lazy(() => import('./pages/App/Order.jsx'));
-const ProductionPlan = React.lazy(() => import('./pages/App/ProductionPlan'));
-const ProductionResult = React.lazy(() => import('./pages/App/ProductionResult'));
-const Inventory = React.lazy(() => import('./pages/App/Inventory'));
-const MyProfile = React.lazy(() => import('./pages/App/MyProfile'));
+const DYNAMIC_IMPORT_RELOAD_KEY = 'baro:dynamic-import-reload-at';
+const DYNAMIC_IMPORT_RELOAD_COOLDOWN_MS = 15_000;
+const isDynamicImportChunkError = (error) => {
+  const message = String(error?.message || '').trim();
+  if (!message) return false;
+  return (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Importing a module script failed') ||
+    message.includes('Loading chunk')
+  );
+};
+const lazyImportWithRetry = (importer) =>
+  React.lazy(() =>
+    importer()
+      .then((module) => {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(DYNAMIC_IMPORT_RELOAD_KEY);
+        }
+        return module;
+      })
+      .catch((error) => {
+        if (typeof window === 'undefined' || !isDynamicImportChunkError(error)) {
+          throw error;
+        }
+        const lastReloadAt = Number(window.sessionStorage.getItem(DYNAMIC_IMPORT_RELOAD_KEY) || 0);
+        const recentlyRetried =
+          Number.isFinite(lastReloadAt) &&
+          lastReloadAt > 0 &&
+          Date.now() - lastReloadAt < DYNAMIC_IMPORT_RELOAD_COOLDOWN_MS;
+        if (recentlyRetried) {
+          throw error;
+        }
+        window.sessionStorage.setItem(DYNAMIC_IMPORT_RELOAD_KEY, String(Date.now()));
+        window.location.reload();
+        return new Promise(() => {});
+      })
+  );
+
+const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
+const SignUp = lazyImportWithRetry(() => import('./pages/Auth/SignUp'));
+const Organization = lazyImportWithRetry(() => import('./pages/App/Organization'));
+const Employee = lazyImportWithRetry(() => import('./pages/App/Employee'));
+const Permission = lazyImportWithRetry(() => import('./pages/App/Permission'));
+const Line = lazyImportWithRetry(() => import('./pages/App/Line'));
+const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
+const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemBoard'));
+const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
+const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
+const Customer = lazyImportWithRetry(() => import('./pages/App/Customer'));
+const Style = lazyImportWithRetry(() => import('./pages/App/Style'));
+const StyleBoard = lazyImportWithRetry(() => import('./pages/App/style/StyleBoard'));
+const StyleDetail = lazyImportWithRetry(() => import('./pages/App/style/StyleDetail'));
+const StReview = lazyImportWithRetry(() => import('./pages/App/StReview'));
+const ShipmentReview = lazyImportWithRetry(() => import('./pages/App/ShipmentReview'));
+const Assign = lazyImportWithRetry(() => import('./pages/App/Assign'));
+const AssignDetail = lazyImportWithRetry(() => import('./pages/App/assign/AssignDetail'));
+const Work = lazyImportWithRetry(() => import('./pages/App/Work'));
+const Attendance = lazyImportWithRetry(() => import('./pages/App/Attendance'));
+const AttendanceEntry = lazyImportWithRetry(() => import('./pages/App/attendance/AttendanceEntry'));
+const WorkEntry = lazyImportWithRetry(() => import('./pages/App/work/WorkEntry'));
+const WorkerWorkHistory = lazyImportWithRetry(() => import('./pages/App/work/WorkerWorkHistory'));
+const Payroll = lazyImportWithRetry(() => import('./pages/App/Payroll'));
+const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/PayrollEntry'));
+const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
+const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
+const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
+const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionPlan'));
+const ProductionResult = lazyImportWithRetry(() => import('./pages/App/ProductionResult'));
+const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
+const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const WorkspaceShell = () => null;
 const WORKSPACE_PATH = '/workspace';
 
