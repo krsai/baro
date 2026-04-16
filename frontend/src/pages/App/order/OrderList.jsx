@@ -941,12 +941,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Style Setup'
             : '스타일 구성',
-      detailViewModeLabel:
-        languageCode === 'vi'
-          ? 'Kieu xem'
-          : languageCode === 'en'
-            ? 'View Mode'
-            : '보기 방식',
       detailViewModeVertical:
         languageCode === 'vi'
           ? 'Doc'
@@ -1389,7 +1383,7 @@ const OrderList = () => {
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
-  const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.VERTICAL);
+  const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
@@ -2663,8 +2657,8 @@ const OrderList = () => {
       return;
     }
 
-    const targetIds = Array.isArray(itemIdOrIds) ? itemIdOrIds : [itemIdOrIds];
-    const targetIdSet = new Set(targetIds.filter(Boolean));
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    const targetIdSet = new Set(targetIds);
     if (!targetIdSet.size) return;
 
     const nextStyleId = style?.id || '';
@@ -2673,7 +2667,7 @@ const OrderList = () => {
     const nextStyleIdentity = nextStyleId || nextStyleName || nextStyleCode;
 
     const previewItems = formData.items.map((item) =>
-      targetIdSet.has(item.id)
+      targetIdSet.has(String(item.id || '').trim())
         ? (() => {
             const styleChanged = getStyleIdentity(item) !== nextStyleIdentity;
             return {
@@ -3615,21 +3609,18 @@ const OrderList = () => {
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
           <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
-            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-              {orderPageText.detailViewModeLabel}
-            </Typography>
             <ToggleButtonGroup
               size="small"
               exclusive
               value={detailViewMode}
               onChange={handleDetailViewModeChange}
-              aria-label={orderPageText.detailViewModeLabel}
+              aria-label="order-detail-view-mode"
             >
-              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
-                {orderPageText.detailViewModeVertical}
-              </ToggleButton>
               <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
                 {orderPageText.detailViewModeHorizontal}
+              </ToggleButton>
+              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
+                {orderPageText.detailViewModeVertical}
               </ToggleButton>
             </ToggleButtonGroup>
           </Stack>
@@ -4108,11 +4099,47 @@ const OrderList = () => {
                       const groupPastelStyle = getStyleGroupPastelStyle(groupIndex);
                       return group.colorRows.map((colorRow, rowIndex) => {
                         const isFirstColorRow = rowIndex === 0;
-                        const styleName = String(group.styleName || '').trim() || '-';
+                        const groupStyleOption =
+                          availableStyleOptions.find((option) => option.id === group.styleId) ||
+                          (group.styleName
+                            ? {
+                                id: group.styleId || `group-${group.key}`,
+                                name: group.styleName,
+                                styleCode: group.styleCode || '',
+                                customer: selectedBuyerName,
+                              }
+                            : null);
+                        const colorReferenceItem =
+                          colorRow.referenceItem ||
+                          (Array.isArray(colorRow.rows) ? colorRow.rows[0]?.item : null) ||
+                          null;
+                        const rowStyleIdentity =
+                          getStyleIdentity(colorReferenceItem) ||
+                          group.styleId ||
+                          group.styleName ||
+                          group.styleCode ||
+                          '';
+                        const colorTargetIds =
+                          Array.isArray(colorRow.rowItemIds) && colorRow.rowItemIds.length > 0
+                            ? colorRow.rowItemIds
+                            : [String(colorReferenceItem?.id || '').trim()].filter(Boolean);
+                        const colorInputTargetId = colorTargetIds[0] || '';
+                        const selectedColorOption = getSelectedColorOption(colorReferenceItem);
 
                         return (
                           <TableRow
                             key={colorRow.key}
+                            data-order-style-item-row="true"
+                            onFocusCapture={() => {
+                              if (colorInputTargetId) {
+                                handleItemRowFocusCapture(colorInputTargetId);
+                              }
+                            }}
+                            onBlurCapture={(event) => {
+                              if (colorInputTargetId) {
+                                handleItemRowBlurCapture(colorInputTargetId, event);
+                              }
+                            }}
                             sx={{
                               '& > td': {
                                 backgroundColor: groupPastelStyle.background,
@@ -4134,13 +4161,96 @@ const OrderList = () => {
                                   borderBottomColor: `${groupPastelStyle.border} !important`,
                                 }}
                               >
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {styleName}
-                                </Typography>
+                                <SearchableSelect
+                                  options={availableStyleOptions}
+                                  value={groupStyleOption}
+                                  disabled={!selectedBuyerName}
+                                  onChange={(event, newValue, reason) =>
+                                    handleStyleChange(group.rowItemIds, newValue, {
+                                      focusNext: isTabAutocompleteSelection(event, reason),
+                                      focusItemId: colorInputTargetId,
+                                    })
+                                  }
+                                  getOptionLabel={(option) => option?.name || ''}
+                                  isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                                  autoHighlight
+                                  textFieldProps={{
+                                    size: 'small',
+                                    placeholder: orderPageText.styleSearchPlaceholder,
+                                    inputRef: (node) =>
+                                      setInputElementInMap(
+                                        styleInputRefs,
+                                        colorInputTargetId || group.rowItemIds?.[0] || '',
+                                        node
+                                      ),
+                                  }}
+                                  noOptionsText={
+                                    selectedBuyerName
+                                      ? orderPageText.noRegisteredStyles
+                                      : orderPartyText.selectBuyerFirst
+                                  }
+                                />
                               </TableCell>
                             )}
                             <TableCell>
-                              <Typography variant="body2">{colorRow.colorDisplayName}</Typography>
+                              <FormControl fullWidth size="small">
+                                <SearchableSelect
+                                  options={normalizedColorOptions}
+                                  value={selectedColorOption}
+                                  disabled={!rowStyleIdentity || creatingColorItemId === colorInputTargetId}
+                                  loading={creatingColorItemId === colorInputTargetId}
+                                  onChange={(event, newValue, reason) => {
+                                    void handleColorChange(colorTargetIds, newValue, {
+                                      focusNext: isTabAutocompleteSelection(event, reason),
+                                      focusItemId: colorInputTargetId,
+                                    });
+                                  }}
+                                  filterOptions={filterColorAutocompleteOptions}
+                                  getOptionLabel={(option) => {
+                                    if (typeof option === 'string') return option;
+                                    if (option?.isCreateOption) {
+                                      return option.inputValue || option.name || '';
+                                    }
+                                    return option?.displayName || option?.name || option?.code || '';
+                                  }}
+                                  isOptionEqualToValue={(option, value) => {
+                                    const optionId = toPositiveColorId(option?.id);
+                                    const valueId = toPositiveColorId(value?.id);
+                                    if (optionId && valueId) {
+                                      return optionId === valueId;
+                                    }
+                                    return normalizeColorCode(option?.code) === normalizeColorCode(value?.code);
+                                  }}
+                                  renderOption={(props, option) => (
+                                    <li {...props}>
+                                      {option?.isCreateOption
+                                        ? `${orderPageText.addNewColorPrefix} ${option.inputValue || option.name || ''}`
+                                        : option?.displayName || option?.name || option?.code || ''}
+                                    </li>
+                                  )}
+                                  autoHighlight
+                                  selectOnFocus
+                                  clearOnBlur
+                                  handleHomeEndKeys
+                                  noOptionsText={
+                                    canCreateColorAttribute
+                                      ? orderPageText.colorCreateHint
+                                      : orderPageText.noRegisteredColors
+                                  }
+                                  textFieldProps={{
+                                    size: 'small',
+                                    placeholder: canCreateColorAttribute
+                                      ? orderPageText.colorSearchOrCreate
+                                      : orderPageText.colorSearch,
+                                    inputRef: (node) =>
+                                      setInputElementInMap(
+                                        colorInputRefs,
+                                        colorInputTargetId,
+                                        node
+                                      ),
+                                  }}
+                                />
+                              </FormControl>
                             </TableCell>
                             {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
                               SIZE_COLUMNS.map((size, sizeIndex) => {
