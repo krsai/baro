@@ -105,7 +105,12 @@ const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
 const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
 const ORDER_FILTER_ALL = 'ALL';
+const ORDER_DETAIL_VIEW_MODES = {
+  VERTICAL: 'vertical',
+  HORIZONTAL: 'horizontal',
+};
 const GENDER_OPTIONS = GENDER_CODES;
+const ORDER_DETAIL_HORIZONTAL_GENDERS = ['M', 'W', 'U'];
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
@@ -191,6 +196,8 @@ const getOrderLockButtonSx = (isLocked) => (theme) => {
     },
   };
 };
+const formatHorizontalGenderQuantitySummary = (values = []) =>
+  values.map((value) => (Number(value) || 0).toLocaleString()).join(' / ');
 const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
@@ -926,6 +933,30 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Style Setup'
             : '스타일 구성',
+      detailViewModeLabel:
+        languageCode === 'vi'
+          ? 'Kieu xem'
+          : languageCode === 'en'
+            ? 'View Mode'
+            : '보기 방식',
+      detailViewModeVertical:
+        languageCode === 'vi'
+          ? 'Doc'
+          : languageCode === 'en'
+            ? 'Vertical'
+            : '세로',
+      detailViewModeHorizontal:
+        languageCode === 'vi'
+          ? 'Ngang'
+          : languageCode === 'en'
+            ? 'Horizontal'
+            : '가로',
+      detailHorizontalHint:
+        languageCode === 'vi'
+          ? 'Che do ngang la bang tom tat theo style/mau. De sua, hay chuyen sang che do doc.'
+          : languageCode === 'en'
+            ? 'Horizontal mode is a style/color summary view. Switch to vertical mode to edit.'
+            : '가로 모드는 스타일/색상 기준 요약 보기입니다. 수정은 세로 보기에서 진행해 주세요.',
       styleRegister:
         languageCode === 'vi'
           ? 'Dang ky style'
@@ -1356,6 +1387,7 @@ const OrderList = () => {
   const [dueDateFilterStart, setDueDateFilterStart] = useState(() => getMonthStart(new Date()));
   const [dueDateFilterEnd, setDueDateFilterEnd] = useState(() => getMonthEnd(new Date()));
   const [formData, setFormData] = useState(buildInitialFormData);
+  const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.VERTICAL);
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
@@ -2014,6 +2046,88 @@ const OrderList = () => {
     () => buildSortedStyleItemGroups(formData.items, deferredMergeRowIds),
     [buildSortedStyleItemGroups, deferredMergeRowIds, formData.items]
   );
+  const horizontalGenderLegend = useMemo(
+    () =>
+      ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode) =>
+        getGenderLabel(genderCode, GENDER_OPTION_LABELS[genderCode] || genderCode, languageCode)
+      ).join(' / '),
+    [languageCode]
+  );
+  const horizontalStyleColorRows = useMemo(() => {
+    let nextDisplayNo = 1;
+    return groupedStyleItems.map((group) => {
+      const colorGroupRows = [];
+      let currentColorGroup = null;
+
+      (Array.isArray(group.rows) ? group.rows : []).forEach((row) => {
+        if (row?.isColorFirstRow || !currentColorGroup) {
+          currentColorGroup = {
+            key: `${group.key}-${row?.item?.id || row?.displayNo || nextDisplayNo}`,
+            displayNo: nextDisplayNo++,
+            colorDisplayName: getResolvedColorLabel(row?.item) || '-',
+            rows: [],
+            rowItemIds:
+              Array.isArray(row?.colorRowItemIds) && row.colorRowItemIds.length > 0
+                ? row.colorRowItemIds
+                : [String(row?.item?.id || '').trim()].filter(Boolean),
+          };
+          colorGroupRows.push(currentColorGroup);
+        }
+        currentColorGroup.rows.push(row);
+      });
+
+      const normalizedColorGroupRows = colorGroupRows.map((colorGroup) => {
+        const itemByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
+          acc[genderCode] = null;
+          return acc;
+        }, {});
+        (Array.isArray(colorGroup.rows) ? colorGroup.rows : []).forEach((row) => {
+          const normalizedGender = normalizeGenderCode(row?.item?.gender, '');
+          const fallbackGender =
+            ORDER_DETAIL_HORIZONTAL_GENDERS[ORDER_DETAIL_HORIZONTAL_GENDERS.length - 1];
+          const genderCode = ORDER_DETAIL_HORIZONTAL_GENDERS.includes(normalizedGender)
+            ? normalizedGender
+            : fallbackGender;
+          if (!itemByGender[genderCode]) {
+            itemByGender[genderCode] = row.item;
+          }
+        });
+
+        const sizeSummary = SIZE_COLUMNS.reduce((acc, size) => {
+          acc[size] = formatHorizontalGenderQuantitySummary(
+            ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode) => {
+              const normalizedSizeQuantities = normalizeSizeQuantities(
+                itemByGender[genderCode]?.sizeQuantities
+              );
+              return Number(normalizedSizeQuantities[size]) || 0;
+            })
+          );
+          return acc;
+        }, {});
+
+        const totalByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
+          acc[genderCode] = sumSizeQuantities(itemByGender[genderCode]?.sizeQuantities);
+          return acc;
+        }, {});
+        const totalQuantity = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce(
+          (sum, genderCode) => sum + (Number(totalByGender[genderCode]) || 0),
+          0
+        );
+
+        return {
+          ...colorGroup,
+          sizeSummary,
+          totalByGender,
+          totalQuantity,
+        };
+      });
+
+      return {
+        ...group,
+        colorRows: normalizedColorGroupRows,
+      };
+    });
+  }, [getResolvedColorLabel, groupedStyleItems]);
 
   useEffect(() => {
     const currentRowIdSet = new Set(
@@ -2465,6 +2579,11 @@ const OrderList = () => {
   const handleInputChange = (event) => {
     const { name, value } = event.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleDetailViewModeChange = (_event, nextMode) => {
+    if (!nextMode) return;
+    setDetailViewMode(nextMode);
   };
 
   const handleAddItem = () => {
@@ -3402,7 +3521,12 @@ const OrderList = () => {
           {isTogglingModificationLock && <CircularProgress size={16} />}
         </Box>
         <Stack spacing={0.75} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-          <Stack direction="row" spacing={1} justifyContent={{ xs: 'flex-end', md: 'flex-end' }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            justifyContent={{ xs: 'flex-end', md: 'flex-end' }}
+          >
             {isNewOrder && (
               <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
                 {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
@@ -3519,28 +3643,65 @@ const OrderList = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
               {orderPageText.styleSection}
             </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                startIcon={<OpenInNewIcon />}
-                onClick={handleOpenStyleRegistration}
-              >
-                {orderPageText.styleRegister}
-              </Button>
-              <Button
-                ref={styleAddButtonRef}
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={handleAddItem}
-              >
-                {orderPageText.styleAdd}
-              </Button>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1}
+              alignItems={{ xs: 'stretch', md: 'center' }}
+            >
+              <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
+                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                  {orderPageText.detailViewModeLabel}
+                </Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={detailViewMode}
+                  onChange={handleDetailViewModeChange}
+                  aria-label={orderPageText.detailViewModeLabel}
+                >
+                  <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
+                    {orderPageText.detailViewModeVertical}
+                  </ToggleButton>
+                  <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
+                    {orderPageText.detailViewModeHorizontal}
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <Button
+                  variant="outlined"
+                  startIcon={<OpenInNewIcon />}
+                  onClick={handleOpenStyleRegistration}
+                >
+                  {orderPageText.styleRegister}
+                </Button>
+                <Button
+                  ref={styleAddButtonRef}
+                  variant="outlined"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddItem}
+                >
+                  {orderPageText.styleAdd}
+                </Button>
+              </Stack>
             </Stack>
           </Box>
 
           <Paper variant="outlined" sx={{ mb: 2 }}>
-            <TableContainer sx={{ width: '100%', overflowX: 'hidden' }}>
-              <Table
+            {detailViewMode === ORDER_DETAIL_VIEW_MODES.HORIZONTAL && (
+              <Alert severity="info" sx={{ mb: 1.5, mx: 1.5, mt: 1.5 }}>
+                {orderPageText.detailHorizontalHint}
+              </Alert>
+            )}
+            <TableContainer
+              sx={{
+                width: '100%',
+                overflowX:
+                  detailViewMode === ORDER_DETAIL_VIEW_MODES.HORIZONTAL ? 'auto' : 'hidden',
+              }}
+            >
+              {detailViewMode === ORDER_DETAIL_VIEW_MODES.VERTICAL ? (
+                <Table
                 size="small"
                 sx={{
                   width: '100%',
@@ -3833,6 +3994,146 @@ const OrderList = () => {
                 })}
               </TableBody>
             </Table>
+              ) : (
+                <Table
+                  size="small"
+                  sx={{
+                    minWidth: 1380,
+                    tableLayout: 'fixed',
+                    '& .MuiTableCell-root': {
+                      px: 0.75,
+                      py: 0.75,
+                    },
+                  }}
+                >
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>
+                        No
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>
+                        {orderPageText.detailStyleNameCode}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>
+                        {orderPageText.detailStyleCode}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>
+                        {orderPageText.color}
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', width: '7%', textAlign: 'center' }}>
+                        {orderPageText.gender}
+                      </TableCell>
+                      {SIZE_COLUMNS.map((size) => (
+                        <TableCell
+                          key={`horizontal-${size}`}
+                          sx={{
+                            fontWeight: 'bold',
+                            width: ORDER_DETAIL_SIZE_COLUMN_WIDTH,
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {size}
+                        </TableCell>
+                      ))}
+                      <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>
+                        {orderPageText.total}
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {horizontalStyleColorRows.map((group, groupIndex) => {
+                      const groupPastelStyle = getStyleGroupPastelStyle(groupIndex);
+                      return group.colorRows.map((colorRow, rowIndex) => {
+                        const isFirstColorRow = rowIndex === 0;
+                        const styleName = String(group.styleName || '').trim() || '-';
+                        const styleCode = String(group.styleCode || '').trim() || '-';
+                        const totalSummary = formatHorizontalGenderQuantitySummary(
+                          ORDER_DETAIL_HORIZONTAL_GENDERS.map(
+                            (genderCode) => colorRow.totalByGender?.[genderCode] || 0
+                          )
+                        );
+
+                        return (
+                          <TableRow
+                            key={colorRow.key}
+                            sx={{
+                              '& > td': {
+                                backgroundColor: groupPastelStyle.background,
+                                borderBottomColor: groupPastelStyle.border,
+                              },
+                              '& > td:first-of-type': {
+                                borderLeft: `4px solid ${groupPastelStyle.accent}`,
+                              },
+                            }}
+                          >
+                            <TableCell sx={{ textAlign: 'center' }}>{colorRow.displayNo}</TableCell>
+                            {isFirstColorRow && (
+                              <TableCell
+                                rowSpan={group.colorRows.length}
+                                sx={{
+                                  verticalAlign: 'top',
+                                  pt: 1,
+                                  backgroundColor: `${groupPastelStyle.background} !important`,
+                                  borderBottomColor: `${groupPastelStyle.border} !important`,
+                                }}
+                              >
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {styleName}
+                                </Typography>
+                              </TableCell>
+                            )}
+                            {isFirstColorRow && (
+                              <TableCell
+                                rowSpan={group.colorRows.length}
+                                sx={{
+                                  verticalAlign: 'top',
+                                  pt: 1,
+                                  backgroundColor: `${groupPastelStyle.background} !important`,
+                                  borderBottomColor: `${groupPastelStyle.border} !important`,
+                                }}
+                              >
+                                <Typography variant="body2">{styleCode}</Typography>
+                              </TableCell>
+                            )}
+                            <TableCell>
+                              <Typography variant="body2">{colorRow.colorDisplayName}</Typography>
+                            </TableCell>
+                            <TableCell sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {horizontalGenderLegend}
+                              </Typography>
+                            </TableCell>
+                            {SIZE_COLUMNS.map((size) => (
+                              <TableCell
+                                key={`${colorRow.key}-${size}`}
+                                sx={{
+                                  textAlign: 'right',
+                                  whiteSpace: 'nowrap',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {colorRow.sizeSummary[size]}
+                              </TableCell>
+                            ))}
+                            <TableCell sx={{ textAlign: 'right' }}>
+                              <Typography
+                                variant="body2"
+                                sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+                              >
+                                {totalSummary}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {`= ${Number(colorRow.totalQuantity || 0).toLocaleString()}`}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })}
+                  </TableBody>
+                </Table>
+              )}
           </TableContainer>
         </Paper>
 

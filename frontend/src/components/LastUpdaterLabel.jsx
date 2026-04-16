@@ -36,6 +36,8 @@ const LastUpdaterLabel = ({ path = '', fallbackName = '', sx = {} }) => {
       variant="body2"
       color="text.secondary"
       sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
         whiteSpace: 'nowrap',
         flexShrink: 0,
         ...sx,
