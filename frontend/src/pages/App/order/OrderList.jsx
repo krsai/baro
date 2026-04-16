@@ -196,8 +196,6 @@ const getOrderLockButtonSx = (isLocked) => (theme) => {
     },
   };
 };
-const formatHorizontalGenderQuantitySummary = (values = []) =>
-  values.map((value) => (Number(value) || 0).toLocaleString()).join(' / ');
 const GENDER_SORT_ORDER = {
   M: 0,
   W: 1,
@@ -2046,13 +2044,6 @@ const OrderList = () => {
     () => buildSortedStyleItemGroups(formData.items, deferredMergeRowIds),
     [buildSortedStyleItemGroups, deferredMergeRowIds, formData.items]
   );
-  const horizontalGenderLegend = useMemo(
-    () =>
-      ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode) =>
-        getGenderLabel(genderCode, GENDER_OPTION_LABELS[genderCode] || genderCode, languageCode)
-      ).join(' / '),
-    [languageCode]
-  );
   const horizontalStyleColorRows = useMemo(() => {
     let nextDisplayNo = 1;
     return groupedStyleItems.map((group) => {
@@ -2093,31 +2084,30 @@ const OrderList = () => {
           }
         });
 
-        const sizeSummary = SIZE_COLUMNS.reduce((acc, size) => {
-          acc[size] = formatHorizontalGenderQuantitySummary(
-            ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode) => {
-              const normalizedSizeQuantities = normalizeSizeQuantities(
-                itemByGender[genderCode]?.sizeQuantities
-              );
-              return Number(normalizedSizeQuantities[size]) || 0;
-            })
+        const sizeByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
+          const normalizedSizeQuantities = normalizeSizeQuantities(
+            itemByGender[genderCode]?.sizeQuantities
           );
+          acc[genderCode] = SIZE_COLUMNS.reduce((sizeAcc, size) => {
+            sizeAcc[size] = Number(normalizedSizeQuantities[size]) || 0;
+            return sizeAcc;
+          }, {});
           return acc;
         }, {});
 
-        const totalByGender = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((acc, genderCode) => {
-          acc[genderCode] = sumSizeQuantities(itemByGender[genderCode]?.sizeQuantities);
-          return acc;
-        }, {});
-        const totalQuantity = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce(
-          (sum, genderCode) => sum + (Number(totalByGender[genderCode]) || 0),
-          0
-        );
+        const totalQuantity = ORDER_DETAIL_HORIZONTAL_GENDERS.reduce((sum, genderCode) => {
+          return (
+            sum +
+            SIZE_COLUMNS.reduce(
+              (sizeSum, size) => sizeSum + (Number(sizeByGender[genderCode]?.[size]) || 0),
+              0
+            )
+          );
+        }, 0);
 
         return {
           ...colorGroup,
-          sizeSummary,
-          totalByGender,
+          sizeByGender,
           totalQuantity,
         };
       });
@@ -3556,6 +3546,27 @@ const OrderList = () => {
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {orderPageText.detailViewModeLabel}
+            </Typography>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={detailViewMode}
+              onChange={handleDetailViewModeChange}
+              aria-label={orderPageText.detailViewModeLabel}
+            >
+              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
+                {orderPageText.detailViewModeVertical}
+              </ToggleButton>
+              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
+                {orderPageText.detailViewModeHorizontal}
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+        </Box>
         <Box
           component="fieldset"
           disabled={isCurrentOrderModificationLocked}
@@ -3643,47 +3654,22 @@ const OrderList = () => {
             <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
               {orderPageText.styleSection}
             </Typography>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1}
-              alignItems={{ xs: 'stretch', md: 'center' }}
-            >
-              <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                  {orderPageText.detailViewModeLabel}
-                </Typography>
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={detailViewMode}
-                  onChange={handleDetailViewModeChange}
-                  aria-label={orderPageText.detailViewModeLabel}
-                >
-                  <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
-                    {orderPageText.detailViewModeVertical}
-                  </ToggleButton>
-                  <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
-                    {orderPageText.detailViewModeHorizontal}
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Stack>
-              <Stack direction="row" spacing={1} justifyContent="flex-end">
-                <Button
-                  variant="outlined"
-                  startIcon={<OpenInNewIcon />}
-                  onClick={handleOpenStyleRegistration}
-                >
-                  {orderPageText.styleRegister}
-                </Button>
-                <Button
-                  ref={styleAddButtonRef}
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddItem}
-                >
-                  {orderPageText.styleAdd}
-                </Button>
-              </Stack>
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button
+                variant="outlined"
+                startIcon={<OpenInNewIcon />}
+                onClick={handleOpenStyleRegistration}
+              >
+                {orderPageText.styleRegister}
+              </Button>
+              <Button
+                ref={styleAddButtonRef}
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={handleAddItem}
+              >
+                {orderPageText.styleAdd}
+              </Button>
             </Stack>
           </Box>
 
@@ -3998,7 +3984,7 @@ const OrderList = () => {
                 <Table
                   size="small"
                   sx={{
-                    minWidth: 1380,
+                    minWidth: 2200,
                     tableLayout: 'fixed',
                     '& .MuiTableCell-root': {
                       px: 0.75,
@@ -4008,37 +3994,64 @@ const OrderList = () => {
                 >
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{ fontWeight: 'bold', width: 56, textAlign: 'center' }}
+                      >
                         No
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>
+                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 220 }}>
                         {orderPageText.detailStyleNameCode}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>
+                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 120 }}>
                         {orderPageText.detailStyleCode}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>
+                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 140 }}>
                         {orderPageText.color}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 'bold', width: '7%', textAlign: 'center' }}>
-                        {orderPageText.gender}
-                      </TableCell>
-                      {SIZE_COLUMNS.map((size) => (
+                      {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) => (
                         <TableCell
-                          key={`horizontal-${size}`}
+                          key={`horizontal-group-${genderCode}`}
+                          colSpan={SIZE_COLUMNS.length}
                           sx={{
                             fontWeight: 'bold',
-                            width: ORDER_DETAIL_SIZE_COLUMN_WIDTH,
                             textAlign: 'center',
                             whiteSpace: 'nowrap',
+                            borderLeftWidth: genderIndex === 0 ? 1 : 2,
                           }}
                         >
-                          {size}
+                          {getGenderLabel(
+                            genderCode,
+                            GENDER_OPTION_LABELS[genderCode] || genderCode,
+                            languageCode
+                          )}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{ fontWeight: 'bold', width: 96, textAlign: 'right' }}
+                      >
                         {orderPageText.total}
                       </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
+                        SIZE_COLUMNS.map((size, sizeIndex) => (
+                          <TableCell
+                            key={`horizontal-${genderCode}-${size}`}
+                            sx={{
+                              fontWeight: 'bold',
+                              textAlign: 'center',
+                              whiteSpace: 'nowrap',
+                              minWidth: 72,
+                              borderLeftWidth:
+                                genderIndex > 0 && sizeIndex === 0 ? 2 : undefined,
+                            }}
+                          >
+                            {size}
+                          </TableCell>
+                        ))
+                      )}
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -4048,11 +4061,6 @@ const OrderList = () => {
                         const isFirstColorRow = rowIndex === 0;
                         const styleName = String(group.styleName || '').trim() || '-';
                         const styleCode = String(group.styleCode || '').trim() || '-';
-                        const totalSummary = formatHorizontalGenderQuantitySummary(
-                          ORDER_DETAIL_HORIZONTAL_GENDERS.map(
-                            (genderCode) => colorRow.totalByGender?.[genderCode] || 0
-                          )
-                        );
 
                         return (
                           <TableRow
@@ -4099,33 +4107,30 @@ const OrderList = () => {
                             <TableCell>
                               <Typography variant="body2">{colorRow.colorDisplayName}</Typography>
                             </TableCell>
-                            <TableCell sx={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {horizontalGenderLegend}
-                              </Typography>
-                            </TableCell>
-                            {SIZE_COLUMNS.map((size) => (
-                              <TableCell
-                                key={`${colorRow.key}-${size}`}
-                                sx={{
-                                  textAlign: 'right',
-                                  whiteSpace: 'nowrap',
-                                  fontVariantNumeric: 'tabular-nums',
-                                }}
-                              >
-                                {colorRow.sizeSummary[size]}
-                              </TableCell>
-                            ))}
-                            <TableCell sx={{ textAlign: 'right' }}>
-                              <Typography
-                                variant="body2"
-                                sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
-                              >
-                                {totalSummary}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {`= ${Number(colorRow.totalQuantity || 0).toLocaleString()}`}
-                              </Typography>
+                            {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
+                              SIZE_COLUMNS.map((size, sizeIndex) => (
+                                <TableCell
+                                  key={`${colorRow.key}-${genderCode}-${size}`}
+                                  sx={{
+                                    textAlign: 'right',
+                                    whiteSpace: 'nowrap',
+                                    fontVariantNumeric: 'tabular-nums',
+                                    borderLeftWidth:
+                                      genderIndex > 0 && sizeIndex === 0 ? 2 : undefined,
+                                  }}
+                                >
+                                  {Number(colorRow.sizeByGender?.[genderCode]?.[size] || 0).toLocaleString()}
+                                </TableCell>
+                              ))
+                            )}
+                            <TableCell
+                              sx={{
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {Number(colorRow.totalQuantity || 0).toLocaleString()}
                             </TableCell>
                           </TableRow>
                         );
