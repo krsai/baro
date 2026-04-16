@@ -112,6 +112,8 @@ const ORDER_DETAIL_VIEW_MODES = {
 const GENDER_OPTIONS = GENDER_CODES;
 const ORDER_DETAIL_HORIZONTAL_GENDERS = ['M', 'W', 'U'];
 const ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER = '1px solid #dbe3ec';
+const ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH = 220;
+const ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH = 160;
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
@@ -2583,9 +2585,14 @@ const OrderList = () => {
     focusStyleInput(nextItem.id);
   };
 
-  const handleRemoveItem = (itemId) => {
+  const handleRemoveItem = (itemIdOrIds) => {
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    const targetIdSet = new Set(targetIds);
+    if (!targetIdSet.size) return;
     setFormData((prev) => {
-      const nextItems = prev.items.filter((item) => item.id !== itemId);
+      const nextItems = (Array.isArray(prev.items) ? prev.items : []).filter(
+        (item) => !targetIdSet.has(String(item?.id || '').trim())
+      );
       return { ...prev, items: nextItems.length ? nextItems : [createOrderItem()] };
     });
   };
@@ -2889,11 +2896,63 @@ const OrderList = () => {
 
     const targetItemId = String(colorRow?.itemByGender?.[normalizedGender]?.id || '').trim();
     if (targetItemId) {
-      handleSizeQuantityChange(targetItemId, normalizedSize, normalizedValue);
+      setFormData((prev) => {
+        const previewItems = (Array.isArray(prev.items) ? prev.items : []).map((item) => {
+          const currentItemId = String(item?.id || '').trim();
+          if (currentItemId !== targetItemId) return item;
+          const currentGender = normalizeGenderCode(item?.gender, '');
+          return {
+            ...item,
+            gender: currentGender || normalizedGender,
+            sizeQuantities: {
+              ...normalizeSizeQuantities(item?.sizeQuantities),
+              [normalizedSize]: normalizedValue,
+            },
+          };
+        });
+        if (hasDuplicateStyleColorGender(previewItems)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          items: previewItems,
+        };
+      });
       return;
     }
 
     if (!normalizedValue) return;
+
+    const emptyGenderRow = (Array.isArray(colorRow?.rows) ? colorRow.rows : []).find((row) => {
+      const rowGender = normalizeGenderCode(row?.item?.gender, '');
+      if (rowGender) return false;
+      return !hasAnySizeQuantity(normalizeSizeQuantities(row?.item?.sizeQuantities));
+    });
+    const emptyGenderRowId = String(emptyGenderRow?.item?.id || '').trim();
+    if (emptyGenderRowId) {
+      setFormData((prev) => {
+        const previewItems = (Array.isArray(prev.items) ? prev.items : []).map((item) => {
+          const currentItemId = String(item?.id || '').trim();
+          if (currentItemId !== emptyGenderRowId) return item;
+          return {
+            ...item,
+            gender: normalizedGender,
+            sizeQuantities: {
+              ...normalizeSizeQuantities(item?.sizeQuantities),
+              [normalizedSize]: normalizedValue,
+            },
+          };
+        });
+        if (hasDuplicateStyleColorGender(previewItems)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          items: previewItems,
+        };
+      });
+      return;
+    }
 
     const referenceItem = colorRow?.referenceItem || null;
     const nextStyleId = String(group?.styleId || referenceItem?.styleId || '').trim();
@@ -4040,10 +4099,24 @@ const OrderList = () => {
                       >
                         No
                       </TableCell>
-                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 220 }}>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{
+                          fontWeight: 'bold',
+                          width: ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH,
+                          minWidth: ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH,
+                        }}
+                      >
                         {orderPageText.detailStyleNameCode}
                       </TableCell>
-                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 140 }}>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{
+                          fontWeight: 'bold',
+                          width: ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH,
+                          minWidth: ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH,
+                        }}
+                      >
                         {orderPageText.color}
                       </TableCell>
                       {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) => (
@@ -4070,6 +4143,12 @@ const OrderList = () => {
                         sx={{ fontWeight: 'bold', width: 96, textAlign: 'right' }}
                       >
                         {orderPageText.total}
+                      </TableCell>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{ fontWeight: 'bold', width: 64, textAlign: 'center' }}
+                      >
+                        {getUiMessage('common.delete', 'Delete', languageCode)}
                       </TableCell>
                     </TableRow>
                     <TableRow>
@@ -4157,6 +4236,8 @@ const OrderList = () => {
                                 sx={{
                                   verticalAlign: 'top',
                                   pt: 1,
+                                  width: ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH,
+                                  minWidth: ORDER_DETAIL_HORIZONTAL_STYLE_COLUMN_WIDTH,
                                   backgroundColor: `${groupPastelStyle.background} !important`,
                                   borderBottomColor: `${groupPastelStyle.border} !important`,
                                 }}
@@ -4192,7 +4273,12 @@ const OrderList = () => {
                                 />
                               </TableCell>
                             )}
-                            <TableCell>
+                            <TableCell
+                              sx={{
+                                width: ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH,
+                                minWidth: ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH,
+                              }}
+                            >
                               <FormControl fullWidth size="small">
                                 <SearchableSelect
                                   options={normalizedColorOptions}
@@ -4317,6 +4403,15 @@ const OrderList = () => {
                               }}
                             >
                               {Number(colorRow.totalQuantity || 0).toLocaleString()}
+                            </TableCell>
+                            <TableCell sx={{ textAlign: 'center' }}>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleRemoveItem(colorTargetIds)}
+                                disabled={!colorTargetIds.length}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
                             </TableCell>
                           </TableRow>
                         );
