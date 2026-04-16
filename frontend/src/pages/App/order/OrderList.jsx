@@ -643,6 +643,10 @@ const toNumericInputString = (value) => String(value ?? '').replace(/[^\d]/g, ''
 const isPositiveQuantityValue = (value) => (Number(value) || 0) > 0;
 const getQuantityTextColor = (value) =>
   isPositiveQuantityValue(value) ? 'text.primary' : 'text.disabled';
+const getDisplayQuantityInputValue = (value) => {
+  const normalized = toNumericInputString(value);
+  return isPositiveQuantityValue(normalized) ? normalized : '';
+};
 const createSizeQuantities = () =>
   SIZE_COLUMNS.reduce((acc, size) => {
     acc[size] = '';
@@ -2941,7 +2945,7 @@ const OrderList = () => {
     const normalizedSize = normalizeSizeKey(sizeKey);
     if (!targetItem || !normalizedSize) return '';
     const normalizedSizeQuantities = normalizeSizeQuantities(targetItem.sizeQuantities);
-    return normalizedSizeQuantities[normalizedSize];
+    return getDisplayQuantityInputValue(normalizedSizeQuantities[normalizedSize]);
   };
   const handleLastSizeInputKeyDown = (event) => {
     if (event.key !== 'Tab' || event.shiftKey) return;
@@ -3970,7 +3974,9 @@ const OrderList = () => {
                           </FormControl>
                         </TableCell>
                         {SIZE_COLUMNS.map((size) => {
-                          const sizeValue = normalizedSizeQuantities[size];
+                          const sizeValue = getDisplayQuantityInputValue(
+                            normalizedSizeQuantities[size]
+                          );
                           return (
                             <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.25 }}>
                               <TextField
