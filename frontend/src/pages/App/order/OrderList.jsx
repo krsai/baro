@@ -111,9 +111,12 @@ const ORDER_DETAIL_VIEW_MODES = {
 };
 const GENDER_OPTIONS = GENDER_CODES;
 const ORDER_DETAIL_HORIZONTAL_GENDERS = ['M', 'W', 'U'];
+const ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER = '1px solid #dbe3ec';
 const SIZE_COLUMNS = SIZE_CODES;
 const LAST_SIZE_COLUMN = SIZE_COLUMNS[SIZE_COLUMNS.length - 1] || '';
 const ORDER_DETAIL_SIZE_COLUMN_WIDTH = `${(38 / SIZE_COLUMNS.length).toFixed(3)}%`;
+const getSizeColumnHeaderLabel = (sizeCode) =>
+  String(sizeCode || '').toUpperCase() === 'FREE' ? 'F' : sizeCode;
 const ORDER_FILTER_DATE_PICKER_SLOT_PROPS = {
   textField: {
     sx: {
@@ -964,10 +967,10 @@ const OrderList = () => {
       styleAdd: getUiMessage('styleBoard.addStyle', 'Add Style', languageCode),
       detailStyleNameCode:
         languageCode === 'vi'
-          ? 'Chon ten/ma style'
+          ? 'Style'
           : languageCode === 'en'
-            ? 'Select Style Name/Code'
-            : '스타일명/코드 선택',
+            ? 'Style'
+            : '스타일',
       detailStyleCode:
         languageCode === 'vi'
           ? 'Ma style'
@@ -3701,8 +3704,7 @@ const OrderList = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>No</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '20%' }}>{orderPageText.detailStyleNameCode}</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold', width: '9%' }}>{orderPageText.detailStyleCode}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '29%' }}>{orderPageText.detailStyleNameCode}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '10%' }}>{orderPageText.color}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '7%' }}>{orderPageText.gender}</TableCell>
                   {SIZE_COLUMNS.map((size) => (
@@ -3715,7 +3717,7 @@ const OrderList = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {size}
+                      {getSizeColumnHeaderLabel(size)}
                     </TableCell>
                   ))}
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.total}</TableCell>
@@ -3814,32 +3816,6 @@ const OrderList = () => {
                                   ? orderPageText.noRegisteredStyles
                                   : orderPartyText.selectBuyerFirst
                               }
-                            />
-                          </TableCell>
-                        )}
-                        {isFirstRow && (
-                          <TableCell
-                            rowSpan={group.rows.length}
-                            sx={{
-                              verticalAlign: 'top',
-                              pt: 1,
-                              backgroundColor: `${groupPastelStyle.background} !important`,
-                              borderBottomColor: `${groupPastelStyle.border} !important`,
-                            }}
-                          >
-                            <TextField
-                              size="small"
-                              label={
-                                group.styleCode
-                                  ? orderPageText.detailStyleCodeAuto
-                                  : orderPageText.detailStyleCode
-                              }
-                              className={group.styleCode ? 'auto-selected-field' : undefined}
-                              value={group.styleCode || ''}
-                              fullWidth
-                              InputProps={{ readOnly: true }}
-                              disabled
-                              placeholder={orderPageText.autoInput}
                             />
                           </TableCell>
                         )}
@@ -4003,9 +3979,6 @@ const OrderList = () => {
                       <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 220 }}>
                         {orderPageText.detailStyleNameCode}
                       </TableCell>
-                      <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 120 }}>
-                        {orderPageText.detailStyleCode}
-                      </TableCell>
                       <TableCell rowSpan={2} sx={{ fontWeight: 'bold', minWidth: 140 }}>
                         {orderPageText.color}
                       </TableCell>
@@ -4017,7 +3990,8 @@ const OrderList = () => {
                             fontWeight: 'bold',
                             textAlign: 'center',
                             whiteSpace: 'nowrap',
-                            borderLeftWidth: genderIndex === 0 ? 1 : 2,
+                            borderLeft:
+                              genderIndex > 0 ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER : undefined,
                           }}
                         >
                           {getGenderLabel(
@@ -4044,11 +4018,13 @@ const OrderList = () => {
                               textAlign: 'center',
                               whiteSpace: 'nowrap',
                               minWidth: 72,
-                              borderLeftWidth:
-                                genderIndex > 0 && sizeIndex === 0 ? 2 : undefined,
+                              borderLeft:
+                                genderIndex > 0 && sizeIndex === 0
+                                  ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
+                                  : undefined,
                             }}
                           >
-                            {size}
+                            {getSizeColumnHeaderLabel(size)}
                           </TableCell>
                         ))
                       )}
@@ -4060,7 +4036,6 @@ const OrderList = () => {
                       return group.colorRows.map((colorRow, rowIndex) => {
                         const isFirstColorRow = rowIndex === 0;
                         const styleName = String(group.styleName || '').trim() || '-';
-                        const styleCode = String(group.styleCode || '').trim() || '-';
 
                         return (
                           <TableRow
@@ -4091,19 +4066,6 @@ const OrderList = () => {
                                 </Typography>
                               </TableCell>
                             )}
-                            {isFirstColorRow && (
-                              <TableCell
-                                rowSpan={group.colorRows.length}
-                                sx={{
-                                  verticalAlign: 'top',
-                                  pt: 1,
-                                  backgroundColor: `${groupPastelStyle.background} !important`,
-                                  borderBottomColor: `${groupPastelStyle.border} !important`,
-                                }}
-                              >
-                                <Typography variant="body2">{styleCode}</Typography>
-                              </TableCell>
-                            )}
                             <TableCell>
                               <Typography variant="body2">{colorRow.colorDisplayName}</Typography>
                             </TableCell>
@@ -4115,8 +4077,10 @@ const OrderList = () => {
                                     textAlign: 'right',
                                     whiteSpace: 'nowrap',
                                     fontVariantNumeric: 'tabular-nums',
-                                    borderLeftWidth:
-                                      genderIndex > 0 && sizeIndex === 0 ? 2 : undefined,
+                                    borderLeft:
+                                      genderIndex > 0 && sizeIndex === 0
+                                        ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
+                                        : undefined,
                                   }}
                                 >
                                   {Number(colorRow.sizeByGender?.[genderCode]?.[size] || 0).toLocaleString()}
