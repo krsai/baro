@@ -492,17 +492,31 @@ const setInputElementInMap = (mapRef, key, node) => {
   }
   mapRef.current.delete(key);
 };
-const focusInputElementInMap = (mapRef, key) => {
+const focusInputElementInMap = (mapRef, key, maxRetries = 6) => {
   if (!key) return;
-  requestAnimationFrame(() => {
-    const node = mapRef.current.get(key);
-    if (node && typeof node.focus === 'function') {
-      node.focus();
+  const tryFocus = (remainingRetries) => {
+    requestAnimationFrame(() => {
+      const node = mapRef.current.get(key);
+      const isDisabled =
+        !node ||
+        node.disabled ||
+        node.getAttribute?.('disabled') != null ||
+        node.getAttribute?.('aria-disabled') === 'true';
+      if (isDisabled) {
+        if (remainingRetries > 0) {
+          tryFocus(remainingRetries - 1);
+        }
+        return;
+      }
+      if (typeof node.focus === 'function') {
+        node.focus();
+      }
       if (typeof node.select === 'function') {
         node.select();
       }
-    }
-  });
+    });
+  };
+  tryFocus(maxRetries);
 };
 const normalizeTextKey = (value) => String(value || '').trim().toLowerCase();
 const filterColorOptions = createAutocompleteFilterOptions({
@@ -1387,6 +1401,7 @@ const OrderList = () => {
   const [formData, setFormData] = useState(buildInitialFormData);
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
+  const pendingHorizontalStyleTabFocusItemIdRef = useRef('');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
   const hasTouchedDueDateFilterRef = useRef(false);
@@ -2577,6 +2592,7 @@ const OrderList = () => {
   const handleDetailViewModeChange = (_event, nextMode) => {
     if (!nextMode) return;
     setDetailViewMode(nextMode);
+    setDeferredMergeRowIds((prev) => (prev.size ? new Set() : prev));
   };
 
   const handleAddItem = () => {
@@ -2703,7 +2719,7 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
-    if (targetIdSet.size === 1) {
+    if (detailViewMode === ORDER_DETAIL_VIEW_MODES.VERTICAL && targetIdSet.size === 1) {
       const [singleTargetId = ''] = Array.from(targetIdSet);
       if (nextStyleIdentity) {
         deferRowMergeUntilBlur(singleTargetId);
@@ -4209,16 +4225,6 @@ const OrderList = () => {
                           <TableRow
                             key={colorRow.key}
                             data-order-style-item-row="true"
-                            onFocusCapture={() => {
-                              if (colorInputTargetId) {
-                                handleItemRowFocusCapture(colorInputTargetId);
-                              }
-                            }}
-                            onBlurCapture={(event) => {
-                              if (colorInputTargetId) {
-                                handleItemRowBlurCapture(colorInputTargetId, event);
-                              }
-                            }}
                             sx={{
                               '& > td': {
                                 backgroundColor: groupPastelStyle.background,
@@ -4246,18 +4252,45 @@ const OrderList = () => {
                                   options={availableStyleOptions}
                                   value={groupStyleOption}
                                   disabled={!selectedBuyerName}
-                                  onChange={(event, newValue, reason) =>
+                                  onChange={(event, newValue, reason) => {
+                                    const shouldFocusNext =
+                                      isTabAutocompleteSelection(event, reason) ||
+                                      pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                        colorInputTargetId;
                                     handleStyleChange(group.rowItemIds, newValue, {
-                                      focusNext: isTabAutocompleteSelection(event, reason),
+                                      focusNext:
+                                        shouldFocusNext,
                                       focusItemId: colorInputTargetId,
-                                    })
-                                  }
+                                    });
+                                    if (
+                                      pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                      colorInputTargetId
+                                    ) {
+                                      pendingHorizontalStyleTabFocusItemIdRef.current = '';
+                                    }
+                                  }}
                                   getOptionLabel={(option) => option?.name || ''}
                                   isOptionEqualToValue={(option, value) => option?.id === value?.id}
                                   autoHighlight
                                   textFieldProps={{
                                     size: 'small',
                                     placeholder: orderPageText.styleSearchPlaceholder,
+                                    inputProps: {
+                                      onKeyDown: (event) => {
+                                        if (event.key === 'Tab' && !event.shiftKey) {
+                                          pendingHorizontalStyleTabFocusItemIdRef.current =
+                                            colorInputTargetId;
+                                          window.requestAnimationFrame(() => {
+                                            if (
+                                              pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                              colorInputTargetId
+                                            ) {
+                                              pendingHorizontalStyleTabFocusItemIdRef.current = '';
+                                            }
+                                          });
+                                        }
+                                      },
+                                    },
                                     inputRef: (node) =>
                                       setInputElementInMap(
                                         styleInputRefs,
