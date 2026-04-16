@@ -954,10 +954,10 @@ const OrderList = () => {
             : '가로',
       detailHorizontalHint:
         languageCode === 'vi'
-          ? 'Che do ngang la bang tom tat theo style/mau. De sua, hay chuyen sang che do doc.'
+          ? 'Ban co the nhap/sua so luong truc tiep o che do ngang. Doi style/mau hay dung che do doc.'
           : languageCode === 'en'
-            ? 'Horizontal mode is a style/color summary view. Switch to vertical mode to edit.'
-            : '가로 모드는 스타일/색상 기준 요약 보기입니다. 수정은 세로 보기에서 진행해 주세요.',
+            ? 'You can edit quantities directly in horizontal mode. Use vertical mode for style/color changes.'
+            : '가로 모드에서 수량을 바로 입력/수정할 수 있습니다. 스타일/색상 변경은 세로 보기에서 진행해 주세요.',
       styleRegister:
         languageCode === 'vi'
           ? 'Dang ky style'
@@ -2110,6 +2110,9 @@ const OrderList = () => {
 
         return {
           ...colorGroup,
+          referenceItem:
+            (Array.isArray(colorGroup.rows) ? colorGroup.rows[0]?.item : null) || null,
+          itemByGender,
           sizeByGender,
           totalQuantity,
         };
@@ -2882,6 +2885,66 @@ const OrderList = () => {
           : item
       ),
     }));
+  };
+  const handleHorizontalSizeQuantityChange = (group, colorRow, genderCode, sizeKey, value) => {
+    const normalizedGender = normalizeGenderCode(genderCode, '');
+    const normalizedSize = normalizeSizeKey(sizeKey);
+    if (!normalizedGender || !normalizedSize) return;
+    const normalizedValue = toNumericInputString(value);
+
+    const targetItemId = String(colorRow?.itemByGender?.[normalizedGender]?.id || '').trim();
+    if (targetItemId) {
+      handleSizeQuantityChange(targetItemId, normalizedSize, normalizedValue);
+      return;
+    }
+
+    if (!normalizedValue) return;
+
+    const referenceItem = colorRow?.referenceItem || null;
+    const nextStyleId = String(group?.styleId || referenceItem?.styleId || '').trim();
+    const nextStyleName = String(group?.styleName || referenceItem?.styleName || '').trim();
+    const nextStyleCode = String(group?.styleCode || referenceItem?.styleCode || '').trim();
+    const nextStyleIdentity = nextStyleId || nextStyleName || nextStyleCode;
+    if (!nextStyleIdentity) return;
+
+    const colorId = toPositiveColorId(referenceItem?.colorId);
+    const colorCode = normalizeColorCode(referenceItem?.colorCode || referenceItem?.color || '');
+    const rawColorName = String(referenceItem?.colorName || '').trim();
+    const fallbackColorName = String(colorRow?.colorDisplayName || '').trim();
+    const colorName = rawColorName || (fallbackColorName === '-' ? '' : fallbackColorName);
+    if (!colorId && !colorCode && !colorName) return;
+
+    const sizeQuantities = createSizeQuantities();
+    sizeQuantities[normalizedSize] = normalizedValue;
+    const nextItem = {
+      id: createId('item'),
+      styleId: nextStyleId,
+      styleName: nextStyleName,
+      styleCode: nextStyleCode,
+      colorId,
+      colorCode,
+      colorName,
+      gender: normalizedGender,
+      sizeQuantities,
+    };
+
+    setFormData((prev) => {
+      const nextItems = [...(Array.isArray(prev.items) ? prev.items : []), nextItem];
+      if (hasDuplicateStyleColorGender(nextItems)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        items: nextItems,
+      };
+    });
+  };
+  const getHorizontalSizeInputValue = (colorRow, genderCode, sizeKey) => {
+    const targetItem = colorRow?.itemByGender?.[genderCode] || null;
+    const normalizedSize = normalizeSizeKey(sizeKey);
+    if (!targetItem || !normalizedSize) return '';
+    const normalizedSizeQuantities = normalizeSizeQuantities(targetItem.sizeQuantities);
+    return normalizedSizeQuantities[normalizedSize];
   };
   const handleLastSizeInputKeyDown = (event) => {
     if (event.key !== 'Tab' || event.shiftKey) return;
@@ -4077,13 +4140,43 @@ const OrderList = () => {
                                     textAlign: 'right',
                                     whiteSpace: 'nowrap',
                                     fontVariantNumeric: 'tabular-nums',
+                                    px: 0.35,
                                     borderLeft:
                                       genderIndex > 0 && sizeIndex === 0
                                         ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
                                         : undefined,
                                   }}
                                 >
-                                  {Number(colorRow.sizeByGender?.[genderCode]?.[size] || 0).toLocaleString()}
+                                  <TextField
+                                    value={getHorizontalSizeInputValue(colorRow, genderCode, size)}
+                                    onChange={(event) =>
+                                      handleHorizontalSizeQuantityChange(
+                                        group,
+                                        colorRow,
+                                        genderCode,
+                                        size,
+                                        event.target.value
+                                      )
+                                    }
+                                    size="small"
+                                    type="text"
+                                    placeholder="0"
+                                    sx={{
+                                      minWidth: 0,
+                                      '& .MuiInputBase-input': {
+                                        textAlign: 'right',
+                                        px: 0.6,
+                                        py: 0.45,
+                                        fontSize: 12,
+                                      },
+                                    }}
+                                    inputProps={{
+                                      inputMode: 'numeric',
+                                      pattern: '[0-9]*',
+                                      style: { textAlign: 'right' },
+                                    }}
+                                    fullWidth
+                                  />
                                 </TableCell>
                               ))
                             )}
