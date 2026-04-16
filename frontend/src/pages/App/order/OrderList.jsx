@@ -640,6 +640,9 @@ const normalizeSizeKey = (value) => {
   return '';
 };
 const toNumericInputString = (value) => String(value ?? '').replace(/[^\d]/g, '');
+const isPositiveQuantityValue = (value) => (Number(value) || 0) > 0;
+const getQuantityTextColor = (value) =>
+  isPositiveQuantityValue(value) ? 'text.primary' : 'text.disabled';
 const createSizeQuantities = () =>
   SIZE_COLUMNS.reduce((acc, size) => {
     acc[size] = '';
@@ -952,12 +955,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Horizontal'
             : '가로',
-      detailHorizontalHint:
-        languageCode === 'vi'
-          ? 'Ban co the nhap/sua so luong truc tiep o che do ngang. Doi style/mau hay dung che do doc.'
-          : languageCode === 'en'
-            ? 'You can edit quantities directly in horizontal mode. Use vertical mode for style/color changes.'
-            : '가로 모드에서 수량을 바로 입력/수정할 수 있습니다. 스타일/색상 변경은 세로 보기에서 진행해 주세요.',
       styleRegister:
         languageCode === 'vi'
           ? 'Dang ky style'
@@ -3740,11 +3737,6 @@ const OrderList = () => {
           </Box>
 
           <Paper variant="outlined" sx={{ mb: 2 }}>
-            {detailViewMode === ORDER_DETAIL_VIEW_MODES.HORIZONTAL && (
-              <Alert severity="info" sx={{ mb: 1.5, mx: 1.5, mt: 1.5 }}>
-                {orderPageText.detailHorizontalHint}
-              </Alert>
-            )}
             <TableContainer
               sx={{
                 width: '100%',
@@ -3977,37 +3969,49 @@ const OrderList = () => {
                             />
                           </FormControl>
                         </TableCell>
-                        {SIZE_COLUMNS.map((size) => (
-                          <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.25 }}>
-                            <TextField
-                              value={normalizedSizeQuantities[size]}
-                              onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
-                              onKeyDown={size === LAST_SIZE_COLUMN ? handleLastSizeInputKeyDown : undefined}
-                              inputRef={(node) =>
-                                setInputElementInMap(sizeInputRefs, `${item.id}::${size}`, node)
-                              }
-                              size="small"
-                              type="text"
-                              placeholder="0"
-                              sx={{
-                                minWidth: 0,
-                                '& .MuiInputBase-input': {
-                                  textAlign: 'right',
-                                  px: 0.75,
-                                  py: 0.625,
-                                  fontSize: 12,
-                                },
-                              }}
-                              inputProps={{
-                                inputMode: 'numeric',
-                                pattern: '[0-9]*',
-                                style: { textAlign: 'right' },
-                              }}
-                              fullWidth
-                            />
-                          </TableCell>
-                        ))}
-                        <TableCell sx={{ textAlign: 'right', fontWeight: 600 }}>{itemTotal}</TableCell>
+                        {SIZE_COLUMNS.map((size) => {
+                          const sizeValue = normalizedSizeQuantities[size];
+                          return (
+                            <TableCell key={`${item.id}-${size}`} sx={{ textAlign: 'center', px: 0.25 }}>
+                              <TextField
+                                value={sizeValue}
+                                onChange={(event) => handleSizeQuantityChange(item.id, size, event.target.value)}
+                                onKeyDown={size === LAST_SIZE_COLUMN ? handleLastSizeInputKeyDown : undefined}
+                                inputRef={(node) =>
+                                  setInputElementInMap(sizeInputRefs, `${item.id}::${size}`, node)
+                                }
+                                size="small"
+                                type="text"
+                                placeholder="0"
+                                sx={{
+                                  minWidth: 0,
+                                  '& .MuiInputBase-input': {
+                                    textAlign: 'right',
+                                    px: 0.75,
+                                    py: 0.625,
+                                    fontSize: 12,
+                                    color: getQuantityTextColor(sizeValue),
+                                  },
+                                }}
+                                inputProps={{
+                                  inputMode: 'numeric',
+                                  pattern: '[0-9]*',
+                                  style: { textAlign: 'right' },
+                                }}
+                                fullWidth
+                              />
+                            </TableCell>
+                          );
+                        })}
+                        <TableCell
+                          sx={{
+                            textAlign: 'right',
+                            fontWeight: 600,
+                            color: getQuantityTextColor(itemTotal),
+                          }}
+                        >
+                          {itemTotal}
+                        </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
                             <DeleteIcon fontSize="small" />
@@ -4133,58 +4137,67 @@ const OrderList = () => {
                               <Typography variant="body2">{colorRow.colorDisplayName}</Typography>
                             </TableCell>
                             {ORDER_DETAIL_HORIZONTAL_GENDERS.map((genderCode, genderIndex) =>
-                              SIZE_COLUMNS.map((size, sizeIndex) => (
-                                <TableCell
-                                  key={`${colorRow.key}-${genderCode}-${size}`}
-                                  sx={{
-                                    textAlign: 'right',
-                                    whiteSpace: 'nowrap',
-                                    fontVariantNumeric: 'tabular-nums',
-                                    px: 0.35,
-                                    borderLeft:
-                                      genderIndex > 0 && sizeIndex === 0
-                                        ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
-                                        : undefined,
-                                  }}
-                                >
-                                  <TextField
-                                    value={getHorizontalSizeInputValue(colorRow, genderCode, size)}
-                                    onChange={(event) =>
-                                      handleHorizontalSizeQuantityChange(
-                                        group,
-                                        colorRow,
-                                        genderCode,
-                                        size,
-                                        event.target.value
-                                      )
-                                    }
-                                    size="small"
-                                    type="text"
-                                    placeholder="0"
+                              SIZE_COLUMNS.map((size, sizeIndex) => {
+                                const horizontalSizeValue = getHorizontalSizeInputValue(
+                                  colorRow,
+                                  genderCode,
+                                  size
+                                );
+                                return (
+                                  <TableCell
+                                    key={`${colorRow.key}-${genderCode}-${size}`}
                                     sx={{
-                                      minWidth: 0,
-                                      '& .MuiInputBase-input': {
-                                        textAlign: 'right',
-                                        px: 0.6,
-                                        py: 0.45,
-                                        fontSize: 12,
-                                      },
+                                      textAlign: 'right',
+                                      whiteSpace: 'nowrap',
+                                      fontVariantNumeric: 'tabular-nums',
+                                      px: 0.35,
+                                      borderLeft:
+                                        genderIndex > 0 && sizeIndex === 0
+                                          ? ORDER_DETAIL_HORIZONTAL_GROUP_DIVIDER
+                                          : undefined,
                                     }}
-                                    inputProps={{
-                                      inputMode: 'numeric',
-                                      pattern: '[0-9]*',
-                                      style: { textAlign: 'right' },
-                                    }}
-                                    fullWidth
-                                  />
-                                </TableCell>
-                              ))
+                                  >
+                                    <TextField
+                                      value={horizontalSizeValue}
+                                      onChange={(event) =>
+                                        handleHorizontalSizeQuantityChange(
+                                          group,
+                                          colorRow,
+                                          genderCode,
+                                          size,
+                                          event.target.value
+                                        )
+                                      }
+                                      size="small"
+                                      type="text"
+                                      placeholder="0"
+                                      sx={{
+                                        minWidth: 0,
+                                        '& .MuiInputBase-input': {
+                                          textAlign: 'right',
+                                          px: 0.6,
+                                          py: 0.45,
+                                          fontSize: 12,
+                                          color: getQuantityTextColor(horizontalSizeValue),
+                                        },
+                                      }}
+                                      inputProps={{
+                                        inputMode: 'numeric',
+                                        pattern: '[0-9]*',
+                                        style: { textAlign: 'right' },
+                                      }}
+                                      fullWidth
+                                    />
+                                  </TableCell>
+                                );
+                              })
                             )}
                             <TableCell
                               sx={{
                                 textAlign: 'right',
                                 fontWeight: 600,
                                 fontVariantNumeric: 'tabular-nums',
+                                color: getQuantityTextColor(colorRow.totalQuantity),
                               }}
                             >
                               {Number(colorRow.totalQuantity || 0).toLocaleString()}
