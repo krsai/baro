@@ -168,6 +168,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
   isSelected,
   onSelect,
   onOpenContextMenu,
+  onDisabledCardDragAttempt,
 }) {
   return (
     <Box
@@ -184,6 +185,7 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
         card={card}
         onSelect={onSelect}
         onOpenContextMenu={onOpenContextMenu}
+        onDisabledDragAttempt={onDisabledCardDragAttempt}
       />
     </Box>
   );
@@ -197,6 +199,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
   languageCode,
   onSelectCard,
   onOpenContextMenu,
+  onDisabledCardDragAttempt,
 }) {
   const summaryText = loading
     ? getUiMessage('assign.cardsSyncing', '카드 동기화 중...', languageCode)
@@ -292,6 +295,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
                   isSelected={card.id === selectedCardId}
                   onSelect={onSelectCard}
                   onOpenContextMenu={onOpenContextMenu}
+                  onDisabledCardDragAttempt={onDisabledCardDragAttempt}
                 />
               ))}
             </Stack>
@@ -2297,6 +2301,7 @@ const AssignBoard = () => {
   const detailStyleFetchAttemptRef = useRef(new Set());
   const startDateRef = useRef(getMonthStartDate());
   const splitCounterRef = useRef(1);
+  const disabledCardDragNoticeAtRef = useRef(0);
   const lastSavedSnapshotRef = useRef('');
   const historyPastRef = useRef([]);
   const historyFutureRef = useRef([]);
@@ -2358,6 +2363,21 @@ const AssignBoard = () => {
   const preventToolbarButtonFocus = useCallback((event) => {
     event.preventDefault();
   }, []);
+  const handleDisabledCardDragAttempt = useCallback(() => {
+    const now = Date.now();
+    if (now - disabledCardDragNoticeAtRef.current < 1200) return;
+    disabledCardDragNoticeAtRef.current = now;
+    const fallbackMessage =
+      languageCode === 'vi'
+        ? 'Chi co the phan cong sau khi dang ky PT/ST.'
+        : languageCode === 'en'
+          ? 'You can assign only after registering PT/ST.'
+          : 'PT/ST 등록 후에 배정이 가능합니다.';
+    showNotification(
+      getUiMessage('assign.dragRequiresPtOrSt', fallbackMessage, languageCode),
+      'info'
+    );
+  }, [languageCode, showNotification]);
 
   useEffect(() => {
     stylesRef.current = styles;
@@ -4783,6 +4803,7 @@ const AssignBoard = () => {
               languageCode={languageCode}
               onSelectCard={handleSelectCard}
               onOpenContextMenu={handleContextMenuOpen}
+              onDisabledCardDragAttempt={handleDisabledCardDragAttempt}
             />
           </Grid>
           <Grid item xs={12} md={8} sx={{ minWidth: 0 }}>

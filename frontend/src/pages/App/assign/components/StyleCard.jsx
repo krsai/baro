@@ -18,7 +18,7 @@ const getCardBasis = (card) => {
   return 'NONE';
 };
 
-const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
+const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt }) => {
   const { languageCode } = useLanguage();
   const isDeltaCard = card.type === 'DELTA';
   const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
@@ -43,6 +43,11 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0 : 1,
   };
+  const handlePointerDown = (event) => {
+    if (!isDisabled) return;
+    if (typeof event?.button === 'number' && event.button !== 0) return;
+    onDisabledDragAttempt?.(card);
+  };
 
   const cardStyleName = isDeltaCard ? card.label : card.styleName;
   const previewUrl = card.previewUrl || card.imageUrl || card.thumbnailUrl || '';
@@ -65,6 +70,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu }) => {
       variant="outlined"
       {...attributes}
       {...listeners}
+      onPointerDown={handlePointerDown}
       onClick={() => onSelect?.(card.id)}
       onContextMenu={(event) => {
         event.preventDefault();
