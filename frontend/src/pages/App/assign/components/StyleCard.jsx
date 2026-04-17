@@ -44,6 +44,8 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt })
     opacity: isDragging ? 0 : 1,
   };
   const handlePointerDown = (event) => {
+    // Keep dnd-kit pointer activation intact, then apply disabled-card feedback.
+    listeners?.onPointerDown?.(event);
     if (!isDisabled) return;
     if (typeof event?.button === 'number' && event.button !== 0) return;
     onDisabledDragAttempt?.({
