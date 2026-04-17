@@ -56,7 +56,7 @@ import {
 } from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
-  part: null,
+  parts: [],
   targets: [],
   actions: [],
   spec: null,
@@ -503,7 +503,13 @@ const normalizeProcessCompositionEntries = (values, kind) => {
 };
 
 const buildProcessComposition = (draft) => {
-  const part = normalizeProcessCompositionEntry(draft?.part, 'part');
+  const partInputs = Array.isArray(draft?.parts)
+    ? draft.parts
+    : draft?.part
+      ? [draft.part]
+      : [];
+  const parts = normalizeProcessCompositionEntries(partInputs, 'part');
+  const part = parts[0] ?? null;
   const targetInputs = Array.isArray(draft?.targets)
     ? draft.targets
     : draft?.target
@@ -514,11 +520,11 @@ const buildProcessComposition = (draft) => {
   const spec = normalizeProcessCompositionEntry(draft?.spec, 'spec');
   const specs = spec ? [spec] : [];
 
-  if (!part && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+  if (parts.length === 0 && targets.length === 0 && actions.length === 0 && specs.length === 0) {
     return null;
   }
 
-  return { part, targets, actions, specs };
+  return { part, parts, targets, actions, specs };
 };
 
 const resolveProcessCompositionText = (entry, languageCode) => {
@@ -537,7 +543,15 @@ const buildProcessNameFromComposition = (composition, languageCode, fallback = '
     return String(fallback ?? '').trim();
   }
 
-  const partText = resolveProcessCompositionText(composition.part, languageCode);
+  const partEntries = Array.isArray(composition.parts)
+    ? composition.parts
+    : composition.part
+      ? [composition.part]
+      : [];
+  const partText = partEntries
+    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .filter(Boolean)
+    .join('·');
   const targetText = (Array.isArray(composition.targets) ? composition.targets : [])
     .map((entry) => resolveProcessCompositionText(entry, languageCode))
     .filter(Boolean)
@@ -574,7 +588,12 @@ const buildProcessCodeFromComposition = (composition, fallback = null) => {
   }
 
   const tokens = [
-    composition?.part?.code ?? null,
+    ...(Array.isArray(composition?.parts)
+      ? composition.parts
+      : composition?.part
+        ? [composition.part]
+        : []
+    ).map((entry) => entry?.code),
     ...(Array.isArray(composition?.targets) ? composition.targets : []).map((entry) => entry?.code),
     ...(Array.isArray(composition?.actions) ? composition.actions : []).map((entry) => entry?.code),
     ...(Array.isArray(composition?.specs) ? composition.specs : []).map(
@@ -765,9 +784,14 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
     : composition?.target
       ? [composition.target]
       : [];
+  const existingParts = Array.isArray(composition?.parts)
+    ? composition.parts
+    : composition?.part
+      ? [composition.part]
+      : [];
 
   return {
-    part: normalizeProcessCompositionEntry(composition?.part, 'part'),
+    parts: normalizeProcessCompositionEntries(existingParts, 'part'),
     targets: normalizeProcessCompositionEntries(existingTargets, 'target'),
     actions: normalizeProcessCompositionEntries(composition?.actions, 'action'),
     spec: normalizeProcessCompositionEntry(
@@ -1025,7 +1049,9 @@ const StyleProcess = ({
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
-    if (!draft.part) return getStyleProcessMessage(languageCode, 'validatePart');
+    if (!Array.isArray(draft.parts) || draft.parts.length === 0) {
+      return getStyleProcessMessage(languageCode, 'validatePart');
+    }
     if (!Array.isArray(draft.actions) || draft.actions.length === 0) {
       return getStyleProcessMessage(languageCode, 'validateAction');
     }
@@ -1413,13 +1439,15 @@ const StyleProcess = ({
               sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
             >
               <Autocomplete
+                multiple
                 size="small"
                 options={partOptions}
-                value={addDraft.part}
+                value={Array.isArray(addDraft.parts) ? addDraft.parts : []}
+                disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
                     ...prev,
-                    part: normalizeProcessCompositionEntry(value, 'part'),
+                    parts: normalizeProcessCompositionEntries(value, 'part'),
                   }));
                   setAddError('');
                 }}
@@ -1428,6 +1456,7 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(option, 'PART') ===
                   getProcessMasterOptionIdentity(value, 'PART')
                 }
+                filterSelectedOptions
                 renderInput={(params) => (
                   <TextField {...params} label={getStyleProcessMessage(languageCode, 'partLabel')} />
                 )}

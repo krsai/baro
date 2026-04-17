@@ -1308,7 +1308,7 @@ const normalizeStyleProcessCompositionEntry = (
 
 const normalizeStyleProcessCompositionEntries = (
   value: any,
-  kind: "target" | "action" | "spec"
+  kind: "part" | "target" | "action" | "spec"
 ) => {
   const entries = ensureArray(value)
     .map((item) => normalizeStyleProcessCompositionEntry(item, kind))
@@ -1325,14 +1325,19 @@ const normalizeStyleProcessCompositionEntries = (
 
 const normalizeStyleProcessComposition = (value: any) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const part = normalizeStyleProcessCompositionEntry((value as any)?.part, "part");
+  const partInputs = [
+    ...ensureArray((value as any)?.parts),
+    ...(value as any)?.part ? [(value as any).part] : [],
+  ];
+  const parts = normalizeStyleProcessCompositionEntries(partInputs, "part");
+  const part = parts[0] ?? null;
   const targets = normalizeStyleProcessCompositionEntries((value as any)?.targets, "target");
   const actions = normalizeStyleProcessCompositionEntries((value as any)?.actions, "action");
   const specs = normalizeStyleProcessCompositionEntries((value as any)?.specs, "spec");
-  if (!part && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+  if (parts.length === 0 && targets.length === 0 && actions.length === 0 && specs.length === 0) {
     return null;
   }
-  return { part, targets, actions, specs };
+  return { part, parts, targets, actions, specs };
 };
 
 const resolveStyleProcessCompositionText = (
@@ -1359,7 +1364,10 @@ const buildStyleProcessNameFromComposition = (
     return resolveOptionalString(fallback, null);
   }
 
-  const partText = resolveStyleProcessCompositionText(normalizedComposition.part, language);
+  const partText = normalizedComposition.parts
+    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+    .filter(Boolean)
+    .join("·");
   const targetText = normalizedComposition.targets
     .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
     .filter(Boolean)
@@ -1416,7 +1424,9 @@ const buildStyleProcessCodeFromComposition = (
     return normalizeStyleProcessCodeSegment(fallback);
   }
   const tokens = [
-    resolveOptionalString(normalizedComposition.part?.code, null),
+    ...normalizedComposition.parts.map((entry: any) =>
+      resolveOptionalString(entry?.code, null)
+    ),
     ...normalizedComposition.targets.map((entry: any) =>
       resolveOptionalString(entry?.code, null)
     ),
