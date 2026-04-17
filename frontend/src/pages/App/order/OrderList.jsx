@@ -663,6 +663,11 @@ const getDisplayQuantityInputValue = (value) => {
   const normalized = toNumericInputString(value);
   return isPositiveQuantityValue(normalized) ? normalized : '';
 };
+const formatQuantityDisplay = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '-';
+  return parsed.toLocaleString();
+};
 const createSizeQuantities = () =>
   SIZE_COLUMNS.reduce((acc, size) => {
     acc[size] = '';
@@ -4054,7 +4059,7 @@ const OrderList = () => {
                                 }
                                 size="small"
                                 type="text"
-                                placeholder="0"
+                                placeholder="-"
                                 sx={{
                                   minWidth: 0,
                                   '& .MuiInputBase-input': {
@@ -4082,7 +4087,7 @@ const OrderList = () => {
                             color: getQuantityTextColor(itemTotal),
                           }}
                         >
-                          {itemTotal}
+                          {formatQuantityDisplay(itemTotal)}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
@@ -4405,7 +4410,7 @@ const OrderList = () => {
                                       }
                                       size="small"
                                       type="text"
-                                      placeholder="0"
+                                      placeholder="-"
                                       sx={{
                                         minWidth: 0,
                                         '& .MuiInputBase-input': {
@@ -4435,7 +4440,7 @@ const OrderList = () => {
                                 color: getQuantityTextColor(colorRow.totalQuantity),
                               }}
                             >
-                              {Number(colorRow.totalQuantity || 0).toLocaleString()}
+                              {formatQuantityDisplay(colorRow.totalQuantity)}
                             </TableCell>
                             <TableCell sx={{ textAlign: 'center' }}>
                               <IconButton
@@ -4458,7 +4463,7 @@ const OrderList = () => {
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-            {orderPageText.orderTotalQuantity}: {getOrderTotal().toLocaleString()}
+            {orderPageText.orderTotalQuantity}: {formatQuantityDisplay(getOrderTotal())}
           </Typography>
         </Box>
         </Box>

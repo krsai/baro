@@ -12,6 +12,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
 import {
@@ -37,7 +38,12 @@ const MESSAGES = {
     pt: 'PT',
     st: 'ST',
     at: 'AT',
-    manualLegend: '\uD30C\uB780\uC0C9 ST\uB294 \uC218\uB3D9 \uC785\uB825\uAC12',
+    stInputLegend: '\uD30C\uB780 \uD14C\uB450\uB9AC ST\uB294 \uC785\uB825 \uCE78',
+    ptReadonlyLegend: 'PT\uB294 \uC77D\uAE30 \uC804\uC6A9',
+    atAutoLegend: 'AT\uB294 \uC790\uB3D9 \uACC4\uC0B0(\uC77D\uAE30 \uC804\uC6A9)',
+    manualLegend: '\uC5F0\uD55C \uD30C\uB780 ST\uB294 \uC218\uB3D9 \uC785\uB825\uAC12',
+    readonlyBadge: '\uC77D\uAE30 \uC804\uC6A9',
+    autoBadge: '\uC790\uB3D9',
     unitLegend: '\uBAA8\uB4E0 \uAC12 \uB2E8\uC704: \uCD08',
     empty: '\uB4F1\uB85D\uB41C \uACF5\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
   },
@@ -48,7 +54,12 @@ const MESSAGES = {
     pt: 'PT',
     st: 'ST',
     at: 'AT',
-    manualLegend: 'Blue ST means manual input',
+    stInputLegend: 'Blue outlined ST is editable',
+    ptReadonlyLegend: 'PT is read-only',
+    atAutoLegend: 'AT is auto-calculated (read-only)',
+    manualLegend: 'Light-blue ST means manual input',
+    readonlyBadge: 'READ ONLY',
+    autoBadge: 'AUTO',
     unitLegend: 'All values are in seconds',
     empty: 'No process rows registered.',
   },
@@ -59,7 +70,12 @@ const MESSAGES = {
     pt: 'PT',
     st: 'ST',
     at: 'AT',
-    manualLegend: 'ST mau xanh la gia tri nhap tay',
+    stInputLegend: 'ST vien xanh la o nhap',
+    ptReadonlyLegend: 'PT la gia tri chi doc',
+    atAutoLegend: 'AT la gia tri tu dong (chi doc)',
+    manualLegend: 'ST xanh nhat la gia tri nhap tay',
+    readonlyBadge: 'CHI DOC',
+    autoBadge: 'AUTO',
     unitLegend: 'Tat ca gia tri deu tinh theo giay',
     empty: 'Chua co cong doan nao.',
   },
@@ -172,6 +188,20 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
 const buildDraftKey = (processInstanceId, quantity) =>
   `${String(processInstanceId || '')}::${String(quantity)}`;
 const SECONDS_CELL_WIDTH = 82;
+const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
+
+const resolveProcessGroupPalette = (processIndex = 0) => {
+  const safeIndex = Number.isFinite(Number(processIndex)) ? Math.abs(Number(processIndex)) : 0;
+  const accent = PROCESS_GROUP_ACCENTS[safeIndex % PROCESS_GROUP_ACCENTS.length];
+  return {
+    accent,
+    rowBackground: alpha(accent, 0.055),
+    rowBorder: alpha(accent, 0.2),
+    processCellBackground: alpha(accent, 0.12),
+    metricCellBackground: alpha(accent, 0.08),
+  };
+};
+
 const SECONDS_DISPLAY_BOX_SX = {
   width: SECONDS_CELL_WIDTH,
   minHeight: 32,
@@ -180,8 +210,6 @@ const SECONDS_DISPLAY_BOX_SX = {
   py: 0.6,
   borderRadius: 1,
   border: '1px solid',
-  borderColor: 'divider',
-  backgroundColor: 'grey.50',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -190,13 +218,20 @@ const SECONDS_DISPLAY_BOX_SX = {
   lineHeight: 1.2,
 };
 
-const renderReadonlySecondsBox = (value) => {
+const renderReadonlySecondsBox = (value, type = 'pt') => {
   const hasValue = value != null;
+  const isPt = type === 'pt';
+  const isAt = type === 'at';
   return (
     <Box
       sx={{
         ...SECONDS_DISPLAY_BOX_SX,
-        color: hasValue ? 'text.primary' : 'text.disabled',
+        borderStyle: isAt ? 'dashed' : 'solid',
+        borderColor: isAt ? alpha('#111827', 0.16) : alpha('#111827', 0.2),
+        backgroundColor: isAt ? '#F8FAFC' : '#F3F5F8',
+        boxShadow: isAt ? 'none' : `inset 0 1px 0 ${alpha('#FFFFFF', 0.75)}`,
+        color: hasValue ? (isAt ? 'text.secondary' : 'text.primary') : 'text.disabled',
+        fontWeight: hasValue ? (isPt ? 600 : 500) : 500,
       }}
     >
       {hasValue ? formatSecondsPlain(value) : '-'}
@@ -272,17 +307,61 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {resolveMessage(languageCode, 'title')}
         </Typography>
-        <Stack direction="row" spacing={0.75} alignItems="center">
-          <Box
-            sx={{
-              width: 12,
-              height: 12,
-              borderRadius: 1,
-              border: '1px solid #3B82F6',
-              backgroundColor: '#EAF2FF',
-              flexShrink: 0,
-            }}
-          />
+        <Stack direction="row" spacing={0.9} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Box
+              sx={{
+                width: 12,
+                height: 12,
+                borderRadius: 0.75,
+                border: '1.5px solid #2563EB',
+                backgroundColor: '#FFFFFF',
+                flexShrink: 0,
+              }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {resolveMessage(languageCode, 'stInputLegend')}
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.disabled">
+            ·
+          </Typography>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Box
+              sx={{
+                width: 12,
+                height: 12,
+                borderRadius: 0.75,
+                border: `1px solid ${alpha('#111827', 0.22)}`,
+                backgroundColor: '#F3F5F8',
+                flexShrink: 0,
+              }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {resolveMessage(languageCode, 'ptReadonlyLegend')}
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.disabled">
+            ·
+          </Typography>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            <Box
+              sx={{
+                width: 12,
+                height: 12,
+                borderRadius: 0.75,
+                border: `1px dashed ${alpha('#111827', 0.2)}`,
+                backgroundColor: '#F8FAFC',
+                flexShrink: 0,
+              }}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {resolveMessage(languageCode, 'atAutoLegend')}
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.disabled">
+            ·
+          </Typography>
           <Typography variant="caption" color="text.secondary">
             {resolveMessage(languageCode, 'manualLegend')}
           </Typography>
@@ -338,24 +417,59 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                 const ptPerPiece = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
                 const processInstanceId =
                   process?.instanceId || process?.id || process?.code || `PROCESS-${processIndex + 1}`;
+                const groupPalette = resolveProcessGroupPalette(processIndex);
+                const processRowSx = {
+                  '& > td': {
+                    backgroundColor: groupPalette.rowBackground,
+                    borderBottomColor: groupPalette.rowBorder,
+                  },
+                };
 
                 return (
                   <React.Fragment key={processInstanceId}>
-                    <TableRow>
-                      <TableCell rowSpan={3} sx={{ fontWeight: 600, verticalAlign: 'middle' }}>
+                    <TableRow sx={processRowSx}>
+                      <TableCell
+                        rowSpan={3}
+                        sx={{
+                          fontWeight: 700,
+                          verticalAlign: 'middle',
+                          borderLeft: `4px solid ${groupPalette.accent}`,
+                          backgroundColor: `${groupPalette.processCellBackground} !important`,
+                        }}
+                      >
                         {processLabel}
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{resolveMessage(languageCode, 'pt')}</TableCell>
+                      <TableCell
+                        sx={{
+                          fontWeight: 700,
+                          backgroundColor: `${groupPalette.metricCellBackground} !important`,
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Box component="span">{resolveMessage(languageCode, 'pt')}</Box>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: 0.2 }}
+                          >
+                            {resolveMessage(languageCode, 'readonlyBadge')}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
                       {quantityBuckets.map((quantity) => (
                         <TableCell key={`${processInstanceId}-pt-${quantity}`} align="center">
-                          {renderReadonlySecondsBox(ptPerPiece)}
+                          {renderReadonlySecondsBox(ptPerPiece, 'pt')}
                         </TableCell>
                       ))}
                     </TableRow>
 
-                    <TableRow>
+                    <TableRow sx={processRowSx}>
                       <TableCell
-                        sx={{ fontWeight: 700, color: '#1D4ED8', backgroundColor: '#EEF4FF' }}
+                        sx={{
+                          fontWeight: 700,
+                          color: '#1D4ED8',
+                          backgroundColor: '#EEF4FF !important',
+                        }}
                       >
                         {resolveMessage(languageCode, 'st')}
                       </TableCell>
@@ -400,11 +514,23 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                   py: 0.6,
                                   fontSize: '0.8125rem',
                                   fontVariantNumeric: 'tabular-nums',
+                                  fontWeight: hasManualSt ? 600 : 500,
                                 },
                                 '& .MuiOutlinedInput-root': {
                                   minHeight: 32,
                                   borderRadius: 1,
-                                  backgroundColor: hasManualSt ? '#EAF2FF' : '#F8FAFC',
+                                  backgroundColor: hasManualSt ? '#EAF2FF' : '#FFFFFF',
+                                  '& fieldset': {
+                                    borderWidth: 1.5,
+                                    borderColor: hasManualSt ? '#3B82F6' : alpha('#3B82F6', 0.5),
+                                  },
+                                  '&:hover fieldset': {
+                                    borderColor: '#2563EB',
+                                  },
+                                  '&.Mui-focused fieldset': {
+                                    borderColor: '#1D4ED8',
+                                    borderWidth: 2,
+                                  },
                                 },
                               }}
                             />
@@ -413,13 +539,30 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       })}
                     </TableRow>
 
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>{resolveMessage(languageCode, 'at')}</TableCell>
+                    <TableRow sx={processRowSx}>
+                      <TableCell
+                        sx={{
+                          fontWeight: 700,
+                          color: 'text.secondary',
+                          backgroundColor: '#F5F6F8 !important',
+                        }}
+                      >
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Box component="span">{resolveMessage(languageCode, 'at')}</Box>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ color: 'text.disabled', fontWeight: 700, letterSpacing: 0.2 }}
+                          >
+                            {resolveMessage(languageCode, 'autoBadge')}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
                       {quantityBuckets.map((quantity) => {
                         const atPerPiece = resolveProcessAtPerPieceSeconds(process, quantity);
                         return (
                           <TableCell key={`${processInstanceId}-at-${quantity}`} align="center">
-                            {renderReadonlySecondsBox(atPerPiece)}
+                            {renderReadonlySecondsBox(atPerPiece, 'at')}
                           </TableCell>
                         );
                       })}
