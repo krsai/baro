@@ -2302,6 +2302,7 @@ const AssignBoard = () => {
   const startDateRef = useRef(getMonthStartDate());
   const splitCounterRef = useRef(1);
   const disabledCardDragNoticeAtRef = useRef(0);
+  const cursorWarningTimerRef = useRef(null);
   const lastSavedSnapshotRef = useRef('');
   const historyPastRef = useRef([]);
   const historyFutureRef = useRef([]);
@@ -2328,6 +2329,12 @@ const AssignBoard = () => {
   );
   const [contextMenuState, setContextMenuState] = useState(null);
   const [detailState, setDetailState] = useState(null);
+  const [cursorWarningState, setCursorWarningState] = useState({
+    open: false,
+    x: 0,
+    y: 0,
+    message: '',
+  });
   const [detailDraftsByTarget, setDetailDraftsByTarget] = useState({});
   const [detailStDraftsByTarget, setDetailStDraftsByTarget] = useState({});
   const [detailStyleLoadingKey, setDetailStyleLoadingKey] = useState('');
@@ -2363,21 +2370,55 @@ const AssignBoard = () => {
   const preventToolbarButtonFocus = useCallback((event) => {
     event.preventDefault();
   }, []);
-  const handleDisabledCardDragAttempt = useCallback(() => {
+  const showCursorWarning = useCallback((clientX, clientY, message) => {
+    const viewportWidth = Number(window?.innerWidth) || 0;
+    const viewportHeight = Number(window?.innerHeight) || 0;
+    const maxX = viewportWidth > 0 ? viewportWidth - 16 : clientX;
+    const maxY = viewportHeight > 0 ? viewportHeight - 16 : clientY;
+    const x = Math.max(16, Math.min(Number(clientX) + 14, maxX));
+    const y = Math.max(16, Math.min(Number(clientY) - 12, maxY));
+    setCursorWarningState({
+      open: true,
+      x,
+      y,
+      message,
+    });
+    if (cursorWarningTimerRef.current) {
+      clearTimeout(cursorWarningTimerRef.current);
+    }
+    cursorWarningTimerRef.current = setTimeout(() => {
+      setCursorWarningState((prev) => ({ ...prev, open: false }));
+    }, 1300);
+  }, []);
+  const handleDisabledCardDragAttempt = useCallback((payload) => {
     const now = Date.now();
     if (now - disabledCardDragNoticeAtRef.current < 1200) return;
     disabledCardDragNoticeAtRef.current = now;
-    const fallbackMessage =
+    const message = getUiMessage(
+      'assign.dragRequiresPtOrSt',
       languageCode === 'vi'
         ? 'Chi co the phan cong sau khi dang ky PT/ST.'
         : languageCode === 'en'
           ? 'You can assign only after registering PT/ST.'
-          : 'PT/ST 등록 후에 배정이 가능합니다.';
-    showNotification(
-      getUiMessage('assign.dragRequiresPtOrSt', fallbackMessage, languageCode),
-      'info'
+          : 'PT/ST 등록 후에 배정이 가능합니다.',
+      languageCode
     );
-  }, [languageCode, showNotification]);
+    const pointerX = Number(payload?.clientX);
+    const pointerY = Number(payload?.clientY);
+    if (Number.isFinite(pointerX) && Number.isFinite(pointerY)) {
+      showCursorWarning(pointerX, pointerY, message);
+      return;
+    }
+    showNotification(message, 'info');
+  }, [languageCode, showCursorWarning, showNotification]);
+
+  useEffect(() => {
+    return () => {
+      if (cursorWarningTimerRef.current) {
+        clearTimeout(cursorWarningTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     stylesRef.current = styles;
@@ -3514,6 +3555,45 @@ const AssignBoard = () => {
     );
   }, [cardSearchTextById, deferredSearchTerm, unassignedCards]);
 
+  const compareUnassignedCardAsc = useCallback((left, right) => {
+    const leftStyleKey =
+      normalizeKey(left?.styleName) ||
+      normalizeKey(left?.styleCode) ||
+      normalizeKey(left?.styleId) ||
+      normalizeKey(left?.id);
+    const rightStyleKey =
+      normalizeKey(right?.styleName) ||
+      normalizeKey(right?.styleCode) ||
+      normalizeKey(right?.styleId) ||
+      normalizeKey(right?.id);
+    const styleCompare = leftStyleKey.localeCompare(rightStyleKey, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (styleCompare !== 0) return styleCompare;
+
+    const leftColorKey = normalizeKey(left?.colorName) || normalizeKey(left?.colorCode);
+    const rightColorKey = normalizeKey(right?.colorName) || normalizeKey(right?.colorCode);
+    const colorCompare = leftColorKey.localeCompare(rightColorKey, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (colorCompare !== 0) return colorCompare;
+
+    const leftGenderKey = normalizeGenderKey(left?.gender);
+    const rightGenderKey = normalizeGenderKey(right?.gender);
+    const genderCompare = leftGenderKey.localeCompare(rightGenderKey, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (genderCompare !== 0) return genderCompare;
+
+    return normalizeKey(left?.id).localeCompare(normalizeKey(right?.id), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  }, []);
+
   const groupedFilteredCards = useMemo(() => {
     const groups = new Map();
     filteredCards.forEach((card) => {
@@ -3543,18 +3623,23 @@ const AssignBoard = () => {
       }
     });
 
-    return Array.from(groups.values()).sort((a, b) => {
-      if (a.dueDateTimestamp == null && b.dueDateTimestamp == null) {
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        cards: [...group.cards].sort(compareUnassignedCardAsc),
+      }))
+      .sort((a, b) => {
+        if (a.dueDateTimestamp == null && b.dueDateTimestamp == null) {
+          return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
+        }
+        if (a.dueDateTimestamp == null) return 1;
+        if (b.dueDateTimestamp == null) return -1;
+        if (a.dueDateTimestamp !== b.dueDateTimestamp) {
+          return a.dueDateTimestamp - b.dueDateTimestamp;
+        }
         return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
-      }
-      if (a.dueDateTimestamp == null) return 1;
-      if (b.dueDateTimestamp == null) return -1;
-      if (a.dueDateTimestamp !== b.dueDateTimestamp) {
-        return a.dueDateTimestamp - b.dueDateTimestamp;
-      }
-      return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
-    });
-  }, [filteredCards, languageCode]);
+      });
+  }, [compareUnassignedCardAsc, filteredCards, languageCode]);
 
   const lineById = useMemo(
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
@@ -5352,6 +5437,32 @@ const AssignBoard = () => {
             )}
           </Stack>
         </Drawer>
+        {cursorWarningState.open ? (
+          <Box
+            sx={{
+              position: 'fixed',
+              left: cursorWarningState.x,
+              top: cursorWarningState.y,
+              transform: 'translate(-6px, -100%)',
+              zIndex: 1400,
+              px: 1.25,
+              py: 0.75,
+              borderRadius: 1.5,
+              backgroundColor: 'rgba(15, 23, 42, 0.94)',
+              color: '#FFFFFF',
+              boxShadow: '0 8px 20px rgba(2, 6, 23, 0.35)',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              pointerEvents: 'none',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+              fontSize: 12,
+              fontWeight: 600,
+              lineHeight: 1.3,
+            }}
+          >
+            {cursorWarningState.message}
+          </Box>
+        ) : null}
       </DndContext>
     </AppPageContainer>
   );

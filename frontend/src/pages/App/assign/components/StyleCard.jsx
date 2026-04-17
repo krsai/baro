@@ -46,7 +46,11 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt })
   const handlePointerDown = (event) => {
     if (!isDisabled) return;
     if (typeof event?.button === 'number' && event.button !== 0) return;
-    onDisabledDragAttempt?.(card);
+    onDisabledDragAttempt?.({
+      card,
+      clientX: Number(event?.clientX),
+      clientY: Number(event?.clientY),
+    });
   };
 
   const cardStyleName = isDeltaCard ? card.label : card.styleName;
