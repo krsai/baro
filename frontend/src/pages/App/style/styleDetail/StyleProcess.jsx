@@ -57,7 +57,7 @@ import {
 
 const createEmptyDraft = () => ({
   part: null,
-  target: null,
+  targets: [],
   actions: [],
   spec: null,
   pt: '',
@@ -504,10 +504,14 @@ const normalizeProcessCompositionEntries = (values, kind) => {
 
 const buildProcessComposition = (draft) => {
   const part = normalizeProcessCompositionEntry(draft?.part, 'part');
-  const target = normalizeProcessCompositionEntry(draft?.target, 'target');
+  const targetInputs = Array.isArray(draft?.targets)
+    ? draft.targets
+    : draft?.target
+      ? [draft.target]
+      : [];
+  const targets = normalizeProcessCompositionEntries(targetInputs, 'target');
   const actions = normalizeProcessCompositionEntries(draft?.actions, 'action');
   const spec = normalizeProcessCompositionEntry(draft?.spec, 'spec');
-  const targets = target ? [target] : [];
   const specs = spec ? [spec] : [];
 
   if (!part && targets.length === 0 && actions.length === 0 && specs.length === 0) {
@@ -756,13 +760,15 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
   const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
+  const existingTargets = Array.isArray(composition?.targets)
+    ? composition.targets
+    : composition?.target
+      ? [composition.target]
+      : [];
 
   return {
     part: normalizeProcessCompositionEntry(composition?.part, 'part'),
-    target: normalizeProcessCompositionEntry(
-      Array.isArray(composition?.targets) ? composition.targets[0] : null,
-      'target'
-    ),
+    targets: normalizeProcessCompositionEntries(existingTargets, 'target'),
     actions: normalizeProcessCompositionEntries(composition?.actions, 'action'),
     spec: normalizeProcessCompositionEntry(
       Array.isArray(composition?.specs) ? composition.specs[0] : null,
@@ -1428,13 +1434,15 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
+                multiple
                 size="small"
                 options={targetOptions}
-                value={addDraft.target}
+                value={Array.isArray(addDraft.targets) ? addDraft.targets : []}
+                disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
                     ...prev,
-                    target: normalizeProcessCompositionEntry(value, 'target'),
+                    targets: normalizeProcessCompositionEntries(value, 'target'),
                   }));
                   setAddError('');
                 }}
@@ -1443,6 +1451,7 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(option, 'TARGET') ===
                   getProcessMasterOptionIdentity(value, 'TARGET')
                 }
+                filterSelectedOptions
                 renderInput={(params) => (
                   <TextField {...params} label={getStyleProcessMessage(languageCode, 'targetLabel')} />
                 )}
