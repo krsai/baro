@@ -50,6 +50,7 @@ enum OnboardingRequestStatus {
 }
 
 enum WorkOrderStatus {
+  EDITING
   ORDER_RECEIVED
   IN_PROGRESS
   PRODUCTION_DONE
@@ -551,7 +552,7 @@ model WorkOrder {
   customerId    Int?
   customerName  String?
   dueDate       String?
-  status        WorkOrderStatus @default(ORDER_RECEIVED)
+  status        WorkOrderStatus @default(EDITING)
   confirmationStatus WorkOrderConfirmationStatus @default(PLANNED)
   modificationLockedAt DateTime?
   modificationLockedBy String?

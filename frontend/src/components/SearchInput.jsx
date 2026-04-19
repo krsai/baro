@@ -1,13 +1,16 @@
 import React from 'react';
 import { TextField, InputAdornment } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import { getUiMessage } from '../constants/uiMessages';
 
-const SearchInput = ({ value, onChange, placeholder = "검색...", sx, ...props }) => {
+const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
+  const resolvedPlaceholder = placeholder ?? getUiMessage('common.search', 'Search...');
+
   return (
     <TextField
       value={value}
       onChange={onChange}
-      placeholder={placeholder}
+      placeholder={resolvedPlaceholder}
       size="small"
       variant="outlined"
       InputProps={{

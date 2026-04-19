@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppActions } from '../context/AppContext';
+import { getCurrentLanguageCode } from '../utils/appLanguage';
 
-const DEFAULT_CONFIRM_MESSAGE = '저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?';
+const DEFAULT_CONFIRM_MESSAGE = {
+  ko: '저장하지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?',
+  en: 'You have unsaved changes. Leave without saving?',
+  vi: 'Ban co thay doi chua luu. Roi trang ma khong luu?',
+};
+
+const getDefaultConfirmMessage = () => {
+  const languageCode = getCurrentLanguageCode();
+  return DEFAULT_CONFIRM_MESSAGE[languageCode] || DEFAULT_CONFIRM_MESSAGE.en;
+};
 
 const normalizePathname = (value) => {
   const raw = String(value || '').trim();
@@ -13,12 +23,6 @@ const normalizePathname = (value) => {
   return normalized || '/';
 };
 
-/**
- * 브라우저 닫기/새로고침 및 앱 내부 이동 시 미저장 변경사항 경고를 연결합니다.
- *
- * @param {boolean} isDirty
- * @param {{ message?: string }} options
- */
 const useUnsavedChanges = (isDirty, options = {}) => {
   const location = useLocation();
   const { setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
@@ -33,7 +37,7 @@ const useUnsavedChanges = (isDirty, options = {}) => {
   );
   const message = useMemo(() => {
     const raw = typeof options?.message === 'string' ? options.message.trim() : '';
-    return raw || DEFAULT_CONFIRM_MESSAGE;
+    return raw || getDefaultConfirmMessage();
   }, [options?.message]);
 
   useEffect(() => {

@@ -66,7 +66,6 @@ const Work = lazyImportWithRetry(() => import('./pages/App/Work'));
 const Attendance = lazyImportWithRetry(() => import('./pages/App/Attendance'));
 const AttendanceEntry = lazyImportWithRetry(() => import('./pages/App/attendance/AttendanceEntry'));
 const WorkEntry = lazyImportWithRetry(() => import('./pages/App/work/WorkEntry'));
-const WorkerWorkHistory = lazyImportWithRetry(() => import('./pages/App/work/WorkerWorkHistory'));
 const Payroll = lazyImportWithRetry(() => import('./pages/App/Payroll'));
 const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/PayrollEntry'));
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
@@ -161,8 +160,6 @@ const ProtectedRoute = () => {
         fullscreen
         startedAt={loadingStartedAtRef.current}
         activeRequestCount={1}
-        title="인증 상태 확인 중"
-        subtitle="워크스페이스 접근 권한을 확인하고 있습니다."
       />
     );
   }
@@ -300,10 +297,6 @@ const router = createBrowserRouter([
           {
             path: 'work-history',
             element: <Work />,
-          },
-          {
-            path: 'worker-work-history',
-            element: <WorkerWorkHistory />,
           },
           {
             path: 'attendance',

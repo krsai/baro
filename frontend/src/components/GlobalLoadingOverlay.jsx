@@ -7,6 +7,41 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import { getCurrentLanguageCode } from '../utils/appLanguage';
+
+const LOADING_TEXT = {
+  title: {
+    ko: '작업 화면을 불러오는 중',
+    en: 'Loading workspace',
+    vi: 'Dang tai man hinh lam viec',
+  },
+  subtitle: {
+    ko: '페이지 데이터를 안정적으로 준비하고 있습니다.',
+    en: 'Preparing page data safely.',
+    vi: 'Dang chuan bi du lieu trang mot cach an toan.',
+  },
+  requests: {
+    ko: '{count}개 요청 처리 중',
+    en: '{count} requests in progress',
+    vi: '{count} yeu cau dang duoc xu ly',
+  },
+  elapsed: {
+    ko: '경과 {time}',
+    en: 'Elapsed {time}',
+    vi: 'Da qua {time}',
+  },
+};
+
+const getLocalizedText = (key, params = null) => {
+  const languageCode = getCurrentLanguageCode();
+  const bundle = LOADING_TEXT[key] || {};
+  const template = bundle[languageCode] || bundle.en || '';
+  if (!params || typeof params !== 'object') return template;
+  return Object.entries(params).reduce(
+    (message, [token, value]) => message.replace(`{${token}}`, String(value)),
+    template
+  );
+};
 
 const formatElapsed = (elapsedMs) => {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
@@ -26,8 +61,8 @@ const GlobalLoadingOverlay = ({
   open = false,
   startedAt = null,
   activeRequestCount = 0,
-  title = '작업 화면 로딩 중',
-  subtitle = '페이지 데이터를 안정적으로 준비하고 있습니다.',
+  title = getLocalizedText('title'),
+  subtitle = getLocalizedText('subtitle'),
   fullscreen = false,
 }) => {
   const [now, setNow] = useState(() => Date.now());
@@ -54,12 +89,17 @@ const GlobalLoadingOverlay = ({
 
   const progressValue = useMemo(
     () => estimateProgress(elapsedMs, activeRequestCount),
-    [elapsedMs, activeRequestCount],
+    [elapsedMs, activeRequestCount]
   );
 
   if (!visible) return null;
 
-  const requestStatusText = `${activeRequestCount}개 요청 처리 중`;
+  const requestStatusText = getLocalizedText('requests', {
+    count: activeRequestCount,
+  });
+  const elapsedText = getLocalizedText('elapsed', {
+    time: formatElapsed(elapsedMs),
+  });
 
   return (
     <Box
@@ -141,20 +181,12 @@ const GlobalLoadingOverlay = ({
               </Box>
             </Box>
 
-            {/*
-            <LinearProgress
-              variant="determinate"
-              value={progressValue}
-              sx={{ height: 8, borderRadius: 999 }}
-            />
-            */}
-
             <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
               <Typography variant="caption" color="text.secondary">
                 {requestStatusText}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {`경과 ${formatElapsed(elapsedMs)}`}
+                {elapsedText}
               </Typography>
             </Box>
           </Stack>

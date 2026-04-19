@@ -23,6 +23,7 @@ import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded';
 import { requestJSON } from '../../utils/apiClient';
 import { matchesAutocompleteSearch } from '../../utils/autocompleteSearch';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import SystemProviderFooter from '../../components/SystemProviderFooter';
 import {
   ORGANIZATION_TYPE_OPTIONS,
@@ -45,6 +46,203 @@ const ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH = 40;
 const KR_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{3}-\d{2}-\d{5})$/;
 const VN_BUSINESS_NUMBER_REGEX = /^(?:\d{10}|\d{13}|\d{10}-\d{3})$/;
 
+const ONBOARDING_TEXT = {
+  countryKr: { ko: '\ud55c\uad6d', en: 'Korea', vi: 'Han Quoc' },
+  countryVn: { ko: '\ubca0\ud2b8\ub0a8', en: 'Vietnam', vi: 'Viet Nam' },
+  businessNumberErrorVn: {
+    ko: '\ubca0\ud2b8\ub0a8 \uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638 \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. (10\uc790\ub9ac \ub610\ub294 13\uc790\ub9ac)',
+    en: 'Vietnam business registration number format is invalid. (10 or 13 digits)',
+    vi: 'Dinh dang ma so doanh nghiep Viet Nam khong hop le. (10 hoac 13 chu so)',
+  },
+  businessNumberErrorKr: {
+    ko: '\ud55c\uad6d \uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638 \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4. (10\uc790\ub9ac \ub610\ub294 3-2-5)',
+    en: 'Korea business registration number format is invalid. (10 digits or 3-2-5)',
+    vi: 'Dinh dang so dang ky kinh doanh Han Quoc khong hop le. (10 chu so hoac 3-2-5)',
+  },
+  selectOrganizationFirst: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac\ub97c \uba3c\uc800 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please choose your company first.',
+    vi: 'Vui long chon cong ty cua ban truoc.',
+  },
+  loginEmailMissing: {
+    ko: '\ub85c\uadf8\uc778 \uc774\uba54\uc77c\uc744 \ud655\uc778\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.',
+    en: 'We could not confirm your login email.',
+    vi: 'Khong the xac nhan email dang nhap cua ban.',
+  },
+  joinSuccess: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac \uc2b9\uc778 \uc694\uccad\uc774 \uc811\uc218\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc2b9\uc778 \ud6c4 \uc774\uba54\uc77c\ub85c \uc548\ub0b4\ub4dc\ub9bd\ub2c8\ub2e4.',
+    en: 'Your company access request has been submitted. We will notify you by email after approval.',
+    vi: 'Yeu cau tham gia cong ty da duoc gui. Chung toi se thong bao qua email sau khi duoc phe duyet.',
+  },
+  joinError: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac \uc694\uccad \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.',
+    en: 'An error occurred while requesting company access.',
+    vi: 'Da xay ra loi khi gui yeu cau tham gia cong ty.',
+  },
+  registerNameError: {
+    ko: '\ud68c\uc0ac\uba85\uc740 {min}~{max}\uc790\ub85c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Company name must be between {min} and {max} characters.',
+    vi: 'Ten cong ty phai dai tu {min} den {max} ky tu.',
+  },
+  registerOrganizationTypeError: {
+    ko: '\uc5c5\uc885\uc744 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please choose an organization type.',
+    vi: 'Vui long chon loai hinh to chuc.',
+  },
+  registerCountryError: {
+    ko: '\uad6d\uac00\ub97c \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please choose a country.',
+    vi: 'Vui long chon quoc gia.',
+  },
+  registerAddressError: {
+    ko: '\ud68c\uc0ac \uc8fc\uc18c\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please enter the company address.',
+    vi: 'Vui long nhap dia chi cong ty.',
+  },
+  registerBusinessNumberRequired: {
+    ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please enter the business registration number.',
+    vi: 'Vui long nhap so dang ky kinh doanh.',
+  },
+  registerRepresentativeNameError: {
+    ko: '\ub2f4\ub2f9\uc790 \uc774\ub984\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694. (\ucd5c\ub300 {max}\uc790)',
+    en: 'Please enter a contact name. (Max {max} characters)',
+    vi: 'Vui long nhap ten nguoi lien he. (Toi da {max} ky tu)',
+  },
+  registerRepresentativeContactError: {
+    ko: '\ub300\ud45c \uc5f0\ub77d\ucc98\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694. (\ucd5c\ub300 {max}\uc790)',
+    en: 'Please enter the primary contact. (Max {max} characters)',
+    vi: 'Vui long nhap so lien he chinh. (Toi da {max} ky tu)',
+  },
+  registerRepresentativeEmailError: {
+    ko: '\ub300\ud45c \uc774\uba54\uc77c\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please enter the primary email.',
+    vi: 'Vui long nhap email chinh.',
+  },
+  registerSuccess: {
+    ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d \uc694\uccad\uc774 \uc811\uc218\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \uc2b9\uc778 \ud6c4 \uc774\uba54\uc77c\ub85c \uc548\ub0b4\ub4dc\ub9bd\ub2c8\ub2e4.',
+    en: 'Your new company registration request has been submitted. We will notify you by email after approval.',
+    vi: 'Yeu cau dang ky cong ty moi da duoc gui. Chung toi se thong bao qua email sau khi duoc phe duyet.',
+  },
+  registerError: {
+    ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d \uc694\uccad \uc911 \uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.',
+    en: 'An error occurred while submitting the new company registration request.',
+    vi: 'Da xay ra loi khi gui yeu cau dang ky cong ty moi.',
+  },
+  searchHintEmpty: {
+    ko: '\ud68c\uc0ac\uba85 \ub610\ub294 \ucf54\ub4dc \uc77c\ubd80\ub97c \uc785\ub825\ud558\uba74 \uc77c\uce58 \uc5c5\uccb4\ub9cc \ud45c\uc2dc\ub429\ub2c8\ub2e4.',
+    en: 'Enter part of the company name or code to see matching organizations only.',
+    vi: 'Nhap mot phan ten cong ty hoac ma de chi hien thi cac cong ty phu hop.',
+  },
+  searchHintResults: {
+    ko: '{count}\uac1c \uc5c5\uccb4\uac00 \uac80\uc0c9\ub418\uc5c8\uc2b5\ub2c8\ub2e4.',
+    en: '{count} matching organizations found.',
+    vi: 'Da tim thay {count} cong ty phu hop.',
+  },
+  searchHintNoMatch: {
+    ko: '\uc77c\uce58\ud558\ub294 \uc5c5\uccb4\uac00 \uc5c6\uc2b5\ub2c8\ub2e4. \uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d\uc744 \uc9c4\ud589\ud574 \uc8fc\uc138\uc694.',
+    en: 'No matching organization was found. Please proceed with new company registration.',
+    vi: 'Khong tim thay cong ty phu hop. Vui long tiep tuc dang ky cong ty moi.',
+  },
+  pageTitle: {
+    ko: '\uc2e0\uaddc \uacc4\uc815 \ud655\uc778\uc774 \ud544\uc694\ud569\ub2c8\ub2e4',
+    en: 'New account verification is required',
+    vi: 'Can xac minh tai khoan moi',
+  },
+  pageSubtitle: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac\ub97c \uac80\uc0c9\ud574\uc11c \uc2b9\uc778 \uc694\uccad\ud558\uac70\ub098, \ud68c\uc0ac\uac00 \uc5c6\uc73c\uba74 \uc2e0\uaddc \ub4f1\ub85d\uc744 \uc9c4\ud589\ud574 \uc8fc\uc138\uc694.',
+    en: 'Search for your company to request approval, or register a new one if it does not exist.',
+    vi: 'Tim cong ty cua ban de gui yeu cau phe duyet, hoac dang ky cong ty moi neu chua co.',
+  },
+  selectCompany: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac \uc120\ud0dd',
+    en: 'Select your company',
+    vi: 'Chon cong ty cua ban',
+  },
+  registerCompany: {
+    ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d',
+    en: 'Register new company',
+    vi: 'Dang ky cong ty moi',
+  },
+  noOptionsMatched: {
+    ko: '\uc77c\uce58 \uc5c5\uccb4 \uc5c6\uc74c',
+    en: 'No matching organizations',
+    vi: 'Khong co cong ty phu hop',
+  },
+  noOptionsEmpty: {
+    ko: '\ud68c\uc0ac\uba85\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694',
+    en: 'Please enter a company name',
+    vi: 'Vui long nhap ten cong ty',
+  },
+  searchLabel: {
+    ko: '\ud68c\uc0ac\uba85 \ub610\ub294 \ucf54\ub4dc \uac80\uc0c9',
+    en: 'Search company name or code',
+    vi: 'Tim ten cong ty hoac ma',
+  },
+  searchPlaceholder: {
+    ko: '\uc608: lineos, LNSO',
+    en: 'e.g. lineos, LNSO',
+    vi: 'vi du: lineos, LNSO',
+  },
+  codeLabel: { ko: '\ucf54\ub4dc', en: 'Code', vi: 'Ma' },
+  organizationLoading: {
+    ko: '\uc5c5\uccb4 \ubaa9\ub85d \ubd88\ub7ec\uc624\ub294 \uc911...',
+    en: 'Loading organizations...',
+    vi: 'Dang tai danh sach cong ty...',
+  },
+  joinSubmitting: { ko: '\uc694\uccad \uc911...', en: 'Submitting...', vi: 'Dang gui...' },
+  joinRequest: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac \uc2b9\uc778 \uc694\uccad',
+    en: 'Request company approval',
+    vi: 'Gui yeu cau phe duyet cong ty',
+  },
+  joinHelper: {
+    ko: '\uc18c\uc18d \ud68c\uc0ac \uc2b9\uc778 \uc694\uccad\uc740 \ud574\ub2f9 \ud68c\uc0ac\uc758 \uad00\ub9ac\uc790/\uc6b4\uc601\uc790\uc5d0\uac8c \uc804\ub2ec\ub418\uba70 \uc2b9\uc778 \ud6c4 \uc774\uba54\uc77c\ub85c \uc548\ub0b4\ub429\ub2c8\ub2e4.',
+    en: 'Approval requests are sent to that company\'s admins/operators, and we will notify you by email after approval.',
+    vi: 'Yeu cau phe duyet se duoc gui toi quan tri vien va nguoi van hanh cua cong ty do, va chung toi se thong bao qua email sau khi duoc phe duyet.',
+  },
+  goLogin: {
+    ko: '\ub2e4\ub978 \uacc4\uc815\uc73c\ub85c \ub2e4\uc2dc \ub85c\uadf8\uc778',
+    en: 'Sign in with a different account',
+    vi: 'Dang nhap lai bang tai khoan khac',
+  },
+  drawerTitle: {
+    ko: '\uc2e0\uaddc \ud68c\uc0ac \ub4f1\ub85d',
+    en: 'Register new company',
+    vi: 'Dang ky cong ty moi',
+  },
+  drawerSubtitle: {
+    ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d \uc815\ubcf4\ub97c \uc815\ud655\ud788 \uc785\ub825\ud574 \uc8fc\uc138\uc694.',
+    en: 'Please enter accurate business registration information.',
+    vi: 'Vui long nhap chinh xac thong tin dang ky kinh doanh.',
+  },
+  close: { ko: '\ub2eb\uae30', en: 'Close', vi: 'Dong' },
+  organizationType: { ko: '\uc5c5\uc885', en: 'Organization type', vi: 'Loai hinh to chuc' },
+  organizationTypeManufacturer: { ko: '\uacf5\uc7a5', en: 'Manufacturer', vi: 'Nha may' },
+  organizationTypeBrand: { ko: '\ube0c\ub79c\ub4dc', en: 'Brand', vi: 'Thuong hieu' },
+  selectPrompt: { ko: '\uc120\ud0dd\ud574 \uc8fc\uc138\uc694', en: 'Please select', vi: 'Vui long chon' },
+  companyName: { ko: '\ud68c\uc0ac\uba85', en: 'Company name', vi: 'Ten cong ty' },
+  countryLabel: { ko: '\uad6d\uac00', en: 'Country', vi: 'Quoc gia' },
+  companyAddress: { ko: '\ud68c\uc0ac \uc8fc\uc18c', en: 'Company address', vi: 'Dia chi cong ty' },
+  businessNumber: { ko: '\uc0ac\uc5c5\uc790\ub4f1\ub85d\ubc88\ud638', en: 'Business registration no.', vi: 'So dang ky kinh doanh' },
+  representativeName: { ko: '\ub2f4\ub2f9\uc790 \uc774\ub984', en: 'Contact name', vi: 'Ten nguoi lien he' },
+  representativeContact: { ko: '\ub300\ud45c \uc5f0\ub77d\ucc98', en: 'Primary contact', vi: 'So lien he chinh' },
+  representativeEmail: { ko: '\ub300\ud45c \uc774\uba54\uc77c', en: 'Primary email', vi: 'Email chinh' },
+  registerSubmitting: { ko: '\ub4f1\ub85d \uc694\uccad \uc911...', en: 'Submitting registration...', vi: 'Dang gui dang ky...' },
+  registerSubmit: { ko: '\ub4f1\ub85d \uc694\uccad \ubcf4\ub0b4\uae30', en: 'Send registration request', vi: 'Gui yeu cau dang ky' },
+  cancel: { ko: '\ucde8\uc18c', en: 'Cancel', vi: 'Huy' },
+};
+
+const resolveOnboardingText = (key, languageCode, params = null) => {
+  const bundle = ONBOARDING_TEXT[key] || {};
+  const template = bundle[languageCode] || bundle.en || '';
+  if (!params || typeof params !== 'object') return template;
+  return Object.entries(params).reduce(
+    (message, [token, value]) => message.replace(`{${token}}`, String(value)),
+    template
+  );
+};
+
 const normalizeCompactLower = (value) =>
   String(value || '')
     .trim()
@@ -65,13 +263,6 @@ const isValidBusinessNumberFormat = (country, value) => {
   if (country === 'KR') return KR_BUSINESS_NUMBER_REGEX.test(normalized);
   if (country === 'VN') return VN_BUSINESS_NUMBER_REGEX.test(normalized);
   return false;
-};
-
-const businessNumberErrorMessageByCountry = (country) => {
-  if (country === 'VN') {
-    return '베트남 사업자등록번호 형식이 올바르지 않습니다. (10자리 또는 13자리)';
-  }
-  return '한국 사업자등록번호 형식이 올바르지 않습니다. (10자리 또는 3-2-5)';
 };
 
 const isHiddenOnboardingOrganization = (organization) => {
@@ -99,8 +290,14 @@ const buildRegisterFormDefault = (requesterEmail = '') => ({
   representativeEmail: requesterEmail || '',
 });
 
+const getBusinessNumberErrorMessage = (country, languageCode) =>
+  country === 'VN'
+    ? resolveOnboardingText('businessNumberErrorVn', languageCode)
+    : resolveOnboardingText('businessNumberErrorKr', languageCode);
+
 const Onboarding = () => {
   const navigate = useNavigate();
+  const { languageCode } = useLanguage();
   const {
     user,
     accessProfile,
@@ -130,6 +327,26 @@ const Onboarding = () => {
     const fromProfile = normalizeEmail(accessProfile?.email);
     return fromUser || fromProfile;
   }, [accessProfile?.email, user?.email]);
+  const t = (key, params = null) => resolveOnboardingText(key, languageCode, params);
+  const countryOptions = useMemo(
+    () =>
+      COUNTRY_OPTIONS.map((option) => ({
+        ...option,
+        label: option.value === 'VN' ? t('countryVn') : t('countryKr'),
+      })),
+    [languageCode]
+  );
+  const organizationTypeOptions = useMemo(
+    () =>
+      ORGANIZATION_TYPE_OPTIONS.map((option) => ({
+        ...option,
+        label:
+          option.value === 'MANUFACTURER'
+            ? t('organizationTypeManufacturer')
+            : t('organizationTypeBrand'),
+      })),
+    [languageCode]
+  );
 
   useEffect(() => {
     setRegisterForm((prev) => {
@@ -209,11 +426,11 @@ const Onboarding = () => {
     clearMessages();
     const orgIdNum = Number(selectedOrganization?.id);
     if (!Number.isFinite(orgIdNum) || orgIdNum <= 0) {
-      setErrorMessage('소속 회사를 먼저 선택해 주세요.');
+      setErrorMessage(t('selectOrganizationFirst'));
       return;
     }
     if (!requesterEmail) {
-      setErrorMessage('로그인 이메일을 확인할 수 없습니다.');
+      setErrorMessage(t('loginEmailMissing'));
       return;
     }
 
@@ -228,9 +445,9 @@ const Onboarding = () => {
           role: 'OPERATOR',
         }),
       });
-      setSuccessMessage('소속 회사 승인 요청이 접수되었습니다. 승인 후 이메일로 안내드립니다.');
+      setSuccessMessage(t('joinSuccess'));
     } catch (error) {
-      setErrorMessage(error?.message || '소속 회사 요청 중 오류가 발생했습니다.');
+      setErrorMessage(error?.message || t('joinError'));
     } finally {
       setJoinSubmitting(false);
     }
@@ -280,27 +497,32 @@ const Onboarding = () => {
       organizationName.length < ONBOARDING_COMPANY_NAME_MIN_LENGTH ||
       organizationName.length > ONBOARDING_COMPANY_NAME_MAX_LENGTH
     ) {
-      setRegisterErrorMessage(`회사명은 ${ONBOARDING_COMPANY_NAME_MIN_LENGTH}~${ONBOARDING_COMPANY_NAME_MAX_LENGTH}자로 입력해 주세요.`);
+      setRegisterErrorMessage(
+        t('registerNameError', {
+          min: ONBOARDING_COMPANY_NAME_MIN_LENGTH,
+          max: ONBOARDING_COMPANY_NAME_MAX_LENGTH,
+        })
+      );
       return;
     }
     if (!organizationType) {
-      setRegisterErrorMessage('\uC5C5\uC885\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.');
+      setRegisterErrorMessage(t('registerOrganizationTypeError'));
       return;
     }
     if (country !== 'KR' && country !== 'VN') {
-      setRegisterErrorMessage('국가를 선택해 주세요.');
+      setRegisterErrorMessage(t('registerCountryError'));
       return;
     }
     if (!companyAddress) {
-      setRegisterErrorMessage('회사 주소를 입력해 주세요.');
+      setRegisterErrorMessage(t('registerAddressError'));
       return;
     }
     if (!businessNumber) {
-      setRegisterErrorMessage('사업자등록번호를 입력해 주세요.');
+      setRegisterErrorMessage(t('registerBusinessNumberRequired'));
       return;
     }
     if (!isValidBusinessNumberFormat(country, businessNumber)) {
-      setRegisterErrorMessage(businessNumberErrorMessageByCountry(country));
+      setRegisterErrorMessage(getBusinessNumberErrorMessage(country, languageCode));
       return;
     }
     if (
@@ -308,7 +530,9 @@ const Onboarding = () => {
       representativeName.length > ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH
     ) {
       setRegisterErrorMessage(
-        `담당자 이름을 입력해 주세요. (최대 ${ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH}자)`
+        t('registerRepresentativeNameError', {
+          max: ONBOARDING_REPRESENTATIVE_NAME_MAX_LENGTH,
+        })
       );
       return;
     }
@@ -316,11 +540,15 @@ const Onboarding = () => {
       !representativeContact ||
       representativeContact.length > ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH
     ) {
-      setRegisterErrorMessage(`대표 연락처를 입력해 주세요. (최대 ${ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH}자)`);
+      setRegisterErrorMessage(
+        t('registerRepresentativeContactError', {
+          max: ONBOARDING_REPRESENTATIVE_CONTACT_MAX_LENGTH,
+        })
+      );
       return;
     }
     if (!representativeEmail || !representativeEmail.includes('@')) {
-      setRegisterErrorMessage('대표 이메일을 입력해 주세요.');
+      setRegisterErrorMessage(t('registerRepresentativeEmailError'));
       return;
     }
 
@@ -340,11 +568,11 @@ const Onboarding = () => {
           contactEmail: representativeEmail,
         }),
       });
-      setSuccessMessage('신규 회사 등록 요청이 접수되었습니다. 승인 후 이메일로 안내드립니다.');
+      setSuccessMessage(t('registerSuccess'));
       setRegisterDrawerOpen(false);
       setRegisterForm(buildRegisterFormDefault(requesterEmail));
     } catch (error) {
-      setRegisterErrorMessage(error?.message || '신규 회사 등록 요청 중 오류가 발생했습니다.');
+      setRegisterErrorMessage(error?.message || t('registerError'));
     } finally {
       setRegisterSubmitting(false);
     }
@@ -356,9 +584,9 @@ const Onboarding = () => {
   };
 
   const searchHintText = (() => {
-    if (!hasSearchInput) return '회사명 또는 코드 일부를 입력하면 일치 업체만 표시됩니다.';
-    if (hasMatchedOrganizations) return `${matchedOrganizations.length}개 업체가 검색되었습니다.`;
-    return '일치하는 업체가 없습니다. 신규 회사 등록을 진행해 주세요.';
+    if (!hasSearchInput) return t('searchHintEmpty');
+    if (hasMatchedOrganizations) return t('searchHintResults', { count: matchedOrganizations.length });
+    return t('searchHintNoMatch');
   })();
 
   return (
@@ -367,10 +595,10 @@ const Onboarding = () => {
         <Stack spacing={2.5}>
           <Box>
             <Typography component="h1" variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-              신규 계정 확인이 필요합니다
+              {t('pageTitle')}
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-              소속 회사를 검색해서 승인 요청하거나, 회사가 없으면 신규 등록을 진행해 주세요.
+              {t('pageSubtitle')}
             </Typography>
           </Box>
 
@@ -393,7 +621,7 @@ const Onboarding = () => {
                 spacing={1}
               >
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                  소속 회사 선택
+                  {t('selectCompany')}
                 </Typography>
                 <Button
                   variant="contained"
@@ -401,7 +629,7 @@ const Onboarding = () => {
                   onClick={handleOpenRegisterDrawer}
                   startIcon={<AddBusinessRoundedIcon />}
                 >
-                  신규 회사 등록
+                  {t('registerCompany')}
                 </Button>
               </Stack>
 
@@ -423,15 +651,15 @@ const Onboarding = () => {
                 }}
                 isOptionEqualToValue={(option, value) => Number(option?.id) === Number(value?.id)}
                 filterOptions={(options) => options}
-                noOptionsText={hasSearchInput ? '일치 업체 없음' : '회사명을 입력해 주세요'}
+                noOptionsText={hasSearchInput ? t('noOptionsMatched') : t('noOptionsEmpty')}
                 getOptionLabel={(option) =>
                   option?.code ? `${option.name} (${option.code})` : option?.name || ''
                 }
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="회사명 또는 코드 검색"
-                    placeholder="예: lineos, LNSO"
+                    label={t('searchLabel')}
+                    placeholder={t('searchPlaceholder')}
                     helperText={searchHintText}
                     InputProps={{
                       ...params.InputProps,
@@ -453,13 +681,13 @@ const Onboarding = () => {
                         {option.name}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        코드: {option.code || '-'}
+                        {t('codeLabel')}: {option.code || '-'}
                       </Typography>
                     </Stack>
                   </Box>
                 )}
                 loading={loadingOrganizations}
-                loadingText="업체 목록 불러오는 중..."
+                loadingText={t('organizationLoading')}
               />
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2}>
@@ -469,19 +697,19 @@ const Onboarding = () => {
                   disabled={!canJoinSelectedOrganization}
                   startIcon={joinSubmitting ? <CircularProgress size={16} color="inherit" /> : null}
                 >
-                  {joinSubmitting ? '요청 중...' : '소속 회사 승인 요청'}
+                  {joinSubmitting ? t('joinSubmitting') : t('joinRequest')}
                 </Button>
               </Stack>
 
               <Typography variant="caption" color="text.secondary">
-                소속 회사 승인 요청은 해당 회사의 관리자/운영자에게 전달되며 승인 후 이메일로 안내됩니다.
+                {t('joinHelper')}
               </Typography>
             </Stack>
           </Paper>
 
           <Box sx={{ mt: 0.5 }}>
             <Button variant="text" onClick={handleGoLogin}>
-              다른 계정으로 다시 로그인
+              {t('goLogin')}
             </Button>
           </Box>
         </Stack>
@@ -502,13 +730,13 @@ const Onboarding = () => {
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                신규 회사 등록
+                {t('drawerTitle')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                사업자등록 정보를 정확히 입력해 주세요.
+                {t('drawerSubtitle')}
               </Typography>
             </Box>
-            <IconButton onClick={handleCloseRegisterDrawer} disabled={registerSubmitting} aria-label="닫기">
+            <IconButton onClick={handleCloseRegisterDrawer} disabled={registerSubmitting} aria-label={t('close')}>
               <CloseRoundedIcon />
             </IconButton>
           </Stack>
@@ -526,16 +754,16 @@ const Onboarding = () => {
               fullWidth
               required
               select
-              label={'\uC5C5\uC885'}
+              label={t('organizationType')}
               name="organizationType"
               value={registerForm.organizationType}
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             >
               <MenuItem value="">
-                <em>{'\uC120\uD0DD\uD574 \uC8FC\uC138\uC694'}</em>
+                <em>{t('selectPrompt')}</em>
               </MenuItem>
-              {ORGANIZATION_TYPE_OPTIONS.map((option) => (
+              {organizationTypeOptions.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
@@ -544,7 +772,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="회사명"
+              label={t('companyName')}
               name="organizationName"
               value={registerForm.organizationName}
               onChange={handleRegisterChange}
@@ -554,13 +782,13 @@ const Onboarding = () => {
               fullWidth
               required
               select
-              label="국가"
+              label={t('countryLabel')}
               name="country"
               value={registerForm.country}
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             >
-              {COUNTRY_OPTIONS.map((option) => (
+              {countryOptions.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
@@ -569,7 +797,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="회사 주소"
+              label={t('companyAddress')}
               name="companyAddress"
               value={registerForm.companyAddress}
               onChange={handleRegisterChange}
@@ -578,7 +806,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="사업자등록번호"
+              label={t('businessNumber')}
               name="businessNumber"
               value={registerForm.businessNumber}
               onChange={handleRegisterChange}
@@ -587,7 +815,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="담당자 이름"
+              label={t('representativeName')}
               name="representativeName"
               value={registerForm.representativeName}
               onChange={handleRegisterChange}
@@ -596,7 +824,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="대표 연락처"
+              label={t('representativeContact')}
               name="representativeContact"
               value={registerForm.representativeContact}
               onChange={handleRegisterChange}
@@ -605,7 +833,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label="대표 이메일"
+              label={t('representativeEmail')}
               name="representativeEmail"
               type="email"
               value={registerForm.representativeEmail}
@@ -623,7 +851,7 @@ const Onboarding = () => {
                 disabled={registerSubmitting}
                 startIcon={registerSubmitting ? <CircularProgress size={16} color="inherit" /> : null}
               >
-                {registerSubmitting ? '등록 요청 중...' : '등록 요청 보내기'}
+                {registerSubmitting ? t('registerSubmitting') : t('registerSubmit')}
               </Button>
               <Button
                 fullWidth
@@ -631,7 +859,7 @@ const Onboarding = () => {
                 onClick={handleCloseRegisterDrawer}
                 disabled={registerSubmitting}
               >
-                취소
+                {t('cancel')}
               </Button>
             </Stack>
           </Box>

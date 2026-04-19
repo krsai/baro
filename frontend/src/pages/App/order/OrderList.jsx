@@ -367,16 +367,10 @@ const buildColorMergedRows = (rows = [], getColorMergeKey = getItemColorIdentity
 const normalizeBoardKey = (value) => String(value ?? '').trim();
 const buildAssignmentOriginCardId = (orderId, styleId) =>
   `${normalizeBoardKey(orderId)}::${normalizeBoardKey(styleId)}`;
-const sumLegacyQuantities = (rows = []) =>
-  rows.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
 const resolveOrderItemQuantityForBoard = (item) => {
   if (Number(item?.totalQuantity) > 0) return Number(item.totalQuantity);
   if (item?.sizeQuantities && typeof item.sizeQuantities === 'object') {
     const qty = sumSizeQuantities(item.sizeQuantities);
-    if (qty > 0) return qty;
-  }
-  if (Array.isArray(item?.quantities)) {
-    const qty = sumLegacyQuantities(item.quantities);
     if (qty > 0) return qty;
   }
   return 0;
@@ -613,36 +607,6 @@ const formatOrderLockTimestamp = (value) => {
 };
 const getGenderOrder = (gender) =>
   Number.isFinite(GENDER_SORT_ORDER[gender]) ? GENDER_SORT_ORDER[gender] : 99;
-const getLegacyGenderCodeFromRows = (rows = []) => {
-  for (const row of rows) {
-    const code = normalizeGenderCode(row?.gender || row?.colorId, '');
-    if (code) return code;
-  }
-  return '';
-};
-const getLegacyColorCodeFromRows = (rows = []) => {
-  for (const row of rows) {
-    const fromCode = normalizeColorCode(row?.colorCode || row?.color);
-    if (fromCode) return fromCode;
-    const fromId = normalizeColorCode(row?.colorId);
-    if (fromId && !GENDER_OPTIONS.includes(fromId)) return fromId;
-  }
-  return '';
-};
-const getLegacyColorNameFromRows = (rows = []) => {
-  for (const row of rows) {
-    const name = String(row?.colorName || row?.color || '').trim();
-    if (name) return name;
-  }
-  return '';
-};
-const getLegacyColorIdFromRows = (rows = []) => {
-  for (const row of rows) {
-    const parsed = Number(row?.colorId);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-  return null;
-};
 const normalizeSizeKey = (value) => {
   const raw = String(value || '')
     .toUpperCase()
@@ -715,22 +679,45 @@ const createOrderItem = () => ({
 });
 
 const normalizeOrderItem = (item) => {
+  const normalizedGender = normalizeGenderCode(item?.gender, '');
   const legacyRows =
     Array.isArray(item?.quantities) && item.quantities.length > 0
       ? item.quantities.map(normalizeQuantityRow)
       : [];
-  const normalizedGender = normalizeGenderCode(item?.gender, '');
-  const legacyGender = getLegacyGenderCodeFromRows(legacyRows);
   const colorCodeFromItem = normalizeColorCode(item?.colorCode || item?.color || '');
-  const colorCodeFromLegacy = getLegacyColorCodeFromRows(legacyRows);
-  const colorCode = colorCodeFromItem || colorCodeFromLegacy;
-  const colorNameFromItem = String(item?.colorName || '').trim();
-  const colorName = colorNameFromItem || getLegacyColorNameFromRows(legacyRows);
-  const colorIdFromItem = Number(item?.colorId);
-  const colorId =
-    Number.isFinite(colorIdFromItem) && colorIdFromItem > 0
-      ? colorIdFromItem
-      : getLegacyColorIdFromRows(legacyRows);
+  let colorCode = colorCodeFromItem;
+  let colorName = String(item?.colorName || '').trim();
+  let colorId = Number.isFinite(Number(item?.colorId)) && Number(item?.colorId) > 0
+    ? Number(item.colorId)
+    : null;
+  let gender = normalizedGender;
+
+  if ((!colorCode || !colorName || !colorId || !gender) && legacyRows.length > 0) {
+    legacyRows.forEach((row) => {
+      if (!gender) {
+        gender = normalizeGenderCode(row?.gender || row?.colorId, '');
+      }
+      if (!colorCode) {
+        const nextCode = normalizeColorCode(row?.colorCode || row?.color || '');
+        const nextColorId = normalizeColorCode(row?.colorId);
+        colorCode = nextCode || (nextColorId && !GENDER_OPTIONS.includes(nextColorId) ? nextColorId : '');
+      }
+      if (!colorName) {
+        colorName = String(row?.colorName || row?.color || '').trim();
+      }
+      if (!colorId) {
+        const parsedColorId = Number(row?.colorId);
+        if (Number.isFinite(parsedColorId) && parsedColorId > 0) {
+          colorId = parsedColorId;
+        }
+      }
+    });
+  }
+
+  const sizeQuantities =
+    item?.sizeQuantities && typeof item.sizeQuantities === 'object'
+      ? normalizeSizeQuantities(item.sizeQuantities)
+      : buildSizeQuantitiesFromLegacyRows(legacyRows);
 
   return {
     id: item?.id || createId('item'),
@@ -740,11 +727,11 @@ const normalizeOrderItem = (item) => {
     colorId,
     colorCode,
     colorName,
-    gender: normalizedGender || legacyGender || '',
-    sizeQuantities:
-      item?.sizeQuantities && typeof item.sizeQuantities === 'object'
-        ? normalizeSizeQuantities(item.sizeQuantities)
-        : buildSizeQuantitiesFromLegacyRows(legacyRows),
+    gender: gender || '',
+    sizeQuantities,
+    totalQuantity: Number(item?.totalQuantity) > 0
+      ? Number(item.totalQuantity)
+      : sumSizeQuantities(sizeQuantities),
   };
 };
 
@@ -3152,17 +3139,6 @@ const OrderList = () => {
           : Number.isFinite(Number(colorOption?.id)) && Number(colorOption?.id) > 0
             ? Number(colorOption.id)
             : null;
-      const legacyQuantities = SIZE_COLUMNS
-        .filter((size) => numericSizeQuantities[size] > 0)
-        .map((size) => ({
-          id: createId('qty'),
-          colorId: safeColorId ?? safeColorCode,
-          colorCode: safeColorCode,
-          colorName: safeColorName,
-          gender: item.gender,
-          sizeId: size,
-          quantity: numericSizeQuantities[size],
-        }));
       return {
         ...item,
         colorId: safeColorId,
@@ -3170,7 +3146,6 @@ const OrderList = () => {
         colorName: safeColorName,
         gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : '',
         sizeQuantities: numericSizeQuantities,
-        quantities: legacyQuantities,
         totalQuantity,
       };
     });

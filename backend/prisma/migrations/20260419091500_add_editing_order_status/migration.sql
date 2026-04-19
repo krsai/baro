@@ -1,0 +1,9 @@
+ALTER TYPE "WorkOrderStatus" ADD VALUE IF NOT EXISTS 'EDITING';
+
+ALTER TABLE "WorkOrder"
+  ALTER COLUMN "status" SET DEFAULT 'EDITING';
+
+UPDATE "WorkOrder"
+SET "status" = 'EDITING'
+WHERE "modificationLockedAt" IS NULL
+  AND "status" IN ('ORDER_RECEIVED', 'IN_PROGRESS');

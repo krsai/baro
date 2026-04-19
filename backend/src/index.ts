@@ -186,11 +186,21 @@ assertGeneratedPrismaClientShape();
 
 const WORK_ORDER_ITEM_GENDER_CODES = new Set(["M", "W", "U"]);
 const WORK_ORDER_STATUS_CODES = new Set([
+  "EDITING",
   "ORDER_RECEIVED",
   "IN_PROGRESS",
   "PRODUCTION_DONE",
   "SHIPPED",
   "SETTLED",
+]);
+const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set([
+  "PLANNED",
+  "CONFIRMED",
+]);
+const AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES = new Set([
+  "EDITING",
+  "ORDER_RECEIVED",
+  "IN_PROGRESS",
 ]);
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
@@ -201,6 +211,7 @@ const ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR =
 const ORDER_MODIFICATION_UNLOCK_PAST_ASSIGNMENT_CONFIRMATION_REQUIRED_ERROR =
   "order unlock requires past assignment release confirmation";
 const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
+  ["수정", "EDITING"],
   ["주문접수", "ORDER_RECEIVED"],
   ["접수", "ORDER_RECEIVED"],
   ["작업중", "IN_PROGRESS"],
@@ -346,18 +357,20 @@ const normalizeWorkOrderItemGender = (
 const resolveWorkOrderStatus = (
   value: unknown,
   fallback:
+    | "EDITING"
     | "ORDER_RECEIVED"
     | "IN_PROGRESS"
     | "PRODUCTION_DONE"
     | "SHIPPED"
-    | "SETTLED" = "ORDER_RECEIVED"
-): "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" | "SETTLED" => {
+    | "SETTLED" = "EDITING"
+): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" | "SETTLED" => {
   if (value === "" || value === null || value === undefined) return fallback;
   const normalized = String(value).replace(/\s+/g, "").trim();
   if (!normalized) return fallback;
   const upper = normalized.toUpperCase();
   if (WORK_ORDER_STATUS_CODES.has(upper)) {
     return upper as
+      | "EDITING"
       | "ORDER_RECEIVED"
       | "IN_PROGRESS"
       | "PRODUCTION_DONE"
@@ -366,11 +379,28 @@ const resolveWorkOrderStatus = (
   }
   return (WORK_ORDER_STATUS_LEGACY_CODE_MAP.get(normalized) ??
     fallback) as
+    | "EDITING"
     | "ORDER_RECEIVED"
     | "IN_PROGRESS"
     | "PRODUCTION_DONE"
     | "SHIPPED"
     | "SETTLED";
+};
+const resolveDefaultWorkOrderStatusForLockState = (
+  isLocked: boolean
+): "EDITING" | "ORDER_RECEIVED" =>
+  isLocked ? "ORDER_RECEIVED" : "EDITING";
+const resolveWorkOrderConfirmationStatus = (
+  value: unknown,
+  fallback: "PLANNED" | "CONFIRMED" = "PLANNED"
+): "PLANNED" | "CONFIRMED" => {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const normalized = String(value).replace(/\s+/g, "").trim().toUpperCase();
+  if (!normalized) return fallback;
+  if (WORK_ORDER_CONFIRMATION_STATUS_CODES.has(normalized)) {
+    return normalized as "PLANNED" | "CONFIRMED";
+  }
+  return fallback;
 };
 const toSortOrder = (value: unknown, fallback = 0): number => {
   const parsed = Number(value);
@@ -3601,14 +3631,132 @@ const sumOrderItemQuantity = (item: any = {}) => {
   return 0;
 };
 
-const normalizeOrderItems = (value: any) =>
+const normalizeOrderItemSizeKey = (value: unknown): string => {
+  const raw = String(value || "")
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (!raw) return "";
+  if (raw === "XXL" || raw === "2X") return "2XL";
+  if (raw === "XXXL" || raw === "3X") return "3XL";
+  if (raw === "XXXXL" || raw === "4X") return "4XL";
+  if (
+    raw === "FREE" ||
+    raw === "FREESIZE" ||
+    raw === "ONESIZE" ||
+    raw === "ONESZ" ||
+    raw === "F"
+  ) {
+    return "FREE";
+  }
+  return raw;
+};
+
+const normalizeOrderItemSizeQuantities = (item: any = {}) => {
+  const next: Record<string, number> = {};
+  const directEntries =
+    item?.sizeQuantities && typeof item.sizeQuantities === "object"
+      ? Object.entries(item.sizeQuantities)
+      : [];
+  directEntries.forEach(([rawKey, rawValue]) => {
+    const sizeKey = normalizeOrderItemSizeKey(rawKey);
+    if (!sizeKey) return;
+    const quantity = Math.max(0, Math.round(Number(rawValue) || 0));
+    next[sizeKey] = quantity;
+  });
+  if (Object.values(next).some((quantity) => quantity > 0)) {
+    return next;
+  }
+
+  ensureArray(item?.quantities).forEach((row: any) => {
+    const sizeKey = normalizeOrderItemSizeKey(
+      row?.sizeId ?? row?.sizeName ?? row?.size
+    );
+    if (!sizeKey) return;
+    const quantity = Math.max(0, Math.round(Number(row?.quantity) || 0));
+    if (quantity <= 0) return;
+    next[sizeKey] = (next[sizeKey] || 0) + quantity;
+  });
+  return next;
+};
+
+const resolveOrderItemColorCode = (item: any = {}, sizeQuantities: Record<string, number>) => {
+  const directColorCode =
+    resolveOptionalString(item?.colorCode ?? item?.color, null) ?? "";
+  if (directColorCode) return directColorCode;
+
+  for (const row of ensureArray(item?.quantities)) {
+    const rowColorCode =
+      resolveOptionalString(row?.colorCode ?? row?.color, null) ?? "";
+    if (rowColorCode) return rowColorCode;
+    const rowColorId = resolveOptionalString(row?.colorId, null) ?? "";
+    if (rowColorId && !WORK_ORDER_ITEM_GENDER_CODES.has(rowColorId.toUpperCase())) {
+      return rowColorId;
+    }
+  }
+
+  if (Object.values(sizeQuantities).some((quantity) => quantity > 0)) {
+    const rawColorId = resolveOptionalString(item?.colorId, null) ?? "";
+    if (rawColorId && !WORK_ORDER_ITEM_GENDER_CODES.has(rawColorId.toUpperCase())) {
+      return rawColorId;
+    }
+  }
+
+  return "";
+};
+
+const resolveOrderItemColorId = (item: any = {}) => {
+  const directColorId = toPositiveIntOrNull(item?.colorId);
+  if (directColorId !== null) return directColorId;
+  for (const row of ensureArray(item?.quantities)) {
+    const legacyColorId = toPositiveIntOrNull(row?.colorId);
+    if (legacyColorId !== null) return legacyColorId;
+  }
+  return null;
+};
+
+const resolveOrderItemColorName = (item: any = {}, fallbackCode = "") => {
+  const directName = resolveOptionalString(item?.colorName, null);
+  if (directName) return directName;
+  for (const row of ensureArray(item?.quantities)) {
+    const legacyName = resolveOptionalString(row?.colorName ?? row?.color, null);
+    if (legacyName) return legacyName;
+  }
+  return fallbackCode;
+};
+
+const resolveOrderItemGender = (item: any = {}) => {
+  const directGender = normalizeWorkOrderItemGender(item?.gender, null);
+  if (directGender) return directGender;
+  for (const row of ensureArray(item?.quantities)) {
+    const legacyGender = normalizeWorkOrderItemGender(
+      row?.gender ?? row?.colorId,
+      null
+    );
+    if (legacyGender) return legacyGender;
+  }
+  return "M";
+};
+
+const normalizeOrderItems = (value: any): any[] =>
   ensureArray(value)
     .filter((item) => item && typeof item === "object")
-    .map((item) => ({
-      ...item,
-      gender: normalizeWorkOrderItemGender(item?.gender, "M"),
-      totalQuantity: sumOrderItemQuantity(item),
-    }));
+    .map((item) => {
+      const { quantities: _legacyQuantities, ...rest } = item as Record<string, unknown>;
+      const sizeQuantities = normalizeOrderItemSizeQuantities(item);
+      const colorCode = resolveOrderItemColorCode(item, sizeQuantities);
+      return {
+        ...rest,
+        colorId: resolveOrderItemColorId(item),
+        colorCode,
+        colorName: resolveOrderItemColorName(item, colorCode),
+        gender: resolveOrderItemGender(item),
+        sizeQuantities,
+        totalQuantity: sumOrderItemQuantity({
+          ...item,
+          sizeQuantities,
+        }),
+      };
+    });
 
 const syncOrderItemColorSnapshots = async (items: any) => {
   const normalizedItems = normalizeOrderItems(items);
@@ -3622,13 +3770,13 @@ const syncOrderItemColorSnapshots = async (items: any) => {
 
   if (colorIds.length === 0) {
     return normalizedItems.map((item) => {
-      const { colorName: _colorName, ...rest } = item ?? {};
       const colorCode =
         resolveOptionalString(item?.colorCode ?? item?.color, null) ?? "";
       return {
-        ...rest,
+        ...item,
         colorId: toPositiveIntOrNull(item?.colorId),
         colorCode,
+        colorName: resolveOrderItemColorName(item, colorCode),
       };
     });
   }
@@ -3643,7 +3791,6 @@ const syncOrderItemColorSnapshots = async (items: any) => {
   }, new Map<number, { id: number; code: string; name: string }>());
 
   return normalizedItems.map((item) => {
-    const { colorName: _colorName, ...rest } = item ?? {};
     const colorId = toPositiveIntOrNull(item?.colorId);
     const linkedColor = colorId ? colorById.get(colorId) ?? null : null;
     const colorCode =
@@ -3652,9 +3799,12 @@ const syncOrderItemColorSnapshots = async (items: any) => {
       "";
 
     return {
-      ...rest,
+      ...item,
       colorId: linkedColor?.id ?? null,
       colorCode,
+      colorName:
+        resolveOptionalString(linkedColor?.name, null) ??
+        resolveOrderItemColorName(item, colorCode),
     };
   });
 };
@@ -3842,8 +3992,14 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
   );
   const resolvedCustomerName = customerName ?? buyerOrgName;
   const resolvedBuyerOrgName = buyerOrgName ?? resolvedCustomerName;
-  const confirmationStatus: "PLANNED" = "PLANNED";
-  const status: "ORDER_RECEIVED" = "ORDER_RECEIVED";
+  const confirmationStatus = resolveWorkOrderConfirmationStatus(
+    fallback?.confirmationStatus ?? payload?.confirmationStatus,
+    "PLANNED"
+  );
+  const status = resolveWorkOrderStatus(
+    fallback?.status,
+    resolveDefaultWorkOrderStatusForLockState(Boolean(fallback?.modificationLockedAt))
+  );
 
   return {
     orderId,
@@ -4101,8 +4257,14 @@ const toOrderResponse = (
     customerName: order.customerName ?? order.buyerOrgName ?? "",
     customer: order.customerName ?? order.buyerOrgName ?? "",
     dueDate: order.dueDate ?? "",
-    status: resolveWorkOrderStatus(order.status, "ORDER_RECEIVED"),
-    confirmationStatus: "PLANNED",
+    status: resolveWorkOrderStatus(
+      order.status,
+      resolveDefaultWorkOrderStatusForLockState(isManualModificationLocked)
+    ),
+    confirmationStatus: resolveWorkOrderConfirmationStatus(
+      order.confirmationStatus,
+      "PLANNED"
+    ),
     items,
     totalQuantity: toNonNegativeInt(order.totalQuantity, 0),
     isModificationLocked,
@@ -4614,12 +4776,21 @@ const buildOrderProgressCoverageByOrderId = ({
   return coverageByOrderId;
 };
 const resolveAutoOrderProgressStatus = ({
-  isManualLocked: _isManualLocked,
-  coverage: _coverage,
+  isManualLocked,
+  coverage,
 }: {
   isManualLocked: boolean;
   coverage?: { hasUnassignedCards: boolean; hasAssignments: boolean } | null;
-}): "ORDER_RECEIVED" => {
+}): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" => {
+  if (!isManualLocked) {
+    return "EDITING";
+  }
+  if (!coverage) {
+    return "ORDER_RECEIVED";
+  }
+  if (coverage.hasAssignments && !coverage.hasUnassignedCards) {
+    return "IN_PROGRESS";
+  }
   return "ORDER_RECEIVED";
 };
 const syncOrderProgressStatusesForOrg = async ({
@@ -4635,8 +4806,6 @@ const syncOrderProgressStatusesForOrg = async ({
   assignments?: any;
   includeTerminalStages?: boolean;
 }) => {
-  void cards;
-  void assignments;
   void includeTerminalStages;
   const normalizedOrderIds = Array.from(
     new Set(
@@ -4645,6 +4814,21 @@ const syncOrderProgressStatusesForOrg = async ({
         .filter((orderId): orderId is string => Boolean(orderId))
     )
   );
+  const shouldLoadCards = cards == null;
+  const shouldLoadAssignments = assignments == null;
+  const [resolvedCards, resolvedAssignments] = await Promise.all([
+    shouldLoadCards ? loadAssignmentCardsForOrg({ orgId }) : Promise.resolve(cards),
+    shouldLoadAssignments
+      ? prisma.assignmentBoardState.findUnique({
+          where: { orgId },
+          select: { assignments: true },
+        })
+      : Promise.resolve({ assignments }),
+  ]);
+  const coverageByOrderId = buildOrderProgressCoverageByOrderId({
+    cards: resolvedCards,
+    assignments: resolvedAssignments?.assignments ?? assignments,
+  });
   const orders = await prisma.workOrder.findMany({
     where: {
       OR: getOrderAccessWhere(orgId),
@@ -4658,10 +4842,22 @@ const syncOrderProgressStatusesForOrg = async ({
     },
   });
   const updates = orders.flatMap((order) => {
-    const currentStatus = resolveWorkOrderStatus(order?.status, "ORDER_RECEIVED");
+    const currentStatus = resolveWorkOrderStatus(
+      order?.status,
+      resolveDefaultWorkOrderStatusForLockState(Boolean(order?.modificationLockedAt))
+    );
+    if (
+      !includeTerminalStages &&
+      !AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(currentStatus)
+    ) {
+      return [];
+    }
     const nextStatus = resolveAutoOrderProgressStatus({
       isManualLocked: Boolean(order?.modificationLockedAt),
-      coverage: null,
+      coverage:
+        coverageByOrderId.get(
+          resolveOptionalString(order?.orderId, null) ?? ""
+        ) ?? null,
     });
     if (currentStatus === nextStatus) return [];
     return [{ id: order.id, status: nextStatus }];
@@ -11901,12 +12097,10 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
         ? {
             modificationLockedAt: new Date(),
             modificationLockedBy: lockedBy,
-            status: "ORDER_RECEIVED",
           }
         : {
             modificationLockedAt: null,
             modificationLockedBy: null,
-            status: "ORDER_RECEIVED",
           },
       include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
     });

@@ -455,11 +455,6 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
-            label: getUiMessage('menu.workerWorkHistory', '작업자별 기록', languageCode),
-            icon: <HistoryIcon />,
-            path: '/worker-work-history',
-          },
-          {
             label: getUiMessage('menu.shipmentReview', '출고 검토', languageCode),
             icon: <LocalShippingIcon />,
             path: '/shipment-review',
