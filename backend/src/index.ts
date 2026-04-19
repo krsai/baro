@@ -390,6 +390,34 @@ const resolveDefaultWorkOrderStatusForLockState = (
   isLocked: boolean
 ): "EDITING" | "ORDER_RECEIVED" =>
   isLocked ? "ORDER_RECEIVED" : "EDITING";
+const resolveCanonicalWorkOrderStatusForLockState = ({
+  status,
+  isManualLocked,
+}: {
+  status: unknown;
+  isManualLocked: boolean;
+}):
+  | "EDITING"
+  | "ORDER_RECEIVED"
+  | "IN_PROGRESS"
+  | "PRODUCTION_DONE"
+  | "SHIPPED"
+  | "SETTLED" => {
+  const rawStatus = resolveWorkOrderStatus(
+    status,
+    resolveDefaultWorkOrderStatusForLockState(isManualLocked)
+  );
+  if (!AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(rawStatus)) {
+    return rawStatus;
+  }
+  if (!isManualLocked) {
+    return "EDITING";
+  }
+  if (rawStatus === "EDITING") {
+    return "ORDER_RECEIVED";
+  }
+  return rawStatus;
+};
 const resolveWorkOrderConfirmationStatus = (
   value: unknown,
   fallback: "PLANNED" | "CONFIRMED" = "PLANNED"
@@ -3996,10 +4024,10 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null) => {
     fallback?.confirmationStatus ?? payload?.confirmationStatus,
     "PLANNED"
   );
-  const status = resolveWorkOrderStatus(
-    fallback?.status,
-    resolveDefaultWorkOrderStatusForLockState(Boolean(fallback?.modificationLockedAt))
-  );
+  const status = resolveCanonicalWorkOrderStatusForLockState({
+    status: payload?.status ?? fallback?.status,
+    isManualLocked: Boolean(fallback?.modificationLockedAt),
+  });
 
   return {
     orderId,
@@ -4245,6 +4273,10 @@ const toOrderResponse = (
   const isModificationLocked =
     isManualModificationLocked ||
     isAssignmentModificationLocked;
+  const status = resolveCanonicalWorkOrderStatusForLockState({
+    status: order.status,
+    isManualLocked: isManualModificationLocked,
+  });
   return {
     id: order.orderId,
     ownerOrgId,
@@ -4257,10 +4289,7 @@ const toOrderResponse = (
     customerName: order.customerName ?? order.buyerOrgName ?? "",
     customer: order.customerName ?? order.buyerOrgName ?? "",
     dueDate: order.dueDate ?? "",
-    status: resolveWorkOrderStatus(
-      order.status,
-      resolveDefaultWorkOrderStatusForLockState(isManualModificationLocked)
-    ),
+    status,
     confirmationStatus: resolveWorkOrderConfirmationStatus(
       order.confirmationStatus,
       "PLANNED"
@@ -4842,10 +4871,10 @@ const syncOrderProgressStatusesForOrg = async ({
     },
   });
   const updates = orders.flatMap((order) => {
-    const currentStatus = resolveWorkOrderStatus(
-      order?.status,
-      resolveDefaultWorkOrderStatusForLockState(Boolean(order?.modificationLockedAt))
-    );
+    const currentStatus = resolveCanonicalWorkOrderStatusForLockState({
+      status: order?.status,
+      isManualLocked: Boolean(order?.modificationLockedAt),
+    });
     if (
       !includeTerminalStages &&
       !AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(currentStatus)
@@ -12091,29 +12120,46 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
     "unknown";
   let orderForResponse = existing;
   if (requestedLocked !== currentLockState.isManualLocked) {
-    const updated = await prisma.workOrder.update({
-      where: { id: existing.id },
-      data: requestedLocked
-        ? {
-            modificationLockedAt: new Date(),
-            modificationLockedBy: lockedBy,
-          }
-        : {
-            modificationLockedAt: null,
-            modificationLockedBy: null,
-          },
-      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
-    });
-    await syncOrderProgressStatusesForOrg({
-      orgId: organization.id,
-      orderIds: [updated.orderId],
-      includeTerminalStages: true,
-    });
-    const refreshed = await prisma.workOrder.findUnique({
-      where: { id: updated.id },
-      include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
-    });
-    orderForResponse = refreshed ?? updated;
+    const previousManualLockData = {
+      modificationLockedAt: existing.modificationLockedAt ?? null,
+      modificationLockedBy: existing.modificationLockedBy ?? null,
+    };
+    let updated: any = null;
+    try {
+      updated = await prisma.workOrder.update({
+        where: { id: existing.id },
+        data: requestedLocked
+          ? {
+              modificationLockedAt: new Date(),
+              modificationLockedBy: lockedBy,
+            }
+          : {
+              modificationLockedAt: null,
+              modificationLockedBy: null,
+            },
+        include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+      });
+      await syncOrderProgressStatusesForOrg({
+        orgId: organization.id,
+        orderIds: [updated.orderId],
+        includeTerminalStages: true,
+      });
+      const refreshed = await prisma.workOrder.findUnique({
+        where: { id: updated.id },
+        include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE },
+      });
+      orderForResponse = refreshed ?? updated;
+    } catch (error) {
+      if (updated) {
+        await prisma.workOrder
+          .update({
+            where: { id: existing.id },
+            data: previousManualLockData,
+          })
+          .catch(() => null);
+      }
+      throw error;
+    }
   } else {
     const refreshed = await prisma.workOrder.findUnique({
       where: { id: existing.id },
