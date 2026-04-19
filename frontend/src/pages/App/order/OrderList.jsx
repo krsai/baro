@@ -2424,6 +2424,13 @@ const OrderList = () => {
           }
         }
         mergeOrderIntoState(updated);
+        if (
+          isDetailMode &&
+          !isNewOrder &&
+          String(updated?.id || '') === String(orderId || '')
+        ) {
+          setFormData(normalizeOrderForm(updated));
+        }
         emitOrderModificationLockChanged({
           orgId: activeOrgId,
           orderId: updated?.id || targetOrder.id,
@@ -2468,7 +2475,18 @@ const OrderList = () => {
         setIsTogglingModificationLock(false);
       }
     },
-    [activeOrgId, activeProfile?.email, activeProfile?.name, hasFormChanges, mergeOrderIntoState, orderPageText, showNotification]
+    [
+      activeOrgId,
+      activeProfile?.email,
+      activeProfile?.name,
+      hasFormChanges,
+      isDetailMode,
+      isNewOrder,
+      mergeOrderIntoState,
+      orderId,
+      orderPageText,
+      showNotification,
+    ]
   );
 
   const handleModificationLockToggle = async (nextLockedInput = null) => {
