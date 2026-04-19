@@ -3843,6 +3843,13 @@ const syncOrderItemColorSnapshots = async (items: any) => {
 const syncOrderItemStyleRefs = async (items: any, orgIds: any[]) => {
   const normalizedItems = normalizeOrderItems(items);
   const candidateOrgIds = collectPositiveIntSet(...orgIds);
+  const rawStyleUids = Array.from(
+    new Set(
+      normalizedItems
+        .map((item) => toPositiveIntOrNull(item?.styleUid))
+        .filter((value): value is number => value !== null)
+    )
+  );
   const styleIds = Array.from(
     new Set(
       normalizedItems
@@ -3866,28 +3873,41 @@ const syncOrderItemStyleRefs = async (items: any, orgIds: any[]) => {
   );
 
   if (
-    candidateOrgIds.length === 0 ||
-    (styleIds.length === 0 && styleCodes.length === 0 && styleNames.length === 0)
+    candidateOrgIds.length === 0 &&
+    rawStyleUids.length === 0
   ) {
     return normalizedItems.map((item) => ({
       ...item,
-      styleUid: toPositiveIntOrNull(item?.styleUid),
+      styleUid: null,
       styleId: resolveOptionalString(item?.styleId, null),
       styleName: resolveOptionalString(item?.styleName, null),
       styleCode: resolveOptionalString(item?.styleCode, null),
     }));
   }
 
-  const styleWhere: Prisma.StyleWhereInput = {
-    orgId: { in: candidateOrgIds },
-    OR: [
-      ...(styleIds.length > 0 ? [{ styleId: { in: styleIds } }] : []),
-      ...(styleCodes.length > 0 ? [{ styleCode: { in: styleCodes } }] : []),
-      ...(styleNames.length > 0 ? [{ name: { in: styleNames } }] : []),
-    ],
-  };
+  const styleWhereOr: Prisma.StyleWhereInput[] = [
+    ...(rawStyleUids.length > 0 ? [{ uid: { in: rawStyleUids } }] : []),
+    ...(candidateOrgIds.length > 0 && styleIds.length > 0
+      ? [{ orgId: { in: candidateOrgIds }, styleId: { in: styleIds } }]
+      : []),
+    ...(candidateOrgIds.length > 0 && styleCodes.length > 0
+      ? [{ orgId: { in: candidateOrgIds }, styleCode: { in: styleCodes } }]
+      : []),
+    ...(candidateOrgIds.length > 0 && styleNames.length > 0
+      ? [{ orgId: { in: candidateOrgIds }, name: { in: styleNames } }]
+      : []),
+  ];
+  if (styleWhereOr.length === 0) {
+    return normalizedItems.map((item) => ({
+      ...item,
+      styleUid: null,
+      styleId: resolveOptionalString(item?.styleId, null),
+      styleName: resolveOptionalString(item?.styleName, null),
+      styleCode: resolveOptionalString(item?.styleCode, null),
+    }));
+  }
   const styles = await prisma.style.findMany({
-    where: styleWhere,
+    where: { OR: styleWhereOr },
     select: {
       uid: true,
       orgId: true,
@@ -3949,7 +3969,7 @@ const syncOrderItemStyleRefs = async (items: any, orgIds: any[]) => {
     const linkedStyle = resolveLinkedStyle(item);
     return {
       ...item,
-      styleUid: linkedStyle?.uid ?? toPositiveIntOrNull(item?.styleUid),
+      styleUid: linkedStyle?.uid ?? null,
       styleId: resolveOptionalString(linkedStyle?.styleId ?? item?.styleId, null),
       styleName: resolveOptionalString(linkedStyle?.name ?? item?.styleName, null),
       styleCode: resolveOptionalString(
