@@ -624,7 +624,7 @@ const AttendanceList = () => {
                   <TableRow
                     key={row.workDate}
                     hover
-                    onClick={() => handleOpenDetail(row)}
+                    onDoubleClick={() => handleOpenDetail(row)}
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workDate}</TableCell>

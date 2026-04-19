@@ -513,6 +513,7 @@ const CalendarAssignmentBar = React.memo(function CalendarAssignmentBar({
   isClippedLeft,
   isClippedRight,
   onClick,
+  onDoubleClick,
 }) {
   const snapshotState = resolveAssignmentSnapshotState(assignment);
   const ctLabel = STATUS_META[snapshotState]?.label || STATUS_META.UNSAVED.label;
@@ -564,6 +565,7 @@ const CalendarAssignmentBar = React.memo(function CalendarAssignmentBar({
   return (
     <Box
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       title={[lineName, line1, line2].filter(Boolean).join(' | ')}
       sx={{
         position: 'absolute',
@@ -1108,6 +1110,15 @@ const ProductionPlanBoard = () => {
     const targetMonth = toMonthStart(bounds.startDate);
     setCalendarMonth((prev) => (isSameMonth(prev, targetMonth) ? prev : targetMonth));
   }, [baseDate]);
+  const selectAssignmentForPanel = useCallback((assignment) => {
+    if (!assignment?.id) return;
+    focusCalendarMonthForAssignment(assignment);
+    setSelectedAssignmentId(String(assignment.id));
+  }, [focusCalendarMonthForAssignment]);
+  const openAssignmentPanel = useCallback((assignment) => {
+    selectAssignmentForPanel(assignment);
+    setIsPanelOpen(true);
+  }, [selectAssignmentForPanel]);
   const selectedQuantityLabel = useMemo(
     () =>
       formatNumberWithCommas(
@@ -2192,11 +2203,8 @@ const ProductionPlanBoard = () => {
                           key={assignment.id}
                           hover
                           selected={rowSelected}
-                          onClick={() => {
-                            focusCalendarMonthForAssignment(assignment);
-                            setSelectedAssignmentId(String(assignment.id));
-                            setIsPanelOpen(true);
-                          }}
+                          onClick={() => selectAssignmentForPanel(assignment)}
+                          onDoubleClick={() => openAssignmentPanel(assignment)}
                           sx={{ cursor: 'pointer' }}
                         >
                           <TableCell>
@@ -2641,11 +2649,8 @@ const ProductionPlanBoard = () => {
                               isSelected={isSelected}
                               isClippedLeft={isClippedLeft}
                               isClippedRight={isClippedRight}
-                              onClick={() => {
-                                focusCalendarMonthForAssignment(assignment);
-                                setSelectedAssignmentId(String(assignment.id));
-                                setIsPanelOpen(true);
-                              }}
+                              onClick={() => selectAssignmentForPanel(assignment)}
+                              onDoubleClick={() => openAssignmentPanel(assignment)}
                             />
                           );
                         })}

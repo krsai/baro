@@ -1602,7 +1602,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableRow
                         key={member.id}
                         hover
-                        onClick={canManageMembers ? () => openEditDrawer(member) : undefined}
+                        onDoubleClick={canManageMembers ? () => openEditDrawer(member) : undefined}
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
                       >
                         <TableCell>{displayName}</TableCell>

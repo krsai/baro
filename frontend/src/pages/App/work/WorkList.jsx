@@ -297,7 +297,7 @@ const WorkList = () => {
                 <Paper
                   key={log.id}
                   variant="outlined"
-                  onClick={() => handleOpen(log)}
+                  onDoubleClick={() => handleOpen(log)}
                   sx={{
                     p: 1.25,
                     borderRadius: 1.5,
@@ -315,6 +315,7 @@ const WorkList = () => {
                             size="small"
                             color="error"
                             onClick={(event) => handleDelete(event, log)}
+                            onDoubleClick={(event) => event.stopPropagation()}
                             disabled={deletingId === String(log.id)}
                           >
                             <DeleteOutlineIcon fontSize="small" />
@@ -379,7 +380,7 @@ const WorkList = () => {
                   <TableRow
                     key={log.id}
                     hover
-                    onClick={() => handleOpen(log)}
+                    onDoubleClick={() => handleOpen(log)}
                     sx={{
                       cursor: 'pointer',
                       '& td': { verticalAlign: 'middle' },
@@ -405,6 +406,7 @@ const WorkList = () => {
                             size="small"
                             color="error"
                             onClick={(event) => handleDelete(event, log)}
+                            onDoubleClick={(event) => event.stopPropagation()}
                             disabled={deletingId === String(log.id)}
                           >
                             <DeleteOutlineIcon fontSize="small" />

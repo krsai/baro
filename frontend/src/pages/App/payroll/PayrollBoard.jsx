@@ -118,7 +118,7 @@ const PayrollBoard = () => {
                         key={snapshot.id}
                         hover
                         sx={{ cursor: 'pointer' }}
-                        onClick={() => handleRowClick(snapshot)}
+                        onDoubleClick={() => handleRowClick(snapshot)}
                       >
                         <TableCell sx={{ fontWeight: 600 }}>{snapshot.month}</TableCell>
                         <TableCell align="right">{employees.length}명</TableCell>
