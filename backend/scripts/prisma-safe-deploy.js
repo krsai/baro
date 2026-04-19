@@ -35,23 +35,15 @@ const runPrisma = (args, label) => {
   return result;
 };
 
-const firstAttempt = runPrisma(
-  ["db", "push", "--accept-data-loss", "--skip-generate"],
-  "Running prisma db push --accept-data-loss --skip-generate"
+const pushAttempt = runPrisma(
+  ["db", "push", "--skip-generate"],
+  "Running prisma db push --skip-generate"
 );
-if (firstAttempt.status === 0) {
+if (pushAttempt.status === 0) {
   process.exit(0);
 }
 
-console.warn(
-  "[prisma-safe-deploy] db push failed. Falling back to force reset + db push."
+console.error(
+  "[prisma-safe-deploy] db push failed. Deployment aborted without accept-data-loss/force-reset. Review the schema diff and apply destructive changes manually before retrying."
 );
-const resetAttempt = runPrisma(
-  ["db", "push", "--accept-data-loss", "--force-reset", "--skip-generate"],
-  "Running prisma db push --accept-data-loss --force-reset --skip-generate"
-);
-if (resetAttempt.status === 0) {
-  process.exit(0);
-}
-
-process.exit(resetAttempt.status || firstAttempt.status || 1);
+process.exit(pushAttempt.status || 1);

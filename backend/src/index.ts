@@ -13677,8 +13677,51 @@ const ensureDatabaseReady = async () => {
   throw lastError;
 };
 
+const ensureWorkOrderStatusSchemaReady = async () => {
+  const enumRows = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
+    SELECT enumlabel
+    FROM pg_enum e
+    JOIN pg_type t ON e.enumtypid = t.oid
+    WHERE t.typname = 'WorkOrderStatus'
+    ORDER BY enumsortorder
+  `;
+  const availableStatusCodes = new Set(
+    enumRows
+      .map((row) => resolveOptionalString(row?.enumlabel, null))
+      .filter((value): value is string => Boolean(value))
+  );
+  const missingStatusCodes = Array.from(WORK_ORDER_STATUS_CODES).filter(
+    (statusCode) => !availableStatusCodes.has(statusCode)
+  );
+  if (missingStatusCodes.length > 0) {
+    throw new Error(
+      `[startup] WorkOrderStatus enum is missing DB values: ${missingStatusCodes.join(
+        ", "
+      )}. Apply the latest schema sync before starting the API.`
+    );
+  }
+
+  const defaultRows = await prisma.$queryRaw<Array<{ column_default: string | null }>>`
+    SELECT column_default
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'WorkOrder'
+      AND column_name = 'status'
+  `;
+  const statusColumnDefault =
+    resolveOptionalString(defaultRows[0]?.column_default, null) ?? "";
+  if (!statusColumnDefault.includes("'EDITING'")) {
+    throw new Error(
+      `[startup] WorkOrder.status default is not EDITING (current: ${
+        statusColumnDefault || "missing"
+      }). Apply the latest schema sync before starting the API.`
+    );
+  }
+};
+
 const startServer = async () => {
   await ensureDatabaseReady();
+  await ensureWorkOrderStatusSchemaReady();
   await ensureHardcodedSystemAdmin();
   await ensureAtAutoSyncRunHistoryTable();
   startAutoAtSyncScheduler();
