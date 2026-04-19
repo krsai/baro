@@ -3159,6 +3159,7 @@ const OrderList = () => {
             : null;
       return {
         ...item,
+        styleUid: null,
         colorId: safeColorId,
         colorCode: safeColorCode,
         colorName: safeColorName,

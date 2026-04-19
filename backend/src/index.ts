@@ -3599,6 +3599,7 @@ const ensureStyleStandardsForQuantities = async ({
           stSeconds: ptSeconds,
           setBy: "PT_DERIVED",
         })),
+        skipDuplicates: true,
       });
       touchedStyleUids.add(styleUid);
     }
@@ -6672,6 +6673,7 @@ const syncAssignmentCardsForOrg = async ({
         sortOrder: row.index,
         payload: row.card,
       })),
+      skipDuplicates: true,
     });
   }
   if (updateRows.length > 0) {
@@ -13389,7 +13391,7 @@ app.use(payrollRouter);
 
 // ───────────────────────────────────────────────────────────────────────────
 
-app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   const errorRecord = toErrorRecord(error);
   const prismaErrorCode = getErrorCode(error);
   const prismaMeta =
@@ -13400,6 +13402,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const prismaErrorTarget = Array.isArray(prismaErrorTargetRaw)
     ? prismaErrorTargetRaw.map((item) => String(item))
     : [String(prismaErrorTargetRaw || "")];
+  const prismaConstraint = String(prismaMeta?.constraint || "");
   const hasCompositeTargetFields =
     prismaErrorTarget.includes("orgId") &&
     prismaErrorTarget.includes("customerId") &&
@@ -13460,6 +13463,60 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: "attribute code already exists in this organization",
     });
   }
+  if (prismaErrorCode === "P2002") {
+    return res.status(409).json({
+      ok: false,
+      error: "same data already exists. Refresh and try again",
+    });
+  }
+  const isForeignKeyConstraintError = prismaErrorCode === "P2003";
+  if (isForeignKeyConstraintError) {
+    if (/WorkOrderItem_styleUid_fkey/i.test(prismaConstraint)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "one or more selected styles are out of date. Re-select the style and save again",
+      });
+    }
+    if (/WorkOrderItem_colorId_fkey/i.test(prismaConstraint)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "one or more selected colors are out of date. Re-select the color and save again",
+      });
+    }
+    if (
+      /WorkOrder_(buyerOrgId|sellerOrgId|customerId)_fkey/i.test(prismaConstraint)
+    ) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "linked buyer or seller information is out of date. Refresh and try again",
+      });
+    }
+    return res.status(409).json({
+      ok: false,
+      error: "linked data is out of date. Refresh and try again",
+    });
+  }
+  if (prismaErrorCode === "P2025") {
+    return res.status(404).json({
+      ok: false,
+      error: "the requested record no longer exists. Refresh and try again",
+    });
+  }
+  if (prismaErrorCode === "P2034") {
+    return res.status(409).json({
+      ok: false,
+      error: "another update completed first. Refresh and try again",
+    });
+  }
+  if (prismaErrorCode === "P2011") {
+    return res.status(400).json({
+      ok: false,
+      error: "required data is missing. Check the form and try again",
+    });
+  }
 
   const status = getErrorStatus(error);
   if (status !== null) {
@@ -13468,7 +13525,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: getErrorMessage(error, "request failed"),
     });
   }
-  console.error(error);
+  console.error(`[api] ${req.method} ${req.originalUrl}`, error);
   return res.status(500).json({ ok: false, error: "internal server error" });
 });
 
