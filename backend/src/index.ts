@@ -481,6 +481,10 @@ const STARTUP_DB_RETRY_DELAY_MS = toPositiveInt(
   process.env.STARTUP_DB_RETRY_DELAY_MS,
   1500
 );
+const STARTUP_BOOTSTRAP_RETRY_DELAY_MS = toPositiveInt(
+  process.env.STARTUP_BOOTSTRAP_RETRY_DELAY_MS,
+  5000
+);
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ADMIN",
@@ -9601,7 +9605,22 @@ const syncRoleSection = async (orgId: number, items: any) => {
 };
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    ready: startupLifecycleState === "ready",
+    startupState: startupLifecycleState,
+  });
+});
+
+app.get("/ready", (_req, res) => {
+  if (startupLifecycleState !== "ready") {
+    return res.status(503).json({
+      ok: false,
+      ready: false,
+      startupState: startupLifecycleState,
+    });
+  }
+  return res.json({ ok: true, ready: true });
 });
 
 app.get("/auth/context", async (req, res) => {
@@ -13719,23 +13738,62 @@ const ensureWorkOrderStatusSchemaReady = async () => {
   }
 };
 
+type StartupLifecycleState = "booting" | "ready" | "error";
+
+let startupLifecycleState: StartupLifecycleState = "booting";
+let startupBootstrapAttempt = 0;
+let startupBootstrapRetryTimer: NodeJS.Timeout | null = null;
+
+const scheduleStartupBootstrapRetry = () => {
+  if (startupBootstrapRetryTimer) return;
+  startupBootstrapRetryTimer = setTimeout(() => {
+    startupBootstrapRetryTimer = null;
+    void bootstrapApplicationServices();
+  }, STARTUP_BOOTSTRAP_RETRY_DELAY_MS);
+  if (typeof startupBootstrapRetryTimer.unref === "function") {
+    startupBootstrapRetryTimer.unref();
+  }
+};
+
+const bootstrapApplicationServices = async () => {
+  startupBootstrapAttempt += 1;
+  startupLifecycleState = "booting";
+
+  try {
+    await ensureDatabaseReady();
+    await ensureWorkOrderStatusSchemaReady();
+    await ensureHardcodedSystemAdmin();
+    await ensureAtAutoSyncRunHistoryTable();
+    startAutoAtSyncScheduler();
+    startupLifecycleState = "ready";
+    console.log(
+      `[startup] Background bootstrap completed on attempt ${startupBootstrapAttempt}.`
+    );
+  } catch (error) {
+    startupLifecycleState = "error";
+
+    if (error instanceof Prisma.PrismaClientInitializationError) {
+      console.error(
+        `[startup] Unable to connect to database at ${resolveDatabaseEndpoint()}. Check DATABASE_URL/network access and retry.`
+      );
+    }
+
+    console.error(
+      `[startup] Background bootstrap attempt ${startupBootstrapAttempt} failed. Retrying in ${STARTUP_BOOTSTRAP_RETRY_DELAY_MS}ms.`
+    );
+    console.error(error);
+    scheduleStartupBootstrapRetry();
+  }
+};
+
 const startServer = async () => {
-  await ensureDatabaseReady();
-  await ensureWorkOrderStatusSchemaReady();
-  await ensureHardcodedSystemAdmin();
-  await ensureAtAutoSyncRunHistoryTable();
-  startAutoAtSyncScheduler();
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });
+  void bootstrapApplicationServices();
 };
 
 startServer().catch((error) => {
-  if (error instanceof Prisma.PrismaClientInitializationError) {
-    console.error(
-      `[startup] Unable to connect to database at ${resolveDatabaseEndpoint()}. Check DATABASE_URL/network access and retry.`
-    );
-  }
   console.error("failed to start API server", error);
   process.exit(1);
 });
