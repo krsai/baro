@@ -223,6 +223,12 @@ const getStyleProcessMessage = (languageCode, key, params = {}) => {
 };
 
 const REVIEW_DESCRIPTION_PREFIX = '[REVIEW]';
+const hasReviewCommentText = (value) => String(value ?? '').trim().length > 0;
+const formatAtSecondsOrBlank = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return formatSeconds(parsed);
+};
 
 const parseProcessReviewMeta = (process) => {
   const explicitNeedsReview =
@@ -233,21 +239,23 @@ const parseProcessReviewMeta = (process) => {
     typeof process?.description === 'string' ? process.description.trim() : '';
 
   if (explicitNeedsReview !== null || explicitComment) {
+    const comment = explicitComment || rawDescription;
     return {
-      needsReview: explicitNeedsReview ?? false,
-      reviewComment: explicitComment || rawDescription,
+      needsReview: hasReviewCommentText(comment),
+      reviewComment: comment,
     };
   }
 
   if (rawDescription.startsWith(REVIEW_DESCRIPTION_PREFIX)) {
+    const comment = rawDescription.slice(REVIEW_DESCRIPTION_PREFIX.length).trim();
     return {
-      needsReview: true,
-      reviewComment: rawDescription.slice(REVIEW_DESCRIPTION_PREFIX.length).trim(),
+      needsReview: hasReviewCommentText(comment),
+      reviewComment: comment,
     };
   }
 
   return {
-    needsReview: false,
+    needsReview: hasReviewCommentText(rawDescription),
     reviewComment: rawDescription,
   };
 };
@@ -710,8 +718,8 @@ const buildProcessPayload = (
   const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
-  const reviewNeedsCheck = Boolean(draft?.needsReview);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
+  const reviewNeedsCheck = hasReviewCommentText(reviewComment);
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece =
     ptTotalForDisplay == null
@@ -806,7 +814,7 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
       exactStPerPiece == null
         ? ''
         : toDraftNumberText(roundToScale(exactStPerPiece * processQuantity, 4)),
-    needsReview: reviewMeta.needsReview,
+    needsReview: hasReviewCommentText(reviewMeta.reviewComment),
     reviewComment: reviewMeta.reviewComment || '',
   };
 };
@@ -1279,7 +1287,7 @@ const StyleProcess = ({
                 </TableCell>
 
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
-                  {formatSeconds(previewAtTotalSeconds)}
+                  {formatAtSecondsOrBlank(previewAtTotalSeconds)}
                 </TableCell>
                 <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                   <TextField
@@ -1609,7 +1617,7 @@ const StyleProcess = ({
                 <TextField
                   size="small"
                   label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
-                  value={formatSeconds(addPreviewAtTotalSeconds)}
+                  value={formatAtSecondsOrBlank(addPreviewAtTotalSeconds)}
                   InputProps={{ readOnly: true }}
                   inputProps={{ tabIndex: -1 }}
                   sx={{ width: 132 }}
@@ -1620,11 +1628,14 @@ const StyleProcess = ({
                     control={(
                       <Checkbox
                         size="small"
-                        checked={Boolean(addDraft.needsReview)}
+                        checked={hasReviewCommentText(addDraft.reviewComment)}
                         onChange={(event) => {
                           setAddDraft((prev) => ({
                             ...prev,
                             needsReview: event.target.checked,
+                            reviewComment: event.target.checked
+                              ? prev.reviewComment
+                              : '',
                           }));
                         }}
                       />
@@ -1638,6 +1649,7 @@ const StyleProcess = ({
                       setAddDraft((prev) => ({
                         ...prev,
                         reviewComment: event.target.value,
+                        needsReview: hasReviewCommentText(event.target.value),
                       }));
                     }}
                     onBlur={() => setAddError('')}
@@ -1756,7 +1768,7 @@ const StyleProcess = ({
                     {hasPT ? formatSeconds(totalPT) : '-'}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                    {hasAT ? formatSeconds(totalAT) : '-'}
+                    {hasAT ? formatAtSecondsOrBlank(totalAT) : ''}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem', color: 'primary.main' }}>
                     {hasST ? formatSeconds(totalST) : '-'}
