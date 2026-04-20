@@ -19,6 +19,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
@@ -112,6 +113,21 @@ const TEXT = {
     en: 'Failed to import file.',
     vi: 'Nhap tep that bai.',
   },
+  deleteConfirm: {
+    en: 'Delete all attendance records for this day?',
+    vi: 'Ban co muon xoa toan bo cham cong cua ngay nay khong?',
+    ko: '?대궇 異쒗눜洹?湲곕줉??紐⑤몢 ??젣?섏떆寃좎뒿?덇퉴?',
+  },
+  deleteSuccess: {
+    en: 'Attendance records deleted.',
+    vi: 'Da xoa du lieu cham cong.',
+    ko: '異쒗눜洹?湲곕줉????젣?덉뒿?덈떎.',
+  },
+  deleteError: {
+    en: 'Failed to delete attendance records.',
+    vi: 'Khong the xoa du lieu cham cong.',
+    ko: '異쒗눜洹?湲곕줉 ??젣???ㅽ뙣?덉뒿?덈떎.',
+  },
 };
 
 const resolveText = (bundle, languageCode, fallback = '') =>
@@ -178,6 +194,7 @@ const AttendanceList = () => {
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [importingFile, setImportingFile] = useState(false);
+  const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
   const fileInputRef = useRef(null);
 
@@ -357,6 +374,56 @@ const AttendanceList = () => {
       });
     },
     [languageCode, navigateToPath, selectedFactoryId]
+  );
+
+  const handleDelete = useCallback(
+    async (event, row) => {
+      event.stopPropagation();
+      const workDate = String(row?.workDate || '').trim();
+      if (!selectedFactoryId || !workDate) return;
+
+      const confirmed = window.confirm(
+        resolveText(
+          TEXT.deleteConfirm,
+          languageCode,
+          'Delete all attendance records for this day?'
+        )
+      );
+      if (!confirmed) return;
+
+      setDeletingWorkDate(workDate);
+      try {
+        const query = buildQueryString({ orgId: activeOrgId });
+        await requestJSON('/attendance-entries' + query, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            factoryId: Number(selectedFactoryId),
+            workDate,
+            entries: [],
+          }),
+        });
+        setRows((prev) =>
+          prev.filter((item) => String(item?.workDate || '').trim() !== workDate)
+        );
+        showNotification(
+          resolveText(TEXT.deleteSuccess, languageCode, 'Attendance records deleted.'),
+          'success'
+        );
+      } catch (_error) {
+        showNotification(
+          resolveText(
+            TEXT.deleteError,
+            languageCode,
+            'Failed to delete attendance records.'
+          ),
+          'error'
+        );
+      } finally {
+        setDeletingWorkDate('');
+      }
+    },
+    [activeOrgId, languageCode, selectedFactoryId, showNotification]
   );
 
   const handleClickImport = useCallback(() => {
@@ -606,17 +673,18 @@ const AttendanceList = () => {
                 <TableCell align="right">
                   {resolveText(TEXT.noteCount, languageCode, 'Notes')}
                 </TableCell>
+                <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={5}
+                  colSpan={6}
                   message={resolveText(TEXT.loading, languageCode, 'Loading attendance...')}
                 />
               ) : !selectedFactoryId || filteredRows.length === 0 ? (
                 <TableStatusRow
-                  colSpan={5}
+                  colSpan={6}
                   message={resolveText(TEXT.empty, languageCode, 'No attendance records found.')}
                 />
               ) : (
@@ -645,6 +713,21 @@ const AttendanceList = () => {
                         fallback: '0',
                         maximumFractionDigits: 0,
                       })}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={(event) => handleDelete(event, row)}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                            disabled={deletingWorkDate === String(row.workDate)}
+                          >
+                            <DeleteOutlineIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))
