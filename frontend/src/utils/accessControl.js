@@ -161,6 +161,10 @@ const canAccessFeatureByContext = (featureKey, context) => {
     if (isBrand) return BRAND_FEATURES.has(featureKey);
   }
 
+  if (hasOrgRole(context, ORG_ROLES.WORKER)) {
+    return featureKey === FEATURE_KEYS.PROFILE;
+  }
+
   switch (featureKey) {
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
@@ -197,20 +201,17 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.PRODUCTION_PLAN:
       return (
         isManufacturer &&
-        (
-          hasOrgRole(context, ORG_ROLES.ADMIN) ||
-          (hasOrgRole(context, ORG_ROLES.WORKER) && context.isLineLeader === true)
-        )
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
       );
     case FEATURE_KEYS.PRODUCTION_RESULT:
       return (
         isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR, ORG_ROLES.ACCOUNTANT)
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
       );
     case FEATURE_KEYS.PAYROLL:
       return (
         isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR, ORG_ROLES.ACCOUNTANT)
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
       );
     case FEATURE_KEYS.PERMISSION:
       return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);

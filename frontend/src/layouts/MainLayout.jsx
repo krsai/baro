@@ -60,6 +60,16 @@ import { RequestScopeBoundary } from '../context/RequestScopeContext';
 const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
+const DAILY_WORK_HISTORY_LABELS = {
+  ko: '\uC77C\uAC04 \uAE30\uB85D',
+  en: 'Daily Logs',
+  vi: 'Ghi chep ngay',
+};
+const MONTHLY_WORK_HISTORY_LABELS = {
+  ko: '\uC6D4\uAC04 \uAE30\uB85D',
+  en: 'Monthly Logs',
+  vi: 'Ghi chep thang',
+};
 
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
@@ -77,6 +87,9 @@ const isKeepAliveCandidatePath = (path) => {
   if (pathname.startsWith('/auth')) return false;
   return true;
 };
+
+const resolveLocalizedLabel = (bundle, languageCode) =>
+  bundle?.[languageCode] || bundle?.ko || '';
 
 const resolveNameFromEmail = (email) => {
   const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -455,6 +468,15 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
+            label: getUiMessage(
+              'menu.workHistoryMonthly',
+              resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
+              languageCode
+            ),
+            icon: <CalendarMonthIcon />,
+            path: '/work-history-monthly',
+          },
+          {
             label: getUiMessage('menu.shipmentReview', '출고 검토', languageCode),
             icon: <LocalShippingIcon />,
             path: '/shipment-review',
@@ -470,7 +492,6 @@ const MainLayout = () => {
         label: getUiMessage('menu.inventory', '재고 관리', languageCode),
         icon: <Inventory2Icon />,
         isParent: true,
-        disabled: true,
         isOpen: inventoryOpen,
         setOpen: setInventoryOpen,
         children: [
@@ -485,7 +506,6 @@ const MainLayout = () => {
         label: getUiMessage('menu.accounting', '회계 관리', languageCode),
         icon: <AccountBalanceWalletIcon />,
         isParent: true,
-        disabled: true,
         isOpen: accountingOpen,
         setOpen: setAccountingOpen,
         children: [
@@ -612,12 +632,18 @@ const MainLayout = () => {
         let visibleChildren = item.children.filter((child) =>
           hasPathAccess(child.path)
         );
-        if (item.disabled) {
-          visibleChildren = visibleChildren.map((child) => ({
-            ...child,
-            disabled: true,
-          }));
-        }
+        visibleChildren = visibleChildren.map((child) =>
+          child.path === '/work-history'
+            ? {
+                ...child,
+                label: getUiMessage(
+                  'menu.workHistoryDaily',
+                  resolveLocalizedLabel(DAILY_WORK_HISTORY_LABELS, languageCode),
+                  languageCode
+                ),
+              }
+            : child
+        );
         const childPaths = new Set(item.children.map((child) => child.path));
 
         if (childPaths.has('/order') && childPaths.has('/style')) {
@@ -632,11 +658,23 @@ const MainLayout = () => {
         }
 
         if (childPaths.has('/assignment')) {
+          const preferredProductionPaths = [
+            '/line',
+            '/assignment',
+            '/production-plan',
+            '/work-history',
+            '/work-history-monthly',
+            '/attendance',
+            '/st-review',
+            '/shipment-review',
+          ];
           visibleChildren = [
-            visibleChildren.find((child) => child.path === '/line') || null,
-            visibleChildren.find((child) => child.path === '/assignment') || null,
-            visibleChildren.find((child) => child.path === '/work-history') || null,
-            visibleChildren.find((child) => child.path === '/attendance') || null,
+            ...preferredProductionPaths.map(
+              (path) => visibleChildren.find((child) => child.path === path) || null
+            ),
+            ...visibleChildren.filter(
+              (child) => !preferredProductionPaths.includes(child.path)
+            ),
           ].filter(Boolean);
         }
 
@@ -675,7 +713,11 @@ const MainLayout = () => {
   );
   const resolveWorkHistoryTabLabel = React.useCallback(
     (kind = 'list') => {
-      const baseLabel = getUiMessage('menu.workHistory', 'Work History', languageCode);
+      const baseLabel = getUiMessage(
+        'menu.workHistoryDaily',
+        resolveLocalizedLabel(DAILY_WORK_HISTORY_LABELS, languageCode),
+        languageCode
+      );
       const suffixByKind =
         languageCode === 'ko'
           ? { list: '목록', new: '신규', detail: '상세' }
@@ -1218,26 +1260,8 @@ const MainLayout = () => {
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
-  const getMenuItemSx = React.useCallback(({ selected = false, disabled = false, nested = false } = {}) => {
+  const getMenuItemSx = React.useCallback(({ selected = false, nested = false } = {}) => {
     const baseSx = nested ? { pl: 4 } : {};
-
-    if (disabled) {
-      return {
-        ...baseSx,
-        color: 'text.disabled',
-        opacity: 0.55,
-        cursor: 'not-allowed',
-        '&:hover': {
-          backgroundColor: 'transparent',
-        },
-        '& .MuiListItemIcon-root': {
-          color: 'text.disabled',
-        },
-        '& .MuiListItemText-primary': {
-          color: 'text.disabled',
-        },
-      };
-    }
 
     if (selected) {
       return {
@@ -1265,46 +1289,36 @@ const MainLayout = () => {
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <List sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 0 } }}>
         {menuItems.map((menu) => {
-          const isMenuDisabled = Boolean(menu.disabled);
-          const isMenuSelected = !menu.isParent && !isMenuDisabled && currentPath === menu.path;
+          const isMenuSelected = !menu.isParent && currentPath === menu.path;
 
           return (
             <React.Fragment key={menu.label}>
             <ListItem
               button
-              onClick={
-                isMenuDisabled
-                  ? undefined
-                  : () => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)
-              }
+              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
               selected={isMenuSelected}
-              aria-disabled={isMenuDisabled}
-              sx={getMenuItemSx({ selected: isMenuSelected, disabled: isMenuDisabled })}
+              sx={getMenuItemSx({ selected: isMenuSelected })}
             >
               <ListItemIcon sx={{ minWidth: '40px' }}>{menu.icon}</ListItemIcon>
               <ListItemText primary={menu.label} />
-              {menu.isParent && !isMenuDisabled && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
+              {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
             </ListItem>
             {menu.isParent && (
               <Collapse in={menu.isOpen} timeout={120}>
                 <List component="div" disablePadding>
                   {menu.children.map((child) => {
-                    const isChildDisabled = Boolean(child.disabled);
                     const isChildSelected =
-                      !isChildDisabled &&
-                      (currentPath === child.path ||
-                        (currentPath ? currentPath.startsWith(child.path + '/') : false));
+                      currentPath === child.path ||
+                      (currentPath ? currentPath.startsWith(child.path + '/') : false);
 
                     return (
                       <ListItem
                         button
                         key={child.path}
-                        onClick={isChildDisabled ? undefined : () => handleMenuItemClick(child.path)}
+                        onClick={() => handleMenuItemClick(child.path)}
                         selected={isChildSelected}
-                        aria-disabled={isChildDisabled}
                         sx={getMenuItemSx({
                           selected: isChildSelected,
-                          disabled: isChildDisabled,
                           nested: true,
                         })}
                       >

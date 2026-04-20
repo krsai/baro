@@ -68,6 +68,11 @@ const TEXT = {
   prevMonth: { ko: '이전 달', en: 'Previous month', vi: 'Thang truoc' },
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
 };
+const DAILY_LOG_LABELS = {
+  ko: '\uC77C\uAC04 \uAE30\uB85D',
+  en: 'Daily Logs',
+  vi: 'Ghi chep ngay',
+};
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
@@ -278,7 +283,7 @@ const WorkList = () => {
 
   return (
     <AppPageContainer
-      title={getUiMessage('menu.workHistory', '기록', languageCode)}
+      title={getUiMessage('menu.workHistoryDaily', resolveText(DAILY_LOG_LABELS, languageCode), languageCode)}
       toolbar={toolbar}
     >
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
