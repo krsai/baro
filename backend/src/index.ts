@@ -202,6 +202,9 @@ const AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES = new Set([
   "ORDER_RECEIVED",
   "IN_PROGRESS",
 ]);
+let supportsWorkOrderEditingStatus = false;
+const resolveUnlockedWorkOrderStatus = (): "EDITING" | "ORDER_RECEIVED" =>
+  supportsWorkOrderEditingStatus ? "EDITING" : "ORDER_RECEIVED";
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
 const ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR =
@@ -389,7 +392,7 @@ const resolveWorkOrderStatus = (
 const resolveDefaultWorkOrderStatusForLockState = (
   isLocked: boolean
 ): "EDITING" | "ORDER_RECEIVED" =>
-  isLocked ? "ORDER_RECEIVED" : "EDITING";
+  isLocked ? "ORDER_RECEIVED" : resolveUnlockedWorkOrderStatus();
 const resolveCanonicalWorkOrderStatusForLockState = ({
   status,
   isManualLocked,
@@ -411,7 +414,7 @@ const resolveCanonicalWorkOrderStatusForLockState = ({
     return rawStatus;
   }
   if (!isManualLocked) {
-    return "EDITING";
+    return resolveUnlockedWorkOrderStatus();
   }
   if (rawStatus === "EDITING") {
     return "ORDER_RECEIVED";
@@ -4837,7 +4840,7 @@ const resolveAutoOrderProgressStatus = ({
   coverage?: { hasUnassignedCards: boolean; hasAssignments: boolean } | null;
 }): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" => {
   if (!isManualLocked) {
-    return "EDITING";
+    return resolveUnlockedWorkOrderStatus();
   }
   if (!coverage) {
     return "ORDER_RECEIVED";
@@ -13539,6 +13542,17 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
       error: "required data is missing. Check the form and try again",
     });
   }
+  const rawErrorMessage = getErrorMessage(error, String(error));
+  if (
+    /invalid input value for enum\s+"?WorkOrderStatus"?/i.test(rawErrorMessage) &&
+    /EDITING/i.test(rawErrorMessage)
+  ) {
+    return res.status(409).json({
+      ok: false,
+      error:
+        "order status schema is out of date on the server. Retry after backend migration/deploy sync",
+    });
+  }
 
   const status = getErrorStatus(error);
   if (status !== null) {
@@ -13808,14 +13822,21 @@ const ensureWorkOrderStatusSchemaReady = async () => {
       .map((row) => resolveOptionalString(row?.enumlabel, null))
       .filter((value): value is string => Boolean(value))
   );
+  supportsWorkOrderEditingStatus = availableStatusCodes.has("EDITING");
   const missingStatusCodes = Array.from(WORK_ORDER_STATUS_CODES).filter(
-    (statusCode) => !availableStatusCodes.has(statusCode)
+    (statusCode) =>
+      statusCode !== "EDITING" && !availableStatusCodes.has(statusCode)
   );
   if (missingStatusCodes.length > 0) {
     throw new Error(
       `[startup] WorkOrderStatus enum is missing DB values: ${missingStatusCodes.join(
         ", "
       )}. Apply the latest schema sync before starting the API.`
+    );
+  }
+  if (!supportsWorkOrderEditingStatus) {
+    console.warn(
+      "[startup] WorkOrderStatus enum is missing EDITING. Compatibility mode is enabled (unlocked orders use ORDER_RECEIVED in DB)."
     );
   }
 
@@ -13829,10 +13850,10 @@ const ensureWorkOrderStatusSchemaReady = async () => {
   const statusColumnDefault =
     resolveOptionalString(defaultRows[0]?.column_default, null) ?? "";
   if (!statusColumnDefault.includes("'EDITING'")) {
-    throw new Error(
+    console.warn(
       `[startup] WorkOrder.status default is not EDITING (current: ${
         statusColumnDefault || "missing"
-      }). Apply the latest schema sync before starting the API.`
+      }).`
     );
   }
 };
@@ -13870,6 +13891,7 @@ const bootstrapApplicationServices = async () => {
     );
   } catch (error) {
     startupLifecycleState = "error";
+    supportsWorkOrderEditingStatus = false;
 
     if (error instanceof Prisma.PrismaClientInitializationError) {
       console.error(
