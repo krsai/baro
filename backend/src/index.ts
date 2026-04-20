@@ -6629,65 +6629,36 @@ const syncAssignmentCardsForOrg = async ({
   db?: AssignmentCardStoreClient;
 }): Promise<any[]> => {
   const normalizedCards = normalizeAssignmentCardsForStore(cards);
-  const existingRows = await db.assignmentCard.findMany({
-    where: { orgId },
-    select: { id: true, cardId: true },
-  });
-  const existingByCardId = new Map(
-    existingRows.map((row) => [String(row.cardId), row.id])
-  );
   const nextCardIdSet = new Set(normalizedCards.map((card) => String(card.id)));
-
-  const createRows = normalizedCards
-    .map((card, index) => ({
-      card,
-      index,
-      existingId: existingByCardId.get(String(card.id)),
-    }))
-    .filter((row) => !row.existingId);
-  const updateRows = normalizedCards
-    .map((card, index) => ({
-      card,
-      index,
-      existingId: existingByCardId.get(String(card.id)),
-    }))
-    .filter((row) => Boolean(row.existingId)) as Array<{
-    card: any;
-    index: number;
-    existingId: number;
-  }>;
-  const deleteIds = existingRows
-    .filter((row) => !nextCardIdSet.has(String(row.cardId)))
-    .map((row) => row.id);
-
-  if (deleteIds.length > 0) {
-    await db.assignmentCard.deleteMany({
-      where: { id: { in: deleteIds } },
-    });
-  }
-  if (createRows.length > 0) {
-    await db.assignmentCard.createMany({
-      data: createRows.map((row) => ({
+  await db.assignmentCard.deleteMany({
+    where: {
+      orgId,
+      ...(nextCardIdSet.size > 0
+        ? { cardId: { notIn: Array.from(nextCardIdSet.values()) } }
+        : {}),
+    },
+  });
+  for (let index = 0; index < normalizedCards.length; index += 1) {
+    const card = normalizedCards[index];
+    const cardId = String(card.id);
+    await db.assignmentCard.upsert({
+      where: {
+        orgId_cardId: {
+          orgId,
+          cardId,
+        },
+      },
+      update: {
+        sortOrder: index,
+        payload: card,
+      },
+      create: {
         orgId,
-        cardId: String(row.card.id),
-        sortOrder: row.index,
-        payload: row.card,
-      })),
-      skipDuplicates: true,
+        cardId,
+        sortOrder: index,
+        payload: card,
+      },
     });
-  }
-  if (updateRows.length > 0) {
-    await Promise.all(
-      updateRows.map((row) =>
-        db.assignmentCard.update({
-          where: { id: row.existingId },
-          data: {
-            sortOrder: row.index,
-            payload: row.card,
-          },
-        })
-      )
-    );
   }
 
   return normalizedCards;
@@ -6785,6 +6756,55 @@ const rebuildAssignmentCardsForOrg = async (orgId: number) => {
   });
   return syncedCards;
 };
+const ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES = new Set([
+  "P2034",
+  "P2024",
+  "P1008",
+]);
+const ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS = 3;
+const ASSIGNMENT_CARD_REBUILD_RETRY_DELAY_MS = 120;
+const assignmentCardRebuildChainByOrgId = new Map<number, Promise<any>>();
+const waitMs = async (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+const isRetryableAssignmentCardRebuildError = (error: unknown) => {
+  const code = getErrorCode(error);
+  if (!code) return false;
+  return ASSIGNMENT_CARD_REBUILD_RETRYABLE_PRISMA_CODES.has(code);
+};
+const rebuildAssignmentCardsForOrgWithRetry = async (orgId: number) => {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await rebuildAssignmentCardsForOrg(orgId);
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= ASSIGNMENT_CARD_REBUILD_MAX_ATTEMPTS ||
+        !isRetryableAssignmentCardRebuildError(error)
+      ) {
+        throw error;
+      }
+      await waitMs(ASSIGNMENT_CARD_REBUILD_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError;
+};
+const enqueueAssignmentCardRebuildForOrg = async (orgId: number) => {
+  const previous = assignmentCardRebuildChainByOrgId.get(orgId) ?? Promise.resolve();
+  const current = previous
+    .catch(() => null)
+    .then(() => rebuildAssignmentCardsForOrgWithRetry(orgId));
+  assignmentCardRebuildChainByOrgId.set(orgId, current);
+  try {
+    return await current;
+  } finally {
+    if (assignmentCardRebuildChainByOrgId.get(orgId) === current) {
+      assignmentCardRebuildChainByOrgId.delete(orgId);
+    }
+  }
+};
 const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | undefined>) => {
   const uniqueOrgIds = Array.from(
     new Set(
@@ -6793,7 +6813,9 @@ const rebuildAssignmentCardsForOrgIds = async (orgIds: Array<number | null | und
         .filter((orgId): orgId is number => orgId !== null)
     )
   );
-  await Promise.all(uniqueOrgIds.map((orgId) => rebuildAssignmentCardsForOrg(orgId)));
+  await Promise.all(
+    uniqueOrgIds.map((orgId) => enqueueAssignmentCardRebuildForOrg(orgId))
+  );
 };
 const hasCorruptedAssignmentDisplayText = (value: any): boolean => {
   const text = resolveOptionalString(value, null);
