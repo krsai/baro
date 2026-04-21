@@ -32,6 +32,12 @@ const EMPLOYEE_STATUS_OPTIONS = [
   { value: 'SUSPENDED', label: '휴직' },
   { value: 'TERMINATED', label: '퇴사' },
 ];
+const EMPLOYEE_STATUS_FILTER_OPTIONS = [
+  { value: 'ACTIVE', label: '재직' },
+  { value: 'SUSPENDED', label: '휴직' },
+  { value: 'TERMINATED', label: '퇴사' },
+  { value: 'ALL', label: '전체 상태' },
+];
 
 const ORG_ROLE_OPTIONS = [
   { value: 'ADMIN', label: '관리자' },
@@ -450,6 +456,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [employees, setEmployees] = useState([]);
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [selectedFactoryFilterId, setSelectedFactoryFilterId] = useState('');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState('ACTIVE');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [statusMessage, setStatusMessage] = useState(null);
@@ -753,19 +760,28 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setStatusMessage(null);
 
       try {
+        const normalizedDraftStatus = String(draft?.status || 'ACTIVE').toUpperCase();
+        const shouldTerminateFromLeftAt = Boolean(String(draft?.leftAt || '').trim());
+        const resolvedMemberStatus = shouldTerminateFromLeftAt
+          ? 'TERMINATED'
+          : normalizedDraftStatus;
         const saveMembership = async () => {
           const hasEmailPatch = typeof draft.email === 'string';
           const normalizedMemberEmail = normalizeEmail(member?.email);
           const normalizedDraftEmail = hasEmailPatch ? normalizeEmail(draft.email) : '';
           const shouldUpdateEmail = hasEmailPatch && normalizedDraftEmail !== normalizedMemberEmail;
-          if (draft.status === member.status && draft.orgRole === member.role && !shouldUpdateEmail) {
+          if (
+            resolvedMemberStatus === member.status
+            && draft.orgRole === member.role
+            && !shouldUpdateEmail
+          ) {
             return member;
           }
           const updatedMembership = await requestJSON(`/org-memberships/${member.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              status: draft.status,
+              status: resolvedMemberStatus,
               role: draft.orgRole,
               approvedBy: myEmail,
               ...(hasEmailPatch ? { email: draft.email } : {}),
@@ -774,11 +790,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           return updatedMembership || member;
         };
         const shouldSaveMembershipFirst =
-          draft.status !== member.status ||
+          resolvedMemberStatus !== member.status ||
           (
             draft.orgRole !== member.role &&
             draft.orgRole === 'WORKER' &&
-            draft.status === 'ACTIVE'
+            resolvedMemberStatus === 'ACTIVE'
           );
         let savedMember = member;
 
@@ -895,6 +911,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const next = { ...prev, ...patch };
       const normalizedRole = String(next.orgRole || '').toUpperCase();
       const normalizedPayType = String(next.payType || '').toUpperCase();
+      const patchKeys = patch ? Object.keys(patch) : [];
+      const hasLeftAtPatch = patchKeys.includes('leftAt');
+      const hasStatusPatch = patchKeys.includes('status');
+      const normalizedLeftAt = String(next.leftAt || '').trim();
 
       if (!isWorkerOrgRole(normalizedRole)) {
         next.jobRoleId = '';
@@ -907,6 +927,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
       if (String(next.payType || '').toUpperCase() !== 'FIXED') {
         next.fixedSalary = '';
+      }
+      if (hasLeftAtPatch && !hasStatusPatch && normalizedLeftAt) {
+        next.status = 'TERMINATED';
       }
       return next;
     });
@@ -932,6 +955,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const normalizedStatus = String(drawerDraft.status || 'ACTIVE').toUpperCase();
     const normalizedJoinedAt = String(drawerDraft.joinedAt || '').trim();
     const normalizedLeftAt = String(drawerDraft.leftAt || '').trim();
+    const resolvedStatus = normalizedLeftAt ? 'TERMINATED' : normalizedStatus;
     const normalizedDrawerEmail = normalizeEmail(drawerEmail);
     const roleNeedsLoginEmail = isLoginRequiredRole(normalizedOrgRole);
     const selectedFactoryId =
@@ -1037,7 +1061,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         orgRole: normalizedOrgRole || resolveDefaultInviteRole(roleOptions),
         jobRoleId: effectiveJobRoleId,
         payType: normalizedPayType,
-        status: normalizedStatus,
+        status: resolvedStatus,
         factoryId:
           activeOrgType === 'BRAND'
             ? ''
@@ -1085,11 +1109,20 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       return String(employee?.factoryId || '') === String(selectedFactoryFilterId);
     });
   }, [activeMembers, employeeByMembership, selectedFactoryFilterId]);
+  const statusFilteredActiveMembers = useMemo(() => {
+    const normalizedStatusFilter = String(selectedStatusFilter || '').toUpperCase();
+    if (!normalizedStatusFilter || normalizedStatusFilter === 'ALL') {
+      return visibleActiveMembers;
+    }
+    return visibleActiveMembers.filter(
+      (member) => String(member?.status || '').toUpperCase() === normalizedStatusFilter
+    );
+  }, [selectedStatusFilter, visibleActiveMembers]);
   const filteredActiveMembers = useMemo(() => {
     const keyword = normalizeSearchText(searchTerm);
-    if (!keyword) return visibleActiveMembers;
+    if (!keyword) return statusFilteredActiveMembers;
 
-    return visibleActiveMembers.filter((member) => {
+    return statusFilteredActiveMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id) || null;
       const roleLabel = getOrgRoleLabel(member.role);
       const jobRoleLabel =
@@ -1116,7 +1149,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
       return searchableText.includes(keyword);
     });
-  }, [employeeByMembership, factoryById, jobRoleOptions, searchTerm, visibleActiveMembers]);
+  }, [
+    employeeByMembership,
+    factoryById,
+    jobRoleOptions,
+    searchTerm,
+    statusFilteredActiveMembers,
+  ]);
   const workerRoleOrderIndex = useMemo(() => {
     const byId = new Map();
     const byCode = new Map();
@@ -1532,6 +1571,20 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 placeholder="이름, 이메일, 직무 검색"
                 sx={{ width: { xs: '100%', md: 280 } }}
               />
+              <TextField
+                select
+                label="상태"
+                size="small"
+                value={selectedStatusFilter}
+                onChange={(e) => setSelectedStatusFilter(e.target.value)}
+                sx={{ minWidth: 160, width: { xs: '100%', md: 'auto' } }}
+              >
+                {EMPLOYEE_STATUS_FILTER_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </TextField>
               {canFilterByFactory && (
                 <TextField
                   select

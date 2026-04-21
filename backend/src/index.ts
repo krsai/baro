@@ -461,7 +461,7 @@ const ST_STANDARD_BUCKETS = Object.freeze([
   10000,
 ]);
 // 출퇴근 입력값을 AT 계산에 반영한다.
-// 입력이 없거나 불완전한 경우 8시간(ATTENDANCE_DEFAULT_WORK_SECONDS)으로 폴백한다.
+// 출퇴근 기록이 있는 봉제 작업자(재직자)의 실제 근로시간만 AT 집계에 사용한다.
 const USE_ATTENDANCE_INPUT_FOR_AT = true;
 const AT_MONTHLY_A_CLAMP_BREAKOUT_RATIO = (() => {
   const parsed = Number(process.env.AT_MONTHLY_A_CLAMP_BREAKOUT_RATIO);
@@ -2013,6 +2013,70 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     return resolvedStyle;
   };
 
+  const workerIds = Array.from(
+    new Set(
+      workLogs
+        .flatMap((workLog) => workLog.workRecords)
+        .map((record) => toPositiveIntOrNull(record.workerId))
+        .filter((workerId): workerId is number => workerId !== null)
+    )
+  );
+  const eligibleWorkerDateWindowById = new Map<
+    number,
+    { joinedDateKey: string; leftDateKey: string }
+  >();
+  if (workerIds.length > 0) {
+    const workerRows = await db.employee.findMany({
+      where: {
+        orgId,
+        id: { in: workerIds },
+      },
+      select: {
+        id: true,
+        joinedAt: true,
+        leftAt: true,
+        membership: {
+          select: {
+            role: true,
+            status: true,
+          },
+        },
+        role: {
+          select: {
+            code: true,
+          },
+        },
+      },
+    });
+    workerRows.forEach((worker) => {
+      const workerId = toPositiveIntOrNull(worker.id);
+      if (workerId === null) return;
+      if (worker.membership?.role !== "WORKER") return;
+      if (worker.membership?.status !== "ACTIVE") return;
+      const workerRoleCode = String(worker.role?.code ?? "").trim().toUpperCase();
+      if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) return;
+      eligibleWorkerDateWindowById.set(workerId, {
+        joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
+        leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
+      });
+    });
+  }
+  const isEligibleWorkerOnDate = (
+    workerId: number | null,
+    normalizedWorkDate: string
+  ): workerId is number => {
+    if (workerId === null || !normalizedWorkDate) return false;
+    const eligibility = eligibleWorkerDateWindowById.get(workerId);
+    if (!eligibility) return false;
+    if (eligibility.joinedDateKey && normalizedWorkDate < eligibility.joinedDateKey) {
+      return false;
+    }
+    if (eligibility.leftDateKey && normalizedWorkDate > eligibility.leftDateKey) {
+      return false;
+    }
+    return true;
+  };
+
   const attendanceSecondsByWorkerDate = new Map<string, number>();
   if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
     const workDates = Array.from(
@@ -2029,22 +2093,15 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           .filter((resolvedFactoryId): resolvedFactoryId is number => resolvedFactoryId !== null)
       )
     );
-    const workerIds = Array.from(
-      new Set(
-        workLogs
-          .flatMap((workLog) => workLog.workRecords)
-          .map((record) => toPositiveIntOrNull(record.workerId))
-          .filter((workerId): workerId is number => workerId !== null)
-      )
-    );
+    const eligibleWorkerIds = Array.from(eligibleWorkerDateWindowById.keys());
 
-    if (workDates.length > 0 && workerIds.length > 0) {
+    if (workDates.length > 0 && eligibleWorkerIds.length > 0) {
       try {
         const attendanceRows = await db.attendanceEntry.findMany({
           where: {
             orgId,
             workDate: { in: workDates },
-            workerId: { in: workerIds },
+            workerId: { in: eligibleWorkerIds },
             ...(factoryIds.length > 0 ? { factoryId: { in: factoryIds } } : {}),
           },
           select: {
@@ -2063,7 +2120,9 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             !normalizedWorkDate ||
             resolvedFactoryId === null ||
             resolvedWorkerId === null ||
-            workedSeconds === null
+            workedSeconds === null ||
+            workedSeconds <= 0 ||
+            !isEligibleWorkerOnDate(resolvedWorkerId, normalizedWorkDate)
           ) {
             return;
           }
@@ -2085,7 +2144,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           normalizeMonthKey(workDate ? String(workDate).slice(0, 7) : "") ||
           "mixed";
         console.warn(
-          `[AT sync] orgId=${orgId} month=${contextMonthKey} attendance_table_missing=true fallback=default_8h`
+          `[AT sync] orgId=${orgId} month=${contextMonthKey} attendance_table_missing=true mode=attendance_only`
         );
       }
     }
@@ -2100,17 +2159,14 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       return ATTENDANCE_DEFAULT_WORK_SECONDS;
     }
     if (workerId === null || resolvedFactoryId === null) {
-      return ATTENDANCE_DEFAULT_WORK_SECONDS;
+      return 0;
     }
-    const key = toAttendanceWorkerDateKey(
-      normalizedWorkDate,
-      workerId,
-      resolvedFactoryId
+    return toNonNegativeInt(
+      attendanceSecondsByWorkerDate.get(
+        toAttendanceWorkerDateKey(normalizedWorkDate, workerId, resolvedFactoryId)
+      ),
+      0
     );
-    if (!attendanceSecondsByWorkerDate.has(key)) {
-      return ATTENDANCE_DEFAULT_WORK_SECONDS;
-    }
-    return toNonNegativeInt(attendanceSecondsByWorkerDate.get(key), 0);
   };
 
   return workLogs.reduce((drafts, workLog) => {

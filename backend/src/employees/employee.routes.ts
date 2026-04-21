@@ -281,6 +281,8 @@ export const createEmployeeRouter = ({
     if (!leftAtParseResult.ok) {
       return res.status(400).json({ ok: false, error: "invalid leftAt" });
     }
+    const shouldMarkMembershipTerminated =
+      leftAtParseResult.hasInput && leftAtParseResult.value !== null;
 
     const existingEmployee = await prisma.employee.findUnique({
       where: { orgMembershipId: membership.id },
@@ -355,6 +357,18 @@ export const createEmployeeRouter = ({
         role: true,
       },
     });
+
+    if (shouldMarkMembershipTerminated && membership.status !== "TERMINATED") {
+      const requesterEmail = getRequesterEmail(req);
+      await prisma.orgMembership.update({
+        where: { id: membership.id },
+        data: {
+          status: "TERMINATED",
+          approvedAt: membership.approvedAt ?? new Date(),
+          approvedBy: requesterEmail || membership.approvedBy || null,
+        },
+      });
+    }
 
     return res.json(toEmployeeResponse(refreshedEmployee));
   });
