@@ -65,15 +65,15 @@ const DAILY_WORK_HISTORY_LABELS = {
   en: 'Daily Logs',
   vi: 'Ghi chep ngay',
 };
-const MONTHLY_WORK_HISTORY_LABELS = {
-  ko: '\uC6D4\uAC04 \uAE30\uB85D',
-  en: 'Monthly Logs',
-  vi: 'Ghi chep thang',
+const OPERATIONS_MANAGEMENT_LABELS = {
+  ko: '\uC6B4\uC601 \uAD00\uB9AC',
+  en: 'Operations',
+  vi: 'Quan ly van hanh',
 };
-const RECORDS_MANAGEMENT_LABELS = {
-  ko: '\uAE30\uB85D \uAD00\uB9AC',
-  en: 'Records',
-  vi: 'Quan ly ghi chep',
+const PRODUCTION_MANAGEMENT_LABELS = {
+  ko: '\uC0DD\uC0B0 \uAD00\uB9AC',
+  en: 'Production',
+  vi: 'Quan ly san xuat',
 };
 const SITUATION_BOARD_LABELS = {
   ko: '\uC0C1\uD669\uD310',
@@ -447,7 +447,7 @@ const MainLayout = () => {
         ],
       },
       {
-        label: getUiMessage('menu.production', '\uC0DD\uC0B0 \uAD00\uB9AC', languageCode),
+        label: resolveLocalizedLabel(OPERATIONS_MANAGEMENT_LABELS, languageCode),
         icon: <ProductionQuantityLimitsIcon />,
         isParent: true,
         isOpen: productionOpen,
@@ -488,7 +488,7 @@ const MainLayout = () => {
         ],
       },
       {
-        label: resolveLocalizedLabel(RECORDS_MANAGEMENT_LABELS, languageCode),
+        label: resolveLocalizedLabel(PRODUCTION_MANAGEMENT_LABELS, languageCode),
         icon: <HistoryIcon />,
         isParent: true,
         isOpen: recordsOpen,
@@ -498,15 +498,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.workHistory', '\uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
-          },
-          {
-            label: getUiMessage(
-              'menu.workHistoryMonthly',
-              resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
-              languageCode
-            ),
-            icon: <CalendarMonthIcon />,
-            path: '/work-history-monthly',
           },
           {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
@@ -526,6 +517,7 @@ const MainLayout = () => {
             label: getUiMessage('menu.inventoryIssue', '\uC7AC\uACE0 \uBD88\uCD9C', languageCode),
             icon: <Inventory2Icon />,
             path: '/inventory',
+            disabled: true,
           },
         ],
       },
@@ -540,11 +532,13 @@ const MainLayout = () => {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
+            disabled: true,
           },
           {
             label: getUiMessage('menu.productionResult', '\uC0DD\uC0B0 \uACB0\uACFC', languageCode),
             icon: <ListAltIcon />,
             path: '/production-result',
+            disabled: true,
           },
         ],
       },

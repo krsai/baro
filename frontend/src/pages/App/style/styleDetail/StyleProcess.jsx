@@ -1689,16 +1689,29 @@ const StyleProcess = ({
                         {...chipProps}
                         size="small"
                         label={resolveProcessMasterLabel(option, languageCode)}
+                        sx={
+                          isNewOption
+                            ? {
+                                bgcolor: 'rgba(255, 236, 179, 0.55)',
+                                color: '#5b4300',
+                                border: '1px solid rgba(231, 184, 78, 0.9)',
+                                '& .MuiChip-label': {
+                                  fontWeight: 700,
+                                },
+                              }
+                            : undefined
+                        }
                         avatar={
                           isNewOption ? (
                             <Avatar
                               sx={{
-                                width: 17,
-                                height: 17,
-                                fontSize: '0.62rem',
-                                fontWeight: 700,
-                                bgcolor: 'primary.main',
-                                color: 'common.white',
+                                width: 18,
+                                height: 18,
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                bgcolor: '#ffd98a',
+                                color: '#4d3600',
+                                border: '1px solid rgba(173, 121, 0, 0.45)',
                               }}
                             >
                               N
