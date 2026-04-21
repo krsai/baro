@@ -9014,6 +9014,210 @@ const ensureActionProcessMasterOptionsFromStyleProcesses = async ({
   }
 };
 
+const PROCESS_COMPOSITION_KIND_BY_MASTER_TYPE: Record<
+  ProcessMasterOptionType,
+  "part" | "target" | "action" | "spec"
+> = {
+  PART: "part",
+  TARGET: "target",
+  ACTION: "action",
+  SPEC: "spec",
+};
+
+const buildProcessMasterNameLookupByTypeAndCode = (
+  rows: Array<Partial<ProcessMasterOptionRow>> = []
+) => {
+  const lookup = new Map<
+    ProcessMasterOptionType,
+    Map<
+      string,
+      {
+        label: string;
+        nameKo: string;
+        nameEn: string;
+        nameVi: string;
+      }
+    >
+  >();
+  PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+    lookup.set(typeKey as ProcessMasterOptionType, new Map());
+  });
+
+  rows.forEach((row) => {
+    const type = normalizeProcessMasterType(row?.type);
+    if (!type) return;
+    const codeKey = normalizeProcessMasterCode(row?.code);
+    if (!codeKey) return;
+    const typeLookup = lookup.get(type);
+    if (!typeLookup) return;
+    const label =
+      normalizeProcessMasterLabel(row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi) ||
+      codeKey;
+    typeLookup.set(codeKey, {
+      label,
+      nameKo: normalizeProcessMasterLabel(row?.nameKo) || label,
+      nameEn: normalizeProcessMasterLabel(row?.nameEn) || label,
+      nameVi: normalizeProcessMasterLabel(row?.nameVi) || label,
+    });
+  });
+
+  return lookup;
+};
+
+const applyProcessMasterNamesToCompositionEntry = (
+  entry: any,
+  type: ProcessMasterOptionType,
+  lookupByTypeAndCode: Map<
+    ProcessMasterOptionType,
+    Map<
+      string,
+      {
+        label: string;
+        nameKo: string;
+        nameEn: string;
+        nameVi: string;
+      }
+    >
+  >
+) => {
+  const kind = PROCESS_COMPOSITION_KIND_BY_MASTER_TYPE[type];
+  const normalizedEntry = normalizeStyleProcessCompositionEntry(entry, kind);
+  if (!normalizedEntry) return null;
+
+  const codeKey = normalizeProcessMasterCode(normalizedEntry.code);
+  if (!codeKey) return normalizedEntry;
+
+  const masterNames = lookupByTypeAndCode.get(type)?.get(codeKey);
+  if (!masterNames) return normalizedEntry;
+
+  const label = masterNames.label || normalizedEntry.label;
+  return {
+    ...normalizedEntry,
+    code: codeKey || normalizedEntry.code,
+    label: label || normalizedEntry.label,
+    nameKo: masterNames.nameKo || label || normalizedEntry.nameKo,
+    nameEn: masterNames.nameEn || label || normalizedEntry.nameEn,
+    nameVi: masterNames.nameVi || label || normalizedEntry.nameVi,
+  };
+};
+
+const applyProcessMasterNamesToComposition = (
+  composition: any,
+  lookupByTypeAndCode: Map<
+    ProcessMasterOptionType,
+    Map<
+      string,
+      {
+        label: string;
+        nameKo: string;
+        nameEn: string;
+        nameVi: string;
+      }
+    >
+  >
+) => {
+  const normalizedComposition = normalizeStyleProcessComposition(composition);
+  if (!normalizedComposition) return null;
+
+  const parts = ensureArray(normalizedComposition.parts)
+    .map((entry) =>
+      applyProcessMasterNamesToCompositionEntry(entry, "PART", lookupByTypeAndCode)
+    )
+    .filter(Boolean);
+  const targets = ensureArray(normalizedComposition.targets)
+    .map((entry) =>
+      applyProcessMasterNamesToCompositionEntry(entry, "TARGET", lookupByTypeAndCode)
+    )
+    .filter(Boolean);
+  const actions = ensureArray(normalizedComposition.actions)
+    .map((entry) =>
+      applyProcessMasterNamesToCompositionEntry(entry, "ACTION", lookupByTypeAndCode)
+    )
+    .filter(Boolean);
+  const specs = ensureArray(normalizedComposition.specs)
+    .map((entry) =>
+      applyProcessMasterNamesToCompositionEntry(entry, "SPEC", lookupByTypeAndCode)
+    )
+    .filter(Boolean);
+
+  if (parts.length === 0 && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+    return null;
+  }
+
+  return {
+    part: parts[0] ?? null,
+    parts,
+    targets,
+    actions,
+    specs,
+  };
+};
+
+const syncStyleProcessCompositionNamesWithMasterOptions = async ({
+  processMasterRows = null,
+  db = prisma,
+}: {
+  processMasterRows?: Array<Partial<ProcessMasterOptionRow>> | null;
+  db?: Prisma.TransactionClient | typeof prisma;
+}) => {
+  const rows =
+    processMasterRows && processMasterRows.length > 0
+      ? processMasterRows
+      : await listProcessMasterOptions();
+  if (rows.length === 0) return 0;
+
+  const lookupByTypeAndCode = buildProcessMasterNameLookupByTypeAndCode(rows);
+  const styleProcesses = await db.styleProcess.findMany({
+    select: {
+      id: true,
+      processCode: true,
+      processName: true,
+      processComposition: true,
+    },
+    orderBy: { id: "asc" },
+  });
+
+  let updatedCount = 0;
+  for (const row of styleProcesses) {
+    const previousComposition = normalizeStyleProcessComposition(row.processComposition);
+    if (!previousComposition) continue;
+
+    const nextComposition = applyProcessMasterNamesToComposition(
+      previousComposition,
+      lookupByTypeAndCode
+    );
+    if (!nextComposition) continue;
+
+    const previousKey = JSON.stringify(previousComposition);
+    const nextKey = JSON.stringify(nextComposition);
+    const localizedNames = buildStyleProcessLocalizedNamesFromComposition(nextComposition, {
+      name: row.processName,
+      nameEn: row.processName,
+    });
+    const nextProcessName =
+      resolveOptionalString(localizedNames.nameEn, null) ??
+      resolveOptionalString(row.processName, null) ??
+      resolveOptionalString(row.processCode, null) ??
+      "";
+
+    const isCompositionChanged = previousKey !== nextKey;
+    const isProcessNameChanged =
+      resolveOptionalString(row.processName, null) !== nextProcessName;
+    if (!isCompositionChanged && !isProcessNameChanged) continue;
+
+    await db.styleProcess.update({
+      where: { id: row.id },
+      data: {
+        processComposition: nextComposition ?? Prisma.JsonNull,
+        processName: nextProcessName,
+      },
+    });
+    updatedCount += 1;
+  }
+
+  return updatedCount;
+};
+
 const PROCESS_TEXT_PLACEHOLDERS = {
   ko: {
     target: "((주대상 누락))",
@@ -13453,6 +13657,9 @@ app.put("/process-master-options", async (req, res) => {
 
   await ensureDefaultProcessMasterOptions();
   const rows = await syncProcessMasterOptions(req.body ?? {});
+  await syncStyleProcessCompositionNamesWithMasterOptions({
+    processMasterRows: rows,
+  });
   return res.json(groupProcessMasterOptions(rows));
 });
 

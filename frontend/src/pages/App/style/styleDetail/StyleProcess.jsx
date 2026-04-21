@@ -441,10 +441,20 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
 const getProcessMasterOptionIdentity = (item, defaultType = '') => {
   const normalized = normalizeProcessMasterOption(item, defaultType);
   if (!normalized) return '';
-  return `${normalized.type}:${normalized.code ?? ''}:${String(normalized.label ?? '')
+  const normalizedCode = normalizeStyleProcessCodeSegment(normalized.code);
+  if (normalizedCode) return `${normalized.type}:CODE:${normalizedCode}`;
+  return `${normalized.type}:LABEL:${String(normalized.label ?? '')
     .trim()
     .toLowerCase()}`;
 };
+
+const buildProcessMasterLookupByCode = (options = []) =>
+  (Array.isArray(options) ? options : []).reduce((map, option) => {
+    const codeKey = normalizeStyleProcessCodeSegment(option?.code);
+    if (!codeKey) return map;
+    map.set(codeKey, option);
+    return map;
+  }, new Map());
 
 const LANGUAGE_SORT_LOCALE_BY_CODE = {
   ko: 'ko-KR',
@@ -549,18 +559,28 @@ const buildProcessComposition = (draft) => {
   return { part, parts, targets, actions, specs };
 };
 
-const resolveProcessCompositionText = (entry, languageCode) => {
+const resolveProcessCompositionText = (entry, languageCode, masterLookupByCode = null) => {
   if (!entry || typeof entry !== 'object') return '';
+  const codeKey = normalizeStyleProcessCodeSegment(entry?.code);
+  const masterOption = codeKey && masterLookupByCode instanceof Map
+    ? masterLookupByCode.get(codeKey)
+    : null;
+  const baseEntry = masterOption || entry;
   if (languageCode === 'ko') {
-    return String(entry?.nameKo ?? entry?.label ?? entry?.code ?? '').trim();
+    return String(baseEntry?.nameKo ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
   }
   if (languageCode === 'vi') {
-    return String(entry?.nameVi ?? entry?.label ?? entry?.code ?? '').trim();
+    return String(baseEntry?.nameVi ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
   }
-  return String(entry?.nameEn ?? entry?.label ?? entry?.code ?? '').trim();
+  return String(baseEntry?.nameEn ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
 };
 
-const buildProcessNameFromComposition = (composition, languageCode, fallback = '') => {
+const buildProcessNameFromComposition = (
+  composition,
+  languageCode,
+  fallback = '',
+  masterLookupByKind = null
+) => {
   if (!composition || typeof composition !== 'object') {
     return String(fallback ?? '').trim();
   }
@@ -571,19 +591,27 @@ const buildProcessNameFromComposition = (composition, languageCode, fallback = '
       ? [composition.part]
       : [];
   const partText = partEntries
-    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .map((entry) =>
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.part)
+    )
     .filter(Boolean)
     .join('·');
   const targetText = (Array.isArray(composition.targets) ? composition.targets : [])
-    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .map((entry) =>
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.target)
+    )
     .filter(Boolean)
     .join('·');
   const actionText = (Array.isArray(composition.actions) ? composition.actions : [])
-    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .map((entry) =>
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.action)
+    )
     .filter(Boolean)
     .join(' + ');
   const specText = (Array.isArray(composition.specs) ? composition.specs : [])
-    .map((entry) => resolveProcessCompositionText(entry, languageCode))
+    .map((entry) =>
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.spec)
+    )
     .filter(Boolean)
     .join('·');
 
@@ -635,8 +663,18 @@ const resolveProcessMasterLabel = (value, languageCode) => {
   return resolveProcessCompositionText(normalized, languageCode);
 };
 
-const resolveLocalizedProcessDisplayLabel = (process, languageCode, fallback = 'Process') => {
-  const composedName = buildProcessNameFromComposition(process?.processComposition, languageCode, '');
+const resolveLocalizedProcessDisplayLabel = (
+  process,
+  languageCode,
+  fallback = 'Process',
+  masterLookupByKind = null
+) => {
+  const composedName = buildProcessNameFromComposition(
+    process?.processComposition,
+    languageCode,
+    '',
+    masterLookupByKind
+  );
   const localizedName =
     composedName ||
     resolveLocalizedProcessName(
@@ -926,6 +964,15 @@ const StyleProcess = ({
         .filter(Boolean)
         .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
     [languageCode, processMasterOptions.specs]
+  );
+  const compositionMasterLookupByKind = useMemo(
+    () => ({
+      part: buildProcessMasterLookupByCode(partOptions),
+      target: buildProcessMasterLookupByCode(targetOptions),
+      action: buildProcessMasterLookupByCode(actionOptions),
+      spec: buildProcessMasterLookupByCode(specOptions),
+    }),
+    [actionOptions, partOptions, specOptions, targetOptions]
   );
 
   const [isAddingRow, setIsAddingRow] = useState(false);
@@ -1284,7 +1331,8 @@ const StyleProcess = ({
                       {resolveLocalizedProcessDisplayLabel(
                         process,
                         languageCode,
-                        getStyleProcessMessage(languageCode, 'processColumn')
+                        getStyleProcessMessage(languageCode, 'processColumn'),
+                        compositionMasterLookupByKind
                       )}
                     </span>
                     {reviewMeta.needsReview ? (
@@ -1371,6 +1419,7 @@ const StyleProcess = ({
       handleInlineChange,
       isDraftOpen,
       languageCode,
+      compositionMasterLookupByKind,
       renderRowActions,
       safeProcesses,
     ]
@@ -1618,7 +1667,8 @@ const StyleProcess = ({
                     ? resolveLocalizedProcessDisplayLabel(
                         addPreviewProcess,
                         languageCode,
-                        getStyleProcessMessage(languageCode, 'processColumn')
+                        getStyleProcessMessage(languageCode, 'processColumn'),
+                        compositionMasterLookupByKind
                       )
                     : getStyleProcessMessage(languageCode, 'previewEmpty')}
                 </Typography>
