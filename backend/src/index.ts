@@ -8804,6 +8804,216 @@ const syncProcessMasterOptions = async (payload: any) => {
   return listProcessMasterOptions();
 };
 
+type ProcessMasterStoreClient = Prisma.TransactionClient | typeof prisma;
+
+const listActionProcessMasterOptions = async (
+  db: ProcessMasterStoreClient
+): Promise<ProcessMasterOptionRow[]> =>
+  db.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "type",
+      "code",
+      "label",
+      "nameKo",
+      "nameEn",
+      "nameVi",
+      "sortOrder"
+    FROM "ProcessMasterOption"
+    WHERE "type" = 'ACTION'::"ProcessMasterOptionType"
+    ORDER BY "sortOrder" ASC, "id" ASC
+  `);
+
+const insertProcessMasterOptionsWithDb = async (
+  db: ProcessMasterStoreClient,
+  rows: Array<{
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }>
+) => {
+  if (rows.length === 0) return;
+  const actor = getCurrentRequestActor();
+  await db.$executeRaw(Prisma.sql`
+    INSERT INTO "ProcessMasterOption" (
+      "type",
+      "code",
+      "label",
+      "nameKo",
+      "nameEn",
+      "nameVi",
+      "sortOrder",
+      "createdBy",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES ${Prisma.join(
+      rows.map((row) => Prisma.sql`(
+        ${row.type}::"ProcessMasterOptionType",
+        ${row.code},
+        ${row.label},
+        ${row.nameKo || null},
+        ${row.nameEn || null},
+        ${row.nameVi || null},
+        ${row.sortOrder},
+        ${actor},
+        NOW(),
+        NOW()
+      )`)
+    )}
+    ON CONFLICT ("type", "code") DO NOTHING
+  `);
+};
+
+const collectStyleProcessActionMasterCandidates = (processes: any) => {
+  const candidates: Array<{
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+  }> = [];
+
+  normalizeStyleProcesses(processes).forEach((process) => {
+    const composition = normalizeStyleProcessComposition(
+      (process as any)?.processComposition
+    );
+    const actions = ensureArray(composition?.actions);
+    actions.forEach((entry) => {
+      const label = normalizeProcessMasterLabel(
+        (entry as any)?.label ??
+          (entry as any)?.nameKo ??
+          (entry as any)?.nameEn ??
+          (entry as any)?.nameVi
+      );
+      if (!label) return;
+
+      const token = normalizeProcessMasterMatchToken(label);
+      if (
+        token.includes("작업 누락") ||
+        token.includes("action missing") ||
+        token.includes("thieu thao tac")
+      ) {
+        return;
+      }
+
+      const nameKo = normalizeProcessMasterLabel((entry as any)?.nameKo || label);
+      const nameEn = normalizeProcessMasterLabel((entry as any)?.nameEn || label);
+      const nameVi = normalizeProcessMasterLabel((entry as any)?.nameVi || label);
+
+      candidates.push({
+        label,
+        nameKo: nameKo || label,
+        nameEn: nameEn || label,
+        nameVi: nameVi || label,
+      });
+    });
+  });
+
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const tokenKey = [
+      normalizeProcessMasterMatchToken(candidate.label),
+      normalizeProcessMasterMatchToken(candidate.nameKo),
+      normalizeProcessMasterMatchToken(candidate.nameEn),
+      normalizeProcessMasterMatchToken(candidate.nameVi),
+    ]
+      .filter(Boolean)
+      .sort()
+      .join("|");
+    if (!tokenKey || seen.has(tokenKey)) return false;
+    seen.add(tokenKey);
+    return true;
+  });
+};
+
+const ensureActionProcessMasterOptionsFromStyleProcesses = async ({
+  processes,
+  db,
+}: {
+  processes: any;
+  db: ProcessMasterStoreClient;
+}) => {
+  const candidates = collectStyleProcessActionMasterCandidates(processes);
+  if (candidates.length === 0) return;
+
+  const existingActions = await listActionProcessMasterOptions(db);
+  const usedCodes = existingActions.reduce((set, row) => {
+    const normalizedCode = normalizeProcessMasterCode(row.code);
+    if (normalizedCode) set.add(normalizedCode);
+    return set;
+  }, new Set<string>());
+  const existingTokens = existingActions.reduce((set, row) => {
+    buildProcessMasterMatchTokenSet(row).forEach((token) => set.add(token));
+    return set;
+  }, new Set<string>());
+  let nextSortOrder = existingActions.reduce(
+    (maxValue, row) => Math.max(maxValue, toPositiveIntOrNull(row?.sortOrder) ?? 0),
+    0
+  );
+
+  const creates: Array<{
+    type: ProcessMasterOptionType;
+    code: string;
+    label: string;
+    nameKo: string;
+    nameEn: string;
+    nameVi: string;
+    sortOrder: number;
+  }> = [];
+
+  candidates.forEach((candidate) => {
+    const candidateTokens = new Set<string>();
+    [
+      candidate.label,
+      candidate.nameKo,
+      candidate.nameEn,
+      candidate.nameVi,
+    ].forEach((value) => {
+      const token = normalizeProcessMasterMatchToken(value);
+      if (token) candidateTokens.add(token);
+    });
+
+    const isAlreadyExists = Array.from(candidateTokens).some((token) =>
+      existingTokens.has(token)
+    );
+    if (isAlreadyExists) return;
+
+    const codeSeedLabel =
+      normalizeProcessMasterLabel(candidate.nameEn) ||
+      normalizeProcessMasterLabel(candidate.label) ||
+      normalizeProcessMasterLabel(candidate.nameKo) ||
+      normalizeProcessMasterLabel(candidate.nameVi);
+    const code = generateUniqueProcessMasterCode({
+      type: "ACTION",
+      label: codeSeedLabel,
+      usedCodes,
+    });
+    usedCodes.add(code);
+    nextSortOrder += 1;
+
+    creates.push({
+      type: "ACTION",
+      code,
+      label: candidate.label,
+      nameKo: candidate.nameKo || candidate.label,
+      nameEn: candidate.nameEn || candidate.label,
+      nameVi: candidate.nameVi || candidate.label,
+      sortOrder: nextSortOrder,
+    });
+
+    existingTokens.add(normalizeProcessMasterMatchToken(code));
+    candidateTokens.forEach((token) => existingTokens.add(token));
+  });
+
+  if (creates.length > 0) {
+    await insertProcessMasterOptionsWithDb(db, creates);
+  }
+};
+
 const PROCESS_TEXT_PLACEHOLDERS = {
   ko: {
     target: "((주대상 누락))",
@@ -12694,6 +12904,9 @@ app.post("/styles", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
+  if (includeProcesses) {
+    await ensureDefaultProcessMasterOptions();
+  }
 
   const payload = normalizeStylePayload(req.body ?? {}, null, { includeProcesses });
   if (!payload.name) {
@@ -12749,6 +12962,10 @@ app.post("/styles", async (req, res) => {
         processes: payload.processes,
         db: tx,
       });
+      await ensureActionProcessMasterOptionsFromStyleProcesses({
+        processes: payload.processes,
+        db: tx,
+      });
     }
     return tx.style.findUniqueOrThrow({
       where: { uid: createdStyle.uid },
@@ -12778,6 +12995,9 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
+  if (includeProcesses) {
+    await ensureDefaultProcessMasterOptions();
+  }
 
   const styleId = (req.params.styleId ?? "").trim();
   if (!styleId) {
@@ -12865,6 +13085,10 @@ app.put("/styles/:styleId", async (req, res) => {
       await syncStyleProcessStorageForStyle({
         styleUid: existing.uid,
         orgId: organization.id,
+        processes: normalized.processes,
+        db: tx,
+      });
+      await ensureActionProcessMasterOptionsFromStyleProcesses({
         processes: normalized.processes,
         db: tx,
       });
@@ -12958,6 +13182,9 @@ app.post("/styles/import", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
+  if (includeProcesses) {
+    await ensureDefaultProcessMasterOptions();
+  }
 
   const rows = Array.isArray(req.body?.styles) ? req.body.styles : [];
   if (rows.length === 0) {
@@ -13071,6 +13298,7 @@ app.post("/styles/import", async (req, res) => {
   }
 
   await prisma.$transaction(async (tx) => {
+    const importedProcessesForMaster: any[] = [];
     for (const item of rowsWithOwner) {
       const { ownerOrgId, ...stylePayload } = item;
       const upserted = await tx.style.upsert({
@@ -13106,7 +13334,16 @@ app.post("/styles/import", async (req, res) => {
           processes: stylePayload.processes,
           db: tx,
         });
+        importedProcessesForMaster.push(
+          ...normalizeStyleProcesses(stylePayload.processes)
+        );
       }
+    }
+    if (includeProcesses && importedProcessesForMaster.length > 0) {
+      await ensureActionProcessMasterOptionsFromStyleProcesses({
+        processes: importedProcessesForMaster,
+        db: tx,
+      });
     }
   });
 

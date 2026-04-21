@@ -79,9 +79,9 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: '부위',
     targetLabel: '대상',
     actionLabel: '작업',
-    actionInputHint: '직접 입력 후 Enter(또는 바로 저장)로 추가',
+    actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
     actionCustomNotice:
-      '작업은 사용자가 직접 추가할 수 있으나, 작업(행위)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다.',
+      '작업은 사용자가 직접 추가할 수 있으나, 작업(동작)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다.',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',
@@ -89,6 +89,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
+    add: '추가',
     save: '저장',
     cancel: '취소',
     edit: '수정',
@@ -127,7 +128,7 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: 'Part',
     targetLabel: 'Target',
     actionLabel: 'Action',
-    actionInputHint: 'Type and press Enter (or just Save)',
+    actionInputHint: 'Type and press Enter (or just Add)',
     actionCustomNotice:
       'Users can add actions directly, but entries that do not represent an action may be removed by an administrator.',
     specLabel: 'Spec',
@@ -137,6 +138,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
+    add: 'Add',
     save: 'Save',
     cancel: 'Cancel',
     edit: 'Edit',
@@ -175,7 +177,7 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: 'Bo phan',
     targetLabel: 'Doi tuong',
     actionLabel: 'Thao tac',
-    actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Luu)',
+    actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
     actionCustomNotice:
       'Nguoi dung co the tu them thao tac, nhung neu khong mang y nghia thao tac (hanh vi) thi co the bi quan tri vien xoa.',
     specLabel: 'Quy cach',
@@ -185,6 +187,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
+    add: 'Them',
     save: 'Luu',
     cancel: 'Huy',
     edit: 'Sua',
@@ -1702,7 +1705,12 @@ const StyleProcess = ({
                   />
                 </Stack>
                 <Stack direction="row" spacing={0.75}>
-                  <SaveButton onClick={handleSaveAddRow} />
+                  <SaveButton onClick={handleSaveAddRow}>
+                    {getStyleProcessMessage(
+                      languageCode,
+                      isEditingRow ? 'save' : 'add'
+                    )}
+                  </SaveButton>
                   <Button variant="outlined" onClick={handleCancelAddRow}>
                     {getStyleProcessMessage(languageCode, 'cancel')}
                   </Button>

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
+  Chip,
   Grid,
   IconButton,
   Paper,
@@ -46,6 +47,7 @@ const createEmptyMasterData = () => ({
 const toTrimmedText = (value) => String(value ?? '').trim();
 const normalizeCodeKey = (value) => toTrimmedText(value).toUpperCase();
 const EMPTY_CODE_SET = new Set();
+
 const collectDuplicateCodeSet = (rows = []) => {
   const codeCountMap = new Map();
   (Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -53,12 +55,14 @@ const collectDuplicateCodeSet = (rows = []) => {
     if (!codeKey) return;
     codeCountMap.set(codeKey, (codeCountMap.get(codeKey) || 0) + 1);
   });
+
   return new Set(
     Array.from(codeCountMap.entries())
       .filter(([, count]) => count > 1)
       .map(([codeKey]) => codeKey)
   );
 };
+
 const LANGUAGE_SORT_LOCALE_BY_CODE = {
   ko: 'ko-KR',
   en: 'en-US',
@@ -121,6 +125,15 @@ const areMasterRowsEqual = (leftRows = [], rightRows = []) => {
     }
   }
   return true;
+};
+
+const shouldReviewActionRow = (sectionKey, row = {}) => {
+  if (sectionKey !== 'actions') return false;
+  const values = [row?.nameKo, row?.nameEn, row?.nameVi]
+    .map((value) => toTrimmedText(value))
+    .filter(Boolean);
+  if (values.length === 0) return false;
+  return new Set(values.map((value) => value.toLowerCase())).size === 1;
 };
 
 const ProcessMasterSection = ({
@@ -216,11 +229,12 @@ const ProcessMasterSection = ({
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '18%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '24%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '24%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '24%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '10%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '16%', fontWeight: 700 }}>코드</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '9%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
+              <TableCell sx={{ width: '9%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
@@ -270,8 +284,13 @@ const ProcessMasterSection = ({
                     fullWidth
                     value={row.nameVi || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'nameVi', event.target.value)}
-                    placeholder="Tiếng Việt"
+                    placeholder="Tieng Viet"
                   />
+                </TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>
+                  {shouldReviewActionRow(sectionKey, row) ? (
+                    <Chip size="small" color="warning" variant="outlined" label="검토" />
+                  ) : null}
                 </TableCell>
                 <TableCell sx={{ textAlign: 'center' }}>
                   <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
@@ -282,7 +301,7 @@ const ProcessMasterSection = ({
             ))}
             {displayRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   항목이 없습니다.
                 </TableCell>
               </TableRow>
@@ -302,6 +321,7 @@ const ProcessMasterBoard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
+
   const duplicateCodeMap = useMemo(
     () =>
       MASTER_SECTIONS.reduce((acc, section) => {
@@ -310,6 +330,7 @@ const ProcessMasterBoard = () => {
       }, {}),
     [formData]
   );
+
   const hasDuplicateCodes = useMemo(
     () => MASTER_SECTIONS.some((section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0),
     [duplicateCodeMap]
@@ -328,6 +349,7 @@ const ProcessMasterBoard = () => {
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
+
     fetchProcessMasterOptions()
       .then((data) => {
         if (cancelled) return;
@@ -395,6 +417,7 @@ const ProcessMasterBoard = () => {
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
+
     const duplicateSection = MASTER_SECTIONS.find(
       (section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0
     );
@@ -402,6 +425,7 @@ const ProcessMasterBoard = () => {
       showNotification(`${duplicateSection.title}에 중복 코드가 있습니다.`, 'error');
       return;
     }
+
     setIsSaving(true);
     try {
       const payload = MASTER_SECTIONS.reduce((acc, section) => {
@@ -415,6 +439,7 @@ const ProcessMasterBoard = () => {
         }));
         return acc;
       }, {});
+
       const data = await updateProcessMasterOptions(payload);
       const normalized = normalizeMasterData(data);
       setFormData(normalized);
@@ -429,7 +454,7 @@ const ProcessMasterBoard = () => {
 
   return (
     <AppPageContainer
-      title="공정 마스터 관리"
+      title="공정 관리"
       titleActions={(
         <SaveButton
           onClick={handleSave}
@@ -440,11 +465,12 @@ const ProcessMasterBoard = () => {
     >
       <Stack spacing={2}>
         <Alert severity="info">
-          시스템 관리자가 공정 마스터(부위/대상/규격/작업)를 다국어로 관리합니다.
+          사용자가 스타일 화면에서 추가한 작업명이 3개 언어가 동일하면 `검토`로 표시됩니다.
         </Alert>
         {hasDuplicateCodes ? (
-          <Alert severity="warning">코드가 중복된 행이 있습니다. 코드명은 섹션 내에서 유일해야 합니다.</Alert>
+          <Alert severity="warning">중복 코드가 있습니다. 각 섹션에서 코드 중복을 해소해 주세요.</Alert>
         ) : null}
+
         <Grid container spacing={2}>
           {MASTER_SECTIONS.map((section) => (
             <Grid item xs={12} md={6} key={section.key}>
@@ -469,4 +495,3 @@ const ProcessMasterBoard = () => {
 };
 
 export default ProcessMasterBoard;
-
