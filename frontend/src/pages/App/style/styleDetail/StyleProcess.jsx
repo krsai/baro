@@ -1872,22 +1872,7 @@ const StyleProcess = ({
                     }}
                   />
                 )}
-                sx={{
-                  flex: 1,
-                  minWidth: 180,
-                  ...(isNewCustomSpecSelected
-                    ? {
-                        '& .MuiInputBase-root': {
-                          bgcolor: 'rgba(255, 236, 179, 0.55)',
-                          color: '#5b4300',
-                          fontWeight: 700,
-                        },
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(231, 184, 78, 0.9)',
-                        },
-                      }
-                    : {}),
-                }}
+                sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
                 multiple
