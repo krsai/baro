@@ -169,6 +169,7 @@ const StyleDetail = () => {
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
+  const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
 
   const resolvedOwnerOrgId = useMemo(
     () =>
@@ -348,6 +349,7 @@ const StyleDetail = () => {
         showNotification(getStyleDetailMessage(languageCode, 'createSuccess'), 'success');
         setOriginalData(saved);
         setStyleFormData(saved);
+        setProcessMasterReloadKey((prev) => prev + 1);
         const savedOwnerOrgId = toOrgId(saved?.ownerOrgId ?? saved?.customerOrgId);
         const savedQuery = buildQueryString({ ownerOrgId: savedOwnerOrgId });
         const savedStyleId = saved?.id || newId;
@@ -377,6 +379,7 @@ const StyleDetail = () => {
       showNotification(getStyleDetailMessage(languageCode, 'updateSuccess'), 'success');
       setOriginalData(saved);
       setStyleFormData(saved);
+      setProcessMasterReloadKey((prev) => prev + 1);
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
     }
@@ -453,6 +456,7 @@ const StyleDetail = () => {
                 <StyleProcess
                   processes={styleFormData.processes}
                   onProcessesChange={handleProcessesChange}
+                  optionsReloadKey={processMasterReloadKey}
                 />
               </Box>
             </RequestScopeBoundary>

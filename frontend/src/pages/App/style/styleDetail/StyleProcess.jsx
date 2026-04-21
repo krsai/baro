@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useCallback, useDeferredValue } from 'react';
 import {
+  Avatar,
   Autocomplete,
   Box,
   Button,
@@ -874,6 +875,7 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
 const StyleProcess = ({
   processes = [],
   onProcessesChange,
+  optionsReloadKey = 0,
 }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
@@ -931,7 +933,7 @@ const StyleProcess = ({
     return () => {
       active = false;
     };
-  }, [languageCode]);
+  }, [languageCode, optionsReloadKey]);
 
   const partOptions = useMemo(
     () =>
@@ -949,14 +951,62 @@ const StyleProcess = ({
         .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
     [languageCode, processMasterOptions.targets]
   );
-  const actionOptions = useMemo(
+  const actionOptionsFromStyleProcesses = useMemo(() => {
+    const collected = [];
+    const seen = new Set();
+    safeProcesses.forEach((process) => {
+      const actions = Array.isArray(process?.processComposition?.actions)
+        ? process.processComposition.actions
+        : [];
+      actions.forEach((entry) => {
+        const normalized = normalizeProcessMasterOption(entry, 'ACTION');
+        if (!normalized) return;
+        const identity = getProcessMasterOptionIdentity(normalized, 'ACTION');
+        if (!identity || seen.has(identity)) return;
+        seen.add(identity);
+        collected.push(normalized);
+      });
+    });
+    return collected;
+  }, [safeProcesses]);
+  const masterActionIdentitySet = useMemo(
     () =>
-      (Array.isArray(processMasterOptions.actions) ? processMasterOptions.actions : [])
-        .map((item) => normalizeProcessMasterOption(item, 'ACTION'))
-        .filter(Boolean)
-        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
-    [languageCode, processMasterOptions.actions]
+      new Set(
+        (Array.isArray(processMasterOptions.actions) ? processMasterOptions.actions : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'ACTION'))
+          .filter(Boolean)
+      ),
+    [processMasterOptions.actions]
   );
+  const isNewCustomActionOption = useCallback(
+    (option) => {
+      const identity = getProcessMasterOptionIdentity(option, 'ACTION');
+      if (!identity) return false;
+      return !masterActionIdentitySet.has(identity);
+    },
+    [masterActionIdentitySet]
+  );
+  const actionOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const appendOption = (item) => {
+      const normalized = normalizeProcessMasterOption(item, 'ACTION');
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, 'ACTION');
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      merged.push(normalized);
+    };
+
+    (Array.isArray(processMasterOptions.actions) ? processMasterOptions.actions : []).forEach(
+      appendOption
+    );
+    actionOptionsFromStyleProcesses.forEach(appendOption);
+
+    return merged.sort((left, right) =>
+      compareProcessMasterOptionAsc(left, right, languageCode)
+    );
+  }, [actionOptionsFromStyleProcesses, languageCode, processMasterOptions.actions]);
   const specOptions = useMemo(
     () =>
       (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
@@ -1607,6 +1657,7 @@ const StyleProcess = ({
               <Autocomplete
                 multiple
                 freeSolo
+                forcePopupIcon
                 size="small"
                 options={actionOptions}
                 value={addDraft.actions}
@@ -1628,6 +1679,36 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(value, 'ACTION')
                 }
                 filterSelectedOptions
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => {
+                    const { key, ...chipProps } = getTagProps({ index });
+                    const isNewOption = isNewCustomActionOption(option);
+                    return (
+                      <Chip
+                        key={key}
+                        {...chipProps}
+                        size="small"
+                        label={resolveProcessMasterLabel(option, languageCode)}
+                        avatar={
+                          isNewOption ? (
+                            <Avatar
+                              sx={{
+                                width: 17,
+                                height: 17,
+                                fontSize: '0.62rem',
+                                fontWeight: 700,
+                                bgcolor: 'primary.main',
+                                color: 'common.white',
+                              }}
+                            >
+                              N
+                            </Avatar>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })
+                }
                 renderInput={(params) => (
                   <TextField
                     {...params}

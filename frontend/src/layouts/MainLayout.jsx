@@ -1293,8 +1293,29 @@ const MainLayout = () => {
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
-  const getMenuItemSx = React.useCallback(({ selected = false, nested = false } = {}) => {
+  const getMenuItemSx = React.useCallback(({ selected = false, nested = false, disabled = false } = {}) => {
     const baseSx = nested ? { pl: 4 } : {};
+
+    if (disabled) {
+      return {
+        ...baseSx,
+        backgroundColor: 'rgba(0, 0, 0, 0.03)',
+        color: 'text.disabled',
+        '& .MuiListItemIcon-root': {
+          color: 'text.disabled',
+        },
+        '& .MuiBadge-badge': {
+          opacity: 0.55,
+        },
+        '&.Mui-disabled': {
+          opacity: 1,
+          cursor: 'not-allowed',
+        },
+        '&:hover': {
+          backgroundColor: 'rgba(0, 0, 0, 0.03)',
+        },
+      };
+    }
 
     if (selected) {
       return {
@@ -1339,7 +1360,7 @@ const MainLayout = () => {
                 handleMenuItemClick(menu.path);
               }}
               selected={isMenuSelected}
-              sx={getMenuItemSx({ selected: isMenuSelected })}
+              sx={getMenuItemSx({ selected: isMenuSelected, disabled: isMenuDisabled })}
             >
               <ListItemIcon sx={{ minWidth: '40px' }}>{menu.icon}</ListItemIcon>
               <ListItemText primary={menu.label} />
@@ -1367,6 +1388,7 @@ const MainLayout = () => {
                         sx={getMenuItemSx({
                           selected: isChildSelected,
                           nested: true,
+                          disabled: isChildDisabled,
                         })}
                       >
                         <ListItemIcon sx={{ minWidth: '40px' }} />
