@@ -82,7 +82,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionLabel: '작업',
     actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
     actionCustomNotice:
-      '작업 항목은 사용자가 직접 추가할 수 있으나, 작업(동작)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다. 공정 추가 후 저장 버튼을 누르면 신규 작업 항목이 목록에 추가 됩니다.',
+      '각 항목들은 사용자가 직접 추가할 수 있으나, 항목에 맞지 않으면 관리자에 의해 삭제 될 수 있습니다.',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',
@@ -131,7 +131,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionLabel: 'Action',
     actionInputHint: 'Type and press Enter (or just Add)',
     actionCustomNotice:
-      'Users can add actions directly, but entries that do not represent an action may be removed by an administrator.',
+      'Each field can be added directly by users, but entries that do not fit the field may be removed by an administrator.',
     specLabel: 'Spec',
     specPlaceholder: 'e.g. 3-line',
     previewLabel: 'Preview',
@@ -180,7 +180,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionLabel: 'Thao tac',
     actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
     actionCustomNotice:
-      'Nguoi dung co the tu them thao tac, nhung neu khong mang y nghia thao tac (hanh vi) thi co the bi quan tri vien xoa.',
+      'Nguoi dung co the tu them truc tiep tung muc, nhung neu noi dung khong phu hop voi muc thi quan tri vien co the xoa.',
     specLabel: 'Quy cach',
     specPlaceholder: 'vi du: 3 kim',
     previewLabel: 'Xem truoc',
@@ -872,6 +872,48 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
   };
 };
 
+const collectProcessCompositionOptionsFromProcesses = (
+  processes = [],
+  kind = 'action',
+  defaultType = 'ACTION'
+) => {
+  const collected = [];
+  const seen = new Set();
+  (Array.isArray(processes) ? processes : []).forEach((process) => {
+    const composition = process?.processComposition || {};
+    const sourceEntries =
+      kind === 'part'
+        ? Array.isArray(composition?.parts)
+          ? composition.parts
+          : composition?.part
+            ? [composition.part]
+            : []
+        : kind === 'target'
+          ? Array.isArray(composition?.targets)
+            ? composition.targets
+            : composition?.target
+              ? [composition.target]
+              : []
+          : kind === 'spec'
+            ? Array.isArray(composition?.specs)
+              ? composition.specs
+              : []
+            : Array.isArray(composition?.actions)
+              ? composition.actions
+              : [];
+
+    sourceEntries.forEach((entry) => {
+      const normalized = normalizeProcessMasterOption(entry, defaultType);
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, defaultType);
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      collected.push(normalized);
+    });
+  });
+  return collected;
+};
+
 const StyleProcess = ({
   processes = [],
   onProcessesChange,
@@ -935,22 +977,56 @@ const StyleProcess = ({
     };
   }, [languageCode, optionsReloadKey]);
 
-  const partOptions = useMemo(
-    () =>
-      (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : [])
-        .map((item) => normalizeProcessMasterOption(item, 'PART'))
-        .filter(Boolean)
-        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
-    [languageCode, processMasterOptions.parts]
+  const partOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'part', 'PART'),
+    [safeProcesses]
   );
-  const targetOptions = useMemo(
-    () =>
-      (Array.isArray(processMasterOptions.targets) ? processMasterOptions.targets : [])
-        .map((item) => normalizeProcessMasterOption(item, 'TARGET'))
-        .filter(Boolean)
-        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
-    [languageCode, processMasterOptions.targets]
+  const partOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const appendOption = (item) => {
+      const normalized = normalizeProcessMasterOption(item, 'PART');
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, 'PART');
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      merged.push(normalized);
+    };
+
+    (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : []).forEach(
+      appendOption
+    );
+    partOptionsFromStyleProcesses.forEach(appendOption);
+
+    return merged.sort((left, right) =>
+      compareProcessMasterOptionAsc(left, right, languageCode)
+    );
+  }, [languageCode, partOptionsFromStyleProcesses, processMasterOptions.parts]);
+  const targetOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'target', 'TARGET'),
+    [safeProcesses]
   );
+  const targetOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const appendOption = (item) => {
+      const normalized = normalizeProcessMasterOption(item, 'TARGET');
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, 'TARGET');
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      merged.push(normalized);
+    };
+
+    (Array.isArray(processMasterOptions.targets) ? processMasterOptions.targets : []).forEach(
+      appendOption
+    );
+    targetOptionsFromStyleProcesses.forEach(appendOption);
+
+    return merged.sort((left, right) =>
+      compareProcessMasterOptionAsc(left, right, languageCode)
+    );
+  }, [languageCode, processMasterOptions.targets, targetOptionsFromStyleProcesses]);
   const actionOptionsFromStyleProcesses = useMemo(() => {
     const collected = [];
     const seen = new Set();
@@ -1007,14 +1083,31 @@ const StyleProcess = ({
       compareProcessMasterOptionAsc(left, right, languageCode)
     );
   }, [actionOptionsFromStyleProcesses, languageCode, processMasterOptions.actions]);
-  const specOptions = useMemo(
-    () =>
-      (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
-        .map((item) => normalizeProcessMasterOption(item, 'SPEC'))
-        .filter(Boolean)
-        .sort((left, right) => compareProcessMasterOptionAsc(left, right, languageCode)),
-    [languageCode, processMasterOptions.specs]
+  const specOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'spec', 'SPEC'),
+    [safeProcesses]
   );
+  const specOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const appendOption = (item) => {
+      const normalized = normalizeProcessMasterOption(item, 'SPEC');
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, 'SPEC');
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      merged.push(normalized);
+    };
+
+    (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : []).forEach(
+      appendOption
+    );
+    specOptionsFromStyleProcesses.forEach(appendOption);
+
+    return merged.sort((left, right) =>
+      compareProcessMasterOptionAsc(left, right, languageCode)
+    );
+  }, [languageCode, processMasterOptions.specs, specOptionsFromStyleProcesses]);
   const compositionMasterLookupByKind = useMemo(
     () => ({
       part: buildProcessMasterLookupByCode(partOptions),
@@ -1107,8 +1200,7 @@ const StyleProcess = ({
     [hasAT, hasST, totalAT, totalST]
   );
 
-  const hasRequiredMasterOptions = partOptions.length > 0;
-  const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
+  const canStartAdd = !isLoadingOptions && !optionsError;
   const isEditingRow = Boolean(editingInstanceId);
   const isDraftOpen = isAddingRow || isEditingRow;
   const editingProcess = useMemo(
@@ -1551,12 +1643,6 @@ const StyleProcess = ({
           {optionsError}
         </Typography>
       )}
-      {!isLoadingOptions && !optionsError && !hasRequiredMasterOptions && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-          {getStyleProcessMessage(languageCode, 'missingMasterOptions')}
-        </Typography>
-      )}
-
       {isDraftOpen && (
         <Paper
           variant="outlined"
@@ -1581,6 +1667,8 @@ const StyleProcess = ({
             >
               <Autocomplete
                 multiple
+                freeSolo
+                forcePopupIcon
                 size="small"
                 options={partOptions}
                 value={Array.isArray(addDraft.parts) ? addDraft.parts : []}
@@ -1605,6 +1693,8 @@ const StyleProcess = ({
               />
               <Autocomplete
                 multiple
+                freeSolo
+                forcePopupIcon
                 size="small"
                 options={targetOptions}
                 value={Array.isArray(addDraft.targets) ? addDraft.targets : []}

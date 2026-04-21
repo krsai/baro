@@ -8968,9 +8968,11 @@ const syncProcessMasterOptions = async (payload: any) => {
 };
 
 type ProcessMasterStoreClient = Prisma.TransactionClient | typeof prisma;
+type ProcessCompositionKind = "part" | "target" | "action" | "spec";
 
-const listActionProcessMasterOptions = async (
-  db: ProcessMasterStoreClient
+const listProcessMasterOptionsByType = async (
+  db: ProcessMasterStoreClient,
+  type: ProcessMasterOptionType
 ): Promise<ProcessMasterOptionRow[]> =>
   db.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
     SELECT
@@ -8983,9 +8985,14 @@ const listActionProcessMasterOptions = async (
       "nameVi",
       "sortOrder"
     FROM "ProcessMasterOption"
-    WHERE "type" = 'ACTION'::"ProcessMasterOptionType"
+    WHERE "type" = ${type}::"ProcessMasterOptionType"
     ORDER BY "sortOrder" ASC, "id" ASC
   `);
+
+const listActionProcessMasterOptions = async (
+  db: ProcessMasterStoreClient
+): Promise<ProcessMasterOptionRow[]> =>
+  listProcessMasterOptionsByType(db, "ACTION");
 
 const insertProcessMasterOptionsWithDb = async (
   db: ProcessMasterStoreClient,
@@ -9032,7 +9039,20 @@ const insertProcessMasterOptionsWithDb = async (
   `);
 };
 
-const collectStyleProcessActionMasterCandidates = (processes: any) => {
+const PROCESS_MASTER_TYPE_BY_COMPOSITION_KIND: Record<
+  ProcessCompositionKind,
+  ProcessMasterOptionType
+> = {
+  part: "PART",
+  target: "TARGET",
+  action: "ACTION",
+  spec: "SPEC",
+};
+
+const collectStyleProcessMasterCandidatesByKind = (
+  processes: any,
+  kind: ProcessCompositionKind
+) => {
   const candidates: Array<{
     label: string;
     nameKo: string;
@@ -9044,8 +9064,15 @@ const collectStyleProcessActionMasterCandidates = (processes: any) => {
     const composition = normalizeStyleProcessComposition(
       (process as any)?.processComposition
     );
-    const actions = ensureArray(composition?.actions);
-    actions.forEach((entry) => {
+    const entries =
+      kind === "part"
+        ? ensureArray((composition as any)?.parts)
+        : kind === "target"
+          ? ensureArray((composition as any)?.targets)
+          : kind === "spec"
+            ? ensureArray((composition as any)?.specs)
+            : ensureArray((composition as any)?.actions);
+    entries.forEach((entry) => {
       const label = normalizeProcessMasterLabel(
         (entry as any)?.label ??
           (entry as any)?.nameKo ??
@@ -9054,13 +9081,15 @@ const collectStyleProcessActionMasterCandidates = (processes: any) => {
       );
       if (!label) return;
 
-      const token = normalizeProcessMasterMatchToken(label);
-      if (
-        token.includes("작업 누락") ||
-        token.includes("action missing") ||
-        token.includes("thieu thao tac")
-      ) {
-        return;
+      if (kind === "action") {
+        const token = normalizeProcessMasterMatchToken(label);
+        if (
+          token.includes("작업 누락") ||
+          token.includes("action missing") ||
+          token.includes("thieu thao tac")
+        ) {
+          return;
+        }
       }
 
       const nameKo = normalizeProcessMasterLabel((entry as any)?.nameKo || label);
@@ -9093,89 +9122,108 @@ const collectStyleProcessActionMasterCandidates = (processes: any) => {
   });
 };
 
+const ensureProcessMasterOptionsFromStyleProcesses = async ({
+  processes,
+  kinds = ["part", "target", "action", "spec"] as ProcessCompositionKind[],
+  db,
+}: {
+  processes: any;
+  kinds?: ProcessCompositionKind[];
+  db: ProcessMasterStoreClient;
+}) => {
+  for (const kind of kinds) {
+    const type = PROCESS_MASTER_TYPE_BY_COMPOSITION_KIND[kind];
+    if (!type) continue;
+    const candidates = collectStyleProcessMasterCandidatesByKind(processes, kind);
+    if (candidates.length === 0) continue;
+
+    const existingRows = await listProcessMasterOptionsByType(db, type);
+    const usedCodes = existingRows.reduce((set, row) => {
+      const normalizedCode = normalizeProcessMasterCode(row.code);
+      if (normalizedCode) set.add(normalizedCode);
+      return set;
+    }, new Set<string>());
+    const existingTokens = existingRows.reduce((set, row) => {
+      buildProcessMasterMatchTokenSet(row).forEach((token) => set.add(token));
+      return set;
+    }, new Set<string>());
+    let nextSortOrder = existingRows.reduce(
+      (maxValue, row) => Math.max(maxValue, toPositiveIntOrNull(row?.sortOrder) ?? 0),
+      0
+    );
+
+    const creates: Array<{
+      type: ProcessMasterOptionType;
+      code: string;
+      label: string;
+      nameKo: string;
+      nameEn: string;
+      nameVi: string;
+      sortOrder: number;
+    }> = [];
+
+    candidates.forEach((candidate) => {
+      const candidateTokens = new Set<string>();
+      [
+        candidate.label,
+        candidate.nameKo,
+        candidate.nameEn,
+        candidate.nameVi,
+      ].forEach((value) => {
+        const token = normalizeProcessMasterMatchToken(value);
+        if (token) candidateTokens.add(token);
+      });
+
+      const isAlreadyExists = Array.from(candidateTokens).some((token) =>
+        existingTokens.has(token)
+      );
+      if (isAlreadyExists) return;
+
+      const codeSeedLabel =
+        normalizeProcessMasterLabel(candidate.nameEn) ||
+        normalizeProcessMasterLabel(candidate.label) ||
+        normalizeProcessMasterLabel(candidate.nameKo) ||
+        normalizeProcessMasterLabel(candidate.nameVi);
+      const code = generateUniqueProcessMasterCode({
+        type,
+        label: codeSeedLabel,
+        usedCodes,
+      });
+      usedCodes.add(code);
+      nextSortOrder += 1;
+
+      creates.push({
+        type,
+        code,
+        label: candidate.label,
+        nameKo: candidate.nameKo || candidate.label,
+        nameEn: candidate.nameEn || candidate.label,
+        nameVi: candidate.nameVi || candidate.label,
+        sortOrder: nextSortOrder,
+      });
+
+      existingTokens.add(normalizeProcessMasterMatchToken(code));
+      candidateTokens.forEach((token) => existingTokens.add(token));
+    });
+
+    if (creates.length > 0) {
+      await insertProcessMasterOptionsWithDb(db, creates);
+    }
+  }
+};
+
 const ensureActionProcessMasterOptionsFromStyleProcesses = async ({
   processes,
   db,
 }: {
   processes: any;
   db: ProcessMasterStoreClient;
-}) => {
-  const candidates = collectStyleProcessActionMasterCandidates(processes);
-  if (candidates.length === 0) return;
-
-  const existingActions = await listActionProcessMasterOptions(db);
-  const usedCodes = existingActions.reduce((set, row) => {
-    const normalizedCode = normalizeProcessMasterCode(row.code);
-    if (normalizedCode) set.add(normalizedCode);
-    return set;
-  }, new Set<string>());
-  const existingTokens = existingActions.reduce((set, row) => {
-    buildProcessMasterMatchTokenSet(row).forEach((token) => set.add(token));
-    return set;
-  }, new Set<string>());
-  let nextSortOrder = existingActions.reduce(
-    (maxValue, row) => Math.max(maxValue, toPositiveIntOrNull(row?.sortOrder) ?? 0),
-    0
-  );
-
-  const creates: Array<{
-    type: ProcessMasterOptionType;
-    code: string;
-    label: string;
-    nameKo: string;
-    nameEn: string;
-    nameVi: string;
-    sortOrder: number;
-  }> = [];
-
-  candidates.forEach((candidate) => {
-    const candidateTokens = new Set<string>();
-    [
-      candidate.label,
-      candidate.nameKo,
-      candidate.nameEn,
-      candidate.nameVi,
-    ].forEach((value) => {
-      const token = normalizeProcessMasterMatchToken(value);
-      if (token) candidateTokens.add(token);
-    });
-
-    const isAlreadyExists = Array.from(candidateTokens).some((token) =>
-      existingTokens.has(token)
-    );
-    if (isAlreadyExists) return;
-
-    const codeSeedLabel =
-      normalizeProcessMasterLabel(candidate.nameEn) ||
-      normalizeProcessMasterLabel(candidate.label) ||
-      normalizeProcessMasterLabel(candidate.nameKo) ||
-      normalizeProcessMasterLabel(candidate.nameVi);
-    const code = generateUniqueProcessMasterCode({
-      type: "ACTION",
-      label: codeSeedLabel,
-      usedCodes,
-    });
-    usedCodes.add(code);
-    nextSortOrder += 1;
-
-    creates.push({
-      type: "ACTION",
-      code,
-      label: candidate.label,
-      nameKo: candidate.nameKo || candidate.label,
-      nameEn: candidate.nameEn || candidate.label,
-      nameVi: candidate.nameVi || candidate.label,
-      sortOrder: nextSortOrder,
-    });
-
-    existingTokens.add(normalizeProcessMasterMatchToken(code));
-    candidateTokens.forEach((token) => existingTokens.add(token));
+}) =>
+  ensureProcessMasterOptionsFromStyleProcesses({
+    processes,
+    kinds: ["action"],
+    db,
   });
-
-  if (creates.length > 0) {
-    await insertProcessMasterOptionsWithDb(db, creates);
-  }
-};
 
 const PROCESS_COMPOSITION_KIND_BY_MASTER_TYPE: Record<
   ProcessMasterOptionType,
@@ -13329,7 +13377,7 @@ app.post("/styles", async (req, res) => {
         processes: payload.processes,
         db: tx,
       });
-      await ensureActionProcessMasterOptionsFromStyleProcesses({
+      await ensureProcessMasterOptionsFromStyleProcesses({
         processes: payload.processes,
         db: tx,
       });
@@ -13455,7 +13503,7 @@ app.put("/styles/:styleId", async (req, res) => {
         processes: normalized.processes,
         db: tx,
       });
-      await ensureActionProcessMasterOptionsFromStyleProcesses({
+      await ensureProcessMasterOptionsFromStyleProcesses({
         processes: normalized.processes,
         db: tx,
       });
@@ -13707,7 +13755,7 @@ app.post("/styles/import", async (req, res) => {
       }
     }
     if (includeProcesses && importedProcessesForMaster.length > 0) {
-      await ensureActionProcessMasterOptionsFromStyleProcesses({
+      await ensureProcessMasterOptionsFromStyleProcesses({
         processes: importedProcessesForMaster,
         db: tx,
       });
