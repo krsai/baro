@@ -75,10 +75,12 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: '공정 추가',
     addingTitle: '새 공정 추가',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
-    missingMasterOptions: '공정 사전에서 부위, 작업을 먼저 등록해주세요.',
+    missingMasterOptions: '공정 사전에서 부위를 먼저 등록해주세요.',
     partLabel: '부위',
     targetLabel: '대상',
     actionLabel: '작업',
+    actionCustomNotice:
+      '작업은 사용자가 직접 추가할 수 있으나, 작업(행위)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다.',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',
@@ -120,10 +122,12 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Add Process',
     addingTitle: 'New Process',
     loadingOptions: 'Loading process composition options...',
-    missingMasterOptions: 'Register part and action options first.',
+    missingMasterOptions: 'Register part options first.',
     partLabel: 'Part',
     targetLabel: 'Target',
     actionLabel: 'Action',
+    actionCustomNotice:
+      'Users can add actions directly, but entries that do not represent an action may be removed by an administrator.',
     specLabel: 'Spec',
     specPlaceholder: 'e.g. 3-line',
     previewLabel: 'Preview',
@@ -165,10 +169,12 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Them cong doan',
     addingTitle: 'Cong doan moi',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
-    missingMasterOptions: 'Hay dang ky truoc bo phan va thao tac.',
+    missingMasterOptions: 'Hay dang ky truoc bo phan.',
     partLabel: 'Bo phan',
     targetLabel: 'Doi tuong',
     actionLabel: 'Thao tac',
+    actionCustomNotice:
+      'Nguoi dung co the tu them thao tac, nhung neu khong mang y nghia thao tac (hanh vi) thi co the bi quan tri vien xoa.',
     specLabel: 'Quy cach',
     specPlaceholder: 'vi du: 3 kim',
     previewLabel: 'Xem truoc',
@@ -480,7 +486,9 @@ const normalizeProcessCompositionEntry = (value, kind) => {
   if (!normalized) return null;
   const code =
     normalizeStyleProcessCodeSegment(normalized.code) ||
-    (kind === 'spec' ? buildCustomStyleSpecCode(normalized.label) : '');
+    (kind === 'spec'
+      ? buildCustomStyleSpecCode(normalized.label)
+      : normalizeStyleProcessCodeSegment(normalized.label));
   const label = String(normalized.label ?? code ?? '').trim();
   if (!label && !code) return null;
 
@@ -995,8 +1003,7 @@ const StyleProcess = ({
     [hasAT, hasST, totalAT, totalST]
   );
 
-  const hasRequiredMasterOptions =
-    partOptions.length > 0 && actionOptions.length > 0;
+  const hasRequiredMasterOptions = partOptions.length > 0;
   const canStartAdd = !isLoadingOptions && !optionsError && hasRequiredMasterOptions;
   const isEditingRow = Boolean(editingInstanceId);
   const isDraftOpen = isAddingRow || isEditingRow;
@@ -1523,6 +1530,7 @@ const StyleProcess = ({
               />
               <Autocomplete
                 multiple
+                freeSolo
                 size="small"
                 options={actionOptions}
                 value={addDraft.actions}
@@ -1546,6 +1554,9 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 220 }}
               />
             </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {getStyleProcessMessage(languageCode, 'actionCustomNotice')}
+            </Typography>
 
             <Stack
               direction={{ xs: 'column', xl: 'row' }}
