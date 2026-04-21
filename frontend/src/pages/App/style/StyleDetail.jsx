@@ -11,7 +11,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import SaveButton from '../../../components/SaveButton';
 import StyleInfo from './styleDetail/StyleInfo';
-import StyleAnalysis from './styleDetail/StyleAnalysis';
 import StyleBom from './styleDetail/StyleBom';
 import StyleProcess from './styleDetail/StyleProcess';
 import StyleTimeMatrix from './styleDetail/StyleTimeMatrix';
@@ -161,7 +160,6 @@ const StyleDetail = () => {
   const [currentTab, setCurrentTab] = useState('basicInfo');
   const [loadedTabs, setLoadedTabs] = useState({
     basicInfo: true,
-    styleAnalysis: false,
     processInfo: false,
     timeMatrix: false,
     bom: false,
@@ -287,7 +285,7 @@ const StyleDetail = () => {
 
   const handleChange = (_event, newValue) => {
     if (
-      (newValue === 'styleAnalysis' || newValue === 'processInfo' || newValue === 'timeMatrix') &&
+      (newValue === 'processInfo' || newValue === 'timeMatrix') &&
       !canViewProcessInfo
     ) {
       return;
@@ -398,11 +396,6 @@ const StyleDetail = () => {
             {getStyleDetailMessage(languageCode, 'tabBasicInfo')}
           </ToggleButton>
           {canViewProcessInfo ? (
-            <ToggleButton value="styleAnalysis">
-              {getStyleDetailMessage(languageCode, 'tabStyleAnalysis')}
-            </ToggleButton>
-          ) : null}
-          {canViewProcessInfo ? (
             <ToggleButton value="processInfo">
               {getStyleDetailMessage(languageCode, 'tabProcessInfo')}
             </ToggleButton>
@@ -434,18 +427,12 @@ const StyleDetail = () => {
                 <StyleInfo
                   isNew={isNew}
                   formData={styleFormData}
+                  processes={styleFormData.processes}
+                  showStyleAnalysis={canViewProcessInfo}
                   handleInputChange={handleStyleInputChange}
                   isBrandOrg={isBrandOrg}
                   defaultCustomerName={defaultBrandCustomerName}
                 />
-              </Box>
-            </RequestScopeBoundary>
-          )}
-
-          {canViewProcessInfo && loadedTabs.styleAnalysis && (
-            <RequestScopeBoundary scopeId="styleAnalysis" active={currentTab === 'styleAnalysis'}>
-              <Box sx={{ display: currentTab === 'styleAnalysis' ? 'block' : 'none' }}>
-                <StyleAnalysis processes={styleFormData.processes} />
               </Box>
             </RequestScopeBoundary>
           )}

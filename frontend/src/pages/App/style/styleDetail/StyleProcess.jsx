@@ -82,7 +82,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionLabel: '작업',
     actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
     actionCustomNotice:
-      '작업은 사용자가 직접 추가할 수 있으나, 작업(동작)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다.',
+      '작업 항목은 사용자가 직접 추가할 수 있으나, 작업(동작)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다. 공정 추가 후 저장 버튼을 누르면 신규 작업 항목이 목록에 추가 됩니다.',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
     previewLabel: '미리보기',

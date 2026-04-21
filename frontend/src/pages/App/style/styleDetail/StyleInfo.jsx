@@ -28,6 +28,7 @@ import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchAttributes } from '../../../../utils/attributeApi';
 import { requestJSON } from '../../../../utils/apiClient';
+import StyleAnalysis from './StyleAnalysis';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
 const IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:']);
@@ -94,6 +95,8 @@ const isExternalImageLink = (value) => /^https?:\/\//i.test(String(value || '').
 
 const StyleInfo = ({
   formData = {},
+  processes = [],
+  showStyleAnalysis = false,
   handleInputChange,
   isBrandOrg = false,
   defaultCustomerName = '',
@@ -789,6 +792,12 @@ const StyleInfo = ({
               />
             </Box>
           </Stack>
+          {showStyleAnalysis ? (
+            <>
+              <Divider sx={{ my: 4 }} />
+              <StyleAnalysis processes={processes} />
+            </>
+          ) : null}
         </Paper>
       </Stack>
     </Box>
