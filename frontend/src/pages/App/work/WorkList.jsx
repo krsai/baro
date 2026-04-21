@@ -69,9 +69,9 @@ const TEXT = {
   nextMonth: { ko: '다음 달', en: 'Next month', vi: 'Thang sau' },
 };
 const DAILY_LOG_LABELS = {
-  ko: '\uC77C\uAC04 \uAE30\uB85D',
-  en: 'Daily Logs',
-  vi: 'Ghi chep ngay',
+  ko: '\uC791\uC5C5 \uAE30\uB85D',
+  en: 'Work Logs',
+  vi: 'Nhat ky cong viec',
 };
 
 const resolveText = (bundle, languageCode, fallback = '') =>

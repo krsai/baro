@@ -61,9 +61,9 @@ const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const DAILY_WORK_HISTORY_LABELS = {
-  ko: '\uC77C\uAC04 \uAE30\uB85D',
-  en: 'Daily Logs',
-  vi: 'Ghi chep ngay',
+  ko: '\uC791\uC5C5 \uAE30\uB85D',
+  en: 'Work Logs',
+  vi: 'Nhat ky cong viec',
 };
 const OPERATIONS_MANAGEMENT_LABELS = {
   ko: '\uC6B4\uC601 \uAD00\uB9AC',
