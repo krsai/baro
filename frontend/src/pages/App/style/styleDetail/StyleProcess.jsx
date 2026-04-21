@@ -981,6 +981,23 @@ const StyleProcess = ({
     () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'part', 'PART'),
     [safeProcesses]
   );
+  const masterPartIdentitySet = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'PART'))
+          .filter(Boolean)
+      ),
+    [processMasterOptions.parts]
+  );
+  const isNewCustomPartOption = useCallback(
+    (option) => {
+      const identity = getProcessMasterOptionIdentity(option, 'PART');
+      if (!identity) return false;
+      return !masterPartIdentitySet.has(identity);
+    },
+    [masterPartIdentitySet]
+  );
   const partOptions = useMemo(() => {
     const merged = [];
     const seen = new Set();
@@ -1005,6 +1022,23 @@ const StyleProcess = ({
   const targetOptionsFromStyleProcesses = useMemo(
     () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'target', 'TARGET'),
     [safeProcesses]
+  );
+  const masterTargetIdentitySet = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(processMasterOptions.targets) ? processMasterOptions.targets : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'TARGET'))
+          .filter(Boolean)
+      ),
+    [processMasterOptions.targets]
+  );
+  const isNewCustomTargetOption = useCallback(
+    (option) => {
+      const identity = getProcessMasterOptionIdentity(option, 'TARGET');
+      if (!identity) return false;
+      return !masterTargetIdentitySet.has(identity);
+    },
+    [masterTargetIdentitySet]
   );
   const targetOptions = useMemo(() => {
     const merged = [];
@@ -1087,6 +1121,23 @@ const StyleProcess = ({
     () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'spec', 'SPEC'),
     [safeProcesses]
   );
+  const masterSpecIdentitySet = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'SPEC'))
+          .filter(Boolean)
+      ),
+    [processMasterOptions.specs]
+  );
+  const isNewCustomSpecOption = useCallback(
+    (option) => {
+      const identity = getProcessMasterOptionIdentity(option, 'SPEC');
+      if (!identity) return false;
+      return !masterSpecIdentitySet.has(identity);
+    },
+    [masterSpecIdentitySet]
+  );
   const specOptions = useMemo(() => {
     const merged = [];
     const seen = new Set();
@@ -1124,9 +1175,58 @@ const StyleProcess = ({
   const [addActionInput, setAddActionInput] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
+  const isNewCustomSpecSelected = useMemo(
+    () => Boolean(addDraft?.spec && isNewCustomSpecOption(addDraft.spec)),
+    [addDraft?.spec, isNewCustomSpecOption]
+  );
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
+  );
+  const renderCustomOptionTags = useCallback(
+    (value, getTagProps, isNewOptionResolver) =>
+      value.map((option, index) => {
+        const { key, ...chipProps } = getTagProps({ index });
+        const isNewOption = isNewOptionResolver(option);
+        return (
+          <Chip
+            key={key}
+            {...chipProps}
+            size="small"
+            label={resolveProcessMasterLabel(option, languageCode)}
+            sx={
+              isNewOption
+                ? {
+                    bgcolor: 'rgba(255, 236, 179, 0.55)',
+                    color: '#5b4300',
+                    border: '1px solid rgba(231, 184, 78, 0.9)',
+                    '& .MuiChip-label': {
+                      fontWeight: 700,
+                    },
+                  }
+                : undefined
+            }
+            avatar={
+              isNewOption ? (
+                <Avatar
+                  sx={{
+                    width: 18,
+                    height: 18,
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    bgcolor: '#ffd98a',
+                    color: '#4d3600',
+                    border: '1px solid rgba(173, 121, 0, 0.45)',
+                  }}
+                >
+                  N
+                </Avatar>
+              ) : undefined
+            }
+          />
+        );
+      }),
+    [languageCode]
   );
 
   const totalPT = useMemo(
@@ -1686,6 +1786,9 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(value, 'PART')
                 }
                 filterSelectedOptions
+                renderTags={(value, getTagProps) =>
+                  renderCustomOptionTags(value, getTagProps, isNewCustomPartOption)
+                }
                 renderInput={(params) => (
                   <TextField {...params} label={getStyleProcessMessage(languageCode, 'partLabel')} />
                 )}
@@ -1712,6 +1815,9 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(value, 'TARGET')
                 }
                 filterSelectedOptions
+                renderTags={(value, getTagProps) =>
+                  renderCustomOptionTags(value, getTagProps, isNewCustomTargetOption)
+                }
                 renderInput={(params) => (
                   <TextField {...params} label={getStyleProcessMessage(languageCode, 'targetLabel')} />
                 )}
@@ -1740,9 +1846,48 @@ const StyleProcess = ({
                     {...params}
                     label={getStyleProcessMessage(languageCode, 'specLabel')}
                     placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                    InputProps={{
+                      ...params.InputProps,
+                      startAdornment: (
+                        <>
+                          {isNewCustomSpecSelected ? (
+                            <Avatar
+                              sx={{
+                                width: 18,
+                                height: 18,
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                bgcolor: '#ffd98a',
+                                color: '#4d3600',
+                                border: '1px solid rgba(173, 121, 0, 0.45)',
+                                mr: 0.5,
+                              }}
+                            >
+                              N
+                            </Avatar>
+                          ) : null}
+                          {params.InputProps.startAdornment}
+                        </>
+                      ),
+                    }}
                   />
                 )}
-                sx={{ flex: 1, minWidth: 180 }}
+                sx={{
+                  flex: 1,
+                  minWidth: 180,
+                  ...(isNewCustomSpecSelected
+                    ? {
+                        '& .MuiInputBase-root': {
+                          bgcolor: 'rgba(255, 236, 179, 0.55)',
+                          color: '#5b4300',
+                          fontWeight: 700,
+                        },
+                        '& .MuiOutlinedInput-notchedOutline': {
+                          borderColor: 'rgba(231, 184, 78, 0.9)',
+                        },
+                      }
+                    : {}),
+                }}
               />
               <Autocomplete
                 multiple
@@ -1770,47 +1915,7 @@ const StyleProcess = ({
                 }
                 filterSelectedOptions
                 renderTags={(value, getTagProps) =>
-                  value.map((option, index) => {
-                    const { key, ...chipProps } = getTagProps({ index });
-                    const isNewOption = isNewCustomActionOption(option);
-                    return (
-                      <Chip
-                        key={key}
-                        {...chipProps}
-                        size="small"
-                        label={resolveProcessMasterLabel(option, languageCode)}
-                        sx={
-                          isNewOption
-                            ? {
-                                bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                color: '#5b4300',
-                                border: '1px solid rgba(231, 184, 78, 0.9)',
-                                '& .MuiChip-label': {
-                                  fontWeight: 700,
-                                },
-                              }
-                            : undefined
-                        }
-                        avatar={
-                          isNewOption ? (
-                            <Avatar
-                              sx={{
-                                width: 18,
-                                height: 18,
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                bgcolor: '#ffd98a',
-                                color: '#4d3600',
-                                border: '1px solid rgba(173, 121, 0, 0.45)',
-                              }}
-                            >
-                              N
-                            </Avatar>
-                          ) : undefined
-                        }
-                      />
-                    );
-                  })
+                  renderCustomOptionTags(value, getTagProps, isNewCustomActionOption)
                 }
                 renderInput={(params) => (
                   <TextField
