@@ -1175,10 +1175,6 @@ const StyleProcess = ({
   const [addActionInput, setAddActionInput] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
-  const isNewCustomSpecSelected = useMemo(
-    () => Boolean(addDraft?.spec && isNewCustomSpecOption(addDraft.spec)),
-    [addDraft?.spec, isNewCustomSpecOption]
-  );
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
@@ -1824,15 +1820,17 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
+                multiple
                 freeSolo
                 forcePopupIcon
                 size="small"
                 options={specOptions}
-                value={addDraft.spec}
+                value={addDraft.spec ? [addDraft.spec] : []}
                 onChange={(_event, value) => {
+                  const normalizedSpecs = normalizeProcessCompositionEntries(value, 'spec');
                   setAddDraft((prev) => ({
                     ...prev,
-                    spec: normalizeProcessCompositionEntry(value, 'spec'),
+                    spec: normalizedSpecs.length > 0 ? normalizedSpecs[normalizedSpecs.length - 1] : null,
                   }));
                   setAddError('');
                 }}
@@ -1841,35 +1839,15 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(option, 'SPEC') ===
                   getProcessMasterOptionIdentity(value, 'SPEC')
                 }
+                filterSelectedOptions
+                renderTags={(value, getTagProps) =>
+                  renderCustomOptionTags(value, getTagProps, isNewCustomSpecOption)
+                }
                 renderInput={(params) => (
                   <TextField
                     {...params}
                     label={getStyleProcessMessage(languageCode, 'specLabel')}
                     placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
-                    InputProps={{
-                      ...params.InputProps,
-                      startAdornment: (
-                        <>
-                          {isNewCustomSpecSelected ? (
-                            <Avatar
-                              sx={{
-                                width: 18,
-                                height: 18,
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                bgcolor: '#ffd98a',
-                                color: '#4d3600',
-                                border: '1px solid rgba(173, 121, 0, 0.45)',
-                                mr: 0.5,
-                              }}
-                            >
-                              N
-                            </Avatar>
-                          ) : null}
-                          {params.InputProps.startAdornment}
-                        </>
-                      ),
-                    }}
                   />
                 )}
                 sx={{ flex: 1, minWidth: 180 }}
