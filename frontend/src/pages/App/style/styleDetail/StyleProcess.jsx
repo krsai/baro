@@ -79,6 +79,7 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: '부위',
     targetLabel: '대상',
     actionLabel: '작업',
+    actionInputHint: '직접 입력 후 Enter(또는 바로 저장)로 추가',
     actionCustomNotice:
       '작업은 사용자가 직접 추가할 수 있으나, 작업(행위)을 의미하지 않으면 관리자에 의해 삭제 될 수 있습니다.',
     specLabel: '규격',
@@ -126,6 +127,7 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: 'Part',
     targetLabel: 'Target',
     actionLabel: 'Action',
+    actionInputHint: 'Type and press Enter (or just Save)',
     actionCustomNotice:
       'Users can add actions directly, but entries that do not represent an action may be removed by an administrator.',
     specLabel: 'Spec',
@@ -173,6 +175,7 @@ const STYLE_PROCESS_MESSAGES = {
     partLabel: 'Bo phan',
     targetLabel: 'Doi tuong',
     actionLabel: 'Thao tac',
+    actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Luu)',
     actionCustomNotice:
       'Nguoi dung co the tu them thao tac, nhung neu khong mang y nghia thao tac (hanh vi) thi co the bi quan tri vien xoa.',
     specLabel: 'Quy cach',
@@ -925,6 +928,7 @@ const StyleProcess = ({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [editingInstanceId, setEditingInstanceId] = useState(null);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
+  const [addActionInput, setAddActionInput] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const displayOrderQuantity = useMemo(
@@ -1088,6 +1092,7 @@ const StyleProcess = ({
     setEditingInstanceId(null);
     setIsAddingRow(true);
     setAddDraft(createEmptyDraft());
+    setAddActionInput('');
     setAddError('');
   };
 
@@ -1095,6 +1100,7 @@ const StyleProcess = ({
     setIsAddingRow(false);
     setEditingInstanceId(null);
     setAddDraft(createEmptyDraft());
+    setAddActionInput('');
     setAddError('');
   };
 
@@ -1103,18 +1109,32 @@ const StyleProcess = ({
     setIsAddingRow(false);
     setEditingInstanceId(process.instanceId);
     setAddDraft(buildDraftFromProcess(process, displayOrderQuantity));
+    setAddActionInput('');
     setAddError('');
   }, [displayOrderQuantity]);
 
+  const resolveDraftWithPendingAction = useCallback((draft) => {
+    const pendingActionText = String(addActionInput ?? '').trim();
+    if (!pendingActionText) return draft;
+    return {
+      ...draft,
+      actions: normalizeProcessCompositionEntries(
+        [...(Array.isArray(draft?.actions) ? draft.actions : []), pendingActionText],
+        'action'
+      ),
+    };
+  }, [addActionInput]);
+
   const handleSaveAddRow = () => {
-    const errorMessage = validateDraft(addDraft, {
+    const draftForSave = resolveDraftWithPendingAction(addDraft);
+    const errorMessage = validateDraft(draftForSave, {
       ignoreInstanceId: isEditingRow ? editingInstanceId : null,
     });
     if (errorMessage) {
       setAddError(errorMessage);
       return;
     }
-    const nextProcess = buildProcessPayload(addDraft, editingProcess, timeRefQuantity);
+    const nextProcess = buildProcessPayload(draftForSave, editingProcess, timeRefQuantity);
     if (isEditingRow) {
       onProcessesChange(
         safeProcesses.map((process) =>
@@ -1194,7 +1214,11 @@ const StyleProcess = ({
   ), [handleRemoveProcess, handleStartEditRow, isAddingRow, languageCode]);
 
   const addPreviewProcess = isDraftOpen
-    ? buildProcessPayload(deferredAddDraft, editingProcess, timeRefQuantity)
+    ? buildProcessPayload(
+        resolveDraftWithPendingAction(deferredAddDraft),
+        editingProcess,
+        timeRefQuantity
+      )
     : null;
   const addPreviewAtTotalSeconds =
     addPreviewProcess == null
@@ -1534,6 +1558,7 @@ const StyleProcess = ({
                 size="small"
                 options={actionOptions}
                 value={addDraft.actions}
+                inputValue={addActionInput}
                 disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
@@ -1542,6 +1567,9 @@ const StyleProcess = ({
                   }));
                   setAddError('');
                 }}
+                onInputChange={(_event, value) => {
+                  setAddActionInput(String(value ?? ''));
+                }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
                   getProcessMasterOptionIdentity(option, 'ACTION') ===
@@ -1549,7 +1577,11 @@ const StyleProcess = ({
                 }
                 filterSelectedOptions
                 renderInput={(params) => (
-                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'actionLabel')} />
+                  <TextField
+                    {...params}
+                    label={getStyleProcessMessage(languageCode, 'actionLabel')}
+                    placeholder={getStyleProcessMessage(languageCode, 'actionInputHint')}
+                  />
                 )}
                 sx={{ flex: 1, minWidth: 220 }}
               />
