@@ -70,6 +70,16 @@ const MONTHLY_WORK_HISTORY_LABELS = {
   en: 'Monthly Logs',
   vi: 'Ghi chep thang',
 };
+const RECORDS_MANAGEMENT_LABELS = {
+  ko: '\uAE30\uB85D \uAD00\uB9AC',
+  en: 'Records',
+  vi: 'Quan ly ghi chep',
+};
+const SITUATION_BOARD_LABELS = {
+  ko: '\uC0C1\uD669\uD310',
+  en: 'Situation Board',
+  vi: 'Bang tinh hinh',
+};
 
 const toPathname = (path) => {
   const raw = typeof path === 'string' ? path.trim() : '';
@@ -250,6 +260,7 @@ const MainLayout = () => {
   const [adminOpen, setAdminOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [miscOpen, setMiscOpen] = useState(false);
@@ -417,53 +428,74 @@ const MainLayout = () => {
   const menuItems = useMemo(() => {
     const baseItems = [
       {
-        label: getUiMessage('menu.sales', '영업 관리', languageCode),
+        label: getUiMessage('menu.sales', '\uC601\uC5C5 \uAD00\uB9AC', languageCode),
         icon: <ShoppingCartIcon />,
         isParent: true,
         isOpen: orderOpen,
         setOpen: setOrderOpen,
         children: [
           {
-            label: getUiMessage('menu.order', '주문', languageCode),
+            label: getUiMessage('menu.order', '\uC8FC\uBB38', languageCode),
             icon: <ListAltIcon />,
             path: '/order',
           },
           {
-            label: getUiMessage('menu.style', '스타일', languageCode),
+            label: getUiMessage('menu.style', '\uC2A4\uD0C0\uC77C', languageCode),
             icon: <StyleIcon />,
             path: '/style',
           },
         ],
       },
       {
-        label: getUiMessage('menu.production', '생산 관리', languageCode),
+        label: getUiMessage('menu.production', '\uC0DD\uC0B0 \uAD00\uB9AC', languageCode),
         icon: <ProductionQuantityLimitsIcon />,
         isParent: true,
         isOpen: productionOpen,
         setOpen: setProductionOpen,
         children: [
           {
-            label: getUiMessage('menu.line', '라인', languageCode),
+            label: getUiMessage('menu.line', '\uB77C\uC778', languageCode),
             icon: <ContentCut />,
             path: '/line',
           },
           {
-            label: getUiMessage('menu.assignment', '배정', languageCode),
+            label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
             icon: <ContentCut />,
             path: '/assignment',
           },
           {
-            label: getUiMessage('menu.productionPlan', '작업 계획 현황', languageCode),
+            label: resolveLocalizedLabel(SITUATION_BOARD_LABELS, languageCode),
             icon: <TimelineIcon />,
             path: '/production-plan',
+            disabled: true,
           },
           {
-            label: getUiMessage('menu.standardReview', '표준 공임 검토', languageCode),
+            label: getUiMessage(
+              'menu.standardReview',
+              '\uD45C\uC900 \uACF5\uC784 \uAC80\uD1A0',
+              languageCode
+            ),
             icon: <FactCheckIcon />,
             path: '/st-review',
+            disabled: true,
           },
           {
-            label: getUiMessage('menu.workHistory', '기록', languageCode),
+            label: getUiMessage('menu.shipmentReview', '\uCD9C\uACE0 \uAC80\uD1A0', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/shipment-review',
+            disabled: true,
+          },
+        ],
+      },
+      {
+        label: resolveLocalizedLabel(RECORDS_MANAGEMENT_LABELS, languageCode),
+        icon: <HistoryIcon />,
+        isParent: true,
+        isOpen: recordsOpen,
+        setOpen: setRecordsOpen,
+        children: [
+          {
+            label: getUiMessage('menu.workHistory', '\uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
           },
@@ -477,96 +509,91 @@ const MainLayout = () => {
             path: '/work-history-monthly',
           },
           {
-            label: getUiMessage('menu.shipmentReview', '출고 검토', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/shipment-review',
-          },
-          {
-            label: getUiMessage('menu.attendance', '출퇴근', languageCode),
+            label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
           },
         ],
       },
       {
-        label: getUiMessage('menu.inventory', '재고 관리', languageCode),
+        label: getUiMessage('menu.inventory', '\uC7AC\uACE0 \uAD00\uB9AC', languageCode),
         icon: <Inventory2Icon />,
         isParent: true,
         isOpen: inventoryOpen,
         setOpen: setInventoryOpen,
         children: [
           {
-            label: getUiMessage('menu.inventoryIssue', '재고 불출', languageCode),
+            label: getUiMessage('menu.inventoryIssue', '\uC7AC\uACE0 \uBD88\uCD9C', languageCode),
             icon: <Inventory2Icon />,
             path: '/inventory',
           },
         ],
       },
       {
-        label: getUiMessage('menu.accounting', '회계 관리', languageCode),
+        label: getUiMessage('menu.accounting', '\uD68C\uACC4 \uAD00\uB9AC', languageCode),
         icon: <AccountBalanceWalletIcon />,
         isParent: true,
         isOpen: accountingOpen,
         setOpen: setAccountingOpen,
         children: [
           {
-            label: getUiMessage('menu.payroll', '급여 계산', languageCode),
+            label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
           },
           {
-            label: getUiMessage('menu.productionResult', '생산 결과', languageCode),
+            label: getUiMessage('menu.productionResult', '\uC0DD\uC0B0 \uACB0\uACFC', languageCode),
             icon: <ListAltIcon />,
             path: '/production-result',
           },
         ],
       },
       {
-        label: getUiMessage('menu.organization', '조직 관리', languageCode),
+        label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),
         icon: <OrganizationIcon />,
         isParent: true,
         isOpen: adminOpen,
         setOpen: setAdminOpen,
         children: [
           {
-            label: getUiMessage('menu.business', '사업체 관리', languageCode),
+            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
           },
           {
-            label: getUiMessage('menu.employee', '직원 관리', languageCode),
+            label: getUiMessage('menu.employee', '\uC9C1\uC6D0 \uAD00\uB9AC', languageCode),
             icon: <GroupIcon />,
             path: '/employee',
             badgeCount: pendingEmployeeCount,
           },
           {
-            label: getUiMessage('menu.customer', '고객 관리', languageCode),
+            label: getUiMessage('menu.customer', '\uACE0\uAC1D \uAD00\uB9AC', languageCode),
             icon: <PeopleIcon />,
             path: '/customer',
           },
           {
-            label: getUiMessage('menu.subscription', '구독 관리', languageCode),
+            label: getUiMessage('menu.subscription', '\uAD6C\uB3C5 \uAD00\uB9AC', languageCode),
             icon: <TuneIcon />,
             path: '/system-setting',
           },
         ],
       },
       {
-        label: getUiMessage('menu.misc', '기타 관리', languageCode),
+        label: getUiMessage('menu.misc', '\uAE30\uD0C0 \uAD00\uB9AC', languageCode),
         icon: <MoreHorizIcon />,
         isParent: true,
         isOpen: miscOpen,
         setOpen: setMiscOpen,
         children: [
           {
-            label: getUiMessage('menu.holiday', '휴일 관리', languageCode),
+            label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
             icon: <CalendarMonthIcon />,
             path: '/holiday',
           },
         ],
       },
       {
-        label: getUiMessage('menu.attribute', '속성 관리', languageCode),
+        label: getUiMessage('menu.attribute', '\uC18D\uC131 \uAD00\uB9AC', languageCode),
         icon: <DnsIcon />,
         isParent: true,
         isOpen: attributeOpen,
@@ -575,43 +602,51 @@ const MainLayout = () => {
           ...(isSystemProfile
             ? [
                 {
-                  label: getUiMessage('menu.attributeColors', '색상 관리', languageCode),
+                  label: getUiMessage(
+                    'menu.attributeColors',
+                    '\uC0C9\uC0C1 \uAD00\uB9AC',
+                    languageCode
+                  ),
                   icon: <DnsIcon />,
                   path: '/attribute/colors',
                 },
                 {
-                  label: getUiMessage('menu.attributeCategories', '카테고리 관리', languageCode),
+                  label: getUiMessage(
+                    'menu.attributeCategories',
+                    '\uCE74\uD14C\uACE0\uB9AC \uAD00\uB9AC',
+                    languageCode
+                  ),
                   icon: <DnsIcon />,
                   path: '/attribute/categories',
                 },
               ]
             : []),
           {
-            label: getUiMessage('menu.attributeProcesses', '공정 관리', languageCode),
+            label: getUiMessage('menu.attributeProcesses', '\uACF5\uC815 \uAD00\uB9AC', languageCode),
             icon: <DnsIcon />,
             path: '/attribute/processes',
           },
         ],
       },
       {
-        label: getUiMessage('menu.system', '시스템 설정', languageCode),
+        label: getUiMessage('menu.system', '\uC2DC\uC2A4\uD15C \uC124\uC815', languageCode),
         icon: <TuneIcon />,
         isParent: true,
         isOpen: systemOpen,
         setOpen: setSystemOpen,
         children: [
           {
-            label: getUiMessage('menu.staticOptions', '정적 사전', languageCode),
+            label: getUiMessage('menu.staticOptions', '\uC815\uC801 \uC0AC\uC804', languageCode),
             icon: <DnsIcon />,
             path: '/system-setting/static-options',
           },
           {
-            label: getUiMessage('menu.onboardingApproval', '가입 승인', languageCode),
+            label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,
             path: '/system-onboarding',
             badgeLabel:
               pendingOnboardingCount > 0
-                ? getUiMessage('common.new', '신규', languageCode)
+                ? getUiMessage('common.new', '\uC2E0\uADDC', languageCode)
                 : '',
           },
         ],
@@ -619,7 +654,7 @@ const MainLayout = () => {
     ];
 
     const customerMenuItem = {
-      label: getUiMessage('menu.customer', '怨좉컼', languageCode),
+      label: getUiMessage('menu.customer', '\uACE0\uAC1D', languageCode),
       icon: <PeopleIcon />,
       path: '/customer',
     };
@@ -662,9 +697,6 @@ const MainLayout = () => {
             '/line',
             '/assignment',
             '/production-plan',
-            '/work-history',
-            '/work-history-monthly',
-            '/attendance',
             '/st-review',
             '/shipment-review',
           ];
@@ -701,6 +733,7 @@ const MainLayout = () => {
     pendingEmployeeCount,
     pendingOnboardingCount,
     productionOpen,
+    recordsOpen,
     isSystemProfile,
     systemOpen,
   ]);
@@ -720,7 +753,7 @@ const MainLayout = () => {
       );
       const suffixByKind =
         languageCode === 'ko'
-          ? { list: '목록', new: '신규', detail: '상세' }
+          ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
           : languageCode === 'vi'
             ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
             : { list: 'List', new: 'New', detail: 'Detail' };
@@ -735,7 +768,7 @@ const MainLayout = () => {
       const baseLabel = getUiMessage('menu.attendance', 'Attendance', languageCode);
       const suffixByKind =
         languageCode === 'ko'
-          ? { list: '목록', new: '신규', detail: '상세' }
+          ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
           : languageCode === 'vi'
             ? { list: 'Danh sach', new: 'Moi', detail: 'Chi tiet' }
             : { list: 'List', new: 'New', detail: 'Detail' };
@@ -1290,12 +1323,21 @@ const MainLayout = () => {
       <List sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 0 } }}>
         {menuItems.map((menu) => {
           const isMenuSelected = !menu.isParent && currentPath === menu.path;
+          const isMenuDisabled = Boolean(menu.disabled);
 
           return (
             <React.Fragment key={menu.label}>
             <ListItem
               button
-              onClick={() => menu.isParent ? menu.setOpen(!menu.isOpen) : handleMenuItemClick(menu.path)}
+              disabled={isMenuDisabled}
+              onClick={() => {
+                if (isMenuDisabled) return;
+                if (menu.isParent) {
+                  menu.setOpen(!menu.isOpen);
+                  return;
+                }
+                handleMenuItemClick(menu.path);
+              }}
               selected={isMenuSelected}
               sx={getMenuItemSx({ selected: isMenuSelected })}
             >
@@ -1310,12 +1352,17 @@ const MainLayout = () => {
                     const isChildSelected =
                       currentPath === child.path ||
                       (currentPath ? currentPath.startsWith(child.path + '/') : false);
+                    const isChildDisabled = Boolean(child.disabled);
 
                     return (
                       <ListItem
                         button
                         key={child.path}
-                        onClick={() => handleMenuItemClick(child.path)}
+                        disabled={isChildDisabled}
+                        onClick={() => {
+                          if (isChildDisabled) return;
+                          handleMenuItemClick(child.path);
+                        }}
                         selected={isChildSelected}
                         sx={getMenuItemSx({
                           selected: isChildSelected,
@@ -1408,7 +1455,7 @@ const MainLayout = () => {
               {activeOrgName || 'BARO'}
             </Button>
           </Box>
-          {/* ?묐컮 以묒븰 ?좎뒪??*/}
+          {/* Center notification text */}
           <Fade in={!!notification} timeout={{ enter: 180, exit: 300 }} unmountOnExit>
             <Box
               sx={{
@@ -1448,7 +1495,7 @@ const MainLayout = () => {
             color="inherit"
             onClick={() =>
               handleNavigation('/profile', {
-                label: getUiMessage('menu.profile', '개인 정보', languageCode),
+                label: getUiMessage('menu.profile', '\uAC1C\uC778 \uC815\uBCF4', languageCode),
               })
             }
             startIcon={<AccountCircleIcon fontSize="small" />}

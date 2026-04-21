@@ -8188,6 +8188,15 @@ const PROCESS_MASTER_GROUP_BY_TYPE: Record<
   ACTION: "actions",
   SPEC: "specs",
 };
+const PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE: Record<
+  ProcessMasterOptionType,
+  "parts" | "targets" | "actions" | "specs"
+> = {
+  PART: "parts",
+  TARGET: "targets",
+  ACTION: "actions",
+  SPEC: "specs",
+};
 
 const PROCESS_MASTER_FALLBACK_CODE_BY_TYPE: Record<ProcessMasterOptionType, string> = {
   PART: "PART",
@@ -8675,6 +8684,155 @@ const flattenProcessMasterPayloadItems = (payload: any) => {
   return flattened;
 };
 
+type ProcessMasterDeletionUsageConflict = {
+  id: number;
+  type: ProcessMasterOptionType;
+  code: string;
+  label: string;
+  nameKo: string;
+  nameEn: string;
+  nameVi: string;
+  styleProcessCount: number;
+  referenceCount: number;
+  sampleStyleProcessIds: number[];
+};
+
+type ProcessMasterOptionInUseError = Error & {
+  status: number;
+  code: "PROCESS_MASTER_OPTION_IN_USE";
+  reason: "PROCESS_MASTER_OPTION_IN_USE";
+  usageCount: number;
+  conflicts: ProcessMasterDeletionUsageConflict[];
+};
+
+const findProcessMasterDeletionUsageConflicts = async (
+  deleteRows: ProcessMasterOptionRow[]
+): Promise<ProcessMasterDeletionUsageConflict[]> => {
+  if (deleteRows.length === 0) return [];
+
+  const tracked = new Map<
+    string,
+    {
+      id: number;
+      type: ProcessMasterOptionType;
+      code: string;
+      label: string;
+      nameKo: string;
+      nameEn: string;
+      nameVi: string;
+      styleProcessIds: Set<number>;
+      referenceCount: number;
+      sampleStyleProcessIds: number[];
+    }
+  >();
+
+  deleteRows.forEach((row) => {
+    const id = toPositiveIntOrNull(row?.id);
+    const type = normalizeProcessMasterType(row?.type);
+    const code = normalizeProcessMasterCode(row?.code);
+    if (!id || !type || !code) return;
+    const key = `${type}:${code}`;
+    if (tracked.has(key)) return;
+    const label =
+      normalizeProcessMasterLabel(
+        row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi ?? row?.code
+      ) || code;
+    tracked.set(key, {
+      id,
+      type,
+      code,
+      label,
+      nameKo: normalizeProcessMasterLabel(row?.nameKo) || label,
+      nameEn: normalizeProcessMasterLabel(row?.nameEn) || label,
+      nameVi: normalizeProcessMasterLabel(row?.nameVi) || label,
+      styleProcessIds: new Set<number>(),
+      referenceCount: 0,
+      sampleStyleProcessIds: [],
+    });
+  });
+  if (tracked.size === 0) return [];
+
+  const styleProcesses = await prisma.styleProcess.findMany({
+    select: { id: true, processComposition: true },
+    orderBy: { id: "asc" },
+  });
+
+  styleProcesses.forEach((styleProcess) => {
+    const styleProcessId = toPositiveIntOrNull(styleProcess?.id);
+    if (!styleProcessId) return;
+    const composition = normalizeStyleProcessComposition(styleProcess?.processComposition);
+    if (!composition) return;
+
+    PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+      const type = typeKey as ProcessMasterOptionType;
+      const groupKey = PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE[type];
+      const entries = ensureArray((composition as any)?.[groupKey]);
+      entries.forEach((entry) => {
+        const code = normalizeProcessMasterCode((entry as any)?.code);
+        if (!code) return;
+        const key = `${type}:${code}`;
+        const candidate = tracked.get(key);
+        if (!candidate) return;
+        candidate.referenceCount += 1;
+        candidate.styleProcessIds.add(styleProcessId);
+        if (
+          candidate.sampleStyleProcessIds.length < 5 &&
+          !candidate.sampleStyleProcessIds.includes(styleProcessId)
+        ) {
+          candidate.sampleStyleProcessIds.push(styleProcessId);
+        }
+      });
+    });
+  });
+
+  return Array.from(tracked.values())
+    .map((item) => ({
+      id: item.id,
+      type: item.type,
+      code: item.code,
+      label: item.label,
+      nameKo: item.nameKo,
+      nameEn: item.nameEn,
+      nameVi: item.nameVi,
+      styleProcessCount: item.styleProcessIds.size,
+      referenceCount: item.referenceCount,
+      sampleStyleProcessIds: item.sampleStyleProcessIds,
+    }))
+    .filter((item) => item.styleProcessCount > 0)
+    .sort((left, right) => {
+      if (right.styleProcessCount !== left.styleProcessCount) {
+        return right.styleProcessCount - left.styleProcessCount;
+      }
+      return left.code.localeCompare(right.code, "en-US");
+    });
+};
+
+const createProcessMasterOptionInUseError = (
+  conflicts: ProcessMasterDeletionUsageConflict[]
+): ProcessMasterOptionInUseError => {
+  const usageCount = conflicts.reduce(
+    (sum, item) => sum + (Number(item.referenceCount) || 0),
+    0
+  );
+  const error = createHttpError(
+    409,
+    `사용 중인 공정 항목은 삭제할 수 없습니다. ${usageCount}건 참조 중입니다.`
+  ) as ProcessMasterOptionInUseError;
+  error.code = "PROCESS_MASTER_OPTION_IN_USE";
+  error.reason = "PROCESS_MASTER_OPTION_IN_USE";
+  error.usageCount = usageCount;
+  error.conflicts = conflicts;
+  return error;
+};
+
+const isProcessMasterOptionInUseError = (
+  error: unknown
+): error is ProcessMasterOptionInUseError => {
+  const record = toErrorRecord(error);
+  const code = String(record?.code || record?.reason || "");
+  return code === "PROCESS_MASTER_OPTION_IN_USE";
+};
+
 const syncProcessMasterOptions = async (payload: any) => {
   const incomingItems = flattenProcessMasterPayloadItems(payload).filter(
     (item) =>
@@ -8687,9 +8845,14 @@ const syncProcessMasterOptions = async (payload: any) => {
   const incomingIdSet = new Set(incomingIds);
 
   const existing = await listProcessMasterOptions();
-  const deleteIds = existing
-    .map((row) => row.id)
-    .filter((id) => !incomingIdSet.has(id));
+  const deleteRows = existing.filter((row) => !incomingIdSet.has(row.id));
+  if (deleteRows.length > 0) {
+    const conflicts = await findProcessMasterDeletionUsageConflicts(deleteRows);
+    if (conflicts.length > 0) {
+      throw createProcessMasterOptionInUseError(conflicts);
+    }
+  }
+  const deleteIds = deleteRows.map((row) => row.id);
   if (deleteIds.length > 0) {
     await deleteProcessMasterOptionsByIds(deleteIds);
   }
@@ -13651,16 +13814,50 @@ app.get("/process-master-options", async (req, res) => {
   return res.json(groupProcessMasterOptions(rows));
 });
 
-app.put("/process-master-options", async (req, res) => {
+app.put("/process-master-options", async (req, res, next) => {
   const systemAdmin = await requireSystemAdmin(req, res);
   if (!systemAdmin) return;
 
-  await ensureDefaultProcessMasterOptions();
-  const rows = await syncProcessMasterOptions(req.body ?? {});
-  await syncStyleProcessCompositionNamesWithMasterOptions({
-    processMasterRows: rows,
-  });
-  return res.json(groupProcessMasterOptions(rows));
+  try {
+    await ensureDefaultProcessMasterOptions();
+    const rows = await syncProcessMasterOptions(req.body ?? {});
+    await syncStyleProcessCompositionNamesWithMasterOptions({
+      processMasterRows: rows,
+    });
+    return res.json(groupProcessMasterOptions(rows));
+  } catch (error) {
+    if (isProcessMasterOptionInUseError(error)) {
+      const usageCount = Number(error.usageCount || 0);
+      const conflicts = Array.isArray(error.conflicts)
+        ? error.conflicts.map((item) => ({
+            id: toPositiveIntOrNull(item?.id),
+            type: normalizeProcessMasterType(item?.type),
+            code: normalizeProcessMasterCode(item?.code),
+            label: normalizeProcessMasterLabel(item?.label),
+            nameKo: normalizeProcessMasterLabel(item?.nameKo),
+            nameEn: normalizeProcessMasterLabel(item?.nameEn),
+            nameVi: normalizeProcessMasterLabel(item?.nameVi),
+            styleProcessCount: Number(item?.styleProcessCount || 0),
+            referenceCount: Number(item?.referenceCount || 0),
+            sampleStyleProcessIds: ensureArray(item?.sampleStyleProcessIds)
+              .map((id) => toPositiveIntOrNull(id))
+              .filter((id): id is number => id !== null),
+          }))
+        : [];
+
+      return res.status(409).json({
+        ok: false,
+        reason: "PROCESS_MASTER_OPTION_IN_USE",
+        usageCount,
+        conflicts,
+        error: getErrorMessage(
+          error,
+          "사용 중인 공정 항목은 삭제할 수 없습니다."
+        ),
+      });
+    }
+    return next(error);
+  }
 });
 
 app.post("/attributes/colors", async (req, res) => {

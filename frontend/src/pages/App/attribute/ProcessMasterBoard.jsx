@@ -445,8 +445,20 @@ const ProcessMasterBoard = () => {
       setFormData(normalized);
       setOriginalData(normalized);
       showNotification('공정 마스터가 저장되었습니다.', 'success');
-    } catch (_error) {
-      showNotification('공정 마스터 저장 중 오류가 발생했습니다.', 'error');
+    } catch (error) {
+      const status = Number(error?.status || 0);
+      const reason = String(error?.details?.reason || '').trim().toUpperCase();
+      if (status === 409 && reason === 'PROCESS_MASTER_OPTION_IN_USE') {
+        const usageCount = Number(error?.details?.usageCount || 0);
+        showNotification(
+          usageCount > 0
+            ? `사용 중인 항목은 삭제할 수 없습니다. ${usageCount}건에서 참조 중입니다.`
+            : '사용 중인 항목은 삭제할 수 없습니다.',
+          'error'
+        );
+        return;
+      }
+      showNotification(error?.message || '공정 마스터 저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setIsSaving(false);
     }
