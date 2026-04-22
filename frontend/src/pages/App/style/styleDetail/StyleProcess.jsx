@@ -512,6 +512,43 @@ const compareProcessMasterOptionAsc = (left, right, languageCode = 'en') => {
   return leftSort - rightSort;
 };
 
+const normalizeProcessMasterMatchText = (value) =>
+  String(value ?? '')
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const buildProcessMasterMatchCandidates = (option, languageCode) => {
+  const normalized = normalizeProcessMasterOption(option);
+  if (!normalized) return [];
+  return Array.from(
+    new Set(
+      [
+        resolveProcessMasterLabel(normalized, languageCode),
+        normalized.label,
+        normalized.nameKo,
+        normalized.nameEn,
+        normalized.nameVi,
+        normalized.code,
+      ]
+        .map((value) => normalizeProcessMasterMatchText(value))
+        .filter(Boolean)
+    )
+  );
+};
+
+const findProcessMasterOptionByInput = (options, inputText, languageCode) => {
+  const normalizedInput = normalizeProcessMasterMatchText(inputText);
+  if (!normalizedInput) return null;
+  return (
+    (Array.isArray(options) ? options : []).find((option) =>
+      buildProcessMasterMatchCandidates(option, languageCode).includes(normalizedInput)
+    ) || null
+  );
+};
+
 const normalizeProcessCompositionEntry = (value, kind) => {
   const normalized = normalizeProcessMasterOption(value, kind.toUpperCase());
   if (!normalized) return null;
@@ -1162,6 +1199,9 @@ const StyleProcess = ({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [editingInstanceId, setEditingInstanceId] = useState(null);
   const [addDraft, setAddDraft] = useState(createEmptyDraft);
+  const [partInputValue, setPartInputValue] = useState('');
+  const [targetInputValue, setTargetInputValue] = useState('');
+  const [specInputValue, setSpecInputValue] = useState('');
   const [addActionInput, setAddActionInput] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
@@ -1300,6 +1340,97 @@ const StyleProcess = ({
     [editingInstanceId, isEditingRow, safeProcesses]
   );
 
+  const trySelectExistingOptionOnEnter = useCallback(
+    (event, { inputText, options, onMatch }) => {
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return false;
+      const matchedOption = findProcessMasterOptionByInput(options, inputText, languageCode);
+      if (!matchedOption) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      onMatch(matchedOption);
+      return true;
+    },
+    [languageCode]
+  );
+
+  const handlePartEnterSelect = useCallback(
+    (event) =>
+      trySelectExistingOptionOnEnter(event, {
+        inputText: partInputValue,
+        options: partOptions,
+        onMatch: (matchedOption) => {
+          setAddDraft((prev) => ({
+            ...prev,
+            parts: normalizeProcessCompositionEntries(
+              [...(Array.isArray(prev.parts) ? prev.parts : []), matchedOption],
+              'part'
+            ),
+          }));
+          setPartInputValue('');
+          setAddError('');
+        },
+      }),
+    [partInputValue, partOptions, trySelectExistingOptionOnEnter]
+  );
+
+  const handleTargetEnterSelect = useCallback(
+    (event) =>
+      trySelectExistingOptionOnEnter(event, {
+        inputText: targetInputValue,
+        options: targetOptions,
+        onMatch: (matchedOption) => {
+          setAddDraft((prev) => ({
+            ...prev,
+            targets: normalizeProcessCompositionEntries(
+              [...(Array.isArray(prev.targets) ? prev.targets : []), matchedOption],
+              'target'
+            ),
+          }));
+          setTargetInputValue('');
+          setAddError('');
+        },
+      }),
+    [targetInputValue, targetOptions, trySelectExistingOptionOnEnter]
+  );
+
+  const handleSpecEnterSelect = useCallback(
+    (event) =>
+      trySelectExistingOptionOnEnter(event, {
+        inputText: specInputValue,
+        options: specOptions,
+        onMatch: (matchedOption) => {
+          const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'spec');
+          setAddDraft((prev) => ({
+            ...prev,
+            spec: normalizedSpec,
+          }));
+          setSpecInputValue('');
+          setAddError('');
+        },
+      }),
+    [specInputValue, specOptions, trySelectExistingOptionOnEnter]
+  );
+
+  const handleActionEnterSelect = useCallback(
+    (event) =>
+      trySelectExistingOptionOnEnter(event, {
+        inputText: addActionInput,
+        options: actionOptions,
+        onMatch: (matchedOption) => {
+          setAddDraft((prev) => ({
+            ...prev,
+            actions: normalizeProcessCompositionEntries(
+              [...(Array.isArray(prev.actions) ? prev.actions : []), matchedOption],
+              'action'
+            ),
+          }));
+          setAddActionInput('');
+          setAddError('');
+        },
+      }),
+    [actionOptions, addActionInput, trySelectExistingOptionOnEnter]
+  );
+
   useEffect(() => {
     if (!isEditingRow) return undefined;
     const formNode = draftFormRef.current;
@@ -1423,6 +1554,9 @@ const StyleProcess = ({
     setEditingInstanceId(null);
     setIsAddingRow(true);
     setAddDraft(createEmptyDraft());
+    setPartInputValue('');
+    setTargetInputValue('');
+    setSpecInputValue('');
     setAddActionInput('');
     setAddError('');
   };
@@ -1431,6 +1565,9 @@ const StyleProcess = ({
     setIsAddingRow(false);
     setEditingInstanceId(null);
     setAddDraft(createEmptyDraft());
+    setPartInputValue('');
+    setTargetInputValue('');
+    setSpecInputValue('');
     setAddActionInput('');
     setAddError('');
   };
@@ -1440,6 +1577,9 @@ const StyleProcess = ({
     setIsAddingRow(false);
     setEditingInstanceId(process.instanceId);
     setAddDraft(buildDraftFromProcess(process, displayOrderQuantity));
+    setPartInputValue('');
+    setTargetInputValue('');
+    setSpecInputValue('');
     setAddActionInput('');
     setAddError('');
   }, [displayOrderQuantity]);
@@ -1843,9 +1983,11 @@ const StyleProcess = ({
                 multiple
                 freeSolo
                 forcePopupIcon
+                autoHighlight
                 size="small"
                 options={partOptions}
                 value={Array.isArray(addDraft.parts) ? addDraft.parts : []}
+                inputValue={partInputValue}
                 disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
@@ -1853,6 +1995,9 @@ const StyleProcess = ({
                     parts: normalizeProcessCompositionEntries(value, 'part'),
                   }));
                   setAddError('');
+                }}
+                onInputChange={(_event, value) => {
+                  setPartInputValue(String(value ?? ''));
                 }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
@@ -1864,7 +2009,11 @@ const StyleProcess = ({
                   renderCustomOptionTags(value, getTagProps, isNewCustomPartOption)
                 }
                 renderInput={(params) => (
-                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'partLabel')} />
+                  <TextField
+                    {...params}
+                    label={getStyleProcessMessage(languageCode, 'partLabel')}
+                    onKeyDown={handlePartEnterSelect}
+                  />
                 )}
                 sx={{ flex: 1, minWidth: 180 }}
               />
@@ -1872,9 +2021,11 @@ const StyleProcess = ({
                 multiple
                 freeSolo
                 forcePopupIcon
+                autoHighlight
                 size="small"
                 options={targetOptions}
                 value={Array.isArray(addDraft.targets) ? addDraft.targets : []}
+                inputValue={targetInputValue}
                 disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
@@ -1882,6 +2033,9 @@ const StyleProcess = ({
                     targets: normalizeProcessCompositionEntries(value, 'target'),
                   }));
                   setAddError('');
+                }}
+                onInputChange={(_event, value) => {
+                  setTargetInputValue(String(value ?? ''));
                 }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
@@ -1893,7 +2047,11 @@ const StyleProcess = ({
                   renderCustomOptionTags(value, getTagProps, isNewCustomTargetOption)
                 }
                 renderInput={(params) => (
-                  <TextField {...params} label={getStyleProcessMessage(languageCode, 'targetLabel')} />
+                  <TextField
+                    {...params}
+                    label={getStyleProcessMessage(languageCode, 'targetLabel')}
+                    onKeyDown={handleTargetEnterSelect}
+                  />
                 )}
                 sx={{ flex: 1, minWidth: 180 }}
               />
@@ -1901,9 +2059,11 @@ const StyleProcess = ({
                 multiple
                 freeSolo
                 forcePopupIcon
+                autoHighlight
                 size="small"
                 options={specOptions}
                 value={addDraft.spec ? [addDraft.spec] : []}
+                inputValue={specInputValue}
                 onChange={(_event, value) => {
                   const normalizedSpecs = normalizeProcessCompositionEntries(value, 'spec');
                   setAddDraft((prev) => ({
@@ -1911,6 +2071,9 @@ const StyleProcess = ({
                     spec: normalizedSpecs.length > 0 ? normalizedSpecs[normalizedSpecs.length - 1] : null,
                   }));
                   setAddError('');
+                }}
+                onInputChange={(_event, value) => {
+                  setSpecInputValue(String(value ?? ''));
                 }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
@@ -1926,6 +2089,7 @@ const StyleProcess = ({
                     {...params}
                     label={getStyleProcessMessage(languageCode, 'specLabel')}
                     placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                    onKeyDown={handleSpecEnterSelect}
                   />
                 )}
                 sx={{ flex: 1, minWidth: 180 }}
@@ -1934,6 +2098,7 @@ const StyleProcess = ({
                 multiple
                 freeSolo
                 forcePopupIcon
+                autoHighlight
                 size="small"
                 options={actionOptions}
                 value={addDraft.actions}
@@ -1963,6 +2128,7 @@ const StyleProcess = ({
                     {...params}
                     label={getStyleProcessMessage(languageCode, 'actionLabel')}
                     placeholder={getStyleProcessMessage(languageCode, 'actionInputHint')}
+                    onKeyDown={handleActionEnterSelect}
                   />
                 )}
                 sx={{ flex: 1, minWidth: 220 }}
