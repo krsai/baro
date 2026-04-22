@@ -1896,6 +1896,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     db,
   });
   if (workLogs.length === 0) return [];
+  const normalizedTrainingMonthKey = normalizeMonthKey(trainingMonthKey);
+  const normalizedRequestedWorkDate = normalizeDateKey(workDate);
 
   const styleIds = Array.from(
     new Set(
@@ -2079,7 +2081,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   const attendanceSecondsByWorkerDate = new Map<string, number>();
   if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
-    const workDates = Array.from(
+    const explicitWorkDates = Array.from(
       new Set(
         workLogs
           .map((workLog) => normalizeDateKey(workLog.workDate))
@@ -2094,13 +2096,21 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       )
     );
     const eligibleWorkerIds = Array.from(eligibleWorkerDateWindowById.keys());
+    const attendanceWorkDateWhere =
+      normalizedTrainingMonthKey !== ""
+        ? { startsWith: normalizedTrainingMonthKey }
+        : normalizedRequestedWorkDate !== ""
+          ? { startsWith: normalizedRequestedWorkDate.slice(0, 7) }
+          : explicitWorkDates.length > 0
+            ? { in: explicitWorkDates }
+            : null;
 
-    if (workDates.length > 0 && eligibleWorkerIds.length > 0) {
+    if (attendanceWorkDateWhere && eligibleWorkerIds.length > 0) {
       try {
         const attendanceRows = await db.attendanceEntry.findMany({
           where: {
             orgId,
-            workDate: { in: workDates },
+            workDate: attendanceWorkDateWhere as any,
             workerId: { in: eligibleWorkerIds },
             ...(factoryIds.length > 0 ? { factoryId: { in: factoryIds } } : {}),
           },
@@ -2140,8 +2150,12 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           throw error;
         }
         const contextMonthKey =
-          normalizeMonthKey(trainingMonthKey) ||
-          normalizeMonthKey(workDate ? String(workDate).slice(0, 7) : "") ||
+          normalizedTrainingMonthKey ||
+          normalizeMonthKey(
+            normalizedRequestedWorkDate
+              ? String(normalizedRequestedWorkDate).slice(0, 7)
+              : ""
+          ) ||
           "mixed";
         console.warn(
           `[AT sync] orgId=${orgId} month=${contextMonthKey} attendance_table_missing=true mode=attendance_only`
@@ -2149,6 +2163,29 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       }
     }
   }
+
+  const toUtcDateFromDateKey = (dateKey: string): Date | null => {
+    const parts = parseDateKeyParts(dateKey);
+    if (!parts) return null;
+    const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    if (Number.isNaN(utcDate.getTime())) return null;
+    return utcDate;
+  };
+  const toDateKeyFromUtcDate = (date: Date): string =>
+    date.toISOString().slice(0, 10);
+  const shiftDateKeyByDays = (dateKey: string, days: number): string | null => {
+    const baseDate = toUtcDateFromDateKey(dateKey);
+    if (!baseDate) return null;
+    baseDate.setUTCDate(baseDate.getUTCDate() + Math.trunc(days));
+    return toDateKeyFromUtcDate(baseDate);
+  };
+  const countDateRangeDaysInclusive = (startDateKey: string, endDateKey: string): number => {
+    const startDate = toUtcDateFromDateKey(startDateKey);
+    const endDate = toUtcDateFromDateKey(endDateKey);
+    if (!startDate || !endDate || startDate.getTime() > endDate.getTime()) return 0;
+    const diffMs = endDate.getTime() - startDate.getTime();
+    return Math.max(1, Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1);
+  };
 
   const resolveWorkerSecondsForDate = (
     normalizedWorkDate: string,
@@ -2168,6 +2205,38 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       0
     );
   };
+  const resolveWorkerSecondsForPeriod = ({
+    periodStartDateKey,
+    periodEndDateKey,
+    workerId,
+    resolvedFactoryId,
+  }: {
+    periodStartDateKey: string;
+    periodEndDateKey: string;
+    workerId: number | null;
+    resolvedFactoryId: number | null;
+  }): number => {
+    const dayCount = countDateRangeDaysInclusive(periodStartDateKey, periodEndDateKey);
+    if (dayCount <= 0) return 0;
+    if (!USE_ATTENDANCE_INPUT_FOR_AT) {
+      return dayCount * ATTENDANCE_DEFAULT_WORK_SECONDS;
+    }
+    if (workerId === null || resolvedFactoryId === null) {
+      return 0;
+    }
+
+    let sum = 0;
+    let cursorDateKey = periodStartDateKey;
+    for (let offset = 0; offset < dayCount; offset += 1) {
+      sum += resolveWorkerSecondsForDate(cursorDateKey, workerId, resolvedFactoryId);
+      if (offset === dayCount - 1) break;
+      const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
+      if (!nextDateKey) break;
+      cursorDateKey = nextDateKey;
+    }
+    return sum;
+  };
+  const previousPeriodEndDateByFactory = new Map<string, string>();
 
   return workLogs.reduce((drafts, workLog) => {
     const normalizedWorkDate = normalizeDateKey(workLog.workDate);
@@ -2177,6 +2246,25 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     if (!normalizedWorkDate || !monthKey || workLogId === null) {
       return drafts;
     }
+
+    // Use input-date intervals per factory: [previous input date + 1, current workDate].
+    const periodTrackerKey =
+      resolvedFactoryId === null ? "__factory_null__" : String(resolvedFactoryId);
+    const previousPeriodEndDateKey =
+      previousPeriodEndDateByFactory.get(periodTrackerKey) || "";
+    const monthStartDateKey = `${monthKey}-01`;
+    const nextDateAfterPrevious = previousPeriodEndDateKey
+      ? shiftDateKeyByDays(previousPeriodEndDateKey, 1)
+      : null;
+    const candidatePeriodStartDateKey = nextDateAfterPrevious || monthStartDateKey;
+    const periodStartDateKey =
+      candidatePeriodStartDateKey <= normalizedWorkDate
+        ? candidatePeriodStartDateKey
+        : normalizedWorkDate;
+    const periodDayCount = Math.max(
+      1,
+      countDateRangeDaysInclusive(periodStartDateKey, normalizedWorkDate)
+    );
 
     const resolvedRows = workLog.workRecords
       .map((record) => {
@@ -2229,6 +2317,19 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       }
     });
 
+    const workerSecondsById = new Map<number, number>();
+    workerIdsForDay.forEach((workerId) => {
+      workerSecondsById.set(
+        workerId,
+        resolveWorkerSecondsForPeriod({
+          periodStartDateKey,
+          periodEndDateKey: normalizedWorkDate,
+          workerId,
+          resolvedFactoryId,
+        })
+      );
+    });
+
     let attendanceCoverage: number | null = null;
     if (!USE_ATTENDANCE_INPUT_FOR_AT) {
       attendanceCoverage = 1;
@@ -2237,13 +2338,8 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         attendanceCoverage = 0;
       } else {
         let attendanceProvidedCount = 0;
-        workerIdsForDay.forEach((workerId) => {
-          const key = toAttendanceWorkerDateKey(
-            normalizedWorkDate,
-            workerId,
-            resolvedFactoryId
-          );
-          if (attendanceSecondsByWorkerDate.has(key)) {
+        workerSecondsById.forEach((seconds) => {
+          if (seconds > 0) {
             attendanceProvidedCount += 1;
           }
         });
@@ -2261,18 +2357,10 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
     const totalSeconds =
       workerIdsForDay.size > 0
-        ? Array.from(workerIdsForDay.values()).reduce(
-            (sum, workerId) =>
-              sum +
-              resolveWorkerSecondsForDate(
-                normalizedWorkDate,
-                workerId,
-                resolvedFactoryId
-              ),
-            0
-          )
+        ? Array.from(workerSecondsById.values()).reduce((sum, seconds) => sum + seconds, 0)
         : Math.max(1, toPositiveIntOrNull((workLog as any).workerCount) ?? 1) *
-          ATTENDANCE_DEFAULT_WORK_SECONDS;
+          ATTENDANCE_DEFAULT_WORK_SECONDS *
+          periodDayCount;
     if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
       return drafts;
     }
@@ -2297,6 +2385,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       attendanceCoverage,
       processRows,
     });
+    previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedWorkDate);
     return drafts;
   }, [] as AtTrainingBucketDraft[]);
 };
@@ -2883,15 +2972,33 @@ type AtSyncEventSource =
   | "worklog_put"
   | "worklog_delete";
 
+type TriggerAtSyncFromEventOptions = {
+  trainingMonthKeys?: Array<string | null | undefined>;
+};
+
 const atEventSyncInProgressOrgIds = new Set<number>();
 
-const triggerAtSyncFromEvent = (orgId: number, source: AtSyncEventSource) => {
-  const now = new Date();
-  const todayKey = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE);
-  const todayParts = todayKey ? parseDateKeyParts(todayKey) : null;
-  if (todayParts && todayParts.day < AT_TRAINING_CUTOFF_DAY) {
+const resolveEventTrainingMonthKeys = (
+  options: TriggerAtSyncFromEventOptions
+): string[] => {
+  const explicitMonthKeys = ensureArray(options.trainingMonthKeys)
+    .map((monthKey) => normalizeMonthKey(monthKey))
+    .filter((monthKey) => monthKey !== "");
+  const deduped = Array.from(new Set(explicitMonthKeys));
+  if (deduped.length > 0) return deduped;
+  const fallback = resolveAtSyncTrainingMonthKey();
+  return fallback ? [fallback] : [];
+};
+
+const triggerAtSyncFromEvent = (
+  orgId: number,
+  source: AtSyncEventSource,
+  options: TriggerAtSyncFromEventOptions = {}
+) => {
+  const trainingMonthKeys = resolveEventTrainingMonthKeys(options);
+  if (trainingMonthKeys.length === 0) {
     console.log(
-      `[AT sync][event:${source}] orgId=${orgId} skipped=before_cutoff day=${todayParts.day} cutoff=${AT_TRAINING_CUTOFF_DAY}`
+      `[AT sync][event:${source}] orgId=${orgId} skipped=no_training_month`
     );
     return;
   }
@@ -2911,10 +3018,22 @@ const triggerAtSyncFromEvent = (orgId: number, source: AtSyncEventSource) => {
 
   atEventSyncInProgressOrgIds.add(orgId);
   const startedAt = Date.now();
-  syncStyleProcessActualTimesFromWorkRecords(orgId)
+  const monthLabel = trainingMonthKeys.join(",");
+  (async () => {
+    let updatedStyles = 0;
+    let updatedProcesses = 0;
+    for (const trainingMonthKey of trainingMonthKeys) {
+      const result = await syncStyleProcessActualTimesFromWorkRecords(orgId, {
+        trainingMonthKey,
+      });
+      updatedStyles += Number(result?.updatedStyles || 0);
+      updatedProcesses += Number(result?.updatedProcesses || 0);
+    }
+    return { updatedStyles, updatedProcesses };
+  })()
     .then((result) => {
       console.log(
-        `[AT sync][event:${source}] orgId=${orgId} updatedStyles=${Number(result?.updatedStyles || 0)} updatedProcesses=${Number(result?.updatedProcesses || 0)} durationMs=${Date.now() - startedAt}`
+        `[AT sync][event:${source}] orgId=${orgId} months=${monthLabel} updatedStyles=${Number(result?.updatedStyles || 0)} updatedProcesses=${Number(result?.updatedProcesses || 0)} durationMs=${Date.now() - startedAt}`
       );
     })
     .catch((error: unknown) => {
@@ -4401,6 +4520,12 @@ const normalizeMonthKey = (value: any) => {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
   return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : "";
+};
+const resolveMonthKeyFromDateKey = (value: unknown): string | null => {
+  const normalizedDateKey = normalizeDateKey(value);
+  if (!normalizedDateKey) return null;
+  const monthKey = normalizeMonthKey(normalizedDateKey.slice(0, 7));
+  return monthKey || null;
 };
 const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
 const resolveFiniteEnvNumber = (
@@ -11591,7 +11716,9 @@ app.put("/attendance-entries", async (req, res) => {
   });
 
   res.json(savedRows.map(toAttendanceEntryResponse));
-  triggerAtSyncFromEvent(organization.id, "attendance_put");
+  triggerAtSyncFromEvent(organization.id, "attendance_put", {
+    trainingMonthKeys: [resolveMonthKeyFromDateKey(workDate)],
+  });
 });
 
 app.get("/work-logs", async (req, res) => {
@@ -11894,7 +12021,9 @@ app.post("/work-logs", async (req, res) => {
     records: normalized.records,
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
-  triggerAtSyncFromEvent(organization.id, "worklog_post");
+  triggerAtSyncFromEvent(organization.id, "worklog_post", {
+    trainingMonthKeys: [resolveMonthKeyFromDateKey(normalized.workDate)],
+  });
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -12077,7 +12206,12 @@ app.put("/work-logs/:id", async (req, res) => {
     records: normalized.records,
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
-  triggerAtSyncFromEvent(organization.id, "worklog_put");
+  triggerAtSyncFromEvent(organization.id, "worklog_put", {
+    trainingMonthKeys: [
+      resolveMonthKeyFromDateKey(existing.workDate),
+      resolveMonthKeyFromDateKey(normalized.workDate),
+    ],
+  });
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
@@ -12093,7 +12227,7 @@ app.delete("/work-logs/:id", async (req, res) => {
 
   const existing = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
-    select: { id: true },
+    select: { id: true, workDate: true },
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
@@ -12103,7 +12237,9 @@ app.delete("/work-logs/:id", async (req, res) => {
     where: { id: existing.id },
   });
   res.status(204).send();
-  triggerAtSyncFromEvent(organization.id, "worklog_delete");
+  triggerAtSyncFromEvent(organization.id, "worklog_delete", {
+    trainingMonthKeys: [resolveMonthKeyFromDateKey(existing.workDate)],
+  });
 });
 
 app.get("/assignment-board-view", async (req, res) => {

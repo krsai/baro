@@ -39,11 +39,7 @@ const MESSAGES = {
     st: 'ST',
     at: 'AT',
     stInputLegend: '\uD30C\uB780 \uD14C\uB450\uB9AC ST\uB294 \uC785\uB825 \uCE78',
-    ptReadonlyLegend: 'PT\uB294 \uC77D\uAE30 \uC804\uC6A9',
-    atAutoLegend: 'AT\uB294 \uC790\uB3D9 \uACC4\uC0B0(\uC77D\uAE30 \uC804\uC6A9)',
     manualLegend: '\uC5F0\uD55C \uD30C\uB780 ST\uB294 \uC218\uB3D9 \uC785\uB825\uAC12',
-    readonlyBadge: '\uC77D\uAE30 \uC804\uC6A9',
-    autoBadge: '\uC790\uB3D9',
     unitLegend: '\uBAA8\uB4E0 \uAC12 \uB2E8\uC704: \uCD08',
     empty: '\uB4F1\uB85D\uB41C \uACF5\uC815\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
   },
@@ -55,11 +51,7 @@ const MESSAGES = {
     st: 'ST',
     at: 'AT',
     stInputLegend: 'Blue outlined ST is editable',
-    ptReadonlyLegend: 'PT is read-only',
-    atAutoLegend: 'AT is auto-calculated (read-only)',
     manualLegend: 'Light-blue ST means manual input',
-    readonlyBadge: 'READ ONLY',
-    autoBadge: 'AUTO',
     unitLegend: 'All values are in seconds',
     empty: 'No process rows registered.',
   },
@@ -71,11 +63,7 @@ const MESSAGES = {
     st: 'ST',
     at: 'AT',
     stInputLegend: 'ST vien xanh la o nhap',
-    ptReadonlyLegend: 'PT la gia tri chi doc',
-    atAutoLegend: 'AT la gia tri tu dong (chi doc)',
     manualLegend: 'ST xanh nhat la gia tri nhap tay',
-    readonlyBadge: 'CHI DOC',
-    autoBadge: 'AUTO',
     unitLegend: 'Tat ca gia tri deu tinh theo giay',
     empty: 'Chua co cong doan nao.',
   },
@@ -189,6 +177,28 @@ const buildDraftKey = (processInstanceId, quantity) =>
   `${String(processInstanceId || '')}::${String(quantity)}`;
 const SECONDS_CELL_WIDTH = 82;
 const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
+const BASE_MATRIX_INPUT_SX = {
+  width: SECONDS_CELL_WIDTH,
+  minWidth: 0,
+  '& .MuiInputBase-input': {
+    textAlign: 'right',
+    px: 0.75,
+    py: 0.625,
+    fontSize: 12,
+    fontVariantNumeric: 'tabular-nums',
+    lineHeight: 1.25,
+  },
+  '& .MuiOutlinedInput-root': {
+    minHeight: 32,
+    borderRadius: 1,
+    '& .MuiOutlinedInput-notchedOutline': {
+      borderColor: alpha('#1F2937', 0.22),
+    },
+    '&:hover .MuiOutlinedInput-notchedOutline': {
+      borderColor: alpha('#1F2937', 0.38),
+    },
+  },
+};
 
 const resolveProcessGroupPalette = (processIndex = 0) => {
   const safeIndex = Number.isFinite(Number(processIndex)) ? Math.abs(Number(processIndex)) : 0;
@@ -202,43 +212,57 @@ const resolveProcessGroupPalette = (processIndex = 0) => {
   };
 };
 
-const SECONDS_DISPLAY_BOX_SX = {
-  width: SECONDS_CELL_WIDTH,
-  minHeight: 32,
-  mx: 'auto',
-  px: 1,
-  py: 0.6,
-  borderRadius: 1,
-  border: '1px solid',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '0.8125rem',
-  fontVariantNumeric: 'tabular-nums',
-  lineHeight: 1.2,
-};
-
 const renderReadonlySecondsBox = (value, type = 'pt') => {
   const hasValue = value != null;
   const isPt = type === 'pt';
   const isAt = type === 'at';
+  const displayValue = hasValue ? formatSecondsPlain(value) : '-';
   return (
-    <Box
+    <TextField
+      value={displayValue}
+      size="small"
+      disabled
+      inputProps={{ tabIndex: -1 }}
       sx={{
-        ...SECONDS_DISPLAY_BOX_SX,
-        borderStyle: isAt ? 'dashed' : 'solid',
-        borderColor: isAt ? alpha('#111827', 0.16) : alpha('#111827', 0.2),
-        backgroundColor: isAt ? '#F8FAFC' : '#F3F5F8',
-        boxShadow: isAt ? 'none' : `inset 0 1px 0 ${alpha('#FFFFFF', 0.75)}`,
-        color: hasValue ? (isAt ? 'text.secondary' : 'text.primary') : 'text.disabled',
-        fontWeight: hasValue ? (isPt ? 600 : 500) : 500,
+        ...BASE_MATRIX_INPUT_SX,
+        '& .MuiOutlinedInput-root': {
+          ...BASE_MATRIX_INPUT_SX['& .MuiOutlinedInput-root'],
+          backgroundColor: isAt ? '#F8FAFC' : '#F4F6F9',
+          '& .MuiOutlinedInput-notchedOutline': {
+            borderColor: isAt ? alpha('#111827', 0.18) : alpha('#111827', 0.24),
+            borderStyle: isAt ? 'dashed' : 'solid',
+          },
+          '&.Mui-disabled .MuiOutlinedInput-notchedOutline': {
+            borderColor: isAt ? alpha('#111827', 0.18) : alpha('#111827', 0.24),
+            borderStyle: isAt ? 'dashed' : 'solid',
+          },
+        },
+        '& .MuiInputBase-input': {
+          ...BASE_MATRIX_INPUT_SX['& .MuiInputBase-input'],
+          fontWeight: hasValue ? (isPt ? 600 : 500) : 500,
+          color: hasValue ? (isAt ? 'text.secondary' : 'text.primary') : 'text.disabled',
+          WebkitTextFillColor: hasValue
+            ? isAt
+              ? 'rgba(55, 65, 81, 0.88)'
+              : 'rgba(17, 24, 39, 0.92)'
+            : 'rgba(107, 114, 128, 0.7)',
+        },
+        '& .MuiInputBase-input.Mui-disabled': {
+          WebkitTextFillColor: hasValue
+            ? isAt
+              ? 'rgba(55, 65, 81, 0.88)'
+              : 'rgba(17, 24, 39, 0.92)'
+            : 'rgba(107, 114, 128, 0.7)',
+          cursor: 'default',
+          opacity: 1,
+        },
+        '& .MuiInputBase-root.Mui-disabled': {
+          cursor: 'default',
+        },
       }}
-    >
-      {hasValue ? formatSecondsPlain(value) : '-'}
-    </Box>
+    />
   );
 };
-
 const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
@@ -321,42 +345,6 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
             />
             <Typography variant="caption" color="text.secondary">
               {resolveMessage(languageCode, 'stInputLegend')}
-            </Typography>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">
-            ·
-          </Typography>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: 0.75,
-                border: `1px solid ${alpha('#111827', 0.22)}`,
-                backgroundColor: '#F3F5F8',
-                flexShrink: 0,
-              }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              {resolveMessage(languageCode, 'ptReadonlyLegend')}
-            </Typography>
-          </Stack>
-          <Typography variant="caption" color="text.disabled">
-            ·
-          </Typography>
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Box
-              sx={{
-                width: 12,
-                height: 12,
-                borderRadius: 0.75,
-                border: `1px dashed ${alpha('#111827', 0.2)}`,
-                backgroundColor: '#F8FAFC',
-                flexShrink: 0,
-              }}
-            />
-            <Typography variant="caption" color="text.secondary">
-              {resolveMessage(languageCode, 'atAutoLegend')}
             </Typography>
           </Stack>
           <Typography variant="caption" color="text.disabled">
@@ -445,16 +433,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           backgroundColor: `${groupPalette.metricCellBackground} !important`,
                         }}
                       >
-                        <Stack direction="row" spacing={0.5} alignItems="center">
-                          <Box component="span">{resolveMessage(languageCode, 'pt')}</Box>
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: 0.2 }}
-                          >
-                            {resolveMessage(languageCode, 'readonlyBadge')}
-                          </Typography>
-                        </Stack>
+                        {resolveMessage(languageCode, 'pt')}
                       </TableCell>
                       {quantityBuckets.map((quantity) => (
                         <TableCell key={`${processInstanceId}-pt-${quantity}`} align="center">
@@ -508,26 +487,22 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                 inputMode: 'decimal',
                               }}
                               sx={{
-                                width: SECONDS_CELL_WIDTH,
+                                ...BASE_MATRIX_INPUT_SX,
                                 '& .MuiInputBase-input': {
-                                  textAlign: 'center',
-                                  py: 0.6,
-                                  fontSize: '0.8125rem',
-                                  fontVariantNumeric: 'tabular-nums',
+                                  ...BASE_MATRIX_INPUT_SX['& .MuiInputBase-input'],
                                   fontWeight: hasManualSt ? 600 : 500,
                                 },
                                 '& .MuiOutlinedInput-root': {
-                                  minHeight: 32,
-                                  borderRadius: 1,
+                                  ...BASE_MATRIX_INPUT_SX['& .MuiOutlinedInput-root'],
                                   backgroundColor: hasManualSt ? '#EAF2FF' : '#FFFFFF',
-                                  '& fieldset': {
+                                  '& .MuiOutlinedInput-notchedOutline': {
                                     borderWidth: 1.5,
-                                    borderColor: hasManualSt ? '#3B82F6' : alpha('#3B82F6', 0.5),
+                                    borderColor: hasManualSt ? '#3B82F6' : alpha('#3B82F6', 0.38),
                                   },
-                                  '&:hover fieldset': {
+                                  '&:hover .MuiOutlinedInput-notchedOutline': {
                                     borderColor: '#2563EB',
                                   },
-                                  '&.Mui-focused fieldset': {
+                                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                                     borderColor: '#1D4ED8',
                                     borderWidth: 2,
                                   },
@@ -547,16 +522,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                           backgroundColor: '#F5F6F8 !important',
                         }}
                       >
-                        <Stack direction="row" spacing={0.5} alignItems="center">
-                          <Box component="span">{resolveMessage(languageCode, 'at')}</Box>
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            sx={{ color: 'text.disabled', fontWeight: 700, letterSpacing: 0.2 }}
-                          >
-                            {resolveMessage(languageCode, 'autoBadge')}
-                          </Typography>
-                        </Stack>
+                        {resolveMessage(languageCode, 'at')}
                       </TableCell>
                       {quantityBuckets.map((quantity) => {
                         const atPerPiece = resolveProcessAtPerPieceSeconds(process, quantity);
@@ -579,3 +545,5 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
 };
 
 export default StyleTimeMatrix;
+
+
