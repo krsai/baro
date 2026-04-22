@@ -88,7 +88,6 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: '예: 3선',
     processCodeLabel: '공정코드',
     processCodePlaceholder: '예: PROC-001 (선택)',
-    processCodeHelper: '선택 입력입니다. 입력 시 공정코드는 중복될 수 없습니다.',
     previewLabel: '미리보기',
     previewEmpty: '부위와 작업을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
     ptLabel: 'PT',
@@ -141,7 +140,6 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'e.g. 3-line',
     processCodeLabel: 'Process Code',
     processCodePlaceholder: 'e.g. PROC-001 (optional)',
-    processCodeHelper: 'Optional. If entered, the process code must be unique.',
     previewLabel: 'Preview',
     previewEmpty: 'Select part and action to build the process name. Target/spec are optional.',
     ptLabel: 'PT',
@@ -194,7 +192,6 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'vi du: 3 kim',
     processCodeLabel: 'Ma cong doan',
     processCodePlaceholder: 'vi du: PROC-001 (tuy chon)',
-    processCodeHelper: 'Khong bat buoc. Neu nhap ma cong doan thi khong duoc trung.',
     previewLabel: 'Xem truoc',
     previewEmpty: 'Chon bo phan va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
     ptLabel: 'PT',
@@ -646,31 +643,6 @@ const buildProcessLocalizedNamesFromComposition = (composition, fallback = {}) =
   nameVi: buildProcessNameFromComposition(composition, 'vi', fallback.nameVi ?? fallback.name),
 });
 
-const buildProcessCodeFromComposition = (composition, fallback = null) => {
-  if (!composition || typeof composition !== 'object') {
-    return normalizeStyleProcessCodeSegment(fallback);
-  }
-
-  const tokens = [
-    ...(Array.isArray(composition?.parts)
-      ? composition.parts
-      : composition?.part
-        ? [composition.part]
-        : []
-    ).map((entry) => entry?.code),
-    ...(Array.isArray(composition?.targets) ? composition.targets : []).map((entry) => entry?.code),
-    ...(Array.isArray(composition?.actions) ? composition.actions : []).map((entry) => entry?.code),
-    ...(Array.isArray(composition?.specs) ? composition.specs : []).map(
-      (entry) => entry?.code || buildCustomStyleSpecCode(entry?.label)
-    ),
-  ]
-    .map((token) => normalizeStyleProcessCodeSegment(token))
-    .filter(Boolean);
-
-  if (tokens.length > 0) return tokens.join('_');
-  return normalizeStyleProcessCodeSegment(fallback);
-};
-
 const resolveProcessMasterLabel = (value, languageCode) => {
   if (typeof value === 'string') return value.trim();
   const normalized = normalizeProcessMasterOption(value);
@@ -773,13 +745,9 @@ const buildProcessPayload = (
     nameEn: existingProcess?.nameEn,
     nameVi: existingProcess?.nameVi,
   });
-  const processCode = buildProcessCodeFromComposition(
-    composition,
-    localizedNames.nameEn || localizedNames.nameKo || existingProcess?.code || existingProcess?.name
-  );
   const enteredProcessCode = String(draft?.processCode ?? '').trim();
-  const resolvedProcessCode =
-    enteredProcessCode || processCode || String(existingProcess?.code ?? '').trim();
+  // Keep process code blank when user leaves it empty.
+  const resolvedProcessCode = enteredProcessCode;
   const resolvedTimeRefQuantity = toPositiveInt(
     timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
@@ -1916,6 +1884,20 @@ const StyleProcess = ({
                 )}
                 sx={{ flex: 1, minWidth: 220 }}
               />
+              <TextField
+                size="small"
+                label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
+                value={addDraft.processCode ?? ''}
+                onChange={(event) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    processCode: event.target.value,
+                  }));
+                  setAddError('');
+                }}
+                placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
+                sx={{ flex: 1, minWidth: 180 }}
+              />
             </Stack>
             <Typography variant="caption" color="text.secondary">
               {getStyleProcessMessage(languageCode, 'actionCustomNotice')}
@@ -1996,21 +1978,6 @@ const StyleProcess = ({
                   InputProps={{ readOnly: true }}
                   inputProps={{ tabIndex: -1 }}
                   sx={{ width: 132 }}
-                />
-                <TextField
-                  size="small"
-                  label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
-                  value={addDraft.processCode ?? ''}
-                  onChange={(event) => {
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      processCode: event.target.value,
-                    }));
-                    setAddError('');
-                  }}
-                  placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
-                  helperText={getStyleProcessMessage(languageCode, 'processCodeHelper')}
-                  sx={{ width: 220 }}
                 />
                 <Stack spacing={0.25} sx={{ minWidth: 260 }}>
                   <FormControlLabel
