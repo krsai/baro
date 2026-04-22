@@ -61,6 +61,7 @@ const createEmptyDraft = () => ({
   targets: [],
   actions: [],
   spec: null,
+  processCode: '',
   pt: '',
   st: '',
   needsReview: false,
@@ -85,6 +86,9 @@ const STYLE_PROCESS_MESSAGES = {
       '각 항목들은 사용자가 직접 추가할 수 있으나, 항목에 맞지 않으면 관리자에 의해 삭제 될 수 있습니다.',
     specLabel: '규격',
     specPlaceholder: '예: 3선',
+    processCodeLabel: '공정코드',
+    processCodePlaceholder: '예: PROC-001 (선택)',
+    processCodeHelper: '선택 입력입니다. 입력 시 공정코드는 중복될 수 없습니다.',
     previewLabel: '미리보기',
     previewEmpty: '부위와 작업을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
     ptLabel: 'PT',
@@ -117,6 +121,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateAction: '작업을 하나 이상 선택해주세요.',
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
     validateDuplicate: '이미 등록된 공정입니다.',
+    validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
     stGapReview: 'AT와 ST 차이가 {label}로 커서 ST 조정 검토가 필요합니다.',
     stGapNormal: 'AT와 ST 차이율 {label}',
   },
@@ -134,6 +139,9 @@ const STYLE_PROCESS_MESSAGES = {
       'Each field can be added directly by users, but entries that do not fit the field may be removed by an administrator.',
     specLabel: 'Spec',
     specPlaceholder: 'e.g. 3-line',
+    processCodeLabel: 'Process Code',
+    processCodePlaceholder: 'e.g. PROC-001 (optional)',
+    processCodeHelper: 'Optional. If entered, the process code must be unique.',
     previewLabel: 'Preview',
     previewEmpty: 'Select part and action to build the process name. Target/spec are optional.',
     ptLabel: 'PT',
@@ -166,6 +174,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateAction: 'Select at least one action.',
     validateInvalid: 'Enter a valid process composition.',
     validateDuplicate: 'This process is already registered.',
+    validateDuplicateCode: 'This process code is already in use.',
     stGapReview: 'AT and ST differ by {label}, so ST review is recommended.',
     stGapNormal: 'AT/ST gap {label}',
   },
@@ -183,6 +192,9 @@ const STYLE_PROCESS_MESSAGES = {
       'Nguoi dung co the tu them truc tiep tung muc, nhung neu noi dung khong phu hop voi muc thi quan tri vien co the xoa.',
     specLabel: 'Quy cach',
     specPlaceholder: 'vi du: 3 kim',
+    processCodeLabel: 'Ma cong doan',
+    processCodePlaceholder: 'vi du: PROC-001 (tuy chon)',
+    processCodeHelper: 'Khong bat buoc. Neu nhap ma cong doan thi khong duoc trung.',
     previewLabel: 'Xem truoc',
     previewEmpty: 'Chon bo phan va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
     ptLabel: 'PT',
@@ -215,6 +227,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateAction: 'Hay chon it nhat mot thao tac.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
     validateDuplicate: 'Cong doan nay da duoc dang ky.',
+    validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
     stGapReview: 'AT va ST lech {label}, nen xem lai ST.',
     stGapNormal: 'Do lech AT/ST {label}',
   },
@@ -746,6 +759,7 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
 };
 
 const resolveDraftStInputValue = (draft) => String(draft?.st ?? '').trim();
+const normalizeProcessCodeKey = (value) => String(value ?? '').trim().toUpperCase();
 
 const buildProcessPayload = (
   draft,
@@ -763,6 +777,9 @@ const buildProcessPayload = (
     composition,
     localizedNames.nameEn || localizedNames.nameKo || existingProcess?.code || existingProcess?.name
   );
+  const enteredProcessCode = String(draft?.processCode ?? '').trim();
+  const resolvedProcessCode =
+    enteredProcessCode || processCode || String(existingProcess?.code ?? '').trim();
   const resolvedTimeRefQuantity = toPositiveInt(
     timeRefQuantity,
     DEFAULT_TIME_REF_QUANTITY
@@ -808,11 +825,11 @@ const buildProcessPayload = (
   return normalizeProcess({
     ...(existingProcess || {}),
     id: existingProcess?.id ?? null,
-    code: processCode || existingProcess?.code,
-    name: localizedNames.nameEn || existingProcess?.name || processCode,
-    nameKo: localizedNames.nameKo || existingProcess?.nameKo || processCode,
-    nameEn: localizedNames.nameEn || existingProcess?.nameEn || processCode,
-    nameVi: localizedNames.nameVi || existingProcess?.nameVi || processCode,
+    code: resolvedProcessCode || null,
+    name: localizedNames.nameEn || existingProcess?.name || resolvedProcessCode,
+    nameKo: localizedNames.nameKo || existingProcess?.nameKo || resolvedProcessCode,
+    nameEn: localizedNames.nameEn || existingProcess?.nameEn || resolvedProcessCode,
+    nameVi: localizedNames.nameVi || existingProcess?.nameVi || resolvedProcessCode,
     processComposition: composition,
     description: reviewDescription || null,
     needsReview: reviewNeedsCheck,
@@ -827,8 +844,8 @@ const buildProcessPayload = (
     instanceId:
       existingProcess?.instanceId ||
       createInstanceId({
-        code: processCode,
-        name: localizedNames.nameEn || localizedNames.nameKo || processCode,
+        code: resolvedProcessCode,
+        name: localizedNames.nameEn || localizedNames.nameKo || resolvedProcessCode,
       }),
   });
 };
@@ -859,6 +876,7 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
       Array.isArray(composition?.specs) ? composition.specs[0] : null,
       'spec'
     ),
+    processCode: String(safeProcess?.code ?? '').trim(),
     pt:
       ptPerPiece == null
         ? ''
@@ -1372,6 +1390,15 @@ const StyleProcess = ({
       return getProcessIdentity(process) === identity;
     });
     if (duplicated) return getStyleProcessMessage(languageCode, 'validateDuplicate');
+
+    const codeKey = normalizeProcessCodeKey(draft?.processCode);
+    if (codeKey) {
+      const duplicatedCode = safeProcesses.some((process) => {
+        if (ignoreInstanceId && process.instanceId === ignoreInstanceId) return false;
+        return normalizeProcessCodeKey(process?.code) === codeKey;
+      });
+      if (duplicatedCode) return getStyleProcessMessage(languageCode, 'validateDuplicateCode');
+    }
     return '';
   };
 
@@ -1970,6 +1997,21 @@ const StyleProcess = ({
                   inputProps={{ tabIndex: -1 }}
                   sx={{ width: 132 }}
                 />
+                <TextField
+                  size="small"
+                  label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
+                  value={addDraft.processCode ?? ''}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      processCode: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
+                  helperText={getStyleProcessMessage(languageCode, 'processCodeHelper')}
+                  sx={{ width: 220 }}
+                />
                 <Stack spacing={0.25} sx={{ minWidth: 260 }}>
                   <FormControlLabel
                     sx={{ m: 0, '.MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
@@ -2008,10 +2050,7 @@ const StyleProcess = ({
                 </Stack>
                 <Stack direction="row" spacing={0.75}>
                   <SaveButton onClick={handleSaveAddRow}>
-                    {getStyleProcessMessage(
-                      languageCode,
-                      isEditingRow ? 'save' : 'add'
-                    )}
+                    {getStyleProcessMessage(languageCode, 'add')}
                   </SaveButton>
                   <Button variant="outlined" onClick={handleCancelAddRow}>
                     {getStyleProcessMessage(languageCode, 'cancel')}
