@@ -68,6 +68,7 @@ const createEmptyDraft = () => ({
   reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
+const PROCESS_CODE_COLUMN_WIDTH = 140;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 
@@ -104,6 +105,7 @@ const STYLE_PROCESS_MESSAGES = {
     delete: '삭제',
     editingTitle: '공정 수정',
     orderColumn: '순서',
+    codeColumn: '코드',
     processColumn: '공정명',
     actionColumn: '작업',
     empty: '등록된 공정이 없습니다. 상단의 공정 추가로 바로 입력해보세요.',
@@ -156,6 +158,7 @@ const STYLE_PROCESS_MESSAGES = {
     delete: 'Delete',
     editingTitle: 'Edit Process',
     orderColumn: 'Order',
+    codeColumn: 'Code',
     processColumn: 'Process',
     actionColumn: 'Action',
     empty: 'No processes yet. Add one from the panel above.',
@@ -208,6 +211,7 @@ const STYLE_PROCESS_MESSAGES = {
     delete: 'Xoa',
     editingTitle: 'Sua cong doan',
     orderColumn: 'Thu tu',
+    codeColumn: 'Ma',
     processColumn: 'Ten cong doan',
     actionColumn: 'Tac vu',
     empty: 'Chua co cong doan nao. Hay them o khung ben tren.',
@@ -1546,7 +1550,7 @@ const StyleProcess = ({
                       cursor: isDraftOpen ? 'not-allowed' : 'grab',
                       color: 'text.secondary',
                     }}
-                >
+              >
                   <Stack
                     direction="row"
                     spacing={0.25}
@@ -1556,6 +1560,19 @@ const StyleProcess = ({
                     <DragIndicatorIcon fontSize="small" />
                     <Typography variant="caption">{index + 1}</Typography>
                   </Stack>
+                </TableCell>
+
+                <TableCell sx={{ width: PROCESS_CODE_COLUMN_WIDTH }}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                      color: process?.code ? 'text.primary' : 'text.disabled',
+                    }}
+                  >
+                    {String(process?.code ?? '').trim() || '-'}
+                  </Typography>
                 </TableCell>
 
                 <TableCell>
@@ -2042,6 +2059,9 @@ const StyleProcess = ({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
+                  <TableCell sx={{ width: PROCESS_CODE_COLUMN_WIDTH }}>
+                    {getStyleProcessMessage(languageCode, 'codeColumn')}
+                  </TableCell>
                   <TableCell sx={{ minWidth: 250 }}>{getStyleProcessMessage(languageCode, 'processColumn')}</TableCell>
                   <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Tooltip
@@ -2106,7 +2126,7 @@ const StyleProcess = ({
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
                     {safeProcesses.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        <TableCell colSpan={7} align="center" sx={{ py: 5, color: 'text.secondary' }}>
                           {getStyleProcessMessage(languageCode, 'empty')}
                         </TableCell>
                       </TableRow>
@@ -2120,7 +2140,7 @@ const StyleProcess = ({
 
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={2} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
+                  <TableCell colSpan={3} align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
                     {getStyleProcessMessage(languageCode, 'total')}
                   </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.875rem' }}>
