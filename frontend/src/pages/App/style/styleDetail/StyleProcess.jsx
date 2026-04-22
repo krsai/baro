@@ -68,7 +68,7 @@ const createEmptyDraft = () => ({
   reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
-const PROCESS_CODE_COLUMN_WIDTH = 92;
+const PROCESS_CODE_COLUMN_WIDTH = 72;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 
@@ -1166,6 +1166,8 @@ const StyleProcess = ({
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const draftFormRef = React.useRef(null);
+  const processRowRefs = React.useRef(new Map());
+  const pendingReturnScrollInstanceIdRef = React.useRef(null);
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
@@ -1321,6 +1323,24 @@ const StyleProcess = ({
     return () => window.clearTimeout(timerId);
   }, [editingInstanceId, isEditingRow]);
 
+  useEffect(() => {
+    if (isDraftOpen) return undefined;
+    const targetInstanceId = pendingReturnScrollInstanceIdRef.current;
+    if (!targetInstanceId) return undefined;
+    const rowNode = processRowRefs.current.get(targetInstanceId);
+    if (!rowNode) return undefined;
+    pendingReturnScrollInstanceIdRef.current = null;
+
+    const timerId = window.setTimeout(() => {
+      rowNode.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timerId);
+  }, [isDraftOpen, safeProcesses]);
+
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
   const handleTimeRefQuantityChange = (event) => {
     setTimeRefQuantityInput(event.target.value);
@@ -1447,6 +1467,7 @@ const StyleProcess = ({
     }
     const nextProcess = buildProcessPayload(draftForSave, editingProcess, timeRefQuantity);
     if (isEditingRow) {
+      pendingReturnScrollInstanceIdRef.current = editingInstanceId;
       onProcessesChange(
         safeProcesses.map((process) =>
           process.instanceId === editingInstanceId ? nextProcess : process
@@ -1563,7 +1584,14 @@ const StyleProcess = ({
 
             return (
               <TableRow
-                ref={dragProvided.innerRef}
+                ref={(node) => {
+                  dragProvided.innerRef(node);
+                  if (node) {
+                    processRowRefs.current.set(process.instanceId, node);
+                  } else {
+                    processRowRefs.current.delete(process.instanceId);
+                  }
+                }}
                 {...dragProvided.draggableProps}
                 hover
               >
@@ -1586,19 +1614,18 @@ const StyleProcess = ({
                   </Stack>
                 </TableCell>
 
-                <TableCell
-                  align="center"
-                  sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}
-                >
+                <TableCell align="left" sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1 }}>
                   <Typography
                     variant="body2"
                     sx={{
-                      fontFamily: 'monospace',
-                      fontWeight: 600,
-                      fontSize: '0.8rem',
-                      letterSpacing: '-0.01em',
                       color: process?.code ? 'text.primary' : 'text.disabled',
+                      display: 'block',
+                      width: '100%',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
+                    title={String(process?.code ?? '').trim()}
                   >
                     {String(process?.code ?? '').trim()}
                   </Typography>
@@ -2065,7 +2092,7 @@ const StyleProcess = ({
                 </Stack>
                 <Stack direction="row" spacing={0.75}>
                   <SaveButton onClick={handleSaveAddRow}>
-                    {getStyleProcessMessage(languageCode, 'add')}
+                    {getStyleProcessMessage(languageCode, isEditingRow ? 'edit' : 'add')}
                   </SaveButton>
                   <Button variant="outlined" onClick={handleCancelAddRow}>
                     {getStyleProcessMessage(languageCode, 'cancel')}
@@ -2086,17 +2113,25 @@ const StyleProcess = ({
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         <TableContainer>
           <DragDropContext onDragEnd={onDragEnd}>
-            <Table stickyHeader size="small">
+            <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
+              <colgroup>
+                <col style={{ width: 70 }} />
+                <col style={{ width: `${PROCESS_CODE_COLUMN_WIDTH}px` }} />
+                <col />
+                <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
+                <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
+                <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
+                <col style={{ width: `${PROCESS_ACTION_COLUMN_WIDTH}px` }} />
+              </colgroup>
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
-                  <TableCell
-                    align="center"
-                    sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}
-                  >
+                  <TableCell align="left" sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}>
                     {getStyleProcessMessage(languageCode, 'codeColumn')}
                   </TableCell>
-                  <TableCell sx={{ minWidth: 250 }}>{getStyleProcessMessage(languageCode, 'processColumn')}</TableCell>
+                  <TableCell>
+                    {getStyleProcessMessage(languageCode, 'processColumn')}
+                  </TableCell>
                   <TableCell align="right" sx={{ width: PROCESS_TIME_COLUMN_WIDTH }}>
                     <Tooltip
                       title={getStyleProcessMessage(languageCode, 'ptTooltip', {
