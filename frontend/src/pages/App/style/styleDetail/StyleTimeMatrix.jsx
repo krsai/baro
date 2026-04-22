@@ -176,6 +176,8 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
 const buildDraftKey = (processInstanceId, quantity) =>
   `${String(processInstanceId || '')}::${String(quantity)}`;
 const SECONDS_CELL_WIDTH = 82;
+const MATRIX_BORDER_WIDTH = 0.75;
+const MATRIX_BORDER_COLOR = alpha('#111827', 0.16);
 const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
 const BASE_MATRIX_INPUT_SX = {
   width: SECONDS_CELL_WIDTH,
@@ -191,11 +193,13 @@ const BASE_MATRIX_INPUT_SX = {
   '& .MuiOutlinedInput-root': {
     minHeight: 32,
     borderRadius: 1,
+    backgroundColor: '#FFFFFF',
     '& .MuiOutlinedInput-notchedOutline': {
-      borderColor: alpha('#1F2937', 0.22),
+      borderWidth: MATRIX_BORDER_WIDTH,
+      borderColor: MATRIX_BORDER_COLOR,
     },
     '&:hover .MuiOutlinedInput-notchedOutline': {
-      borderColor: alpha('#1F2937', 0.38),
+      borderColor: alpha('#1F2937', 0.26),
     },
   },
 };
@@ -206,16 +210,14 @@ const resolveProcessGroupPalette = (processIndex = 0) => {
   return {
     accent,
     rowBackground: alpha(accent, 0.055),
-    rowBorder: alpha(accent, 0.2),
+    rowBorder: alpha(accent, 0.14),
     processCellBackground: alpha(accent, 0.12),
     metricCellBackground: alpha(accent, 0.08),
   };
 };
 
-const renderReadonlySecondsBox = (value, type = 'pt') => {
+const renderReadonlySecondsBox = (value) => {
   const hasValue = value != null;
-  const isPt = type === 'pt';
-  const isAt = type === 'at';
   const displayValue = hasValue ? formatSecondsPlain(value) : '-';
   return (
     <TextField
@@ -227,32 +229,26 @@ const renderReadonlySecondsBox = (value, type = 'pt') => {
         ...BASE_MATRIX_INPUT_SX,
         '& .MuiOutlinedInput-root': {
           ...BASE_MATRIX_INPUT_SX['& .MuiOutlinedInput-root'],
-          backgroundColor: isAt ? '#F8FAFC' : '#F4F6F9',
+          backgroundColor: '#F8FAFC',
           '& .MuiOutlinedInput-notchedOutline': {
-            borderColor: isAt ? alpha('#111827', 0.18) : alpha('#111827', 0.24),
-            borderStyle: isAt ? 'dashed' : 'solid',
+            borderWidth: MATRIX_BORDER_WIDTH,
+            borderColor: MATRIX_BORDER_COLOR,
+            borderStyle: 'solid',
           },
           '&.Mui-disabled .MuiOutlinedInput-notchedOutline': {
-            borderColor: isAt ? alpha('#111827', 0.18) : alpha('#111827', 0.24),
-            borderStyle: isAt ? 'dashed' : 'solid',
+            borderWidth: MATRIX_BORDER_WIDTH,
+            borderColor: MATRIX_BORDER_COLOR,
+            borderStyle: 'solid',
           },
         },
         '& .MuiInputBase-input': {
           ...BASE_MATRIX_INPUT_SX['& .MuiInputBase-input'],
-          fontWeight: hasValue ? (isPt ? 600 : 500) : 500,
-          color: hasValue ? (isAt ? 'text.secondary' : 'text.primary') : 'text.disabled',
-          WebkitTextFillColor: hasValue
-            ? isAt
-              ? 'rgba(55, 65, 81, 0.88)'
-              : 'rgba(17, 24, 39, 0.92)'
-            : 'rgba(107, 114, 128, 0.7)',
+          fontWeight: hasValue ? 600 : 500,
+          color: hasValue ? 'text.primary' : 'text.disabled',
+          WebkitTextFillColor: hasValue ? 'rgba(17, 24, 39, 0.92)' : 'rgba(107, 114, 128, 0.7)',
         },
         '& .MuiInputBase-input.Mui-disabled': {
-          WebkitTextFillColor: hasValue
-            ? isAt
-              ? 'rgba(55, 65, 81, 0.88)'
-              : 'rgba(17, 24, 39, 0.92)'
-            : 'rgba(107, 114, 128, 0.7)',
+          WebkitTextFillColor: hasValue ? 'rgba(17, 24, 39, 0.92)' : 'rgba(107, 114, 128, 0.7)',
           cursor: 'default',
           opacity: 1,
         },
@@ -359,7 +355,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
         </Stack>
       </Stack>
 
-      <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+      <TableContainer
+        sx={{
+          border: `${MATRIX_BORDER_WIDTH}px solid`,
+          borderColor: MATRIX_BORDER_COLOR,
+          borderRadius: 1.5,
+        }}
+      >
         <Table
           size="small"
           sx={{
@@ -367,6 +369,13 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
             tableLayout: 'fixed',
             '& .MuiTableCell-root': {
               fontVariantNumeric: 'tabular-nums',
+              borderBottom: `${MATRIX_BORDER_WIDTH}px solid`,
+              borderBottomColor: MATRIX_BORDER_COLOR,
+            },
+            '& .MuiTableCell-head': {
+              backgroundColor: '#F8FAFC',
+              borderBottom: `${MATRIX_BORDER_WIDTH}px solid`,
+              borderBottomColor: MATRIX_BORDER_COLOR,
             },
           }}
         >
@@ -421,7 +430,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         sx={{
                           fontWeight: 700,
                           verticalAlign: 'middle',
-                          borderLeft: `4px solid ${groupPalette.accent}`,
+                          borderLeft: `2px solid ${groupPalette.accent}`,
                           backgroundColor: `${groupPalette.processCellBackground} !important`,
                         }}
                       >
@@ -437,7 +446,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                       </TableCell>
                       {quantityBuckets.map((quantity) => (
                         <TableCell key={`${processInstanceId}-pt-${quantity}`} align="center">
-                          {renderReadonlySecondsBox(ptPerPiece, 'pt')}
+                          {renderReadonlySecondsBox(ptPerPiece)}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -496,7 +505,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                   ...BASE_MATRIX_INPUT_SX['& .MuiOutlinedInput-root'],
                                   backgroundColor: hasManualSt ? '#EAF2FF' : '#FFFFFF',
                                   '& .MuiOutlinedInput-notchedOutline': {
-                                    borderWidth: 1.5,
+                                    borderWidth: MATRIX_BORDER_WIDTH,
                                     borderColor: hasManualSt ? '#3B82F6' : alpha('#3B82F6', 0.38),
                                   },
                                   '&:hover .MuiOutlinedInput-notchedOutline': {
@@ -504,7 +513,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                                   },
                                   '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
                                     borderColor: '#1D4ED8',
-                                    borderWidth: 2,
+                                    borderWidth: 1.2,
                                   },
                                 },
                               }}
@@ -528,7 +537,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
                         const atPerPiece = resolveProcessAtPerPieceSeconds(process, quantity);
                         return (
                           <TableCell key={`${processInstanceId}-at-${quantity}`} align="center">
-                            {renderReadonlySecondsBox(atPerPiece, 'at')}
+                            {renderReadonlySecondsBox(atPerPiece)}
                           </TableCell>
                         );
                       })}
