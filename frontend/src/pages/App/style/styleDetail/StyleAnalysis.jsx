@@ -15,50 +15,68 @@ const parseCurrencyValue = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const SUMMARY_LABEL_WIDTH = '30%';
+const SUMMARY_VALUE_WIDTH = '70%';
+
 const StyleAnalysis = ({ processes = [] }) => {
   const costData = [];
   const normalizedProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
+
+  // PT/AT are entered/reviewed as per-piece seconds at the 1,000 reference quantity.
+  // Convert order totals back to per-piece for display consistency.
   const totalPT = useMemo(
     () =>
       calculateProcessTotalForOrderQuantity(
         normalizedProcesses,
         'pt',
         DEFAULT_TIME_REF_QUANTITY
-      ),
+      ) / DEFAULT_TIME_REF_QUANTITY,
     [normalizedProcesses]
   );
+
   const totalAT = useMemo(
     () =>
       calculateProcessTotalForOrderQuantity(
         normalizedProcesses,
         'at',
         DEFAULT_TIME_REF_QUANTITY
-      ),
+      ) / DEFAULT_TIME_REF_QUANTITY,
     [normalizedProcesses]
   );
+
   const hasTotalPT = useMemo(
     () => hasAnyProcessTime(normalizedProcesses, 'pt'),
     [normalizedProcesses]
   );
+
   const hasTotalAT = useMemo(
     () => hasAnyProcessTime(normalizedProcesses, 'at'),
     [normalizedProcesses]
   );
+
   const subtotal = costData.reduce((acc, item) => acc + parseCurrencyValue(item.cost), 0);
   const overhead = subtotal * 0.1;
   const totalCost = subtotal + overhead;
 
   return (
-    <Paper sx={{ p: 3 }}>
+    <Box>
       <Typography variant="h6" gutterBottom>
         스타일 분석
       </Typography>
+
       <Stack spacing={2} sx={{ mt: 2.5, mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
+          >
             총 공정 수
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          <Typography
+            variant="body2"
+            sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
+          >
             {formatNumberWithCommas(normalizedProcesses.length, {
               fallback: '0',
               maximumFractionDigits: 0,
@@ -66,19 +84,35 @@ const StyleAnalysis = ({ processes = [] }) => {
             개
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
+
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
+          >
             총 PT
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          <Typography
+            variant="body2"
+            sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
+          >
             {hasTotalPT ? formatSeconds(totalPT) : '-'}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
+
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
+          >
             총 AT
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          <Typography
+            variant="body2"
+            sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 500 }}
+          >
             {hasTotalAT ? formatSeconds(totalAT) : '-'}
           </Typography>
         </Box>
@@ -91,33 +125,64 @@ const StyleAnalysis = ({ processes = [] }) => {
       </Typography>
       <Paper elevation={2} sx={{ p: 2, mt: 2.5, bgcolor: 'grey.50' }}>
         <Stack spacing={2}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', color: 'text.secondary' }}>
-            <Typography variant="body2">항목</Typography>
-            <Typography variant="body2">금액</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', color: 'text.secondary' }}>
+            <Typography variant="body2" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
+              항목
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
+            >
+              금액
+            </Typography>
           </Box>
           <Divider />
+
           {costData.map((row) => (
-            <Box key={row.item} sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2">{row.item}</Typography>
-              <Typography variant="body2">{row.cost}</Typography>
+            <Box key={row.item} sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
+                {row.item}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
+              >
+                {row.cost}
+              </Typography>
             </Box>
           ))}
+
           <Divider sx={{ my: 1 }} />
+
           <Stack spacing={1}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body1">소계</Typography>
-              <Typography variant="body1">
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography variant="body1" sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}>
+                소계
+              </Typography>
+              <Typography
+                variant="body1"
+                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
+              >
                 {`${formatNumberWithCommas(subtotal, {
                   fallback: '0',
                   maximumFractionDigits: 2,
                 })} 원`}
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
+
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1 }}
+              >
                 추가 비용 (10%)
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right' }}
+              >
                 {`${formatNumberWithCommas(overhead, {
                   fallback: '0',
                   maximumFractionDigits: 2,
@@ -125,12 +190,20 @@ const StyleAnalysis = ({ processes = [] }) => {
               </Typography>
             </Box>
           </Stack>
+
           <Divider sx={{ my: 1 }} />
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-              총 비용
+
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography
+              variant="h6"
+              sx={{ width: SUMMARY_LABEL_WIDTH, pr: 1, fontWeight: 'bold' }}
+            >
+              총비용
             </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+            <Typography
+              variant="h6"
+              sx={{ width: SUMMARY_VALUE_WIDTH, textAlign: 'right', fontWeight: 'bold' }}
+            >
               {`${formatNumberWithCommas(totalCost, {
                 fallback: '0',
                 maximumFractionDigits: 2,
@@ -139,7 +212,7 @@ const StyleAnalysis = ({ processes = [] }) => {
           </Box>
         </Stack>
       </Paper>
-    </Paper>
+    </Box>
   );
 };
 

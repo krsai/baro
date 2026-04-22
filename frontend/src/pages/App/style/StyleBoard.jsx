@@ -33,7 +33,7 @@ import {
   fetchStyles as fetchStylesFromApi,
   deleteStyle,
 } from '../../../utils/styleApi';
-import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { buildQueryString } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
@@ -121,48 +121,16 @@ const toPositiveInt = (value, fallback = 1) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const toOptionalPositiveNumber = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return parsed;
-};
-
-const resolveFactoryWagePerSecond = (factories = []) => {
-  const sorted = [...(Array.isArray(factories) ? factories : [])].sort(
-    (left, right) => Number(left?.id || 0) - Number(right?.id || 0)
-  );
-  for (const factory of sorted) {
-    const wagePerSecond = toOptionalPositiveNumber(factory?.wagePerSecond);
-    if (wagePerSecond != null) return wagePerSecond;
-  }
-  return null;
-};
-
 const resolveSecondsUnitLabel = (languageCode) => {
   if (languageCode === 'en') return 'sec';
   if (languageCode === 'vi') return 'giay';
   return '초';
 };
 
-const resolveCurrencyUnitLabel = (languageCode) => {
-  if (languageCode === 'en') return 'dong';
-  if (languageCode === 'vi') return 'dong';
-  return '동';
-};
-
 const formatLocalizedSeconds = (value, languageCode) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return '-';
   return `${formatNumberWithCommas(Math.round(parsed))}${resolveSecondsUnitLabel(languageCode)}`;
-};
-
-const formatLocalizedCurrency = (value, languageCode) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return '-';
-  return `${formatNumberWithCommas(Math.round(parsed), {
-    fallback: '0',
-    maximumFractionDigits: 0,
-  })} ${resolveCurrencyUnitLabel(languageCode)}`;
 };
 
 const resolveStyleWorkspaceTabLabel = (languageCode, name) => {
@@ -188,24 +156,16 @@ const StyleBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [styles, setStyles] = useState([]);
-  const [factoryWagePerSecond, setFactoryWagePerSecond] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
     setLoading(true);
     try {
-      const [items, factories] = await Promise.all([
-        fetchStylesFromApi({ orgId: activeOrgId, forceRefresh }),
-        canViewProcessSummary
-          ? requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`)
-          : Promise.resolve([]),
-      ]);
+      const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh });
       setStyles(items);
-      setFactoryWagePerSecond(resolveFactoryWagePerSecond(factories));
     } catch (error) {
       setStyles([]);
-      setFactoryWagePerSecond(null);
       showNotification(
         error?.message ||
           getUiMessage('styleBoard.fetchError', '스타일 목록을 불러오지 못했습니다.', languageCode),
@@ -214,7 +174,7 @@ const StyleBoard = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeOrgId, canViewProcessSummary, languageCode, showNotification]);
+  }, [activeOrgId, languageCode, showNotification]);
 
   useEffect(() => {
     refreshStyles();
@@ -300,7 +260,6 @@ const StyleBoard = () => {
             totalPT: 0,
             totalAT: 0,
             totalST: 0,
-            stPerPieceCost: null,
             hasTotalPT: false,
             hasTotalAT: false,
             hasTotalST: false,
@@ -334,10 +293,6 @@ const StyleBoard = () => {
         );
         const hasTotalPT = hasAnyProcessTime(processes, 'pt');
         const hasTotalAT = hasAnyProcessTime(processes, 'at');
-        const stPerPieceCost =
-          hasTotalST && factoryWagePerSecond != null
-            ? totalST * factoryWagePerSecond
-            : null;
         const styleAtReliability = resolveStyleAtReliability(processes);
         const stGapPercent =
           hasTotalAT && hasTotalST
@@ -348,7 +303,6 @@ const StyleBoard = () => {
           totalPT,
           totalAT,
           totalST,
-          stPerPieceCost,
           hasTotalPT,
           hasTotalAT,
           hasTotalST,
@@ -357,7 +311,7 @@ const StyleBoard = () => {
           stGapMeta: resolveDivergenceMeta(stGapPercent),
         };
       }),
-    [canViewProcessSummary, factoryWagePerSecond, filteredStyles]
+    [canViewProcessSummary, filteredStyles]
   );
 
   return (
@@ -401,9 +355,6 @@ const StyleBoard = () => {
                 {canViewProcessSummary ? <TableCell>{'PT'}</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>{'AT'}</TableCell> : null}
                 {canViewProcessSummary ? <TableCell>{'ST'}</TableCell> : null}
-                {canViewProcessSummary ? (
-                  <TableCell>{getUiMessage('styleBoard.unitCost', '단위 공임', languageCode)}</TableCell>
-                ) : null}
                 <TableCell>
                   {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
                 </TableCell>
@@ -416,7 +367,7 @@ const StyleBoard = () => {
               {rows.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canViewProcessSummary ? 9 : 5}
+                    colSpan={canViewProcessSummary ? 8 : 5}
                     sx={{ textAlign: 'center', color: 'text.secondary' }}
                   >
                     {loading
@@ -490,13 +441,6 @@ const StyleBoard = () => {
                           </Tooltip>
                         )}
                       </Box>
-                    </TableCell>
-                  ) : null}
-                  {canViewProcessSummary ? (
-                    <TableCell>
-                      {style.stPerPieceCost == null
-                        ? '-'
-                        : formatLocalizedCurrency(style.stPerPieceCost, languageCode)}
                     </TableCell>
                   ) : null}
                   <TableCell>{style.registrationDate || '-'}</TableCell>
