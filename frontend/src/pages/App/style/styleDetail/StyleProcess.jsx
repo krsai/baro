@@ -68,7 +68,7 @@ const createEmptyDraft = () => ({
   reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
-const PROCESS_CODE_COLUMN_WIDTH = 72;
+const PROCESS_CODE_COLUMN_WIDTH = '16ch';
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 
@@ -1614,7 +1614,15 @@ const StyleProcess = ({
                   </Stack>
                 </TableCell>
 
-                <TableCell align="left" sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1 }}>
+                <TableCell
+                  align="left"
+                  sx={{
+                    width: PROCESS_CODE_COLUMN_WIDTH,
+                    minWidth: PROCESS_CODE_COLUMN_WIDTH,
+                    maxWidth: PROCESS_CODE_COLUMN_WIDTH,
+                    px: 1,
+                  }}
+                >
                   <Typography
                     variant="body2"
                     sx={{
@@ -2116,7 +2124,7 @@ const StyleProcess = ({
             <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 <col style={{ width: 70 }} />
-                <col style={{ width: `${PROCESS_CODE_COLUMN_WIDTH}px` }} />
+                <col style={{ width: PROCESS_CODE_COLUMN_WIDTH }} />
                 <col />
                 <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
                 <col style={{ width: `${PROCESS_TIME_COLUMN_WIDTH}px` }} />
@@ -2126,7 +2134,16 @@ const StyleProcess = ({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
-                  <TableCell align="left" sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}>
+                  <TableCell
+                    align="left"
+                    sx={{
+                      width: PROCESS_CODE_COLUMN_WIDTH,
+                      minWidth: PROCESS_CODE_COLUMN_WIDTH,
+                      maxWidth: PROCESS_CODE_COLUMN_WIDTH,
+                      px: 1,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {getStyleProcessMessage(languageCode, 'codeColumn')}
                   </TableCell>
                   <TableCell>
