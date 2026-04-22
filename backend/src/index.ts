@@ -1510,12 +1510,47 @@ const buildStyleProcessCodeFromComposition = (
   return normalizeStyleProcessCodeSegment(fallback);
 };
 
+const resolveStyleProcessDisplayCode = (value: any) => {
+  const normalized = normalizeStyleProcessCodeSegment(value);
+  return normalized || null;
+};
+
+const resolveStyleProcessVisibleCode = (
+  rowProcessCode: any,
+  displayProcess: any = null
+) => {
+  if (
+    displayProcess &&
+    typeof displayProcess === "object" &&
+    !Array.isArray(displayProcess)
+  ) {
+    const displayCode = resolveStyleProcessDisplayCode((displayProcess as any).code);
+    if (displayCode) return displayCode;
+    if ("code" in (displayProcess as any)) return null;
+  }
+  return resolveOptionalString(rowProcessCode, null);
+};
+
 const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
   }
   const { st: _legacySt, processQuantity: _legacyProcessQuantity, ...rest } = process;
   const next = { ...rest };
+  const normalizedDisplayCode = resolveStyleProcessDisplayCode((next as any).code);
+  if (normalizedDisplayCode) {
+    (next as any).code = normalizedDisplayCode;
+  } else if ("code" in next) {
+    (next as any).code = null;
+  }
+  const normalizedStorageCode = resolveStyleProcessDisplayCode(
+    (next as any).storageCode
+  );
+  if (normalizedStorageCode) {
+    (next as any).storageCode = normalizedStorageCode;
+  } else if ("storageCode" in next) {
+    (next as any).storageCode = null;
+  }
   const normalizedComposition = normalizeStyleProcessComposition(
     (next as any).processComposition
   );
@@ -1530,12 +1565,6 @@ const normalizeStyleProcess = (process: any) => {
       }
     );
     (next as any).processComposition = normalizedComposition;
-    (next as any).code =
-      buildStyleProcessCodeFromComposition(
-        normalizedComposition,
-        (next as any).code ?? (next as any).name
-      ) ||
-      (next as any).code;
     (next as any).name = localizedNames.nameEn || (next as any).name;
     (next as any).nameKo = localizedNames.nameKo;
     (next as any).nameEn = localizedNames.nameEn;
@@ -2859,7 +2888,9 @@ const applyAtTrainingResultsToStyleProcesses = async ({
     for (const style of styles) {
       const styleUid = Number(style.uid);
       const nextProcesses = buildStyleProcessMirrorFromRows(
-        rowsByStyleUid.get(styleUid) || []
+        rowsByStyleUid.get(styleUid) || [],
+        undefined,
+        style.processes
       );
       if (
         JSON.stringify(normalizeStyleProcesses(style?.processes)) ===
@@ -3280,11 +3311,15 @@ const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
 };
 
 const resolveStyleProcessStorageCode = (process: any, index: number) => {
+  const explicitCode = normalizeProcessCodeKey(process?.code);
+  if (explicitCode) return explicitCode;
+  const storedCode = normalizeProcessCodeKey(process?.storageCode);
+  if (storedCode) return storedCode;
   const compositionCode = buildStyleProcessCodeFromComposition(
     process?.processComposition,
     null
   );
-  const codeKey = normalizeProcessCodeKey(compositionCode || process?.code);
+  const codeKey = normalizeProcessCodeKey(compositionCode);
   if (codeKey) return codeKey;
   const nameKey = normalizeProcessNameKey(process?.name);
   if (nameKey) return nameKey.toUpperCase();
@@ -3401,62 +3436,69 @@ const buildStyleProcessMirrorFromRows = (
       nameEn: string | null;
       nameVi: string | null;
     }
-  >()
+  >(),
+  displayProcesses: any = []
 ) =>
-  ensureArray(rows)
-    .slice()
-    .sort(
-      (left, right) =>
-        Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
-        Number(left?.id ?? 0) - Number(right?.id ?? 0)
-    )
-    .map((row, index) => {
-      const normalizedComposition = normalizeStyleProcessComposition(
-        row.processComposition
-      );
-      const masterNames =
-        processNameLookup.get(normalizeProcessCodeKey(row.processCode)) ?? null;
-      const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
-        normalizedComposition,
-        {
-          name: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
-          nameKo: masterNames?.nameKo ?? null,
-          nameEn: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
-          nameVi: masterNames?.nameVi ?? null,
-        }
-      );
-      return normalizeStyleProcess({
-        code: row.processCode,
-        name: localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
-        nameKo: localizedNames.nameKo || masterNames?.nameKo,
-        nameEn:
-          localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
-        nameVi: localizedNames.nameVi || masterNames?.nameVi,
-        processComposition: normalizedComposition,
-        description: row.processDescription ?? null,
-        quantity: row.processQuantity ?? 1,
-        pt: toOptionalProcessSeconds(row.ptSeconds),
-        atParams: toStyleAtParams(row.atParams),
-        stValues: ensureArray(row.standards).map((standard) => ({
-          quantity: resolveStBucketQuantity(
-            (standard as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY
-          ),
-          seconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
-          setBy: resolveOptionalString((standard as any)?.setBy, null),
-          setAt:
-            (standard as any)?.setAt instanceof Date
-              ? (standard as any).setAt.toISOString()
-              : resolveOptionalString((standard as any)?.setAt, null),
-          updatedAt:
-            (standard as any)?.updatedAt instanceof Date
-              ? (standard as any).updatedAt.toISOString()
-              : resolveOptionalString((standard as any)?.updatedAt, null),
-        })),
-        timeRefQuantity:
-          ensureArray(row.standards)[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
-        instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
+  (() => {
+    const displayProcessList = ensureArray(displayProcesses);
+    return ensureArray(rows)
+      .slice()
+      .sort(
+        (left, right) =>
+          Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
+          Number(left?.id ?? 0) - Number(right?.id ?? 0)
+      )
+      .map((row, index) => {
+        const displayProcess = displayProcessList[index] ?? null;
+        const normalizedComposition = normalizeStyleProcessComposition(
+          row.processComposition
+        );
+        const masterNames =
+          processNameLookup.get(normalizeProcessCodeKey(row.processCode)) ?? null;
+        const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
+          normalizedComposition,
+          {
+            name: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
+            nameKo: masterNames?.nameKo ?? null,
+            nameEn: masterNames?.nameEn ?? masterNames?.name ?? row.processName,
+            nameVi: masterNames?.nameVi ?? null,
+          }
+        );
+        return normalizeStyleProcess({
+          code: resolveStyleProcessVisibleCode(row.processCode, displayProcess),
+          storageCode: row.processCode,
+          name:
+            localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
+          nameKo: localizedNames.nameKo || masterNames?.nameKo,
+          nameEn:
+            localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
+          nameVi: localizedNames.nameVi || masterNames?.nameVi,
+          processComposition: normalizedComposition,
+          description: row.processDescription ?? null,
+          quantity: row.processQuantity ?? 1,
+          pt: toOptionalProcessSeconds(row.ptSeconds),
+          atParams: toStyleAtParams(row.atParams),
+          stValues: ensureArray(row.standards).map((standard) => ({
+            quantity: resolveStBucketQuantity(
+              (standard as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY
+            ),
+            seconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
+            setBy: resolveOptionalString((standard as any)?.setBy, null),
+            setAt:
+              (standard as any)?.setAt instanceof Date
+                ? (standard as any).setAt.toISOString()
+                : resolveOptionalString((standard as any)?.setAt, null),
+            updatedAt:
+              (standard as any)?.updatedAt instanceof Date
+                ? (standard as any).updatedAt.toISOString()
+                : resolveOptionalString((standard as any)?.updatedAt, null),
+          })),
+          timeRefQuantity:
+            ensureArray(row.standards)[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
+          instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
+        });
       });
-    });
+  })();
 
 const loadStyleProcessRowsByStyleUid = async (
   styleUids: number[],
@@ -3612,7 +3654,7 @@ const syncStyleProcessStorageForStyle = async ({
     processCodes: rows.map((row) => row?.processCode),
     db,
   });
-  return buildStyleProcessMirrorFromRows(rows, processNameLookup);
+  return buildStyleProcessMirrorFromRows(rows, processNameLookup, processes);
 };
 
 const ensureStyleProcessStorageForStyles = async (
@@ -3670,7 +3712,7 @@ const ensureStyleProcessStorageForStyles = async (
     map.set(
       styleUid,
       rows.length > 0
-        ? buildStyleProcessMirrorFromRows(rows, processNameLookup)
+        ? buildStyleProcessMirrorFromRows(rows, processNameLookup, style.processes)
         : processOrgId !== null && Number(style.orgId) !== processOrgId
           ? []
           : normalizeStyleProcesses(style.processes)
@@ -13720,7 +13762,7 @@ app.post("/styles", async (req, res) => {
       data: {
         orgId: owner.ownerOrgId,
         ...payload,
-        processes: includeProcesses ? [] : payload.processes,
+        processes: payload.processes,
       },
     });
     if (includeProcesses) {
@@ -13842,9 +13884,7 @@ app.put("/styles/:styleId", async (req, res) => {
         collection: normalized.collection,
         season: normalized.season,
         imageUrls: normalized.imageUrls,
-        ...(!includeProcesses
-          ? { processes: normalizeStyleProcesses(existing.processes) }
-          : {}),
+        processes: normalized.processes,
         bom: normalized.bom,
         bomNotes: normalized.bomNotes,
       },
@@ -14085,14 +14125,14 @@ app.post("/styles/import", async (req, res) => {
           collection: stylePayload.collection,
           season: stylePayload.season,
           imageUrls: stylePayload.imageUrls,
-          processes: includeProcesses ? [] : stylePayload.processes,
+          processes: stylePayload.processes,
           bom: stylePayload.bom,
           bomNotes: stylePayload.bomNotes,
         },
         create: {
           orgId: ownerOrgId,
           ...stylePayload,
-          processes: includeProcesses ? [] : stylePayload.processes,
+          processes: stylePayload.processes,
         },
       });
       if (includeProcesses) {

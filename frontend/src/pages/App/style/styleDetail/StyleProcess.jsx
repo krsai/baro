@@ -68,7 +68,7 @@ const createEmptyDraft = () => ({
   reviewComment: '',
 });
 const PT_REFERENCE_QUANTITY = DEFAULT_TIME_REF_QUANTITY;
-const PROCESS_CODE_COLUMN_WIDTH = 140;
+const PROCESS_CODE_COLUMN_WIDTH = 92;
 const PROCESS_TIME_COLUMN_WIDTH = 140;
 const PROCESS_ACTION_COLUMN_WIDTH = 120;
 
@@ -1165,6 +1165,7 @@ const StyleProcess = ({
   const [addActionInput, setAddActionInput] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
+  const draftFormRef = React.useRef(null);
   const displayOrderQuantity = useMemo(
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
@@ -1296,6 +1297,29 @@ const StyleProcess = ({
         : null,
     [editingInstanceId, isEditingRow, safeProcesses]
   );
+
+  useEffect(() => {
+    if (!isEditingRow) return undefined;
+    const formNode = draftFormRef.current;
+    if (!formNode) return undefined;
+
+    const timerId = window.setTimeout(() => {
+      formNode.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+
+      const firstInput = formNode.querySelector('input, textarea');
+      if (firstInput && typeof firstInput.focus === 'function') {
+        firstInput.focus({ preventScroll: true });
+        if (typeof firstInput.select === 'function') {
+          firstInput.select();
+        }
+      }
+    }, 60);
+
+    return () => window.clearTimeout(timerId);
+  }, [editingInstanceId, isEditingRow]);
 
   // 입력 중: raw 문자열만 저장 (파싱하지 않음)
   const handleTimeRefQuantityChange = (event) => {
@@ -1562,16 +1586,21 @@ const StyleProcess = ({
                   </Stack>
                 </TableCell>
 
-                <TableCell sx={{ width: PROCESS_CODE_COLUMN_WIDTH }}>
+                <TableCell
+                  align="center"
+                  sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}
+                >
                   <Typography
                     variant="body2"
                     sx={{
                       fontFamily: 'monospace',
                       fontWeight: 600,
+                      fontSize: '0.8rem',
+                      letterSpacing: '-0.01em',
                       color: process?.code ? 'text.primary' : 'text.disabled',
                     }}
                   >
-                    {String(process?.code ?? '').trim() || '-'}
+                    {String(process?.code ?? '').trim()}
                   </Typography>
                 </TableCell>
 
@@ -1753,8 +1782,10 @@ const StyleProcess = ({
       )}
       {isDraftOpen && (
         <Paper
+          ref={draftFormRef}
           variant="outlined"
           sx={{
+            scrollMarginTop: 88,
             borderRadius: 2,
             p: 2,
             mb: 1.5,
@@ -2059,7 +2090,10 @@ const StyleProcess = ({
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 70 }}>{getStyleProcessMessage(languageCode, 'orderColumn')}</TableCell>
-                  <TableCell sx={{ width: PROCESS_CODE_COLUMN_WIDTH }}>
+                  <TableCell
+                    align="center"
+                    sx={{ width: PROCESS_CODE_COLUMN_WIDTH, px: 1, whiteSpace: 'nowrap' }}
+                  >
                     {getStyleProcessMessage(languageCode, 'codeColumn')}
                   </TableCell>
                   <TableCell sx={{ minWidth: 250 }}>{getStyleProcessMessage(languageCode, 'processColumn')}</TableCell>
