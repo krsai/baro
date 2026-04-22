@@ -170,10 +170,32 @@ export const createEmployeeRouter = ({
       typeof req.query.membershipRole === "string"
         ? req.query.membershipRole.toUpperCase()
         : null;
+    const excludeMembershipRole =
+      typeof req.query.excludeMembershipRole === "string"
+        ? req.query.excludeMembershipRole.toUpperCase()
+        : null;
+    const membershipFilter =
+      membershipRole && excludeMembershipRole
+        ? membershipRole === excludeMembershipRole
+          ? null
+          : {
+              AND: [
+                { role: membershipRole as any },
+                { role: { not: excludeMembershipRole as any } },
+              ],
+            }
+        : membershipRole
+          ? { role: membershipRole as any }
+          : excludeMembershipRole
+            ? { role: { not: excludeMembershipRole as any } }
+            : null;
+    if (membershipRole && excludeMembershipRole && membershipRole === excludeMembershipRole) {
+      return res.json([]);
+    }
     const where: any = {
       orgId: organization.id,
       ...(Number.isFinite(factoryId) ? { factoryId } : {}),
-      ...(membershipRole ? { membership: { role: membershipRole as any } } : {}),
+      ...(membershipFilter ? { membership: membershipFilter } : {}),
     };
     const employees = await prisma.employee.findMany({
       where,

@@ -10,6 +10,7 @@ type LineRoutesDeps = {
 };
 
 const LINE_ELIGIBLE_ROLES: OrgUserRole[] = ["WORKER"];
+const LINE_ELIGIBLE_WORKER_ROLE_CODE = "WORKER_SEWING";
 
 const normalizeDateKey = (value: unknown): string => {
   if (typeof value !== "string") return "";
@@ -28,14 +29,60 @@ const buildWorkDateRange = (workDate: unknown) => {
   return { dateKey: normalized, startAt, endAt };
 };
 
+const BUSINESS_TIME_ZONE =
+  resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
+const toDateKeyInTimeZone = (input: unknown, timeZone = BUSINESS_TIME_ZONE): string => {
+  const date = input instanceof Date ? input : new Date(input as any);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    if (!year || !month || !day) return "";
+    return `${year}-${month}-${day}`;
+  } catch (_error) {
+    return date.toISOString().slice(0, 10);
+  }
+};
+const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
+
+const buildEffectiveDateRange = (workDate: unknown) =>
+  buildWorkDateRange(normalizeDateKey(workDate) || todayDateKey());
+
+const buildLineEligibleWorkerWhere = (
+  dateRange: { startAt: Date; endAt: Date } | null = null
+): Prisma.EmployeeWhereInput => ({
+  membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+  role: { code: LINE_ELIGIBLE_WORKER_ROLE_CODE },
+  ...(dateRange
+    ? {
+        AND: [
+          { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
+          { OR: [{ leftAt: null }, { leftAt: { gte: dateRange.startAt } }] },
+        ],
+      }
+    : {}),
+});
+
 const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, number>> => {
   if (lineIds.length === 0) return {};
   const uniqueIds = [...new Set(lineIds)];
+  const todayRange = buildEffectiveDateRange(null);
   const result: Record<number, number> = {};
   await Promise.all(
     uniqueIds.map(async (lineId) => {
       const count = await prisma.lineAssignment.count({
-        where: { lineId, endAt: null },
+        where: {
+          lineId,
+          endAt: null,
+          employee: buildLineEligibleWorkerWhere(todayRange),
+        },
       });
       result[lineId] = count;
     })
@@ -44,6 +91,7 @@ const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, n
 };
 
 const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) => {
+  const todayRange = buildEffectiveDateRange(null);
   const [lines, workers, assignments] = await Promise.all([
     prisma.line.findMany({
       where: { orgId, factoryId },
@@ -53,7 +101,7 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
       where: {
         orgId,
         factoryId,
-        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+        ...buildLineEligibleWorkerWhere(todayRange),
       },
       include: { membership: true },
       orderBy: [{ factoryId: "asc" }, { id: "asc" }],
@@ -62,6 +110,7 @@ const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) =
       where: {
         line: { orgId, factoryId },
         endAt: null,
+        employee: buildLineEligibleWorkerWhere(todayRange),
       },
       select: { employeeId: true, lineId: true },
     }),
@@ -302,11 +351,12 @@ export const createLineRouter = ({
       });
     }
 
+    const todayRange = buildEffectiveDateRange(null);
     const workerRows = await prisma.employee.findMany({
       where: {
         orgId: organization.id,
         factoryId: factoryIdNum,
-        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+        ...buildLineEligibleWorkerWhere(todayRange),
       },
       select: { id: true },
       orderBy: [{ id: "asc" }],
@@ -592,12 +642,13 @@ export const createLineRouter = ({
           return res.status(400).json({ ok: false, error: "invalid managerEmployeeId" });
         }
 
+        const todayRange = buildEffectiveDateRange(null);
         const manager = await prisma.employee.findFirst({
           where: {
             id: managerIdNum,
             orgId: organization.id,
             factoryId: existing.factoryId,
-            membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+            ...buildLineEligibleWorkerWhere(todayRange),
           },
           include: { membership: true },
         });
@@ -739,6 +790,10 @@ export const createLineRouter = ({
         error: "factoryId or lineId is required when workDate is provided",
       });
     }
+    const effectiveDateRange = buildEffectiveDateRange(normalizedWorkDate);
+    if (!effectiveDateRange) {
+      return res.status(400).json({ ok: false, error: "invalid workDate" });
+    }
 
     if (hasFactoryFilter) {
       const factory = await prisma.factory.findFirst({
@@ -762,10 +817,7 @@ export const createLineRouter = ({
         return res.status(404).json({ ok: false, error: "line not found" });
       }
 
-      const dateRange = normalizedWorkDate ? buildWorkDateRange(normalizedWorkDate) : null;
-      if (normalizedWorkDate && !dateRange) {
-        return res.status(400).json({ ok: false, error: "invalid workDate" });
-      }
+      const dateRange = normalizedWorkDate ? effectiveDateRange : null;
 
       const assignments = await prisma.lineAssignment.findMany({
         where: {
@@ -784,9 +836,17 @@ export const createLineRouter = ({
         new Set(assignments.map((assignment) => assignment.employeeId))
       );
       if (summaryOnly) {
+        const eligibleWorkerCount = await prisma.employee.count({
+          where: {
+            orgId: organization.id,
+            id: { in: employeeIds },
+            ...(hasFactoryFilter ? { factoryId } : {}),
+            ...buildLineEligibleWorkerWhere(effectiveDateRange),
+          },
+        });
         return res.json(
-          employeeIds.length > 0
-            ? [{ lineId: line.id, workerCount: employeeIds.length }]
+          eligibleWorkerCount > 0
+            ? [{ lineId: line.id, workerCount: eligibleWorkerCount }]
             : []
         );
       }
@@ -799,6 +859,7 @@ export const createLineRouter = ({
           orgId: organization.id,
           id: { in: employeeIds },
           ...(hasFactoryFilter ? { factoryId } : {}),
+          ...buildLineEligibleWorkerWhere(effectiveDateRange),
         },
         include: { membership: true },
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
@@ -820,10 +881,7 @@ export const createLineRouter = ({
       );
     }
 
-    const dateRange = normalizedWorkDate ? buildWorkDateRange(normalizedWorkDate) : null;
-    if (normalizedWorkDate && !dateRange) {
-      return res.status(400).json({ ok: false, error: "invalid workDate" });
-    }
+    const dateRange = normalizedWorkDate ? effectiveDateRange : null;
 
     const assignmentWhere: Prisma.LineAssignmentWhereInput = {
       line: {
@@ -843,10 +901,30 @@ export const createLineRouter = ({
         where: assignmentWhere,
         select: { employeeId: true, lineId: true },
       });
+      const eligibleEmployeeIds = Array.from(
+        new Set(assignments.map((assignment) => Number(assignment.employeeId)))
+      );
+      const eligibleRows =
+        eligibleEmployeeIds.length > 0
+          ? await prisma.employee.findMany({
+              where: {
+                orgId: organization.id,
+                id: { in: eligibleEmployeeIds },
+                ...(hasFactoryFilter ? { factoryId } : {}),
+                ...buildLineEligibleWorkerWhere(effectiveDateRange),
+              },
+              select: { id: true },
+            })
+          : [];
+      const eligibleEmployeeIdSet = new Set(
+        eligibleRows.map((employee) => Number(employee.id))
+      );
       const employeeIdsByLine = assignments.reduce((map, assignment) => {
+        const employeeId = Number(assignment.employeeId);
+        if (!eligibleEmployeeIdSet.has(employeeId)) return map;
         const key = Number(assignment.lineId);
         const current = map.get(key) ?? new Set<number>();
-        current.add(Number(assignment.employeeId));
+        current.add(employeeId);
         map.set(key, current);
         return map;
       }, new Map<number, Set<number>>());
@@ -865,7 +943,7 @@ export const createLineRouter = ({
         where: {
           orgId: organization.id,
           ...(hasFactoryFilter ? { factoryId } : {}),
-          membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+          ...buildLineEligibleWorkerWhere(effectiveDateRange),
         },
         include: { membership: true },
         orderBy: [{ factoryId: "asc" }, { id: "asc" }],
@@ -919,12 +997,13 @@ export const createLineRouter = ({
       return res.status(404).json({ ok: false, error: "line not found" });
     }
 
+    const todayRange = buildEffectiveDateRange(null);
     const employee = await prisma.employee.findFirst({
       where: {
         id: employeeIdNum,
         orgId: organization.id,
         factoryId: line.factoryId,
-        membership: { role: { in: LINE_ELIGIBLE_ROLES }, status: "ACTIVE" },
+        ...buildLineEligibleWorkerWhere(todayRange),
       },
       include: { membership: true },
     });

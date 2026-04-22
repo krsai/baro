@@ -351,7 +351,7 @@ const AttendanceList = () => {
     const query = buildQueryString({
       orgId: activeOrgId,
       factoryId: selectedFactoryId,
-      membershipRole: 'WORKER',
+      excludeMembershipRole: 'ADMIN',
     });
     const fetched = await requestJSON('/employees' + query, {
       skipGlobalLoading: true,

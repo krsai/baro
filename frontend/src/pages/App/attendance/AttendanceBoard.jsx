@@ -22,7 +22,9 @@ import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
+import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
+import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageToolbar from '../../../components/PageToolbar';
@@ -31,6 +33,7 @@ import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
+import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
@@ -66,6 +69,193 @@ const formatWorkedHours = (minutes) => {
   return `${(value / 60).toFixed(1)}h`;
 };
 
+const TEXT = {
+  workerFallbackName: {
+    ko: '작업자 {id}',
+    en: 'Worker {id}',
+    vi: 'Cong nhan {id}',
+  },
+  fetchEntriesError: {
+    ko: '출퇴근 입력을 불러오지 못했습니다.',
+    en: 'Failed to load attendance entries.',
+    vi: 'Khong the tai du lieu cham cong.',
+  },
+  selectFactoryFirst: {
+    ko: '공장을 먼저 선택해 주세요.',
+    en: 'Select a factory first.',
+    vi: 'Hay chon nha may truoc.',
+  },
+  loadWorkersBeforeImport: {
+    ko: '작업자 목록을 불러온 후 업로드해 주세요.',
+    en: 'Upload after loading the worker list.',
+    vi: 'Hay tai danh sach cong nhan truoc khi nhap tep.',
+  },
+  noWorkersToMatch: {
+    ko: '매칭할 작업자 목록이 없습니다.',
+    en: 'No workers available for matching.',
+    vi: 'Khong co cong nhan de doi chieu.',
+  },
+  noImportEvents: {
+    ko: '가져올 출퇴근 이벤트가 없습니다.',
+    en: 'No attendance events to import.',
+    vi: 'Khong co su kien cham cong de nhap.',
+  },
+  noDataOnSelectedDate: {
+    ko: '선택한 근무일({dateKey})에 반영할 데이터가 없습니다.',
+    en: 'No data to apply on selected date ({dateKey}).',
+    vi: 'Khong co du lieu de ap dung vao ngay da chon ({dateKey}).',
+  },
+  importApplied: {
+    ko: '업로드 반영 완료 ({dateKey}) - 반영 {appliedCount}명, 매칭 {matchedCount}건, 미매칭 {unmatchedCount}건',
+    en: 'Import applied ({dateKey}) - applied {appliedCount}, matched {matchedCount}, unmatched {unmatchedCount}',
+    vi: 'Da ap dung tep ({dateKey}) - ap dung {appliedCount}, khop {matchedCount}, khong khop {unmatchedCount}',
+  },
+  importFailed: {
+    ko: '파일 업로드에 실패했습니다.',
+    en: 'Failed to upload file.',
+    vi: 'Tai tep that bai.',
+  },
+  saveSuccess: {
+    ko: '출퇴근 입력을 저장했습니다.',
+    en: 'Attendance entries saved.',
+    vi: 'Da luu du lieu cham cong.',
+  },
+  saveFailed: {
+    ko: '출퇴근 입력 저장에 실패했습니다.',
+    en: 'Failed to save attendance entries.',
+    vi: 'Khong the luu du lieu cham cong.',
+  },
+  title: {
+    ko: '출퇴근 상세',
+    en: 'Attendance Detail',
+    vi: 'Chi tiet cham cong',
+  },
+  cancel: {
+    ko: '취소',
+    en: 'Cancel',
+    vi: 'Huy',
+  },
+  list: {
+    ko: '목록',
+    en: 'List',
+    vi: 'Danh sach',
+  },
+  searchWorker: {
+    ko: '작업자 검색',
+    en: 'Search worker',
+    vi: 'Tim cong nhan',
+  },
+  workDate: {
+    ko: '근무일자',
+    en: 'Work date',
+    vi: 'Ngay lam viec',
+  },
+  factory: {
+    ko: '공장',
+    en: 'Factory',
+    vi: 'Nha may',
+  },
+  factoryFallback: {
+    ko: '공장 {id}',
+    en: 'Factory {id}',
+    vi: 'Nha may {id}',
+  },
+  importing: {
+    ko: '업로드 중...',
+    en: 'Uploading...',
+    vi: 'Dang tai len...',
+  },
+  importFile: {
+    ko: '파일 업로드',
+    en: 'Upload File',
+    vi: 'Tai tep len',
+  },
+  atNotice: {
+    ko: 'AT 계산은 매월 5일 기준 직전 월 데이터를 반영하며, 출퇴근 미입력 작업자는 8시간 기준으로 자동 계산됩니다.',
+    en: 'AT uses previous month data as of the 5th each month; workers without attendance input are auto-calculated as 8 hours.',
+    vi: 'AT tinh du lieu thang truoc theo moc ngay 5 hang thang; cong nhan khong co cham cong se duoc tu dong tinh 8 gio.',
+  },
+  colWorker: {
+    ko: '작업자',
+    en: 'Worker',
+    vi: 'Cong nhan',
+  },
+  colClockIn: {
+    ko: '출근',
+    en: 'Clock In',
+    vi: 'Vao ca',
+  },
+  colClockOut: {
+    ko: '퇴근',
+    en: 'Clock Out',
+    vi: 'Tan ca',
+  },
+  colWorked: {
+    ko: '근무시간',
+    en: 'Worked',
+    vi: 'Gio lam',
+  },
+  colNote: {
+    ko: '메모',
+    en: 'Note',
+    vi: 'Ghi chu',
+  },
+  loadingWorkers: {
+    ko: '작업자 목록을 불러오는 중입니다.',
+    en: 'Loading workers...',
+    vi: 'Dang tai danh sach cong nhan...',
+  },
+  loadingEntries: {
+    ko: '출퇴근 입력을 불러오는 중입니다.',
+    en: 'Loading attendance entries...',
+    vi: 'Dang tai du lieu cham cong...',
+  },
+  selectFactoryFirstForTable: {
+    ko: '공장을 먼저 선택하세요.',
+    en: 'Select a factory first.',
+    vi: 'Hay chon nha may truoc.',
+  },
+  emptySearch: {
+    ko: '검색 결과가 없습니다.',
+    en: 'No matching workers found.',
+    vi: 'Khong co ket qua tim kiem.',
+  },
+  emptyWorkers: {
+    ko: '등록된 작업자가 없습니다.',
+    en: 'No workers registered.',
+    vi: 'Khong co cong nhan duoc dang ky.',
+  },
+  notePlaceholder: {
+    ko: '특이사항',
+    en: 'Note',
+    vi: 'Ghi chu',
+  },
+  summaryWorkerCount: {
+    ko: '작업자 {count}명',
+    en: 'Workers {count}',
+    vi: 'Cong nhan {count}',
+  },
+  summaryEnteredCount: {
+    ko: '입력 완료 {count}명',
+    en: 'Entered {count}',
+    vi: 'Da nhap {count}',
+  },
+  summaryWorkedTotal: {
+    ko: '입력 근무합계 {hours}',
+    en: 'Total worked {hours}',
+    vi: 'Tong gio da nhap {hours}',
+  },
+};
+
+const resolveText = (bundle, languageCode, fallback = '') =>
+  bundle?.[languageCode] || bundle?.ko || fallback;
+
+const formatTemplate = (template, params = {}) =>
+  String(template || '').replace(/\{(\w+)\}/g, (_match, token) => {
+    if (!Object.prototype.hasOwnProperty.call(params, token)) return '';
+    return String(params[token] ?? '');
+  });
+
 const resolveInitialDate = (value) => {
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed.startOf('day') : dayjs().startOf('day');
@@ -79,6 +269,7 @@ const AttendanceBoard = ({
 }) => {
   const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
+  const { languageCode } = useLanguage();
   const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
@@ -166,16 +357,23 @@ const AttendanceBoard = ({
         const query = buildQueryString({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
-          membershipRole: 'WORKER',
+          excludeMembershipRole: 'ADMIN',
         });
         const rows = await requestJSON('/employees' + query).catch(() => []);
         if (cancelled) return;
         const list = Array.isArray(rows) ? rows : [];
+        const workerNameTemplate = resolveText(
+          TEXT.workerFallbackName,
+          languageCode,
+          'Worker {id}'
+        );
         setEmployees(
           list
             .map((employee) => ({
               ...employee,
-              displayName: employee?.name || `작업자 ${employee?.id || ''}`,
+              displayName:
+                employee?.name ||
+                formatTemplate(workerNameTemplate, { id: employee?.id || '' }),
             }))
             .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)))
         );
@@ -187,7 +385,7 @@ const AttendanceBoard = ({
     return () => {
       cancelled = true;
     };
-  }, [activeOrgId, selectedFactoryId]);
+  }, [activeOrgId, languageCode, selectedFactoryId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,7 +424,10 @@ const AttendanceBoard = ({
       } catch (_error) {
         if (cancelled || controller.signal.aborted) return;
         setEntriesByWorker({});
-        showNotification('출퇴근 입력을 불러오지 못했습니다.', 'error');
+        showNotification(
+          resolveText(TEXT.fetchEntriesError, languageCode, 'Failed to load attendance entries.'),
+          'error'
+        );
       } finally {
         if (!cancelled) setLoadingEntries(false);
       }
@@ -236,7 +437,7 @@ const AttendanceBoard = ({
       cancelled = true;
       controller.abort();
     };
-  }, [activeOrgId, dateKey, selectedFactoryId, showNotification]);
+  }, [activeOrgId, dateKey, languageCode, selectedFactoryId, showNotification]);
 
   const handleEntryChange = (workerId, field, value) => {
     const key = String(workerId || '');
@@ -254,7 +455,7 @@ const AttendanceBoard = ({
 
   const handleClickImport = () => {
     if (!selectedFactoryId) {
-      showNotification('공장을 먼저 선택해 주세요.', 'warning');
+      showNotification(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'), 'warning');
       return;
     }
     fileInputRef.current?.click();
@@ -266,15 +467,25 @@ const AttendanceBoard = ({
     if (!file) return;
 
     if (!selectedFactoryId) {
-      showNotification('공장을 먼저 선택해 주세요.', 'warning');
+      showNotification(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'), 'warning');
       return;
     }
     if (loadingEmployees) {
-      showNotification('작업자 목록을 불러온 후 업로드해 주세요.', 'warning');
+      showNotification(
+        resolveText(
+          TEXT.loadWorkersBeforeImport,
+          languageCode,
+          'Upload after loading the worker list.'
+        ),
+        'warning'
+      );
       return;
     }
     if (!employees.length) {
-      showNotification('매칭할 작업자 목록이 없습니다.', 'warning');
+      showNotification(
+        resolveText(TEXT.noWorkersToMatch, languageCode, 'No workers available for matching.'),
+        'warning'
+      );
       return;
     }
 
@@ -282,7 +493,10 @@ const AttendanceBoard = ({
     try {
       const parsed = await parseAttendanceImportFile(file);
       if (!parsed.events.length) {
-        showNotification('가져올 출퇴근 이벤트가 없습니다.', 'warning');
+        showNotification(
+          resolveText(TEXT.noImportEvents, languageCode, 'No attendance events to import.'),
+          'warning'
+        );
         return;
       }
 
@@ -292,7 +506,17 @@ const AttendanceBoard = ({
       });
       const selectedDay = plan.dailyEntries.find((item) => item.workDate === dateKey);
       if (!selectedDay || selectedDay.entries.length === 0) {
-        showNotification(`선택한 근무일(${dateKey})에 반영할 데이터가 없습니다.`, 'warning');
+        showNotification(
+          formatTemplate(
+            resolveText(
+              TEXT.noDataOnSelectedDate,
+              languageCode,
+              'No data to apply on selected date ({dateKey}).'
+            ),
+            { dateKey }
+          ),
+          'warning'
+        );
         return;
       }
 
@@ -323,11 +547,26 @@ const AttendanceBoard = ({
       });
 
       showNotification(
-        `업로드 반영 완료 (${dateKey}) - 반영 ${selectedDay.entries.length}명, 매칭 ${plan.matchedEventCount}건, 미매칭 ${plan.unmatchedEventCount}건`,
+        formatTemplate(
+          resolveText(
+            TEXT.importApplied,
+            languageCode,
+            'Import applied ({dateKey}) - applied {appliedCount}, matched {matchedCount}, unmatched {unmatchedCount}'
+          ),
+          {
+            dateKey,
+            appliedCount: selectedDay.entries.length,
+            matchedCount: plan.matchedEventCount,
+            unmatchedCount: plan.unmatchedEventCount,
+          }
+        ),
         'success'
       );
     } catch (error) {
-      showNotification(error?.message || '파일 업로드에 실패했습니다.', 'error');
+      showNotification(
+        error?.message || resolveText(TEXT.importFailed, languageCode, 'Failed to upload file.'),
+        'error'
+      );
     } finally {
       setImportingFile(false);
     }
@@ -373,13 +612,13 @@ const AttendanceBoard = ({
         return acc;
       }, {});
       setEntriesByWorker(nextEntriesByWorker);
-      showNotification('출퇴근 입력을 저장했습니다.', 'success');
+      showNotification(resolveText(TEXT.saveSuccess, languageCode, 'Attendance entries saved.'), 'success');
       if (closeOnSave && typeof onClose === 'function') {
         onClose();
       }
     } catch (error) {
       showNotification(
-        error?.message || '출퇴근 입력 저장에 실패했습니다.',
+        error?.message || resolveText(TEXT.saveFailed, languageCode, 'Failed to save attendance entries.'),
         'error'
       );
     } finally {
@@ -413,7 +652,7 @@ const AttendanceBoard = ({
 
   return (
     <AppPageContainer
-      title="출퇴근 상세"
+      title={resolveText(TEXT.title, languageCode, 'Attendance Detail')}
       titleActions={(
         <Stack direction="row" spacing={1}>
           {typeof onClose === 'function' ? (
@@ -422,7 +661,9 @@ const AttendanceBoard = ({
               onClick={onClose}
               disabled={savingEntries}
             >
-              {closeOnSave ? '취소' : '목록'}
+              {closeOnSave
+                ? resolveText(TEXT.cancel, languageCode, 'Cancel')
+                : resolveText(TEXT.list, languageCode, 'List')}
             </Button>
           ) : null}
           <SaveButton
@@ -438,13 +679,13 @@ const AttendanceBoard = ({
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="작업자 검색"
+              placeholder={resolveText(TEXT.searchWorker, languageCode, 'Search worker')}
             />
           )}
           right={(
             <>
               <CustomDatePicker
-                label="근무일자"
+                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
                 value={selectedDate}
                 onChange={(value) => {
                   if (!value || !value.isValid?.()) return;
@@ -453,17 +694,22 @@ const AttendanceBoard = ({
                 slotProps={{ textField: { sx: { minWidth: 160 } } }}
               />
               <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel id="attendance-factory-select-label">공장</InputLabel>
+                <InputLabel id="attendance-factory-select-label">
+                  {resolveText(TEXT.factory, languageCode, 'Factory')}
+                </InputLabel>
                 <Select
                   labelId="attendance-factory-select-label"
                   value={selectedFactoryId}
-                  label="공장"
+                  label={resolveText(TEXT.factory, languageCode, 'Factory')}
                   onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
                   disabled={loadingFactories || factories.length === 0}
                 >
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
-                      {factory.name || `공장 ${factory.id}`}
+                      {factory.name ||
+                        formatTemplate(resolveText(TEXT.factoryFallback, languageCode, 'Factory {id}'), {
+                          id: factory.id,
+                        })}
                     </MenuItem>
                   ))}
                 </Select>
@@ -474,7 +720,9 @@ const AttendanceBoard = ({
                 onClick={handleClickImport}
                 disabled={!selectedFactoryId || importingFile || loadingEmployees}
               >
-                {importingFile ? '업로드 중...' : '파일 업로드'}
+                {importingFile
+                  ? resolveText(TEXT.importing, languageCode, 'Uploading...')
+                  : resolveText(TEXT.importFile, languageCode, 'Upload File')}
               </Button>
             </>
           )}
@@ -490,7 +738,11 @@ const AttendanceBoard = ({
       />
 
       <Alert severity="warning" sx={{ mb: 2 }}>
-        AT 계산은 매월 5일 기준 직전 월 데이터를 반영하며, 출퇴근 미입력 작업자는 8시간 기준으로 자동 계산됩니다.
+        {resolveText(
+          TEXT.atNotice,
+          languageCode,
+          'AT uses previous month data as of the 5th each month; workers without attendance input are auto-calculated as 8 hours.'
+        )}
       </Alert>
 
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
@@ -498,11 +750,11 @@ const AttendanceBoard = ({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>작업자</TableCell>
-                <TableCell align="center">출근</TableCell>
-                <TableCell align="center">퇴근</TableCell>
-                <TableCell align="center">근무시간</TableCell>
-                <TableCell>메모</TableCell>
+                <TableCell>{resolveText(TEXT.colWorker, languageCode, 'Worker')}</TableCell>
+                <TableCell align="center">{resolveText(TEXT.colClockIn, languageCode, 'Clock In')}</TableCell>
+                <TableCell align="center">{resolveText(TEXT.colClockOut, languageCode, 'Clock Out')}</TableCell>
+                <TableCell align="center">{resolveText(TEXT.colWorked, languageCode, 'Worked')}</TableCell>
+                <TableCell>{resolveText(TEXT.colNote, languageCode, 'Note')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -510,15 +762,15 @@ const AttendanceBoard = ({
                 colSpan={5}
                 message={
                   loadingEmployees
-                    ? '작업자 목록을 불러오는 중입니다.'
+                    ? resolveText(TEXT.loadingWorkers, languageCode, 'Loading workers...')
                     : loadingEntries
-                      ? '출퇴근 입력을 불러오는 중입니다.'
+                      ? resolveText(TEXT.loadingEntries, languageCode, 'Loading attendance entries...')
                     : !selectedFactoryId
-                      ? '공장을 먼저 선택하세요.'
+                      ? resolveText(TEXT.selectFactoryFirstForTable, languageCode, 'Select a factory first.')
                       : filteredEmployees.length === 0
                         ? searchTerm
-                          ? '검색 결과가 없습니다.'
-                          : '등록된 작업자가 없습니다.'
+                          ? resolveText(TEXT.emptySearch, languageCode, 'No matching workers found.')
+                          : resolveText(TEXT.emptyWorkers, languageCode, 'No workers registered.')
                         : ''
                 }
                 sx={{
@@ -572,7 +824,7 @@ const AttendanceBoard = ({
                         <TextField
                           size="small"
                           fullWidth
-                          placeholder="특이사항"
+                          placeholder={resolveText(TEXT.notePlaceholder, languageCode, 'Note')}
                           value={entry.note}
                           onChange={(event) =>
                             handleEntryChange(workerId, 'note', event.target.value)
@@ -590,22 +842,35 @@ const AttendanceBoard = ({
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mt: 1.5 }}>
         <Chip
           variant="outlined"
-          label={`작업자 ${formatNumberWithCommas(summary.workerCount, {
-            fallback: '0',
-            maximumFractionDigits: 0,
-          })}명`}
+          label={formatTemplate(
+            resolveText(TEXT.summaryWorkerCount, languageCode, 'Workers {count}'),
+            {
+              count: formatNumberWithCommas(summary.workerCount, {
+                fallback: '0',
+                maximumFractionDigits: 0,
+              }),
+            }
+          )}
         />
         <Chip
           variant="outlined"
-          label={`입력 완료 ${formatNumberWithCommas(summary.enteredCount, {
-            fallback: '0',
-            maximumFractionDigits: 0,
-          })}명`}
+          label={formatTemplate(
+            resolveText(TEXT.summaryEnteredCount, languageCode, 'Entered {count}'),
+            {
+              count: formatNumberWithCommas(summary.enteredCount, {
+                fallback: '0',
+                maximumFractionDigits: 0,
+              }),
+            }
+          )}
         />
         <Chip
           color="primary"
           variant="outlined"
-          label={`입력 근무합계 ${formatWorkedHours(summary.workedMinutesTotal)}`}
+          label={formatTemplate(
+            resolveText(TEXT.summaryWorkedTotal, languageCode, 'Total worked {hours}'),
+            { hours: formatWorkedHours(summary.workedMinutesTotal) }
+          )}
         />
       </Stack>
     </AppPageContainer>

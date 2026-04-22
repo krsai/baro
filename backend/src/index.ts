@@ -5571,6 +5571,66 @@ const validateWorkLogLineWorkers = async ({
     missingWorkerIds,
   };
 };
+const validateWorkLogWorkerEmploymentWindow = async ({
+  orgId,
+  factoryId,
+  workDate,
+  workerIds,
+}: {
+  orgId: number;
+  factoryId: number | null;
+  workDate: string;
+  workerIds: number[];
+}) => {
+  if (workerIds.length === 0) {
+    return {
+      status: 200,
+      error: null as string | null,
+      invalidWorkerIds: [] as number[],
+    };
+  }
+
+  const workers = await prisma.employee.findMany({
+    where: {
+      orgId,
+      id: { in: workerIds },
+      ...(factoryId !== null ? { factoryId } : {}),
+    },
+    select: {
+      id: true,
+      joinedAt: true,
+      leftAt: true,
+    },
+  });
+  const workerById = new Map<number, { joinedDateKey: string; leftDateKey: string }>();
+  workers.forEach((worker) => {
+    const workerId = toPositiveIntOrNull(worker.id);
+    if (workerId === null) return;
+    workerById.set(workerId, {
+      joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
+      leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
+    });
+  });
+
+  const invalidWorkerIds: number[] = [];
+  workerIds.forEach((workerId) => {
+    const window = workerById.get(workerId);
+    if (!window) return;
+    if (window.joinedDateKey && workDate < window.joinedDateKey) {
+      invalidWorkerIds.push(workerId);
+      return;
+    }
+    if (window.leftDateKey && workDate > window.leftDateKey) {
+      invalidWorkerIds.push(workerId);
+    }
+  });
+
+  return {
+    status: 200,
+    error: null as string | null,
+    invalidWorkerIds,
+  };
+};
 const translateWorkLogErrorMessage = (error: any) => {
   const text = resolveOptionalString(error, "") || "";
   if (!text) return "작업 기록 처리 중 오류가 발생했습니다.";
@@ -5600,6 +5660,9 @@ const translateWorkLogErrorMessage = (error: any) => {
   }
   if (text.startsWith("line worker mismatch for workDate")) {
     return "선택한 작업일 기준으로 현재 라인에 속하지 않은 작업자가 포함되어 있습니다. 라인과 작업자를 다시 확인해 주세요.";
+  }
+  if (text.startsWith("worker employment mismatch for workDate")) {
+    return "퇴사일(또는 입사일) 기준으로 입력할 수 없는 작업자가 포함되어 있습니다.";
   }
   if (text.startsWith("assignment plan not found")) {
     return "선택한 배정카드를 찾을 수 없습니다.";
@@ -5844,6 +5907,10 @@ const buildWorkLogContextResponse = async ({
           is: {
             orgId,
             ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+            AND: [
+              { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
+              { OR: [{ leftAt: null }, { leftAt: { gte: dateRange.startAt } }] },
+            ],
           },
         },
       },
@@ -11414,6 +11481,7 @@ app.put("/attendance-entries", async (req, res) => {
   }
 
   const workerIds = Array.from(new Set(normalized.rows.map((row) => row.workerId)));
+  let writableRows = normalized.rows;
   if (workerIds.length > 0) {
     const workers = await prisma.employee.findMany({
       where: {
@@ -11421,15 +11489,70 @@ app.put("/attendance-entries", async (req, res) => {
         factoryId,
         id: { in: workerIds },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        leftAt: true,
+        membership: {
+          select: {
+            role: true,
+            status: true,
+          },
+        },
+      },
     });
-    const validIds = new Set(workers.map((worker) => Number(worker.id)));
+    const workersById = new Map<
+      number,
+      {
+        membershipRole: string;
+        membershipStatus: string;
+        leftDateKey: string;
+      }
+    >();
+    workers.forEach((worker) => {
+      const workerId = toPositiveIntOrNull(worker.id);
+      if (workerId === null) return;
+      workersById.set(workerId, {
+        membershipRole: String(worker.membership?.role ?? "")
+          .trim()
+          .toUpperCase(),
+        membershipStatus: String(worker.membership?.status ?? "")
+          .trim()
+          .toUpperCase(),
+        leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
+      });
+    });
+
+    const validIds = new Set(workersById.keys());
     const invalidWorkerId = workerIds.find((workerId) => !validIds.has(workerId));
     if (invalidWorkerId !== undefined) {
       return res.status(400).json({
         ok: false,
         error: `entries has invalid workerId (${invalidWorkerId})`,
       });
+    }
+
+    const blockedWorkerIds = new Set<number>();
+    workersById.forEach((worker, workerId) => {
+      if (worker.membershipStatus !== "TERMINATED") return;
+      if (!worker.leftDateKey) return;
+      if (workDate > worker.leftDateKey) {
+        blockedWorkerIds.add(workerId);
+      }
+    });
+    if (blockedWorkerIds.size > 0) {
+      writableRows = normalized.rows.filter(
+        (row) => !blockedWorkerIds.has(row.workerId)
+      );
+    }
+
+    const adminWorkerIds = new Set<number>();
+    workersById.forEach((worker, workerId) => {
+      if (worker.membershipRole === "ADMIN") {
+        adminWorkerIds.add(workerId);
+      }
+    });
+    if (adminWorkerIds.size > 0) {
+      writableRows = writableRows.filter((row) => !adminWorkerIds.has(row.workerId));
     }
   }
 
@@ -11442,9 +11565,9 @@ app.put("/attendance-entries", async (req, res) => {
       },
     });
 
-    if (normalized.rows.length > 0) {
+    if (writableRows.length > 0) {
       await tx.attendanceEntry.createMany({
-        data: normalized.rows.map((row) => ({
+        data: writableRows.map((row) => ({
           orgId: organization.id,
           factoryId,
           workerId: row.workerId,
@@ -11641,6 +11764,25 @@ app.post("/work-logs", async (req, res) => {
     }
   }
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
+    orgId: organization.id,
+    factoryId: normalized.factoryId,
+    workDate: normalized.workDate,
+    workerIds,
+  });
+  if (employmentValidation.error) {
+    return res
+      .status(employmentValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(employmentValidation.error) });
+  }
+  if (employmentValidation.invalidWorkerIds.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `worker employment mismatch for workDate (${employmentValidation.invalidWorkerIds.join(",")})`
+      ),
+    });
+  }
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
@@ -11799,6 +11941,25 @@ app.put("/work-logs/:id", async (req, res) => {
     }
   }
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
+    orgId: organization.id,
+    factoryId: normalized.factoryId,
+    workDate: normalized.workDate,
+    workerIds,
+  });
+  if (employmentValidation.error) {
+    return res
+      .status(employmentValidation.status)
+      .json({ ok: false, error: translateWorkLogErrorMessage(employmentValidation.error) });
+  }
+  if (employmentValidation.invalidWorkerIds.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `worker employment mismatch for workDate (${employmentValidation.invalidWorkerIds.join(",")})`
+      ),
+    });
+  }
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
