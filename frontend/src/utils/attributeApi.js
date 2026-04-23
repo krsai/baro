@@ -133,6 +133,46 @@ const normalizeProcessMasterItem = (item = {}, defaultType = '') => ({
   sortOrder: normalizeSortOrder(item.sortOrder),
 });
 
+const normalizeProcessMasterRelationEntry = (item = {}, relationType = '') => {
+  const normalizedType = String(item?.type ?? relationType).trim().toUpperCase();
+  const isTargetRelation = normalizedType === 'TARGET_TARGET_SPEC';
+  const isActionRelation = normalizedType === 'ACTION_ACTION_SPEC';
+  const parentCode = normalizeProcessMasterCode(
+    item?.parentCode ??
+      (isTargetRelation ? item?.targetCode : item?.actionCode) ??
+      item?.parent?.code ??
+      item?.target?.code ??
+      item?.action?.code ??
+      item?.parent
+  );
+  const childCode = normalizeProcessMasterCode(
+    item?.childCode ??
+      (isTargetRelation ? item?.targetSpecCode : item?.actionSpecCode) ??
+      item?.child?.code ??
+      item?.targetSpec?.code ??
+      item?.actionSpec?.code ??
+      item?.child
+  );
+  return {
+    id: item.id ?? null,
+    type: normalizedType,
+    parentCode,
+    childCode,
+    ...(isTargetRelation
+      ? {
+          targetCode: parentCode,
+          targetSpecCode: childCode,
+        }
+      : {}),
+    ...(isActionRelation
+      ? {
+          actionCode: parentCode,
+          actionSpecCode: childCode,
+        }
+      : {}),
+  };
+};
+
 const normalizeProcessMasterData = (data = {}) => {
   const locations = normalizeArray(data?.locations ?? data?.parts).map((item) =>
     normalizeProcessMasterItem(item, 'LOCATION')
@@ -149,6 +189,18 @@ const normalizeProcessMasterData = (data = {}) => {
   const actionSpecs = normalizeArray(data?.actionSpecs).map((item) =>
     normalizeProcessMasterItem(item, 'ACTION_SPEC')
   );
+  const relationSource =
+    data?.relations && typeof data.relations === 'object' ? data.relations : data;
+  const targetToTargetSpecs = normalizeArray(
+    relationSource?.targetToTargetSpecs ?? relationSource?.targetSpecLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'TARGET_TARGET_SPEC'))
+    .filter((item) => item.parentCode && item.childCode);
+  const actionToActionSpecs = normalizeArray(
+    relationSource?.actionToActionSpecs ?? relationSource?.actionSpecLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'ACTION_ACTION_SPEC'))
+    .filter((item) => item.parentCode && item.childCode);
 
   return {
     locations,
@@ -156,6 +208,12 @@ const normalizeProcessMasterData = (data = {}) => {
     targetSpecs,
     actions,
     actionSpecs,
+    targetToTargetSpecs,
+    actionToActionSpecs,
+    relations: {
+      targetToTargetSpecs,
+      actionToActionSpecs,
+    },
     // Backward compatibility for screens not migrated yet.
     parts: locations,
     specs: targetSpecs,
@@ -214,6 +272,41 @@ const normalizeProcessMasterPayload = (payload = {}) => {
       sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
     }));
   }
+
+  const relationSource =
+    payload?.relations && typeof payload.relations === 'object'
+      ? payload.relations
+      : payload;
+  const targetToTargetSpecs = normalizeArray(
+    relationSource?.targetToTargetSpecs ?? relationSource?.targetSpecLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'TARGET_TARGET_SPEC'))
+    .filter((item) => item.parentCode && item.childCode)
+    .map((item) => ({
+      id: item.id ?? undefined,
+      type: 'TARGET_TARGET_SPEC',
+      parentCode: item.parentCode,
+      childCode: item.childCode,
+      targetCode: item.parentCode,
+      targetSpecCode: item.childCode,
+    }));
+  const actionToActionSpecs = normalizeArray(
+    relationSource?.actionToActionSpecs ?? relationSource?.actionSpecLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'ACTION_ACTION_SPEC'))
+    .filter((item) => item.parentCode && item.childCode)
+    .map((item) => ({
+      id: item.id ?? undefined,
+      type: 'ACTION_ACTION_SPEC',
+      parentCode: item.parentCode,
+      childCode: item.childCode,
+      actionCode: item.parentCode,
+      actionSpecCode: item.childCode,
+    }));
+  normalized.relations = {
+    targetToTargetSpecs,
+    actionToActionSpecs,
+  };
 
   return normalized;
 };

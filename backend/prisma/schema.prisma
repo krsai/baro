@@ -105,9 +105,26 @@ model ProcessMasterOption {
   createdAt DateTime                @default(now())
   createdBy String   @default("system@baro.local")
   updatedAt DateTime                @updatedAt
+  parentRelations ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationParent")
+  childRelations  ProcessMasterOptionRelation[] @relation("ProcessMasterOptionRelationChild")
 
   @@unique([type, code])
   @@index([type, sortOrder, id])
+}
+
+model ProcessMasterOptionRelation {
+  id             Int                 @id @default(autoincrement())
+  type           String
+  parentOptionId Int
+  childOptionId  Int
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  parentOption   ProcessMasterOption @relation("ProcessMasterOptionRelationParent", fields: [parentOptionId], references: [id], onDelete: Cascade)
+  childOption    ProcessMasterOption @relation("ProcessMasterOptionRelationChild", fields: [childOptionId], references: [id], onDelete: Cascade)
+
+  @@unique([type, parentOptionId, childOptionId])
+  @@index([parentOptionId])
+  @@index([childOptionId])
 }
 
 model Organization {

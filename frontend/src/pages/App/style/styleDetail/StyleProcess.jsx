@@ -1089,6 +1089,8 @@ const StyleProcess = ({
     targetSpecs: [],
     actions: [],
     actionSpecs: [],
+    targetToTargetSpecs: [],
+    actionToActionSpecs: [],
   });
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
@@ -1110,6 +1112,16 @@ const StyleProcess = ({
             : [],
           actions: Array.isArray(data?.actions) ? data.actions : [],
           actionSpecs: Array.isArray(data?.actionSpecs) ? data.actionSpecs : [],
+          targetToTargetSpecs: Array.isArray(
+            data?.relations?.targetToTargetSpecs ?? data?.targetToTargetSpecs
+          )
+            ? (data?.relations?.targetToTargetSpecs ?? data?.targetToTargetSpecs)
+            : [],
+          actionToActionSpecs: Array.isArray(
+            data?.relations?.actionToActionSpecs ?? data?.actionToActionSpecs
+          )
+            ? (data?.relations?.actionToActionSpecs ?? data?.actionToActionSpecs)
+            : [],
         });
       } catch (_error) {
         if (!active) return;
@@ -1119,6 +1131,8 @@ const StyleProcess = ({
           targetSpecs: [],
           actions: [],
           actionSpecs: [],
+          targetToTargetSpecs: [],
+          actionToActionSpecs: [],
         });
         setOptionsError(
           languageCode === 'ko'
@@ -1395,6 +1409,72 @@ const StyleProcess = ({
     () => toPositiveInt(timeRefQuantity, DEFAULT_TIME_REF_QUANTITY),
     [timeRefQuantity]
   );
+  const targetToTargetSpecRelationMap = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(processMasterOptions.targetToTargetSpecs)
+      ? processMasterOptions.targetToTargetSpecs
+      : []
+    ).forEach((row) => {
+      const parentCode = normalizeStyleProcessCodeSegment(
+        row?.parentCode ?? row?.targetCode
+      );
+      const childCode = normalizeStyleProcessCodeSegment(
+        row?.childCode ?? row?.targetSpecCode
+      );
+      if (!parentCode || !childCode) return;
+      const existing = map.get(parentCode);
+      if (existing instanceof Set) {
+        existing.add(childCode);
+      } else {
+        map.set(parentCode, new Set([childCode]));
+      }
+    });
+    return map;
+  }, [processMasterOptions.targetToTargetSpecs]);
+  const actionToActionSpecRelationMap = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(processMasterOptions.actionToActionSpecs)
+      ? processMasterOptions.actionToActionSpecs
+      : []
+    ).forEach((row) => {
+      const parentCode = normalizeStyleProcessCodeSegment(
+        row?.parentCode ?? row?.actionCode
+      );
+      const childCode = normalizeStyleProcessCodeSegment(
+        row?.childCode ?? row?.actionSpecCode
+      );
+      if (!parentCode || !childCode) return;
+      const existing = map.get(parentCode);
+      if (existing instanceof Set) {
+        existing.add(childCode);
+      } else {
+        map.set(parentCode, new Set([childCode]));
+      }
+    });
+    return map;
+  }, [processMasterOptions.actionToActionSpecs]);
+  const filteredTargetSpecOptions = useMemo(() => {
+    const selectedTargetCode = normalizeStyleProcessCodeSegment(addDraft?.target?.code);
+    if (!selectedTargetCode) return targetSpecOptions;
+    const linkedSpecCodes = targetToTargetSpecRelationMap.get(selectedTargetCode);
+    if (!(linkedSpecCodes instanceof Set) || linkedSpecCodes.size === 0) {
+      return targetSpecOptions;
+    }
+    return targetSpecOptions.filter((option) =>
+      linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+    );
+  }, [addDraft?.target?.code, targetSpecOptions, targetToTargetSpecRelationMap]);
+  const filteredActionSpecOptions = useMemo(() => {
+    const selectedActionCode = normalizeStyleProcessCodeSegment(addDraft?.action?.code);
+    if (!selectedActionCode) return actionSpecOptions;
+    const linkedSpecCodes = actionToActionSpecRelationMap.get(selectedActionCode);
+    if (!(linkedSpecCodes instanceof Set) || linkedSpecCodes.size === 0) {
+      return actionSpecOptions;
+    }
+    return actionSpecOptions.filter((option) =>
+      linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+    );
+  }, [actionSpecOptions, actionToActionSpecRelationMap, addDraft?.action?.code]);
   const renderCustomOptionTags = useCallback(
     (value, getTagProps, isNewOptionResolver) =>
       value.map((option, index) => {
@@ -1559,22 +1639,43 @@ const StyleProcess = ({
         inputText: targetInputValue,
         options: targetOptions,
         onMatch: (matchedOption) => {
-          setAddDraft((prev) => ({
-            ...prev,
-            target: normalizeProcessCompositionEntry(matchedOption, 'target'),
-          }));
+          const normalizedTarget = normalizeProcessCompositionEntry(matchedOption, 'target');
+          const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+            normalizedTarget?.code
+          );
+          setAddDraft((prev) => {
+            const currentTargetSpecCode = normalizeStyleProcessCodeSegment(prev?.targetSpec?.code);
+            const linkedTargetSpecCodes = normalizedTargetCode
+              ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+              : null;
+            const shouldKeepCurrentTargetSpec =
+              !(linkedTargetSpecCodes instanceof Set) ||
+              linkedTargetSpecCodes.size === 0 ||
+              !currentTargetSpecCode ||
+              linkedTargetSpecCodes.has(currentTargetSpecCode);
+            return {
+              ...prev,
+              target: normalizedTarget,
+              targetSpec: shouldKeepCurrentTargetSpec ? prev?.targetSpec ?? null : null,
+            };
+          });
           setTargetInputValue('');
           setAddError('');
         },
       }),
-    [targetInputValue, targetOptions, trySelectExistingOptionOnEnter]
+    [
+      targetInputValue,
+      targetOptions,
+      targetToTargetSpecRelationMap,
+      trySelectExistingOptionOnEnter,
+    ]
   );
 
   const handleSpecEnterSelect = useCallback(
     (event) =>
       trySelectExistingOptionOnEnter(event, {
         inputText: specInputValue,
-        options: targetSpecOptions,
+        options: filteredTargetSpecOptions,
         onMatch: (matchedOption) => {
           const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'targetSpec');
           setAddDraft((prev) => ({
@@ -1585,7 +1686,7 @@ const StyleProcess = ({
           setAddError('');
         },
       }),
-    [specInputValue, targetSpecOptions, trySelectExistingOptionOnEnter]
+    [filteredTargetSpecOptions, specInputValue, trySelectExistingOptionOnEnter]
   );
 
   const handleActionEnterSelect = useCallback(
@@ -1594,21 +1695,42 @@ const StyleProcess = ({
         inputText: addActionInput,
         options: actionOptions,
         onMatch: (matchedOption) => {
-          setAddDraft((prev) => ({
-            ...prev,
-            action: normalizeProcessCompositionEntry(matchedOption, 'action'),
-          }));
+          const normalizedAction = normalizeProcessCompositionEntry(matchedOption, 'action');
+          const normalizedActionCode = normalizeStyleProcessCodeSegment(
+            normalizedAction?.code
+          );
+          setAddDraft((prev) => {
+            const currentActionSpecCode = normalizeStyleProcessCodeSegment(prev?.actionSpec?.code);
+            const linkedActionSpecCodes = normalizedActionCode
+              ? actionToActionSpecRelationMap.get(normalizedActionCode)
+              : null;
+            const shouldKeepCurrentActionSpec =
+              !(linkedActionSpecCodes instanceof Set) ||
+              linkedActionSpecCodes.size === 0 ||
+              !currentActionSpecCode ||
+              linkedActionSpecCodes.has(currentActionSpecCode);
+            return {
+              ...prev,
+              action: normalizedAction,
+              actionSpec: shouldKeepCurrentActionSpec ? prev?.actionSpec ?? null : null,
+            };
+          });
           setAddActionInput('');
           setAddError('');
         },
       }),
-    [actionOptions, addActionInput, trySelectExistingOptionOnEnter]
+    [
+      actionOptions,
+      actionToActionSpecRelationMap,
+      addActionInput,
+      trySelectExistingOptionOnEnter,
+    ]
   );
   const handleActionSpecEnterSelect = useCallback(
     (event) =>
       trySelectExistingOptionOnEnter(event, {
         inputText: actionSpecInputValue,
-        options: actionSpecOptions,
+        options: filteredActionSpecOptions,
         onMatch: (matchedOption) => {
           setAddDraft((prev) => ({
             ...prev,
@@ -1618,7 +1740,7 @@ const StyleProcess = ({
           setAddError('');
         },
       }),
-    [actionSpecInputValue, actionSpecOptions, trySelectExistingOptionOnEnter]
+    [actionSpecInputValue, filteredActionSpecOptions, trySelectExistingOptionOnEnter]
   );
 
   useEffect(() => {
@@ -2216,10 +2338,28 @@ const StyleProcess = ({
                 value={addDraft.target}
                 inputValue={targetInputValue}
                 onChange={(_event, value) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    target: normalizeProcessCompositionEntry(value, 'target'),
-                  }));
+                  const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
+                  const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+                    normalizedTarget?.code
+                  );
+                  setAddDraft((prev) => {
+                    const currentTargetSpecCode = normalizeStyleProcessCodeSegment(
+                      prev?.targetSpec?.code
+                    );
+                    const linkedTargetSpecCodes = normalizedTargetCode
+                      ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+                      : null;
+                    const shouldKeepCurrentTargetSpec =
+                      !(linkedTargetSpecCodes instanceof Set) ||
+                      linkedTargetSpecCodes.size === 0 ||
+                      !currentTargetSpecCode ||
+                      linkedTargetSpecCodes.has(currentTargetSpecCode);
+                    return {
+                      ...prev,
+                      target: normalizedTarget,
+                      targetSpec: shouldKeepCurrentTargetSpec ? prev?.targetSpec ?? null : null,
+                    };
+                  });
                   setAddError('');
                 }}
                 onInputChange={(_event, value) => {
@@ -2244,7 +2384,7 @@ const StyleProcess = ({
                 forcePopupIcon
                 autoHighlight
                 size="small"
-                options={targetSpecOptions}
+                options={filteredTargetSpecOptions}
                 value={addDraft.targetSpec}
                 inputValue={specInputValue}
                 onChange={(_event, value) => {
@@ -2281,10 +2421,28 @@ const StyleProcess = ({
                 value={addDraft.action}
                 inputValue={addActionInput}
                 onChange={(_event, value) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    action: normalizeProcessCompositionEntry(value, 'action'),
-                  }));
+                  const normalizedAction = normalizeProcessCompositionEntry(value, 'action');
+                  const normalizedActionCode = normalizeStyleProcessCodeSegment(
+                    normalizedAction?.code
+                  );
+                  setAddDraft((prev) => {
+                    const currentActionSpecCode = normalizeStyleProcessCodeSegment(
+                      prev?.actionSpec?.code
+                    );
+                    const linkedActionSpecCodes = normalizedActionCode
+                      ? actionToActionSpecRelationMap.get(normalizedActionCode)
+                      : null;
+                    const shouldKeepCurrentActionSpec =
+                      !(linkedActionSpecCodes instanceof Set) ||
+                      linkedActionSpecCodes.size === 0 ||
+                      !currentActionSpecCode ||
+                      linkedActionSpecCodes.has(currentActionSpecCode);
+                    return {
+                      ...prev,
+                      action: normalizedAction,
+                      actionSpec: shouldKeepCurrentActionSpec ? prev?.actionSpec ?? null : null,
+                    };
+                  });
                   setAddError('');
                 }}
                 onInputChange={(_event, value) => {
@@ -2310,7 +2468,7 @@ const StyleProcess = ({
                 forcePopupIcon
                 autoHighlight
                 size="small"
-                options={actionSpecOptions}
+                options={filteredActionSpecOptions}
                 value={addDraft.actionSpec}
                 inputValue={actionSpecInputValue}
                 onChange={(_event, value) => {

@@ -8565,6 +8565,12 @@ type ProcessMasterOptionGroupKey =
   | "actions"
   | "actionSpecs";
 
+type ProcessMasterRelationType = "TARGET_TARGET_SPEC" | "ACTION_ACTION_SPEC";
+
+type ProcessMasterRelationGroupKey =
+  | "targetToTargetSpecs"
+  | "actionToActionSpecs";
+
 type ProcessMasterOptionRow = {
   id: number;
   type: ProcessMasterOptionType;
@@ -8574,6 +8580,15 @@ type ProcessMasterOptionRow = {
   nameEn: string | null;
   nameVi: string | null;
   sortOrder: number;
+};
+
+type ProcessMasterRelationRow = {
+  id: number;
+  type: ProcessMasterRelationType;
+  parentOptionId: number;
+  childOptionId: number;
+  parentCode: string;
+  childCode: string;
 };
 
 const PROCESS_MASTER_TYPE_KEYS = [
@@ -8611,6 +8626,31 @@ const PROCESS_MASTER_FALLBACK_CODE_BY_TYPE: Record<ProcessMasterOptionType, stri
   ACTION: "ACTION",
   TARGET_SPEC: "TARGET_SPEC",
   ACTION_SPEC: "ACTION_SPEC",
+};
+
+const PROCESS_MASTER_RELATION_TYPE_KEYS = [
+  "TARGET_TARGET_SPEC",
+  "ACTION_ACTION_SPEC",
+] as const;
+
+const PROCESS_MASTER_RELATION_META: Record<
+  ProcessMasterRelationType,
+  {
+    groupKey: ProcessMasterRelationGroupKey;
+    parentType: ProcessMasterOptionType;
+    childType: ProcessMasterOptionType;
+  }
+> = {
+  TARGET_TARGET_SPEC: {
+    groupKey: "targetToTargetSpecs",
+    parentType: "TARGET",
+    childType: "TARGET_SPEC",
+  },
+  ACTION_ACTION_SPEC: {
+    groupKey: "actionToActionSpecs",
+    parentType: "ACTION",
+    childType: "ACTION_SPEC",
+  },
 };
 
 type ProcessMasterSeedItem = {
@@ -8717,6 +8757,31 @@ const normalizeProcessMasterType = (value: any): ProcessMasterOptionType | null 
   return null;
 };
 
+const normalizeProcessMasterRelationType = (
+  value: any
+): ProcessMasterRelationType | null => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (
+    normalized === "TARGET_TARGET_SPEC" ||
+    normalized === "TARGET_TO_TARGET_SPEC" ||
+    normalized === "TARGET_SPEC_LINK"
+  ) {
+    return "TARGET_TARGET_SPEC";
+  }
+  if (
+    normalized === "ACTION_ACTION_SPEC" ||
+    normalized === "ACTION_TO_ACTION_SPEC" ||
+    normalized === "ACTION_SPEC_LINK"
+  ) {
+    return "ACTION_ACTION_SPEC";
+  }
+  return null;
+};
+
 const normalizeProcessMasterCode = (value: any): string =>
   normalizeManagedAttributeCode(value).replace(/-/g, "_");
 
@@ -8777,6 +8842,63 @@ const groupProcessMasterOptions = (rows: any[] = []) => {
     // Backward compatibility for existing clients.
     parts: grouped.locations,
     specs: grouped.targetSpecs,
+  };
+};
+
+const toProcessMasterRelationResponse = (row: any) => ({
+  id: toPositiveIntOrNull(row?.id),
+  type: normalizeProcessMasterRelationType(row?.type),
+  parentOptionId: toPositiveIntOrNull(row?.parentOptionId),
+  childOptionId: toPositiveIntOrNull(row?.childOptionId),
+  parentCode: normalizeProcessMasterCode(row?.parentCode),
+  childCode: normalizeProcessMasterCode(row?.childCode),
+});
+
+const groupProcessMasterRelations = (rows: any[] = []) => {
+  const grouped = {
+    targetToTargetSpecs: [] as any[],
+    actionToActionSpecs: [] as any[],
+  };
+
+  rows.forEach((row) => {
+    const normalized = toProcessMasterRelationResponse(row);
+    const type = normalizeProcessMasterRelationType(normalized.type);
+    if (!type) return;
+    const meta = PROCESS_MASTER_RELATION_META[type];
+    if (!meta) return;
+    const relation = {
+      id: normalized.id,
+      type,
+      parentOptionId: normalized.parentOptionId,
+      childOptionId: normalized.childOptionId,
+      parentCode: normalized.parentCode,
+      childCode: normalized.childCode,
+      ...(type === "TARGET_TARGET_SPEC"
+        ? {
+            targetCode: normalized.parentCode,
+            targetSpecCode: normalized.childCode,
+          }
+        : {
+            actionCode: normalized.parentCode,
+            actionSpecCode: normalized.childCode,
+          }),
+    };
+    grouped[meta.groupKey].push(relation);
+  });
+
+  return grouped;
+};
+
+const buildProcessMasterOptionsResponse = (
+  optionRows: any[] = [],
+  relationRows: any[] = []
+) => {
+  const groupedOptions = groupProcessMasterOptions(optionRows);
+  const groupedRelations = groupProcessMasterRelations(relationRows);
+  return {
+    ...groupedOptions,
+    ...groupedRelations,
+    relations: groupedRelations,
   };
 };
 
@@ -8897,6 +9019,72 @@ const updateProcessMasterOptionRow = async (row: {
       "updatedAt" = NOW()
     WHERE "id" = ${row.id}
   `);
+};
+
+const listProcessMasterOptionRelations = async (): Promise<
+  ProcessMasterRelationRow[]
+> =>
+  prisma.$queryRaw<ProcessMasterRelationRow[]>(Prisma.sql`
+    SELECT
+      relation."id",
+      relation."type",
+      relation."parentOptionId",
+      relation."childOptionId",
+      parent."code" AS "parentCode",
+      child."code" AS "childCode"
+    FROM "ProcessMasterOptionRelation" relation
+    JOIN "ProcessMasterOption" parent
+      ON parent."id" = relation."parentOptionId"
+    JOIN "ProcessMasterOption" child
+      ON child."id" = relation."childOptionId"
+    ORDER BY
+      relation."type" ASC,
+      parent."sortOrder" ASC,
+      parent."id" ASC,
+      child."sortOrder" ASC,
+      child."id" ASC,
+      relation."id" ASC
+  `);
+
+const deleteProcessMasterOptionRelationsByIds = async (ids: number[]) => {
+  if (ids.length === 0) return;
+  await prisma.$executeRaw(
+    Prisma.sql`
+      DELETE FROM "ProcessMasterOptionRelation"
+      WHERE "id" IN (${Prisma.join(ids)})
+    `
+  );
+};
+
+const insertProcessMasterOptionRelations = async (
+  rows: Array<{
+    type: ProcessMasterRelationType;
+    parentOptionId: number;
+    childOptionId: number;
+  }>
+) => {
+  if (rows.length === 0) return;
+  await prisma.$executeRaw(
+    Prisma.sql`
+      INSERT INTO "ProcessMasterOptionRelation" (
+        "type",
+        "parentOptionId",
+        "childOptionId",
+        "createdAt",
+        "updatedAt"
+      )
+      VALUES ${Prisma.join(
+        rows.map((row) => Prisma.sql`(
+          ${row.type},
+          ${row.parentOptionId},
+          ${row.childOptionId},
+          NOW(),
+          NOW()
+        )`)
+      )}
+      ON CONFLICT ("type", "parentOptionId", "childOptionId") DO NOTHING
+    `
+  );
 };
 
 const normalizeProcessMasterMatchToken = (value: any): string =>
@@ -9411,6 +9599,198 @@ const syncProcessMasterOptions = async (payload: any) => {
   }
 
   return listProcessMasterOptions();
+};
+
+const parseProcessMasterRelationPayload = (payload: any) => {
+  const relationContainer =
+    payload && typeof payload === "object" && payload.relations && typeof payload.relations === "object"
+      ? payload.relations
+      : payload;
+  const hasTargetRelationKey = Boolean(
+    relationContainer &&
+      typeof relationContainer === "object" &&
+      (Object.prototype.hasOwnProperty.call(
+        relationContainer,
+        "targetToTargetSpecs"
+      ) ||
+        Object.prototype.hasOwnProperty.call(
+          relationContainer,
+          "targetSpecLinks"
+        ))
+  );
+  const hasActionRelationKey = Boolean(
+    relationContainer &&
+      typeof relationContainer === "object" &&
+      (Object.prototype.hasOwnProperty.call(
+        relationContainer,
+        "actionToActionSpecs"
+      ) ||
+        Object.prototype.hasOwnProperty.call(
+          relationContainer,
+          "actionSpecLinks"
+        ))
+  );
+  const providedTypes = new Set<ProcessMasterRelationType>();
+  const entriesByType = new Map<
+    ProcessMasterRelationType,
+    Array<{ parentCode: string; childCode: string }>
+  >();
+
+  const collectEntries = (
+    type: ProcessMasterRelationType,
+    items: any[],
+    resolveCodes: (item: any) => { parentCode: string; childCode: string }
+  ) => {
+    providedTypes.add(type);
+    const dedup = new Set<string>();
+    const collected: Array<{ parentCode: string; childCode: string }> = [];
+
+    ensureArray(items).forEach((item) => {
+      const { parentCode, childCode } = resolveCodes(item);
+      if (!parentCode || !childCode) return;
+      const key = `${parentCode}:${childCode}`;
+      if (dedup.has(key)) return;
+      dedup.add(key);
+      collected.push({ parentCode, childCode });
+    });
+
+    entriesByType.set(type, collected);
+  };
+
+  if (hasTargetRelationKey) {
+    collectEntries(
+      "TARGET_TARGET_SPEC",
+      relationContainer?.targetToTargetSpecs ?? relationContainer?.targetSpecLinks,
+      (item) => ({
+        parentCode: normalizeProcessMasterCode(
+          item?.parentCode ?? item?.targetCode ?? item?.target?.code ?? item?.target
+        ),
+        childCode: normalizeProcessMasterCode(
+          item?.childCode ??
+            item?.targetSpecCode ??
+            item?.targetSpec?.code ??
+            item?.targetSpec
+        ),
+      })
+    );
+  }
+
+  if (hasActionRelationKey) {
+    collectEntries(
+      "ACTION_ACTION_SPEC",
+      relationContainer?.actionToActionSpecs ?? relationContainer?.actionSpecLinks,
+      (item) => ({
+        parentCode: normalizeProcessMasterCode(
+          item?.parentCode ?? item?.actionCode ?? item?.action?.code ?? item?.action
+        ),
+        childCode: normalizeProcessMasterCode(
+          item?.childCode ??
+            item?.actionSpecCode ??
+            item?.actionSpec?.code ??
+            item?.actionSpec
+        ),
+      })
+    );
+  }
+
+  return {
+    hasProvidedKeys: hasTargetRelationKey || hasActionRelationKey,
+    providedTypes,
+    entriesByType,
+  };
+};
+
+const syncProcessMasterRelations = async ({
+  payload,
+  processMasterRows,
+}: {
+  payload: any;
+  processMasterRows: ProcessMasterOptionRow[];
+}) => {
+  const parsedPayload = parseProcessMasterRelationPayload(payload);
+  if (!parsedPayload.hasProvidedKeys) {
+    return listProcessMasterOptionRelations();
+  }
+
+  const optionCodeLookupByType = new Map<
+    ProcessMasterOptionType,
+    Map<string, number>
+  >();
+  PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+    optionCodeLookupByType.set(typeKey as ProcessMasterOptionType, new Map());
+  });
+  processMasterRows.forEach((row) => {
+    const type = normalizeProcessMasterType(row?.type);
+    const code = normalizeProcessMasterCode(row?.code);
+    if (!type || !code) return;
+    const typeMap = optionCodeLookupByType.get(type);
+    if (!typeMap) return;
+    typeMap.set(code, row.id);
+  });
+
+  const existingRelations = await listProcessMasterOptionRelations();
+  for (const relationType of parsedPayload.providedTypes) {
+    const meta = PROCESS_MASTER_RELATION_META[relationType];
+    if (!meta) continue;
+    const parentLookup = optionCodeLookupByType.get(meta.parentType) ?? new Map();
+    const childLookup = optionCodeLookupByType.get(meta.childType) ?? new Map();
+    const desiredTuples = parsedPayload.entriesByType.get(relationType) ?? [];
+
+    const desiredLinks: Array<{
+      type: ProcessMasterRelationType;
+      parentOptionId: number;
+      childOptionId: number;
+    }> = [];
+    const desiredKeySet = new Set<string>();
+
+    desiredTuples.forEach(({ parentCode, childCode }) => {
+      const parentOptionId = parentLookup.get(parentCode);
+      const childOptionId = childLookup.get(childCode);
+      if (!parentOptionId || !childOptionId) return;
+      const key = `${parentOptionId}:${childOptionId}`;
+      if (desiredKeySet.has(key)) return;
+      desiredKeySet.add(key);
+      desiredLinks.push({
+        type: relationType,
+        parentOptionId,
+        childOptionId,
+      });
+    });
+
+    const existingByType = existingRelations.filter(
+      (row) => normalizeProcessMasterRelationType(row?.type) === relationType
+    );
+    const existingKeyToRow = new Map<string, ProcessMasterRelationRow>();
+    existingByType.forEach((row) => {
+      const parentOptionId = toPositiveIntOrNull(row?.parentOptionId);
+      const childOptionId = toPositiveIntOrNull(row?.childOptionId);
+      if (!parentOptionId || !childOptionId) return;
+      existingKeyToRow.set(`${parentOptionId}:${childOptionId}`, row);
+    });
+
+    const deleteIds = existingByType
+      .filter((row) => {
+        const parentOptionId = toPositiveIntOrNull(row?.parentOptionId);
+        const childOptionId = toPositiveIntOrNull(row?.childOptionId);
+        if (!parentOptionId || !childOptionId) return true;
+        return !desiredKeySet.has(`${parentOptionId}:${childOptionId}`);
+      })
+      .map((row) => toPositiveIntOrNull(row?.id))
+      .filter((id): id is number => id !== null);
+
+    const creates = desiredLinks.filter(
+      (row) => !existingKeyToRow.has(`${row.parentOptionId}:${row.childOptionId}`)
+    );
+
+    if (deleteIds.length > 0) {
+      await deleteProcessMasterOptionRelationsByIds(deleteIds);
+    }
+    if (creates.length > 0) {
+      await insertProcessMasterOptionRelations(creates);
+    }
+  }
+
+  return listProcessMasterOptionRelations();
 };
 
 type ProcessMasterStoreClient = Prisma.TransactionClient | typeof prisma;
@@ -14459,8 +14839,10 @@ app.get("/process-master-options", async (req, res) => {
   }
 
   await ensureProcessMasterOptionTypeSchemaReady();
+  await ensureProcessMasterOptionRelationSchemaReady();
   const rows = await ensureDefaultProcessMasterOptions();
-  return res.json(groupProcessMasterOptions(rows));
+  const relations = await listProcessMasterOptionRelations();
+  return res.json(buildProcessMasterOptionsResponse(rows, relations));
 });
 
 app.put("/process-master-options", async (req, res, next) => {
@@ -14469,12 +14851,18 @@ app.put("/process-master-options", async (req, res, next) => {
 
   try {
     await ensureProcessMasterOptionTypeSchemaReady();
+    await ensureProcessMasterOptionRelationSchemaReady();
     await ensureDefaultProcessMasterOptions();
-    const rows = await syncProcessMasterOptions(req.body ?? {});
+    const payload = req.body ?? {};
+    const rows = await syncProcessMasterOptions(payload);
+    const relations = await syncProcessMasterRelations({
+      payload,
+      processMasterRows: rows,
+    });
     await syncStyleProcessCompositionNamesWithMasterOptions({
       processMasterRows: rows,
     });
-    return res.json(groupProcessMasterOptions(rows));
+    return res.json(buildProcessMasterOptionsResponse(rows, relations));
   } catch (error) {
     if (isProcessMasterOptionInUseError(error)) {
       const usageCount = Number(error.usageCount || 0);
@@ -15175,6 +15563,50 @@ const ensureProcessMasterOptionTypeSchemaReady = async () => {
   }
 };
 
+const ensureProcessMasterOptionRelationSchemaReady = async () => {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "ProcessMasterOptionRelation" (
+      "id" SERIAL PRIMARY KEY,
+      "type" TEXT NOT NULL,
+      "parentOptionId" INTEGER NOT NULL,
+      "childOptionId" INTEGER NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+      CONSTRAINT "ProcessMasterOptionRelation_parentOptionId_fkey"
+        FOREIGN KEY ("parentOptionId")
+        REFERENCES "ProcessMasterOption"("id")
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+      CONSTRAINT "ProcessMasterOptionRelation_childOptionId_fkey"
+        FOREIGN KEY ("childOptionId")
+        REFERENCES "ProcessMasterOption"("id")
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+    );
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "ProcessMasterOptionRelation_type_parent_child_key"
+      ON "ProcessMasterOptionRelation" ("type", "parentOptionId", "childOptionId");
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ProcessMasterOptionRelation_parentOptionId_idx"
+      ON "ProcessMasterOptionRelation" ("parentOptionId");
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "ProcessMasterOptionRelation_childOptionId_idx"
+      ON "ProcessMasterOptionRelation" ("childOptionId");
+  `);
+
+  const allowedTypesSql = PROCESS_MASTER_RELATION_TYPE_KEYS.map(
+    (type) => `'${type}'`
+  ).join(", ");
+  await prisma.$executeRawUnsafe(`
+    DELETE FROM "ProcessMasterOptionRelation"
+    WHERE "type" NOT IN (${allowedTypesSql});
+  `);
+};
+
 type StartupLifecycleState = "booting" | "ready" | "error";
 
 let startupLifecycleState: StartupLifecycleState = "booting";
@@ -15200,6 +15632,7 @@ const bootstrapApplicationServices = async () => {
     await ensureDatabaseReady();
     await ensureWorkOrderStatusSchemaReady();
     await ensureProcessMasterOptionTypeSchemaReady();
+    await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();
     await ensureAtAutoSyncRunHistoryTable();
     startAutoAtSyncScheduler();

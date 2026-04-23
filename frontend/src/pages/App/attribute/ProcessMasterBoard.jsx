@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Autocomplete,
   Alert,
   Box,
   Button,
@@ -38,17 +39,30 @@ const MASTER_SECTIONS = [
   { key: 'actionSpecs', title: '동작 규격' },
 ];
 
+const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs'];
+
 const createEmptyMasterData = () => ({
   locations: [],
   targets: [],
   actions: [],
   targetSpecs: [],
   actionSpecs: [],
+  targetToTargetSpecs: [],
+  actionToActionSpecs: [],
 });
 
 const toTrimmedText = (value) => String(value ?? '').trim();
 const normalizeCodeKey = (value) => toTrimmedText(value).toUpperCase();
 const EMPTY_CODE_SET = new Set();
+const normalizeRelationCode = (value) =>
+  String(value ?? '')
+    .trim()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_{2,}/g, '_');
 
 const collectDuplicateCodeSet = (rows = []) => {
   const codeCountMap = new Map();
@@ -103,12 +117,60 @@ const normalizeMasterRows = (rows = []) =>
     sortOrder: Number(item.sortOrder) || index + 1,
   }));
 
+const normalizeRelationRows = (
+  rows = [],
+  {
+    type,
+    parentCodeKey,
+    childCodeKey,
+  }
+) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((item, index) => {
+      const parentCode = normalizeRelationCode(item?.parentCode ?? item?.[parentCodeKey]);
+      const childCode = normalizeRelationCode(item?.childCode ?? item?.[childCodeKey]);
+      return {
+        id: item.id ?? `rel-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        parentCode,
+        childCode,
+      };
+    })
+    .filter((item) => item.parentCode && item.childCode)
+    .sort((left, right) => {
+      const parentCompare = left.parentCode.localeCompare(right.parentCode, 'en-US', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+      if (parentCompare !== 0) return parentCompare;
+      return left.childCode.localeCompare(right.childCode, 'en-US', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    });
+
 const normalizeMasterData = (data = {}) => ({
   locations: normalizeMasterRows(data?.locations ?? data?.parts),
   targets: normalizeMasterRows(data?.targets),
   actions: normalizeMasterRows(data?.actions),
   targetSpecs: normalizeMasterRows(data?.targetSpecs ?? data?.specs),
   actionSpecs: normalizeMasterRows(data?.actionSpecs),
+  targetToTargetSpecs: normalizeRelationRows(
+    data?.relations?.targetToTargetSpecs ?? data?.targetToTargetSpecs,
+    {
+      type: 'TARGET_TARGET_SPEC',
+      parentCodeKey: 'targetCode',
+      childCodeKey: 'targetSpecCode',
+    }
+  ),
+  actionToActionSpecs: normalizeRelationRows(
+    data?.relations?.actionToActionSpecs ?? data?.actionToActionSpecs,
+    {
+      type: 'ACTION_ACTION_SPEC',
+      parentCodeKey: 'actionCode',
+      childCodeKey: 'actionSpecCode',
+    }
+  ),
 });
 
 const areMasterRowsEqual = (leftRows = [], rightRows = []) => {
@@ -123,6 +185,23 @@ const areMasterRowsEqual = (leftRows = [], rightRows = []) => {
       left.nameEn !== right.nameEn ||
       left.nameVi !== right.nameVi ||
       left.sortOrder !== right.sortOrder
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const areRelationRowsEqual = (leftRows = [], rightRows = []) => {
+  if (leftRows.length !== rightRows.length) return false;
+  for (let index = 0; index < leftRows.length; index += 1) {
+    const left = leftRows[index] || {};
+    const right = rightRows[index] || {};
+    if (
+      left.id !== right.id ||
+      left.type !== right.type ||
+      left.parentCode !== right.parentCode ||
+      left.childCode !== right.childCode
     ) {
       return false;
     }
@@ -316,6 +395,131 @@ const ProcessMasterSection = ({
   );
 };
 
+const ProcessMasterRelationTreeSection = ({
+  title,
+  description,
+  parentLabel,
+  childLabel,
+  parentRows,
+  childRows,
+  relationRows,
+  languageCode,
+  onChangeRelations,
+}) => {
+  const sortedParents = useMemo(
+    () =>
+      [...(Array.isArray(parentRows) ? parentRows : [])].sort((left, right) =>
+        compareMasterRowsByLanguage(left, right, languageCode)
+      ),
+    [languageCode, parentRows]
+  );
+  const sortedChildren = useMemo(
+    () =>
+      [...(Array.isArray(childRows) ? childRows : [])].sort((left, right) =>
+        compareMasterRowsByLanguage(left, right, languageCode)
+      ),
+    [childRows, languageCode]
+  );
+  const childByCode = useMemo(
+    () =>
+      new Map(
+        sortedChildren
+          .map((row) => [normalizeRelationCode(row?.code), row])
+          .filter(([, row]) => Boolean(row))
+      ),
+    [sortedChildren]
+  );
+  const selectedChildCodesByParent = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(relationRows) ? relationRows : []).forEach((row) => {
+      const parentCode = normalizeRelationCode(row?.parentCode);
+      const childCode = normalizeRelationCode(row?.childCode);
+      if (!parentCode || !childCode) return;
+      const existing = map.get(parentCode);
+      if (existing) {
+        existing.add(childCode);
+      } else {
+        map.set(parentCode, new Set([childCode]));
+      }
+    });
+    return map;
+  }, [relationRows]);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack spacing={0.5} sx={{ mb: 1.5 }}>
+        <Typography variant="subtitle1" fontWeight={700}>
+          {title}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {description}
+        </Typography>
+      </Stack>
+
+      <Stack spacing={1.25} sx={{ maxHeight: 480, overflow: 'auto', pr: 0.5 }}>
+        {sortedParents.map((parentRow) => {
+          const parentCode = normalizeRelationCode(parentRow?.code);
+          const selectedCodeSet = selectedChildCodesByParent.get(parentCode) ?? new Set();
+          const selectedChildren = Array.from(selectedCodeSet)
+            .map((childCode) => childByCode.get(childCode))
+            .filter(Boolean);
+          return (
+            <Box
+              key={parentRow.id}
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1.5,
+                p: 1.25,
+              }}
+            >
+              <Stack spacing={1}>
+                <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="space-between">
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {resolveLocalizedAttributeName(parentRow, languageCode) || parentRow?.code}
+                  </Typography>
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={`${selectedChildren.length} linked`}
+                  />
+                </Stack>
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={sortedChildren}
+                  value={selectedChildren}
+                  onChange={(_event, nextChildren) => {
+                    onChangeRelations(parentCode, nextChildren);
+                  }}
+                  getOptionLabel={(option) =>
+                    resolveLocalizedAttributeName(option, languageCode) || option?.code || ''
+                  }
+                  isOptionEqualToValue={(option, value) =>
+                    normalizeRelationCode(option?.code) === normalizeRelationCode(value?.code)
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={`${childLabel} 연결`}
+                      placeholder={`${childLabel} 선택`}
+                    />
+                  )}
+                />
+              </Stack>
+            </Box>
+          );
+        })}
+        {sortedParents.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+            {parentLabel} 항목이 없습니다.
+          </Typography>
+        ) : null}
+      </Stack>
+    </Paper>
+  );
+};
+
 const ProcessMasterBoard = () => {
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -341,8 +545,11 @@ const ProcessMasterBoard = () => {
 
   const isDirty = useMemo(
     () =>
-      MASTER_SECTIONS.some((section) =>
-        !areMasterRowsEqual(formData[section.key], originalData[section.key])
+      MASTER_SECTIONS.some(
+        (section) => !areMasterRowsEqual(formData[section.key], originalData[section.key])
+      ) ||
+      RELATION_SECTION_KEYS.some(
+        (key) => !areRelationRowsEqual(formData[key], originalData[key])
       ),
     [formData, originalData]
   );
@@ -376,12 +583,54 @@ const ProcessMasterBoard = () => {
   }, []);
 
   const handleRowChange = useCallback((sectionKey, rowId, field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [sectionKey]: (prev[sectionKey] || []).map((row) =>
+    setFormData((prev) => {
+      const currentRows = Array.isArray(prev?.[sectionKey]) ? prev[sectionKey] : [];
+      const previousRow = currentRows.find((row) => row.id === rowId) || null;
+      const updatedRows = currentRows.map((row) =>
         row.id === rowId ? { ...row, [field]: value } : row
-      ),
-    }));
+      );
+      if (field !== 'code' || !previousRow) {
+        return {
+          ...prev,
+          [sectionKey]: updatedRows,
+        };
+      }
+
+      const prevCode = normalizeRelationCode(previousRow?.code);
+      const nextCode = normalizeRelationCode(value);
+      if (!prevCode || prevCode === nextCode) {
+        return {
+          ...prev,
+          [sectionKey]: updatedRows,
+        };
+      }
+
+      const remapRelationRows = (rows = [], key) =>
+        (Array.isArray(rows) ? rows : [])
+          .map((row) => {
+            if (normalizeRelationCode(row?.[key]) !== prevCode) return row;
+            if (!nextCode) return null;
+            return { ...row, [key]: nextCode };
+          })
+          .filter(Boolean);
+
+      return {
+        ...prev,
+        [sectionKey]: updatedRows,
+        targetToTargetSpecs:
+          sectionKey === 'targets'
+            ? remapRelationRows(prev.targetToTargetSpecs, 'parentCode')
+            : sectionKey === 'targetSpecs'
+              ? remapRelationRows(prev.targetToTargetSpecs, 'childCode')
+              : prev.targetToTargetSpecs,
+        actionToActionSpecs:
+          sectionKey === 'actions'
+            ? remapRelationRows(prev.actionToActionSpecs, 'parentCode')
+            : sectionKey === 'actionSpecs'
+              ? remapRelationRows(prev.actionToActionSpecs, 'childCode')
+              : prev.actionToActionSpecs,
+      };
+    });
   }, []);
 
   const handleAddRow = useCallback((sectionKey) => {
@@ -412,11 +661,112 @@ const ProcessMasterBoard = () => {
   }, []);
 
   const handleDeleteRow = useCallback((sectionKey, rowId) => {
-    setFormData((prev) => ({
-      ...prev,
-      [sectionKey]: (prev[sectionKey] || []).filter((row) => row.id !== rowId),
-    }));
+    setFormData((prev) => {
+      const currentRows = Array.isArray(prev?.[sectionKey]) ? prev[sectionKey] : [];
+      const deletingRow = currentRows.find((row) => row.id === rowId) || null;
+      const deletingCode = normalizeRelationCode(deletingRow?.code);
+
+      const nextData = {
+        ...prev,
+        [sectionKey]: currentRows.filter((row) => row.id !== rowId),
+      };
+      if (!deletingCode) return nextData;
+
+      if (sectionKey === 'targets' || sectionKey === 'targetSpecs') {
+        const key = sectionKey === 'targets' ? 'parentCode' : 'childCode';
+        nextData.targetToTargetSpecs = (Array.isArray(prev.targetToTargetSpecs)
+          ? prev.targetToTargetSpecs
+          : []
+        ).filter((row) => normalizeRelationCode(row?.[key]) !== deletingCode);
+      }
+      if (sectionKey === 'actions' || sectionKey === 'actionSpecs') {
+        const key = sectionKey === 'actions' ? 'parentCode' : 'childCode';
+        nextData.actionToActionSpecs = (Array.isArray(prev.actionToActionSpecs)
+          ? prev.actionToActionSpecs
+          : []
+        ).filter((row) => normalizeRelationCode(row?.[key]) !== deletingCode);
+      }
+      return nextData;
+    });
   }, []);
+
+  const updateRelationRowsForParent = useCallback(
+    ({ relationKey, relationType, parentCode, selectedChildRows, childCodeKey }) => {
+      const normalizedParentCode = normalizeRelationCode(parentCode);
+      if (!normalizedParentCode) return;
+
+      setFormData((prev) => {
+        const existingRows = Array.isArray(prev?.[relationKey]) ? prev[relationKey] : [];
+        const remainingRows = existingRows.filter(
+          (row) => normalizeRelationCode(row?.parentCode) !== normalizedParentCode
+        );
+
+        const nextRowsForParent = [];
+        const childCodeSet = new Set();
+        (Array.isArray(selectedChildRows) ? selectedChildRows : []).forEach((childRow) => {
+          const normalizedChildCode = normalizeRelationCode(childRow?.code);
+          if (!normalizedChildCode || childCodeSet.has(normalizedChildCode)) return;
+          childCodeSet.add(normalizedChildCode);
+          const existingMatch = existingRows.find(
+            (row) =>
+              normalizeRelationCode(row?.parentCode) === normalizedParentCode &&
+              normalizeRelationCode(row?.childCode) === normalizedChildCode
+          );
+          nextRowsForParent.push({
+            id: existingMatch?.id ?? null,
+            type: relationType,
+            parentCode: normalizedParentCode,
+            childCode: normalizedChildCode,
+            [childCodeKey]: normalizedChildCode,
+          });
+        });
+
+        return {
+          ...prev,
+          [relationKey]: [...remainingRows, ...nextRowsForParent].sort((left, right) => {
+            const parentCompare = normalizeRelationCode(left?.parentCode).localeCompare(
+              normalizeRelationCode(right?.parentCode),
+              'en-US',
+              { sensitivity: 'base', numeric: true }
+            );
+            if (parentCompare !== 0) return parentCompare;
+            return normalizeRelationCode(left?.childCode).localeCompare(
+              normalizeRelationCode(right?.childCode),
+              'en-US',
+              { sensitivity: 'base', numeric: true }
+            );
+          }),
+        };
+      });
+    },
+    []
+  );
+
+  const handleTargetSpecRelationsChange = useCallback(
+    (targetCode, selectedTargetSpecs) => {
+      updateRelationRowsForParent({
+        relationKey: 'targetToTargetSpecs',
+        relationType: 'TARGET_TARGET_SPEC',
+        parentCode: targetCode,
+        selectedChildRows: selectedTargetSpecs,
+        childCodeKey: 'targetSpecCode',
+      });
+    },
+    [updateRelationRowsForParent]
+  );
+
+  const handleActionSpecRelationsChange = useCallback(
+    (actionCode, selectedActionSpecs) => {
+      updateRelationRowsForParent({
+        relationKey: 'actionToActionSpecs',
+        relationType: 'ACTION_ACTION_SPEC',
+        parentCode: actionCode,
+        selectedChildRows: selectedActionSpecs,
+        childCodeKey: 'actionSpecCode',
+      });
+    },
+    [updateRelationRowsForParent]
+  );
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
@@ -442,6 +792,24 @@ const ProcessMasterBoard = () => {
         }));
         return acc;
       }, {});
+      payload.relations = {
+        targetToTargetSpecs: (formData.targetToTargetSpecs || []).map((row) => ({
+          id: row.id ?? undefined,
+          type: 'TARGET_TARGET_SPEC',
+          parentCode: normalizeRelationCode(row.parentCode),
+          childCode: normalizeRelationCode(row.childCode),
+          targetCode: normalizeRelationCode(row.parentCode),
+          targetSpecCode: normalizeRelationCode(row.childCode),
+        })),
+        actionToActionSpecs: (formData.actionToActionSpecs || []).map((row) => ({
+          id: row.id ?? undefined,
+          type: 'ACTION_ACTION_SPEC',
+          parentCode: normalizeRelationCode(row.parentCode),
+          childCode: normalizeRelationCode(row.childCode),
+          actionCode: normalizeRelationCode(row.parentCode),
+          actionSpecCode: normalizeRelationCode(row.childCode),
+        })),
+      };
 
       const data = await updateProcessMasterOptions(payload);
       const normalized = normalizeMasterData(data);
@@ -480,7 +848,7 @@ const ProcessMasterBoard = () => {
     >
       <Stack spacing={2}>
         <Alert severity="info">
-          공정 표준은 위치/대상/대상 규격/동작/동작 규격 5축으로 관리합니다.
+          공정 표준은 5축(위치/대상/대상 규격/동작/동작 규격)과 부모-자식 트리 연결로 관리합니다.
         </Alert>
         {hasDuplicateCodes ? (
           <Alert severity="warning">중복 코드가 있습니다. 각 섹션에서 코드 중복을 해소해 주세요.</Alert>
@@ -503,6 +871,35 @@ const ProcessMasterBoard = () => {
               />
             </Grid>
           ))}
+        </Grid>
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <ProcessMasterRelationTreeSection
+              title="대상 트리 연결"
+              description="각 대상(부모)에 허용할 대상 규격(자식)을 연결합니다."
+              parentLabel="대상"
+              childLabel="대상 규격"
+              parentRows={formData.targets}
+              childRows={formData.targetSpecs}
+              relationRows={formData.targetToTargetSpecs}
+              languageCode={languageCode}
+              onChangeRelations={handleTargetSpecRelationsChange}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <ProcessMasterRelationTreeSection
+              title="동작 트리 연결"
+              description="각 동작(부모)에 허용할 동작 규격(자식)을 연결합니다."
+              parentLabel="동작"
+              childLabel="동작 규격"
+              parentRows={formData.actions}
+              childRows={formData.actionSpecs}
+              relationRows={formData.actionToActionSpecs}
+              languageCode={languageCode}
+              onChangeRelations={handleActionSpecRelationsChange}
+            />
+          </Grid>
         </Grid>
       </Stack>
     </AppPageContainer>
