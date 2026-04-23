@@ -57,10 +57,11 @@ import {
 } from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
-  parts: [],
-  targets: [],
-  actions: [],
-  spec: null,
+  part: null,
+  target: null,
+  targetSpec: null,
+  action: null,
+  actionSpec: null,
   processCode: '',
   pt: '',
   st: '',
@@ -78,19 +79,21 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: '공정 추가',
     addingTitle: '새 공정 추가',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
-    missingMasterOptions: '공정 사전에서 부위를 먼저 등록해주세요.',
-    partLabel: '부위',
+    missingMasterOptions: '공정 사전에서 위치를 먼저 등록해주세요.',
+    partLabel: '위치',
     targetLabel: '대상',
-    actionLabel: '작업',
+    targetSpecLabel: '대상 규격',
+    actionLabel: '동작',
+    actionSpecLabel: '동작 규격',
     actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
     actionCustomNotice:
       '각 항목들은 사용자가 직접 추가할 수 있으나, 항목에 맞지 않으면 관리자에 의해 삭제 될 수 있습니다.',
-    specLabel: '규격',
+    specLabel: '대상 규격',
     specPlaceholder: '예: 3선',
     processCodeLabel: '공정코드',
     processCodePlaceholder: '예: PROC-001 (선택)',
     previewLabel: '미리보기',
-    previewEmpty: '부위와 작업을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
+    previewEmpty: '위치와 동작을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -117,9 +120,9 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
-    validatePart: '부위를 선택해주세요.',
+    validatePart: '위치를 선택해주세요.',
     validateTarget: '대상을 선택해주세요.',
-    validateAction: '작업을 하나 이상 선택해주세요.',
+    validateAction: '동작을 선택해주세요.',
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
     validateDuplicate: '이미 등록된 공정입니다.',
     validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
@@ -131,19 +134,21 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Add Process',
     addingTitle: 'New Process',
     loadingOptions: 'Loading process composition options...',
-    missingMasterOptions: 'Register part options first.',
-    partLabel: 'Part',
+    missingMasterOptions: 'Register location options first.',
+    partLabel: 'Location',
     targetLabel: 'Target',
+    targetSpecLabel: 'Target Spec',
     actionLabel: 'Action',
+    actionSpecLabel: 'Action Spec',
     actionInputHint: 'Type and press Enter (or just Add)',
     actionCustomNotice:
       'Each field can be added directly by users, but entries that do not fit the field may be removed by an administrator.',
-    specLabel: 'Spec',
+    specLabel: 'Target Spec',
     specPlaceholder: 'e.g. 3-line',
     processCodeLabel: 'Process Code',
     processCodePlaceholder: 'e.g. PROC-001 (optional)',
     previewLabel: 'Preview',
-    previewEmpty: 'Select part and action to build the process name. Target/spec are optional.',
+    previewEmpty: 'Select location and action to build the process name. Target/spec are optional.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -170,9 +175,9 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): per-piece expected seconds at 1,000 pcs.',
     atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
-    validatePart: 'Select a part.',
+    validatePart: 'Select a location.',
     validateTarget: 'Select a target.',
-    validateAction: 'Select at least one action.',
+    validateAction: 'Select an action.',
     validateInvalid: 'Enter a valid process composition.',
     validateDuplicate: 'This process is already registered.',
     validateDuplicateCode: 'This process code is already in use.',
@@ -184,19 +189,21 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Them cong doan',
     addingTitle: 'Cong doan moi',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
-    missingMasterOptions: 'Hay dang ky truoc bo phan.',
-    partLabel: 'Bo phan',
+    missingMasterOptions: 'Hay dang ky truoc vi tri.',
+    partLabel: 'Vi tri',
     targetLabel: 'Doi tuong',
+    targetSpecLabel: 'Quy cach doi tuong',
     actionLabel: 'Thao tac',
+    actionSpecLabel: 'Quy cach thao tac',
     actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
     actionCustomNotice:
       'Nguoi dung co the tu them truc tiep tung muc, nhung neu noi dung khong phu hop voi muc thi quan tri vien co the xoa.',
-    specLabel: 'Quy cach',
+    specLabel: 'Quy cach doi tuong',
     specPlaceholder: 'vi du: 3 kim',
     processCodeLabel: 'Ma cong doan',
     processCodePlaceholder: 'vi du: PROC-001 (tuy chon)',
     previewLabel: 'Xem truoc',
-    previewEmpty: 'Chon bo phan va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
+    previewEmpty: 'Chon vi tri va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -223,9 +230,9 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
     atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
-    validatePart: 'Hay chon bo phan.',
+    validatePart: 'Hay chon vi tri.',
     validateTarget: 'Hay chon doi tuong.',
-    validateAction: 'Hay chon it nhat mot thao tac.',
+    validateAction: 'Hay chon thao tac.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
     validateDuplicate: 'Cong doan nay da duoc dang ky.',
     validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
@@ -420,10 +427,11 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
             ''
         ).trim();
   const type = String(item?.type ?? defaultType).trim().toUpperCase();
+  const isSpecType = type === 'SPEC' || type === 'TARGET_SPEC' || type === 'ACTION_SPEC';
   const codeSource = typeof item === 'string' ? '' : item?.code;
   const code =
     normalizeStyleProcessCodeSegment(codeSource) ||
-    (type === 'SPEC' ? buildCustomStyleSpecCode(label) : '');
+    (isSpecType ? buildCustomStyleSpecCode(label) : '');
   if (!label && !code) return null;
 
   return {
@@ -449,7 +457,7 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
         : 0,
     isCustom:
       Boolean(typeof item === 'object' && !Array.isArray(item) && item?.isCustom) ||
-      (type === 'SPEC' && !codeSource),
+      (isSpecType && !codeSource),
   };
 };
 
@@ -549,12 +557,19 @@ const findProcessMasterOptionByInput = (options, inputText, languageCode) => {
   );
 };
 
+const normalizeCompositionKind = (kind) => {
+  if (kind === 'location') return 'part';
+  if (kind === 'targetSpec' || kind === 'actionSpec') return 'spec';
+  return kind;
+};
+
 const normalizeProcessCompositionEntry = (value, kind) => {
-  const normalized = normalizeProcessMasterOption(value, kind.toUpperCase());
+  const resolvedKind = normalizeCompositionKind(kind);
+  const normalized = normalizeProcessMasterOption(value, resolvedKind.toUpperCase());
   if (!normalized) return null;
   const code =
     normalizeStyleProcessCodeSegment(normalized.code) ||
-    (kind === 'spec'
+    (resolvedKind === 'spec'
       ? buildCustomStyleSpecCode(normalized.label)
       : normalizeStyleProcessCodeSegment(normalized.label));
   const label = String(normalized.label ?? code ?? '').trim();
@@ -566,7 +581,7 @@ const normalizeProcessCompositionEntry = (value, kind) => {
     nameKo: normalized.nameKo || label || code,
     nameEn: normalized.nameEn || label || code,
     nameVi: normalized.nameVi || label || code,
-    isCustom: Boolean(normalized.isCustom),
+    isCustom: Boolean(normalized.isCustom) || (resolvedKind === 'spec' && !normalized.code),
   };
 };
 
@@ -587,28 +602,43 @@ const normalizeProcessCompositionEntries = (values, kind) => {
 };
 
 const buildProcessComposition = (draft) => {
-  const partInputs = Array.isArray(draft?.parts)
-    ? draft.parts
-    : draft?.part
-      ? [draft.part]
-      : [];
-  const parts = normalizeProcessCompositionEntries(partInputs, 'part');
-  const part = parts[0] ?? null;
-  const targetInputs = Array.isArray(draft?.targets)
-    ? draft.targets
-    : draft?.target
-      ? [draft.target]
-      : [];
-  const targets = normalizeProcessCompositionEntries(targetInputs, 'target');
-  const actions = normalizeProcessCompositionEntries(draft?.actions, 'action');
-  const spec = normalizeProcessCompositionEntry(draft?.spec, 'spec');
-  const specs = spec ? [spec] : [];
+  const part = normalizeProcessCompositionEntry(draft?.part, 'part');
+  const parts = part ? [part] : [];
+  const target = normalizeProcessCompositionEntry(draft?.target, 'target');
+  const targets = target ? [target] : [];
+  const action = normalizeProcessCompositionEntry(draft?.action, 'action');
+  const actions = action ? [action] : [];
+  const targetSpec = normalizeProcessCompositionEntry(draft?.targetSpec, 'targetSpec');
+  const targetSpecs = targetSpec ? [targetSpec] : [];
+  const actionSpec = normalizeProcessCompositionEntry(draft?.actionSpec, 'actionSpec');
+  const actionSpecs = actionSpec ? [actionSpec] : [];
+  const specs = [...targetSpecs, ...actionSpecs];
 
-  if (parts.length === 0 && targets.length === 0 && actions.length === 0 && specs.length === 0) {
+  if (
+    parts.length === 0 &&
+    targets.length === 0 &&
+    actions.length === 0 &&
+    targetSpecs.length === 0 &&
+    actionSpecs.length === 0
+  ) {
     return null;
   }
 
-  return { part, parts, targets, actions, specs };
+  return {
+    location: part,
+    locations: parts,
+    part,
+    parts,
+    target,
+    targets,
+    targetSpec,
+    targetSpecs,
+    action,
+    actions,
+    actionSpec,
+    actionSpecs,
+    specs,
+  };
 };
 
 const resolveProcessCompositionText = (entry, languageCode, masterLookupByCode = null) => {
@@ -637,43 +667,88 @@ const buildProcessNameFromComposition = (
     return String(fallback ?? '').trim();
   }
 
-  const partEntries = Array.isArray(composition.parts)
-    ? composition.parts
-    : composition.part
-      ? [composition.part]
-      : [];
-  const partText = partEntries
+  const locationEntries = Array.isArray(composition.locations)
+    ? composition.locations
+    : Array.isArray(composition.parts)
+      ? composition.parts
+      : composition.location
+        ? [composition.location]
+        : composition.part
+          ? [composition.part]
+          : [];
+  const locationText = locationEntries
     .map((entry) =>
-      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.part)
+      resolveProcessCompositionText(
+        entry,
+        languageCode,
+        masterLookupByKind?.location ?? masterLookupByKind?.part
+      )
     )
     .filter(Boolean)
     .join('·');
-  const targetText = (Array.isArray(composition.targets) ? composition.targets : [])
+  const targetEntries = Array.isArray(composition.targets)
+    ? composition.targets
+    : composition.target
+      ? [composition.target]
+      : [];
+  const targetText = targetEntries
     .map((entry) =>
       resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.target)
     )
     .filter(Boolean)
     .join('·');
-  const actionText = (Array.isArray(composition.actions) ? composition.actions : [])
+  const targetSpecEntries = Array.isArray(composition.targetSpecs)
+    ? composition.targetSpecs
+    : composition.targetSpec
+      ? [composition.targetSpec]
+      : Array.isArray(composition.specs)
+        ? composition.specs
+        : [];
+  const targetSpecText = targetSpecEntries
+    .map((entry) =>
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.targetSpec)
+    )
+    .filter(Boolean)
+    .join('·');
+  const actionEntries = Array.isArray(composition.actions)
+    ? composition.actions
+    : composition.action
+      ? [composition.action]
+      : [];
+  const actionText = actionEntries
     .map((entry) =>
       resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.action)
     )
     .filter(Boolean)
     .join(' + ');
-  const specText = (Array.isArray(composition.specs) ? composition.specs : [])
+  const actionSpecEntries = Array.isArray(composition.actionSpecs)
+    ? composition.actionSpecs
+    : composition.actionSpec
+      ? [composition.actionSpec]
+      : [];
+  const actionSpecText = actionSpecEntries
     .map((entry) =>
-      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.spec)
+      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.actionSpec)
     )
     .filter(Boolean)
     .join('·');
 
   const targetWithSpec = targetText
-    ? `${targetText}${specText ? `(${specText})` : ''}`
-    : specText
-      ? `(${specText})`
+    ? `${targetText}${targetSpecText ? `(${targetSpecText})` : ''}`
+    : targetSpecText
+      ? `(${targetSpecText})`
       : '';
-  const leftText = partText && targetWithSpec ? `${partText}: ${targetWithSpec}` : partText || targetWithSpec;
-  const baseText = leftText && actionText ? `${leftText} - ${actionText}` : leftText || actionText;
+  const actionWithSpec = actionText
+    ? `${actionText}${actionSpecText ? `(${actionSpecText})` : ''}`
+    : actionSpecText
+      ? `(${actionSpecText})`
+      : '';
+  const leftText = locationText && targetWithSpec
+    ? `${locationText}: ${targetWithSpec}`
+    : locationText || targetWithSpec;
+  const baseText = leftText && actionWithSpec
+    ? `${leftText} - ${actionWithSpec}`
+    : leftText || actionWithSpec;
   if (!baseText) return String(fallback ?? '').trim();
   return baseText;
 };
@@ -780,6 +855,28 @@ const buildProcessPayload = (
   timeRefQuantity = DEFAULT_TIME_REF_QUANTITY
 ) => {
   const composition = buildProcessComposition(draft);
+  if (composition && existingProcess?.processComposition) {
+    const existingActions = normalizeProcessCompositionEntries(
+      existingProcess?.processComposition?.actions,
+      'action'
+    );
+    if (existingActions.length > 1) {
+      const firstExistingAction = existingActions[0] ?? null;
+      const draftActionIdentity = getProcessMasterOptionIdentity(draft?.action, 'ACTION');
+      const firstExistingActionIdentity = getProcessMasterOptionIdentity(
+        firstExistingAction,
+        'ACTION'
+      );
+      if (
+        firstExistingAction &&
+        draftActionIdentity &&
+        draftActionIdentity === firstExistingActionIdentity
+      ) {
+        composition.action = firstExistingAction;
+        composition.actions = existingActions;
+      }
+    }
+  }
   const localizedNames = buildProcessLocalizedNamesFromComposition(composition, {
     name: existingProcess?.name,
     nameKo: existingProcess?.nameKo,
@@ -871,20 +968,39 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
     : composition?.target
       ? [composition.target]
       : [];
-  const existingParts = Array.isArray(composition?.parts)
-    ? composition.parts
-    : composition?.part
-      ? [composition.part]
+  const existingLocations = Array.isArray(composition?.locations)
+    ? composition.locations
+    : Array.isArray(composition?.parts)
+      ? composition.parts
+      : composition?.location
+        ? [composition.location]
+        : composition?.part
+          ? [composition.part]
+          : [];
+  const existingActions = Array.isArray(composition?.actions)
+    ? composition.actions
+    : composition?.action
+      ? [composition.action]
+      : [];
+  const existingTargetSpecs = Array.isArray(composition?.targetSpecs)
+    ? composition.targetSpecs
+    : composition?.targetSpec
+      ? [composition.targetSpec]
+      : Array.isArray(composition?.specs)
+        ? composition.specs
+        : [];
+  const existingActionSpecs = Array.isArray(composition?.actionSpecs)
+    ? composition.actionSpecs
+    : composition?.actionSpec
+      ? [composition.actionSpec]
       : [];
 
   return {
-    parts: normalizeProcessCompositionEntries(existingParts, 'part'),
-    targets: normalizeProcessCompositionEntries(existingTargets, 'target'),
-    actions: normalizeProcessCompositionEntries(composition?.actions, 'action'),
-    spec: normalizeProcessCompositionEntry(
-      Array.isArray(composition?.specs) ? composition.specs[0] : null,
-      'spec'
-    ),
+    part: normalizeProcessCompositionEntry(existingLocations[0], 'part'),
+    target: normalizeProcessCompositionEntry(existingTargets[0], 'target'),
+    action: normalizeProcessCompositionEntry(existingActions[0], 'action'),
+    targetSpec: normalizeProcessCompositionEntry(existingTargetSpecs[0], 'targetSpec'),
+    actionSpec: normalizeProcessCompositionEntry(existingActionSpecs[0], 'actionSpec'),
     processCode: String(safeProcess?.code ?? '').trim(),
     pt:
       ptPerPiece == null
@@ -909,25 +1025,41 @@ const collectProcessCompositionOptionsFromProcesses = (
   (Array.isArray(processes) ? processes : []).forEach((process) => {
     const composition = process?.processComposition || {};
     const sourceEntries =
-      kind === 'part'
-        ? Array.isArray(composition?.parts)
-          ? composition.parts
-          : composition?.part
-            ? [composition.part]
-            : []
+      kind === 'location' || kind === 'part'
+        ? Array.isArray(composition?.locations)
+          ? composition.locations
+          : Array.isArray(composition?.parts)
+            ? composition.parts
+            : composition?.location
+              ? [composition.location]
+              : composition?.part
+                ? [composition.part]
+                : []
         : kind === 'target'
           ? Array.isArray(composition?.targets)
             ? composition.targets
             : composition?.target
               ? [composition.target]
               : []
-          : kind === 'spec'
-            ? Array.isArray(composition?.specs)
-              ? composition.specs
-              : []
-            : Array.isArray(composition?.actions)
-              ? composition.actions
-              : [];
+          : kind === 'targetSpec' || kind === 'spec'
+            ? Array.isArray(composition?.targetSpecs)
+              ? composition.targetSpecs
+              : composition?.targetSpec
+                ? [composition.targetSpec]
+                : Array.isArray(composition?.specs)
+                  ? composition.specs
+                  : []
+            : kind === 'actionSpec'
+              ? Array.isArray(composition?.actionSpecs)
+                ? composition.actionSpecs
+                : composition?.actionSpec
+                  ? [composition.actionSpec]
+                  : []
+              : Array.isArray(composition?.actions)
+                ? composition.actions
+                : composition?.action
+                  ? [composition.action]
+                  : [];
 
     sourceEntries.forEach((entry) => {
       const normalized = normalizeProcessMasterOption(entry, defaultType);
@@ -952,10 +1084,11 @@ const StyleProcess = ({
   const [timeRefQuantityInput, setTimeRefQuantityInput] = useState('');
   const [isTimeRefQuantityEditing, setIsTimeRefQuantityEditing] = useState(false);
   const [processMasterOptions, setProcessMasterOptions] = useState({
-    parts: [],
+    locations: [],
     targets: [],
+    targetSpecs: [],
     actions: [],
-    specs: [],
+    actionSpecs: [],
   });
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
@@ -970,18 +1103,22 @@ const StyleProcess = ({
         const data = await fetchProcessMasterOptions();
         if (!active) return;
         setProcessMasterOptions({
-          parts: Array.isArray(data?.parts) ? data.parts : [],
+          locations: Array.isArray(data?.locations ?? data?.parts) ? (data?.locations ?? data?.parts) : [],
           targets: Array.isArray(data?.targets) ? data.targets : [],
+          targetSpecs: Array.isArray(data?.targetSpecs ?? data?.specs)
+            ? (data?.targetSpecs ?? data?.specs)
+            : [],
           actions: Array.isArray(data?.actions) ? data.actions : [],
-          specs: Array.isArray(data?.specs) ? data.specs : [],
+          actionSpecs: Array.isArray(data?.actionSpecs) ? data.actionSpecs : [],
         });
       } catch (_error) {
         if (!active) return;
         setProcessMasterOptions({
-          parts: [],
+          locations: [],
           targets: [],
+          targetSpecs: [],
           actions: [],
-          specs: [],
+          actionSpecs: [],
         });
         setOptionsError(
           languageCode === 'ko'
@@ -1005,21 +1142,21 @@ const StyleProcess = ({
   }, [languageCode, optionsReloadKey]);
 
   const partOptionsFromStyleProcesses = useMemo(
-    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'part', 'PART'),
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'location', 'LOCATION'),
     [safeProcesses]
   );
   const masterPartIdentitySet = useMemo(
     () =>
       new Set(
-        (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : [])
-          .map((item) => getProcessMasterOptionIdentity(item, 'PART'))
+        (Array.isArray(processMasterOptions.locations) ? processMasterOptions.locations : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'LOCATION'))
           .filter(Boolean)
       ),
-    [processMasterOptions.parts]
+    [processMasterOptions.locations]
   );
   const isNewCustomPartOption = useCallback(
     (option) => {
-      const identity = getProcessMasterOptionIdentity(option, 'PART');
+      const identity = getProcessMasterOptionIdentity(option, 'LOCATION');
       if (!identity) return false;
       return !masterPartIdentitySet.has(identity);
     },
@@ -1029,15 +1166,15 @@ const StyleProcess = ({
     const merged = [];
     const seen = new Set();
     const appendOption = (item) => {
-      const normalized = normalizeProcessMasterOption(item, 'PART');
+      const normalized = normalizeProcessMasterOption(item, 'LOCATION');
       if (!normalized) return;
-      const identity = getProcessMasterOptionIdentity(normalized, 'PART');
+      const identity = getProcessMasterOptionIdentity(normalized, 'LOCATION');
       if (!identity || seen.has(identity)) return;
       seen.add(identity);
       merged.push(normalized);
     };
 
-    (Array.isArray(processMasterOptions.parts) ? processMasterOptions.parts : []).forEach(
+    (Array.isArray(processMasterOptions.locations) ? processMasterOptions.locations : []).forEach(
       appendOption
     );
     partOptionsFromStyleProcesses.forEach(appendOption);
@@ -1045,7 +1182,7 @@ const StyleProcess = ({
     return merged.sort((left, right) =>
       compareProcessMasterOptionAsc(left, right, languageCode)
     );
-  }, [languageCode, partOptionsFromStyleProcesses, processMasterOptions.parts]);
+  }, [languageCode, partOptionsFromStyleProcesses, processMasterOptions.locations]);
   const targetOptionsFromStyleProcesses = useMemo(
     () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'target', 'TARGET'),
     [safeProcesses]
@@ -1144,56 +1281,101 @@ const StyleProcess = ({
       compareProcessMasterOptionAsc(left, right, languageCode)
     );
   }, [actionOptionsFromStyleProcesses, languageCode, processMasterOptions.actions]);
-  const specOptionsFromStyleProcesses = useMemo(
-    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'spec', 'SPEC'),
+  const targetSpecOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'targetSpec', 'TARGET_SPEC'),
     [safeProcesses]
   );
-  const masterSpecIdentitySet = useMemo(
+  const masterTargetSpecIdentitySet = useMemo(
     () =>
       new Set(
-        (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : [])
-          .map((item) => getProcessMasterOptionIdentity(item, 'SPEC'))
+        (Array.isArray(processMasterOptions.targetSpecs) ? processMasterOptions.targetSpecs : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'TARGET_SPEC'))
           .filter(Boolean)
       ),
-    [processMasterOptions.specs]
+    [processMasterOptions.targetSpecs]
   );
-  const isNewCustomSpecOption = useCallback(
+  const isNewCustomTargetSpecOption = useCallback(
     (option) => {
-      const identity = getProcessMasterOptionIdentity(option, 'SPEC');
+      const identity = getProcessMasterOptionIdentity(option, 'TARGET_SPEC');
       if (!identity) return false;
-      return !masterSpecIdentitySet.has(identity);
+      return !masterTargetSpecIdentitySet.has(identity);
     },
-    [masterSpecIdentitySet]
+    [masterTargetSpecIdentitySet]
   );
-  const specOptions = useMemo(() => {
+  const targetSpecOptions = useMemo(() => {
     const merged = [];
     const seen = new Set();
     const appendOption = (item) => {
-      const normalized = normalizeProcessMasterOption(item, 'SPEC');
+      const normalized = normalizeProcessMasterOption(item, 'TARGET_SPEC');
       if (!normalized) return;
-      const identity = getProcessMasterOptionIdentity(normalized, 'SPEC');
+      const identity = getProcessMasterOptionIdentity(normalized, 'TARGET_SPEC');
       if (!identity || seen.has(identity)) return;
       seen.add(identity);
       merged.push(normalized);
     };
 
-    (Array.isArray(processMasterOptions.specs) ? processMasterOptions.specs : []).forEach(
+    (Array.isArray(processMasterOptions.targetSpecs) ? processMasterOptions.targetSpecs : []).forEach(
       appendOption
     );
-    specOptionsFromStyleProcesses.forEach(appendOption);
+    targetSpecOptionsFromStyleProcesses.forEach(appendOption);
 
     return merged.sort((left, right) =>
       compareProcessMasterOptionAsc(left, right, languageCode)
     );
-  }, [languageCode, processMasterOptions.specs, specOptionsFromStyleProcesses]);
+  }, [languageCode, processMasterOptions.targetSpecs, targetSpecOptionsFromStyleProcesses]);
+  const actionSpecOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'actionSpec', 'ACTION_SPEC'),
+    [safeProcesses]
+  );
+  const masterActionSpecIdentitySet = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(processMasterOptions.actionSpecs) ? processMasterOptions.actionSpecs : [])
+          .map((item) => getProcessMasterOptionIdentity(item, 'ACTION_SPEC'))
+          .filter(Boolean)
+      ),
+    [processMasterOptions.actionSpecs]
+  );
+  const isNewCustomActionSpecOption = useCallback(
+    (option) => {
+      const identity = getProcessMasterOptionIdentity(option, 'ACTION_SPEC');
+      if (!identity) return false;
+      return !masterActionSpecIdentitySet.has(identity);
+    },
+    [masterActionSpecIdentitySet]
+  );
+  const actionSpecOptions = useMemo(() => {
+    const merged = [];
+    const seen = new Set();
+    const appendOption = (item) => {
+      const normalized = normalizeProcessMasterOption(item, 'ACTION_SPEC');
+      if (!normalized) return;
+      const identity = getProcessMasterOptionIdentity(normalized, 'ACTION_SPEC');
+      if (!identity || seen.has(identity)) return;
+      seen.add(identity);
+      merged.push(normalized);
+    };
+
+    (Array.isArray(processMasterOptions.actionSpecs) ? processMasterOptions.actionSpecs : []).forEach(
+      appendOption
+    );
+    actionSpecOptionsFromStyleProcesses.forEach(appendOption);
+
+    return merged.sort((left, right) =>
+      compareProcessMasterOptionAsc(left, right, languageCode)
+    );
+  }, [actionSpecOptionsFromStyleProcesses, languageCode, processMasterOptions.actionSpecs]);
   const compositionMasterLookupByKind = useMemo(
     () => ({
+      location: buildProcessMasterLookupByCode(partOptions),
       part: buildProcessMasterLookupByCode(partOptions),
       target: buildProcessMasterLookupByCode(targetOptions),
       action: buildProcessMasterLookupByCode(actionOptions),
-      spec: buildProcessMasterLookupByCode(specOptions),
+      targetSpec: buildProcessMasterLookupByCode(targetSpecOptions),
+      actionSpec: buildProcessMasterLookupByCode(actionSpecOptions),
+      spec: buildProcessMasterLookupByCode(targetSpecOptions),
     }),
-    [actionOptions, partOptions, specOptions, targetOptions]
+    [actionOptions, actionSpecOptions, partOptions, targetOptions, targetSpecOptions]
   );
 
   const [isAddingRow, setIsAddingRow] = useState(false);
@@ -1203,6 +1385,7 @@ const StyleProcess = ({
   const [targetInputValue, setTargetInputValue] = useState('');
   const [specInputValue, setSpecInputValue] = useState('');
   const [addActionInput, setAddActionInput] = useState('');
+  const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const draftFormRef = React.useRef(null);
@@ -1361,10 +1544,7 @@ const StyleProcess = ({
         onMatch: (matchedOption) => {
           setAddDraft((prev) => ({
             ...prev,
-            parts: normalizeProcessCompositionEntries(
-              [...(Array.isArray(prev.parts) ? prev.parts : []), matchedOption],
-              'part'
-            ),
+            part: normalizeProcessCompositionEntry(matchedOption, 'part'),
           }));
           setPartInputValue('');
           setAddError('');
@@ -1381,10 +1561,7 @@ const StyleProcess = ({
         onMatch: (matchedOption) => {
           setAddDraft((prev) => ({
             ...prev,
-            targets: normalizeProcessCompositionEntries(
-              [...(Array.isArray(prev.targets) ? prev.targets : []), matchedOption],
-              'target'
-            ),
+            target: normalizeProcessCompositionEntry(matchedOption, 'target'),
           }));
           setTargetInputValue('');
           setAddError('');
@@ -1397,18 +1574,18 @@ const StyleProcess = ({
     (event) =>
       trySelectExistingOptionOnEnter(event, {
         inputText: specInputValue,
-        options: specOptions,
+        options: targetSpecOptions,
         onMatch: (matchedOption) => {
-          const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'spec');
+          const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'targetSpec');
           setAddDraft((prev) => ({
             ...prev,
-            spec: normalizedSpec,
+            targetSpec: normalizedSpec,
           }));
           setSpecInputValue('');
           setAddError('');
         },
       }),
-    [specInputValue, specOptions, trySelectExistingOptionOnEnter]
+    [specInputValue, targetSpecOptions, trySelectExistingOptionOnEnter]
   );
 
   const handleActionEnterSelect = useCallback(
@@ -1419,16 +1596,29 @@ const StyleProcess = ({
         onMatch: (matchedOption) => {
           setAddDraft((prev) => ({
             ...prev,
-            actions: normalizeProcessCompositionEntries(
-              [...(Array.isArray(prev.actions) ? prev.actions : []), matchedOption],
-              'action'
-            ),
+            action: normalizeProcessCompositionEntry(matchedOption, 'action'),
           }));
           setAddActionInput('');
           setAddError('');
         },
       }),
     [actionOptions, addActionInput, trySelectExistingOptionOnEnter]
+  );
+  const handleActionSpecEnterSelect = useCallback(
+    (event) =>
+      trySelectExistingOptionOnEnter(event, {
+        inputText: actionSpecInputValue,
+        options: actionSpecOptions,
+        onMatch: (matchedOption) => {
+          setAddDraft((prev) => ({
+            ...prev,
+            actionSpec: normalizeProcessCompositionEntry(matchedOption, 'actionSpec'),
+          }));
+          setActionSpecInputValue('');
+          setAddError('');
+        },
+      }),
+    [actionSpecInputValue, actionSpecOptions, trySelectExistingOptionOnEnter]
   );
 
   useEffect(() => {
@@ -1521,10 +1711,10 @@ const StyleProcess = ({
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
-    if (!Array.isArray(draft.parts) || draft.parts.length === 0) {
+    if (!draft?.part) {
       return getStyleProcessMessage(languageCode, 'validatePart');
     }
-    if (!Array.isArray(draft.actions) || draft.actions.length === 0) {
+    if (!draft?.action) {
       return getStyleProcessMessage(languageCode, 'validateAction');
     }
 
@@ -1558,6 +1748,7 @@ const StyleProcess = ({
     setTargetInputValue('');
     setSpecInputValue('');
     setAddActionInput('');
+    setActionSpecInputValue('');
     setAddError('');
   };
 
@@ -1569,6 +1760,7 @@ const StyleProcess = ({
     setTargetInputValue('');
     setSpecInputValue('');
     setAddActionInput('');
+    setActionSpecInputValue('');
     setAddError('');
   };
 
@@ -1581,20 +1773,24 @@ const StyleProcess = ({
     setTargetInputValue('');
     setSpecInputValue('');
     setAddActionInput('');
+    setActionSpecInputValue('');
     setAddError('');
   }, [displayOrderQuantity]);
 
   const resolveDraftWithPendingAction = useCallback((draft) => {
     const pendingActionText = String(addActionInput ?? '').trim();
-    if (!pendingActionText) return draft;
+    const pendingActionSpecText = String(actionSpecInputValue ?? '').trim();
+    if (!pendingActionText && !pendingActionSpecText) return draft;
     return {
       ...draft,
-      actions: normalizeProcessCompositionEntries(
-        [...(Array.isArray(draft?.actions) ? draft.actions : []), pendingActionText],
-        'action'
-      ),
+      action: pendingActionText
+        ? normalizeProcessCompositionEntry(pendingActionText, 'action')
+        : draft?.action ?? null,
+      actionSpec: pendingActionSpecText
+        ? normalizeProcessCompositionEntry(pendingActionSpecText, 'actionSpec')
+        : draft?.actionSpec ?? null,
     };
-  }, [addActionInput]);
+  }, [actionSpecInputValue, addActionInput]);
 
   const handleSaveAddRow = () => {
     const draftForSave = resolveDraftWithPendingAction(addDraft);
@@ -1980,19 +2176,17 @@ const StyleProcess = ({
               sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
             >
               <Autocomplete
-                multiple
                 freeSolo
                 forcePopupIcon
                 autoHighlight
                 size="small"
                 options={partOptions}
-                value={Array.isArray(addDraft.parts) ? addDraft.parts : []}
+                value={addDraft.part}
                 inputValue={partInputValue}
-                disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
                     ...prev,
-                    parts: normalizeProcessCompositionEntries(value, 'part'),
+                    part: normalizeProcessCompositionEntry(value, 'part'),
                   }));
                   setAddError('');
                 }}
@@ -2001,12 +2195,8 @@ const StyleProcess = ({
                 }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'PART') ===
-                  getProcessMasterOptionIdentity(value, 'PART')
-                }
-                filterSelectedOptions
-                renderTags={(value, getTagProps) =>
-                  renderCustomOptionTags(value, getTagProps, isNewCustomPartOption)
+                  getProcessMasterOptionIdentity(option, 'LOCATION') ===
+                  getProcessMasterOptionIdentity(value, 'LOCATION')
                 }
                 renderInput={(params) => (
                   <TextField
@@ -2018,19 +2208,17 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
-                multiple
                 freeSolo
                 forcePopupIcon
                 autoHighlight
                 size="small"
                 options={targetOptions}
-                value={Array.isArray(addDraft.targets) ? addDraft.targets : []}
+                value={addDraft.target}
                 inputValue={targetInputValue}
-                disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
                     ...prev,
-                    targets: normalizeProcessCompositionEntries(value, 'target'),
+                    target: normalizeProcessCompositionEntry(value, 'target'),
                   }));
                   setAddError('');
                 }}
@@ -2042,10 +2230,6 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(option, 'TARGET') ===
                   getProcessMasterOptionIdentity(value, 'TARGET')
                 }
-                filterSelectedOptions
-                renderTags={(value, getTagProps) =>
-                  renderCustomOptionTags(value, getTagProps, isNewCustomTargetOption)
-                }
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -2056,19 +2240,17 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
-                multiple
                 freeSolo
                 forcePopupIcon
                 autoHighlight
                 size="small"
-                options={specOptions}
-                value={addDraft.spec ? [addDraft.spec] : []}
+                options={targetSpecOptions}
+                value={addDraft.targetSpec}
                 inputValue={specInputValue}
                 onChange={(_event, value) => {
-                  const normalizedSpecs = normalizeProcessCompositionEntries(value, 'spec');
                   setAddDraft((prev) => ({
                     ...prev,
-                    spec: normalizedSpecs.length > 0 ? normalizedSpecs[normalizedSpecs.length - 1] : null,
+                    targetSpec: normalizeProcessCompositionEntry(value, 'targetSpec'),
                   }));
                   setAddError('');
                 }}
@@ -2077,17 +2259,13 @@ const StyleProcess = ({
                 }}
                 getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
                 isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'SPEC') ===
-                  getProcessMasterOptionIdentity(value, 'SPEC')
-                }
-                filterSelectedOptions
-                renderTags={(value, getTagProps) =>
-                  renderCustomOptionTags(value, getTagProps, isNewCustomSpecOption)
+                  getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
+                  getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
                 }
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label={getStyleProcessMessage(languageCode, 'specLabel')}
+                    label={getStyleProcessMessage(languageCode, 'targetSpecLabel')}
                     placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
                     onKeyDown={handleSpecEnterSelect}
                   />
@@ -2095,19 +2273,17 @@ const StyleProcess = ({
                 sx={{ flex: 1, minWidth: 180 }}
               />
               <Autocomplete
-                multiple
                 freeSolo
                 forcePopupIcon
                 autoHighlight
                 size="small"
                 options={actionOptions}
-                value={addDraft.actions}
+                value={addDraft.action}
                 inputValue={addActionInput}
-                disableCloseOnSelect
                 onChange={(_event, value) => {
                   setAddDraft((prev) => ({
                     ...prev,
-                    actions: normalizeProcessCompositionEntries(value, 'action'),
+                    action: normalizeProcessCompositionEntry(value, 'action'),
                   }));
                   setAddError('');
                 }}
@@ -2119,10 +2295,6 @@ const StyleProcess = ({
                   getProcessMasterOptionIdentity(option, 'ACTION') ===
                   getProcessMasterOptionIdentity(value, 'ACTION')
                 }
-                filterSelectedOptions
-                renderTags={(value, getTagProps) =>
-                  renderCustomOptionTags(value, getTagProps, isNewCustomActionOption)
-                }
                 renderInput={(params) => (
                   <TextField
                     {...params}
@@ -2132,6 +2304,39 @@ const StyleProcess = ({
                   />
                 )}
                 sx={{ flex: 1, minWidth: 220 }}
+              />
+              <Autocomplete
+                freeSolo
+                forcePopupIcon
+                autoHighlight
+                size="small"
+                options={actionSpecOptions}
+                value={addDraft.actionSpec}
+                inputValue={actionSpecInputValue}
+                onChange={(_event, value) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    actionSpec: normalizeProcessCompositionEntry(value, 'actionSpec'),
+                  }));
+                  setAddError('');
+                }}
+                onInputChange={(_event, value) => {
+                  setActionSpecInputValue(String(value ?? ''));
+                }}
+                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                isOptionEqualToValue={(option, value) =>
+                  getProcessMasterOptionIdentity(option, 'ACTION_SPEC') ===
+                  getProcessMasterOptionIdentity(value, 'ACTION_SPEC')
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={getStyleProcessMessage(languageCode, 'actionSpecLabel')}
+                    placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                    onKeyDown={handleActionSpecEnterSelect}
+                  />
+                )}
+                sx={{ flex: 1, minWidth: 180 }}
               />
               <TextField
                 size="small"

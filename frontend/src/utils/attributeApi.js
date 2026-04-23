@@ -105,10 +105,11 @@ const normalizeAttributePayload = (payload = {}) => {
 };
 
 const PROCESS_MASTER_TYPE_BY_GROUP = {
-  parts: 'PART',
+  locations: 'LOCATION',
   targets: 'TARGET',
+  targetSpecs: 'TARGET_SPEC',
   actions: 'ACTION',
-  specs: 'SPEC',
+  actionSpecs: 'ACTION_SPEC',
 };
 
 const normalizeProcessMasterCode = (value) =>
@@ -132,22 +133,46 @@ const normalizeProcessMasterItem = (item = {}, defaultType = '') => ({
   sortOrder: normalizeSortOrder(item.sortOrder),
 });
 
-const normalizeProcessMasterData = (data = {}) => ({
-  parts: normalizeArray(data?.parts).map((item) => normalizeProcessMasterItem(item, 'PART')),
-  targets: normalizeArray(data?.targets).map((item) =>
+const normalizeProcessMasterData = (data = {}) => {
+  const locations = normalizeArray(data?.locations ?? data?.parts).map((item) =>
+    normalizeProcessMasterItem(item, 'LOCATION')
+  );
+  const targets = normalizeArray(data?.targets).map((item) =>
     normalizeProcessMasterItem(item, 'TARGET')
-  ),
-  actions: normalizeArray(data?.actions).map((item) =>
+  );
+  const targetSpecs = normalizeArray(data?.targetSpecs ?? data?.specs).map((item) =>
+    normalizeProcessMasterItem(item, 'TARGET_SPEC')
+  );
+  const actions = normalizeArray(data?.actions).map((item) =>
     normalizeProcessMasterItem(item, 'ACTION')
-  ),
-  specs: normalizeArray(data?.specs).map((item) => normalizeProcessMasterItem(item, 'SPEC')),
-});
+  );
+  const actionSpecs = normalizeArray(data?.actionSpecs).map((item) =>
+    normalizeProcessMasterItem(item, 'ACTION_SPEC')
+  );
+
+  return {
+    locations,
+    targets,
+    targetSpecs,
+    actions,
+    actionSpecs,
+    // Backward compatibility for screens not migrated yet.
+    parts: locations,
+    specs: targetSpecs,
+  };
+};
 
 const normalizeProcessMasterPayload = (payload = {}) => {
   const normalized = {};
   Object.entries(PROCESS_MASTER_TYPE_BY_GROUP).forEach(([groupKey, type]) => {
-    if (!Array.isArray(payload?.[groupKey])) return;
-    normalized[groupKey] = payload[groupKey].map((item = {}, index) => ({
+    const sourceRows =
+      groupKey === 'locations'
+        ? payload?.locations ?? payload?.parts
+        : groupKey === 'targetSpecs'
+          ? payload?.targetSpecs ?? payload?.specs
+          : payload?.[groupKey];
+    if (!Array.isArray(sourceRows)) return;
+    normalized[groupKey] = sourceRows.map((item = {}, index) => ({
       id: item.id ?? undefined,
       type,
       code: normalizeProcessMasterCode(item.code),
@@ -160,6 +185,36 @@ const normalizeProcessMasterPayload = (payload = {}) => {
       sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
     }));
   });
+
+  if (!normalized.locations && Array.isArray(payload?.parts)) {
+    normalized.locations = payload.parts.map((item = {}, index) => ({
+      id: item.id ?? undefined,
+      type: 'LOCATION',
+      code: normalizeProcessMasterCode(item.code),
+      label: toTrimmedText(
+        item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value
+      ),
+      nameKo: toTrimmedText(item.nameKo ?? item.label),
+      nameEn: toTrimmedText(item.nameEn),
+      nameVi: toTrimmedText(item.nameVi),
+      sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
+    }));
+  }
+  if (!normalized.targetSpecs && Array.isArray(payload?.specs)) {
+    normalized.targetSpecs = payload.specs.map((item = {}, index) => ({
+      id: item.id ?? undefined,
+      type: 'TARGET_SPEC',
+      code: normalizeProcessMasterCode(item.code),
+      label: toTrimmedText(
+        item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value
+      ),
+      nameKo: toTrimmedText(item.nameKo ?? item.label),
+      nameEn: toTrimmedText(item.nameEn),
+      nameVi: toTrimmedText(item.nameVi),
+      sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
+    }));
+  }
+
   return normalized;
 };
 

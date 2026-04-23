@@ -75,9 +75,12 @@ enum SystemRole {
 }
 
 enum ProcessMasterOptionType {
+  LOCATION
   PART
   TARGET
+  TARGET_SPEC
   ACTION
+  ACTION_SPEC
   SPEC
 }
 

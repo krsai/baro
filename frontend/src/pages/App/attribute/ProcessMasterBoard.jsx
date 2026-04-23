@@ -31,17 +31,19 @@ import {
 } from '../../../utils/attributeApi';
 
 const MASTER_SECTIONS = [
-  { key: 'parts', title: '부위' },
+  { key: 'locations', title: '위치' },
   { key: 'targets', title: '대상' },
-  { key: 'specs', title: '규격' },
-  { key: 'actions', title: '작업' },
+  { key: 'targetSpecs', title: '대상 규격' },
+  { key: 'actions', title: '동작' },
+  { key: 'actionSpecs', title: '동작 규격' },
 ];
 
 const createEmptyMasterData = () => ({
-  parts: [],
+  locations: [],
   targets: [],
   actions: [],
-  specs: [],
+  targetSpecs: [],
+  actionSpecs: [],
 });
 
 const toTrimmedText = (value) => String(value ?? '').trim();
@@ -102,10 +104,11 @@ const normalizeMasterRows = (rows = []) =>
   }));
 
 const normalizeMasterData = (data = {}) => ({
-  parts: normalizeMasterRows(data?.parts),
+  locations: normalizeMasterRows(data?.locations ?? data?.parts),
   targets: normalizeMasterRows(data?.targets),
   actions: normalizeMasterRows(data?.actions),
-  specs: normalizeMasterRows(data?.specs),
+  targetSpecs: normalizeMasterRows(data?.targetSpecs ?? data?.specs),
+  actionSpecs: normalizeMasterRows(data?.actionSpecs),
 });
 
 const areMasterRowsEqual = (leftRows = [], rightRows = []) => {
@@ -477,7 +480,7 @@ const ProcessMasterBoard = () => {
     >
       <Stack spacing={2}>
         <Alert severity="info">
-          사용자가 스타일 화면에서 추가한 작업명이 3개 언어가 동일하면 `검토`로 표시됩니다.
+          공정 표준은 위치/대상/대상 규격/동작/동작 규격 5축으로 관리합니다.
         </Alert>
         {hasDuplicateCodes ? (
           <Alert severity="warning">중복 코드가 있습니다. 각 섹션에서 코드 중복을 해소해 주세요.</Alert>
