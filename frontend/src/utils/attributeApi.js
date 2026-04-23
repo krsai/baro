@@ -137,9 +137,10 @@ const normalizeProcessMasterRelationEntry = (item = {}, relationType = '') => {
   const normalizedType = String(item?.type ?? relationType).trim().toUpperCase();
   const isTargetRelation = normalizedType === 'TARGET_TARGET_SPEC';
   const isActionRelation = normalizedType === 'ACTION_ACTION_SPEC';
+  const isTargetTargetRelation = normalizedType === 'TARGET_TARGET';
   const parentCode = normalizeProcessMasterCode(
     item?.parentCode ??
-      (isTargetRelation ? item?.targetCode : item?.actionCode) ??
+      (isTargetRelation || isTargetTargetRelation ? item?.targetCode : item?.actionCode) ??
       item?.parent?.code ??
       item?.target?.code ??
       item?.action?.code ??
@@ -148,9 +149,11 @@ const normalizeProcessMasterRelationEntry = (item = {}, relationType = '') => {
   const childCode = normalizeProcessMasterCode(
     item?.childCode ??
       (isTargetRelation ? item?.targetSpecCode : item?.actionSpecCode) ??
+      (isTargetTargetRelation ? item?.linkedTargetCode : undefined) ??
       item?.child?.code ??
       item?.targetSpec?.code ??
       item?.actionSpec?.code ??
+      item?.linkedTarget?.code ??
       item?.child
   );
   return {
@@ -168,6 +171,12 @@ const normalizeProcessMasterRelationEntry = (item = {}, relationType = '') => {
       ? {
           actionCode: parentCode,
           actionSpecCode: childCode,
+        }
+      : {}),
+    ...(isTargetTargetRelation
+      ? {
+          targetCode: parentCode,
+          linkedTargetCode: childCode,
         }
       : {}),
   };
@@ -201,6 +210,25 @@ const normalizeProcessMasterData = (data = {}) => {
   )
     .map((item) => normalizeProcessMasterRelationEntry(item, 'ACTION_ACTION_SPEC'))
     .filter((item) => item.parentCode && item.childCode);
+  const targetToTargets = normalizeArray(
+    relationSource?.targetToTargets ?? relationSource?.targetLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'TARGET_TARGET'))
+    .filter((item) => item.parentCode && item.childCode);
+  const usageConflicts = normalizeArray(data?.usageConflicts).map((item) => ({
+    id: item?.id ?? null,
+    type: String(item?.type ?? '').trim().toUpperCase(),
+    code: toTrimmedText(item?.code),
+    label: toTrimmedText(item?.label ?? item?.nameKo ?? item?.nameEn ?? item?.nameVi),
+    nameKo: toTrimmedText(item?.nameKo),
+    nameEn: toTrimmedText(item?.nameEn),
+    nameVi: toTrimmedText(item?.nameVi),
+    styleProcessCount: Number(item?.styleProcessCount) || 0,
+    referenceCount: Number(item?.referenceCount) || 0,
+    sampleStyleProcessIds: normalizeArray(item?.sampleStyleProcessIds)
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  }));
 
   return {
     locations,
@@ -210,9 +238,12 @@ const normalizeProcessMasterData = (data = {}) => {
     actionSpecs,
     targetToTargetSpecs,
     actionToActionSpecs,
+    targetToTargets,
+    usageConflicts,
     relations: {
       targetToTargetSpecs,
       actionToActionSpecs,
+      targetToTargets,
     },
     // Backward compatibility for screens not migrated yet.
     parts: locations,
@@ -303,9 +334,23 @@ const normalizeProcessMasterPayload = (payload = {}) => {
       actionCode: item.parentCode,
       actionSpecCode: item.childCode,
     }));
+  const targetToTargets = normalizeArray(
+    relationSource?.targetToTargets ?? relationSource?.targetLinks
+  )
+    .map((item) => normalizeProcessMasterRelationEntry(item, 'TARGET_TARGET'))
+    .filter((item) => item.parentCode && item.childCode)
+    .map((item) => ({
+      id: item.id ?? undefined,
+      type: 'TARGET_TARGET',
+      parentCode: item.parentCode,
+      childCode: item.childCode,
+      targetCode: item.parentCode,
+      linkedTargetCode: item.childCode,
+    }));
   normalized.relations = {
     targetToTargetSpecs,
     actionToActionSpecs,
+    targetToTargets,
   };
 
   return normalized;

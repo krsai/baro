@@ -1416,8 +1416,32 @@ const normalizeStyleProcessComposition = (value: any) => {
   ];
   const locations = normalizeStyleProcessCompositionEntries(locationInputs, "part");
   const location = locations[0] ?? null;
-  const targets = normalizeStyleProcessCompositionEntries((value as any)?.targets, "target");
-  const target = targets[0] ?? null;
+  const rawTargetPairs = ensureArray((value as any)?.targetPairs)
+    .map((pair: any) => {
+      if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
+      const targetEntry = normalizeStyleProcessCompositionEntry(
+        (pair as any)?.target ?? (pair as any)?.targetItem,
+        "target"
+      );
+      const targetSpecEntry = normalizeStyleProcessCompositionEntry(
+        (pair as any)?.targetSpec ?? (pair as any)?.spec ?? (pair as any)?.targetSpecItem,
+        "targetSpec"
+      );
+      if (!targetEntry && !targetSpecEntry) return null;
+      return {
+        target: targetEntry,
+        targetSpec: targetSpecEntry,
+      };
+    })
+    .filter(Boolean) as Array<{
+    target: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+    targetSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+  }>;
+
+  const rawTargets = normalizeStyleProcessCompositionEntries(
+    (value as any)?.targets,
+    "target"
+  );
 
   const legacySpecs = normalizeStyleProcessCompositionEntries((value as any)?.specs, "spec");
   const targetSpecInputs = [
@@ -1428,7 +1452,41 @@ const normalizeStyleProcessComposition = (value: any) => {
       ? legacySpecs
       : []) as any[]),
   ];
-  const targetSpecs = normalizeStyleProcessCompositionEntries(targetSpecInputs, "spec");
+  const rawTargetSpecs = normalizeStyleProcessCompositionEntries(targetSpecInputs, "spec");
+
+  const targetPairs =
+    rawTargetPairs.length > 0
+      ? rawTargetPairs.filter((pair) => Boolean(pair?.target))
+      : (() => {
+          const pairCount = Math.max(rawTargets.length, rawTargetSpecs.length);
+          if (pairCount === 0) return [] as Array<{
+            target: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+            targetSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+          }>;
+          const pairs: Array<{
+            target: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+            targetSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+          }> = [];
+          for (let index = 0; index < pairCount; index += 1) {
+            const targetEntry = rawTargets[index] ?? null;
+            const targetSpecEntry = rawTargetSpecs[index] ?? null;
+            if (!targetEntry && !targetSpecEntry) continue;
+            if (!targetEntry) continue;
+            pairs.push({
+              target: targetEntry,
+              targetSpec: targetSpecEntry,
+            });
+          }
+          return pairs;
+        })();
+
+  const targets = targetPairs
+    .map((pair) => pair?.target)
+    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
+  const targetSpecs = targetPairs
+    .map((pair) => pair?.targetSpec)
+    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
+  const target = targets[0] ?? null;
   const targetSpec = targetSpecs[0] ?? null;
 
   const actionSpecInputs = [
@@ -1461,6 +1519,7 @@ const normalizeStyleProcessComposition = (value: any) => {
     parts: locations,
     target,
     targets,
+    targetPairs,
     targetSpec,
     targetSpecs,
     action,
@@ -1499,14 +1558,29 @@ const buildStyleProcessNameFromComposition = (
     .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
     .filter(Boolean)
     .join("·");
-  const targetText = normalizedComposition.targets
-    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+  const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs);
+  const targetWithSpec = (
+    targetPairs.length > 0
+      ? targetPairs
+      : normalizedComposition.targets.map((entry: any, index: number) => ({
+          target: entry,
+          targetSpec: normalizedComposition.targetSpecs[index] ?? null,
+        }))
+  )
+    .map((pair: any) => {
+      const targetText = resolveStyleProcessCompositionText(pair?.target, language);
+      const targetSpecText = resolveStyleProcessCompositionText(
+        pair?.targetSpec,
+        language
+      );
+      if (targetText) {
+        return `${targetText}${targetSpecText ? `(${targetSpecText})` : ""}`;
+      }
+      if (targetSpecText) return `(${targetSpecText})`;
+      return "";
+    })
     .filter(Boolean)
-    .join("·");
-  const targetSpecText = normalizedComposition.targetSpecs
-    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
-    .filter(Boolean)
-    .join("·");
+    .join(" + ");
   const actionText = normalizedComposition.actions
     .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
     .filter(Boolean)
@@ -1516,11 +1590,6 @@ const buildStyleProcessNameFromComposition = (
     .filter(Boolean)
     .join("·");
 
-  const targetWithSpec = targetText
-    ? `${targetText}${targetSpecText ? `(${targetSpecText})` : ""}`
-    : targetSpecText
-      ? `(${targetSpecText})`
-      : "";
   const actionWithSpec = actionText
     ? `${actionText}${actionSpecText ? `(${actionSpecText})` : ""}`
     : actionSpecText
@@ -1569,13 +1638,25 @@ const buildStyleProcessCodeFromComposition = (
     ...normalizedComposition.locations.map((entry: any) =>
       resolveOptionalString(entry?.code, null)
     ),
-    ...normalizedComposition.targets.map((entry: any) =>
-      resolveOptionalString(entry?.code, null)
-    ),
-    ...normalizedComposition.targetSpecs.map((entry: any) =>
-      resolveOptionalString(entry?.code, null) ||
-      buildCustomStyleSpecCode(entry?.label)
-    ),
+    ...(() => {
+      const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs);
+      if (targetPairs.length > 0) {
+        return targetPairs.flatMap((pair: any) => [
+          resolveOptionalString(pair?.target?.code, null),
+          resolveOptionalString(pair?.targetSpec?.code, null) ||
+            buildCustomStyleSpecCode(pair?.targetSpec?.label),
+        ]);
+      }
+      return [
+        ...normalizedComposition.targets.map((entry: any) =>
+          resolveOptionalString(entry?.code, null)
+        ),
+        ...normalizedComposition.targetSpecs.map((entry: any) =>
+          resolveOptionalString(entry?.code, null) ||
+          buildCustomStyleSpecCode(entry?.label)
+        ),
+      ];
+    })(),
     ...normalizedComposition.actions.map((entry: any) =>
       resolveOptionalString(entry?.code, null)
     ),
@@ -8565,11 +8646,15 @@ type ProcessMasterOptionGroupKey =
   | "actions"
   | "actionSpecs";
 
-type ProcessMasterRelationType = "TARGET_TARGET_SPEC" | "ACTION_ACTION_SPEC";
+type ProcessMasterRelationType =
+  | "TARGET_TARGET_SPEC"
+  | "ACTION_ACTION_SPEC"
+  | "TARGET_TARGET";
 
 type ProcessMasterRelationGroupKey =
   | "targetToTargetSpecs"
-  | "actionToActionSpecs";
+  | "actionToActionSpecs"
+  | "targetToTargets";
 
 type ProcessMasterOptionRow = {
   id: number;
@@ -8631,6 +8716,7 @@ const PROCESS_MASTER_FALLBACK_CODE_BY_TYPE: Record<ProcessMasterOptionType, stri
 const PROCESS_MASTER_RELATION_TYPE_KEYS = [
   "TARGET_TARGET_SPEC",
   "ACTION_ACTION_SPEC",
+  "TARGET_TARGET",
 ] as const;
 
 const PROCESS_MASTER_RELATION_META: Record<
@@ -8650,6 +8736,11 @@ const PROCESS_MASTER_RELATION_META: Record<
     groupKey: "actionToActionSpecs",
     parentType: "ACTION",
     childType: "ACTION_SPEC",
+  },
+  TARGET_TARGET: {
+    groupKey: "targetToTargets",
+    parentType: "TARGET",
+    childType: "TARGET",
   },
 };
 
@@ -8779,6 +8870,13 @@ const normalizeProcessMasterRelationType = (
   ) {
     return "ACTION_ACTION_SPEC";
   }
+  if (
+    normalized === "TARGET_TARGET" ||
+    normalized === "TARGET_TO_TARGET" ||
+    normalized === "TARGET_LINK"
+  ) {
+    return "TARGET_TARGET";
+  }
   return null;
 };
 
@@ -8858,6 +8956,7 @@ const groupProcessMasterRelations = (rows: any[] = []) => {
   const grouped = {
     targetToTargetSpecs: [] as any[],
     actionToActionSpecs: [] as any[],
+    targetToTargets: [] as any[],
   };
 
   rows.forEach((row) => {
@@ -8878,10 +8977,15 @@ const groupProcessMasterRelations = (rows: any[] = []) => {
             targetCode: normalized.parentCode,
             targetSpecCode: normalized.childCode,
           }
-        : {
-            actionCode: normalized.parentCode,
-            actionSpecCode: normalized.childCode,
-          }),
+        : type === "ACTION_ACTION_SPEC"
+          ? {
+              actionCode: normalized.parentCode,
+              actionSpecCode: normalized.childCode,
+            }
+          : {
+              targetCode: normalized.parentCode,
+              linkedTargetCode: normalized.childCode,
+            }),
     };
     grouped[meta.groupKey].push(relation);
   });
@@ -8891,7 +8995,8 @@ const groupProcessMasterRelations = (rows: any[] = []) => {
 
 const buildProcessMasterOptionsResponse = (
   optionRows: any[] = [],
-  relationRows: any[] = []
+  relationRows: any[] = [],
+  usageConflicts: any[] = []
 ) => {
   const groupedOptions = groupProcessMasterOptions(optionRows);
   const groupedRelations = groupProcessMasterRelations(relationRows);
@@ -8899,6 +9004,7 @@ const buildProcessMasterOptionsResponse = (
     ...groupedOptions,
     ...groupedRelations,
     relations: groupedRelations,
+    usageConflicts: ensureArray(usageConflicts),
   };
 };
 
@@ -9606,7 +9712,7 @@ const parseProcessMasterRelationPayload = (payload: any) => {
     payload && typeof payload === "object" && payload.relations && typeof payload.relations === "object"
       ? payload.relations
       : payload;
-  const hasTargetRelationKey = Boolean(
+  const hasTargetSpecRelationKey = Boolean(
     relationContainer &&
       typeof relationContainer === "object" &&
       (Object.prototype.hasOwnProperty.call(
@@ -9616,6 +9722,18 @@ const parseProcessMasterRelationPayload = (payload: any) => {
         Object.prototype.hasOwnProperty.call(
           relationContainer,
           "targetSpecLinks"
+        ))
+  );
+  const hasTargetTargetRelationKey = Boolean(
+    relationContainer &&
+      typeof relationContainer === "object" &&
+      (Object.prototype.hasOwnProperty.call(
+        relationContainer,
+        "targetToTargets"
+      ) ||
+        Object.prototype.hasOwnProperty.call(
+          relationContainer,
+          "targetLinks"
         ))
   );
   const hasActionRelationKey = Boolean(
@@ -9657,7 +9775,7 @@ const parseProcessMasterRelationPayload = (payload: any) => {
     entriesByType.set(type, collected);
   };
 
-  if (hasTargetRelationKey) {
+  if (hasTargetSpecRelationKey) {
     collectEntries(
       "TARGET_TARGET_SPEC",
       relationContainer?.targetToTargetSpecs ?? relationContainer?.targetSpecLinks,
@@ -9670,6 +9788,24 @@ const parseProcessMasterRelationPayload = (payload: any) => {
             item?.targetSpecCode ??
             item?.targetSpec?.code ??
             item?.targetSpec
+        ),
+      })
+    );
+  }
+
+  if (hasTargetTargetRelationKey) {
+    collectEntries(
+      "TARGET_TARGET",
+      relationContainer?.targetToTargets ?? relationContainer?.targetLinks,
+      (item) => ({
+        parentCode: normalizeProcessMasterCode(
+          item?.parentCode ?? item?.targetCode ?? item?.target?.code ?? item?.target
+        ),
+        childCode: normalizeProcessMasterCode(
+          item?.childCode ??
+            item?.linkedTargetCode ??
+            item?.linkedTarget?.code ??
+            item?.linkedTarget
         ),
       })
     );
@@ -9694,7 +9830,8 @@ const parseProcessMasterRelationPayload = (payload: any) => {
   }
 
   return {
-    hasProvidedKeys: hasTargetRelationKey || hasActionRelationKey,
+    hasProvidedKeys:
+      hasTargetSpecRelationKey || hasTargetTargetRelationKey || hasActionRelationKey,
     providedTypes,
     entriesByType,
   };
@@ -9747,6 +9884,12 @@ const syncProcessMasterRelations = async ({
       const parentOptionId = parentLookup.get(parentCode);
       const childOptionId = childLookup.get(childCode);
       if (!parentOptionId || !childOptionId) return;
+      if (
+        relationType === "TARGET_TARGET" &&
+        Number(parentOptionId) === Number(childOptionId)
+      ) {
+        return;
+      }
       const key = `${parentOptionId}:${childOptionId}`;
       if (desiredKeySet.has(key)) return;
       desiredKeySet.add(key);
@@ -10209,6 +10352,26 @@ const applyProcessMasterNamesToComposition = (
       applyProcessMasterNamesToCompositionEntry(entry, "ACTION_SPEC", lookupByTypeAndCode)
     )
     .filter(Boolean);
+  const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs)
+    .map((pair: any) => {
+      if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
+      const target = applyProcessMasterNamesToCompositionEntry(
+        (pair as any)?.target,
+        "TARGET",
+        lookupByTypeAndCode
+      );
+      if (!target) return null;
+      const targetSpec = applyProcessMasterNamesToCompositionEntry(
+        (pair as any)?.targetSpec,
+        "TARGET_SPEC",
+        lookupByTypeAndCode
+      );
+      return {
+        target,
+        targetSpec: targetSpec ?? null,
+      };
+    })
+    .filter(Boolean);
 
   if (
     locations.length === 0 &&
@@ -10231,6 +10394,7 @@ const applyProcessMasterNamesToComposition = (
     parts: locations,
     target: targets[0] ?? null,
     targets,
+    targetPairs,
     action: actions[0] ?? null,
     actions,
     targetSpec,
@@ -14842,7 +15006,10 @@ app.get("/process-master-options", async (req, res) => {
   await ensureProcessMasterOptionRelationSchemaReady();
   const rows = await ensureDefaultProcessMasterOptions();
   const relations = await listProcessMasterOptionRelations();
-  return res.json(buildProcessMasterOptionsResponse(rows, relations));
+  const usageConflicts = await findProcessMasterDeletionUsageConflicts(rows);
+  return res.json(
+    buildProcessMasterOptionsResponse(rows, relations, usageConflicts)
+  );
 });
 
 app.put("/process-master-options", async (req, res, next) => {
@@ -14859,10 +15026,13 @@ app.put("/process-master-options", async (req, res, next) => {
       payload,
       processMasterRows: rows,
     });
+    const usageConflicts = await findProcessMasterDeletionUsageConflicts(rows);
     await syncStyleProcessCompositionNamesWithMasterOptions({
       processMasterRows: rows,
     });
-    return res.json(buildProcessMasterOptionsResponse(rows, relations));
+    return res.json(
+      buildProcessMasterOptionsResponse(rows, relations, usageConflicts)
+    );
   } catch (error) {
     if (isProcessMasterOptionInUseError(error)) {
       const usageCount = Number(error.usageCount || 0);

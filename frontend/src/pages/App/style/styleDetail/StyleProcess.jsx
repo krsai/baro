@@ -60,9 +60,14 @@ const createEmptyDraft = () => ({
   part: null,
   target: null,
   targetSpec: null,
+  target2: null,
+  targetSpec2: null,
+  target3: null,
+  targetSpec3: null,
   action: null,
   actionSpec: null,
   processCode: '',
+  repeatCount: '1',
   pt: '',
   st: '',
   needsReview: false,
@@ -79,10 +84,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: '공정 추가',
     addingTitle: '새 공정 추가',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
-    missingMasterOptions: '공정 사전에서 위치를 먼저 등록해주세요.',
+    missingMasterOptions: '공정 사전에서 대상/동작을 먼저 등록해주세요.',
     partLabel: '위치',
-    targetLabel: '대상',
-    targetSpecLabel: '대상 규격',
+    targetLabel: '대상1',
+    targetSpecLabel: '대상1 규격',
+    target2Label: '대상2',
+    targetSpec2Label: '대상2 규격',
+    target3Label: '대상3',
+    targetSpec3Label: '대상3 규격',
     actionLabel: '동작',
     actionSpecLabel: '동작 규격',
     actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
@@ -92,8 +101,9 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: '예: 3선',
     processCodeLabel: '공정코드',
     processCodePlaceholder: '예: PROC-001 (선택)',
+    repeatCountLabel: '반복횟수',
     previewLabel: '미리보기',
-    previewEmpty: '위치와 동작을 선택하면 공정명이 만들어집니다. 대상/규격은 선택입니다.',
+    previewEmpty: '대상1과 동작을 선택하면 공정명이 만들어집니다. 대상2/대상3은 선택입니다.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -120,7 +130,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
-    validatePart: '위치를 선택해주세요.',
+    validatePart: '대상1을 선택해주세요.',
     validateTarget: '대상을 선택해주세요.',
     validateAction: '동작을 선택해주세요.',
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
@@ -134,10 +144,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Add Process',
     addingTitle: 'New Process',
     loadingOptions: 'Loading process composition options...',
-    missingMasterOptions: 'Register location options first.',
+    missingMasterOptions: 'Register target/action options first.',
     partLabel: 'Location',
-    targetLabel: 'Target',
-    targetSpecLabel: 'Target Spec',
+    targetLabel: 'Target 1',
+    targetSpecLabel: 'Target 1 Spec',
+    target2Label: 'Target 2',
+    targetSpec2Label: 'Target 2 Spec',
+    target3Label: 'Target 3',
+    targetSpec3Label: 'Target 3 Spec',
     actionLabel: 'Action',
     actionSpecLabel: 'Action Spec',
     actionInputHint: 'Type and press Enter (or just Add)',
@@ -147,8 +161,9 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'e.g. 3-line',
     processCodeLabel: 'Process Code',
     processCodePlaceholder: 'e.g. PROC-001 (optional)',
+    repeatCountLabel: 'Repeat Count',
     previewLabel: 'Preview',
-    previewEmpty: 'Select location and action to build the process name. Target/spec are optional.',
+    previewEmpty: 'Select target 1 and action to build the process name. Target 2/3 are optional.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -175,7 +190,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): per-piece expected seconds at 1,000 pcs.',
     atTooltip: 'AT({quantity}): per-piece actual seconds at order qty {quantity}.',
     stTooltip: 'ST({quantity}): per-piece standard seconds for the matched quantity bucket.',
-    validatePart: 'Select a location.',
+    validatePart: 'Select target 1.',
     validateTarget: 'Select a target.',
     validateAction: 'Select an action.',
     validateInvalid: 'Enter a valid process composition.',
@@ -189,10 +204,14 @@ const STYLE_PROCESS_MESSAGES = {
     addRow: 'Them cong doan',
     addingTitle: 'Cong doan moi',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
-    missingMasterOptions: 'Hay dang ky truoc vi tri.',
+    missingMasterOptions: 'Hay dang ky truoc doi tuong va thao tac.',
     partLabel: 'Vi tri',
-    targetLabel: 'Doi tuong',
-    targetSpecLabel: 'Quy cach doi tuong',
+    targetLabel: 'Doi tuong 1',
+    targetSpecLabel: 'Quy cach doi tuong 1',
+    target2Label: 'Doi tuong 2',
+    targetSpec2Label: 'Quy cach doi tuong 2',
+    target3Label: 'Doi tuong 3',
+    targetSpec3Label: 'Quy cach doi tuong 3',
     actionLabel: 'Thao tac',
     actionSpecLabel: 'Quy cach thao tac',
     actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
@@ -202,8 +221,9 @@ const STYLE_PROCESS_MESSAGES = {
     specPlaceholder: 'vi du: 3 kim',
     processCodeLabel: 'Ma cong doan',
     processCodePlaceholder: 'vi du: PROC-001 (tuy chon)',
+    repeatCountLabel: 'So lan lap',
     previewLabel: 'Xem truoc',
-    previewEmpty: 'Chon vi tri va thao tac de tao ten cong doan. Doi tuong/quy cach la tuy chon.',
+    previewEmpty: 'Chon doi tuong 1 va thao tac de tao ten cong doan. Doi tuong 2/3 la tuy chon.',
     ptLabel: 'PT',
     stLabel: 'ST',
     atLabel: 'AT',
@@ -230,7 +250,7 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): giay du kien moi san pham tai 1.000 san pham.',
     atTooltip: 'AT({quantity}): giay thuc te moi san pham tai don hang {quantity}.',
     stTooltip: 'ST({quantity}): giay chuan moi san pham theo nhom so luong phu hop.',
-    validatePart: 'Hay chon vi tri.',
+    validatePart: 'Hay chon doi tuong 1.',
     validateTarget: 'Hay chon doi tuong.',
     validateAction: 'Hay chon thao tac.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
@@ -604,12 +624,25 @@ const normalizeProcessCompositionEntries = (values, kind) => {
 const buildProcessComposition = (draft) => {
   const part = normalizeProcessCompositionEntry(draft?.part, 'part');
   const parts = part ? [part] : [];
-  const target = normalizeProcessCompositionEntry(draft?.target, 'target');
-  const targets = target ? [target] : [];
+  const rawTargetPairs = [
+    {
+      target: normalizeProcessCompositionEntry(draft?.target, 'target'),
+      targetSpec: normalizeProcessCompositionEntry(draft?.targetSpec, 'targetSpec'),
+    },
+    {
+      target: normalizeProcessCompositionEntry(draft?.target2, 'target'),
+      targetSpec: normalizeProcessCompositionEntry(draft?.targetSpec2, 'targetSpec'),
+    },
+    {
+      target: normalizeProcessCompositionEntry(draft?.target3, 'target'),
+      targetSpec: normalizeProcessCompositionEntry(draft?.targetSpec3, 'targetSpec'),
+    },
+  ];
+  const targetPairs = rawTargetPairs.filter((pair) => pair?.target);
+  const targets = targetPairs.map((pair) => pair.target).filter(Boolean);
   const action = normalizeProcessCompositionEntry(draft?.action, 'action');
   const actions = action ? [action] : [];
-  const targetSpec = normalizeProcessCompositionEntry(draft?.targetSpec, 'targetSpec');
-  const targetSpecs = targetSpec ? [targetSpec] : [];
+  const targetSpecs = targetPairs.map((pair) => pair.targetSpec).filter(Boolean);
   const actionSpec = normalizeProcessCompositionEntry(draft?.actionSpec, 'actionSpec');
   const actionSpecs = actionSpec ? [actionSpec] : [];
   const specs = [...targetSpecs, ...actionSpecs];
@@ -629,9 +662,10 @@ const buildProcessComposition = (draft) => {
     locations: parts,
     part,
     parts,
-    target,
+    target: targets[0] ?? null,
     targets,
-    targetSpec,
+    targetPairs,
+    targetSpec: targetSpecs[0] ?? null,
     targetSpecs,
     action,
     actions,
@@ -691,12 +725,6 @@ const buildProcessNameFromComposition = (
     : composition.target
       ? [composition.target]
       : [];
-  const targetText = targetEntries
-    .map((entry) =>
-      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.target)
-    )
-    .filter(Boolean)
-    .join('·');
   const targetSpecEntries = Array.isArray(composition.targetSpecs)
     ? composition.targetSpecs
     : composition.targetSpec
@@ -704,12 +732,30 @@ const buildProcessNameFromComposition = (
       : Array.isArray(composition.specs)
         ? composition.specs
         : [];
-  const targetSpecText = targetSpecEntries
-    .map((entry) =>
-      resolveProcessCompositionText(entry, languageCode, masterLookupByKind?.targetSpec)
-    )
+  const targetPairs = Array.isArray(composition?.targetPairs)
+    ? composition.targetPairs
+    : targetEntries.map((targetEntry, index) => ({
+        target: targetEntry,
+        targetSpec: targetSpecEntries[index] ?? null,
+      }));
+  const targetWithSpec = targetPairs
+    .map((pair) => {
+      const targetText = resolveProcessCompositionText(
+        pair?.target,
+        languageCode,
+        masterLookupByKind?.target
+      );
+      const targetSpecText = resolveProcessCompositionText(
+        pair?.targetSpec,
+        languageCode,
+        masterLookupByKind?.targetSpec
+      );
+      if (targetText) return `${targetText}${targetSpecText ? `(${targetSpecText})` : ''}`;
+      if (targetSpecText) return `(${targetSpecText})`;
+      return '';
+    })
     .filter(Boolean)
-    .join('·');
+    .join(' + ');
   const actionEntries = Array.isArray(composition.actions)
     ? composition.actions
     : composition.action
@@ -733,11 +779,6 @@ const buildProcessNameFromComposition = (
     .filter(Boolean)
     .join('·');
 
-  const targetWithSpec = targetText
-    ? `${targetText}${targetSpecText ? `(${targetSpecText})` : ''}`
-    : targetSpecText
-      ? `(${targetSpecText})`
-      : '';
   const actionWithSpec = actionText
     ? `${actionText}${actionSpecText ? `(${actionSpecText})` : ''}`
     : actionSpecText
@@ -804,7 +845,8 @@ const getProcessIdentity = (process) => {
   const name = String(process.name ?? '')
     .trim()
     .toLowerCase();
-  return name ? `name:${name}` : '';
+  const quantity = toPositiveInt(process?.quantity, 1);
+  return name ? `name:${name}|qty:${quantity}` : '';
 };
 
 const createInstanceId = (process) =>
@@ -891,7 +933,10 @@ const buildProcessPayload = (
     DEFAULT_TIME_REF_QUANTITY
   );
   const resolvedStBucketQuantity = resolveStBucketQuantity(resolvedTimeRefQuantity);
-  const processQuantity = toPositiveInt(existingProcess?.quantity, 1);
+  const processQuantity = toPositiveInt(
+    draft?.repeatCount ?? existingProcess?.quantity,
+    1
+  );
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
@@ -963,6 +1008,9 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
   const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
+  const existingTargetPairs = Array.isArray(composition?.targetPairs)
+    ? composition.targetPairs
+    : [];
   const existingTargets = Array.isArray(composition?.targets)
     ? composition.targets
     : composition?.target
@@ -994,14 +1042,32 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
     : composition?.actionSpec
       ? [composition.actionSpec]
       : [];
+  const normalizedTargetPairs = (
+    existingTargetPairs.length > 0
+      ? existingTargetPairs
+      : existingTargets.map((targetEntry, index) => ({
+          target: targetEntry,
+          targetSpec: existingTargetSpecs[index] ?? null,
+        }))
+  )
+    .map((pair) => ({
+      target: normalizeProcessCompositionEntry(pair?.target, 'target'),
+      targetSpec: normalizeProcessCompositionEntry(pair?.targetSpec, 'targetSpec'),
+    }))
+    .filter((pair) => pair?.target);
 
   return {
     part: normalizeProcessCompositionEntry(existingLocations[0], 'part'),
-    target: normalizeProcessCompositionEntry(existingTargets[0], 'target'),
+    target: normalizedTargetPairs[0]?.target ?? null,
+    targetSpec: normalizedTargetPairs[0]?.targetSpec ?? null,
+    target2: normalizedTargetPairs[1]?.target ?? null,
+    targetSpec2: normalizedTargetPairs[1]?.targetSpec ?? null,
+    target3: normalizedTargetPairs[2]?.target ?? null,
+    targetSpec3: normalizedTargetPairs[2]?.targetSpec ?? null,
     action: normalizeProcessCompositionEntry(existingActions[0], 'action'),
-    targetSpec: normalizeProcessCompositionEntry(existingTargetSpecs[0], 'targetSpec'),
     actionSpec: normalizeProcessCompositionEntry(existingActionSpecs[0], 'actionSpec'),
     processCode: String(safeProcess?.code ?? '').trim(),
+    repeatCount: String(processQuantity),
     pt:
       ptPerPiece == null
         ? ''
@@ -1091,6 +1157,7 @@ const StyleProcess = ({
     actionSpecs: [],
     targetToTargetSpecs: [],
     actionToActionSpecs: [],
+    targetToTargets: [],
   });
   const [isLoadingOptions, setIsLoadingOptions] = useState(true);
   const [optionsError, setOptionsError] = useState('');
@@ -1122,6 +1189,11 @@ const StyleProcess = ({
           )
             ? (data?.relations?.actionToActionSpecs ?? data?.actionToActionSpecs)
             : [],
+          targetToTargets: Array.isArray(
+            data?.relations?.targetToTargets ?? data?.targetToTargets
+          )
+            ? (data?.relations?.targetToTargets ?? data?.targetToTargets)
+            : [],
         });
       } catch (_error) {
         if (!active) return;
@@ -1133,6 +1205,7 @@ const StyleProcess = ({
           actionSpecs: [],
           targetToTargetSpecs: [],
           actionToActionSpecs: [],
+          targetToTargets: [],
         });
         setOptionsError(
           languageCode === 'ko'
@@ -1431,6 +1504,33 @@ const StyleProcess = ({
     });
     return map;
   }, [processMasterOptions.targetToTargetSpecs]);
+  const targetToTargetRelationMap = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(processMasterOptions.targetToTargets)
+      ? processMasterOptions.targetToTargets
+      : []
+    ).forEach((row) => {
+      const parentCode = normalizeStyleProcessCodeSegment(
+        row?.parentCode ?? row?.targetCode
+      );
+      const childCode = normalizeStyleProcessCodeSegment(
+        row?.childCode ?? row?.linkedTargetCode
+      );
+      if (!parentCode || !childCode || parentCode === childCode) return;
+
+      const append = (fromCode, toCode) => {
+        const existing = map.get(fromCode);
+        if (existing instanceof Set) {
+          existing.add(toCode);
+        } else {
+          map.set(fromCode, new Set([toCode]));
+        }
+      };
+      append(parentCode, childCode);
+      append(childCode, parentCode);
+    });
+    return map;
+  }, [processMasterOptions.targetToTargets]);
   const actionToActionSpecRelationMap = useMemo(() => {
     const map = new Map();
     (Array.isArray(processMasterOptions.actionToActionSpecs)
@@ -1453,17 +1553,95 @@ const StyleProcess = ({
     });
     return map;
   }, [processMasterOptions.actionToActionSpecs]);
-  const filteredTargetSpecOptions = useMemo(() => {
-    const selectedTargetCode = normalizeStyleProcessCodeSegment(addDraft?.target?.code);
-    if (!selectedTargetCode) return targetSpecOptions;
-    const linkedSpecCodes = targetToTargetSpecRelationMap.get(selectedTargetCode);
-    if (!(linkedSpecCodes instanceof Set) || linkedSpecCodes.size === 0) {
-      return targetSpecOptions;
-    }
-    return targetSpecOptions.filter((option) =>
-      linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+  const resolveLinkedTargetCodeSet = useCallback(
+    (parentCodes = []) => {
+      const linked = new Set();
+      let hasConstraint = false;
+      (Array.isArray(parentCodes) ? parentCodes : []).forEach((code) => {
+        const normalizedCode = normalizeStyleProcessCodeSegment(code);
+        if (!normalizedCode) return;
+        const rowSet = targetToTargetRelationMap.get(normalizedCode);
+        if (!(rowSet instanceof Set) || rowSet.size === 0) return;
+        hasConstraint = true;
+        rowSet.forEach((item) => linked.add(item));
+      });
+      return hasConstraint ? linked : null;
+    },
+    [targetToTargetRelationMap]
+  );
+  const filterTargetSpecOptionsByTargetCode = useCallback(
+    (targetCode) => {
+      const normalizedTargetCode = normalizeStyleProcessCodeSegment(targetCode);
+      if (!normalizedTargetCode) return targetSpecOptions;
+      const linkedSpecCodes = targetToTargetSpecRelationMap.get(normalizedTargetCode);
+      if (!(linkedSpecCodes instanceof Set) || linkedSpecCodes.size === 0) {
+        return targetSpecOptions;
+      }
+      return targetSpecOptions.filter((option) =>
+        linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+      );
+    },
+    [targetSpecOptions, targetToTargetSpecRelationMap]
+  );
+  const filteredTargetSpecOptions = useMemo(
+    () => filterTargetSpecOptionsByTargetCode(addDraft?.target?.code),
+    [addDraft?.target?.code, filterTargetSpecOptionsByTargetCode]
+  );
+  const filteredTargetSpec2Options = useMemo(
+    () => filterTargetSpecOptionsByTargetCode(addDraft?.target2?.code),
+    [addDraft?.target2?.code, filterTargetSpecOptionsByTargetCode]
+  );
+  const filteredTargetSpec3Options = useMemo(
+    () => filterTargetSpecOptionsByTargetCode(addDraft?.target3?.code),
+    [addDraft?.target3?.code, filterTargetSpecOptionsByTargetCode]
+  );
+  const filteredTarget2Options = useMemo(() => {
+    const target1Code = normalizeStyleProcessCodeSegment(addDraft?.target?.code);
+    const excludeCodes = new Set(
+      [addDraft?.target?.code, addDraft?.target3?.code]
+        .map((code) => normalizeStyleProcessCodeSegment(code))
+        .filter(Boolean)
     );
-  }, [addDraft?.target?.code, targetSpecOptions, targetToTargetSpecRelationMap]);
+    const linkedTargets = resolveLinkedTargetCodeSet([target1Code]);
+    const sourceOptions =
+      linkedTargets instanceof Set
+        ? targetOptions.filter((option) =>
+            linkedTargets.has(normalizeStyleProcessCodeSegment(option?.code))
+          )
+        : targetOptions;
+    return sourceOptions.filter(
+      (option) => !excludeCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+    );
+  }, [
+    addDraft?.target?.code,
+    addDraft?.target3?.code,
+    resolveLinkedTargetCodeSet,
+    targetOptions,
+  ]);
+  const filteredTarget3Options = useMemo(() => {
+    const target1Code = normalizeStyleProcessCodeSegment(addDraft?.target?.code);
+    const target2Code = normalizeStyleProcessCodeSegment(addDraft?.target2?.code);
+    const excludeCodes = new Set(
+      [addDraft?.target?.code, addDraft?.target2?.code]
+        .map((code) => normalizeStyleProcessCodeSegment(code))
+        .filter(Boolean)
+    );
+    const linkedTargets = resolveLinkedTargetCodeSet([target1Code, target2Code]);
+    const sourceOptions =
+      linkedTargets instanceof Set
+        ? targetOptions.filter((option) =>
+            linkedTargets.has(normalizeStyleProcessCodeSegment(option?.code))
+          )
+        : targetOptions;
+    return sourceOptions.filter(
+      (option) => !excludeCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+    );
+  }, [
+    addDraft?.target?.code,
+    addDraft?.target2?.code,
+    resolveLinkedTargetCodeSet,
+    targetOptions,
+  ]);
   const filteredActionSpecOptions = useMemo(() => {
     const selectedActionCode = normalizeStyleProcessCodeSegment(addDraft?.action?.code);
     if (!selectedActionCode) return actionSpecOptions;
@@ -1648,15 +1826,35 @@ const StyleProcess = ({
             const linkedTargetSpecCodes = normalizedTargetCode
               ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
               : null;
+            const linkedTargets = resolveLinkedTargetCodeSet([normalizedTargetCode]);
+            const target2Code = normalizeStyleProcessCodeSegment(prev?.target2?.code);
+            const target3Code = normalizeStyleProcessCodeSegment(prev?.target3?.code);
             const shouldKeepCurrentTargetSpec =
-              !(linkedTargetSpecCodes instanceof Set) ||
-              linkedTargetSpecCodes.size === 0 ||
-              !currentTargetSpecCode ||
-              linkedTargetSpecCodes.has(currentTargetSpecCode);
+              Boolean(normalizedTargetCode) &&
+              (
+                !(linkedTargetSpecCodes instanceof Set) ||
+                linkedTargetSpecCodes.size === 0 ||
+                !currentTargetSpecCode ||
+                linkedTargetSpecCodes.has(currentTargetSpecCode)
+              );
+            const keepTarget2 =
+              !target2Code ||
+              !(linkedTargets instanceof Set) ||
+              linkedTargets.size === 0 ||
+              linkedTargets.has(target2Code);
+            const keepTarget3 =
+              !target3Code ||
+              !(linkedTargets instanceof Set) ||
+              linkedTargets.size === 0 ||
+              linkedTargets.has(target3Code);
             return {
               ...prev,
               target: normalizedTarget,
               targetSpec: shouldKeepCurrentTargetSpec ? prev?.targetSpec ?? null : null,
+              target2: keepTarget2 ? prev?.target2 ?? null : null,
+              targetSpec2: keepTarget2 ? prev?.targetSpec2 ?? null : null,
+              target3: keepTarget3 ? prev?.target3 ?? null : null,
+              targetSpec3: keepTarget3 ? prev?.targetSpec3 ?? null : null,
             };
           });
           setTargetInputValue('');
@@ -1666,6 +1864,7 @@ const StyleProcess = ({
     [
       targetInputValue,
       targetOptions,
+      resolveLinkedTargetCodeSet,
       targetToTargetSpecRelationMap,
       trySelectExistingOptionOnEnter,
     ]
@@ -1833,7 +2032,7 @@ const StyleProcess = ({
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
-    if (!draft?.part) {
+    if (!draft?.target) {
       return getStyleProcessMessage(languageCode, 'validatePart');
     }
     if (!draft?.action) {
@@ -2292,229 +2491,392 @@ const StyleProcess = ({
                 isEditingRow ? 'editingTitle' : 'addingTitle'
               )}
             </Typography>
-            <Stack
-              direction={{ xs: 'column', lg: 'row' }}
-              spacing={1}
-              sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
-            >
-              <Autocomplete
-                freeSolo
-                forcePopupIcon
-                autoHighlight
-                size="small"
-                options={partOptions}
-                value={addDraft.part}
-                inputValue={partInputValue}
-                onChange={(_event, value) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    part: normalizeProcessCompositionEntry(value, 'part'),
-                  }));
-                  setAddError('');
-                }}
-                onInputChange={(_event, value) => {
-                  setPartInputValue(String(value ?? ''));
-                }}
-                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'LOCATION') ===
-                  getProcessMasterOptionIdentity(value, 'LOCATION')
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={getStyleProcessMessage(languageCode, 'partLabel')}
-                    onKeyDown={handlePartEnterSelect}
-                  />
-                )}
-                sx={{ flex: 1, minWidth: 180 }}
-              />
-              <Autocomplete
-                freeSolo
-                forcePopupIcon
-                autoHighlight
-                size="small"
-                options={targetOptions}
-                value={addDraft.target}
-                inputValue={targetInputValue}
-                onChange={(_event, value) => {
-                  const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
-                  const normalizedTargetCode = normalizeStyleProcessCodeSegment(
-                    normalizedTarget?.code
-                  );
-                  setAddDraft((prev) => {
-                    const currentTargetSpecCode = normalizeStyleProcessCodeSegment(
-                      prev?.targetSpec?.code
+            <Stack spacing={1}>
+              <Stack
+                direction={{ xs: 'column', lg: 'row' }}
+                spacing={1}
+                sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
+              >
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={targetOptions}
+                  value={addDraft.target}
+                  inputValue={targetInputValue}
+                  onChange={(_event, value) => {
+                    const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
+                    const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+                      normalizedTarget?.code
                     );
-                    const linkedTargetSpecCodes = normalizedTargetCode
-                      ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
-                      : null;
-                    const shouldKeepCurrentTargetSpec =
-                      !(linkedTargetSpecCodes instanceof Set) ||
-                      linkedTargetSpecCodes.size === 0 ||
-                      !currentTargetSpecCode ||
-                      linkedTargetSpecCodes.has(currentTargetSpecCode);
-                    return {
+                    setAddDraft((prev) => {
+                      const currentTargetSpecCode = normalizeStyleProcessCodeSegment(
+                        prev?.targetSpec?.code
+                      );
+                      const linkedTargetSpecCodes = normalizedTargetCode
+                        ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+                        : null;
+                      const shouldKeepCurrentTargetSpec =
+                        Boolean(normalizedTargetCode) &&
+                        (
+                          !(linkedTargetSpecCodes instanceof Set) ||
+                          linkedTargetSpecCodes.size === 0 ||
+                          !currentTargetSpecCode ||
+                          linkedTargetSpecCodes.has(currentTargetSpecCode)
+                        );
+                      const linkedTargets = resolveLinkedTargetCodeSet([normalizedTargetCode]);
+                      const target2Code = normalizeStyleProcessCodeSegment(prev?.target2?.code);
+                      const target3Code = normalizeStyleProcessCodeSegment(prev?.target3?.code);
+                      const keepTarget2 =
+                        !target2Code ||
+                        !(linkedTargets instanceof Set) ||
+                        linkedTargets.size === 0 ||
+                        linkedTargets.has(target2Code);
+                      const keepTarget3 =
+                        !target3Code ||
+                        !(linkedTargets instanceof Set) ||
+                        linkedTargets.size === 0 ||
+                        linkedTargets.has(target3Code);
+                      return {
+                        ...prev,
+                        target: normalizedTarget,
+                        targetSpec: shouldKeepCurrentTargetSpec ? prev?.targetSpec ?? null : null,
+                        target2: keepTarget2 ? prev?.target2 ?? null : null,
+                        targetSpec2: keepTarget2 ? prev?.targetSpec2 ?? null : null,
+                        target3: keepTarget3 ? prev?.target3 ?? null : null,
+                        targetSpec3: keepTarget3 ? prev?.targetSpec3 ?? null : null,
+                      };
+                    });
+                    setAddError('');
+                  }}
+                  onInputChange={(_event, value) => {
+                    setTargetInputValue(String(value ?? ''));
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'targetLabel')}
+                      onKeyDown={handleTargetEnterSelect}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredTargetSpecOptions}
+                  value={addDraft.targetSpec}
+                  inputValue={specInputValue}
+                  onChange={(_event, value) => {
+                    setAddDraft((prev) => ({
                       ...prev,
-                      target: normalizedTarget,
-                      targetSpec: shouldKeepCurrentTargetSpec ? prev?.targetSpec ?? null : null,
-                    };
-                  });
-                  setAddError('');
-                }}
-                onInputChange={(_event, value) => {
-                  setTargetInputValue(String(value ?? ''));
-                }}
-                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'TARGET') ===
-                  getProcessMasterOptionIdentity(value, 'TARGET')
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={getStyleProcessMessage(languageCode, 'targetLabel')}
-                    onKeyDown={handleTargetEnterSelect}
-                  />
-                )}
-                sx={{ flex: 1, minWidth: 180 }}
-              />
-              <Autocomplete
-                freeSolo
-                forcePopupIcon
-                autoHighlight
-                size="small"
-                options={filteredTargetSpecOptions}
-                value={addDraft.targetSpec}
-                inputValue={specInputValue}
-                onChange={(_event, value) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    targetSpec: normalizeProcessCompositionEntry(value, 'targetSpec'),
-                  }));
-                  setAddError('');
-                }}
-                onInputChange={(_event, value) => {
-                  setSpecInputValue(String(value ?? ''));
-                }}
-                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
-                  getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={getStyleProcessMessage(languageCode, 'targetSpecLabel')}
-                    placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
-                    onKeyDown={handleSpecEnterSelect}
-                  />
-                )}
-                sx={{ flex: 1, minWidth: 180 }}
-              />
-              <Autocomplete
-                freeSolo
-                forcePopupIcon
-                autoHighlight
-                size="small"
-                options={actionOptions}
-                value={addDraft.action}
-                inputValue={addActionInput}
-                onChange={(_event, value) => {
-                  const normalizedAction = normalizeProcessCompositionEntry(value, 'action');
-                  const normalizedActionCode = normalizeStyleProcessCodeSegment(
-                    normalizedAction?.code
-                  );
-                  setAddDraft((prev) => {
-                    const currentActionSpecCode = normalizeStyleProcessCodeSegment(
-                      prev?.actionSpec?.code
+                      targetSpec: normalizeProcessCompositionEntry(value, 'targetSpec'),
+                    }));
+                    setAddError('');
+                  }}
+                  onInputChange={(_event, value) => {
+                    setSpecInputValue(String(value ?? ''));
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'targetSpecLabel')}
+                      placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                      onKeyDown={handleSpecEnterSelect}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredTarget2Options}
+                  value={addDraft.target2}
+                  onChange={(_event, value) => {
+                    const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
+                    const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+                      normalizedTarget?.code
                     );
-                    const linkedActionSpecCodes = normalizedActionCode
-                      ? actionToActionSpecRelationMap.get(normalizedActionCode)
-                      : null;
-                    const shouldKeepCurrentActionSpec =
-                      !(linkedActionSpecCodes instanceof Set) ||
-                      linkedActionSpecCodes.size === 0 ||
-                      !currentActionSpecCode ||
-                      linkedActionSpecCodes.has(currentActionSpecCode);
-                    return {
+                    setAddDraft((prev) => {
+                      const linkedTargetSpecCodes = normalizedTargetCode
+                        ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+                        : null;
+                      const currentTargetSpecCode = normalizeStyleProcessCodeSegment(
+                        prev?.targetSpec2?.code
+                      );
+                      const shouldKeepCurrentTargetSpec =
+                        Boolean(normalizedTargetCode) &&
+                        (
+                          !(linkedTargetSpecCodes instanceof Set) ||
+                          linkedTargetSpecCodes.size === 0 ||
+                          !currentTargetSpecCode ||
+                          linkedTargetSpecCodes.has(currentTargetSpecCode)
+                        );
+                      const target3Code = normalizeStyleProcessCodeSegment(prev?.target3?.code);
+                      const shouldKeepTarget3 = !normalizedTargetCode || target3Code !== normalizedTargetCode;
+                      return {
+                        ...prev,
+                        target2: normalizedTarget,
+                        targetSpec2: shouldKeepCurrentTargetSpec ? prev?.targetSpec2 ?? null : null,
+                        target3: shouldKeepTarget3 ? prev?.target3 ?? null : null,
+                        targetSpec3: shouldKeepTarget3 ? prev?.targetSpec3 ?? null : null,
+                      };
+                    });
+                    setAddError('');
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'target2Label')}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredTargetSpec2Options}
+                  value={addDraft.targetSpec2}
+                  onChange={(_event, value) => {
+                    setAddDraft((prev) => ({
                       ...prev,
-                      action: normalizedAction,
-                      actionSpec: shouldKeepCurrentActionSpec ? prev?.actionSpec ?? null : null,
-                    };
-                  });
-                  setAddError('');
-                }}
-                onInputChange={(_event, value) => {
-                  setAddActionInput(String(value ?? ''));
-                }}
-                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'ACTION') ===
-                  getProcessMasterOptionIdentity(value, 'ACTION')
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={getStyleProcessMessage(languageCode, 'actionLabel')}
-                    placeholder={getStyleProcessMessage(languageCode, 'actionInputHint')}
-                    onKeyDown={handleActionEnterSelect}
-                  />
-                )}
-                sx={{ flex: 1, minWidth: 220 }}
-              />
-              <Autocomplete
-                freeSolo
-                forcePopupIcon
-                autoHighlight
-                size="small"
-                options={filteredActionSpecOptions}
-                value={addDraft.actionSpec}
-                inputValue={actionSpecInputValue}
-                onChange={(_event, value) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    actionSpec: normalizeProcessCompositionEntry(value, 'actionSpec'),
-                  }));
-                  setAddError('');
-                }}
-                onInputChange={(_event, value) => {
-                  setActionSpecInputValue(String(value ?? ''));
-                }}
-                getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                isOptionEqualToValue={(option, value) =>
-                  getProcessMasterOptionIdentity(option, 'ACTION_SPEC') ===
-                  getProcessMasterOptionIdentity(value, 'ACTION_SPEC')
-                }
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label={getStyleProcessMessage(languageCode, 'actionSpecLabel')}
-                    placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
-                    onKeyDown={handleActionSpecEnterSelect}
-                  />
-                )}
-                sx={{ flex: 1, minWidth: 180 }}
-              />
-              <TextField
-                size="small"
-                label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
-                value={addDraft.processCode ?? ''}
-                onChange={(event) => {
-                  setAddDraft((prev) => ({
-                    ...prev,
-                    processCode: event.target.value,
-                  }));
-                  setAddError('');
-                }}
-                placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
-                sx={{ flex: 1, minWidth: 180 }}
-              />
+                      targetSpec2: normalizeProcessCompositionEntry(value, 'targetSpec'),
+                    }));
+                    setAddError('');
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'targetSpec2Label')}
+                      placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+              </Stack>
+              <Stack
+                direction={{ xs: 'column', lg: 'row' }}
+                spacing={1}
+                sx={{ alignItems: { xs: 'stretch', lg: 'flex-start' } }}
+              >
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredTarget3Options}
+                  value={addDraft.target3}
+                  onChange={(_event, value) => {
+                    const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
+                    const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+                      normalizedTarget?.code
+                    );
+                    setAddDraft((prev) => {
+                      const linkedTargetSpecCodes = normalizedTargetCode
+                        ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+                        : null;
+                      const currentTargetSpecCode = normalizeStyleProcessCodeSegment(
+                        prev?.targetSpec3?.code
+                      );
+                      const shouldKeepCurrentTargetSpec =
+                        Boolean(normalizedTargetCode) &&
+                        (
+                          !(linkedTargetSpecCodes instanceof Set) ||
+                          linkedTargetSpecCodes.size === 0 ||
+                          !currentTargetSpecCode ||
+                          linkedTargetSpecCodes.has(currentTargetSpecCode)
+                        );
+                      return {
+                        ...prev,
+                        target3: normalizedTarget,
+                        targetSpec3: shouldKeepCurrentTargetSpec ? prev?.targetSpec3 ?? null : null,
+                      };
+                    });
+                    setAddError('');
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'target3Label')}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredTargetSpec3Options}
+                  value={addDraft.targetSpec3}
+                  onChange={(_event, value) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      targetSpec3: normalizeProcessCompositionEntry(value, 'targetSpec'),
+                    }));
+                    setAddError('');
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
+                    getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'targetSpec3Label')}
+                      placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={actionOptions}
+                  value={addDraft.action}
+                  inputValue={addActionInput}
+                  onChange={(_event, value) => {
+                    const normalizedAction = normalizeProcessCompositionEntry(value, 'action');
+                    const normalizedActionCode = normalizeStyleProcessCodeSegment(
+                      normalizedAction?.code
+                    );
+                    setAddDraft((prev) => {
+                      const currentActionSpecCode = normalizeStyleProcessCodeSegment(
+                        prev?.actionSpec?.code
+                      );
+                      const linkedActionSpecCodes = normalizedActionCode
+                        ? actionToActionSpecRelationMap.get(normalizedActionCode)
+                        : null;
+                      const shouldKeepCurrentActionSpec =
+                        !(linkedActionSpecCodes instanceof Set) ||
+                        linkedActionSpecCodes.size === 0 ||
+                        !currentActionSpecCode ||
+                        linkedActionSpecCodes.has(currentActionSpecCode);
+                      return {
+                        ...prev,
+                        action: normalizedAction,
+                        actionSpec: shouldKeepCurrentActionSpec ? prev?.actionSpec ?? null : null,
+                      };
+                    });
+                    setAddError('');
+                  }}
+                  onInputChange={(_event, value) => {
+                    setAddActionInput(String(value ?? ''));
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'ACTION') ===
+                    getProcessMasterOptionIdentity(value, 'ACTION')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'actionLabel')}
+                      placeholder={getStyleProcessMessage(languageCode, 'actionInputHint')}
+                      onKeyDown={handleActionEnterSelect}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 180 }}
+                />
+                <Autocomplete
+                  freeSolo
+                  forcePopupIcon
+                  autoHighlight
+                  size="small"
+                  options={filteredActionSpecOptions}
+                  value={addDraft.actionSpec}
+                  inputValue={actionSpecInputValue}
+                  onChange={(_event, value) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      actionSpec: normalizeProcessCompositionEntry(value, 'actionSpec'),
+                    }));
+                    setAddError('');
+                  }}
+                  onInputChange={(_event, value) => {
+                    setActionSpecInputValue(String(value ?? ''));
+                  }}
+                  getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                  isOptionEqualToValue={(option, value) =>
+                    getProcessMasterOptionIdentity(option, 'ACTION_SPEC') ===
+                    getProcessMasterOptionIdentity(value, 'ACTION_SPEC')
+                  }
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={getStyleProcessMessage(languageCode, 'actionSpecLabel')}
+                      placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
+                      onKeyDown={handleActionSpecEnterSelect}
+                    />
+                  )}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label={getStyleProcessMessage(languageCode, 'repeatCountLabel')}
+                  value={addDraft.repeatCount ?? '1'}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      repeatCount: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  inputProps={{ min: 1, step: 1 }}
+                  sx={{ width: 120 }}
+                />
+                <TextField
+                  size="small"
+                  label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
+                  value={addDraft.processCode ?? ''}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      processCode: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
+                  sx={{ flex: 1, minWidth: 170 }}
+                />
+              </Stack>
             </Stack>
-            <Typography variant="caption" color="text.secondary">
-              {getStyleProcessMessage(languageCode, 'actionCustomNotice')}
-            </Typography>
-
             <Stack
               direction={{ xs: 'column', xl: 'row' }}
               spacing={1}
@@ -2629,7 +2991,7 @@ const StyleProcess = ({
                 </Stack>
                 <Stack direction="row" spacing={0.75}>
                   <SaveButton onClick={handleSaveAddRow}>
-                    {getStyleProcessMessage(languageCode, isEditingRow ? 'edit' : 'add')}
+                    {getStyleProcessMessage(languageCode, 'add')}
                   </SaveButton>
                   <Button variant="outlined" onClick={handleCancelAddRow}>
                     {getStyleProcessMessage(languageCode, 'cancel')}

@@ -41,7 +41,7 @@ const MASTER_SECTIONS = [
   { key: 'actionSpecs', title: '동작 규격' },
 ];
 
-const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs'];
+const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs', 'targetToTargets'];
 
 const createEmptyMasterData = () => ({
   locations: [],
@@ -51,6 +51,7 @@ const createEmptyMasterData = () => ({
   actionSpecs: [],
   targetToTargetSpecs: [],
   actionToActionSpecs: [],
+  targetToTargets: [],
 });
 
 const toTrimmedText = (value) => String(value ?? '').trim();
@@ -171,6 +172,14 @@ const normalizeMasterData = (data = {}) => ({
       type: 'ACTION_ACTION_SPEC',
       parentCodeKey: 'actionCode',
       childCodeKey: 'actionSpecCode',
+    }
+  ),
+  targetToTargets: normalizeRelationRows(
+    data?.relations?.targetToTargets ?? data?.targetToTargets,
+    {
+      type: 'TARGET_TARGET',
+      parentCodeKey: 'targetCode',
+      childCodeKey: 'linkedTargetCode',
     }
   ),
 });
@@ -337,11 +346,12 @@ const ProcessMasterSection = ({
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '16%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '9%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
+              <TableCell sx={{ width: '15%', fontWeight: 700 }}>코드</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
+              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
               <TableCell sx={{ width: '9%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
@@ -413,6 +423,19 @@ const ProcessMasterSection = ({
                   ) : null}
                 </TableCell>
                 <TableCell sx={{ textAlign: 'center' }}>
+                  {usageConflict ? (
+                    <Tooltip title={usageTooltipTitle}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
+                        {usageConflict.styleProcessCount}
+                      </Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography variant="body2" color="text.disabled">
+                      0
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>
                   <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
@@ -422,7 +445,7 @@ const ProcessMasterSection = ({
             })}
             {displayRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   항목이 없습니다.
                 </TableCell>
               </TableRow>
@@ -483,6 +506,7 @@ const ProcessMasterRelationTreeSection = ({
     });
     return map;
   }, [relationRows]);
+  const isSameDomain = parentRows === childRows;
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -499,6 +523,11 @@ const ProcessMasterRelationTreeSection = ({
         {sortedParents.map((parentRow) => {
           const parentCode = normalizeRelationCode(parentRow?.code);
           const selectedCodeSet = selectedChildCodesByParent.get(parentCode) ?? new Set();
+          const availableChildren = isSameDomain
+            ? sortedChildren.filter(
+                (childRow) => normalizeRelationCode(childRow?.code) !== parentCode
+              )
+            : sortedChildren;
           const selectedChildren = Array.from(selectedCodeSet)
             .map((childCode) => childByCode.get(childCode))
             .filter(Boolean);
@@ -526,7 +555,7 @@ const ProcessMasterRelationTreeSection = ({
                 <Autocomplete
                   multiple
                   size="small"
-                  options={sortedChildren}
+                  options={availableChildren}
                   value={selectedChildren}
                   onChange={(_event, nextChildren) => {
                     onChangeRelations(parentCode, nextChildren);
@@ -616,7 +645,11 @@ const ProcessMasterBoard = () => {
         const normalized = normalizeMasterData(data);
         setFormData(normalized);
         setOriginalData(normalized);
-        setUsageConflicts([]);
+        setUsageConflicts(
+          Array.isArray(data?.usageConflicts)
+            ? data.usageConflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
+            : []
+        );
       })
       .catch(() => {
         if (cancelled) return;
@@ -681,9 +714,15 @@ const ProcessMasterBoard = () => {
             : sectionKey === 'actionSpecs'
               ? remapRelationRows(prev.actionToActionSpecs, 'childCode')
               : prev.actionToActionSpecs,
+        targetToTargets:
+          sectionKey === 'targets'
+            ? remapRelationRows(
+                remapRelationRows(prev.targetToTargets, 'parentCode'),
+                'childCode'
+              )
+            : prev.targetToTargets,
       };
     });
-    setUsageConflicts([]);
   }, []);
 
   const handleAddRow = useCallback((sectionKey) => {
@@ -703,7 +742,6 @@ const ProcessMasterBoard = () => {
       ],
     }));
     setPendingCodeFocus({ sectionKey, rowId });
-    setUsageConflicts([]);
   }, []);
 
   const handleCodeFocusHandled = useCallback((resolvedSectionKey, rowId) => {
@@ -730,8 +768,18 @@ const ProcessMasterBoard = () => {
         const key = sectionKey === 'targets' ? 'parentCode' : 'childCode';
         nextData.targetToTargetSpecs = (Array.isArray(prev.targetToTargetSpecs)
           ? prev.targetToTargetSpecs
-          : []
+        : []
         ).filter((row) => normalizeRelationCode(row?.[key]) !== deletingCode);
+      }
+      if (sectionKey === 'targets') {
+        nextData.targetToTargets = (Array.isArray(prev.targetToTargets)
+          ? prev.targetToTargets
+          : []
+        ).filter(
+          (row) =>
+            normalizeRelationCode(row?.parentCode) !== deletingCode &&
+            normalizeRelationCode(row?.childCode) !== deletingCode
+        );
       }
       if (sectionKey === 'actions' || sectionKey === 'actionSpecs') {
         const key = sectionKey === 'actions' ? 'parentCode' : 'childCode';
@@ -742,7 +790,6 @@ const ProcessMasterBoard = () => {
       }
       return nextData;
     });
-    setUsageConflicts([]);
   }, []);
 
   const updateRelationRowsForParent = useCallback(
@@ -793,7 +840,6 @@ const ProcessMasterBoard = () => {
           }),
         };
       });
-      setUsageConflicts([]);
     },
     []
   );
@@ -819,6 +865,19 @@ const ProcessMasterBoard = () => {
         parentCode: actionCode,
         selectedChildRows: selectedActionSpecs,
         childCodeKey: 'actionSpecCode',
+      });
+    },
+    [updateRelationRowsForParent]
+  );
+
+  const handleTargetTargetRelationsChange = useCallback(
+    (targetCode, selectedTargets) => {
+      updateRelationRowsForParent({
+        relationKey: 'targetToTargets',
+        relationType: 'TARGET_TARGET',
+        parentCode: targetCode,
+        selectedChildRows: selectedTargets,
+        childCodeKey: 'linkedTargetCode',
       });
     },
     [updateRelationRowsForParent]
@@ -865,13 +924,29 @@ const ProcessMasterBoard = () => {
           actionCode: normalizeRelationCode(row.parentCode),
           actionSpecCode: normalizeRelationCode(row.childCode),
         })),
+        targetToTargets: (formData.targetToTargets || [])
+          .map((row) => ({
+            id: row.id ?? undefined,
+            type: 'TARGET_TARGET',
+            parentCode: normalizeRelationCode(row.parentCode),
+            childCode: normalizeRelationCode(row.childCode),
+            targetCode: normalizeRelationCode(row.parentCode),
+            linkedTargetCode: normalizeRelationCode(row.childCode),
+          }))
+          .filter(
+            (row) => row.parentCode && row.childCode && row.parentCode !== row.childCode
+          ),
       };
 
       const data = await updateProcessMasterOptions(payload);
       const normalized = normalizeMasterData(data);
       setFormData(normalized);
       setOriginalData(normalized);
-      setUsageConflicts([]);
+      setUsageConflicts(
+        Array.isArray(data?.usageConflicts)
+          ? data.usageConflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
+          : []
+      );
       showNotification('공정 마스터가 저장되었습니다.', 'success');
     } catch (error) {
       const status = Number(error?.status || 0);
@@ -961,6 +1036,19 @@ const ProcessMasterBoard = () => {
         </Grid>
 
         <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <ProcessMasterRelationTreeSection
+              title="대상 연결 트리"
+              description="각 대상(부모)에 함께 연결될 수 있는 대상(자식)을 등록합니다."
+              parentLabel="대상"
+              childLabel="연결 대상"
+              parentRows={formData.targets}
+              childRows={formData.targets}
+              relationRows={formData.targetToTargets}
+              languageCode={languageCode}
+              onChangeRelations={handleTargetTargetRelationsChange}
+            />
+          </Grid>
           <Grid item xs={12} md={6}>
             <ProcessMasterRelationTreeSection
               title="대상 트리 연결"
