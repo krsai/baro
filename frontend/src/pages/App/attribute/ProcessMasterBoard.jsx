@@ -2,6 +2,7 @@
 import {
   Autocomplete,
   Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
@@ -16,6 +17,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -209,6 +211,29 @@ const areRelationRowsEqual = (leftRows = [], rightRows = []) => {
   return true;
 };
 
+const PROCESS_MASTER_TYPE_TITLE_BY_CODE = {
+  LOCATION: '위치',
+  TARGET: '대상',
+  TARGET_SPEC: '대상 규격',
+  ACTION: '동작',
+  ACTION_SPEC: '동작 규격',
+};
+
+const normalizeUsageConflictRow = (item = {}) => ({
+  id: Number(item?.id) || null,
+  type: toTrimmedText(item?.type).toUpperCase(),
+  code: toTrimmedText(item?.code),
+  label: toTrimmedText(item?.label ?? item?.nameKo ?? item?.nameEn ?? item?.nameVi),
+  nameKo: toTrimmedText(item?.nameKo),
+  nameEn: toTrimmedText(item?.nameEn),
+  nameVi: toTrimmedText(item?.nameVi),
+  styleProcessCount: Number(item?.styleProcessCount) || 0,
+  referenceCount: Number(item?.referenceCount) || 0,
+  sampleStyleProcessIds: Array.isArray(item?.sampleStyleProcessIds)
+    ? item.sampleStyleProcessIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : [],
+});
+
 const shouldReviewActionRow = (sectionKey, row = {}) => {
   if (sectionKey !== 'actions') return false;
   const values = [row?.nameKo, row?.nameEn, row?.nameVi]
@@ -229,6 +254,7 @@ const ProcessMasterSection = ({
   focusRowId = null,
   onCodeFocusHandled,
   duplicateCodeSet = EMPTY_CODE_SET,
+  usageConflictMap = new Map(),
 }) => {
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
@@ -320,8 +346,16 @@ const ProcessMasterSection = ({
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
-            {displayRows.map((row) => (
-              <TableRow key={row.id} hover>
+            {displayRows.map((row) => {
+              const usageConflict = usageConflictMap.get(Number(row.id));
+              const usageLabel = usageConflict ? `사용중 ${usageConflict.referenceCount}건` : null;
+              const usageTooltipTitle = usageConflict
+                ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
+                    usageConflict.code || usageConflict.label
+                  } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
+                : '';
+              return (
+                <TableRow key={row.id} hover>
                 <TableCell>
                   <TextField
                     size="small"
@@ -370,7 +404,11 @@ const ProcessMasterSection = ({
                   />
                 </TableCell>
                 <TableCell sx={{ textAlign: 'center' }}>
-                  {shouldReviewActionRow(sectionKey, row) ? (
+                  {usageConflict ? (
+                    <Tooltip title={usageTooltipTitle}>
+                      <Chip size="small" color="error" variant="outlined" label={usageLabel} />
+                    </Tooltip>
+                  ) : shouldReviewActionRow(sectionKey, row) ? (
                     <Chip size="small" color="warning" variant="outlined" label="검토" />
                   ) : null}
                 </TableCell>
@@ -379,8 +417,9 @@ const ProcessMasterSection = ({
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </TableCell>
-              </TableRow>
-            ))}
+                </TableRow>
+              );
+            })}
             {displayRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
@@ -528,6 +567,17 @@ const ProcessMasterBoard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
+  const [usageConflicts, setUsageConflicts] = useState([]);
+
+  const usageConflictMap = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(usageConflicts) ? usageConflicts : [])
+          .filter((item) => Number(item?.id) > 0)
+          .map((item) => [Number(item.id), item])
+      ),
+    [usageConflicts]
+  );
 
   const duplicateCodeMap = useMemo(
     () =>
@@ -566,12 +616,14 @@ const ProcessMasterBoard = () => {
         const normalized = normalizeMasterData(data);
         setFormData(normalized);
         setOriginalData(normalized);
+        setUsageConflicts([]);
       })
       .catch(() => {
         if (cancelled) return;
         const empty = createEmptyMasterData();
         setFormData(empty);
         setOriginalData(empty);
+        setUsageConflicts([]);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -631,6 +683,7 @@ const ProcessMasterBoard = () => {
               : prev.actionToActionSpecs,
       };
     });
+    setUsageConflicts([]);
   }, []);
 
   const handleAddRow = useCallback((sectionKey) => {
@@ -650,6 +703,7 @@ const ProcessMasterBoard = () => {
       ],
     }));
     setPendingCodeFocus({ sectionKey, rowId });
+    setUsageConflicts([]);
   }, []);
 
   const handleCodeFocusHandled = useCallback((resolvedSectionKey, rowId) => {
@@ -688,6 +742,7 @@ const ProcessMasterBoard = () => {
       }
       return nextData;
     });
+    setUsageConflicts([]);
   }, []);
 
   const updateRelationRowsForParent = useCallback(
@@ -738,6 +793,7 @@ const ProcessMasterBoard = () => {
           }),
         };
       });
+      setUsageConflicts([]);
     },
     []
   );
@@ -815,12 +871,17 @@ const ProcessMasterBoard = () => {
       const normalized = normalizeMasterData(data);
       setFormData(normalized);
       setOriginalData(normalized);
+      setUsageConflicts([]);
       showNotification('공정 마스터가 저장되었습니다.', 'success');
     } catch (error) {
       const status = Number(error?.status || 0);
       const reason = String(error?.details?.reason || '').trim().toUpperCase();
       if (status === 409 && reason === 'PROCESS_MASTER_OPTION_IN_USE') {
         const usageCount = Number(error?.details?.usageCount || 0);
+        const conflicts = Array.isArray(error?.details?.conflicts)
+          ? error.details.conflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
+          : [];
+        setUsageConflicts(conflicts);
         showNotification(
           usageCount > 0
             ? `사용 중인 항목은 삭제할 수 없습니다. ${usageCount}건에서 참조 중입니다.`
@@ -829,6 +890,7 @@ const ProcessMasterBoard = () => {
         );
         return;
       }
+      setUsageConflicts([]);
       showNotification(error?.message || '공정 마스터 저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setIsSaving(false);
@@ -853,6 +915,30 @@ const ProcessMasterBoard = () => {
         {hasDuplicateCodes ? (
           <Alert severity="warning">중복 코드가 있습니다. 각 섹션에서 코드 중복을 해소해 주세요.</Alert>
         ) : null}
+        {usageConflicts.length > 0 ? (
+          <Alert severity="error">
+            <AlertTitle>삭제 불가 항목</AlertTitle>
+            <Stack spacing={0.5}>
+              {usageConflicts
+                .slice()
+                .sort((left, right) => right.referenceCount - left.referenceCount)
+                .map((item) => {
+                  const typeTitle = PROCESS_MASTER_TYPE_TITLE_BY_CODE[item.type] || item.type || '항목';
+                  const sampleText =
+                    item.sampleStyleProcessIds.length > 0
+                      ? ` (예시 공정ID: ${item.sampleStyleProcessIds.join(', ')})`
+                      : '';
+                  return (
+                    <Typography key={`${item.id}:${item.code}`} variant="body2">
+                      {`${typeTitle} ${item.code || item.label || item.id} / 스타일 ${
+                        item.styleProcessCount
+                      }개, 참조 ${item.referenceCount}건${sampleText}`}
+                    </Typography>
+                  );
+                })}
+            </Stack>
+          </Alert>
+        ) : null}
 
         <Grid container spacing={2}>
           {MASTER_SECTIONS.map((section) => (
@@ -868,6 +954,7 @@ const ProcessMasterBoard = () => {
                 focusRowId={pendingCodeFocus?.sectionKey === section.key ? pendingCodeFocus.rowId : null}
                 onCodeFocusHandled={(rowId) => handleCodeFocusHandled(section.key, rowId)}
                 duplicateCodeSet={duplicateCodeMap[section.key] || EMPTY_CODE_SET}
+                usageConflictMap={usageConflictMap}
               />
             </Grid>
           ))}
