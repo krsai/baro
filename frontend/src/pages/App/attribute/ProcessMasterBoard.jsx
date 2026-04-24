@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -64,6 +65,59 @@ const normalizeRelationCode = (value) =>
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .replace(/_{2,}/g, '_');
+const normalizeSearchText = (value) =>
+  toTrimmedText(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+const findMasterRowByInput = (rows = [], inputValue = '') => {
+  const normalizedInput = normalizeSearchText(inputValue);
+  if (!normalizedInput) return null;
+  return (
+    (Array.isArray(rows) ? rows : []).find((row) => {
+      const candidates = [
+        row?.code,
+        row?.nameKo,
+        row?.nameEn,
+        row?.nameVi,
+      ];
+      return candidates.some((candidate) => normalizeSearchText(candidate) === normalizedInput);
+    }) || null
+  );
+};
+const createMasterRowDraft = ({
+  existingRows = [],
+  inputValue = '',
+  languageCode = 'ko',
+}) => {
+  const label = toTrimmedText(inputValue);
+  if (!label) return null;
+  const baseCode = normalizeRelationCode(label) || 'NEW_ITEM';
+  const usedCodeSet = new Set(
+    (Array.isArray(existingRows) ? existingRows : [])
+      .map((row) => normalizeRelationCode(row?.code))
+      .filter(Boolean)
+  );
+  let nextCode = baseCode;
+  let duplicateIndex = 2;
+  while (usedCodeSet.has(nextCode)) {
+    nextCode = `${baseCode}_${duplicateIndex}`;
+    duplicateIndex += 1;
+  }
+  const nameFieldByLanguage = languageCode === 'en'
+    ? 'nameEn'
+    : languageCode === 'vi'
+      ? 'nameVi'
+      : 'nameKo';
+  return {
+    id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: nextCode,
+    nameKo: nameFieldByLanguage === 'nameKo' ? label : '',
+    nameEn: nameFieldByLanguage === 'nameEn' ? label : '',
+    nameVi: nameFieldByLanguage === 'nameVi' ? label : '',
+    sortOrder: (Array.isArray(existingRows) ? existingRows : []).length + 1,
+  };
+};
 
 const collectDuplicateCodeSet = (rows = []) => {
   const codeCountMap = new Map();
@@ -663,7 +717,8 @@ const ProcessMasterLinkedSpecSection = ({
   sectionKey,
   rows,
   languageCode,
-  onAddRow,
+  onAddOrLinkRow,
+  onUnlinkRow,
   onDeleteRow,
   onRowChange,
   focusRowId = null,
@@ -674,8 +729,9 @@ const ProcessMasterLinkedSpecSection = ({
   parentLabel,
   parentRow,
   relationRows = [],
-  onToggleLink,
 }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [addInputValue, setAddInputValue] = useState('');
   const selectedParentCode = normalizeRelationCode(parentRow?.code);
   const selectedChildCodeSet = useMemo(() => {
     if (!selectedParentCode) return new Set();
@@ -686,39 +742,64 @@ const ProcessMasterLinkedSpecSection = ({
         .filter(Boolean)
     );
   }, [relationRows, selectedParentCode]);
-  const sortedRows = useMemo(() => {
-    const baseRows = [...(Array.isArray(rows) ? rows : [])].sort((left, right) =>
-      compareMasterRowsByLanguage(left, right, languageCode)
-    );
-    if (!selectedParentCode) return baseRows;
-    return baseRows.sort((left, right) => {
-      const leftLinked = selectedChildCodeSet.has(normalizeRelationCode(left?.code)) ? 1 : 0;
-      const rightLinked = selectedChildCodeSet.has(normalizeRelationCode(right?.code)) ? 1 : 0;
-      if (leftLinked !== rightLinked) return rightLinked - leftLinked;
-      return compareMasterRowsByLanguage(left, right, languageCode);
-    });
-  }, [languageCode, rows, selectedChildCodeSet, selectedParentCode]);
+  const linkedRows = useMemo(
+    () =>
+      [...(Array.isArray(rows) ? rows : [])]
+        .filter((row) => selectedChildCodeSet.has(normalizeRelationCode(row?.code)))
+        .sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
+    [languageCode, rows, selectedChildCodeSet]
+  );
+  const sortedRows = useMemo(
+    () =>
+      [...(Array.isArray(rows) ? rows : [])].sort((left, right) =>
+        compareMasterRowsByLanguage(left, right, languageCode)
+      ),
+    [languageCode, rows]
+  );
+  const canAdd = Boolean(selectedParentCode) && typeof onAddOrLinkRow === 'function';
+  const handleCommitAdd = useCallback(
+    (candidateValue) => {
+      if (!canAdd) return;
+      const inputText = toTrimmedText(
+        typeof candidateValue === 'string'
+          ? candidateValue
+          : candidateValue?.code || addInputValue
+      );
+      if (!inputText) return;
+      const matchedRow =
+        (candidateValue && typeof candidateValue === 'object' ? candidateValue : null) ||
+        findMasterRowByInput(rows, inputText);
+      onAddOrLinkRow({
+        parentCode: selectedParentCode,
+        existingRow: matchedRow,
+        inputText,
+      });
+      setIsAdding(false);
+      setAddInputValue('');
+    },
+    [addInputValue, canAdd, onAddOrLinkRow, rows, selectedParentCode]
+  );
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
   const focusInputRef = useRef(null);
   const [frozenRowOrder, setFrozenRowOrder] = useState(null);
 
   const displayRows = useMemo(() => {
-    if (!frozenRowOrder) return sortedRows;
-    const rowMap = new Map(rows.map((row) => [row.id, row]));
+    if (!frozenRowOrder) return linkedRows;
+    const rowMap = new Map(linkedRows.map((row) => [row.id, row]));
     const frozenRowIds = new Set(frozenRowOrder);
     const frozenRows = frozenRowOrder.map((rowId) => rowMap.get(rowId)).filter(Boolean);
-    const appendedRows = rows.filter((row) => !frozenRowIds.has(row.id));
+    const appendedRows = linkedRows.filter((row) => !frozenRowIds.has(row.id));
     return [...frozenRows, ...appendedRows];
-  }, [frozenRowOrder, rows, sortedRows]);
+  }, [frozenRowOrder, linkedRows]);
 
   const handleFocusWithinTable = useCallback(() => {
     if (blurTimeoutRef.current) {
       clearTimeout(blurTimeoutRef.current);
       blurTimeoutRef.current = null;
     }
-    setFrozenRowOrder((previousOrder) => previousOrder || sortedRows.map((row) => row.id));
-  }, [sortedRows]);
+    setFrozenRowOrder((previousOrder) => previousOrder || linkedRows.map((row) => row.id));
+  }, [linkedRows]);
 
   const handleBlurWithinTable = useCallback(() => {
     if (blurTimeoutRef.current) {
@@ -755,6 +836,11 @@ const ProcessMasterLinkedSpecSection = ({
     };
   }, [displayRows, focusRowId, onCodeFocusHandled]);
 
+  useEffect(() => {
+    setIsAdding(false);
+    setAddInputValue('');
+  }, [selectedParentCode]);
+
   return (
     <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
@@ -789,24 +875,93 @@ const ProcessMasterLinkedSpecSection = ({
           size="small"
           variant="outlined"
           startIcon={<AddIcon />}
-          onClick={() => onAddRow(sectionKey)}
+          disabled={!canAdd}
+          onClick={() => {
+            if (!canAdd) return;
+            setIsAdding(true);
+          }}
         >
           추가
         </Button>
       </Box>
 
+      {isAdding ? (
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{
+            mb: 1.5,
+            alignItems: 'center',
+          }}
+        >
+          <Autocomplete
+            freeSolo
+            autoHighlight
+            forcePopupIcon
+            fullWidth
+            size="small"
+            options={sortedRows}
+            inputValue={addInputValue}
+            onInputChange={(_event, value) => {
+              setAddInputValue(String(value ?? ''));
+            }}
+            onChange={(_event, value) => {
+              if (!value) return;
+              handleCommitAdd(value);
+            }}
+            getOptionLabel={(option) => resolveLocalizedAttributeName(option, languageCode) || option?.code || ''}
+            isOptionEqualToValue={(option, value) =>
+              normalizeRelationCode(option?.code) === normalizeRelationCode(value?.code)
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={`${title} 추가`}
+                placeholder={`${title} 검색 또는 신규 입력`}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+                  const trimmed = toTrimmedText(addInputValue);
+                  if (!trimmed) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  handleCommitAdd(trimmed);
+                }}
+              />
+            )}
+          />
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => handleCommitAdd(addInputValue)}
+            disabled={!toTrimmedText(addInputValue)}
+          >
+            등록
+          </Button>
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => {
+              setIsAdding(false);
+              setAddInputValue('');
+            }}
+          >
+            취소
+          </Button>
+        </Stack>
+      ) : null}
+
       <TableContainer sx={{ maxHeight }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ width: '11%', textAlign: 'center', fontWeight: 700 }}>연결</TableCell>
               <TableCell sx={{ width: '14%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '19%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '19%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '19%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
               <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
-              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>해제</TableCell>
+              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
@@ -819,25 +974,9 @@ const ProcessMasterLinkedSpecSection = ({
                   } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
                 : '';
               const childCode = normalizeRelationCode(row?.code);
-              const isLinked = Boolean(childCode) && selectedChildCodeSet.has(childCode);
-              const canToggle = Boolean(selectedParentCode && childCode && typeof onToggleLink === 'function');
+              const canUnlink = Boolean(selectedParentCode && childCode && typeof onUnlinkRow === 'function');
               return (
                 <TableRow key={row.id} hover>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Button
-                      size="small"
-                      variant={isLinked ? 'contained' : 'outlined'}
-                      color={isLinked ? 'primary' : 'inherit'}
-                      disabled={!canToggle}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!canToggle) return;
-                        onToggleLink(selectedParentCode, childCode, !isLinked);
-                      }}
-                    >
-                      {isLinked ? '연결됨' : '연결'}
-                    </Button>
-                  </TableCell>
                   <TableCell>
                     <TextField
                       size="small"
@@ -908,6 +1047,19 @@ const ProcessMasterLinkedSpecSection = ({
                     )}
                   </TableCell>
                   <TableCell sx={{ textAlign: 'center' }}>
+                    <IconButton
+                      size="small"
+                      disabled={!canUnlink}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!canUnlink) return;
+                        onUnlinkRow(selectedParentCode, childCode);
+                      }}
+                    >
+                      <LinkOffIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
                     {usageConflict ? (
                       <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
                         <span>
@@ -934,7 +1086,9 @@ const ProcessMasterLinkedSpecSection = ({
             {displayRows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
-                  항목이 없습니다.
+                  {selectedParentCode
+                    ? `선택한 ${parentLabel}에 연결된 항목이 없습니다.`
+                    : `${parentLabel}을 먼저 선택하세요.`}
                 </TableCell>
               </TableRow>
             ) : null}
@@ -1315,6 +1469,132 @@ const ProcessMasterBoard = () => {
     },
     [handleToggleRelationLink]
   );
+  const handleUnlinkTargetSpec = useCallback(
+    (targetCode, targetSpecCode) => {
+      handleToggleTargetSpecLink(targetCode, targetSpecCode, false);
+    },
+    [handleToggleTargetSpecLink]
+  );
+  const handleUnlinkActionSpec = useCallback(
+    (actionCode, actionSpecCode) => {
+      handleToggleActionSpecLink(actionCode, actionSpecCode, false);
+    },
+    [handleToggleActionSpecLink]
+  );
+  const handleAddOrLinkLinkedSpec = useCallback(
+    ({
+      parentCode,
+      existingRow,
+      inputText,
+      sectionKey,
+      relationKey,
+      relationType,
+      childCodeKey,
+    }) => {
+      const normalizedParentCode = normalizeRelationCode(parentCode);
+      if (!normalizedParentCode) return;
+
+      let createdRowId = null;
+      let createdNewRow = false;
+
+      setFormData((prev) => {
+        const childRows = Array.isArray(prev?.[sectionKey]) ? prev[sectionKey] : [];
+        const relationRows = Array.isArray(prev?.[relationKey]) ? prev[relationKey] : [];
+        const matchedExistingRow =
+          existingRow && normalizeRelationCode(existingRow?.code)
+            ? childRows.find(
+                (row) =>
+                  normalizeRelationCode(row?.code) === normalizeRelationCode(existingRow?.code)
+              ) || null
+            : findMasterRowByInput(childRows, inputText);
+
+        let nextChildRows = childRows;
+        let resolvedRow = matchedExistingRow;
+        if (!resolvedRow) {
+          const draftRow = createMasterRowDraft({
+            existingRows: childRows,
+            inputValue: inputText,
+            languageCode,
+          });
+          if (!draftRow) return prev;
+          nextChildRows = [...childRows, draftRow];
+          resolvedRow = draftRow;
+          createdRowId = draftRow.id;
+          createdNewRow = true;
+        }
+
+        const resolvedChildCode = normalizeRelationCode(resolvedRow?.code);
+        if (!resolvedChildCode) {
+          return {
+            ...prev,
+            [sectionKey]: nextChildRows,
+          };
+        }
+
+        const linkedAlready = relationRows.some(
+          (row) =>
+            normalizeRelationCode(row?.parentCode) === normalizedParentCode &&
+            normalizeRelationCode(row?.childCode) === resolvedChildCode
+        );
+        if (linkedAlready) {
+          return {
+            ...prev,
+            [sectionKey]: nextChildRows,
+          };
+        }
+
+        const nextRelationRows = sortRelationRows([
+          ...relationRows,
+          {
+            id: `rel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: relationType,
+            parentCode: normalizedParentCode,
+            childCode: resolvedChildCode,
+            [childCodeKey]: resolvedChildCode,
+          },
+        ]);
+
+        return {
+          ...prev,
+          [sectionKey]: nextChildRows,
+          [relationKey]: nextRelationRows,
+        };
+      });
+
+      if (createdNewRow && createdRowId) {
+        setPendingCodeFocus({ sectionKey, rowId: createdRowId });
+      }
+    },
+    [languageCode]
+  );
+  const handleAddOrLinkTargetSpec = useCallback(
+    ({ parentCode, existingRow, inputText }) => {
+      handleAddOrLinkLinkedSpec({
+        parentCode,
+        existingRow,
+        inputText,
+        sectionKey: 'targetSpecs',
+        relationKey: 'targetToTargetSpecs',
+        relationType: 'TARGET_TARGET_SPEC',
+        childCodeKey: 'targetSpecCode',
+      });
+    },
+    [handleAddOrLinkLinkedSpec]
+  );
+  const handleAddOrLinkActionSpec = useCallback(
+    ({ parentCode, existingRow, inputText }) => {
+      handleAddOrLinkLinkedSpec({
+        parentCode,
+        existingRow,
+        inputText,
+        sectionKey: 'actionSpecs',
+        relationKey: 'actionToActionSpecs',
+        relationType: 'ACTION_ACTION_SPEC',
+        childCodeKey: 'actionSpecCode',
+      });
+    },
+    [handleAddOrLinkLinkedSpec]
+  );
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
@@ -1428,29 +1708,13 @@ const ProcessMasterBoard = () => {
               공정 표준 구조
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              위치 / 대상 / 대상 규격 / 동작 / 동작 규격 5축과 부모-자식 연결을 함께 관리합니다.
+              기본 운용은 대상+대상 규격, 동작+동작 규격 중심으로 관리합니다.
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              사용 중인 항목은 행의 `사용중` 칩으로 표시되며 삭제 버튼이 비활성화됩니다.
+              선택한 대상(또는 동작)에 연결된 규격만 우측에서 표시되며, 추가 시 기존 항목이면 연결만 생성됩니다.
             </Typography>
           </Stack>
         </Paper>
-
-        <ProcessMasterSection
-          sectionKey="locations"
-          title="위치"
-          description="공정이 수행되는 기준 위치를 관리합니다."
-          rows={formData.locations || []}
-          languageCode={languageCode}
-          onAddRow={handleAddRow}
-          onDeleteRow={handleDeleteRow}
-          onRowChange={handleRowChange}
-          focusRowId={pendingCodeFocus?.sectionKey === 'locations' ? pendingCodeFocus.rowId : null}
-          onCodeFocusHandled={(rowId) => handleCodeFocusHandled('locations', rowId)}
-          duplicateCodeSet={duplicateCodeMap.locations || EMPTY_CODE_SET}
-          usageConflictMap={usageConflictMap}
-          maxHeight={260}
-        />
 
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Stack spacing={1.5}>
@@ -1458,7 +1722,7 @@ const ProcessMasterBoard = () => {
               대상 체계
             </Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={5}>
                 <ProcessMasterSection
                   sectionKey="targets"
                   title="대상"
@@ -1477,14 +1741,15 @@ const ProcessMasterBoard = () => {
                   onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={7}>
                 <ProcessMasterLinkedSpecSection
                   sectionKey="targetSpecs"
                   title="대상 규격"
-                  description="선택한 대상에 연결된 규격을 우측에서 바로 관리합니다."
+                  description="선택한 대상에 연결된 규격만 표시됩니다. 추가 시 기존 규격은 연결만 생성되고, 없으면 신규 생성 후 연결됩니다."
                   rows={formData.targetSpecs || []}
                   languageCode={languageCode}
-                  onAddRow={handleAddRow}
+                  onAddOrLinkRow={handleAddOrLinkTargetSpec}
+                  onUnlinkRow={handleUnlinkTargetSpec}
                   onDeleteRow={handleDeleteRow}
                   onRowChange={handleRowChange}
                   focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
@@ -1495,22 +1760,6 @@ const ProcessMasterBoard = () => {
                   parentLabel="대상"
                   parentRow={selectedTargetRow}
                   relationRows={formData.targetToTargetSpecs}
-                  onToggleLink={handleToggleTargetSpecLink}
-                />
-              </Grid>
-            </Grid>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <ProcessMasterRelationTreeSection
-                  title="대상 연결"
-                  description="각 대상(부모)에 함께 연결 가능한 대상(자식)을 설정합니다."
-                  parentLabel="대상"
-                  childLabel="연결 대상"
-                  parentRows={formData.targets}
-                  childRows={formData.targets}
-                  relationRows={formData.targetToTargets}
-                  languageCode={languageCode}
-                  onChangeRelations={handleTargetTargetRelationsChange}
                 />
               </Grid>
             </Grid>
@@ -1523,7 +1772,7 @@ const ProcessMasterBoard = () => {
               동작 체계
             </Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={5}>
                 <ProcessMasterSection
                   sectionKey="actions"
                   title="동작"
@@ -1542,14 +1791,15 @@ const ProcessMasterBoard = () => {
                   onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={7}>
                 <ProcessMasterLinkedSpecSection
                   sectionKey="actionSpecs"
                   title="동작 규격"
-                  description="선택한 동작에 연결된 규격을 우측에서 바로 관리합니다."
+                  description="선택한 동작에 연결된 규격만 표시됩니다. 추가 시 기존 규격은 연결만 생성되고, 없으면 신규 생성 후 연결됩니다."
                   rows={formData.actionSpecs || []}
                   languageCode={languageCode}
-                  onAddRow={handleAddRow}
+                  onAddOrLinkRow={handleAddOrLinkActionSpec}
+                  onUnlinkRow={handleUnlinkActionSpec}
                   onDeleteRow={handleDeleteRow}
                   onRowChange={handleRowChange}
                   focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
@@ -1560,7 +1810,46 @@ const ProcessMasterBoard = () => {
                   parentLabel="동작"
                   parentRow={selectedActionRow}
                   relationRows={formData.actionToActionSpecs}
-                  onToggleLink={handleToggleActionSpecLink}
+                />
+              </Grid>
+            </Grid>
+          </Stack>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              추가/레거시 관리
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <ProcessMasterRelationTreeSection
+                  title="대상 연결"
+                  description="각 대상(부모)에 함께 연결 가능한 대상(자식)을 설정합니다."
+                  parentLabel="대상"
+                  childLabel="연결 대상"
+                  parentRows={formData.targets}
+                  childRows={formData.targets}
+                  relationRows={formData.targetToTargets}
+                  languageCode={languageCode}
+                  onChangeRelations={handleTargetTargetRelationsChange}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <ProcessMasterSection
+                  sectionKey="locations"
+                  title="위치 (레거시)"
+                  description="이전 데이터 호환을 위한 위치 관리 항목입니다."
+                  rows={formData.locations || []}
+                  languageCode={languageCode}
+                  onAddRow={handleAddRow}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'locations' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('locations', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.locations || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={240}
                 />
               </Grid>
             </Grid>

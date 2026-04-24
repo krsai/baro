@@ -1918,30 +1918,22 @@ const StyleProcess = ({
     },
     [focusTargetSpecInput]
   );
-  const commitTargetSelection = useCallback(
-    (nextSpecValue) => {
-      const normalizedTarget = normalizeProcessCompositionEntry(targetCandidate, 'target');
-      if (!normalizedTarget) {
-        setAddError(getStyleProcessMessage(languageCode, 'validateTarget'));
-        return false;
-      }
-      const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextSpecValue?.code);
-      const normalizedTargetSpec =
-        normalizedSpecCode === TARGET_SPEC_NONE_OPTION_CODE
-          ? null
-          : normalizeProcessCompositionEntry(nextSpecValue, 'targetSpec');
-      const appended = appendTargetPairToDraft(normalizedTarget, normalizedTargetSpec);
-      if (!appended) return false;
-      resetPendingTargetSelection();
-      return true;
-    },
-    [
-      appendTargetPairToDraft,
-      languageCode,
-      resetPendingTargetSelection,
-      targetCandidate,
-    ]
-  );
+  const commitTargetSelection = (nextSpecValue) => {
+    const normalizedTarget = normalizeProcessCompositionEntry(targetCandidate, 'target');
+    if (!normalizedTarget) {
+      setAddError(getStyleProcessMessage(languageCode, 'validateTarget'));
+      return false;
+    }
+    const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextSpecValue?.code);
+    const normalizedTargetSpec =
+      normalizedSpecCode === TARGET_SPEC_NONE_OPTION_CODE
+        ? null
+        : normalizeProcessCompositionEntry(nextSpecValue, 'targetSpec');
+    const appended = appendTargetPairToDraft(normalizedTarget, normalizedTargetSpec);
+    if (!appended) return false;
+    resetPendingTargetSelection();
+    return true;
+  };
 
   const handleTargetEnterSelect = useCallback(
     (event) => {
