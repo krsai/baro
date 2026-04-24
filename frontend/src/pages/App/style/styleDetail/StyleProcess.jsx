@@ -57,6 +57,7 @@ import {
 } from '../../../../utils/processDisplay';
 
 const createEmptyDraft = () => ({
+  processText: '',
   part: null,
   target: null,
   targetSpec: null,
@@ -99,6 +100,11 @@ const STYLE_PROCESS_MESSAGES = {
     title: '스타일 공정 목록',
     addRow: '공정 추가',
     addingTitle: '새 공정 추가',
+    textProcessLabel: '공정(텍스트)',
+    textProcessPlaceholder: '예: 앞판 어깨 봉제',
+    legacyComposerTitle: '기존 대상/동작 방식 (보관/개발용)',
+    legacyComposerHint:
+      '저장은 위 텍스트를 기준으로 처리됩니다. 아래 조합 방식은 보관 및 장기 전환 개발용입니다.',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
     missingMasterOptions: '공정 사전에서 대상/동작을 먼저 등록해주세요.',
     partLabel: '위치',
@@ -155,6 +161,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateActionLimit: '동작은 최대 3개까지 등록할 수 있습니다.',
     validateTargetRequiredForSpec: '대상 규격을 등록하려면 대상을 먼저 선택해주세요.',
     validateActionRequiredForSpec: '동작 규격을 등록하려면 동작을 먼저 선택해주세요.',
+    validateTextRequired: '공정 텍스트를 입력해주세요.',
     validateInvalid: '유효한 공정 조합을 입력해주세요.',
     validateDuplicate: '이미 등록된 공정입니다.',
     validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
@@ -165,6 +172,11 @@ const STYLE_PROCESS_MESSAGES = {
     title: 'Style Process List',
     addRow: 'Add Process',
     addingTitle: 'New Process',
+    textProcessLabel: 'Process Text',
+    textProcessPlaceholder: 'e.g. Front panel shoulder join',
+    legacyComposerTitle: 'Structured target/action mode (preserved)',
+    legacyComposerHint:
+      'Saving uses the text field above as primary. Use this composer for preservation and future migration.',
     loadingOptions: 'Loading process composition options...',
     missingMasterOptions: 'Register target/action options first.',
     partLabel: 'Location',
@@ -221,6 +233,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateActionLimit: 'You can add up to 3 actions.',
     validateTargetRequiredForSpec: 'Select a target first before adding target spec.',
     validateActionRequiredForSpec: 'Select an action first before adding action spec.',
+    validateTextRequired: 'Enter process text.',
     validateInvalid: 'Enter a valid process composition.',
     validateDuplicate: 'This process is already registered.',
     validateDuplicateCode: 'This process code is already in use.',
@@ -231,6 +244,11 @@ const STYLE_PROCESS_MESSAGES = {
     title: 'Danh sach cong doan style',
     addRow: 'Them cong doan',
     addingTitle: 'Cong doan moi',
+    textProcessLabel: 'Cong doan (van ban)',
+    textProcessPlaceholder: 'vi du: may noi vai than truoc',
+    legacyComposerTitle: 'Che do doi tuong/thao tac (giu lai)',
+    legacyComposerHint:
+      'He thong luu theo text o tren. Khuon duoi duoc giu de bao ton va chuyen doi dai han.',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
     missingMasterOptions: 'Hay dang ky truoc doi tuong va thao tac.',
     partLabel: 'Vi tri',
@@ -287,6 +305,7 @@ const STYLE_PROCESS_MESSAGES = {
     validateActionLimit: 'Chi co the them toi da 3 thao tac.',
     validateTargetRequiredForSpec: 'Can chon doi tuong truoc khi them quy cach doi tuong.',
     validateActionRequiredForSpec: 'Can chon thao tac truoc khi them quy cach thao tac.',
+    validateTextRequired: 'Hay nhap text cong doan.',
     validateInvalid: 'Hay nhap mot to hop cong doan hop le.',
     validateDuplicate: 'Cong doan nay da duoc dang ky.',
     validateDuplicateCode: 'Ma cong doan nay da duoc su dung.',
@@ -847,6 +866,7 @@ const resolveLocalizedProcessDisplayLabel = (
   fallback = 'Process',
   masterLookupByKind = null
 ) => {
+  const manualName = String(process?.manualName ?? '').trim();
   const composedName = buildProcessNameFromComposition(
     process?.processComposition,
     languageCode,
@@ -854,7 +874,7 @@ const resolveLocalizedProcessDisplayLabel = (
     masterLookupByKind
   );
   const localizedName =
-    composedName ||
+    manualName ||
     resolveLocalizedProcessName(
       {
         code: process?.code,
@@ -864,7 +884,8 @@ const resolveLocalizedProcessDisplayLabel = (
         nameVi: process?.nameVi,
       },
       languageCode
-    );
+    ) ||
+    composedName;
   return formatProcessNameWithQuantity(localizedName || process?.name || process?.code, process?.quantity) || fallback;
 };
 
@@ -923,6 +944,7 @@ const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => 
   });
 };
 
+const resolveDraftProcessText = (draft) => String(draft?.processText ?? '').trim();
 const resolveDraftStInputValue = (draft) => String(draft?.st ?? '').trim();
 const normalizeProcessCodeKey = (value) => String(value ?? '').trim().toUpperCase();
 
@@ -967,12 +989,15 @@ const buildProcessPayload = (
   existingProcess = null,
   timeRefQuantity = DEFAULT_TIME_REF_QUANTITY
 ) => {
+  const processText = resolveDraftProcessText(draft);
+  const existingManualName = String(existingProcess?.manualName ?? '').trim();
+  const manualName = processText || existingManualName;
   const composition = buildProcessComposition(draft);
   const localizedNames = buildProcessLocalizedNamesFromComposition(composition, {
-    name: existingProcess?.name,
-    nameKo: existingProcess?.nameKo,
-    nameEn: existingProcess?.nameEn,
-    nameVi: existingProcess?.nameVi,
+    name: manualName || existingProcess?.name,
+    nameKo: manualName || existingProcess?.nameKo,
+    nameEn: manualName || existingProcess?.nameEn,
+    nameVi: manualName || existingProcess?.nameVi,
   });
   const enteredProcessCode = String(draft?.processCode ?? '').trim();
   // Keep process code blank when user leaves it empty.
@@ -1026,10 +1051,27 @@ const buildProcessPayload = (
     ...(existingProcess || {}),
     id: existingProcess?.id ?? null,
     code: resolvedProcessCode || null,
-    name: localizedNames.nameEn || existingProcess?.name || resolvedProcessCode,
-    nameKo: localizedNames.nameKo || existingProcess?.nameKo || resolvedProcessCode,
-    nameEn: localizedNames.nameEn || existingProcess?.nameEn || resolvedProcessCode,
-    nameVi: localizedNames.nameVi || existingProcess?.nameVi || resolvedProcessCode,
+    manualName: manualName || null,
+    name:
+      manualName ||
+      localizedNames.nameEn ||
+      existingProcess?.name ||
+      resolvedProcessCode,
+    nameKo:
+      manualName ||
+      localizedNames.nameKo ||
+      existingProcess?.nameKo ||
+      resolvedProcessCode,
+    nameEn:
+      manualName ||
+      localizedNames.nameEn ||
+      existingProcess?.nameEn ||
+      resolvedProcessCode,
+    nameVi:
+      manualName ||
+      localizedNames.nameVi ||
+      existingProcess?.nameVi ||
+      resolvedProcessCode,
     processComposition: composition,
     description: reviewDescription || null,
     needsReview: reviewNeedsCheck,
@@ -1050,13 +1092,32 @@ const buildProcessPayload = (
   });
 };
 
-const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANTITY) => {
+const buildDraftFromProcess = (
+  process,
+  timeRefQuantity = DEFAULT_TIME_REF_QUANTITY,
+  languageCode = 'en'
+) => {
   const safeProcess = normalizeProcess(process);
   const composition = safeProcess?.processComposition || {};
   const processQuantity = toPositiveInt(safeProcess?.quantity, 1);
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
   const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
+  const manualName = String(safeProcess?.manualName ?? '').trim();
+  const fallbackProcessText =
+    manualName ||
+    resolveLocalizedProcessName(
+      {
+        code: safeProcess?.code,
+        name: safeProcess?.name,
+        nameKo: safeProcess?.nameKo,
+        nameEn: safeProcess?.nameEn,
+        nameVi: safeProcess?.nameVi,
+      },
+      languageCode
+    ) ||
+    buildProcessNameFromComposition(safeProcess?.processComposition, languageCode, '') ||
+    String(safeProcess?.name ?? '').trim();
   const existingTargetPairs = Array.isArray(composition?.targetPairs)
     ? composition.targetPairs
     : [];
@@ -1122,6 +1183,7 @@ const buildDraftFromProcess = (process, timeRefQuantity = DEFAULT_TIME_REF_QUANT
     .filter((pair) => pair?.action);
 
   return {
+    processText: fallbackProcessText,
     part: normalizeProcessCompositionEntry(existingLocations[0], 'part'),
     target: normalizedTargetPairs[0]?.target ?? null,
     targetSpec: normalizedTargetPairs[0]?.targetSpec ?? null,
@@ -2315,13 +2377,9 @@ const StyleProcess = ({
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
-    const targetPairs = getDraftTargetPairs(draft);
-    if (targetPairs.length === 0) {
-      return getStyleProcessMessage(languageCode, 'validateTarget');
-    }
-    const actionPairs = getDraftActionPairs(draft);
-    if (actionPairs.length === 0) {
-      return getStyleProcessMessage(languageCode, 'validateAction');
+    const processText = resolveDraftProcessText(draft);
+    if (!processText) {
+      return getStyleProcessMessage(languageCode, 'validateTextRequired');
     }
 
     const previewProcess = buildProcessPayload(draft, null, timeRefQuantity);
@@ -2386,7 +2444,7 @@ const StyleProcess = ({
     if (!process) return;
     setIsAddingRow(false);
     setEditingInstanceId(process.instanceId);
-    setAddDraft(buildDraftFromProcess(process, displayOrderQuantity));
+    setAddDraft(buildDraftFromProcess(process, displayOrderQuantity, languageCode));
     setPartInputValue('');
     setTargetInputValue('');
     setSpecInputValue('');
@@ -2399,7 +2457,7 @@ const StyleProcess = ({
     setTargetComposerOpen(false);
     setActionComposerOpen(false);
     setAddError('');
-  }, [displayOrderQuantity]);
+  }, [displayOrderQuantity, languageCode]);
 
   const resolveDraftWithPendingSelections = useCallback((draft) => {
     let nextDraft = draft;
@@ -2886,297 +2944,27 @@ const StyleProcess = ({
                 isEditingRow ? 'editingTitle' : 'addingTitle'
               )}
             </Typography>
-            <Stack spacing={1}>
+            <Stack spacing={1.25}>
               <Stack
                 direction={{ xs: 'column', xl: 'row' }}
                 spacing={1}
                 sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
               >
-                <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
-                  <Autocomplete
-                    freeSolo
-                    forcePopupIcon
-                    autoHighlight
-                    size="small"
-                    open={targetComposerOpen}
-                    onOpen={() => setTargetComposerOpen(true)}
-                    onClose={() => setTargetComposerOpen(false)}
-                    options={targetComposerOptions}
-                    filterOptions={(options, state) =>
-                      filterComposerOptions(options, state, {
-                        includeNoneCode: isSelectingTargetSpec
-                          ? TARGET_SPEC_NONE_OPTION_CODE
-                          : '',
-                        noneOption: targetSpecNoneOption,
-                      })
-                    }
-                    value={null}
-                    inputValue={targetInputValue}
-                    onChange={(_event, value) => {
-                      if (!value) return;
-                      handleTargetComposerSelect(value);
-                    }}
-                    onInputChange={(_event, value, reason) => {
-                      if (reason === 'reset') {
-                        setTargetInputValue('');
-                        return;
-                      }
-                      setTargetInputValue(String(value ?? ''));
-                    }}
-                    getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label={getStyleProcessMessage(
-                          languageCode,
-                          isSelectingTargetSpec ? 'targetSpecLabel' : 'targetLabel'
-                        )}
-                        placeholder={
-                          isSelectingTargetSpec
-                            ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
-                            : getStyleProcessMessage(languageCode, 'targetLabel')
-                        }
-                        onKeyDown={handleTargetComposerEnterSelect}
-                        InputProps={{
-                          ...params.InputProps,
-                          startAdornment: (
-                            <>
-                              {selectedTargetPairs.map((pair, index) => {
-                                const isCustom = isCustomTargetPair(pair);
-                                return (
-                                  <Chip
-                                    key={`target-pair-${index}`}
-                                    size="small"
-                                    label={resolveTargetPairLabel(pair)}
-                                    onDelete={() => handleRemoveTargetBadge(index)}
-                                    sx={
-                                      isCustom
-                                        ? {
-                                            bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                            color: '#5b4300',
-                                            border: '1px solid rgba(231, 184, 78, 0.9)',
-                                            '& .MuiChip-label': {
-                                              fontWeight: 700,
-                                            },
-                                          }
-                                        : undefined
-                                    }
-                                    avatar={
-                                      isCustom ? (
-                                        <Avatar
-                                          sx={{
-                                            width: 18,
-                                            height: 18,
-                                            fontSize: '0.68rem',
-                                            fontWeight: 800,
-                                            bgcolor: '#ffd98a',
-                                            color: '#4d3600',
-                                            border: '1px solid rgba(173, 121, 0, 0.45)',
-                                          }}
-                                        >
-                                          N
-                                        </Avatar>
-                                      ) : undefined
-                                    }
-                                  />
-                                );
-                              })}
-                              {targetCandidate ? (
-                                <Chip
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  label={
-                                    resolveTargetPairLabel({
-                                      target: targetCandidate,
-                                      targetSpec: targetSpecCandidate,
-                                    }) || resolveProcessMasterLabel(targetCandidate, languageCode)
-                                  }
-                                  onDelete={() => {
-                                    resetPendingTargetSelection();
-                                    setAddError('');
-                                  }}
-                                  avatar={
-                                    isNewCustomTargetOption(targetCandidate) ? (
-                                      <Avatar
-                                        sx={{
-                                          width: 18,
-                                          height: 18,
-                                          fontSize: '0.68rem',
-                                          fontWeight: 800,
-                                          bgcolor: '#ffd98a',
-                                          color: '#4d3600',
-                                          border: '1px solid rgba(173, 121, 0, 0.45)',
-                                        }}
-                                      >
-                                        N
-                                      </Avatar>
-                                    ) : undefined
-                                  }
-                                />
-                              ) : null}
-                              {params.InputProps.startAdornment}
-                            </>
-                          ),
-                        }}
-                      />
-                    )}
-                    sx={{
-                      flex: 1,
-                      minWidth: 170,
-                      '& .MuiAutocomplete-inputRoot': {
-                        alignItems: 'flex-start',
-                        flexWrap: 'wrap',
-                        gap: 0.5,
-                      },
-                    }}
-                  />
-                </Stack>
-
-                <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
-                  <Autocomplete
-                    freeSolo
-                    forcePopupIcon
-                    autoHighlight
-                    size="small"
-                    open={actionComposerOpen}
-                    onOpen={() => setActionComposerOpen(true)}
-                    onClose={() => setActionComposerOpen(false)}
-                    options={actionComposerOptions}
-                    filterOptions={(options, state) =>
-                      filterComposerOptions(options, state, {
-                        includeNoneCode: isSelectingActionSpec
-                          ? ACTION_SPEC_NONE_OPTION_CODE
-                          : '',
-                        noneOption: actionSpecNoneOption,
-                      })
-                    }
-                    value={null}
-                    inputValue={addActionInput}
-                    onChange={(_event, value) => {
-                      if (!value) return;
-                      handleActionComposerSelect(value);
-                    }}
-                    onInputChange={(_event, value, reason) => {
-                      if (reason === 'reset') {
-                        setAddActionInput('');
-                        return;
-                      }
-                      setAddActionInput(String(value ?? ''));
-                    }}
-                    getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        label={getStyleProcessMessage(
-                          languageCode,
-                          isSelectingActionSpec ? 'actionSpecLabel' : 'actionLabel'
-                        )}
-                        placeholder={
-                          isSelectingActionSpec
-                            ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
-                            : getStyleProcessMessage(languageCode, 'actionInputHint')
-                        }
-                        onKeyDown={handleActionComposerEnterSelect}
-                        InputProps={{
-                          ...params.InputProps,
-                          startAdornment: (
-                            <>
-                              {selectedActionPairs.map((pair, index) => {
-                                const isCustom = isCustomActionPair(pair);
-                                return (
-                                  <Chip
-                                    key={`action-pair-${index}`}
-                                    size="small"
-                                    label={resolveActionPairLabel(pair)}
-                                    onDelete={() => handleRemoveActionBadge(index)}
-                                    sx={
-                                      isCustom
-                                        ? {
-                                            bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                            color: '#5b4300',
-                                            border: '1px solid rgba(231, 184, 78, 0.9)',
-                                            '& .MuiChip-label': {
-                                              fontWeight: 700,
-                                            },
-                                          }
-                                        : undefined
-                                    }
-                                    avatar={
-                                      isCustom ? (
-                                        <Avatar
-                                          sx={{
-                                            width: 18,
-                                            height: 18,
-                                            fontSize: '0.68rem',
-                                            fontWeight: 800,
-                                            bgcolor: '#ffd98a',
-                                            color: '#4d3600',
-                                            border: '1px solid rgba(173, 121, 0, 0.45)',
-                                          }}
-                                        >
-                                          N
-                                        </Avatar>
-                                      ) : undefined
-                                    }
-                                  />
-                                );
-                              })}
-                              {actionCandidate ? (
-                                <Chip
-                                  size="small"
-                                  variant="outlined"
-                                  color="primary"
-                                  label={
-                                    resolveActionPairLabel({
-                                      action: actionCandidate,
-                                      actionSpec: actionSpecCandidate,
-                                    }) || resolveProcessMasterLabel(actionCandidate, languageCode)
-                                  }
-                                  onDelete={() => {
-                                    resetPendingActionSelection();
-                                    setAddError('');
-                                  }}
-                                  avatar={
-                                    isNewCustomActionOption(actionCandidate) ? (
-                                      <Avatar
-                                        sx={{
-                                          width: 18,
-                                          height: 18,
-                                          fontSize: '0.68rem',
-                                          fontWeight: 800,
-                                          bgcolor: '#ffd98a',
-                                          color: '#4d3600',
-                                          border: '1px solid rgba(173, 121, 0, 0.45)',
-                                        }}
-                                      >
-                                        N
-                                      </Avatar>
-                                    ) : undefined
-                                  }
-                                />
-                              ) : null}
-                              {params.InputProps.startAdornment}
-                            </>
-                          ),
-                        }}
-                      />
-                    )}
-                    sx={{
-                      flex: 1,
-                      minWidth: 170,
-                      '& .MuiAutocomplete-inputRoot': {
-                        alignItems: 'flex-start',
-                        flexWrap: 'wrap',
-                        gap: 0.5,
-                      },
-                    }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {getStyleProcessMessage(languageCode, 'actionLimitHint')}
-                  </Typography>
-                </Stack>
-
+                <TextField
+                  required
+                  size="small"
+                  label={getStyleProcessMessage(languageCode, 'textProcessLabel')}
+                  value={addDraft.processText ?? ''}
+                  onChange={(event) => {
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      processText: event.target.value,
+                    }));
+                    setAddError('');
+                  }}
+                  placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
+                  sx={{ flex: 2, minWidth: 320 }}
+                />
                 <TextField
                   size="small"
                   type="number"
@@ -3207,6 +2995,318 @@ const StyleProcess = ({
                   sx={{ minWidth: 170, flex: 1 }}
                 />
               </Stack>
+
+              <Box
+                sx={{
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  border: '1px dashed',
+                  borderColor: 'divider',
+                  backgroundColor: 'rgba(255,255,255,0.7)',
+                }}
+              >
+                <Stack spacing={1}>
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                      {getStyleProcessMessage(languageCode, 'legacyComposerTitle')}
+                    </Typography>
+                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                      {getStyleProcessMessage(languageCode, 'legacyComposerHint')}
+                    </Typography>
+                  </Box>
+
+                  <Stack
+                    direction={{ xs: 'column', xl: 'row' }}
+                    spacing={1}
+                    sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
+                  >
+                    <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        open={targetComposerOpen}
+                        onOpen={() => setTargetComposerOpen(true)}
+                        onClose={() => setTargetComposerOpen(false)}
+                        options={targetComposerOptions}
+                        filterOptions={(options, state) =>
+                          filterComposerOptions(options, state, {
+                            includeNoneCode: isSelectingTargetSpec
+                              ? TARGET_SPEC_NONE_OPTION_CODE
+                              : '',
+                            noneOption: targetSpecNoneOption,
+                          })
+                        }
+                        value={null}
+                        inputValue={targetInputValue}
+                        onChange={(_event, value) => {
+                          if (!value) return;
+                          handleTargetComposerSelect(value);
+                        }}
+                        onInputChange={(_event, value, reason) => {
+                          if (reason === 'reset') {
+                            setTargetInputValue('');
+                            return;
+                          }
+                          setTargetInputValue(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(
+                              languageCode,
+                              isSelectingTargetSpec ? 'targetSpecLabel' : 'targetLabel'
+                            )}
+                            placeholder={
+                              isSelectingTargetSpec
+                                ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
+                                : getStyleProcessMessage(languageCode, 'targetLabel')
+                            }
+                            onKeyDown={handleTargetComposerEnterSelect}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  {selectedTargetPairs.map((pair, index) => {
+                                    const isCustom = isCustomTargetPair(pair);
+                                    return (
+                                      <Chip
+                                        key={`target-pair-${index}`}
+                                        size="small"
+                                        label={resolveTargetPairLabel(pair)}
+                                        onDelete={() => handleRemoveTargetBadge(index)}
+                                        sx={
+                                          isCustom
+                                            ? {
+                                                bgcolor: 'rgba(255, 236, 179, 0.55)',
+                                                color: '#5b4300',
+                                                border: '1px solid rgba(231, 184, 78, 0.9)',
+                                                '& .MuiChip-label': {
+                                                  fontWeight: 700,
+                                                },
+                                              }
+                                            : undefined
+                                        }
+                                        avatar={
+                                          isCustom ? (
+                                            <Avatar
+                                              sx={{
+                                                width: 18,
+                                                height: 18,
+                                                fontSize: '0.68rem',
+                                                fontWeight: 800,
+                                                bgcolor: '#ffd98a',
+                                                color: '#4d3600',
+                                                border: '1px solid rgba(173, 121, 0, 0.45)',
+                                              }}
+                                            >
+                                              N
+                                            </Avatar>
+                                          ) : undefined
+                                        }
+                                      />
+                                    );
+                                  })}
+                                  {targetCandidate ? (
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      color="primary"
+                                      label={
+                                        resolveTargetPairLabel({
+                                          target: targetCandidate,
+                                          targetSpec: targetSpecCandidate,
+                                        }) || resolveProcessMasterLabel(targetCandidate, languageCode)
+                                      }
+                                      onDelete={() => {
+                                        resetPendingTargetSelection();
+                                        setAddError('');
+                                      }}
+                                      avatar={
+                                        isNewCustomTargetOption(targetCandidate) ? (
+                                          <Avatar
+                                            sx={{
+                                              width: 18,
+                                              height: 18,
+                                              fontSize: '0.68rem',
+                                              fontWeight: 800,
+                                              bgcolor: '#ffd98a',
+                                              color: '#4d3600',
+                                              border: '1px solid rgba(173, 121, 0, 0.45)',
+                                            }}
+                                          >
+                                            N
+                                          </Avatar>
+                                        ) : undefined
+                                      }
+                                    />
+                                  ) : null}
+                                  {params.InputProps.startAdornment}
+                                </>
+                              ),
+                            }}
+                          />
+                        )}
+                        sx={{
+                          flex: 1,
+                          minWidth: 170,
+                          '& .MuiAutocomplete-inputRoot': {
+                            alignItems: 'flex-start',
+                            flexWrap: 'wrap',
+                            gap: 0.5,
+                          },
+                        }}
+                      />
+                    </Stack>
+
+                    <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        open={actionComposerOpen}
+                        onOpen={() => setActionComposerOpen(true)}
+                        onClose={() => setActionComposerOpen(false)}
+                        options={actionComposerOptions}
+                        filterOptions={(options, state) =>
+                          filterComposerOptions(options, state, {
+                            includeNoneCode: isSelectingActionSpec
+                              ? ACTION_SPEC_NONE_OPTION_CODE
+                              : '',
+                            noneOption: actionSpecNoneOption,
+                          })
+                        }
+                        value={null}
+                        inputValue={addActionInput}
+                        onChange={(_event, value) => {
+                          if (!value) return;
+                          handleActionComposerSelect(value);
+                        }}
+                        onInputChange={(_event, value, reason) => {
+                          if (reason === 'reset') {
+                            setAddActionInput('');
+                            return;
+                          }
+                          setAddActionInput(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(
+                              languageCode,
+                              isSelectingActionSpec ? 'actionSpecLabel' : 'actionLabel'
+                            )}
+                            placeholder={
+                              isSelectingActionSpec
+                                ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
+                                : getStyleProcessMessage(languageCode, 'actionInputHint')
+                            }
+                            onKeyDown={handleActionComposerEnterSelect}
+                            InputProps={{
+                              ...params.InputProps,
+                              startAdornment: (
+                                <>
+                                  {selectedActionPairs.map((pair, index) => {
+                                    const isCustom = isCustomActionPair(pair);
+                                    return (
+                                      <Chip
+                                        key={`action-pair-${index}`}
+                                        size="small"
+                                        label={resolveActionPairLabel(pair)}
+                                        onDelete={() => handleRemoveActionBadge(index)}
+                                        sx={
+                                          isCustom
+                                            ? {
+                                                bgcolor: 'rgba(255, 236, 179, 0.55)',
+                                                color: '#5b4300',
+                                                border: '1px solid rgba(231, 184, 78, 0.9)',
+                                                '& .MuiChip-label': {
+                                                  fontWeight: 700,
+                                                },
+                                              }
+                                            : undefined
+                                        }
+                                        avatar={
+                                          isCustom ? (
+                                            <Avatar
+                                              sx={{
+                                                width: 18,
+                                                height: 18,
+                                                fontSize: '0.68rem',
+                                                fontWeight: 800,
+                                                bgcolor: '#ffd98a',
+                                                color: '#4d3600',
+                                                border: '1px solid rgba(173, 121, 0, 0.45)',
+                                              }}
+                                            >
+                                              N
+                                            </Avatar>
+                                          ) : undefined
+                                        }
+                                      />
+                                    );
+                                  })}
+                                  {actionCandidate ? (
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      color="primary"
+                                      label={
+                                        resolveActionPairLabel({
+                                          action: actionCandidate,
+                                          actionSpec: actionSpecCandidate,
+                                        }) || resolveProcessMasterLabel(actionCandidate, languageCode)
+                                      }
+                                      onDelete={() => {
+                                        resetPendingActionSelection();
+                                        setAddError('');
+                                      }}
+                                      avatar={
+                                        isNewCustomActionOption(actionCandidate) ? (
+                                          <Avatar
+                                            sx={{
+                                              width: 18,
+                                              height: 18,
+                                              fontSize: '0.68rem',
+                                              fontWeight: 800,
+                                              bgcolor: '#ffd98a',
+                                              color: '#4d3600',
+                                              border: '1px solid rgba(173, 121, 0, 0.45)',
+                                            }}
+                                          >
+                                            N
+                                          </Avatar>
+                                        ) : undefined
+                                      }
+                                    />
+                                  ) : null}
+                                  {params.InputProps.startAdornment}
+                                </>
+                              ),
+                            }}
+                          />
+                        )}
+                        sx={{
+                          flex: 1,
+                          minWidth: 170,
+                          '& .MuiAutocomplete-inputRoot': {
+                            alignItems: 'flex-start',
+                            flexWrap: 'wrap',
+                            gap: 0.5,
+                          },
+                        }}
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {getStyleProcessMessage(languageCode, 'actionLimitHint')}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                </Stack>
+              </Box>
             </Stack>
             <Stack
               direction={{ xs: 'column', xl: 'row' }}

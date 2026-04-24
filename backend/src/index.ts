@@ -1772,6 +1772,18 @@ const normalizeStyleProcess = (process: any) => {
   }
   const { st: _legacySt, processQuantity: _legacyProcessQuantity, ...rest } = process;
   const next = { ...rest };
+  const explicitManualName = resolveOptionalString(
+    (next as any).manualName ?? (next as any).processText,
+    null
+  );
+  if (explicitManualName) {
+    (next as any).manualName = explicitManualName;
+  } else if ("manualName" in next) {
+    delete (next as any).manualName;
+  }
+  if ("processText" in next) {
+    delete (next as any).processText;
+  }
   const normalizedDisplayCode = resolveStyleProcessDisplayCode((next as any).code);
   if (normalizedDisplayCode) {
     (next as any).code = normalizedDisplayCode;
@@ -1790,20 +1802,27 @@ const normalizeStyleProcess = (process: any) => {
     (next as any).processComposition
   );
   if (normalizedComposition) {
-    const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
-      normalizedComposition,
-      {
-        name: (next as any).name,
-        nameKo: (next as any).nameKo,
-        nameEn: (next as any).nameEn,
-        nameVi: (next as any).nameVi,
-      }
-    );
     (next as any).processComposition = normalizedComposition;
-    (next as any).name = localizedNames.nameEn || (next as any).name;
-    (next as any).nameKo = localizedNames.nameKo;
-    (next as any).nameEn = localizedNames.nameEn;
-    (next as any).nameVi = localizedNames.nameVi;
+    if (explicitManualName) {
+      (next as any).name = explicitManualName;
+      (next as any).nameKo = explicitManualName;
+      (next as any).nameEn = explicitManualName;
+      (next as any).nameVi = explicitManualName;
+    } else {
+      const localizedNames = buildStyleProcessLocalizedNamesFromComposition(
+        normalizedComposition,
+        {
+          name: (next as any).name,
+          nameKo: (next as any).nameKo,
+          nameEn: (next as any).nameEn,
+          nameVi: (next as any).nameVi,
+        }
+      );
+      (next as any).name = localizedNames.nameEn || (next as any).name;
+      (next as any).nameKo = localizedNames.nameKo;
+      (next as any).nameEn = localizedNames.nameEn;
+      (next as any).nameVi = localizedNames.nameVi;
+    }
 
     // Legacy rows with 4+ actions exceed current UI constraints (max 3).
     const hasTooManyActions = normalizedComposition.actions.length > 3;
@@ -1827,6 +1846,12 @@ const normalizeStyleProcess = (process: any) => {
     }
   } else if ("processComposition" in next) {
     delete (next as any).processComposition;
+  }
+  if (explicitManualName) {
+    (next as any).name = explicitManualName;
+    (next as any).nameKo = explicitManualName;
+    (next as any).nameEn = explicitManualName;
+    (next as any).nameVi = explicitManualName;
   }
   const normalizedStValues = normalizeStyleProcessStValues(
     (next as any).stValues,
@@ -3596,12 +3621,14 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
         nameVi: (process as any)?.nameVi,
       }
     );
+    const manualName = resolveOptionalString((process as any)?.manualName, null);
     return {
       processCode: resolveStyleProcessStorageCode(process, index),
       processName:
-        resolveOptionalString(localizedNames.nameEn, null) ??
-        resolveOptionalString((process as any)?.nameEn, null) ??
+        manualName ??
         resolveOptionalString((process as any)?.name, null) ??
+        resolveOptionalString((process as any)?.nameEn, null) ??
+        resolveOptionalString(localizedNames.nameEn, null) ??
         resolveOptionalString((process as any)?.code, null) ??
         resolveStyleProcessStorageCode(process, index),
       processComposition: normalizedComposition,
@@ -3720,15 +3747,25 @@ const buildStyleProcessMirrorFromRows = (
             nameVi: masterNames?.nameVi ?? null,
           }
         );
+        const manualName = resolveOptionalString(row.processName, null);
         return normalizeStyleProcess({
           code: resolveStyleProcessVisibleCode(row.processCode, displayProcess),
           storageCode: row.processCode,
+          manualName,
           name:
-            localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
-          nameKo: localizedNames.nameKo || masterNames?.nameKo,
+            manualName ||
+            localizedNames.nameEn ||
+            masterNames?.nameEn ||
+            masterNames?.name ||
+            row.processName,
+          nameKo: manualName || localizedNames.nameKo || masterNames?.nameKo,
           nameEn:
-            localizedNames.nameEn || masterNames?.nameEn || masterNames?.name || row.processName,
-          nameVi: localizedNames.nameVi || masterNames?.nameVi,
+            manualName ||
+            localizedNames.nameEn ||
+            masterNames?.nameEn ||
+            masterNames?.name ||
+            row.processName,
+          nameVi: manualName || localizedNames.nameVi || masterNames?.nameVi,
           processComposition: normalizedComposition,
           description: row.processDescription ?? null,
           quantity: row.processQuantity ?? 1,
