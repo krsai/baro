@@ -92,6 +92,7 @@ const DRAFT_ACTION_SLOT_FIELDS = [
   ['action3', 'actionSpec3'],
 ];
 const TARGET_SPEC_NONE_OPTION_CODE = '__NONE__';
+const ACTION_SPEC_NONE_OPTION_CODE = '__NONE_ACTION_SPEC__';
 
 const STYLE_PROCESS_MESSAGES = {
   ko: {
@@ -1559,11 +1560,9 @@ const StyleProcess = ({
   const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const [actionCandidate, setActionCandidate] = useState(null);
   const [actionSpecCandidate, setActionSpecCandidate] = useState(null);
-  const [autoAddActionRequested, setAutoAddActionRequested] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const draftFormRef = React.useRef(null);
-  const targetSpecInputRef = React.useRef(null);
   const processRowRefs = React.useRef(new Map());
   const pendingReturnScrollInstanceIdRef = React.useRef(null);
   const displayOrderQuantity = useMemo(
@@ -1748,6 +1747,29 @@ const StyleProcess = ({
       linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
     );
   }, [actionCandidate?.code, actionSpecOptions, actionToActionSpecRelationMap]);
+  const actionSpecNoneOption = useMemo(
+    () =>
+      normalizeProcessMasterOption(
+        {
+          id: ACTION_SPEC_NONE_OPTION_CODE,
+          type: 'ACTION_SPEC',
+          code: ACTION_SPEC_NONE_OPTION_CODE,
+          label: getStyleProcessMessage(languageCode, 'noSpecOption'),
+          nameKo: STYLE_PROCESS_MESSAGES.ko.noSpecOption,
+          nameEn: STYLE_PROCESS_MESSAGES.en.noSpecOption,
+          nameVi: STYLE_PROCESS_MESSAGES.vi.noSpecOption,
+        },
+        'ACTION_SPEC'
+      ),
+    [languageCode]
+  );
+  const filteredActionSpecOptionsWithNone = useMemo(() => {
+    const options = [...filteredActionSpecOptions];
+    if (actionSpecNoneOption) {
+      options.unshift(actionSpecNoneOption);
+    }
+    return options;
+  }, [actionSpecNoneOption, filteredActionSpecOptions]);
   const resolveTargetPairLabel = useCallback(
     (pair) => {
       const targetLabel = resolveProcessMasterLabel(pair?.target, languageCode);
@@ -1890,34 +1912,18 @@ const StyleProcess = ({
       }),
     [partInputValue, partOptions, trySelectExistingOptionOnEnter]
   );
-  const focusTargetSpecInput = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      const input = targetSpecInputRef.current;
-      if (!input || typeof input.focus !== 'function') return;
-      input.focus();
-      if (typeof input.select === 'function') input.select();
-    });
-  }, []);
   const resetPendingTargetSelection = useCallback(() => {
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
     setTargetInputValue('');
     setSpecInputValue('');
   }, []);
-  const stageTargetSelection = useCallback(
-    (nextTarget) => {
-      const normalizedTarget = normalizeProcessCompositionEntry(nextTarget, 'target');
-      if (!normalizedTarget) return false;
-      setTargetCandidate(normalizedTarget);
-      setTargetSpecCandidate(null);
-      setTargetInputValue('');
-      setSpecInputValue('');
-      setAddError('');
-      focusTargetSpecInput();
-      return true;
-    },
-    [focusTargetSpecInput]
-  );
+  const resetPendingActionSelection = useCallback(() => {
+    setActionCandidate(null);
+    setActionSpecCandidate(null);
+    setAddActionInput('');
+    setActionSpecInputValue('');
+  }, []);
   const commitTargetSelection = (nextSpecValue) => {
     const normalizedTarget = normalizeProcessCompositionEntry(targetCandidate, 'target');
     if (!normalizedTarget) {
@@ -1934,178 +1940,143 @@ const StyleProcess = ({
     resetPendingTargetSelection();
     return true;
   };
-
-  const handleTargetEnterSelect = useCallback(
-    (event) => {
-      const matched = trySelectExistingOptionOnEnter(event, {
-        inputText: targetInputValue,
-        options: availableTargetOptions,
-        onMatch: (matchedOption) => {
-          stageTargetSelection(matchedOption);
-        },
-      });
-      if (matched) return;
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') {
-        return;
-      }
-      const normalizedTarget = normalizeProcessCompositionEntry(
-        String(targetInputValue ?? '').trim(),
-        'target'
-      );
-      if (!normalizedTarget) return;
-      event.preventDefault();
-      event.stopPropagation();
-      stageTargetSelection(normalizedTarget);
-    },
-    [
-      availableTargetOptions,
-      stageTargetSelection,
-      targetInputValue,
-      trySelectExistingOptionOnEnter,
-    ]
-  );
-
-  const handleSpecEnterSelect = useCallback(
-    (event) => {
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+  const commitActionSelection = (nextSpecValue) => {
+    const normalizedAction = normalizeProcessCompositionEntry(actionCandidate, 'action');
+    if (!normalizedAction) {
+      setAddError(getStyleProcessMessage(languageCode, 'validateAction'));
+      return false;
+    }
+    const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextSpecValue?.code);
+    const normalizedActionSpec =
+      normalizedSpecCode === ACTION_SPEC_NONE_OPTION_CODE
+        ? null
+        : normalizeProcessCompositionEntry(nextSpecValue, 'actionSpec');
+    const appended = appendActionPairToDraft(normalizedAction, normalizedActionSpec);
+    if (!appended) return false;
+    resetPendingActionSelection();
+    return true;
+  };
+  const handleTargetComposerSelect = useCallback(
+    (nextValue) => {
       if (!targetCandidate) {
+        const normalizedTarget = normalizeProcessCompositionEntry(nextValue, 'target');
+        if (!normalizedTarget) return;
+        setTargetCandidate(normalizedTarget);
+        setTargetSpecCandidate(null);
+        setTargetInputValue('');
+        setSpecInputValue('');
+        setAddError('');
         return;
       }
-      const matched = trySelectExistingOptionOnEnter(event, {
-        inputText: specInputValue,
-        options: filteredTargetSpecOptionsWithNone,
-        onMatch: (matchedOption) => {
-          const normalizedCode = normalizeStyleProcessCodeSegment(matchedOption?.code);
-          const normalizedSpec =
-            normalizedCode === TARGET_SPEC_NONE_OPTION_CODE
-              ? null
-              : normalizeProcessCompositionEntry(matchedOption, 'targetSpec');
-          setTargetSpecCandidate(normalizedSpec);
-          setSpecInputValue('');
-          setAddError('');
-          commitTargetSelection(matchedOption);
-        },
-      });
-      if (matched) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const rawSpecValue = String(specInputValue ?? '').trim();
-      if (!rawSpecValue) {
-        commitTargetSelection(targetSpecNoneOption);
+      const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
+      if (normalizedSpecCode === TARGET_SPEC_NONE_OPTION_CODE) {
+        commitTargetSelection(nextValue);
         return;
       }
-      const normalizedSpec = normalizeProcessCompositionEntry(rawSpecValue, 'targetSpec');
+      const normalizedSpec = normalizeProcessCompositionEntry(nextValue, 'targetSpec');
       if (!normalizedSpec) return;
       setTargetSpecCandidate(normalizedSpec);
-      setSpecInputValue('');
       setAddError('');
       commitTargetSelection(normalizedSpec);
     },
+    [commitTargetSelection, targetCandidate]
+  );
+  const handleTargetComposerEnterSelect = useCallback(
+    (event) => {
+      const options = targetCandidate
+        ? filteredTargetSpecOptionsWithNone
+        : availableTargetOptions;
+      const matched = trySelectExistingOptionOnEnter(event, {
+        inputText: targetInputValue,
+        options,
+        onMatch: (matchedOption) => {
+          handleTargetComposerSelect(matchedOption);
+        },
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rawInput = String(targetInputValue ?? '').trim();
+      if (!rawInput) {
+        if (targetCandidate) {
+          commitTargetSelection(targetSpecNoneOption);
+        }
+        return;
+      }
+      handleTargetComposerSelect(rawInput);
+    },
     [
+      availableTargetOptions,
       commitTargetSelection,
       filteredTargetSpecOptionsWithNone,
-      specInputValue,
+      handleTargetComposerSelect,
       targetCandidate,
+      targetInputValue,
       targetSpecNoneOption,
       trySelectExistingOptionOnEnter,
     ]
   );
-
-  const handleActionEnterSelect = useCallback(
+  const handleActionComposerSelect = useCallback(
+    (nextValue) => {
+      if (!actionCandidate) {
+        const normalizedAction = normalizeProcessCompositionEntry(nextValue, 'action');
+        if (!normalizedAction) return;
+        setActionCandidate(normalizedAction);
+        setActionSpecCandidate(null);
+        setAddActionInput('');
+        setActionSpecInputValue('');
+        setAddError('');
+        return;
+      }
+      const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
+      if (normalizedSpecCode === ACTION_SPEC_NONE_OPTION_CODE) {
+        commitActionSelection(nextValue);
+        return;
+      }
+      const normalizedSpec = normalizeProcessCompositionEntry(nextValue, 'actionSpec');
+      if (!normalizedSpec) return;
+      setActionSpecCandidate(normalizedSpec);
+      setAddError('');
+      commitActionSelection(normalizedSpec);
+    },
+    [actionCandidate, commitActionSelection]
+  );
+  const handleActionComposerEnterSelect = useCallback(
     (event) => {
+      const options = actionCandidate
+        ? filteredActionSpecOptionsWithNone
+        : availableActionOptions;
       const matched = trySelectExistingOptionOnEnter(event, {
         inputText: addActionInput,
-        options: availableActionOptions,
+        options,
         onMatch: (matchedOption) => {
-          const normalizedAction = normalizeProcessCompositionEntry(matchedOption, 'action');
-          const normalizedActionCode = normalizeStyleProcessCodeSegment(
-            normalizedAction?.code
-          );
-          const linkedActionSpecCodes = normalizedActionCode
-            ? actionToActionSpecRelationMap.get(normalizedActionCode)
-            : null;
-          const currentSpecCode = normalizeStyleProcessCodeSegment(actionSpecCandidate?.code);
-          const keepCurrentSpec =
-            !currentSpecCode ||
-            !(linkedActionSpecCodes instanceof Set) ||
-            linkedActionSpecCodes.size === 0 ||
-            linkedActionSpecCodes.has(currentSpecCode);
-          setActionCandidate(normalizedAction);
-          setActionSpecCandidate(keepCurrentSpec ? actionSpecCandidate : null);
-          setAddActionInput('');
-          setAddError('');
+          handleActionComposerSelect(matchedOption);
         },
       });
       if (matched) return;
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
-      const normalizedAction = normalizeProcessCompositionEntry(
-        String(addActionInput ?? '').trim(),
-        'action'
-      );
-      if (!normalizedAction) {
-        if (actionCandidate && !String(actionSpecInputValue ?? '').trim()) {
-          event.preventDefault();
-          event.stopPropagation();
-          setAutoAddActionRequested(true);
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const rawInput = String(addActionInput ?? '').trim();
+      if (!rawInput) {
+        if (actionCandidate) {
+          commitActionSelection(actionSpecNoneOption);
         }
         return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      const normalizedActionCode = normalizeStyleProcessCodeSegment(
-        normalizedAction?.code
-      );
-      const linkedActionSpecCodes = normalizedActionCode
-        ? actionToActionSpecRelationMap.get(normalizedActionCode)
-        : null;
-      const currentSpecCode = normalizeStyleProcessCodeSegment(actionSpecCandidate?.code);
-      const keepCurrentSpec =
-        !currentSpecCode ||
-        !(linkedActionSpecCodes instanceof Set) ||
-        linkedActionSpecCodes.size === 0 ||
-        linkedActionSpecCodes.has(currentSpecCode);
-      setActionCandidate(normalizedAction);
-      setActionSpecCandidate(keepCurrentSpec ? actionSpecCandidate : null);
-      setAddActionInput('');
-      setAddError('');
+      handleActionComposerSelect(rawInput);
     },
     [
-      actionSpecCandidate,
-      actionSpecInputValue,
-      actionToActionSpecRelationMap,
-      addActionInput,
       actionCandidate,
+      actionSpecNoneOption,
+      addActionInput,
       availableActionOptions,
+      commitActionSelection,
+      filteredActionSpecOptionsWithNone,
+      handleActionComposerSelect,
       trySelectExistingOptionOnEnter,
     ]
-  );
-  const handleActionSpecEnterSelect = useCallback(
-    (event) => {
-      const matched = trySelectExistingOptionOnEnter(event, {
-        inputText: actionSpecInputValue,
-        options: filteredActionSpecOptions,
-        onMatch: (matchedOption) => {
-          setActionSpecCandidate(normalizeProcessCompositionEntry(matchedOption, 'actionSpec'));
-          setActionSpecInputValue('');
-          setAddError('');
-          setAutoAddActionRequested(true);
-        },
-      });
-      if (matched) return;
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
-      const normalizedSpec = normalizeProcessCompositionEntry(
-        String(actionSpecInputValue ?? '').trim(),
-        'actionSpec'
-      );
-      if (!normalizedSpec) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setActionSpecCandidate(normalizedSpec);
-      setActionSpecInputValue('');
-      setAddError('');
-      setAutoAddActionRequested(true);
-    },
-    [actionSpecInputValue, filteredActionSpecOptions, trySelectExistingOptionOnEnter]
   );
   const appendTargetPairToDraft = useCallback((normalizedTarget, normalizedTargetSpec) => {
     if (selectedTargetPairs.length >= DRAFT_TARGET_SLOT_FIELDS.length) {
@@ -2226,28 +2197,6 @@ const StyleProcess = ({
     );
     setAddError('');
   }, []);
-  const handleAddActionBadge = useCallback(() => {
-    const normalizedAction = normalizeProcessCompositionEntry(
-      actionCandidate ?? String(addActionInput ?? '').trim(),
-      'action'
-    );
-    const normalizedActionSpec = normalizeProcessCompositionEntry(
-      actionSpecCandidate ?? String(actionSpecInputValue ?? '').trim(),
-      'actionSpec'
-    );
-    const appended = appendActionPairToDraft(normalizedAction, normalizedActionSpec);
-    if (!appended) return;
-    setActionCandidate(null);
-    setActionSpecCandidate(null);
-    setAddActionInput('');
-    setActionSpecInputValue('');
-  }, [
-    appendActionPairToDraft,
-    actionCandidate,
-    actionSpecCandidate,
-    actionSpecInputValue,
-    addActionInput,
-  ]);
   const handleRemoveActionBadge = useCallback((index) => {
     setAddDraft((prev) =>
       applyDraftActionPairs(
@@ -2257,11 +2206,6 @@ const StyleProcess = ({
     );
     setAddError('');
   }, []);
-  useEffect(() => {
-    if (!autoAddActionRequested) return;
-    setAutoAddActionRequested(false);
-    handleAddActionBadge();
-  }, [autoAddActionRequested, handleAddActionBadge]);
 
   useEffect(() => {
     if (!isEditingRow) return undefined;
@@ -2397,7 +2341,6 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
-    setAutoAddActionRequested(false);
     setAddError('');
   };
 
@@ -2414,7 +2357,6 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
-    setAutoAddActionRequested(false);
     setAddError('');
   };
 
@@ -2432,7 +2374,6 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
-    setAutoAddActionRequested(false);
     setAddError('');
   }, [displayOrderQuantity]);
 
@@ -2440,11 +2381,15 @@ const StyleProcess = ({
     let nextDraft = draft;
 
     const pendingTarget = normalizeProcessCompositionEntry(
-      targetCandidate ?? String(targetInputValue ?? '').trim(),
+      targetCandidate
+        ? targetCandidate
+        : String(targetInputValue ?? '').trim(),
       'target'
     );
     const pendingTargetSpec = normalizeProcessCompositionEntry(
-      targetSpecCandidate ?? String(specInputValue ?? '').trim(),
+      targetCandidate
+        ? targetSpecCandidate ?? String(targetInputValue ?? '').trim()
+        : targetSpecCandidate ?? String(specInputValue ?? '').trim(),
       'targetSpec'
     );
     if (pendingTarget) {
@@ -2463,11 +2408,15 @@ const StyleProcess = ({
     }
 
     const pendingAction = normalizeProcessCompositionEntry(
-      actionCandidate ?? String(addActionInput ?? '').trim(),
+      actionCandidate
+        ? actionCandidate
+        : String(addActionInput ?? '').trim(),
       'action'
     );
     const pendingActionSpec = normalizeProcessCompositionEntry(
-      actionSpecCandidate ?? String(actionSpecInputValue ?? '').trim(),
+      actionCandidate
+        ? actionSpecCandidate ?? String(addActionInput ?? '').trim()
+        : actionSpecCandidate ?? String(actionSpecInputValue ?? '').trim(),
       'actionSpec'
     );
     if (pendingAction) {
@@ -2607,6 +2556,14 @@ const StyleProcess = ({
           addPreviewProcess,
           displayOrderQuantity
         );
+  const isSelectingTargetSpec = Boolean(targetCandidate);
+  const targetComposerOptions = isSelectingTargetSpec
+    ? filteredTargetSpecOptionsWithNone
+    : availableTargetOptions;
+  const isSelectingActionSpec = Boolean(actionCandidate);
+  const actionComposerOptions = isSelectingActionSpec
+    ? filteredActionSpecOptionsWithNone
+    : availableActionOptions;
   const processRows = useMemo(
     () =>
       safeProcesses.map((process, index) => (
@@ -2882,311 +2839,263 @@ const StyleProcess = ({
                 sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
               >
                 <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
-                  <Stack spacing={1}>
-                    <Autocomplete
-                      freeSolo
-                      forcePopupIcon
-                      autoHighlight
-                      size="small"
-                      options={availableTargetOptions}
-                      value={targetCandidate}
-                      inputValue={targetInputValue}
-                      onChange={(_event, value) => {
-                        const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
-                        if (!normalizedTarget) {
-                          resetPendingTargetSelection();
-                          setAddError('');
-                          return;
-                        }
-                        stageTargetSelection(normalizedTarget);
-                      }}
-                      onInputChange={(_event, value, reason) => {
-                        if (reason === 'reset') {
-                          setTargetInputValue('');
-                          return;
-                        }
-                        setTargetInputValue(String(value ?? ''));
-                      }}
-                      getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                      isOptionEqualToValue={(option, value) =>
-                        getProcessMasterOptionIdentity(option, 'TARGET') ===
-                        getProcessMasterOptionIdentity(value, 'TARGET')
+                  <Autocomplete
+                    freeSolo
+                    forcePopupIcon
+                    autoHighlight
+                    size="small"
+                    options={targetComposerOptions}
+                    value={null}
+                    inputValue={targetInputValue}
+                    onChange={(_event, value) => {
+                      if (!value) return;
+                      handleTargetComposerSelect(value);
+                    }}
+                    onInputChange={(_event, value, reason) => {
+                      if (reason === 'reset') {
+                        setTargetInputValue('');
+                        return;
                       }
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label={getStyleProcessMessage(languageCode, 'targetLabel')}
-                          onKeyDown={handleTargetEnterSelect}
-                        />
-                      )}
-                      sx={{ flex: 1, minWidth: 170 }}
-                    />
-                    {targetCandidate && (
-                      <Stack
-                        direction={{ xs: 'column', md: 'row' }}
-                        spacing={1}
-                        sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
-                      >
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label={resolveProcessMasterLabel(targetCandidate, languageCode)}
-                          onDelete={() => {
-                            resetPendingTargetSelection();
-                            setAddError('');
-                          }}
-                          avatar={
-                            isNewCustomTargetOption(targetCandidate) ? (
-                              <Avatar
-                                sx={{
-                                  width: 18,
-                                  height: 18,
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  bgcolor: '#ffd98a',
-                                  color: '#4d3600',
-                                  border: '1px solid rgba(173, 121, 0, 0.45)',
-                                }}
-                              >
-                                N
-                              </Avatar>
-                            ) : undefined
-                          }
-                        />
-                        <Autocomplete
-                          freeSolo
-                          forcePopupIcon
-                          autoHighlight
-                          size="small"
-                          options={filteredTargetSpecOptionsWithNone}
-                          value={targetSpecCandidate}
-                          inputValue={specInputValue}
-                          onChange={(_event, value) => {
-                            if (!targetCandidate) return;
-                            if (!value) {
-                              setTargetSpecCandidate(null);
-                              setSpecInputValue('');
-                              setAddError('');
-                              return;
-                            }
-                            const normalizedCode = normalizeStyleProcessCodeSegment(value?.code);
-                            const normalizedSpec =
-                              normalizedCode === TARGET_SPEC_NONE_OPTION_CODE
-                                ? null
-                                : normalizeProcessCompositionEntry(value, 'targetSpec');
-                            setTargetSpecCandidate(normalizedSpec);
-                            setSpecInputValue('');
-                            setAddError('');
-                            commitTargetSelection(value);
-                          }}
-                          onInputChange={(_event, value, reason) => {
-                            if (reason === 'reset') {
-                              setSpecInputValue('');
-                              return;
-                            }
-                            setSpecInputValue(String(value ?? ''));
-                          }}
-                          getOptionLabel={(option) =>
-                            resolveProcessMasterLabel(option, languageCode)
-                          }
-                          isOptionEqualToValue={(option, value) =>
-                            getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
-                            getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
-                          }
-                          renderInput={(params) => (
-                            <TextField
-                              {...params}
-                              inputRef={targetSpecInputRef}
-                              label={getStyleProcessMessage(languageCode, 'targetSpecLabel')}
-                              placeholder={getStyleProcessMessage(
-                                languageCode,
-                                'specPlaceholder'
-                              )}
-                              onKeyDown={handleSpecEnterSelect}
-                            />
-                          )}
-                          sx={{ flex: 1, minWidth: 210 }}
-                        />
-                      </Stack>
+                      setTargetInputValue(String(value ?? ''));
+                    }}
+                    getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label={getStyleProcessMessage(
+                          languageCode,
+                          isSelectingTargetSpec ? 'targetSpecLabel' : 'targetLabel'
+                        )}
+                        placeholder={
+                          isSelectingTargetSpec
+                            ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
+                            : getStyleProcessMessage(languageCode, 'targetLabel')
+                        }
+                        onKeyDown={handleTargetComposerEnterSelect}
+                        InputProps={{
+                          ...params.InputProps,
+                          startAdornment: (
+                            <>
+                              {selectedTargetPairs.map((pair, index) => {
+                                const isCustom = isCustomTargetPair(pair);
+                                return (
+                                  <Chip
+                                    key={`target-pair-${index}`}
+                                    size="small"
+                                    label={resolveTargetPairLabel(pair)}
+                                    onDelete={() => handleRemoveTargetBadge(index)}
+                                    sx={
+                                      isCustom
+                                        ? {
+                                            bgcolor: 'rgba(255, 236, 179, 0.55)',
+                                            color: '#5b4300',
+                                            border: '1px solid rgba(231, 184, 78, 0.9)',
+                                            '& .MuiChip-label': {
+                                              fontWeight: 700,
+                                            },
+                                          }
+                                        : undefined
+                                    }
+                                    avatar={
+                                      isCustom ? (
+                                        <Avatar
+                                          sx={{
+                                            width: 18,
+                                            height: 18,
+                                            fontSize: '0.68rem',
+                                            fontWeight: 800,
+                                            bgcolor: '#ffd98a',
+                                            color: '#4d3600',
+                                            border: '1px solid rgba(173, 121, 0, 0.45)',
+                                          }}
+                                        >
+                                          N
+                                        </Avatar>
+                                      ) : undefined
+                                    }
+                                  />
+                                );
+                              })}
+                              {targetCandidate ? (
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  label={
+                                    resolveTargetPairLabel({
+                                      target: targetCandidate,
+                                      targetSpec: targetSpecCandidate,
+                                    }) || resolveProcessMasterLabel(targetCandidate, languageCode)
+                                  }
+                                  onDelete={() => {
+                                    resetPendingTargetSelection();
+                                    setAddError('');
+                                  }}
+                                  avatar={
+                                    isNewCustomTargetOption(targetCandidate) ? (
+                                      <Avatar
+                                        sx={{
+                                          width: 18,
+                                          height: 18,
+                                          fontSize: '0.68rem',
+                                          fontWeight: 800,
+                                          bgcolor: '#ffd98a',
+                                          color: '#4d3600',
+                                          border: '1px solid rgba(173, 121, 0, 0.45)',
+                                        }}
+                                      >
+                                        N
+                                      </Avatar>
+                                    ) : undefined
+                                  }
+                                />
+                              ) : null}
+                              {params.InputProps.startAdornment}
+                            </>
+                          ),
+                        }}
+                      />
                     )}
-                  </Stack>
-                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {getStyleProcessMessage(languageCode, 'selectedTargetLabel')}
-                    </Typography>
-                    {selectedTargetPairs.map((pair, index) => {
-                      const isCustom = isCustomTargetPair(pair);
-                      return (
-                        <Chip
-                          key={`target-pair-${index}`}
-                          size="small"
-                          label={resolveTargetPairLabel(pair)}
-                          onDelete={() => handleRemoveTargetBadge(index)}
-                          sx={
-                            isCustom
-                              ? {
-                                  bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                  color: '#5b4300',
-                                  border: '1px solid rgba(231, 184, 78, 0.9)',
-                                  '& .MuiChip-label': {
-                                    fontWeight: 700,
-                                  },
-                                }
-                              : undefined
-                          }
-                          avatar={
-                            isCustom ? (
-                              <Avatar
-                                sx={{
-                                  width: 18,
-                                  height: 18,
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  bgcolor: '#ffd98a',
-                                  color: '#4d3600',
-                                  border: '1px solid rgba(173, 121, 0, 0.45)',
-                                }}
-                              >
-                                N
-                              </Avatar>
-                            ) : undefined
-                          }
-                        />
-                      );
-                    })}
-                  </Stack>
+                    sx={{
+                      flex: 1,
+                      minWidth: 170,
+                      '& .MuiAutocomplete-inputRoot': {
+                        alignItems: 'flex-start',
+                        flexWrap: 'wrap',
+                        gap: 0.5,
+                      },
+                    }}
+                  />
                 </Stack>
 
                 <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
-                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
-                    <Autocomplete
-                      freeSolo
-                      forcePopupIcon
-                      autoHighlight
-                      size="small"
-                      options={availableActionOptions}
-                      value={actionCandidate}
-                      inputValue={addActionInput}
-                      onChange={(_event, value) => {
-                        const normalizedAction = normalizeProcessCompositionEntry(value, 'action');
-                        const normalizedActionCode = normalizeStyleProcessCodeSegment(
-                          normalizedAction?.code
-                        );
-                        const linkedActionSpecCodes = normalizedActionCode
-                          ? actionToActionSpecRelationMap.get(normalizedActionCode)
-                          : null;
-                        const currentActionSpecCode = normalizeStyleProcessCodeSegment(
-                          actionSpecCandidate?.code
-                        );
-                        const shouldKeepCurrentActionSpec =
-                          !currentActionSpecCode ||
-                          !(linkedActionSpecCodes instanceof Set) ||
-                          linkedActionSpecCodes.size === 0 ||
-                          linkedActionSpecCodes.has(currentActionSpecCode);
-                        setActionCandidate(normalizedAction);
-                        setActionSpecCandidate(
-                          shouldKeepCurrentActionSpec ? actionSpecCandidate : null
-                        );
-                        setAddError('');
-                      }}
-                      onInputChange={(_event, value) => {
-                        setAddActionInput(String(value ?? ''));
-                      }}
-                      getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                      isOptionEqualToValue={(option, value) =>
-                        getProcessMasterOptionIdentity(option, 'ACTION') ===
-                        getProcessMasterOptionIdentity(value, 'ACTION')
+                  <Autocomplete
+                    freeSolo
+                    forcePopupIcon
+                    autoHighlight
+                    size="small"
+                    options={actionComposerOptions}
+                    value={null}
+                    inputValue={addActionInput}
+                    onChange={(_event, value) => {
+                      if (!value) return;
+                      handleActionComposerSelect(value);
+                    }}
+                    onInputChange={(_event, value, reason) => {
+                      if (reason === 'reset') {
+                        setAddActionInput('');
+                        return;
                       }
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label={getStyleProcessMessage(languageCode, 'actionLabel')}
-                          placeholder={getStyleProcessMessage(languageCode, 'actionInputHint')}
-                          onKeyDown={handleActionEnterSelect}
-                        />
-                      )}
-                      sx={{ flex: 1, minWidth: 170 }}
-                    />
-                    <Autocomplete
-                      freeSolo
-                      forcePopupIcon
-                      autoHighlight
-                      size="small"
-                      options={filteredActionSpecOptions}
-                      value={actionSpecCandidate}
-                      inputValue={actionSpecInputValue}
-                      onChange={(_event, value) => {
-                        const normalizedSpec = normalizeProcessCompositionEntry(value, 'actionSpec');
-                        setActionSpecCandidate(normalizedSpec);
-                        setAddError('');
-                        if (normalizedSpec) {
-                          setAutoAddActionRequested(true);
+                      setAddActionInput(String(value ?? ''));
+                    }}
+                    getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label={getStyleProcessMessage(
+                          languageCode,
+                          isSelectingActionSpec ? 'actionSpecLabel' : 'actionLabel'
+                        )}
+                        placeholder={
+                          isSelectingActionSpec
+                            ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
+                            : getStyleProcessMessage(languageCode, 'actionInputHint')
                         }
-                      }}
-                      onInputChange={(_event, value) => {
-                        setActionSpecInputValue(String(value ?? ''));
-                      }}
-                      getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
-                      isOptionEqualToValue={(option, value) =>
-                        getProcessMasterOptionIdentity(option, 'ACTION_SPEC') ===
-                        getProcessMasterOptionIdentity(value, 'ACTION_SPEC')
-                      }
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label={getStyleProcessMessage(languageCode, 'actionSpecLabel')}
-                          placeholder={getStyleProcessMessage(languageCode, 'specPlaceholder')}
-                          onKeyDown={handleActionSpecEnterSelect}
-                        />
-                      )}
-                      sx={{ flex: 1, minWidth: 170 }}
-                    />
-                  </Stack>
-                  <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      {getStyleProcessMessage(languageCode, 'selectedActionLabel')}
-                    </Typography>
-                    {selectedActionPairs.map((pair, index) => {
-                      const isCustom = isCustomActionPair(pair);
-                      return (
-                        <Chip
-                          key={`action-pair-${index}`}
-                          size="small"
-                          label={resolveActionPairLabel(pair)}
-                          onDelete={() => handleRemoveActionBadge(index)}
-                          sx={
-                            isCustom
-                              ? {
-                                  bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                  color: '#5b4300',
-                                  border: '1px solid rgba(231, 184, 78, 0.9)',
-                                  '& .MuiChip-label': {
-                                    fontWeight: 700,
-                                  },
-                                }
-                              : undefined
-                          }
-                          avatar={
-                            isCustom ? (
-                              <Avatar
-                                sx={{
-                                  width: 18,
-                                  height: 18,
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
-                                  bgcolor: '#ffd98a',
-                                  color: '#4d3600',
-                                  border: '1px solid rgba(173, 121, 0, 0.45)',
-                                }}
-                              >
-                                N
-                              </Avatar>
-                            ) : undefined
-                          }
-                        />
-                      );
-                    })}
-                  </Stack>
+                        onKeyDown={handleActionComposerEnterSelect}
+                        InputProps={{
+                          ...params.InputProps,
+                          startAdornment: (
+                            <>
+                              {selectedActionPairs.map((pair, index) => {
+                                const isCustom = isCustomActionPair(pair);
+                                return (
+                                  <Chip
+                                    key={`action-pair-${index}`}
+                                    size="small"
+                                    label={resolveActionPairLabel(pair)}
+                                    onDelete={() => handleRemoveActionBadge(index)}
+                                    sx={
+                                      isCustom
+                                        ? {
+                                            bgcolor: 'rgba(255, 236, 179, 0.55)',
+                                            color: '#5b4300',
+                                            border: '1px solid rgba(231, 184, 78, 0.9)',
+                                            '& .MuiChip-label': {
+                                              fontWeight: 700,
+                                            },
+                                          }
+                                        : undefined
+                                    }
+                                    avatar={
+                                      isCustom ? (
+                                        <Avatar
+                                          sx={{
+                                            width: 18,
+                                            height: 18,
+                                            fontSize: '0.68rem',
+                                            fontWeight: 800,
+                                            bgcolor: '#ffd98a',
+                                            color: '#4d3600',
+                                            border: '1px solid rgba(173, 121, 0, 0.45)',
+                                          }}
+                                        >
+                                          N
+                                        </Avatar>
+                                      ) : undefined
+                                    }
+                                  />
+                                );
+                              })}
+                              {actionCandidate ? (
+                                <Chip
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  label={
+                                    resolveActionPairLabel({
+                                      action: actionCandidate,
+                                      actionSpec: actionSpecCandidate,
+                                    }) || resolveProcessMasterLabel(actionCandidate, languageCode)
+                                  }
+                                  onDelete={() => {
+                                    resetPendingActionSelection();
+                                    setAddError('');
+                                  }}
+                                  avatar={
+                                    isNewCustomActionOption(actionCandidate) ? (
+                                      <Avatar
+                                        sx={{
+                                          width: 18,
+                                          height: 18,
+                                          fontSize: '0.68rem',
+                                          fontWeight: 800,
+                                          bgcolor: '#ffd98a',
+                                          color: '#4d3600',
+                                          border: '1px solid rgba(173, 121, 0, 0.45)',
+                                        }}
+                                      >
+                                        N
+                                      </Avatar>
+                                    ) : undefined
+                                  }
+                                />
+                              ) : null}
+                              {params.InputProps.startAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                    sx={{
+                      flex: 1,
+                      minWidth: 170,
+                      '& .MuiAutocomplete-inputRoot': {
+                        alignItems: 'flex-start',
+                        flexWrap: 'wrap',
+                        gap: 0.5,
+                      },
+                    }}
+                  />
                   <Typography variant="caption" color="text.secondary">
                     {getStyleProcessMessage(languageCode, 'actionLimitHint')}
                   </Typography>
