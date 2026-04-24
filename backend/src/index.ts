@@ -1415,7 +1415,6 @@ const normalizeStyleProcessComposition = (value: any) => {
     ...(value as any)?.part ? [(value as any).part] : [],
   ];
   const locations = normalizeStyleProcessCompositionEntries(locationInputs, "part");
-  const location = locations[0] ?? null;
   const rawTargetPairs = ensureArray((value as any)?.targetPairs)
     .map((pair: any) => {
       if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
@@ -1480,15 +1479,6 @@ const normalizeStyleProcessComposition = (value: any) => {
           return pairs;
         })();
 
-  const targets = targetPairs
-    .map((pair) => pair?.target)
-    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
-  const targetSpecs = targetPairs
-    .map((pair) => pair?.targetSpec)
-    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
-  const target = targets[0] ?? null;
-  const targetSpec = targetSpecs[0] ?? null;
-
   const rawActionPairs = ensureArray((value as any)?.actionPairs)
     .map((pair: any) => {
       if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
@@ -1544,44 +1534,17 @@ const normalizeStyleProcessComposition = (value: any) => {
           }
           return pairs;
         })();
-  const actions = actionPairs
-    .map((pair) => pair?.action)
-    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
-  const actionSpecs = actionPairs
-    .map((pair) => pair?.actionSpec)
-    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
-  const action = actions[0] ?? null;
-  const actionSpec = actionPairs[0]?.actionSpec ?? null;
-  const specs =
-    targetSpecs.length > 0 || actionSpecs.length > 0
-      ? [...targetSpecs, ...actionSpecs]
-      : legacySpecs;
   if (
     locations.length === 0 &&
-    targets.length === 0 &&
-    actions.length === 0 &&
-    targetSpecs.length === 0 &&
-    actionSpecs.length === 0 &&
-    specs.length === 0
+    targetPairs.length === 0 &&
+    actionPairs.length === 0
   ) {
     return null;
   }
   return {
-    location,
     locations,
-    part: location,
-    parts: locations,
-    target,
-    targets,
     targetPairs,
-    targetSpec,
-    targetSpecs,
     actionPairs,
-    action,
-    actions,
-    actionSpec,
-    actionSpecs,
-    specs,
   };
 };
 
@@ -1614,14 +1577,7 @@ const buildStyleProcessNameFromComposition = (
     .filter(Boolean)
     .join("·");
   const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs);
-  const targetWithSpec = (
-    targetPairs.length > 0
-      ? targetPairs
-      : normalizedComposition.targets.map((entry: any, index: number) => ({
-          target: entry,
-          targetSpec: normalizedComposition.targetSpecs[index] ?? null,
-        }))
-  )
+  const targetWithSpec = targetPairs
     .map((pair: any) => {
       const targetText = resolveStyleProcessCompositionText(pair?.target, language);
       const targetSpecText = resolveStyleProcessCompositionText(
@@ -1637,14 +1593,7 @@ const buildStyleProcessNameFromComposition = (
     .filter(Boolean)
     .join(" + ");
   const actionPairs = ensureArray((normalizedComposition as any)?.actionPairs);
-  const actionWithSpec = (
-    actionPairs.length > 0
-      ? actionPairs
-      : normalizedComposition.actions.map((entry: any, index: number) => ({
-          action: entry,
-          actionSpec: normalizedComposition.actionSpecs[index] ?? null,
-        }))
-  )
+  const actionWithSpec = actionPairs
     .map((pair: any) => {
       const actionText = resolveStyleProcessCompositionText(pair?.action, language);
       const actionSpecText = resolveStyleProcessCompositionText(pair?.actionSpec, language);
@@ -1699,44 +1648,16 @@ const buildStyleProcessCodeFromComposition = (
     ...normalizedComposition.locations.map((entry: any) =>
       resolveOptionalString(entry?.code, null)
     ),
-    ...(() => {
-      const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs);
-      if (targetPairs.length > 0) {
-        return targetPairs.flatMap((pair: any) => [
-          resolveOptionalString(pair?.target?.code, null),
-          resolveOptionalString(pair?.targetSpec?.code, null) ||
-            buildCustomStyleSpecCode(pair?.targetSpec?.label),
-        ]);
-      }
-      return [
-        ...normalizedComposition.targets.map((entry: any) =>
-          resolveOptionalString(entry?.code, null)
-        ),
-        ...normalizedComposition.targetSpecs.map((entry: any) =>
-          resolveOptionalString(entry?.code, null) ||
-          buildCustomStyleSpecCode(entry?.label)
-        ),
-      ];
-    })(),
-    ...(() => {
-      const actionPairs = ensureArray((normalizedComposition as any)?.actionPairs);
-      if (actionPairs.length > 0) {
-        return actionPairs.flatMap((pair: any) => [
-          resolveOptionalString(pair?.action?.code, null),
-          resolveOptionalString(pair?.actionSpec?.code, null) ||
-            buildCustomStyleSpecCode(pair?.actionSpec?.label),
-        ]);
-      }
-      return [
-        ...normalizedComposition.actions.map((entry: any) =>
-          resolveOptionalString(entry?.code, null)
-        ),
-        ...normalizedComposition.actionSpecs.map((entry: any) =>
-          resolveOptionalString(entry?.code, null) ||
-          buildCustomStyleSpecCode(entry?.label)
-        ),
-      ];
-    })(),
+    ...ensureArray((normalizedComposition as any)?.targetPairs).flatMap((pair: any) => [
+      resolveOptionalString(pair?.target?.code, null),
+      resolveOptionalString(pair?.targetSpec?.code, null) ||
+        buildCustomStyleSpecCode(pair?.targetSpec?.label),
+    ]),
+    ...ensureArray((normalizedComposition as any)?.actionPairs).flatMap((pair: any) => [
+      resolveOptionalString(pair?.action?.code, null),
+      resolveOptionalString(pair?.actionSpec?.code, null) ||
+        buildCustomStyleSpecCode(pair?.actionSpec?.label),
+    ]),
   ]
     .map((token) => normalizeStyleProcessCodeSegment(token))
     .filter(Boolean);
@@ -1825,7 +1746,8 @@ const normalizeStyleProcess = (process: any) => {
     }
 
     // Legacy rows with 4+ actions exceed current UI constraints (max 3).
-    const hasTooManyActions = normalizedComposition.actions.length > 3;
+    const hasTooManyActions =
+      ensureArray((normalizedComposition as any)?.actionPairs).length > 3;
     if (hasTooManyActions) {
       const existingDescription = resolveOptionalString((next as any).description, "") ?? "";
       const normalizedDescription = existingDescription.trim();
@@ -9045,12 +8967,7 @@ const groupProcessMasterOptions = (rows: any[] = []) => {
     grouped[groupKey].push(normalized);
   });
 
-  return {
-    ...grouped,
-    // Backward compatibility for existing clients.
-    parts: grouped.locations,
-    specs: grouped.targetSpecs,
-  };
+  return grouped;
 };
 
 const toProcessMasterRelationResponse = (row: any) => ({
@@ -10176,16 +10093,22 @@ const collectStyleProcessMasterCandidatesByKind = (
     const composition = normalizeStyleProcessComposition(
       (process as any)?.processComposition
     );
+    const targetPairs = ensureArray((composition as any)?.targetPairs);
+    const actionPairs = ensureArray((composition as any)?.actionPairs);
     const entries =
       canonicalKind === "location"
         ? ensureArray((composition as any)?.locations)
         : canonicalKind === "target"
-          ? ensureArray((composition as any)?.targets)
+          ? targetPairs.map((pair: any) => (pair as any)?.target).filter(Boolean)
           : canonicalKind === "targetSpec"
-            ? ensureArray((composition as any)?.targetSpecs)
+            ? targetPairs
+                .map((pair: any) => (pair as any)?.targetSpec)
+                .filter(Boolean)
             : canonicalKind === "actionSpec"
-              ? ensureArray((composition as any)?.actionSpecs)
-              : ensureArray((composition as any)?.actions);
+              ? actionPairs
+                  .map((pair: any) => (pair as any)?.actionSpec)
+                  .filter(Boolean)
+              : actionPairs.map((pair: any) => (pair as any)?.action).filter(Boolean);
     entries.forEach((entry) => {
       const label = normalizeProcessMasterLabel(
         (entry as any)?.label ??
@@ -10764,34 +10687,10 @@ const syncProcessMasterFromStyleProcesses = async ({
       }
     }
 
-    const canonicalTargets = canonicalTargetPairs
-      .map((pair) => pair?.target)
-      .filter(Boolean);
-    const canonicalTargetSpecs = canonicalTargetPairs
-      .map((pair) => pair?.targetSpec)
-      .filter(Boolean);
-    const canonicalActions = canonicalActionPairs
-      .map((pair) => pair?.action)
-      .filter(Boolean);
-    const canonicalActionSpecs = canonicalActionPairs
-      .map((pair) => pair?.actionSpec)
-      .filter(Boolean);
     const canonicalComposition = {
-      location: canonicalLocations[0] ?? null,
       locations: canonicalLocations,
-      part: canonicalLocations[0] ?? null,
-      parts: canonicalLocations,
-      target: canonicalTargets[0] ?? null,
-      targets: canonicalTargets,
       targetPairs: canonicalTargetPairs,
-      targetSpec: canonicalTargetSpecs[0] ?? null,
-      targetSpecs: canonicalTargetSpecs,
-      action: canonicalActions[0] ?? null,
-      actions: canonicalActions,
       actionPairs: canonicalActionPairs,
-      actionSpec: canonicalActionPairs[0]?.actionSpec ?? null,
-      actionSpecs: canonicalActionSpecs,
-      specs: [...canonicalTargetSpecs, ...canonicalActionSpecs],
     };
 
     canonicalizedProcesses.push(
@@ -10932,26 +10831,6 @@ const applyProcessMasterNamesToComposition = (
       applyProcessMasterNamesToCompositionEntry(entry, "LOCATION", lookupByTypeAndCode)
     )
     .filter(Boolean);
-  const targets = ensureArray(normalizedComposition.targets)
-    .map((entry) =>
-      applyProcessMasterNamesToCompositionEntry(entry, "TARGET", lookupByTypeAndCode)
-    )
-    .filter(Boolean);
-  const actions = ensureArray(normalizedComposition.actions)
-    .map((entry) =>
-      applyProcessMasterNamesToCompositionEntry(entry, "ACTION", lookupByTypeAndCode)
-    )
-    .filter(Boolean);
-  const targetSpecs = ensureArray(normalizedComposition.targetSpecs)
-    .map((entry) =>
-      applyProcessMasterNamesToCompositionEntry(entry, "TARGET_SPEC", lookupByTypeAndCode)
-    )
-    .filter(Boolean);
-  const actionSpecs = ensureArray(normalizedComposition.actionSpecs)
-    .map((entry) =>
-      applyProcessMasterNamesToCompositionEntry(entry, "ACTION_SPEC", lookupByTypeAndCode)
-    )
-    .filter(Boolean);
   const targetPairs = ensureArray((normalizedComposition as any)?.targetPairs)
     .map((pair: any) => {
       if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
@@ -10995,47 +10874,16 @@ const applyProcessMasterNamesToComposition = (
 
   if (
     locations.length === 0 &&
-    targets.length === 0 &&
-    actions.length === 0 &&
-    targetSpecs.length === 0 &&
-    actionSpecs.length === 0
+    targetPairs.length === 0 &&
+    actionPairs.length === 0
   ) {
     return null;
   }
 
-  const normalizedActionPairs =
-    actionPairs.length > 0
-      ? actionPairs
-      : actions.map((entry, index) => ({
-          action: entry,
-          actionSpec: actionSpecs[index] ?? null,
-        }));
-  const normalizedActions = normalizedActionPairs
-    .map((pair: any) => pair?.action)
-    .filter(Boolean);
-  const normalizedActionSpecs = normalizedActionPairs
-    .map((pair: any) => pair?.actionSpec)
-    .filter(Boolean);
-  const targetSpec = targetSpecs[0] ?? null;
-  const actionSpec = normalizedActionPairs[0]?.actionSpec ?? null;
-  const specs = [...targetSpecs, ...normalizedActionSpecs];
-
   return {
-    location: locations[0] ?? null,
     locations,
-    part: locations[0] ?? null,
-    parts: locations,
-    target: targets[0] ?? null,
-    targets,
     targetPairs,
-    action: normalizedActions[0] ?? null,
-    actions: normalizedActions,
-    actionPairs: normalizedActionPairs,
-    targetSpec,
-    targetSpecs,
-    actionSpec,
-    actionSpecs: normalizedActionSpecs,
-    specs,
+    actionPairs,
   };
 };
 

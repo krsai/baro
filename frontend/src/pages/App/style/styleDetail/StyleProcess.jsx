@@ -102,8 +102,8 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: '새 공정 추가',
     textProcessLabel: '공정(텍스트)',
     textProcessPlaceholder: '예: 앞판 어깨 봉제',
-    legacyComposerTitle: '기존 대상/동작 방식 (보관/개발용)',
-    legacyComposerHint:
+    selectionComposerTitle: '선택 방식(대상/동작)',
+    selectionComposerHint:
       '저장은 위 텍스트를 기준으로 처리됩니다. 아래 조합 방식은 보관 및 장기 전환 개발용입니다.',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
     missingMasterOptions: '공정 사전에서 대상/동작을 먼저 등록해주세요.',
@@ -174,8 +174,8 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: 'New Process',
     textProcessLabel: 'Process Text',
     textProcessPlaceholder: 'e.g. Front panel shoulder join',
-    legacyComposerTitle: 'Structured target/action mode (preserved)',
-    legacyComposerHint:
+    selectionComposerTitle: 'Selection mode (target/action)',
+    selectionComposerHint:
       'Saving uses the text field above as primary. Use this composer for preservation and future migration.',
     loadingOptions: 'Loading process composition options...',
     missingMasterOptions: 'Register target/action options first.',
@@ -246,8 +246,8 @@ const STYLE_PROCESS_MESSAGES = {
     addingTitle: 'Cong doan moi',
     textProcessLabel: 'Cong doan (van ban)',
     textProcessPlaceholder: 'vi du: may noi vai than truoc',
-    legacyComposerTitle: 'Che do doi tuong/thao tac (giu lai)',
-    legacyComposerHint:
+    selectionComposerTitle: 'Che do chon (doi tuong/thao tac)',
+    selectionComposerHint:
       'He thong luu theo text o tren. Khuon duoi duoc giu de bao ton va chuyen doi dai han.',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
     missingMasterOptions: 'Hay dang ky truoc doi tuong va thao tac.',
@@ -681,45 +681,142 @@ const normalizeProcessCompositionEntries = (values, kind) => {
   });
 };
 
+const resolveCompositionLocations = (composition) => {
+  if (!composition || typeof composition !== 'object') return [];
+  const locationInputs = [
+    ...(Array.isArray(composition?.locations) ? composition.locations : []),
+    ...(Array.isArray(composition?.parts) ? composition.parts : []),
+    ...(composition?.location ? [composition.location] : []),
+    ...(composition?.part ? [composition.part] : []),
+  ];
+  return normalizeProcessCompositionEntries(locationInputs, 'part');
+};
+
+const resolveCompositionTargetPairs = (composition) => {
+  if (!composition || typeof composition !== 'object') return [];
+
+  const directPairs = (Array.isArray(composition?.targetPairs) ? composition.targetPairs : [])
+    .map((pair) => {
+      if (!pair || typeof pair !== 'object' || Array.isArray(pair)) return null;
+      const target = normalizeProcessCompositionEntry(
+        pair?.target ?? pair?.targetItem,
+        'target'
+      );
+      const targetSpec = normalizeProcessCompositionEntry(
+        pair?.targetSpec ?? pair?.spec ?? pair?.targetSpecItem,
+        'targetSpec'
+      );
+      if (!target && !targetSpec) return null;
+      if (!target) return null;
+      return {
+        target,
+        targetSpec: targetSpec ?? null,
+      };
+    })
+    .filter(Boolean);
+  if (directPairs.length > 0) return directPairs;
+
+  const targets = normalizeProcessCompositionEntries(
+    [
+      ...(Array.isArray(composition?.targets) ? composition.targets : []),
+      ...(composition?.target ? [composition.target] : []),
+    ],
+    'target'
+  );
+  const targetSpecs = normalizeProcessCompositionEntries(
+    [
+      ...(Array.isArray(composition?.targetSpecs) ? composition.targetSpecs : []),
+      ...(composition?.targetSpec ? [composition.targetSpec] : []),
+      ...(Array.isArray(composition?.specs) ? composition.specs : []),
+    ],
+    'targetSpec'
+  );
+  const pairCount = Math.max(targets.length, targetSpecs.length);
+  const pairs = [];
+  for (let index = 0; index < pairCount; index += 1) {
+    const target = targets[index] ?? null;
+    const targetSpec = targetSpecs[index] ?? null;
+    if (!target && !targetSpec) continue;
+    if (!target) continue;
+    pairs.push({
+      target,
+      targetSpec: targetSpec ?? null,
+    });
+  }
+  return pairs;
+};
+
+const resolveCompositionActionPairs = (composition) => {
+  if (!composition || typeof composition !== 'object') return [];
+
+  const directPairs = (Array.isArray(composition?.actionPairs) ? composition.actionPairs : [])
+    .map((pair) => {
+      if (!pair || typeof pair !== 'object' || Array.isArray(pair)) return null;
+      const action = normalizeProcessCompositionEntry(
+        pair?.action ?? pair?.actionItem,
+        'action'
+      );
+      const actionSpec = normalizeProcessCompositionEntry(
+        pair?.actionSpec ?? pair?.spec ?? pair?.actionSpecItem,
+        'actionSpec'
+      );
+      if (!action && !actionSpec) return null;
+      if (!action) return null;
+      return {
+        action,
+        actionSpec: actionSpec ?? null,
+      };
+    })
+    .filter(Boolean);
+  if (directPairs.length > 0) return directPairs;
+
+  const actions = normalizeProcessCompositionEntries(
+    [
+      ...(Array.isArray(composition?.actions) ? composition.actions : []),
+      ...(composition?.action ? [composition.action] : []),
+    ],
+    'action'
+  );
+  const actionSpecs = normalizeProcessCompositionEntries(
+    [
+      ...(Array.isArray(composition?.actionSpecs) ? composition.actionSpecs : []),
+      ...(composition?.actionSpec ? [composition.actionSpec] : []),
+    ],
+    'actionSpec'
+  );
+  const pairCount = Math.max(actions.length, actionSpecs.length);
+  const pairs = [];
+  for (let index = 0; index < pairCount; index += 1) {
+    const action = actions[index] ?? null;
+    const actionSpec = actionSpecs[index] ?? null;
+    if (!action && !actionSpec) continue;
+    if (!action) continue;
+    pairs.push({
+      action,
+      actionSpec: actionSpec ?? null,
+    });
+  }
+  return pairs;
+};
+
 const buildProcessComposition = (draft) => {
-  const part = normalizeProcessCompositionEntry(draft?.part, 'part');
-  const parts = part ? [part] : [];
+  const location = normalizeProcessCompositionEntry(draft?.part, 'part');
+  const locations = location ? [location] : [];
   const targetPairs = getDraftTargetPairs(draft);
-  const targets = targetPairs.map((pair) => pair.target).filter(Boolean);
   const actionPairs = getDraftActionPairs(draft);
-  const actions = actionPairs.map((pair) => pair.action).filter(Boolean);
-  const targetSpecs = targetPairs.map((pair) => pair.targetSpec).filter(Boolean);
-  const actionSpecs = actionPairs.map((pair) => pair.actionSpec).filter(Boolean);
-  const specs = [...targetSpecs, ...actionSpecs];
-  const action = actions[0] ?? null;
-  const actionSpec = actionPairs[0]?.actionSpec ?? null;
 
   if (
-    parts.length === 0 &&
-    targets.length === 0 &&
-    actions.length === 0 &&
-    targetSpecs.length === 0 &&
-    actionSpecs.length === 0
+    locations.length === 0 &&
+    targetPairs.length === 0 &&
+    actionPairs.length === 0
   ) {
     return null;
   }
 
   return {
-    location: part,
-    locations: parts,
-    part,
-    parts,
-    target: targets[0] ?? null,
-    targets,
+    locations,
     targetPairs,
-    targetSpec: targetSpecs[0] ?? null,
-    targetSpecs,
     actionPairs,
-    action,
-    actions,
-    actionSpec,
-    actionSpecs,
-    specs,
   };
 };
 
@@ -749,15 +846,7 @@ const buildProcessNameFromComposition = (
     return String(fallback ?? '').trim();
   }
 
-  const locationEntries = Array.isArray(composition.locations)
-    ? composition.locations
-    : Array.isArray(composition.parts)
-      ? composition.parts
-      : composition.location
-        ? [composition.location]
-        : composition.part
-          ? [composition.part]
-          : [];
+  const locationEntries = resolveCompositionLocations(composition);
   const locationText = locationEntries
     .map((entry) =>
       resolveProcessCompositionText(
@@ -768,24 +857,7 @@ const buildProcessNameFromComposition = (
     )
     .filter(Boolean)
     .join('·');
-  const targetEntries = Array.isArray(composition.targets)
-    ? composition.targets
-    : composition.target
-      ? [composition.target]
-      : [];
-  const targetSpecEntries = Array.isArray(composition.targetSpecs)
-    ? composition.targetSpecs
-    : composition.targetSpec
-      ? [composition.targetSpec]
-      : Array.isArray(composition.specs)
-        ? composition.specs
-        : [];
-  const targetPairs = Array.isArray(composition?.targetPairs)
-    ? composition.targetPairs
-    : targetEntries.map((targetEntry, index) => ({
-        target: targetEntry,
-        targetSpec: targetSpecEntries[index] ?? null,
-      }));
+  const targetPairs = resolveCompositionTargetPairs(composition);
   const targetWithSpec = targetPairs
     .map((pair) => {
       const targetText = resolveProcessCompositionText(
@@ -804,22 +876,7 @@ const buildProcessNameFromComposition = (
     })
     .filter(Boolean)
     .join(' + ');
-  const actionEntries = Array.isArray(composition.actions)
-    ? composition.actions
-    : composition.action
-      ? [composition.action]
-      : [];
-  const actionSpecEntries = Array.isArray(composition.actionSpecs)
-    ? composition.actionSpecs
-    : composition.actionSpec
-      ? [composition.actionSpec]
-      : [];
-  const actionPairs = Array.isArray(composition?.actionPairs)
-    ? composition.actionPairs
-    : actionEntries.map((actionEntry, index) => ({
-        action: actionEntry,
-        actionSpec: actionSpecEntries[index] ?? null,
-      }));
+  const actionPairs = resolveCompositionActionPairs(composition);
   const actionWithSpec = actionPairs
     .map((pair) => {
       const actionText = resolveProcessCompositionText(
@@ -1118,69 +1175,9 @@ const buildDraftFromProcess = (
     ) ||
     buildProcessNameFromComposition(safeProcess?.processComposition, languageCode, '') ||
     String(safeProcess?.name ?? '').trim();
-  const existingTargetPairs = Array.isArray(composition?.targetPairs)
-    ? composition.targetPairs
-    : [];
-  const existingTargets = Array.isArray(composition?.targets)
-    ? composition.targets
-    : composition?.target
-      ? [composition.target]
-      : [];
-  const existingLocations = Array.isArray(composition?.locations)
-    ? composition.locations
-    : Array.isArray(composition?.parts)
-      ? composition.parts
-      : composition?.location
-        ? [composition.location]
-        : composition?.part
-          ? [composition.part]
-          : [];
-  const existingActions = Array.isArray(composition?.actions)
-    ? composition.actions
-    : composition?.action
-      ? [composition.action]
-      : [];
-  const existingTargetSpecs = Array.isArray(composition?.targetSpecs)
-    ? composition.targetSpecs
-    : composition?.targetSpec
-      ? [composition.targetSpec]
-      : Array.isArray(composition?.specs)
-        ? composition.specs
-        : [];
-  const existingActionSpecs = Array.isArray(composition?.actionSpecs)
-    ? composition.actionSpecs
-    : composition?.actionSpec
-      ? [composition.actionSpec]
-      : [];
-  const existingActionPairs = Array.isArray(composition?.actionPairs)
-    ? composition.actionPairs
-    : [];
-  const normalizedTargetPairs = (
-    existingTargetPairs.length > 0
-      ? existingTargetPairs
-      : existingTargets.map((targetEntry, index) => ({
-          target: targetEntry,
-          targetSpec: existingTargetSpecs[index] ?? null,
-        }))
-  )
-    .map((pair) => ({
-      target: normalizeProcessCompositionEntry(pair?.target, 'target'),
-      targetSpec: normalizeProcessCompositionEntry(pair?.targetSpec, 'targetSpec'),
-    }))
-    .filter((pair) => pair?.target);
-  const normalizedActionPairs = (
-    existingActionPairs.length > 0
-      ? existingActionPairs
-      : existingActions.map((actionEntry, index) => ({
-          action: actionEntry,
-          actionSpec: existingActionSpecs[index] ?? null,
-        }))
-  )
-    .map((pair) => ({
-      action: normalizeProcessCompositionEntry(pair?.action, 'action'),
-      actionSpec: normalizeProcessCompositionEntry(pair?.actionSpec, 'actionSpec'),
-    }))
-    .filter((pair) => pair?.action);
+  const existingLocations = resolveCompositionLocations(composition);
+  const normalizedTargetPairs = resolveCompositionTargetPairs(composition);
+  const normalizedActionPairs = resolveCompositionActionPairs(composition);
 
   return {
     processText: fallbackProcessText,
@@ -1221,56 +1218,19 @@ const collectProcessCompositionOptionsFromProcesses = (
   const seen = new Set();
   (Array.isArray(processes) ? processes : []).forEach((process) => {
     const composition = process?.processComposition || {};
-    const compositionTargetPairs = Array.isArray(composition?.targetPairs)
-      ? composition.targetPairs
-      : [];
-    const compositionActionPairs = Array.isArray(composition?.actionPairs)
-      ? composition.actionPairs
-      : [];
+    const compositionLocations = resolveCompositionLocations(composition);
+    const compositionTargetPairs = resolveCompositionTargetPairs(composition);
+    const compositionActionPairs = resolveCompositionActionPairs(composition);
     const sourceEntries =
       kind === 'location' || kind === 'part'
-        ? Array.isArray(composition?.locations)
-          ? composition.locations
-          : Array.isArray(composition?.parts)
-            ? composition.parts
-            : composition?.location
-              ? [composition.location]
-              : composition?.part
-                ? [composition.part]
-                : []
+        ? compositionLocations
         : kind === 'target'
-          ? compositionTargetPairs.length > 0
-            ? compositionTargetPairs.map((pair) => pair?.target).filter(Boolean)
-            : Array.isArray(composition?.targets)
-              ? composition.targets
-              : composition?.target
-                ? [composition.target]
-                : []
+          ? compositionTargetPairs.map((pair) => pair?.target).filter(Boolean)
           : kind === 'targetSpec' || kind === 'spec'
-            ? compositionTargetPairs.length > 0
-              ? compositionTargetPairs.map((pair) => pair?.targetSpec).filter(Boolean)
-              : Array.isArray(composition?.targetSpecs)
-                ? composition.targetSpecs
-                : composition?.targetSpec
-                  ? [composition.targetSpec]
-                  : Array.isArray(composition?.specs)
-                    ? composition.specs
-                    : []
+            ? compositionTargetPairs.map((pair) => pair?.targetSpec).filter(Boolean)
             : kind === 'actionSpec'
-              ? compositionActionPairs.length > 0
-                ? compositionActionPairs.map((pair) => pair?.actionSpec).filter(Boolean)
-                : Array.isArray(composition?.actionSpecs)
-                  ? composition.actionSpecs
-                  : composition?.actionSpec
-                    ? [composition.actionSpec]
-                    : []
-              : compositionActionPairs.length > 0
-                ? compositionActionPairs.map((pair) => pair?.action).filter(Boolean)
-                : Array.isArray(composition?.actions)
-                  ? composition.actions
-                  : composition?.action
-                    ? [composition.action]
-                    : [];
+              ? compositionActionPairs.map((pair) => pair?.actionSpec).filter(Boolean)
+              : compositionActionPairs.map((pair) => pair?.action).filter(Boolean);
 
     sourceEntries.forEach((entry) => {
       const normalized = normalizeProcessMasterOption(entry, defaultType);
@@ -1317,11 +1277,9 @@ const StyleProcess = ({
         const data = await fetchProcessMasterOptions();
         if (!active) return;
         setProcessMasterOptions({
-          locations: Array.isArray(data?.locations ?? data?.parts) ? (data?.locations ?? data?.parts) : [],
+          locations: Array.isArray(data?.locations) ? data.locations : [],
           targets: Array.isArray(data?.targets) ? data.targets : [],
-          targetSpecs: Array.isArray(data?.targetSpecs ?? data?.specs)
-            ? (data?.targetSpecs ?? data?.specs)
-            : [],
+          targetSpecs: Array.isArray(data?.targetSpecs) ? data.targetSpecs : [],
           actions: Array.isArray(data?.actions) ? data.actions : [],
           actionSpecs: Array.isArray(data?.actionSpecs) ? data.actionSpecs : [],
           targetToTargetSpecs: Array.isArray(
@@ -1457,24 +1415,10 @@ const StyleProcess = ({
       compareProcessMasterOptionAsc(left, right, languageCode)
     );
   }, [languageCode, processMasterOptions.targets, targetOptionsFromStyleProcesses]);
-  const actionOptionsFromStyleProcesses = useMemo(() => {
-    const collected = [];
-    const seen = new Set();
-    safeProcesses.forEach((process) => {
-      const actions = Array.isArray(process?.processComposition?.actions)
-        ? process.processComposition.actions
-        : [];
-      actions.forEach((entry) => {
-        const normalized = normalizeProcessMasterOption(entry, 'ACTION');
-        if (!normalized) return;
-        const identity = getProcessMasterOptionIdentity(normalized, 'ACTION');
-        if (!identity || seen.has(identity)) return;
-        seen.add(identity);
-        collected.push(normalized);
-      });
-    });
-    return collected;
-  }, [safeProcesses]);
+  const actionOptionsFromStyleProcesses = useMemo(
+    () => collectProcessCompositionOptionsFromProcesses(safeProcesses, 'action', 'ACTION'),
+    [safeProcesses]
+  );
   const masterActionIdentitySet = useMemo(
     () =>
       new Set(
@@ -3008,10 +2952,10 @@ const StyleProcess = ({
                 <Stack spacing={1}>
                   <Box>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                      {getStyleProcessMessage(languageCode, 'legacyComposerTitle')}
+                      {getStyleProcessMessage(languageCode, 'selectionComposerTitle')}
                     </Typography>
                     <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                      {getStyleProcessMessage(languageCode, 'legacyComposerHint')}
+                      {getStyleProcessMessage(languageCode, 'selectionComposerHint')}
                     </Typography>
                   </Box>
 
