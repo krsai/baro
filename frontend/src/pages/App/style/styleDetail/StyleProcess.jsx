@@ -108,6 +108,15 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: '동작 규격',
     addActionBadge: '동작 등록',
     selectedActionLabel: '선택된 동작',
+    quickComposerTitle: '시안: 통합 뱃지 입력',
+    quickComposerDesc:
+      '대상(규격) / 동작(규격)을 한 번에 조합해 뱃지로 추가합니다. 기존 입력 방식은 그대로 유지됩니다.',
+    quickTargetBundleLabel: '대상 묶음',
+    quickActionBundleLabel: '동작 묶음',
+    quickAddTargetBadge: '대상 뱃지 추가',
+    quickAddActionBadge: '동작 뱃지 추가',
+    quickSpecOptional: '규격은 선택사항',
+    quickActionAutoHint: '동작 규격 연결이 없으면 동작 선택 즉시 뱃지로 등록됩니다.',
     actionLimitHint: '동작은 최대 3개까지 등록할 수 있습니다.',
     actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
     specLabel: '대상 규격',
@@ -173,6 +182,15 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: 'Action Spec',
     addActionBadge: 'Add Action',
     selectedActionLabel: 'Selected actions',
+    quickComposerTitle: 'Draft: Combined Badge Input',
+    quickComposerDesc:
+      'Compose Target(Spec) / Action(Spec) in one flow and add as badges. Existing input stays unchanged.',
+    quickTargetBundleLabel: 'Target Bundle',
+    quickActionBundleLabel: 'Action Bundle',
+    quickAddTargetBadge: 'Add Target Badge',
+    quickAddActionBadge: 'Add Action Badge',
+    quickSpecOptional: 'Spec is optional',
+    quickActionAutoHint: 'If no linked action specs exist, selecting action adds badge immediately.',
     actionLimitHint: 'You can register up to 3 actions.',
     actionInputHint: 'Type and press Enter (or just Add)',
     specLabel: 'Target Spec',
@@ -238,6 +256,15 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: 'Quy cach thao tac',
     addActionBadge: 'Them thao tac',
     selectedActionLabel: 'Thao tac da chon',
+    quickComposerTitle: 'Ban nhap thu: huy hieu ket hop',
+    quickComposerDesc:
+      'Gop Doi tuong(Quy cach) / Thao tac(Quy cach) trong mot luong va them bang huy hieu. Cach cu van duoc giu nguyen.',
+    quickTargetBundleLabel: 'Cum doi tuong',
+    quickActionBundleLabel: 'Cum thao tac',
+    quickAddTargetBadge: 'Them huy hieu doi tuong',
+    quickAddActionBadge: 'Them huy hieu thao tac',
+    quickSpecOptional: 'Quy cach la tuy chon',
+    quickActionAutoHint: 'Neu khong co quy cach thao tac lien ket, chon thao tac se them ngay huy hieu.',
     actionLimitHint: 'Co the dang ky toi da 3 thao tac.',
     actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
     specLabel: 'Quy cach doi tuong',
@@ -1551,11 +1578,19 @@ const StyleProcess = ({
   const [specInputValue, setSpecInputValue] = useState('');
   const [targetCandidate, setTargetCandidate] = useState(null);
   const [targetSpecCandidate, setTargetSpecCandidate] = useState(null);
+  const [quickTargetInputValue, setQuickTargetInputValue] = useState('');
+  const [quickTargetSpecInputValue, setQuickTargetSpecInputValue] = useState('');
+  const [quickTargetCandidate, setQuickTargetCandidate] = useState(null);
+  const [quickTargetSpecCandidate, setQuickTargetSpecCandidate] = useState(null);
   const [autoAddTargetRequested, setAutoAddTargetRequested] = useState(false);
   const [addActionInput, setAddActionInput] = useState('');
   const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const [actionCandidate, setActionCandidate] = useState(null);
   const [actionSpecCandidate, setActionSpecCandidate] = useState(null);
+  const [quickActionInputValue, setQuickActionInputValue] = useState('');
+  const [quickActionSpecInputValue, setQuickActionSpecInputValue] = useState('');
+  const [quickActionCandidate, setQuickActionCandidate] = useState(null);
+  const [quickActionSpecCandidate, setQuickActionSpecCandidate] = useState(null);
   const [autoAddActionRequested, setAutoAddActionRequested] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
@@ -1703,6 +1738,10 @@ const StyleProcess = ({
     () => filterTargetSpecOptionsByTargetCode(targetCandidate?.code),
     [filterTargetSpecOptionsByTargetCode, targetCandidate?.code]
   );
+  const quickFilteredTargetSpecOptions = useMemo(
+    () => filterTargetSpecOptionsByTargetCode(quickTargetCandidate?.code),
+    [filterTargetSpecOptionsByTargetCode, quickTargetCandidate?.code]
+  );
   const availableActionOptions = useMemo(
     () =>
       actionOptions.filter(
@@ -1721,6 +1760,17 @@ const StyleProcess = ({
       linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
     );
   }, [actionCandidate?.code, actionSpecOptions, actionToActionSpecRelationMap]);
+  const quickFilteredActionSpecOptions = useMemo(() => {
+    const selectedActionCode = normalizeStyleProcessCodeSegment(quickActionCandidate?.code);
+    if (!selectedActionCode) return actionSpecOptions;
+    const linkedSpecCodes = actionToActionSpecRelationMap.get(selectedActionCode);
+    if (!(linkedSpecCodes instanceof Set) || linkedSpecCodes.size === 0) {
+      return actionSpecOptions;
+    }
+    return actionSpecOptions.filter((option) =>
+      linkedSpecCodes.has(normalizeStyleProcessCodeSegment(option?.code))
+    );
+  }, [quickActionCandidate?.code, actionSpecOptions, actionToActionSpecRelationMap]);
   const resolveTargetPairLabel = useCallback(
     (pair) => {
       const targetLabel = resolveProcessMasterLabel(pair?.target, languageCode);
@@ -2055,26 +2105,18 @@ const StyleProcess = ({
     },
     [actionSpecInputValue, filteredActionSpecOptions, trySelectExistingOptionOnEnter]
   );
-  const handleAddTargetBadge = useCallback(() => {
+  const appendTargetPairToDraft = useCallback((normalizedTarget, normalizedTargetSpec) => {
     if (selectedTargetPairs.length >= DRAFT_TARGET_SLOT_FIELDS.length) {
       setAddError(getStyleProcessMessage(languageCode, 'validateTargetLimit'));
-      return;
+      return false;
     }
-    const normalizedTarget = normalizeProcessCompositionEntry(
-      targetCandidate ?? String(targetInputValue ?? '').trim(),
-      'target'
-    );
-    const normalizedTargetSpec = normalizeProcessCompositionEntry(
-      targetSpecCandidate ?? String(specInputValue ?? '').trim(),
-      'targetSpec'
-    );
     if (!normalizedTarget) {
       if (normalizedTargetSpec) {
         setAddError(getStyleProcessMessage(languageCode, 'validateTargetRequiredForSpec'));
       } else {
         setAddError(getStyleProcessMessage(languageCode, 'validateTarget'));
       }
-      return;
+      return false;
     }
     const targetIdentity = getProcessMasterOptionIdentity(normalizedTarget, 'TARGET');
     const duplicatedTarget = selectedTargetPairs.some((pair) => {
@@ -2083,7 +2125,7 @@ const StyleProcess = ({
     });
     if (duplicatedTarget) {
       setAddError(getStyleProcessMessage(languageCode, 'validateTargetDuplicate'));
-      return;
+      return false;
     }
     const normalizedTargetCode = normalizeStyleProcessCodeSegment(normalizedTarget?.code);
     const linkedTargets = resolveLinkedTargetCodeSet(Array.from(selectedTargetCodeSet));
@@ -2094,7 +2136,7 @@ const StyleProcess = ({
       !linkedTargets.has(normalizedTargetCode)
     ) {
       setAddError(getStyleProcessMessage(languageCode, 'validateInvalid'));
-      return;
+      return false;
     }
     const linkedTargetSpecCodes = normalizedTargetCode
       ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
@@ -2108,7 +2150,7 @@ const StyleProcess = ({
       !linkedTargetSpecCodes.has(normalizedTargetSpecCode)
     ) {
       setAddError(getStyleProcessMessage(languageCode, 'validateInvalid'));
-      return;
+      return false;
     }
 
     setAddDraft((prev) =>
@@ -2117,51 +2159,27 @@ const StyleProcess = ({
         targetSpec: normalizedTargetSpec ?? null,
       }])
     );
-    setTargetCandidate(null);
-    setTargetSpecCandidate(null);
-    setTargetInputValue('');
-    setSpecInputValue('');
     setAddError('');
+    return true;
   }, [
     languageCode,
     resolveLinkedTargetCodeSet,
     selectedTargetCodeSet,
     selectedTargetPairs,
-    specInputValue,
-    targetCandidate,
-    targetInputValue,
-    targetSpecCandidate,
     targetToTargetSpecRelationMap,
   ]);
-  const handleRemoveTargetBadge = useCallback((index) => {
-    setAddDraft((prev) =>
-      applyDraftTargetPairs(
-        prev,
-        getDraftTargetPairs(prev).filter((_pair, pairIndex) => pairIndex !== index)
-      )
-    );
-    setAddError('');
-  }, []);
-  const handleAddActionBadge = useCallback(() => {
+  const appendActionPairToDraft = useCallback((normalizedAction, normalizedActionSpec) => {
     if (selectedActionPairs.length >= DRAFT_ACTION_SLOT_FIELDS.length) {
       setAddError(getStyleProcessMessage(languageCode, 'validateActionLimit'));
-      return;
+      return false;
     }
-    const normalizedAction = normalizeProcessCompositionEntry(
-      actionCandidate ?? String(addActionInput ?? '').trim(),
-      'action'
-    );
-    const normalizedActionSpec = normalizeProcessCompositionEntry(
-      actionSpecCandidate ?? String(actionSpecInputValue ?? '').trim(),
-      'actionSpec'
-    );
     if (!normalizedAction) {
       if (normalizedActionSpec) {
         setAddError(getStyleProcessMessage(languageCode, 'validateActionRequiredForSpec'));
       } else {
         setAddError(getStyleProcessMessage(languageCode, 'validateAction'));
       }
-      return;
+      return false;
     }
     const actionIdentity = getProcessMasterOptionIdentity(normalizedAction, 'ACTION');
     const duplicatedAction = selectedActionPairs.some((pair) => {
@@ -2170,7 +2188,7 @@ const StyleProcess = ({
     });
     if (duplicatedAction) {
       setAddError(getStyleProcessMessage(languageCode, 'validateActionDuplicate'));
-      return;
+      return false;
     }
     const normalizedActionCode = normalizeStyleProcessCodeSegment(normalizedAction?.code);
     const linkedActionSpecCodes = normalizedActionCode
@@ -2185,7 +2203,7 @@ const StyleProcess = ({
       !linkedActionSpecCodes.has(normalizedActionSpecCode)
     ) {
       setAddError(getStyleProcessMessage(languageCode, 'validateInvalid'));
-      return;
+      return false;
     }
 
     setAddDraft((prev) =>
@@ -2194,20 +2212,293 @@ const StyleProcess = ({
         actionSpec: normalizedActionSpec ?? null,
       }])
     );
+    setAddError('');
+    return true;
+  }, [actionToActionSpecRelationMap, languageCode, selectedActionPairs]);
+  const handleAddTargetBadge = useCallback(() => {
+    const normalizedTarget = normalizeProcessCompositionEntry(
+      targetCandidate ?? String(targetInputValue ?? '').trim(),
+      'target'
+    );
+    const normalizedTargetSpec = normalizeProcessCompositionEntry(
+      targetSpecCandidate ?? String(specInputValue ?? '').trim(),
+      'targetSpec'
+    );
+    const appended = appendTargetPairToDraft(normalizedTarget, normalizedTargetSpec);
+    if (!appended) return;
+    setTargetCandidate(null);
+    setTargetSpecCandidate(null);
+    setTargetInputValue('');
+    setSpecInputValue('');
+  }, [
+    appendTargetPairToDraft,
+    specInputValue,
+    targetCandidate,
+    targetInputValue,
+    targetSpecCandidate,
+  ]);
+  const handleRemoveTargetBadge = useCallback((index) => {
+    setAddDraft((prev) =>
+      applyDraftTargetPairs(
+        prev,
+        getDraftTargetPairs(prev).filter((_pair, pairIndex) => pairIndex !== index)
+      )
+    );
+    setAddError('');
+  }, []);
+  const handleAddActionBadge = useCallback(() => {
+    const normalizedAction = normalizeProcessCompositionEntry(
+      actionCandidate ?? String(addActionInput ?? '').trim(),
+      'action'
+    );
+    const normalizedActionSpec = normalizeProcessCompositionEntry(
+      actionSpecCandidate ?? String(actionSpecInputValue ?? '').trim(),
+      'actionSpec'
+    );
+    const appended = appendActionPairToDraft(normalizedAction, normalizedActionSpec);
+    if (!appended) return;
     setActionCandidate(null);
     setActionSpecCandidate(null);
     setAddActionInput('');
     setActionSpecInputValue('');
-    setAddError('');
   }, [
+    appendActionPairToDraft,
     actionCandidate,
     actionSpecCandidate,
     actionSpecInputValue,
-    actionToActionSpecRelationMap,
     addActionInput,
-    languageCode,
-    selectedActionPairs,
   ]);
+  const handleQuickAddTargetBadge = useCallback(() => {
+    const normalizedTarget = normalizeProcessCompositionEntry(
+      quickTargetCandidate ?? String(quickTargetInputValue ?? '').trim(),
+      'target'
+    );
+    const normalizedTargetSpec = normalizeProcessCompositionEntry(
+      quickTargetSpecCandidate ?? String(quickTargetSpecInputValue ?? '').trim(),
+      'targetSpec'
+    );
+    const appended = appendTargetPairToDraft(normalizedTarget, normalizedTargetSpec);
+    if (!appended) return;
+    setQuickTargetCandidate(null);
+    setQuickTargetSpecCandidate(null);
+    setQuickTargetInputValue('');
+    setQuickTargetSpecInputValue('');
+  }, [
+    appendTargetPairToDraft,
+    quickTargetCandidate,
+    quickTargetInputValue,
+    quickTargetSpecCandidate,
+    quickTargetSpecInputValue,
+  ]);
+  const handleQuickAddActionBadge = useCallback(() => {
+    const normalizedAction = normalizeProcessCompositionEntry(
+      quickActionCandidate ?? String(quickActionInputValue ?? '').trim(),
+      'action'
+    );
+    const normalizedActionSpec = normalizeProcessCompositionEntry(
+      quickActionSpecCandidate ?? String(quickActionSpecInputValue ?? '').trim(),
+      'actionSpec'
+    );
+    const appended = appendActionPairToDraft(normalizedAction, normalizedActionSpec);
+    if (!appended) return;
+    setQuickActionCandidate(null);
+    setQuickActionSpecCandidate(null);
+    setQuickActionInputValue('');
+    setQuickActionSpecInputValue('');
+  }, [
+    appendActionPairToDraft,
+    quickActionCandidate,
+    quickActionInputValue,
+    quickActionSpecCandidate,
+    quickActionSpecInputValue,
+  ]);
+  const handleQuickTargetEnterSelect = useCallback(
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
+        inputText: quickTargetInputValue,
+        options: availableTargetOptions,
+        onMatch: (matchedOption) => {
+          setQuickTargetCandidate(normalizeProcessCompositionEntry(matchedOption, 'target'));
+          setQuickTargetInputValue('');
+          setAddError('');
+        },
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedTarget = normalizeProcessCompositionEntry(
+        String(quickTargetInputValue ?? '').trim(),
+        'target'
+      );
+      if (!normalizedTarget) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setQuickTargetCandidate(normalizedTarget);
+      setQuickTargetInputValue('');
+      setAddError('');
+    },
+    [availableTargetOptions, quickTargetInputValue, trySelectExistingOptionOnEnter]
+  );
+  const handleQuickTargetSpecEnterSelect = useCallback(
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
+        inputText: quickTargetSpecInputValue,
+        options: quickFilteredTargetSpecOptions,
+        onMatch: (matchedOption) => {
+          const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'targetSpec');
+          setQuickTargetSpecCandidate(normalizedSpec);
+          setQuickTargetSpecInputValue('');
+          setAddError('');
+          const normalizedTarget = normalizeProcessCompositionEntry(
+            quickTargetCandidate ?? String(quickTargetInputValue ?? '').trim(),
+            'target'
+          );
+          const appended = appendTargetPairToDraft(normalizedTarget, normalizedSpec);
+          if (!appended) return;
+          setQuickTargetCandidate(null);
+          setQuickTargetSpecCandidate(null);
+          setQuickTargetInputValue('');
+          setQuickTargetSpecInputValue('');
+        },
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedSpec = normalizeProcessCompositionEntry(
+        String(quickTargetSpecInputValue ?? '').trim(),
+        'targetSpec'
+      );
+      if (!normalizedSpec) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const normalizedTarget = normalizeProcessCompositionEntry(
+        quickTargetCandidate ?? String(quickTargetInputValue ?? '').trim(),
+        'target'
+      );
+      const appended = appendTargetPairToDraft(normalizedTarget, normalizedSpec);
+      if (!appended) return;
+      setQuickTargetCandidate(null);
+      setQuickTargetSpecCandidate(null);
+      setQuickTargetInputValue('');
+      setQuickTargetSpecInputValue('');
+    },
+    [
+      appendTargetPairToDraft,
+      quickFilteredTargetSpecOptions,
+      quickTargetCandidate,
+      quickTargetInputValue,
+      quickTargetSpecInputValue,
+      trySelectExistingOptionOnEnter,
+    ]
+  );
+  const handleQuickActionEnterSelect = useCallback(
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
+        inputText: quickActionInputValue,
+        options: availableActionOptions,
+        onMatch: (matchedOption) => {
+          const normalizedAction = normalizeProcessCompositionEntry(matchedOption, 'action');
+          const normalizedActionCode = normalizeStyleProcessCodeSegment(normalizedAction?.code);
+          const linkedActionSpecCodes = normalizedActionCode
+            ? actionToActionSpecRelationMap.get(normalizedActionCode)
+            : null;
+          const hasLinkedSpecs =
+            linkedActionSpecCodes instanceof Set && linkedActionSpecCodes.size > 0;
+          setQuickActionCandidate(normalizedAction);
+          setQuickActionInputValue('');
+          setAddError('');
+          if (!hasLinkedSpecs) {
+            const appended = appendActionPairToDraft(normalizedAction, null);
+            if (!appended) return;
+            setQuickActionCandidate(null);
+            setQuickActionSpecCandidate(null);
+            setQuickActionInputValue('');
+            setQuickActionSpecInputValue('');
+          }
+        },
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedAction = normalizeProcessCompositionEntry(
+        String(quickActionInputValue ?? '').trim(),
+        'action'
+      );
+      if (!normalizedAction) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const normalizedActionCode = normalizeStyleProcessCodeSegment(normalizedAction?.code);
+      const linkedActionSpecCodes = normalizedActionCode
+        ? actionToActionSpecRelationMap.get(normalizedActionCode)
+        : null;
+      const hasLinkedSpecs =
+        linkedActionSpecCodes instanceof Set && linkedActionSpecCodes.size > 0;
+      if (!hasLinkedSpecs) {
+        const appended = appendActionPairToDraft(normalizedAction, null);
+        if (!appended) return;
+        setQuickActionCandidate(null);
+        setQuickActionSpecCandidate(null);
+        setQuickActionInputValue('');
+        setQuickActionSpecInputValue('');
+      } else {
+        setQuickActionCandidate(normalizedAction);
+        setQuickActionInputValue('');
+        setAddError('');
+      }
+    },
+    [
+      actionToActionSpecRelationMap,
+      appendActionPairToDraft,
+      availableActionOptions,
+      quickActionInputValue,
+      trySelectExistingOptionOnEnter,
+    ]
+  );
+  const handleQuickActionSpecEnterSelect = useCallback(
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
+        inputText: quickActionSpecInputValue,
+        options: quickFilteredActionSpecOptions,
+        onMatch: (matchedOption) => {
+          const normalizedSpec = normalizeProcessCompositionEntry(matchedOption, 'actionSpec');
+          const normalizedAction = normalizeProcessCompositionEntry(
+            quickActionCandidate ?? String(quickActionInputValue ?? '').trim(),
+            'action'
+          );
+          const appended = appendActionPairToDraft(normalizedAction, normalizedSpec);
+          if (!appended) return;
+          setQuickActionCandidate(null);
+          setQuickActionSpecCandidate(null);
+          setQuickActionInputValue('');
+          setQuickActionSpecInputValue('');
+        },
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedSpec = normalizeProcessCompositionEntry(
+        String(quickActionSpecInputValue ?? '').trim(),
+        'actionSpec'
+      );
+      if (!normalizedSpec) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const normalizedAction = normalizeProcessCompositionEntry(
+        quickActionCandidate ?? String(quickActionInputValue ?? '').trim(),
+        'action'
+      );
+      const appended = appendActionPairToDraft(normalizedAction, normalizedSpec);
+      if (!appended) return;
+      setQuickActionCandidate(null);
+      setQuickActionSpecCandidate(null);
+      setQuickActionInputValue('');
+      setQuickActionSpecInputValue('');
+    },
+    [
+      appendActionPairToDraft,
+      quickActionCandidate,
+      quickActionInputValue,
+      quickActionSpecInputValue,
+      quickFilteredActionSpecOptions,
+      trySelectExistingOptionOnEnter,
+    ]
+  );
   const handleRemoveActionBadge = useCallback((index) => {
     setAddDraft((prev) =>
       applyDraftActionPairs(
@@ -2358,11 +2649,19 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setQuickTargetInputValue('');
+    setQuickTargetSpecInputValue('');
+    setQuickTargetCandidate(null);
+    setQuickTargetSpecCandidate(null);
     setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setQuickActionInputValue('');
+    setQuickActionSpecInputValue('');
+    setQuickActionCandidate(null);
+    setQuickActionSpecCandidate(null);
     setAutoAddActionRequested(false);
     setAddError('');
   };
@@ -2376,11 +2675,19 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setQuickTargetInputValue('');
+    setQuickTargetSpecInputValue('');
+    setQuickTargetCandidate(null);
+    setQuickTargetSpecCandidate(null);
     setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setQuickActionInputValue('');
+    setQuickActionSpecInputValue('');
+    setQuickActionCandidate(null);
+    setQuickActionSpecCandidate(null);
     setAutoAddActionRequested(false);
     setAddError('');
   };
@@ -2395,11 +2702,19 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setQuickTargetInputValue('');
+    setQuickTargetSpecInputValue('');
+    setQuickTargetCandidate(null);
+    setQuickTargetSpecCandidate(null);
     setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setQuickActionInputValue('');
+    setQuickActionSpecInputValue('');
+    setQuickActionCandidate(null);
+    setQuickActionSpecCandidate(null);
     setAutoAddActionRequested(false);
     setAddError('');
   }, [displayOrderQuantity]);
@@ -3114,6 +3429,272 @@ const StyleProcess = ({
                     {getStyleProcessMessage(languageCode, 'actionLimitHint')}
                   </Typography>
                 </Stack>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.25,
+                    borderRadius: 1.5,
+                    bgcolor: 'common.white',
+                    borderColor: 'divider',
+                    minWidth: 360,
+                    flex: 2,
+                  }}
+                >
+                  <Stack spacing={1}>
+                    <Stack spacing={0.35}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                        {getStyleProcessMessage(languageCode, 'quickComposerTitle')}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {getStyleProcessMessage(languageCode, 'quickComposerDesc')}
+                      </Typography>
+                    </Stack>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: 'center' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ width: { xs: '100%', md: 78 }, color: 'text.secondary', fontWeight: 700 }}
+                      >
+                        {getStyleProcessMessage(languageCode, 'quickTargetBundleLabel')}
+                      </Typography>
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        options={availableTargetOptions}
+                        value={quickTargetCandidate}
+                        inputValue={quickTargetInputValue}
+                        onChange={(_event, value) => {
+                          const normalizedTarget = normalizeProcessCompositionEntry(value, 'target');
+                          const normalizedTargetCode = normalizeStyleProcessCodeSegment(
+                            normalizedTarget?.code
+                          );
+                          const linkedTargetSpecCodes = normalizedTargetCode
+                            ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+                            : null;
+                          const currentSpecCode = normalizeStyleProcessCodeSegment(
+                            quickTargetSpecCandidate?.code
+                          );
+                          const keepCurrentSpec =
+                            !currentSpecCode ||
+                            !(linkedTargetSpecCodes instanceof Set) ||
+                            linkedTargetSpecCodes.size === 0 ||
+                            linkedTargetSpecCodes.has(currentSpecCode);
+                          setQuickTargetCandidate(normalizedTarget);
+                          setQuickTargetSpecCandidate(keepCurrentSpec ? quickTargetSpecCandidate : null);
+                          setQuickTargetInputValue('');
+                          setAddError('');
+                        }}
+                        onInputChange={(_event, value) => {
+                          setQuickTargetInputValue(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        isOptionEqualToValue={(option, value) =>
+                          getProcessMasterOptionIdentity(option, 'TARGET') ===
+                          getProcessMasterOptionIdentity(value, 'TARGET')
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(languageCode, 'targetLabel')}
+                            onKeyDown={handleQuickTargetEnterSelect}
+                          />
+                        )}
+                        sx={{ flex: 1, minWidth: 140 }}
+                      />
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        options={quickFilteredTargetSpecOptions}
+                        value={quickTargetSpecCandidate}
+                        inputValue={quickTargetSpecInputValue}
+                        onChange={(_event, value) => {
+                          const normalizedSpec = normalizeProcessCompositionEntry(value, 'targetSpec');
+                          setQuickTargetSpecCandidate(normalizedSpec);
+                          setAddError('');
+                          if (!normalizedSpec) return;
+                          const normalizedTarget = normalizeProcessCompositionEntry(
+                            quickTargetCandidate ?? String(quickTargetInputValue ?? '').trim(),
+                            'target'
+                          );
+                          const appended = appendTargetPairToDraft(normalizedTarget, normalizedSpec);
+                          if (!appended) return;
+                          setQuickTargetCandidate(null);
+                          setQuickTargetSpecCandidate(null);
+                          setQuickTargetInputValue('');
+                          setQuickTargetSpecInputValue('');
+                        }}
+                        onInputChange={(_event, value) => {
+                          setQuickTargetSpecInputValue(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        isOptionEqualToValue={(option, value) =>
+                          getProcessMasterOptionIdentity(option, 'TARGET_SPEC') ===
+                          getProcessMasterOptionIdentity(value, 'TARGET_SPEC')
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(languageCode, 'targetSpecLabel')}
+                            placeholder={getStyleProcessMessage(languageCode, 'quickSpecOptional')}
+                            onKeyDown={handleQuickTargetSpecEnterSelect}
+                          />
+                        )}
+                        sx={{ flex: 1, minWidth: 140 }}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleQuickAddTargetBadge}
+                        sx={{ minWidth: 122 }}
+                      >
+                        {getStyleProcessMessage(languageCode, 'quickAddTargetBadge')}
+                      </Button>
+                    </Stack>
+                    {(quickTargetCandidate || quickTargetSpecCandidate) && (
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {getStyleProcessMessage(languageCode, 'previewLabel')}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          label={resolveTargetPairLabel({
+                            target: quickTargetCandidate,
+                            targetSpec: quickTargetSpecCandidate,
+                          })}
+                        />
+                      </Stack>
+                    )}
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: 'center' }}>
+                      <Typography
+                        variant="caption"
+                        sx={{ width: { xs: '100%', md: 78 }, color: 'text.secondary', fontWeight: 700 }}
+                      >
+                        {getStyleProcessMessage(languageCode, 'quickActionBundleLabel')}
+                      </Typography>
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        options={availableActionOptions}
+                        value={quickActionCandidate}
+                        inputValue={quickActionInputValue}
+                        onChange={(_event, value) => {
+                          const normalizedAction = normalizeProcessCompositionEntry(value, 'action');
+                          const normalizedActionCode = normalizeStyleProcessCodeSegment(
+                            normalizedAction?.code
+                          );
+                          const linkedActionSpecCodes = normalizedActionCode
+                            ? actionToActionSpecRelationMap.get(normalizedActionCode)
+                            : null;
+                          const hasLinkedSpecs =
+                            linkedActionSpecCodes instanceof Set && linkedActionSpecCodes.size > 0;
+                          setQuickActionCandidate(normalizedAction);
+                          setQuickActionInputValue('');
+                          setAddError('');
+                          if (!normalizedAction || hasLinkedSpecs) return;
+                          const appended = appendActionPairToDraft(normalizedAction, null);
+                          if (!appended) return;
+                          setQuickActionCandidate(null);
+                          setQuickActionSpecCandidate(null);
+                          setQuickActionInputValue('');
+                          setQuickActionSpecInputValue('');
+                        }}
+                        onInputChange={(_event, value) => {
+                          setQuickActionInputValue(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        isOptionEqualToValue={(option, value) =>
+                          getProcessMasterOptionIdentity(option, 'ACTION') ===
+                          getProcessMasterOptionIdentity(value, 'ACTION')
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(languageCode, 'actionLabel')}
+                            onKeyDown={handleQuickActionEnterSelect}
+                          />
+                        )}
+                        sx={{ flex: 1, minWidth: 140 }}
+                      />
+                      <Autocomplete
+                        freeSolo
+                        forcePopupIcon
+                        autoHighlight
+                        size="small"
+                        options={quickFilteredActionSpecOptions}
+                        value={quickActionSpecCandidate}
+                        inputValue={quickActionSpecInputValue}
+                        onChange={(_event, value) => {
+                          const normalizedSpec = normalizeProcessCompositionEntry(value, 'actionSpec');
+                          setQuickActionSpecCandidate(normalizedSpec);
+                          setAddError('');
+                          if (!normalizedSpec) return;
+                          const normalizedAction = normalizeProcessCompositionEntry(
+                            quickActionCandidate ?? String(quickActionInputValue ?? '').trim(),
+                            'action'
+                          );
+                          const appended = appendActionPairToDraft(normalizedAction, normalizedSpec);
+                          if (!appended) return;
+                          setQuickActionCandidate(null);
+                          setQuickActionSpecCandidate(null);
+                          setQuickActionInputValue('');
+                          setQuickActionSpecInputValue('');
+                        }}
+                        onInputChange={(_event, value) => {
+                          setQuickActionSpecInputValue(String(value ?? ''));
+                        }}
+                        getOptionLabel={(option) => resolveProcessMasterLabel(option, languageCode)}
+                        isOptionEqualToValue={(option, value) =>
+                          getProcessMasterOptionIdentity(option, 'ACTION_SPEC') ===
+                          getProcessMasterOptionIdentity(value, 'ACTION_SPEC')
+                        }
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label={getStyleProcessMessage(languageCode, 'actionSpecLabel')}
+                            placeholder={getStyleProcessMessage(languageCode, 'quickSpecOptional')}
+                            onKeyDown={handleQuickActionSpecEnterSelect}
+                          />
+                        )}
+                        sx={{ flex: 1, minWidth: 140 }}
+                      />
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleQuickAddActionBadge}
+                        sx={{ minWidth: 122 }}
+                      >
+                        {getStyleProcessMessage(languageCode, 'quickAddActionBadge')}
+                      </Button>
+                    </Stack>
+                    {(quickActionCandidate || quickActionSpecCandidate) && (
+                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {getStyleProcessMessage(languageCode, 'previewLabel')}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          label={resolveActionPairLabel({
+                            action: quickActionCandidate,
+                            actionSpec: quickActionSpecCandidate,
+                          })}
+                        />
+                      </Stack>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      {getStyleProcessMessage(languageCode, 'quickActionAutoHint')}
+                    </Typography>
+                  </Stack>
+                </Paper>
 
                 <TextField
                   size="small"
