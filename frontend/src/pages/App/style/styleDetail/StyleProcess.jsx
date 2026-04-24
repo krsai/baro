@@ -1560,6 +1560,8 @@ const StyleProcess = ({
   const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const [actionCandidate, setActionCandidate] = useState(null);
   const [actionSpecCandidate, setActionSpecCandidate] = useState(null);
+  const [targetComposerOpen, setTargetComposerOpen] = useState(false);
+  const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const draftFormRef = React.useRef(null);
@@ -1917,12 +1919,14 @@ const StyleProcess = ({
     setTargetSpecCandidate(null);
     setTargetInputValue('');
     setSpecInputValue('');
+    setTargetComposerOpen(false);
   }, []);
   const resetPendingActionSelection = useCallback(() => {
     setActionCandidate(null);
     setActionSpecCandidate(null);
     setAddActionInput('');
     setActionSpecInputValue('');
+    setActionComposerOpen(false);
   }, []);
   const commitTargetSelection = (nextSpecValue) => {
     const normalizedTarget = normalizeProcessCompositionEntry(targetCandidate, 'target');
@@ -1966,6 +1970,9 @@ const StyleProcess = ({
         setTargetInputValue('');
         setSpecInputValue('');
         setAddError('');
+        window.requestAnimationFrame(() => {
+          setTargetComposerOpen(true);
+        });
         return;
       }
       const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
@@ -2027,6 +2034,9 @@ const StyleProcess = ({
         setAddActionInput('');
         setActionSpecInputValue('');
         setAddError('');
+        window.requestAnimationFrame(() => {
+          setActionComposerOpen(true);
+        });
         return;
       }
       const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
@@ -2341,6 +2351,8 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setTargetComposerOpen(false);
+    setActionComposerOpen(false);
     setAddError('');
   };
 
@@ -2357,6 +2369,8 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setTargetComposerOpen(false);
+    setActionComposerOpen(false);
     setAddError('');
   };
 
@@ -2374,6 +2388,8 @@ const StyleProcess = ({
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setTargetComposerOpen(false);
+    setActionComposerOpen(false);
     setAddError('');
   }, [displayOrderQuantity]);
 
@@ -2564,6 +2580,36 @@ const StyleProcess = ({
   const actionComposerOptions = isSelectingActionSpec
     ? filteredActionSpecOptionsWithNone
     : availableActionOptions;
+  const filterComposerOptions = useCallback(
+    (options, state, { includeNoneCode, noneOption }) => {
+      const normalizedInput = normalizeProcessMasterMatchText(state?.inputValue);
+      const sourceOptions = Array.isArray(options) ? options : [];
+      const filtered = normalizedInput
+        ? sourceOptions.filter((option) =>
+            buildProcessMasterMatchCandidates(option, languageCode).some((candidate) =>
+              candidate.includes(normalizedInput)
+            )
+          )
+        : [...sourceOptions];
+      if (!includeNoneCode) return filtered;
+      const noneKey = normalizeStyleProcessCodeSegment(includeNoneCode);
+      if (!noneKey) return filtered;
+      const noneRow =
+        filtered.find(
+          (option) => normalizeStyleProcessCodeSegment(option?.code) === noneKey
+        ) ||
+        sourceOptions.find(
+          (option) => normalizeStyleProcessCodeSegment(option?.code) === noneKey
+        ) ||
+        noneOption ||
+        null;
+      const rowsWithoutNone = filtered.filter(
+        (option) => normalizeStyleProcessCodeSegment(option?.code) !== noneKey
+      );
+      return noneRow ? [noneRow, ...rowsWithoutNone] : rowsWithoutNone;
+    },
+    [languageCode]
+  );
   const processRows = useMemo(
     () =>
       safeProcesses.map((process, index) => (
@@ -2844,7 +2890,18 @@ const StyleProcess = ({
                     forcePopupIcon
                     autoHighlight
                     size="small"
+                    open={targetComposerOpen}
+                    onOpen={() => setTargetComposerOpen(true)}
+                    onClose={() => setTargetComposerOpen(false)}
                     options={targetComposerOptions}
+                    filterOptions={(options, state) =>
+                      filterComposerOptions(options, state, {
+                        includeNoneCode: isSelectingTargetSpec
+                          ? TARGET_SPEC_NONE_OPTION_CODE
+                          : '',
+                        noneOption: targetSpecNoneOption,
+                      })
+                    }
                     value={null}
                     inputValue={targetInputValue}
                     onChange={(_event, value) => {
@@ -2974,7 +3031,18 @@ const StyleProcess = ({
                     forcePopupIcon
                     autoHighlight
                     size="small"
+                    open={actionComposerOpen}
+                    onOpen={() => setActionComposerOpen(true)}
+                    onClose={() => setActionComposerOpen(false)}
                     options={actionComposerOptions}
+                    filterOptions={(options, state) =>
+                      filterComposerOptions(options, state, {
+                        includeNoneCode: isSelectingActionSpec
+                          ? ACTION_SPEC_NONE_OPTION_CODE
+                          : '',
+                        noneOption: actionSpecNoneOption,
+                      })
+                    }
                     value={null}
                     inputValue={addActionInput}
                     onChange={(_event, value) => {
