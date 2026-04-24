@@ -332,7 +332,7 @@ const ProcessMasterSection = ({
     [languageCode, rows]
   );
   const isSelectable = typeof onSelectRow === 'function';
-  const columnCount = isSelectable ? 7 : 6;
+  const columnCount = isSelectable ? 8 : 7;
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
   const focusInputRef = useRef(null);
@@ -391,7 +391,7 @@ const ProcessMasterSection = ({
   }, [displayRows, focusRowId, onCodeFocusHandled]);
 
   return (
-    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
+    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, width: '100%', height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
         <Stack spacing={0.25}>
           <Typography variant="subtitle1" fontWeight={700}>
@@ -413,23 +413,28 @@ const ProcessMasterSection = ({
         </Button>
       </Box>
 
-      <TableContainer sx={{ maxHeight }}>
+      <TableContainer sx={{ maxHeight, minHeight: maxHeight }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
               {isSelectable ? (
                 <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>선택</TableCell>
               ) : null}
-              <TableCell sx={{ width: '15%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '13%', fontWeight: 700 }}>코드</TableCell>
+              <TableCell sx={{ width: '21%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '21%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '21%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
               <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
             {displayRows.map((row) => {
+              const normalizedCode = normalizeCodeKey(row.code);
+              const isDuplicateCode =
+                Boolean(normalizedCode) &&
+                duplicateCodeSet.has(normalizedCode);
               const usageConflict = usageConflictMap.get(Number(row.id));
               const usageTooltipTitle = usageConflict
                 ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
@@ -479,12 +484,10 @@ const ProcessMasterSection = ({
                     placeholder="CODE"
                     inputRef={focusRowId === row.id ? focusInputRef : undefined}
                     error={
-                      Boolean(normalizeCodeKey(row.code)) &&
-                      duplicateCodeSet.has(normalizeCodeKey(row.code))
+                      isDuplicateCode
                     }
                     helperText={
-                      Boolean(normalizeCodeKey(row.code)) &&
-                      duplicateCodeSet.has(normalizeCodeKey(row.code))
+                      isDuplicateCode
                         ? '중복 코드'
                         : undefined
                     }
@@ -538,6 +541,14 @@ const ProcessMasterSection = ({
                       0
                     </Typography>
                   )}
+                </TableCell>
+                <TableCell sx={{ textAlign: 'center' }}>
+                  <Typography
+                    variant="body2"
+                    sx={{ fontWeight: isDuplicateCode ? 700 : 400, color: isDuplicateCode ? 'error.main' : 'text.disabled' }}
+                  >
+                    {isDuplicateCode ? '중복' : '-'}
+                  </Typography>
                 </TableCell>
                 <TableCell sx={{ textAlign: 'center' }}>
                   {usageConflict ? (
@@ -727,7 +738,6 @@ const ProcessMasterLinkedSpecSection = ({
   parentRow,
   relationRows = [],
 }) => {
-  const [isAdding, setIsAdding] = useState(false);
   const [addInputValue, setAddInputValue] = useState('');
   const selectedParentCode = normalizeRelationCode(parentRow?.code);
   const selectedChildCodeSet = useMemo(() => {
@@ -771,7 +781,6 @@ const ProcessMasterLinkedSpecSection = ({
         existingRow: matchedRow,
         inputText,
       });
-      setIsAdding(false);
       setAddInputValue('');
     },
     [addInputValue, canAdd, onAddOrLinkRow, rows, selectedParentCode]
@@ -834,12 +843,11 @@ const ProcessMasterLinkedSpecSection = ({
   }, [displayRows, focusRowId, onCodeFocusHandled]);
 
   useEffect(() => {
-    setIsAdding(false);
     setAddInputValue('');
   }, [selectedParentCode]);
 
   return (
-    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
+    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, width: '100%', height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
         <Stack spacing={0.25}>
           <Typography variant="subtitle1" fontWeight={700}>
@@ -868,100 +876,95 @@ const ProcessMasterLinkedSpecSection = ({
             )}
           </Stack>
         </Stack>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AddIcon />}
-          disabled={!canAdd}
-          onClick={() => {
-            if (!canAdd) return;
-            setIsAdding(true);
-          }}
-        >
-          추가
-        </Button>
       </Box>
 
-      {isAdding ? (
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            mb: 1.5,
-            alignItems: 'center',
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{
+          mb: 1.5,
+          alignItems: 'center',
+        }}
+      >
+        <Autocomplete
+          freeSolo
+          autoHighlight
+          forcePopupIcon
+          fullWidth
+          size="small"
+          options={sortedRows}
+          inputValue={addInputValue}
+          disabled={!canAdd}
+          onInputChange={(_event, value) => {
+            setAddInputValue(String(value ?? ''));
+          }}
+          onChange={(_event, value) => {
+            if (!value) return;
+            handleCommitAdd(value);
+          }}
+          getOptionLabel={(option) => resolveLocalizedAttributeName(option, languageCode) || option?.code || ''}
+          isOptionEqualToValue={(option, value) =>
+            normalizeRelationCode(option?.code) === normalizeRelationCode(value?.code)
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={`${title} 선택/등록`}
+              placeholder={
+                canAdd
+                  ? `${title} 검색 또는 신규 입력`
+                  : `${parentLabel}을 먼저 선택하세요`
+              }
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+                const trimmed = toTrimmedText(addInputValue);
+                if (!trimmed) return;
+                event.preventDefault();
+                event.stopPropagation();
+                handleCommitAdd(trimmed);
+              }}
+            />
+          )}
+        />
+        <Button
+          size="small"
+          variant="contained"
+          onClick={() => handleCommitAdd(addInputValue)}
+          disabled={!canAdd || !toTrimmedText(addInputValue)}
+        >
+          등록
+        </Button>
+        <Button
+          size="small"
+          variant="text"
+          onClick={() => {
+            setAddInputValue('');
           }}
         >
-          <Autocomplete
-            freeSolo
-            autoHighlight
-            forcePopupIcon
-            fullWidth
-            size="small"
-            options={sortedRows}
-            inputValue={addInputValue}
-            onInputChange={(_event, value) => {
-              setAddInputValue(String(value ?? ''));
-            }}
-            onChange={(_event, value) => {
-              if (!value) return;
-              handleCommitAdd(value);
-            }}
-            getOptionLabel={(option) => resolveLocalizedAttributeName(option, languageCode) || option?.code || ''}
-            isOptionEqualToValue={(option, value) =>
-              normalizeRelationCode(option?.code) === normalizeRelationCode(value?.code)
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={`${title} 추가`}
-                placeholder={`${title} 검색 또는 신규 입력`}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
-                  const trimmed = toTrimmedText(addInputValue);
-                  if (!trimmed) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  handleCommitAdd(trimmed);
-                }}
-              />
-            )}
-          />
-          <Button
-            size="small"
-            variant="contained"
-            onClick={() => handleCommitAdd(addInputValue)}
-            disabled={!toTrimmedText(addInputValue)}
-          >
-            등록
-          </Button>
-          <Button
-            size="small"
-            variant="text"
-            onClick={() => {
-              setIsAdding(false);
-              setAddInputValue('');
-            }}
-          >
-            취소
-          </Button>
-        </Stack>
-      ) : null}
+          취소
+        </Button>
+      </Stack>
 
-      <TableContainer sx={{ maxHeight }}>
+      <TableContainer sx={{ maxHeight, minHeight: maxHeight }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>해제</TableCell>
               <TableCell sx={{ width: '14%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
-              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>해제</TableCell>
-              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
             {displayRows.map((row) => {
+              const normalizedCode = normalizeCodeKey(row.code);
+              const isDuplicateCode =
+                Boolean(normalizedCode) &&
+                duplicateCodeSet.has(normalizedCode);
               const usageConflict = usageConflictMap.get(Number(row.id));
               const usageTooltipTitle = usageConflict
                 ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
@@ -972,6 +975,19 @@ const ProcessMasterLinkedSpecSection = ({
               const canUnlink = Boolean(selectedParentCode && childCode && typeof onUnlinkRow === 'function');
               return (
                 <TableRow key={row.id} hover>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    <IconButton
+                      size="small"
+                      disabled={!canUnlink}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!canUnlink) return;
+                        onUnlinkRow(selectedParentCode, childCode);
+                      }}
+                    >
+                      <LinkOffIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
                   <TableCell>
                     <TextField
                       size="small"
@@ -981,12 +997,10 @@ const ProcessMasterLinkedSpecSection = ({
                       placeholder="CODE"
                       inputRef={focusRowId === row.id ? focusInputRef : undefined}
                       error={
-                        Boolean(normalizeCodeKey(row.code)) &&
-                        duplicateCodeSet.has(normalizeCodeKey(row.code))
+                        isDuplicateCode
                       }
                       helperText={
-                        Boolean(normalizeCodeKey(row.code)) &&
-                        duplicateCodeSet.has(normalizeCodeKey(row.code))
+                        isDuplicateCode
                           ? '중복 코드'
                           : undefined
                       }
@@ -1033,17 +1047,12 @@ const ProcessMasterLinkedSpecSection = ({
                     )}
                   </TableCell>
                   <TableCell sx={{ textAlign: 'center' }}>
-                    <IconButton
-                      size="small"
-                      disabled={!canUnlink}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!canUnlink) return;
-                        onUnlinkRow(selectedParentCode, childCode);
-                      }}
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: isDuplicateCode ? 700 : 400, color: isDuplicateCode ? 'error.main' : 'text.disabled' }}
                     >
-                      <LinkOffIcon fontSize="small" />
-                    </IconButton>
+                      {isDuplicateCode ? '중복' : '-'}
+                    </Typography>
                   </TableCell>
                   <TableCell sx={{ textAlign: 'center' }}>
                     {usageConflict ? (
@@ -1071,7 +1080,7 @@ const ProcessMasterLinkedSpecSection = ({
             })}
             {displayRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   {selectedParentCode
                     ? `선택한 ${parentLabel}에 연결된 항목이 없습니다.`
                     : `${parentLabel}을 먼저 선택하세요.`}
@@ -1705,8 +1714,8 @@ const ProcessMasterBoard = () => {
             <Typography variant="subtitle1" fontWeight={700}>
               대상 체계
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={5}>
+            <Grid container spacing={2} alignItems="stretch">
+              <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
                 <ProcessMasterSection
                   sectionKey="targets"
                   title="대상"
@@ -1725,7 +1734,7 @@ const ProcessMasterBoard = () => {
                   onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
-              <Grid item xs={12} md={7}>
+              <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
                 <ProcessMasterLinkedSpecSection
                   sectionKey="targetSpecs"
                   title="대상 규격"
@@ -1755,8 +1764,8 @@ const ProcessMasterBoard = () => {
             <Typography variant="subtitle1" fontWeight={700}>
               동작 체계
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={5}>
+            <Grid container spacing={2} alignItems="stretch">
+              <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
                 <ProcessMasterSection
                   sectionKey="actions"
                   title="동작"
@@ -1775,7 +1784,7 @@ const ProcessMasterBoard = () => {
                   onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
-              <Grid item xs={12} md={7}>
+              <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
                 <ProcessMasterLinkedSpecSection
                   sectionKey="actionSpecs"
                   title="동작 규격"
