@@ -1772,6 +1772,14 @@ const StyleProcess = ({
     }
     return options;
   }, [actionSpecNoneOption, filteredActionSpecOptions]);
+  const targetSpecNoneOptionCodeKey = useMemo(
+    () => normalizeStyleProcessCodeSegment(TARGET_SPEC_NONE_OPTION_CODE),
+    []
+  );
+  const actionSpecNoneOptionCodeKey = useMemo(
+    () => normalizeStyleProcessCodeSegment(ACTION_SPEC_NONE_OPTION_CODE),
+    []
+  );
   const resolveTargetPairLabel = useCallback(
     (pair) => {
       const targetLabel = resolveProcessMasterLabel(pair?.target, languageCode);
@@ -1936,7 +1944,7 @@ const StyleProcess = ({
     }
     const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextSpecValue?.code);
     const normalizedTargetSpec =
-      normalizedSpecCode === TARGET_SPEC_NONE_OPTION_CODE
+      normalizedSpecCode === targetSpecNoneOptionCodeKey
         ? null
         : normalizeProcessCompositionEntry(nextSpecValue, 'targetSpec');
     const appended = appendTargetPairToDraft(normalizedTarget, normalizedTargetSpec);
@@ -1952,7 +1960,7 @@ const StyleProcess = ({
     }
     const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextSpecValue?.code);
     const normalizedActionSpec =
-      normalizedSpecCode === ACTION_SPEC_NONE_OPTION_CODE
+      normalizedSpecCode === actionSpecNoneOptionCodeKey
         ? null
         : normalizeProcessCompositionEntry(nextSpecValue, 'actionSpec');
     const appended = appendActionPairToDraft(normalizedAction, normalizedActionSpec);
@@ -1976,7 +1984,7 @@ const StyleProcess = ({
         return;
       }
       const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
-      if (normalizedSpecCode === TARGET_SPEC_NONE_OPTION_CODE) {
+      if (normalizedSpecCode === targetSpecNoneOptionCodeKey) {
         commitTargetSelection(nextValue);
         return;
       }
@@ -1986,7 +1994,7 @@ const StyleProcess = ({
       setAddError('');
       commitTargetSelection(normalizedSpec);
     },
-    [commitTargetSelection, targetCandidate]
+    [commitTargetSelection, targetCandidate, targetSpecNoneOptionCodeKey]
   );
   const handleTargetComposerEnterSelect = useCallback(
     (event) => {
@@ -2040,7 +2048,7 @@ const StyleProcess = ({
         return;
       }
       const normalizedSpecCode = normalizeStyleProcessCodeSegment(nextValue?.code);
-      if (normalizedSpecCode === ACTION_SPEC_NONE_OPTION_CODE) {
+      if (normalizedSpecCode === actionSpecNoneOptionCodeKey) {
         commitActionSelection(nextValue);
         return;
       }
@@ -2050,7 +2058,7 @@ const StyleProcess = ({
       setAddError('');
       commitActionSelection(normalizedSpec);
     },
-    [actionCandidate, commitActionSelection]
+    [actionCandidate, actionSpecNoneOptionCodeKey, commitActionSelection]
   );
   const handleActionComposerEnterSelect = useCallback(
     (event) => {
