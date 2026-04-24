@@ -7,6 +7,7 @@ import {
   Grid,
   IconButton,
   Paper,
+  Radio,
   Stack,
   Table,
   TableBody,
@@ -33,14 +34,13 @@ import {
 } from '../../../utils/attributeApi';
 
 const MASTER_SECTIONS = [
-  { key: 'locations', title: '위치' },
   { key: 'targets', title: '대상' },
   { key: 'targetSpecs', title: '대상 규격' },
   { key: 'actions', title: '동작' },
   { key: 'actionSpecs', title: '동작 규격' },
 ];
 
-const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs', 'targetToTargets'];
+const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs'];
 
 const createEmptyMasterData = () => ({
   locations: [],
@@ -310,15 +310,6 @@ const normalizeUsageConflictRow = (item = {}) => ({
     : [],
 });
 
-const shouldReviewActionRow = (sectionKey, row = {}) => {
-  if (sectionKey !== 'actions') return false;
-  const values = [row?.nameKo, row?.nameEn, row?.nameVi]
-    .map((value) => toTrimmedText(value))
-    .filter(Boolean);
-  if (values.length === 0) return false;
-  return new Set(values.map((value) => value.toLowerCase())).size === 1;
-};
-
 const ProcessMasterSection = ({
   title,
   description = '',
@@ -340,6 +331,8 @@ const ProcessMasterSection = ({
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
     [languageCode, rows]
   );
+  const isSelectable = typeof onSelectRow === 'function';
+  const columnCount = isSelectable ? 7 : 6;
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
   const focusInputRef = useRef(null);
@@ -424,19 +417,20 @@ const ProcessMasterSection = ({
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
+              {isSelectable ? (
+                <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>선택</TableCell>
+              ) : null}
               <TableCell sx={{ width: '15%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
-              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
-              <TableCell sx={{ width: '9%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
           </TableHead>
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
             {displayRows.map((row) => {
               const usageConflict = usageConflictMap.get(Number(row.id));
-              const usageLabel = usageConflict ? `사용중 ${usageConflict.referenceCount}건` : null;
               const usageTooltipTitle = usageConflict
                 ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
                     usageConflict.code || usageConflict.label
@@ -452,15 +446,27 @@ const ProcessMasterSection = ({
                     if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
                   }}
                   sx={
-                    typeof onSelectRow === 'function'
+                    isSelectable
                       ? {
                           cursor: 'pointer',
-                          '&.Mui-selected': { backgroundColor: 'action.selected' },
-                          '&.Mui-selected:hover': { backgroundColor: 'action.selected' },
+                          '&.Mui-selected': { backgroundColor: 'rgba(25, 118, 210, 0.10)' },
+                          '&.Mui-selected:hover': { backgroundColor: 'rgba(25, 118, 210, 0.14)' },
                         }
                       : undefined
                   }
                 >
+                {isSelectable ? (
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    <Radio
+                      size="small"
+                      checked={isSelected}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectRow(sectionKey, row.id);
+                      }}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   <TextField
                     size="small"
@@ -523,15 +529,6 @@ const ProcessMasterSection = ({
                 <TableCell sx={{ textAlign: 'center' }}>
                   {usageConflict ? (
                     <Tooltip title={usageTooltipTitle}>
-                      <Chip size="small" color="error" variant="outlined" label={usageLabel} />
-                    </Tooltip>
-                  ) : shouldReviewActionRow(sectionKey, row) ? (
-                    <Chip size="small" color="warning" variant="outlined" label="검토" />
-                  ) : null}
-                </TableCell>
-                <TableCell sx={{ textAlign: 'center' }}>
-                  {usageConflict ? (
-                    <Tooltip title={usageTooltipTitle}>
                       <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
                         {usageConflict.styleProcessCount}
                       </Typography>
@@ -568,7 +565,7 @@ const ProcessMasterSection = ({
             })}
             {displayRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={columnCount} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   항목이 없습니다.
                 </TableCell>
               </TableRow>
@@ -955,10 +952,9 @@ const ProcessMasterLinkedSpecSection = ({
           <TableHead>
             <TableRow>
               <TableCell sx={{ width: '14%', fontWeight: 700 }}>코드</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
-              <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '22%', fontWeight: 700 }}>베트남어</TableCell>
               <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
               <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>해제</TableCell>
               <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
@@ -967,7 +963,6 @@ const ProcessMasterLinkedSpecSection = ({
           <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
             {displayRows.map((row) => {
               const usageConflict = usageConflictMap.get(Number(row.id));
-              const usageLabel = usageConflict ? `사용중 ${usageConflict.referenceCount}건` : null;
               const usageTooltipTitle = usageConflict
                 ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
                     usageConflict.code || usageConflict.label
@@ -1027,15 +1022,6 @@ const ProcessMasterLinkedSpecSection = ({
                   <TableCell sx={{ textAlign: 'center' }}>
                     {usageConflict ? (
                       <Tooltip title={usageTooltipTitle}>
-                        <Chip size="small" color="error" variant="outlined" label={usageLabel} />
-                      </Tooltip>
-                    ) : shouldReviewActionRow(sectionKey, row) ? (
-                      <Chip size="small" color="warning" variant="outlined" label="검토" />
-                    ) : null}
-                  </TableCell>
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    {usageConflict ? (
-                      <Tooltip title={usageTooltipTitle}>
                         <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
                           {usageConflict.styleProcessCount}
                         </Typography>
@@ -1085,7 +1071,7 @@ const ProcessMasterLinkedSpecSection = ({
             })}
             {displayRows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
                   {selectedParentCode
                     ? `선택한 ${parentLabel}에 연결된 항목이 없습니다.`
                     : `${parentLabel}을 먼저 선택하세요.`}
@@ -1129,6 +1115,12 @@ const ProcessMasterBoard = () => {
       }, {}),
     [formData]
   );
+  const hasLegacyData = useMemo(
+    () =>
+      (Array.isArray(formData?.locations) ? formData.locations.length : 0) > 0 ||
+      (Array.isArray(formData?.targetToTargets) ? formData.targetToTargets.length : 0) > 0,
+    [formData.locations, formData.targetToTargets]
+  );
 
   const isDirty = useMemo(
     () =>
@@ -1137,8 +1129,9 @@ const ProcessMasterBoard = () => {
       ) ||
       RELATION_SECTION_KEYS.some(
         (key) => !areRelationRowsEqual(formData[key], originalData[key])
-      ),
-    [formData, originalData]
+      ) ||
+      hasLegacyData,
+    [formData, hasLegacyData, originalData]
   );
 
   useUnsavedChanges(isDirty);
@@ -1620,6 +1613,8 @@ const ProcessMasterBoard = () => {
         }));
         return acc;
       }, {});
+      payload.locations = [];
+      payload.parts = [];
       payload.relations = {
         targetToTargetSpecs: (formData.targetToTargetSpecs || []).map((row) => ({
           id: row.id ?? undefined,
@@ -1637,18 +1632,7 @@ const ProcessMasterBoard = () => {
           actionCode: normalizeRelationCode(row.parentCode),
           actionSpecCode: normalizeRelationCode(row.childCode),
         })),
-        targetToTargets: (formData.targetToTargets || [])
-          .map((row) => ({
-            id: row.id ?? undefined,
-            type: 'TARGET_TARGET',
-            parentCode: normalizeRelationCode(row.parentCode),
-            childCode: normalizeRelationCode(row.childCode),
-            targetCode: normalizeRelationCode(row.parentCode),
-            linkedTargetCode: normalizeRelationCode(row.childCode),
-          }))
-          .filter(
-            (row) => row.parentCode && row.childCode && row.parentCode !== row.childCode
-          ),
+        targetToTargets: [],
       };
 
       const data = await updateProcessMasterOptions(payload);
@@ -1816,45 +1800,6 @@ const ProcessMasterBoard = () => {
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2 }}>
-          <Stack spacing={1.5}>
-            <Typography variant="subtitle1" fontWeight={700}>
-              추가/레거시 관리
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <ProcessMasterRelationTreeSection
-                  title="대상 연결"
-                  description="각 대상(부모)에 함께 연결 가능한 대상(자식)을 설정합니다."
-                  parentLabel="대상"
-                  childLabel="연결 대상"
-                  parentRows={formData.targets}
-                  childRows={formData.targets}
-                  relationRows={formData.targetToTargets}
-                  languageCode={languageCode}
-                  onChangeRelations={handleTargetTargetRelationsChange}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <ProcessMasterSection
-                  sectionKey="locations"
-                  title="위치 (레거시)"
-                  description="이전 데이터 호환을 위한 위치 관리 항목입니다."
-                  rows={formData.locations || []}
-                  languageCode={languageCode}
-                  onAddRow={handleAddRow}
-                  onDeleteRow={handleDeleteRow}
-                  onRowChange={handleRowChange}
-                  focusRowId={pendingCodeFocus?.sectionKey === 'locations' ? pendingCodeFocus.rowId : null}
-                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('locations', rowId)}
-                  duplicateCodeSet={duplicateCodeMap.locations || EMPTY_CODE_SET}
-                  usageConflictMap={usageConflictMap}
-                  maxHeight={240}
-                />
-              </Grid>
-            </Grid>
-          </Stack>
-        </Paper>
       </Stack>
     </AppPageContainer>
   );
