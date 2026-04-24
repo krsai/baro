@@ -513,7 +513,7 @@ const normalizeProcessMasterOption = (item, defaultType = '') => {
         : 0,
     isCustom:
       Boolean(typeof item === 'object' && !Array.isArray(item) && item?.isCustom) ||
-      (isSpecType && !codeSource),
+      !codeSource,
   };
 };
 
@@ -637,7 +637,7 @@ const normalizeProcessCompositionEntry = (value, kind) => {
     nameKo: normalized.nameKo || label || code,
     nameEn: normalized.nameEn || label || code,
     nameVi: normalized.nameVi || label || code,
-    isCustom: Boolean(normalized.isCustom) || (resolvedKind === 'spec' && !normalized.code),
+    isCustom: Boolean(normalized.isCustom) || !normalized.code,
   };
 };
 
@@ -1551,10 +1551,12 @@ const StyleProcess = ({
   const [specInputValue, setSpecInputValue] = useState('');
   const [targetCandidate, setTargetCandidate] = useState(null);
   const [targetSpecCandidate, setTargetSpecCandidate] = useState(null);
+  const [autoAddTargetRequested, setAutoAddTargetRequested] = useState(false);
   const [addActionInput, setAddActionInput] = useState('');
   const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const [actionCandidate, setActionCandidate] = useState(null);
   const [actionSpecCandidate, setActionSpecCandidate] = useState(null);
+  const [autoAddActionRequested, setAutoAddActionRequested] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
   const [addError, setAddError] = useState('');
   const draftFormRef = React.useRef(null);
@@ -1863,8 +1865,8 @@ const StyleProcess = ({
   );
 
   const handleTargetEnterSelect = useCallback(
-    (event) =>
-      trySelectExistingOptionOnEnter(event, {
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
         inputText: targetInputValue,
         options: availableTargetOptions,
         onMatch: (matchedOption) => {
@@ -1884,9 +1886,42 @@ const StyleProcess = ({
           setTargetInputValue('');
           setAddError('');
         },
-      }),
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedTarget = normalizeProcessCompositionEntry(
+        String(targetInputValue ?? '').trim(),
+        'target'
+      );
+      if (!normalizedTarget) {
+        if (targetCandidate && !String(specInputValue ?? '').trim()) {
+          event.preventDefault();
+          event.stopPropagation();
+          setAutoAddTargetRequested(true);
+        }
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const normalizedTargetCode = normalizeStyleProcessCodeSegment(normalizedTarget?.code);
+      const linkedTargetSpecCodes = normalizedTargetCode
+        ? targetToTargetSpecRelationMap.get(normalizedTargetCode)
+        : null;
+      const currentSpecCode = normalizeStyleProcessCodeSegment(targetSpecCandidate?.code);
+      const keepCurrentSpec =
+        !currentSpecCode ||
+        !(linkedTargetSpecCodes instanceof Set) ||
+        linkedTargetSpecCodes.size === 0 ||
+        linkedTargetSpecCodes.has(currentSpecCode);
+      setTargetCandidate(normalizedTarget);
+      setTargetSpecCandidate(keepCurrentSpec ? targetSpecCandidate : null);
+      setTargetInputValue('');
+      setAddError('');
+    },
     [
       availableTargetOptions,
+      specInputValue,
+      targetCandidate,
       targetSpecCandidate,
       targetInputValue,
       targetToTargetSpecRelationMap,
@@ -1895,8 +1930,8 @@ const StyleProcess = ({
   );
 
   const handleSpecEnterSelect = useCallback(
-    (event) =>
-      trySelectExistingOptionOnEnter(event, {
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
         inputText: specInputValue,
         options: filteredTargetSpecOptions,
         onMatch: (matchedOption) => {
@@ -1904,14 +1939,29 @@ const StyleProcess = ({
           setTargetSpecCandidate(normalizedSpec);
           setSpecInputValue('');
           setAddError('');
+          setAutoAddTargetRequested(true);
         },
-      }),
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedSpec = normalizeProcessCompositionEntry(
+        String(specInputValue ?? '').trim(),
+        'targetSpec'
+      );
+      if (!normalizedSpec) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setTargetSpecCandidate(normalizedSpec);
+      setSpecInputValue('');
+      setAddError('');
+      setAutoAddTargetRequested(true);
+    },
     [filteredTargetSpecOptions, specInputValue, trySelectExistingOptionOnEnter]
   );
 
   const handleActionEnterSelect = useCallback(
-    (event) =>
-      trySelectExistingOptionOnEnter(event, {
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
         inputText: addActionInput,
         options: availableActionOptions,
         onMatch: (matchedOption) => {
@@ -1933,26 +1983,76 @@ const StyleProcess = ({
           setAddActionInput('');
           setAddError('');
         },
-      }),
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedAction = normalizeProcessCompositionEntry(
+        String(addActionInput ?? '').trim(),
+        'action'
+      );
+      if (!normalizedAction) {
+        if (actionCandidate && !String(actionSpecInputValue ?? '').trim()) {
+          event.preventDefault();
+          event.stopPropagation();
+          setAutoAddActionRequested(true);
+        }
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const normalizedActionCode = normalizeStyleProcessCodeSegment(
+        normalizedAction?.code
+      );
+      const linkedActionSpecCodes = normalizedActionCode
+        ? actionToActionSpecRelationMap.get(normalizedActionCode)
+        : null;
+      const currentSpecCode = normalizeStyleProcessCodeSegment(actionSpecCandidate?.code);
+      const keepCurrentSpec =
+        !currentSpecCode ||
+        !(linkedActionSpecCodes instanceof Set) ||
+        linkedActionSpecCodes.size === 0 ||
+        linkedActionSpecCodes.has(currentSpecCode);
+      setActionCandidate(normalizedAction);
+      setActionSpecCandidate(keepCurrentSpec ? actionSpecCandidate : null);
+      setAddActionInput('');
+      setAddError('');
+    },
     [
       actionSpecCandidate,
+      actionSpecInputValue,
       actionToActionSpecRelationMap,
       addActionInput,
+      actionCandidate,
       availableActionOptions,
       trySelectExistingOptionOnEnter,
     ]
   );
   const handleActionSpecEnterSelect = useCallback(
-    (event) =>
-      trySelectExistingOptionOnEnter(event, {
+    (event) => {
+      const matched = trySelectExistingOptionOnEnter(event, {
         inputText: actionSpecInputValue,
         options: filteredActionSpecOptions,
         onMatch: (matchedOption) => {
           setActionSpecCandidate(normalizeProcessCompositionEntry(matchedOption, 'actionSpec'));
           setActionSpecInputValue('');
           setAddError('');
+          setAutoAddActionRequested(true);
         },
-      }),
+      });
+      if (matched) return;
+      if (event.key !== 'Enter' && event.key !== 'NumpadEnter') return;
+      const normalizedSpec = normalizeProcessCompositionEntry(
+        String(actionSpecInputValue ?? '').trim(),
+        'actionSpec'
+      );
+      if (!normalizedSpec) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setActionSpecCandidate(normalizedSpec);
+      setActionSpecInputValue('');
+      setAddError('');
+      setAutoAddActionRequested(true);
+    },
     [actionSpecInputValue, filteredActionSpecOptions, trySelectExistingOptionOnEnter]
   );
   const handleAddTargetBadge = useCallback(() => {
@@ -2117,6 +2217,16 @@ const StyleProcess = ({
     );
     setAddError('');
   }, []);
+  useEffect(() => {
+    if (!autoAddTargetRequested) return;
+    setAutoAddTargetRequested(false);
+    handleAddTargetBadge();
+  }, [autoAddTargetRequested, handleAddTargetBadge]);
+  useEffect(() => {
+    if (!autoAddActionRequested) return;
+    setAutoAddActionRequested(false);
+    handleAddActionBadge();
+  }, [autoAddActionRequested, handleAddActionBadge]);
 
   useEffect(() => {
     if (!isEditingRow) return undefined;
@@ -2248,10 +2358,12 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setAutoAddActionRequested(false);
     setAddError('');
   };
 
@@ -2264,10 +2376,12 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setAutoAddActionRequested(false);
     setAddError('');
   };
 
@@ -2281,10 +2395,12 @@ const StyleProcess = ({
     setSpecInputValue('');
     setTargetCandidate(null);
     setTargetSpecCandidate(null);
+    setAutoAddTargetRequested(false);
     setAddActionInput('');
     setActionSpecInputValue('');
     setActionCandidate(null);
     setActionSpecCandidate(null);
+    setAutoAddActionRequested(false);
     setAddError('');
   }, [displayOrderQuantity]);
 
@@ -2791,10 +2907,12 @@ const StyleProcess = ({
                       value={targetSpecCandidate}
                       inputValue={specInputValue}
                       onChange={(_event, value) => {
-                        setTargetSpecCandidate(
-                          normalizeProcessCompositionEntry(value, 'targetSpec')
-                        );
+                        const normalizedSpec = normalizeProcessCompositionEntry(value, 'targetSpec');
+                        setTargetSpecCandidate(normalizedSpec);
                         setAddError('');
+                        if (normalizedSpec) {
+                          setAutoAddTargetRequested(true);
+                        }
                       }}
                       onInputChange={(_event, value) => {
                         setSpecInputValue(String(value ?? ''));
@@ -2814,13 +2932,6 @@ const StyleProcess = ({
                       )}
                       sx={{ flex: 1, minWidth: 170 }}
                     />
-                    <Button
-                      variant="outlined"
-                      onClick={handleAddTargetBadge}
-                      sx={{ minWidth: 92 }}
-                    >
-                      {getStyleProcessMessage(languageCode, 'addTargetBadge')}
-                    </Button>
                   </Stack>
                   <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="caption" color="text.secondary">
@@ -2928,10 +3039,12 @@ const StyleProcess = ({
                       value={actionSpecCandidate}
                       inputValue={actionSpecInputValue}
                       onChange={(_event, value) => {
-                        setActionSpecCandidate(
-                          normalizeProcessCompositionEntry(value, 'actionSpec')
-                        );
+                        const normalizedSpec = normalizeProcessCompositionEntry(value, 'actionSpec');
+                        setActionSpecCandidate(normalizedSpec);
                         setAddError('');
+                        if (normalizedSpec) {
+                          setAutoAddActionRequested(true);
+                        }
                       }}
                       onInputChange={(_event, value) => {
                         setActionSpecInputValue(String(value ?? ''));
@@ -2951,14 +3064,6 @@ const StyleProcess = ({
                       )}
                       sx={{ flex: 1, minWidth: 170 }}
                     />
-                    <Button
-                      variant="outlined"
-                      onClick={handleAddActionBadge}
-                      disabled={selectedActionPairs.length >= DRAFT_ACTION_SLOT_FIELDS.length}
-                      sx={{ minWidth: 92 }}
-                    >
-                      {getStyleProcessMessage(languageCode, 'addActionBadge')}
-                    </Button>
                   </Stack>
                   <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
                     <Typography variant="caption" color="text.secondary">

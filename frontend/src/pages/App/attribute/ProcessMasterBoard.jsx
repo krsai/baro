@@ -150,6 +150,21 @@ const normalizeRelationRows = (
       });
     });
 
+const sortRelationRows = (rows = []) =>
+  [...(Array.isArray(rows) ? rows : [])].sort((left, right) => {
+    const parentCompare = normalizeRelationCode(left?.parentCode).localeCompare(
+      normalizeRelationCode(right?.parentCode),
+      'en-US',
+      { sensitivity: 'base', numeric: true }
+    );
+    if (parentCompare !== 0) return parentCompare;
+    return normalizeRelationCode(left?.childCode).localeCompare(
+      normalizeRelationCode(right?.childCode),
+      'en-US',
+      { sensitivity: 'base', numeric: true }
+    );
+  });
+
 const normalizeMasterData = (data = {}) => ({
   locations: normalizeMasterRows(data?.locations ?? data?.parts),
   targets: normalizeMasterRows(data?.targets),
@@ -264,6 +279,8 @@ const ProcessMasterSection = ({
   duplicateCodeSet = EMPTY_CODE_SET,
   usageConflictMap = new Map(),
   maxHeight = 320,
+  selectedRowId = null,
+  onSelectRow,
 }) => {
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
@@ -371,14 +388,34 @@ const ProcessMasterSection = ({
                     usageConflict.code || usageConflict.label
                   } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
                 : '';
+              const isSelected = selectedRowId === row.id;
               return (
-                <TableRow key={row.id} hover>
+                <TableRow
+                  key={row.id}
+                  hover
+                  selected={isSelected}
+                  onClick={() => {
+                    if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                  }}
+                  sx={
+                    typeof onSelectRow === 'function'
+                      ? {
+                          cursor: 'pointer',
+                          '&.Mui-selected': { backgroundColor: 'action.selected' },
+                          '&.Mui-selected:hover': { backgroundColor: 'action.selected' },
+                        }
+                      : undefined
+                  }
+                >
                 <TableCell>
                   <TextField
                     size="small"
                     fullWidth
                     value={row.code || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'code', event.target.value)}
+                    onFocus={() => {
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                    }}
                     placeholder="CODE"
                     inputRef={focusRowId === row.id ? focusInputRef : undefined}
                     error={
@@ -399,6 +436,9 @@ const ProcessMasterSection = ({
                     fullWidth
                     value={row.nameKo || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'nameKo', event.target.value)}
+                    onFocus={() => {
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                    }}
                     placeholder="한국어"
                   />
                 </TableCell>
@@ -408,6 +448,9 @@ const ProcessMasterSection = ({
                     fullWidth
                     value={row.nameEn || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'nameEn', event.target.value)}
+                    onFocus={() => {
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                    }}
                     placeholder="English"
                   />
                 </TableCell>
@@ -417,6 +460,9 @@ const ProcessMasterSection = ({
                     fullWidth
                     value={row.nameVi || ''}
                     onChange={(event) => onRowChange(sectionKey, row.id, 'nameVi', event.target.value)}
+                    onFocus={() => {
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                    }}
                     placeholder="Tieng Viet"
                   />
                 </TableCell>
@@ -452,7 +498,13 @@ const ProcessMasterSection = ({
                       </span>
                     </Tooltip>
                   ) : (
-                    <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
+                    <IconButton
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteRow(sectionKey, row.id);
+                      }}
+                    >
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -605,6 +657,294 @@ const ProcessMasterRelationTreeSection = ({
   );
 };
 
+const ProcessMasterLinkedSpecSection = ({
+  title,
+  description = '',
+  sectionKey,
+  rows,
+  languageCode,
+  onAddRow,
+  onDeleteRow,
+  onRowChange,
+  focusRowId = null,
+  onCodeFocusHandled,
+  duplicateCodeSet = EMPTY_CODE_SET,
+  usageConflictMap = new Map(),
+  maxHeight = 320,
+  parentLabel,
+  parentRow,
+  relationRows = [],
+  onToggleLink,
+}) => {
+  const selectedParentCode = normalizeRelationCode(parentRow?.code);
+  const selectedChildCodeSet = useMemo(() => {
+    if (!selectedParentCode) return new Set();
+    return new Set(
+      (Array.isArray(relationRows) ? relationRows : [])
+        .filter((row) => normalizeRelationCode(row?.parentCode) === selectedParentCode)
+        .map((row) => normalizeRelationCode(row?.childCode))
+        .filter(Boolean)
+    );
+  }, [relationRows, selectedParentCode]);
+  const sortedRows = useMemo(() => {
+    const baseRows = [...(Array.isArray(rows) ? rows : [])].sort((left, right) =>
+      compareMasterRowsByLanguage(left, right, languageCode)
+    );
+    if (!selectedParentCode) return baseRows;
+    return baseRows.sort((left, right) => {
+      const leftLinked = selectedChildCodeSet.has(normalizeRelationCode(left?.code)) ? 1 : 0;
+      const rightLinked = selectedChildCodeSet.has(normalizeRelationCode(right?.code)) ? 1 : 0;
+      if (leftLinked !== rightLinked) return rightLinked - leftLinked;
+      return compareMasterRowsByLanguage(left, right, languageCode);
+    });
+  }, [languageCode, rows, selectedChildCodeSet, selectedParentCode]);
+  const sectionRef = useRef(null);
+  const blurTimeoutRef = useRef(null);
+  const focusInputRef = useRef(null);
+  const [frozenRowOrder, setFrozenRowOrder] = useState(null);
+
+  const displayRows = useMemo(() => {
+    if (!frozenRowOrder) return sortedRows;
+    const rowMap = new Map(rows.map((row) => [row.id, row]));
+    const frozenRowIds = new Set(frozenRowOrder);
+    const frozenRows = frozenRowOrder.map((rowId) => rowMap.get(rowId)).filter(Boolean);
+    const appendedRows = rows.filter((row) => !frozenRowIds.has(row.id));
+    return [...frozenRows, ...appendedRows];
+  }, [frozenRowOrder, rows, sortedRows]);
+
+  const handleFocusWithinTable = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setFrozenRowOrder((previousOrder) => previousOrder || sortedRows.map((row) => row.id));
+  }, [sortedRows]);
+
+  const handleBlurWithinTable = useCallback(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+    blurTimeoutRef.current = window.setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (sectionRef.current && activeElement && sectionRef.current.contains(activeElement)) return;
+      setFrozenRowOrder(null);
+      blurTimeoutRef.current = null;
+    }, 0);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!focusRowId) return undefined;
+    const inputElement = focusInputRef.current;
+    if (!inputElement) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputElement.focus();
+      if (typeof inputElement.select === 'function') inputElement.select();
+      if (typeof onCodeFocusHandled === 'function') onCodeFocusHandled(focusRowId);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [displayRows, focusRowId, onCodeFocusHandled]);
+
+  return (
+    <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+        <Stack spacing={0.25}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            {title}
+          </Typography>
+          {description ? (
+            <Typography variant="caption" color="text.secondary">
+              {description}
+            </Typography>
+          ) : null}
+          <Stack direction="row" spacing={0.75} alignItems="center">
+            <Typography variant="caption" color="text.secondary">
+              선택 {parentLabel}:
+            </Typography>
+            {parentRow ? (
+              <Chip
+                size="small"
+                color="primary"
+                variant="outlined"
+                label={resolveLocalizedAttributeName(parentRow, languageCode) || parentRow?.code}
+              />
+            ) : (
+              <Typography variant="caption" color="warning.main">
+                왼쪽에서 {parentLabel}을 선택하세요.
+              </Typography>
+            )}
+          </Stack>
+        </Stack>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<AddIcon />}
+          onClick={() => onAddRow(sectionKey)}
+        >
+          추가
+        </Button>
+      </Box>
+
+      <TableContainer sx={{ maxHeight }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ width: '11%', textAlign: 'center', fontWeight: 700 }}>연결</TableCell>
+              <TableCell sx={{ width: '14%', fontWeight: 700 }}>코드</TableCell>
+              <TableCell sx={{ width: '19%', fontWeight: 700 }}>한국어</TableCell>
+              <TableCell sx={{ width: '19%', fontWeight: 700 }}>영어</TableCell>
+              <TableCell sx={{ width: '19%', fontWeight: 700 }}>베트남어</TableCell>
+              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>검토</TableCell>
+              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '8%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody onFocusCapture={handleFocusWithinTable} onBlurCapture={handleBlurWithinTable}>
+            {displayRows.map((row) => {
+              const usageConflict = usageConflictMap.get(Number(row.id));
+              const usageLabel = usageConflict ? `사용중 ${usageConflict.referenceCount}건` : null;
+              const usageTooltipTitle = usageConflict
+                ? `${PROCESS_MASTER_TYPE_TITLE_BY_CODE[usageConflict.type] || usageConflict.type} / ${
+                    usageConflict.code || usageConflict.label
+                  } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
+                : '';
+              const childCode = normalizeRelationCode(row?.code);
+              const isLinked = Boolean(childCode) && selectedChildCodeSet.has(childCode);
+              const canToggle = Boolean(selectedParentCode && childCode && typeof onToggleLink === 'function');
+              return (
+                <TableRow key={row.id} hover>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    <Button
+                      size="small"
+                      variant={isLinked ? 'contained' : 'outlined'}
+                      color={isLinked ? 'primary' : 'inherit'}
+                      disabled={!canToggle}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!canToggle) return;
+                        onToggleLink(selectedParentCode, childCode, !isLinked);
+                      }}
+                    >
+                      {isLinked ? '연결됨' : '연결'}
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={row.code || ''}
+                      onChange={(event) => onRowChange(sectionKey, row.id, 'code', event.target.value)}
+                      placeholder="CODE"
+                      inputRef={focusRowId === row.id ? focusInputRef : undefined}
+                      error={
+                        Boolean(normalizeCodeKey(row.code)) &&
+                        duplicateCodeSet.has(normalizeCodeKey(row.code))
+                      }
+                      helperText={
+                        Boolean(normalizeCodeKey(row.code)) &&
+                        duplicateCodeSet.has(normalizeCodeKey(row.code))
+                          ? '중복 코드'
+                          : undefined
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={row.nameKo || ''}
+                      onChange={(event) => onRowChange(sectionKey, row.id, 'nameKo', event.target.value)}
+                      placeholder="한국어"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={row.nameEn || ''}
+                      onChange={(event) => onRowChange(sectionKey, row.id, 'nameEn', event.target.value)}
+                      placeholder="English"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={row.nameVi || ''}
+                      onChange={(event) => onRowChange(sectionKey, row.id, 'nameVi', event.target.value)}
+                      placeholder="Tieng Viet"
+                    />
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    {usageConflict ? (
+                      <Tooltip title={usageTooltipTitle}>
+                        <Chip size="small" color="error" variant="outlined" label={usageLabel} />
+                      </Tooltip>
+                    ) : shouldReviewActionRow(sectionKey, row) ? (
+                      <Chip size="small" color="warning" variant="outlined" label="검토" />
+                    ) : null}
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    {usageConflict ? (
+                      <Tooltip title={usageTooltipTitle}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
+                          {usageConflict.styleProcessCount}
+                        </Typography>
+                      </Tooltip>
+                    ) : (
+                      <Typography variant="body2" color="text.disabled">
+                        0
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell sx={{ textAlign: 'center' }}>
+                    {usageConflict ? (
+                      <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
+                        <span>
+                          <IconButton size="small" disabled>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <IconButton
+                        size="small"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteRow(sectionKey, row.id);
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {displayRows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
+                  항목이 없습니다.
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+};
+
 const ProcessMasterBoard = () => {
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -614,6 +954,8 @@ const ProcessMasterBoard = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
   const [usageConflicts, setUsageConflicts] = useState([]);
+  const [selectedTargetRowId, setSelectedTargetRowId] = useState(null);
+  const [selectedActionRowId, setSelectedActionRowId] = useState(null);
 
   const usageConflictMap = useMemo(
     () =>
@@ -678,6 +1020,37 @@ const ProcessMasterBoard = () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const targetRows = Array.isArray(formData?.targets) ? formData.targets : [];
+    setSelectedTargetRowId((prev) => {
+      if (targetRows.length === 0) return null;
+      return targetRows.some((row) => row.id === prev) ? prev : targetRows[0].id;
+    });
+  }, [formData.targets]);
+
+  useEffect(() => {
+    const actionRows = Array.isArray(formData?.actions) ? formData.actions : [];
+    setSelectedActionRowId((prev) => {
+      if (actionRows.length === 0) return null;
+      return actionRows.some((row) => row.id === prev) ? prev : actionRows[0].id;
+    });
+  }, [formData.actions]);
+
+  const selectedTargetRow = useMemo(
+    () =>
+      (Array.isArray(formData?.targets) ? formData.targets : []).find(
+        (row) => row.id === selectedTargetRowId
+      ) ?? null,
+    [formData.targets, selectedTargetRowId]
+  );
+  const selectedActionRow = useMemo(
+    () =>
+      (Array.isArray(formData?.actions) ? formData.actions : []).find(
+        (row) => row.id === selectedActionRowId
+      ) ?? null,
+    [formData.actions, selectedActionRowId]
+  );
 
   const handleRowChange = useCallback((sectionKey, rowId, field, value) => {
     setFormData((prev) => {
@@ -753,7 +1126,21 @@ const ProcessMasterBoard = () => {
         },
       ],
     }));
+    if (sectionKey === 'targets') {
+      setSelectedTargetRowId(rowId);
+    }
+    if (sectionKey === 'actions') {
+      setSelectedActionRowId(rowId);
+    }
     setPendingCodeFocus({ sectionKey, rowId });
+  }, []);
+
+  const handleSelectMasterRow = useCallback((sectionKey, rowId) => {
+    if (sectionKey === 'targets') {
+      setSelectedTargetRowId(rowId);
+    } else if (sectionKey === 'actions') {
+      setSelectedActionRowId(rowId);
+    }
   }, []);
 
   const handleCodeFocusHandled = useCallback((resolvedSectionKey, rowId) => {
@@ -837,49 +1224,11 @@ const ProcessMasterBoard = () => {
 
         return {
           ...prev,
-          [relationKey]: [...remainingRows, ...nextRowsForParent].sort((left, right) => {
-            const parentCompare = normalizeRelationCode(left?.parentCode).localeCompare(
-              normalizeRelationCode(right?.parentCode),
-              'en-US',
-              { sensitivity: 'base', numeric: true }
-            );
-            if (parentCompare !== 0) return parentCompare;
-            return normalizeRelationCode(left?.childCode).localeCompare(
-              normalizeRelationCode(right?.childCode),
-              'en-US',
-              { sensitivity: 'base', numeric: true }
-            );
-          }),
+          [relationKey]: sortRelationRows([...remainingRows, ...nextRowsForParent]),
         };
       });
     },
     []
-  );
-
-  const handleTargetSpecRelationsChange = useCallback(
-    (targetCode, selectedTargetSpecs) => {
-      updateRelationRowsForParent({
-        relationKey: 'targetToTargetSpecs',
-        relationType: 'TARGET_TARGET_SPEC',
-        parentCode: targetCode,
-        selectedChildRows: selectedTargetSpecs,
-        childCodeKey: 'targetSpecCode',
-      });
-    },
-    [updateRelationRowsForParent]
-  );
-
-  const handleActionSpecRelationsChange = useCallback(
-    (actionCode, selectedActionSpecs) => {
-      updateRelationRowsForParent({
-        relationKey: 'actionToActionSpecs',
-        relationType: 'ACTION_ACTION_SPEC',
-        parentCode: actionCode,
-        selectedChildRows: selectedActionSpecs,
-        childCodeKey: 'actionSpecCode',
-      });
-    },
-    [updateRelationRowsForParent]
   );
 
   const handleTargetTargetRelationsChange = useCallback(
@@ -893,6 +1242,78 @@ const ProcessMasterBoard = () => {
       });
     },
     [updateRelationRowsForParent]
+  );
+
+  const handleToggleRelationLink = useCallback(
+    ({ relationKey, relationType, parentCode, childCode, childCodeKey, linked }) => {
+      const normalizedParentCode = normalizeRelationCode(parentCode);
+      const normalizedChildCode = normalizeRelationCode(childCode);
+      if (!normalizedParentCode || !normalizedChildCode) return;
+      if (
+        relationType === 'TARGET_TARGET' &&
+        normalizedParentCode === normalizedChildCode
+      ) {
+        return;
+      }
+
+      setFormData((prev) => {
+        const existingRows = Array.isArray(prev?.[relationKey]) ? prev[relationKey] : [];
+        const existingIndex = existingRows.findIndex(
+          (row) =>
+            normalizeRelationCode(row?.parentCode) === normalizedParentCode &&
+            normalizeRelationCode(row?.childCode) === normalizedChildCode
+        );
+        if (linked && existingIndex >= 0) return prev;
+        if (!linked && existingIndex < 0) return prev;
+
+        const nextRows = linked
+          ? [
+              ...existingRows,
+              {
+                id: `rel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                type: relationType,
+                parentCode: normalizedParentCode,
+                childCode: normalizedChildCode,
+                [childCodeKey]: normalizedChildCode,
+              },
+            ]
+          : existingRows.filter((_, index) => index !== existingIndex);
+
+        return {
+          ...prev,
+          [relationKey]: sortRelationRows(nextRows),
+        };
+      });
+    },
+    []
+  );
+
+  const handleToggleTargetSpecLink = useCallback(
+    (targetCode, targetSpecCode, linked) => {
+      handleToggleRelationLink({
+        relationKey: 'targetToTargetSpecs',
+        relationType: 'TARGET_TARGET_SPEC',
+        parentCode: targetCode,
+        childCode: targetSpecCode,
+        childCodeKey: 'targetSpecCode',
+        linked,
+      });
+    },
+    [handleToggleRelationLink]
+  );
+
+  const handleToggleActionSpecLink = useCallback(
+    (actionCode, actionSpecCode, linked) => {
+      handleToggleRelationLink({
+        relationKey: 'actionToActionSpecs',
+        relationType: 'ACTION_ACTION_SPEC',
+        parentCode: actionCode,
+        childCode: actionSpecCode,
+        childCodeKey: 'actionSpecCode',
+        linked,
+      });
+    },
+    [handleToggleRelationLink]
   );
 
   const handleSave = useCallback(async () => {
@@ -1052,13 +1473,15 @@ const ProcessMasterBoard = () => {
                   duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
                   usageConflictMap={usageConflictMap}
                   maxHeight={280}
+                  selectedRowId={selectedTargetRowId}
+                  onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <ProcessMasterSection
+                <ProcessMasterLinkedSpecSection
                   sectionKey="targetSpecs"
                   title="대상 규격"
-                  description="대상의 하위 규격(예: 가슴주머니, 메인라벨)을 관리합니다."
+                  description="선택한 대상에 연결된 규격을 우측에서 바로 관리합니다."
                   rows={formData.targetSpecs || []}
                   languageCode={languageCode}
                   onAddRow={handleAddRow}
@@ -1069,11 +1492,15 @@ const ProcessMasterBoard = () => {
                   duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
                   usageConflictMap={usageConflictMap}
                   maxHeight={280}
+                  parentLabel="대상"
+                  parentRow={selectedTargetRow}
+                  relationRows={formData.targetToTargetSpecs}
+                  onToggleLink={handleToggleTargetSpecLink}
                 />
               </Grid>
             </Grid>
             <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <ProcessMasterRelationTreeSection
                   title="대상 연결"
                   description="각 대상(부모)에 함께 연결 가능한 대상(자식)을 설정합니다."
@@ -1084,19 +1511,6 @@ const ProcessMasterBoard = () => {
                   relationRows={formData.targetToTargets}
                   languageCode={languageCode}
                   onChangeRelations={handleTargetTargetRelationsChange}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <ProcessMasterRelationTreeSection
-                  title="대상-대상규격 연결"
-                  description="각 대상(부모)에 허용할 대상 규격(자식)을 연결합니다."
-                  parentLabel="대상"
-                  childLabel="대상 규격"
-                  parentRows={formData.targets}
-                  childRows={formData.targetSpecs}
-                  relationRows={formData.targetToTargetSpecs}
-                  languageCode={languageCode}
-                  onChangeRelations={handleTargetSpecRelationsChange}
                 />
               </Grid>
             </Grid>
@@ -1124,13 +1538,15 @@ const ProcessMasterBoard = () => {
                   duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
                   usageConflictMap={usageConflictMap}
                   maxHeight={280}
+                  selectedRowId={selectedActionRowId}
+                  onSelectRow={handleSelectMasterRow}
                 />
               </Grid>
               <Grid item xs={12} md={6}>
-                <ProcessMasterSection
+                <ProcessMasterLinkedSpecSection
                   sectionKey="actionSpecs"
                   title="동작 규격"
-                  description="동작의 하위 규격(예: 오버록 3실/5실)을 관리합니다."
+                  description="선택한 동작에 연결된 규격을 우측에서 바로 관리합니다."
                   rows={formData.actionSpecs || []}
                   languageCode={languageCode}
                   onAddRow={handleAddRow}
@@ -1141,21 +1557,10 @@ const ProcessMasterBoard = () => {
                   duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
                   usageConflictMap={usageConflictMap}
                   maxHeight={280}
-                />
-              </Grid>
-            </Grid>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <ProcessMasterRelationTreeSection
-                  title="동작-동작규격 연결"
-                  description="각 동작(부모)에 허용할 동작 규격(자식)을 연결합니다."
                   parentLabel="동작"
-                  childLabel="동작 규격"
-                  parentRows={formData.actions}
-                  childRows={formData.actionSpecs}
+                  parentRow={selectedActionRow}
                   relationRows={formData.actionToActionSpecs}
-                  languageCode={languageCode}
-                  onChangeRelations={handleActionSpecRelationsChange}
+                  onToggleLink={handleToggleActionSpecLink}
                 />
               </Grid>
             </Grid>

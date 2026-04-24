@@ -1385,7 +1385,7 @@ const normalizeStyleProcessCompositionEntry = (
         typeof value === "object" &&
           !Array.isArray(value) &&
           (value as any)?.isCustom
-      ) || (normalizedKind === "spec" && !codeSource),
+      ) || !codeSource,
   };
 };
 
@@ -9101,8 +9101,10 @@ const generateUniqueProcessMasterCode = ({
   return candidate;
 };
 
-const listProcessMasterOptions = async (): Promise<ProcessMasterOptionRow[]> =>
-  prisma.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
+const listProcessMasterOptionsWithDb = async (
+  db: ProcessMasterStoreClient = prisma
+): Promise<ProcessMasterOptionRow[]> =>
+  db.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
     SELECT
       "id",
       "type",
@@ -9115,6 +9117,9 @@ const listProcessMasterOptions = async (): Promise<ProcessMasterOptionRow[]> =>
     FROM "ProcessMasterOption"
     ORDER BY "type" ASC, "sortOrder" ASC, "id" ASC
   `);
+
+const listProcessMasterOptions = async (): Promise<ProcessMasterOptionRow[]> =>
+  listProcessMasterOptionsWithDb(prisma);
 
 const countProcessMasterOptions = async () => {
   const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
@@ -9235,7 +9240,8 @@ const deleteProcessMasterOptionRelationsByIds = async (ids: number[]) => {
   );
 };
 
-const insertProcessMasterOptionRelations = async (
+const insertProcessMasterOptionRelationsWithDb = async (
+  db: ProcessMasterStoreClient,
   rows: Array<{
     type: ProcessMasterRelationType;
     parentOptionId: number;
@@ -9243,7 +9249,7 @@ const insertProcessMasterOptionRelations = async (
   }>
 ) => {
   if (rows.length === 0) return;
-  await prisma.$executeRaw(
+  await db.$executeRaw(
     Prisma.sql`
       INSERT INTO "ProcessMasterOptionRelation" (
         "type",
@@ -9265,6 +9271,14 @@ const insertProcessMasterOptionRelations = async (
     `
   );
 };
+
+const insertProcessMasterOptionRelations = async (
+  rows: Array<{
+    type: ProcessMasterRelationType;
+    parentOptionId: number;
+    childOptionId: number;
+  }>
+) => insertProcessMasterOptionRelationsWithDb(prisma, rows);
 
 const normalizeProcessMasterMatchToken = (value: any): string =>
   String(value ?? "")
@@ -10293,6 +10307,482 @@ const ensureActionProcessMasterOptionsFromStyleProcesses = async ({
     kinds: ["action"],
     db,
   });
+
+type ProcessMasterResolverState = {
+  rowsByType: Map<ProcessMasterOptionType, ProcessMasterOptionRow[]>;
+  usedCodesByType: Map<ProcessMasterOptionType, Set<string>>;
+  nextSortOrderByType: Map<ProcessMasterOptionType, number>;
+};
+
+const createProcessMasterResolverState = (
+  rows: ProcessMasterOptionRow[] = []
+): ProcessMasterResolverState => {
+  const rowsByType = new Map<ProcessMasterOptionType, ProcessMasterOptionRow[]>();
+  const usedCodesByType = new Map<ProcessMasterOptionType, Set<string>>();
+  const nextSortOrderByType = new Map<ProcessMasterOptionType, number>();
+
+  PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
+    rowsByType.set(typeKey as ProcessMasterOptionType, []);
+    usedCodesByType.set(typeKey as ProcessMasterOptionType, new Set<string>());
+    nextSortOrderByType.set(typeKey as ProcessMasterOptionType, 0);
+  });
+
+  rows.forEach((row) => {
+    const type = normalizeProcessMasterType(row?.type);
+    if (!type) return;
+    const group = rowsByType.get(type) ?? [];
+    group.push(row);
+    rowsByType.set(type, group);
+
+    const code = normalizeProcessMasterCode(row?.code);
+    if (code) {
+      const usedCodes = usedCodesByType.get(type) ?? new Set<string>();
+      usedCodes.add(code);
+      usedCodesByType.set(type, usedCodes);
+    }
+
+    const sortOrder = toPositiveIntOrNull(row?.sortOrder) ?? 0;
+    const currentSort = nextSortOrderByType.get(type) ?? 0;
+    if (sortOrder > currentSort) {
+      nextSortOrderByType.set(type, sortOrder);
+    }
+  });
+
+  return {
+    rowsByType,
+    usedCodesByType,
+    nextSortOrderByType,
+  };
+};
+
+const appendProcessMasterResolverRow = (
+  state: ProcessMasterResolverState,
+  row: ProcessMasterOptionRow
+) => {
+  const type = normalizeProcessMasterType(row?.type);
+  if (!type) return;
+
+  const currentRows = state.rowsByType.get(type) ?? [];
+  const nextRows = [...currentRows, row].sort((left, right) => {
+    const leftSort = toPositiveIntOrNull(left?.sortOrder) ?? 0;
+    const rightSort = toPositiveIntOrNull(right?.sortOrder) ?? 0;
+    if (leftSort !== rightSort) return leftSort - rightSort;
+    return (toPositiveIntOrNull(left?.id) ?? 0) - (toPositiveIntOrNull(right?.id) ?? 0);
+  });
+  state.rowsByType.set(type, nextRows);
+
+  const code = normalizeProcessMasterCode(row?.code);
+  if (code) {
+    const usedCodes = state.usedCodesByType.get(type) ?? new Set<string>();
+    usedCodes.add(code);
+    state.usedCodesByType.set(type, usedCodes);
+  }
+
+  const sortOrder = toPositiveIntOrNull(row?.sortOrder) ?? 0;
+  const currentSort = state.nextSortOrderByType.get(type) ?? 0;
+  if (sortOrder > currentSort) {
+    state.nextSortOrderByType.set(type, sortOrder);
+  }
+};
+
+const listProcessMasterEntryLabelTokens = (entry: any) =>
+  [
+    normalizeProcessMasterMatchToken(entry?.label),
+    normalizeProcessMasterMatchToken(entry?.nameKo),
+    normalizeProcessMasterMatchToken(entry?.nameEn),
+    normalizeProcessMasterMatchToken(entry?.nameVi),
+  ].filter(Boolean);
+
+const findMatchingProcessMasterOptionRow = ({
+  rows,
+  entry,
+}: {
+  rows: ProcessMasterOptionRow[];
+  entry: any;
+}): ProcessMasterOptionRow | null => {
+  if (!rows.length || !entry) return null;
+
+  const entryCode = normalizeProcessMasterCode(entry?.code);
+  if (entryCode) {
+    const codeMatched =
+      rows.find((row) => normalizeProcessMasterCode(row?.code) === entryCode) ?? null;
+    if (codeMatched) return codeMatched;
+  }
+
+  const labelTokens = new Set(listProcessMasterEntryLabelTokens(entry));
+  if (labelTokens.size === 0) return null;
+
+  const primaryToken =
+    normalizeProcessMasterMatchToken(
+      entry?.label ?? entry?.nameKo ?? entry?.nameEn ?? entry?.nameVi
+    ) || null;
+
+  const matchedRows = rows.filter((row) => {
+    const rowTokens = buildProcessMasterMatchTokenSet(row);
+    for (const token of labelTokens) {
+      if (rowTokens.has(token)) return true;
+    }
+    return false;
+  });
+  if (matchedRows.length === 0) return null;
+  if (matchedRows.length === 1) return matchedRows[0] ?? null;
+
+  if (primaryToken) {
+    const primaryMatched =
+      matchedRows.find((row) => {
+        const rowPrimaryToken =
+          normalizeProcessMasterMatchToken(
+            row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi
+          ) || null;
+        if (rowPrimaryToken && rowPrimaryToken === primaryToken) return true;
+        const rowTokens = buildProcessMasterMatchTokenSet(row);
+        return rowTokens.has(primaryToken);
+      }) ?? null;
+    if (primaryMatched) return primaryMatched;
+  }
+
+  return (
+    [...matchedRows].sort((left, right) => {
+      const leftSort = toPositiveIntOrNull(left?.sortOrder) ?? 0;
+      const rightSort = toPositiveIntOrNull(right?.sortOrder) ?? 0;
+      if (leftSort !== rightSort) return leftSort - rightSort;
+      return (toPositiveIntOrNull(left?.id) ?? 0) - (toPositiveIntOrNull(right?.id) ?? 0);
+    })[0] ?? null
+  );
+};
+
+const findProcessMasterOptionByTypeAndCodeWithDb = async (
+  db: ProcessMasterStoreClient,
+  type: ProcessMasterOptionType,
+  code: string
+): Promise<ProcessMasterOptionRow | null> => {
+  if (!code) return null;
+  const rows = await db.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "type",
+      "code",
+      "label",
+      "nameKo",
+      "nameEn",
+      "nameVi",
+      "sortOrder"
+    FROM "ProcessMasterOption"
+    WHERE "type" = ${type}::"ProcessMasterOptionType"
+      AND "code" = ${code}
+    ORDER BY "id" ASC
+    LIMIT 1
+  `);
+  return rows[0] ?? null;
+};
+
+const toCanonicalStyleProcessCompositionEntry = (
+  row: ProcessMasterOptionRow,
+  fallbackEntry: any = null
+) => {
+  const code = normalizeProcessMasterCode(row?.code);
+  const label =
+    normalizeProcessMasterLabel(
+      row?.label ??
+        row?.nameKo ??
+        row?.nameEn ??
+        row?.nameVi ??
+        fallbackEntry?.label ??
+        fallbackEntry?.nameKo ??
+        fallbackEntry?.nameEn ??
+        fallbackEntry?.nameVi
+    ) || code;
+  return {
+    code: code || null,
+    label,
+    nameKo:
+      normalizeProcessMasterLabel(row?.nameKo) ||
+      normalizeProcessMasterLabel(fallbackEntry?.nameKo) ||
+      label,
+    nameEn:
+      normalizeProcessMasterLabel(row?.nameEn) ||
+      normalizeProcessMasterLabel(fallbackEntry?.nameEn) ||
+      label,
+    nameVi:
+      normalizeProcessMasterLabel(row?.nameVi) ||
+      normalizeProcessMasterLabel(fallbackEntry?.nameVi) ||
+      label,
+    isCustom: false,
+  };
+};
+
+const resolveOrCreateProcessMasterOptionFromStyleEntry = async ({
+  db,
+  state,
+  type,
+  entry,
+}: {
+  db: ProcessMasterStoreClient;
+  state: ProcessMasterResolverState;
+  type: ProcessMasterOptionType;
+  entry: any;
+}): Promise<ProcessMasterOptionRow | null> => {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+
+  const rows = state.rowsByType.get(type) ?? [];
+  const matchedRow = findMatchingProcessMasterOptionRow({ rows, entry });
+  if (matchedRow) return matchedRow;
+
+  if (!Boolean(entry?.isCustom)) {
+    return null;
+  }
+
+  const usedCodes = state.usedCodesByType.get(type) ?? new Set<string>();
+  const codeCandidate = normalizeProcessMasterCode(entry?.code);
+  let code = codeCandidate;
+  if (!code || usedCodes.has(code)) {
+    const codeSeedLabel =
+      normalizeProcessMasterLabel(entry?.nameEn) ||
+      normalizeProcessMasterLabel(entry?.label) ||
+      normalizeProcessMasterLabel(entry?.nameKo) ||
+      normalizeProcessMasterLabel(entry?.nameVi);
+    code = generateUniqueProcessMasterCode({
+      type,
+      label: codeSeedLabel,
+      usedCodes,
+    });
+  }
+
+  const label =
+    normalizeProcessMasterLabel(
+      entry?.label ?? entry?.nameKo ?? entry?.nameEn ?? entry?.nameVi
+    ) || code;
+  const nameKo = normalizeProcessMasterLabel(entry?.nameKo) || label;
+  const nameEn = normalizeProcessMasterLabel(entry?.nameEn) || label;
+  const nameVi = normalizeProcessMasterLabel(entry?.nameVi) || label;
+  const nextSortOrder = (state.nextSortOrderByType.get(type) ?? 0) + 1;
+
+  await insertProcessMasterOptionsWithDb(db, [
+    {
+      type,
+      code,
+      label,
+      nameKo,
+      nameEn,
+      nameVi,
+      sortOrder: nextSortOrder,
+    },
+  ]);
+
+  const createdRow = await findProcessMasterOptionByTypeAndCodeWithDb(db, type, code);
+  if (!createdRow) return null;
+
+  appendProcessMasterResolverRow(state, createdRow);
+  return createdRow;
+};
+
+const syncProcessMasterFromStyleProcesses = async ({
+  processes,
+  db,
+}: {
+  processes: any;
+  db: ProcessMasterStoreClient;
+}) => {
+  await ensureProcessMasterOptionTypeSchemaReady();
+  await ensureProcessMasterOptionRelationSchemaReady();
+
+  const normalizedProcesses = normalizeStyleProcesses(processes);
+  if (normalizedProcesses.length === 0) return normalizedProcesses;
+
+  const processMasterRows = await listProcessMasterOptionsWithDb(db);
+  const resolverState = createProcessMasterResolverState(processMasterRows);
+  const pendingTargetSpecRelations = new Map<string, { parentOptionId: number; childOptionId: number }>();
+  const pendingActionSpecRelations = new Map<string, { parentOptionId: number; childOptionId: number }>();
+
+  const canonicalizedProcesses: any[] = [];
+
+  for (const process of normalizedProcesses) {
+    const normalizedProcess = normalizeStyleProcess(process);
+    const composition = normalizeStyleProcessComposition(
+      (normalizedProcess as any)?.processComposition
+    );
+    if (!composition) {
+      canonicalizedProcesses.push(normalizedProcess);
+      continue;
+    }
+
+    const canonicalLocations: any[] = [];
+    for (const rawLocationEntry of ensureArray((composition as any)?.locations)) {
+      const locationEntry = normalizeStyleProcessCompositionEntry(rawLocationEntry, "location");
+      if (!locationEntry) continue;
+      const locationRow = await resolveOrCreateProcessMasterOptionFromStyleEntry({
+        db,
+        state: resolverState,
+        type: "LOCATION",
+        entry: locationEntry,
+      });
+      canonicalLocations.push(
+        locationRow
+          ? toCanonicalStyleProcessCompositionEntry(locationRow, locationEntry)
+          : locationEntry
+      );
+    }
+
+    const canonicalTargetPairs: Array<{ target: any; targetSpec: any | null }> = [];
+    for (const rawPair of ensureArray((composition as any)?.targetPairs)) {
+      if (!rawPair || typeof rawPair !== "object" || Array.isArray(rawPair)) continue;
+      const targetEntry = normalizeStyleProcessCompositionEntry(
+        (rawPair as any)?.target,
+        "target"
+      );
+      if (!targetEntry) continue;
+      const targetRow = await resolveOrCreateProcessMasterOptionFromStyleEntry({
+        db,
+        state: resolverState,
+        type: "TARGET",
+        entry: targetEntry,
+      });
+      const canonicalTarget = targetRow
+        ? toCanonicalStyleProcessCompositionEntry(targetRow, targetEntry)
+        : targetEntry;
+
+      const targetSpecEntry = normalizeStyleProcessCompositionEntry(
+        (rawPair as any)?.targetSpec,
+        "targetSpec"
+      );
+      let targetSpecRow: ProcessMasterOptionRow | null = null;
+      let canonicalTargetSpec: any | null = null;
+      if (targetSpecEntry) {
+        targetSpecRow = await resolveOrCreateProcessMasterOptionFromStyleEntry({
+          db,
+          state: resolverState,
+          type: "TARGET_SPEC",
+          entry: targetSpecEntry,
+        });
+        canonicalTargetSpec = targetSpecRow
+          ? toCanonicalStyleProcessCompositionEntry(targetSpecRow, targetSpecEntry)
+          : targetSpecEntry;
+      }
+
+      canonicalTargetPairs.push({
+        target: canonicalTarget,
+        targetSpec: canonicalTargetSpec,
+      });
+
+      if (targetRow && targetSpecRow) {
+        pendingTargetSpecRelations.set(
+          `${targetRow.id}:${targetSpecRow.id}`,
+          {
+            parentOptionId: targetRow.id,
+            childOptionId: targetSpecRow.id,
+          }
+        );
+      }
+    }
+
+    const canonicalActionPairs: Array<{ action: any; actionSpec: any | null }> = [];
+    for (const rawPair of ensureArray((composition as any)?.actionPairs)) {
+      if (!rawPair || typeof rawPair !== "object" || Array.isArray(rawPair)) continue;
+      const actionEntry = normalizeStyleProcessCompositionEntry(
+        (rawPair as any)?.action,
+        "action"
+      );
+      if (!actionEntry) continue;
+      const actionRow = await resolveOrCreateProcessMasterOptionFromStyleEntry({
+        db,
+        state: resolverState,
+        type: "ACTION",
+        entry: actionEntry,
+      });
+      const canonicalAction = actionRow
+        ? toCanonicalStyleProcessCompositionEntry(actionRow, actionEntry)
+        : actionEntry;
+
+      const actionSpecEntry = normalizeStyleProcessCompositionEntry(
+        (rawPair as any)?.actionSpec,
+        "actionSpec"
+      );
+      let actionSpecRow: ProcessMasterOptionRow | null = null;
+      let canonicalActionSpec: any | null = null;
+      if (actionSpecEntry) {
+        actionSpecRow = await resolveOrCreateProcessMasterOptionFromStyleEntry({
+          db,
+          state: resolverState,
+          type: "ACTION_SPEC",
+          entry: actionSpecEntry,
+        });
+        canonicalActionSpec = actionSpecRow
+          ? toCanonicalStyleProcessCompositionEntry(actionSpecRow, actionSpecEntry)
+          : actionSpecEntry;
+      }
+
+      canonicalActionPairs.push({
+        action: canonicalAction,
+        actionSpec: canonicalActionSpec,
+      });
+
+      if (actionRow && actionSpecRow) {
+        pendingActionSpecRelations.set(
+          `${actionRow.id}:${actionSpecRow.id}`,
+          {
+            parentOptionId: actionRow.id,
+            childOptionId: actionSpecRow.id,
+          }
+        );
+      }
+    }
+
+    const canonicalTargets = canonicalTargetPairs
+      .map((pair) => pair?.target)
+      .filter(Boolean);
+    const canonicalTargetSpecs = canonicalTargetPairs
+      .map((pair) => pair?.targetSpec)
+      .filter(Boolean);
+    const canonicalActions = canonicalActionPairs
+      .map((pair) => pair?.action)
+      .filter(Boolean);
+    const canonicalActionSpecs = canonicalActionPairs
+      .map((pair) => pair?.actionSpec)
+      .filter(Boolean);
+    const canonicalComposition = {
+      location: canonicalLocations[0] ?? null,
+      locations: canonicalLocations,
+      part: canonicalLocations[0] ?? null,
+      parts: canonicalLocations,
+      target: canonicalTargets[0] ?? null,
+      targets: canonicalTargets,
+      targetPairs: canonicalTargetPairs,
+      targetSpec: canonicalTargetSpecs[0] ?? null,
+      targetSpecs: canonicalTargetSpecs,
+      action: canonicalActions[0] ?? null,
+      actions: canonicalActions,
+      actionPairs: canonicalActionPairs,
+      actionSpec: canonicalActionPairs[0]?.actionSpec ?? null,
+      actionSpecs: canonicalActionSpecs,
+      specs: [...canonicalTargetSpecs, ...canonicalActionSpecs],
+    };
+
+    canonicalizedProcesses.push(
+      normalizeStyleProcess({
+        ...normalizedProcess,
+        processComposition: canonicalComposition,
+      })
+    );
+  }
+
+  const relationCreates = [
+    ...Array.from(pendingTargetSpecRelations.values()).map((item) => ({
+      type: "TARGET_TARGET_SPEC" as ProcessMasterRelationType,
+      parentOptionId: item.parentOptionId,
+      childOptionId: item.childOptionId,
+    })),
+    ...Array.from(pendingActionSpecRelations.values()).map((item) => ({
+      type: "ACTION_ACTION_SPEC" as ProcessMasterRelationType,
+      parentOptionId: item.parentOptionId,
+      childOptionId: item.childOptionId,
+    })),
+  ];
+  if (relationCreates.length > 0) {
+    await insertProcessMasterOptionRelationsWithDb(db, relationCreates);
+  }
+
+  return canonicalizedProcesses;
+};
 
 const PROCESS_COMPOSITION_KIND_BY_MASTER_TYPE: Record<
   ProcessMasterOptionType,
@@ -14613,18 +15103,34 @@ app.post("/styles", async (req, res) => {
   }
 
   const created = await prisma.$transaction(async (tx) => {
+    const syncedProcesses = includeProcesses
+      ? await syncProcessMasterFromStyleProcesses({
+          processes: payload.processes,
+          db: tx,
+        })
+      : payload.processes;
+    const syncedDuplicateProcess = includeProcesses
+      ? findStyleProcessDuplicateIdentity(syncedProcesses)
+      : null;
+    if (syncedDuplicateProcess) {
+      throw createHttpError(
+        400,
+        createStyleProcessDuplicateError(syncedDuplicateProcess)
+      );
+    }
+
     const createdStyle = await tx.style.create({
       data: {
         orgId: owner.ownerOrgId,
         ...payload,
-        processes: payload.processes,
+        processes: syncedProcesses,
       },
     });
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
         styleUid: createdStyle.uid,
         orgId: organization.id,
-        processes: payload.processes,
+        processes: syncedProcesses,
         db: tx,
       });
     }
@@ -14721,6 +15227,22 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const syncedProcesses = includeProcesses
+      ? await syncProcessMasterFromStyleProcesses({
+          processes: normalized.processes,
+          db: tx,
+        })
+      : normalized.processes;
+    const syncedDuplicateProcess = includeProcesses
+      ? findStyleProcessDuplicateIdentity(syncedProcesses)
+      : null;
+    if (syncedDuplicateProcess) {
+      throw createHttpError(
+        400,
+        createStyleProcessDuplicateError(syncedDuplicateProcess)
+      );
+    }
+
     const updatedStyle = await tx.style.update({
       where: { uid: existing.uid },
       data: {
@@ -14732,7 +15254,7 @@ app.put("/styles/:styleId", async (req, res) => {
         collection: normalized.collection,
         season: normalized.season,
         imageUrls: normalized.imageUrls,
-        processes: normalized.processes,
+        processes: syncedProcesses,
         bom: normalized.bom,
         bomNotes: normalized.bomNotes,
       },
@@ -14741,7 +15263,7 @@ app.put("/styles/:styleId", async (req, res) => {
       await syncStyleProcessStorageForStyle({
         styleUid: existing.uid,
         orgId: organization.id,
-        processes: normalized.processes,
+        processes: syncedProcesses,
         db: tx,
       });
     }
@@ -14949,6 +15471,25 @@ app.post("/styles/import", async (req, res) => {
   await prisma.$transaction(async (tx) => {
     for (const item of rowsWithOwner) {
       const { ownerOrgId, ...stylePayload } = item;
+      const syncedProcesses = includeProcesses
+        ? await syncProcessMasterFromStyleProcesses({
+            processes: stylePayload.processes,
+            db: tx,
+          })
+        : stylePayload.processes;
+      const syncedDuplicateProcess = includeProcesses
+        ? findStyleProcessDuplicateIdentity(syncedProcesses)
+        : null;
+      if (syncedDuplicateProcess) {
+        throw createHttpError(
+          400,
+          createStyleProcessDuplicateError(
+            syncedDuplicateProcess,
+            `styles[${stylePayload.styleId}].processes`
+          )
+        );
+      }
+
       const upserted = await tx.style.upsert({
         where: {
           orgId_styleId: {
@@ -14965,21 +15506,21 @@ app.post("/styles/import", async (req, res) => {
           collection: stylePayload.collection,
           season: stylePayload.season,
           imageUrls: stylePayload.imageUrls,
-          processes: stylePayload.processes,
+          processes: syncedProcesses,
           bom: stylePayload.bom,
           bomNotes: stylePayload.bomNotes,
         },
         create: {
           orgId: ownerOrgId,
           ...stylePayload,
-          processes: stylePayload.processes,
+          processes: syncedProcesses,
         },
       });
       if (includeProcesses) {
         await syncStyleProcessStorageForStyle({
           styleUid: upserted.uid,
           orgId: organization.id,
-          processes: stylePayload.processes,
+          processes: syncedProcesses,
           db: tx,
         });
       }
