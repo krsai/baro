@@ -1489,15 +1489,69 @@ const normalizeStyleProcessComposition = (value: any) => {
   const target = targets[0] ?? null;
   const targetSpec = targetSpecs[0] ?? null;
 
+  const rawActionPairs = ensureArray((value as any)?.actionPairs)
+    .map((pair: any) => {
+      if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
+      const actionEntry = normalizeStyleProcessCompositionEntry(
+        (pair as any)?.action ?? (pair as any)?.actionItem,
+        "action"
+      );
+      const actionSpecEntry = normalizeStyleProcessCompositionEntry(
+        (pair as any)?.actionSpec ?? (pair as any)?.spec ?? (pair as any)?.actionSpecItem,
+        "actionSpec"
+      );
+      if (!actionEntry && !actionSpecEntry) return null;
+      return {
+        action: actionEntry,
+        actionSpec: actionSpecEntry,
+      };
+    })
+    .filter(Boolean) as Array<{
+    action: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+    actionSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+  }>;
+  const rawActions = normalizeStyleProcessCompositionEntries(
+    (value as any)?.actions,
+    "action"
+  );
   const actionSpecInputs = [
     ...ensureArray((value as any)?.actionSpecs),
     ...(value as any)?.actionSpec ? [(value as any).actionSpec] : [],
   ];
-  const actionSpecs = normalizeStyleProcessCompositionEntries(actionSpecInputs, "spec");
-  const actionSpec = actionSpecs[0] ?? null;
-
-  const actions = normalizeStyleProcessCompositionEntries((value as any)?.actions, "action");
+  const rawActionSpecs = normalizeStyleProcessCompositionEntries(actionSpecInputs, "spec");
+  const actionPairs =
+    rawActionPairs.length > 0
+      ? rawActionPairs.filter((pair) => Boolean(pair?.action))
+      : (() => {
+          const pairCount = Math.max(rawActions.length, rawActionSpecs.length);
+          if (pairCount === 0) return [] as Array<{
+            action: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+            actionSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+          }>;
+          const pairs: Array<{
+            action: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+            actionSpec: ReturnType<typeof normalizeStyleProcessCompositionEntry> | null;
+          }> = [];
+          for (let index = 0; index < pairCount; index += 1) {
+            const actionEntry = rawActions[index] ?? null;
+            const actionSpecEntry = rawActionSpecs[index] ?? null;
+            if (!actionEntry && !actionSpecEntry) continue;
+            if (!actionEntry) continue;
+            pairs.push({
+              action: actionEntry,
+              actionSpec: actionSpecEntry,
+            });
+          }
+          return pairs;
+        })();
+  const actions = actionPairs
+    .map((pair) => pair?.action)
+    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
+  const actionSpecs = actionPairs
+    .map((pair) => pair?.actionSpec)
+    .filter(Boolean) as Array<ReturnType<typeof normalizeStyleProcessCompositionEntry>>;
   const action = actions[0] ?? null;
+  const actionSpec = actionPairs[0]?.actionSpec ?? null;
   const specs =
     targetSpecs.length > 0 || actionSpecs.length > 0
       ? [...targetSpecs, ...actionSpecs]
@@ -1522,6 +1576,7 @@ const normalizeStyleProcessComposition = (value: any) => {
     targetPairs,
     targetSpec,
     targetSpecs,
+    actionPairs,
     action,
     actions,
     actionSpec,
@@ -1581,20 +1636,26 @@ const buildStyleProcessNameFromComposition = (
     })
     .filter(Boolean)
     .join(" + ");
-  const actionText = normalizedComposition.actions
-    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
+  const actionPairs = ensureArray((normalizedComposition as any)?.actionPairs);
+  const actionWithSpec = (
+    actionPairs.length > 0
+      ? actionPairs
+      : normalizedComposition.actions.map((entry: any, index: number) => ({
+          action: entry,
+          actionSpec: normalizedComposition.actionSpecs[index] ?? null,
+        }))
+  )
+    .map((pair: any) => {
+      const actionText = resolveStyleProcessCompositionText(pair?.action, language);
+      const actionSpecText = resolveStyleProcessCompositionText(pair?.actionSpec, language);
+      if (actionText) {
+        return `${actionText}${actionSpecText ? `(${actionSpecText})` : ""}`;
+      }
+      if (actionSpecText) return `(${actionSpecText})`;
+      return "";
+    })
     .filter(Boolean)
     .join(" + ");
-  const actionSpecText = normalizedComposition.actionSpecs
-    .map((entry: any) => resolveStyleProcessCompositionText(entry, language))
-    .filter(Boolean)
-    .join("·");
-
-  const actionWithSpec = actionText
-    ? `${actionText}${actionSpecText ? `(${actionSpecText})` : ""}`
-    : actionSpecText
-      ? `(${actionSpecText})`
-      : "";
   const leftText =
     locationText && targetWithSpec
       ? `${locationText}: ${targetWithSpec}`
@@ -1657,13 +1718,25 @@ const buildStyleProcessCodeFromComposition = (
         ),
       ];
     })(),
-    ...normalizedComposition.actions.map((entry: any) =>
-      resolveOptionalString(entry?.code, null)
-    ),
-    ...normalizedComposition.actionSpecs.map((entry: any) =>
-      resolveOptionalString(entry?.code, null) ||
-      buildCustomStyleSpecCode(entry?.label)
-    ),
+    ...(() => {
+      const actionPairs = ensureArray((normalizedComposition as any)?.actionPairs);
+      if (actionPairs.length > 0) {
+        return actionPairs.flatMap((pair: any) => [
+          resolveOptionalString(pair?.action?.code, null),
+          resolveOptionalString(pair?.actionSpec?.code, null) ||
+            buildCustomStyleSpecCode(pair?.actionSpec?.label),
+        ]);
+      }
+      return [
+        ...normalizedComposition.actions.map((entry: any) =>
+          resolveOptionalString(entry?.code, null)
+        ),
+        ...normalizedComposition.actionSpecs.map((entry: any) =>
+          resolveOptionalString(entry?.code, null) ||
+          buildCustomStyleSpecCode(entry?.label)
+        ),
+      ];
+    })(),
   ]
     .map((token) => normalizeStyleProcessCodeSegment(token))
     .filter(Boolean);
@@ -1732,13 +1805,13 @@ const normalizeStyleProcess = (process: any) => {
     (next as any).nameEn = localizedNames.nameEn;
     (next as any).nameVi = localizedNames.nameVi;
 
-    // Preserve legacy multi-action rows and surface them for manual review.
-    const hasMultipleActions = normalizedComposition.actions.length > 1;
-    if (hasMultipleActions) {
+    // Legacy rows with 4+ actions exceed current UI constraints (max 3).
+    const hasTooManyActions = normalizedComposition.actions.length > 3;
+    if (hasTooManyActions) {
       const existingDescription = resolveOptionalString((next as any).description, "") ?? "";
       const normalizedDescription = existingDescription.trim();
       const reviewMessage =
-        "Legacy multi-action process. Please review and split into separate processes if needed.";
+        "Legacy process has more than 3 actions. Please review and split if needed.";
       if (!normalizedDescription) {
         (next as any).description = `[REVIEW] ${reviewMessage}`;
       } else if (!normalizedDescription.startsWith("[REVIEW]")) {
@@ -10372,6 +10445,26 @@ const applyProcessMasterNamesToComposition = (
       };
     })
     .filter(Boolean);
+  const actionPairs = ensureArray((normalizedComposition as any)?.actionPairs)
+    .map((pair: any) => {
+      if (!pair || typeof pair !== "object" || Array.isArray(pair)) return null;
+      const action = applyProcessMasterNamesToCompositionEntry(
+        (pair as any)?.action,
+        "ACTION",
+        lookupByTypeAndCode
+      );
+      if (!action) return null;
+      const actionSpec = applyProcessMasterNamesToCompositionEntry(
+        (pair as any)?.actionSpec,
+        "ACTION_SPEC",
+        lookupByTypeAndCode
+      );
+      return {
+        action,
+        actionSpec: actionSpec ?? null,
+      };
+    })
+    .filter(Boolean);
 
   if (
     locations.length === 0 &&
@@ -10383,9 +10476,22 @@ const applyProcessMasterNamesToComposition = (
     return null;
   }
 
+  const normalizedActionPairs =
+    actionPairs.length > 0
+      ? actionPairs
+      : actions.map((entry, index) => ({
+          action: entry,
+          actionSpec: actionSpecs[index] ?? null,
+        }));
+  const normalizedActions = normalizedActionPairs
+    .map((pair: any) => pair?.action)
+    .filter(Boolean);
+  const normalizedActionSpecs = normalizedActionPairs
+    .map((pair: any) => pair?.actionSpec)
+    .filter(Boolean);
   const targetSpec = targetSpecs[0] ?? null;
-  const actionSpec = actionSpecs[0] ?? null;
-  const specs = [...targetSpecs, ...actionSpecs];
+  const actionSpec = normalizedActionPairs[0]?.actionSpec ?? null;
+  const specs = [...targetSpecs, ...normalizedActionSpecs];
 
   return {
     location: locations[0] ?? null,
@@ -10395,12 +10501,13 @@ const applyProcessMasterNamesToComposition = (
     target: targets[0] ?? null,
     targets,
     targetPairs,
-    action: actions[0] ?? null,
-    actions,
+    action: normalizedActions[0] ?? null,
+    actions: normalizedActions,
+    actionPairs: normalizedActionPairs,
     targetSpec,
     targetSpecs,
     actionSpec,
-    actionSpecs,
+    actionSpecs: normalizedActionSpecs,
     specs,
   };
 };
@@ -14465,9 +14572,6 @@ app.post("/styles", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
-  if (includeProcesses) {
-    await ensureDefaultProcessMasterOptions();
-  }
 
   const payload = normalizeStylePayload(req.body ?? {}, null, { includeProcesses });
   if (!payload.name) {
@@ -14523,10 +14627,6 @@ app.post("/styles", async (req, res) => {
         processes: payload.processes,
         db: tx,
       });
-      await ensureProcessMasterOptionsFromStyleProcesses({
-        processes: payload.processes,
-        db: tx,
-      });
     }
     return tx.style.findUniqueOrThrow({
       where: { uid: createdStyle.uid },
@@ -14556,9 +14656,6 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
-  if (includeProcesses) {
-    await ensureDefaultProcessMasterOptions();
-  }
 
   const styleId = (req.params.styleId ?? "").trim();
   if (!styleId) {
@@ -14644,10 +14741,6 @@ app.put("/styles/:styleId", async (req, res) => {
       await syncStyleProcessStorageForStyle({
         styleUid: existing.uid,
         orgId: organization.id,
-        processes: normalized.processes,
-        db: tx,
-      });
-      await ensureProcessMasterOptionsFromStyleProcesses({
         processes: normalized.processes,
         db: tx,
       });
@@ -14741,9 +14834,6 @@ app.post("/styles/import", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
   const includeProcesses = isManufacturerOrg(organization);
-  if (includeProcesses) {
-    await ensureDefaultProcessMasterOptions();
-  }
 
   const rows = Array.isArray(req.body?.styles) ? req.body.styles : [];
   if (rows.length === 0) {
@@ -14857,7 +14947,6 @@ app.post("/styles/import", async (req, res) => {
   }
 
   await prisma.$transaction(async (tx) => {
-    const importedProcessesForMaster: any[] = [];
     for (const item of rowsWithOwner) {
       const { ownerOrgId, ...stylePayload } = item;
       const upserted = await tx.style.upsert({
@@ -14893,16 +14982,7 @@ app.post("/styles/import", async (req, res) => {
           processes: stylePayload.processes,
           db: tx,
         });
-        importedProcessesForMaster.push(
-          ...normalizeStyleProcesses(stylePayload.processes)
-        );
       }
-    }
-    if (includeProcesses && importedProcessesForMaster.length > 0) {
-      await ensureProcessMasterOptionsFromStyleProcesses({
-        processes: importedProcessesForMaster,
-        db: tx,
-      });
     }
   });
 
@@ -15004,7 +15084,7 @@ app.get("/process-master-options", async (req, res) => {
 
   await ensureProcessMasterOptionTypeSchemaReady();
   await ensureProcessMasterOptionRelationSchemaReady();
-  const rows = await ensureDefaultProcessMasterOptions();
+  const rows = await listProcessMasterOptions();
   const relations = await listProcessMasterOptionRelations();
   const usageConflicts = await findProcessMasterDeletionUsageConflicts(rows);
   return res.json(
@@ -15019,7 +15099,6 @@ app.put("/process-master-options", async (req, res, next) => {
   try {
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
-    await ensureDefaultProcessMasterOptions();
     const payload = req.body ?? {};
     const rows = await syncProcessMasterOptions(payload);
     const relations = await syncProcessMasterRelations({

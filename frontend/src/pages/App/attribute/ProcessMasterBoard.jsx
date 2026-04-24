@@ -1,8 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Autocomplete,
-  Alert,
-  AlertTitle,
   Box,
   Button,
   Chip,
@@ -254,6 +252,7 @@ const shouldReviewActionRow = (sectionKey, row = {}) => {
 
 const ProcessMasterSection = ({
   title,
+  description = '',
   rows,
   languageCode,
   sectionKey,
@@ -264,6 +263,7 @@ const ProcessMasterSection = ({
   onCodeFocusHandled,
   duplicateCodeSet = EMPTY_CODE_SET,
   usageConflictMap = new Map(),
+  maxHeight = 320,
 }) => {
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
@@ -329,9 +329,16 @@ const ProcessMasterSection = ({
   return (
     <Paper ref={sectionRef} variant="outlined" sx={{ p: 2, height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-        <Typography variant="subtitle1" fontWeight={700}>
-          {title}
-        </Typography>
+        <Stack spacing={0.25}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            {title}
+          </Typography>
+          {description ? (
+            <Typography variant="caption" color="text.secondary">
+              {description}
+            </Typography>
+          ) : null}
+        </Stack>
         <Button
           size="small"
           variant="outlined"
@@ -342,7 +349,7 @@ const ProcessMasterSection = ({
         </Button>
       </Box>
 
-      <TableContainer sx={{ maxHeight: 360 }}>
+      <TableContainer sx={{ maxHeight }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
@@ -436,9 +443,19 @@ const ProcessMasterSection = ({
                   )}
                 </TableCell>
                 <TableCell sx={{ textAlign: 'center' }}>
-                  <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
+                  {usageConflict ? (
+                    <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
+                      <span>
+                        <IconButton size="small" disabled>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  ) : (
+                    <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  )}
                 </TableCell>
                 </TableRow>
               );
@@ -615,11 +632,6 @@ const ProcessMasterBoard = () => {
         return acc;
       }, {}),
     [formData]
-  );
-
-  const hasDuplicateCodes = useMemo(
-    () => MASTER_SECTIONS.some((section) => (duplicateCodeMap[section.key] || EMPTY_CODE_SET).size > 0),
-    [duplicateCodeMap]
   );
 
   const isDirty = useMemo(
@@ -952,17 +964,22 @@ const ProcessMasterBoard = () => {
       const status = Number(error?.status || 0);
       const reason = String(error?.details?.reason || '').trim().toUpperCase();
       if (status === 409 && reason === 'PROCESS_MASTER_OPTION_IN_USE') {
-        const usageCount = Number(error?.details?.usageCount || 0);
-        const conflicts = Array.isArray(error?.details?.conflicts)
-          ? error.details.conflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
-          : [];
-        setUsageConflicts(conflicts);
-        showNotification(
-          usageCount > 0
-            ? `사용 중인 항목은 삭제할 수 없습니다. ${usageCount}건에서 참조 중입니다.`
-            : '사용 중인 항목은 삭제할 수 없습니다.',
-          'error'
-        );
+        try {
+          const latest = await fetchProcessMasterOptions({ skipGlobalLoading: true });
+          const normalizedLatest = normalizeMasterData(latest);
+          setFormData(normalizedLatest);
+          setOriginalData(normalizedLatest);
+          setUsageConflicts(
+            Array.isArray(latest?.usageConflicts)
+              ? latest.usageConflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
+              : []
+          );
+        } catch (_refreshError) {
+          const conflicts = Array.isArray(error?.details?.conflicts)
+            ? error.details.conflicts.map(normalizeUsageConflictRow).filter((item) => item.id)
+            : [];
+          setUsageConflicts(conflicts);
+        }
         return;
       }
       setUsageConflicts([]);
@@ -983,99 +1000,167 @@ const ProcessMasterBoard = () => {
         />
       )}
     >
-      <Stack spacing={2}>
-        <Alert severity="info">
-          공정 표준은 5축(위치/대상/대상 규격/동작/동작 규격)과 부모-자식 트리 연결로 관리합니다.
-        </Alert>
-        {hasDuplicateCodes ? (
-          <Alert severity="warning">중복 코드가 있습니다. 각 섹션에서 코드 중복을 해소해 주세요.</Alert>
-        ) : null}
-        {usageConflicts.length > 0 ? (
-          <Alert severity="error">
-            <AlertTitle>삭제 불가 항목</AlertTitle>
-            <Stack spacing={0.5}>
-              {usageConflicts
-                .slice()
-                .sort((left, right) => right.referenceCount - left.referenceCount)
-                .map((item) => {
-                  const typeTitle = PROCESS_MASTER_TYPE_TITLE_BY_CODE[item.type] || item.type || '항목';
-                  const sampleText =
-                    item.sampleStyleProcessIds.length > 0
-                      ? ` (예시 공정ID: ${item.sampleStyleProcessIds.join(', ')})`
-                      : '';
-                  return (
-                    <Typography key={`${item.id}:${item.code}`} variant="body2">
-                      {`${typeTitle} ${item.code || item.label || item.id} / 스타일 ${
-                        item.styleProcessCount
-                      }개, 참조 ${item.referenceCount}건${sampleText}`}
-                    </Typography>
-                  );
-                })}
-            </Stack>
-          </Alert>
-        ) : null}
+      <Stack spacing={2.5}>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={0.5}>
+            <Typography variant="subtitle2" fontWeight={700}>
+              공정 표준 구조
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              위치 / 대상 / 대상 규격 / 동작 / 동작 규격 5축과 부모-자식 연결을 함께 관리합니다.
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              사용 중인 항목은 행의 `사용중` 칩으로 표시되며 삭제 버튼이 비활성화됩니다.
+            </Typography>
+          </Stack>
+        </Paper>
 
-        <Grid container spacing={2}>
-          {MASTER_SECTIONS.map((section) => (
-            <Grid item xs={12} md={6} key={section.key}>
-              <ProcessMasterSection
-                sectionKey={section.key}
-                title={section.title}
-                rows={formData[section.key] || []}
-                languageCode={languageCode}
-                onAddRow={handleAddRow}
-                onDeleteRow={handleDeleteRow}
-                onRowChange={handleRowChange}
-                focusRowId={pendingCodeFocus?.sectionKey === section.key ? pendingCodeFocus.rowId : null}
-                onCodeFocusHandled={(rowId) => handleCodeFocusHandled(section.key, rowId)}
-                duplicateCodeSet={duplicateCodeMap[section.key] || EMPTY_CODE_SET}
-                usageConflictMap={usageConflictMap}
-              />
+        <ProcessMasterSection
+          sectionKey="locations"
+          title="위치"
+          description="공정이 수행되는 기준 위치를 관리합니다."
+          rows={formData.locations || []}
+          languageCode={languageCode}
+          onAddRow={handleAddRow}
+          onDeleteRow={handleDeleteRow}
+          onRowChange={handleRowChange}
+          focusRowId={pendingCodeFocus?.sectionKey === 'locations' ? pendingCodeFocus.rowId : null}
+          onCodeFocusHandled={(rowId) => handleCodeFocusHandled('locations', rowId)}
+          duplicateCodeSet={duplicateCodeMap.locations || EMPTY_CODE_SET}
+          usageConflictMap={usageConflictMap}
+          maxHeight={260}
+        />
+
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              대상 체계
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterSection
+                  sectionKey="targets"
+                  title="대상"
+                  description="부착/봉제 대상이 되는 기본 단위를 관리합니다."
+                  rows={formData.targets || []}
+                  languageCode={languageCode}
+                  onAddRow={handleAddRow}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'targets' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targets', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={280}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterSection
+                  sectionKey="targetSpecs"
+                  title="대상 규격"
+                  description="대상의 하위 규격(예: 가슴주머니, 메인라벨)을 관리합니다."
+                  rows={formData.targetSpecs || []}
+                  languageCode={languageCode}
+                  onAddRow={handleAddRow}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={280}
+                />
+              </Grid>
             </Grid>
-          ))}
-        </Grid>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterRelationTreeSection
+                  title="대상 연결"
+                  description="각 대상(부모)에 함께 연결 가능한 대상(자식)을 설정합니다."
+                  parentLabel="대상"
+                  childLabel="연결 대상"
+                  parentRows={formData.targets}
+                  childRows={formData.targets}
+                  relationRows={formData.targetToTargets}
+                  languageCode={languageCode}
+                  onChangeRelations={handleTargetTargetRelationsChange}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterRelationTreeSection
+                  title="대상-대상규격 연결"
+                  description="각 대상(부모)에 허용할 대상 규격(자식)을 연결합니다."
+                  parentLabel="대상"
+                  childLabel="대상 규격"
+                  parentRows={formData.targets}
+                  childRows={formData.targetSpecs}
+                  relationRows={formData.targetToTargetSpecs}
+                  languageCode={languageCode}
+                  onChangeRelations={handleTargetSpecRelationsChange}
+                />
+              </Grid>
+            </Grid>
+          </Stack>
+        </Paper>
 
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <ProcessMasterRelationTreeSection
-              title="대상 연결 트리"
-              description="각 대상(부모)에 함께 연결될 수 있는 대상(자식)을 등록합니다."
-              parentLabel="대상"
-              childLabel="연결 대상"
-              parentRows={formData.targets}
-              childRows={formData.targets}
-              relationRows={formData.targetToTargets}
-              languageCode={languageCode}
-              onChangeRelations={handleTargetTargetRelationsChange}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <ProcessMasterRelationTreeSection
-              title="대상 트리 연결"
-              description="각 대상(부모)에 허용할 대상 규격(자식)을 연결합니다."
-              parentLabel="대상"
-              childLabel="대상 규격"
-              parentRows={formData.targets}
-              childRows={formData.targetSpecs}
-              relationRows={formData.targetToTargetSpecs}
-              languageCode={languageCode}
-              onChangeRelations={handleTargetSpecRelationsChange}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <ProcessMasterRelationTreeSection
-              title="동작 트리 연결"
-              description="각 동작(부모)에 허용할 동작 규격(자식)을 연결합니다."
-              parentLabel="동작"
-              childLabel="동작 규격"
-              parentRows={formData.actions}
-              childRows={formData.actionSpecs}
-              relationRows={formData.actionToActionSpecs}
-              languageCode={languageCode}
-              onChangeRelations={handleActionSpecRelationsChange}
-            />
-          </Grid>
-        </Grid>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack spacing={1.5}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              동작 체계
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterSection
+                  sectionKey="actions"
+                  title="동작"
+                  description="봉제/부착/오버록 등 작업 동작을 관리합니다."
+                  rows={formData.actions || []}
+                  languageCode={languageCode}
+                  onAddRow={handleAddRow}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'actions' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actions', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={280}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <ProcessMasterSection
+                  sectionKey="actionSpecs"
+                  title="동작 규격"
+                  description="동작의 하위 규격(예: 오버록 3실/5실)을 관리합니다."
+                  rows={formData.actionSpecs || []}
+                  languageCode={languageCode}
+                  onAddRow={handleAddRow}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={280}
+                />
+              </Grid>
+            </Grid>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <ProcessMasterRelationTreeSection
+                  title="동작-동작규격 연결"
+                  description="각 동작(부모)에 허용할 동작 규격(자식)을 연결합니다."
+                  parentLabel="동작"
+                  childLabel="동작 규격"
+                  parentRows={formData.actions}
+                  childRows={formData.actionSpecs}
+                  relationRows={formData.actionToActionSpecs}
+                  languageCode={languageCode}
+                  onChangeRelations={handleActionSpecRelationsChange}
+                />
+              </Grid>
+            </Grid>
+          </Stack>
+        </Paper>
       </Stack>
     </AppPageContainer>
   );
