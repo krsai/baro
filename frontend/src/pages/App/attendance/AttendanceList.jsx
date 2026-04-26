@@ -116,17 +116,17 @@ const TEXT = {
   deleteConfirm: {
     en: 'Delete all attendance records for this day?',
     vi: 'Ban co muon xoa toan bo cham cong cua ngay nay khong?',
-    ko: '?대궇 異쒗눜洹?湲곕줉??紐⑤몢 ??젣?섏떆寃좎뒿?덇퉴?',
+    ko: '해당 일자의 출퇴근 기록을 모두 삭제하시겠습니까?',
   },
   deleteSuccess: {
     en: 'Attendance records deleted.',
     vi: 'Da xoa du lieu cham cong.',
-    ko: '異쒗눜洹?湲곕줉????젣?덉뒿?덈떎.',
+    ko: '출퇴근 기록을 삭제했습니다.',
   },
   deleteError: {
     en: 'Failed to delete attendance records.',
     vi: 'Khong the xoa du lieu cham cong.',
-    ko: '異쒗눜洹?湲곕줉 ??젣???ㅽ뙣?덉뒿?덈떎.',
+    ko: '출퇴근 기록 삭제에 실패했습니다.',
   },
 };
 
