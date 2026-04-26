@@ -106,7 +106,7 @@ export const countWorkingDaysForEmployment = ({
 
   let count = 0;
   let cursor = start.startOf('day');
-  while (cursor.isSameOrBefore(end, 'day')) {
+  while (!cursor.isAfter(end, 'day')) {
     const dateKey = cursor.format('YYYY-MM-DD');
     if (joinedDateKey && dateKey < joinedDateKey) {
       cursor = cursor.add(1, 'day');

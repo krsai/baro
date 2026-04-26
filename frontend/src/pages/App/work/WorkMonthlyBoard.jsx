@@ -132,6 +132,7 @@ const WorkMonthlyBoard = () => {
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const [rows, setRows] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -214,6 +215,7 @@ const WorkMonthlyBoard = () => {
 
     if (!selectedFactoryIdNumber) {
       setRows([]);
+      setLoadError('');
       setLoadingRows(false);
       return () => {
         cancelled = true;
@@ -223,6 +225,7 @@ const WorkMonthlyBoard = () => {
 
     const loadRows = async () => {
       setLoadingRows(true);
+      setLoadError('');
       try {
         const [employees, logs, attendanceRows] = await Promise.all([
           requestJSON(
@@ -271,11 +274,14 @@ const WorkMonthlyBoard = () => {
         setRows(nextRows);
       } catch (_error) {
         if (cancelled || abortController.signal.aborted) return;
-        setRows([]);
-        showNotification(
-          resolveText(TEXT.fetchError, languageCode, '월간 기록을 불러오지 못했습니다.'),
-          'error'
+        const message = resolveText(
+          TEXT.fetchError,
+          languageCode,
+          '월간 기록을 불러오지 못했습니다.'
         );
+        setRows([]);
+        setLoadError(message);
+        showNotification(message, 'error');
       } finally {
         if (!cancelled) {
           setLoadingRows(false);
@@ -299,6 +305,10 @@ const WorkMonthlyBoard = () => {
     selectedFactoryIdNumber,
     showNotification,
   ]);
+
+  const emptyStateMessage =
+    loadError || resolveText(TEXT.empty, languageCode, '해당 월에 표시할 기록이 없습니다.');
+  const emptyStateSx = loadError ? { color: 'error.main' } : undefined;
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -407,12 +417,12 @@ const WorkMonthlyBoard = () => {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
         <Box sx={{ display: { xs: 'block', sm: 'none' }, p: 1.25 }}>
           {loadingRows || loadingFactories ? (
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" sx={emptyStateSx}>
               {resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
             </Typography>
           ) : filteredRows.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {resolveText(TEXT.empty, languageCode, '해당 월에 표시할 기록이 없습니다.')}
+            <Typography variant="body2" color="text.secondary" sx={emptyStateSx}>
+              {emptyStateMessage}
             </Typography>
           ) : (
             <Stack spacing={1}>
@@ -489,10 +499,7 @@ const WorkMonthlyBoard = () => {
                   message={resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
                 />
               ) : filteredRows.length === 0 ? (
-                <TableStatusRow
-                  colSpan={7}
-                  message={resolveText(TEXT.empty, languageCode, '해당 월에 표시할 기록이 없습니다.')}
-                />
+                <TableStatusRow colSpan={7} message={emptyStateMessage} sx={emptyStateSx} />
               ) : (
                 filteredRows.map((row) => (
                   <TableRow

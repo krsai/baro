@@ -82,6 +82,7 @@ const WorkMonthlyDetail = () => {
 
   const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [summary, setSummary] = useState(null);
   const [rows, setRows] = useState([]);
@@ -128,6 +129,7 @@ const WorkMonthlyDetail = () => {
 
     if (!normalizedMonthKey || !normalizedFactoryId || !normalizedWorkerId) {
       setLoading(false);
+      setLoadError('');
       setSummary(null);
       setRows([]);
       return () => {
@@ -138,6 +140,7 @@ const WorkMonthlyDetail = () => {
 
     const load = async () => {
       setLoading(true);
+      setLoadError('');
       try {
         const [factories, employees, logs, attendanceRows] = await Promise.all([
           requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`, {
@@ -202,12 +205,15 @@ const WorkMonthlyDetail = () => {
         setRows(Array.isArray(detailData.rows) ? detailData.rows : []);
       } catch (_error) {
         if (cancelled || abortController.signal.aborted) return;
+        const message = resolveText(
+          TEXT.fetchError,
+          languageCode,
+          '월간 기록 상세를 불러오지 못했습니다.'
+        );
         setSummary(null);
         setRows([]);
-        showNotification(
-          resolveText(TEXT.fetchError, languageCode, '월간 기록 상세를 불러오지 못했습니다.'),
-          'error'
-        );
+        setLoadError(message);
+        showNotification(message, 'error');
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -280,6 +286,10 @@ const WorkMonthlyDetail = () => {
       ]
     : [];
 
+  const emptyStateMessage =
+    loadError || resolveText(TEXT.empty, languageCode, '표시할 월간 상세 내역이 없습니다.');
+  const emptyStateSx = loadError ? { color: 'error.main' } : undefined;
+
   return (
     <AppPageContainer
       title={resolveText(TEXT.title, languageCode, '월간 기록 상세')}
@@ -300,6 +310,7 @@ const WorkMonthlyDetail = () => {
         <Alert severity="warning">{resolveText(TEXT.empty, languageCode, '표시할 월간 상세 내역이 없습니다.')}</Alert>
       ) : (
         <Stack spacing={2}>
+          {loadError ? <Alert severity="error">{loadError}</Alert> : null}
           {summary ? (
             <Box
               sx={{
@@ -347,7 +358,8 @@ const WorkMonthlyDetail = () => {
                   ) : filteredRows.length === 0 ? (
                     <TableStatusRow
                       colSpan={5}
-                      message={resolveText(TEXT.empty, languageCode, '표시할 월간 상세 내역이 없습니다.')}
+                      message={emptyStateMessage}
+                      sx={emptyStateSx}
                     />
                   ) : (
                     filteredRows.map((row) => (
