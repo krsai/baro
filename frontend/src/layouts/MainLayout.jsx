@@ -61,9 +61,14 @@ const DRAWER_WIDTH = 260;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const DAILY_WORK_HISTORY_LABELS = {
-  ko: '\uC791\uC5C5 \uAE30\uB85D',
-  en: 'Work Logs',
-  vi: 'Nhat ky cong viec',
+  ko: '\uC77C\uC77C \uAE30\uB85D',
+  en: 'Daily Records',
+  vi: 'Ghi chep ngay',
+};
+const MONTHLY_WORK_HISTORY_LABELS = {
+  ko: '\uC6D4\uAC04 \uAE30\uB85D',
+  en: 'Monthly Records',
+  vi: 'Ghi chep thang',
 };
 const OPERATIONS_MANAGEMENT_LABELS = {
   ko: '\uC6B4\uC601 \uAD00\uB9AC',
@@ -500,6 +505,11 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
+            label: getUiMessage('menu.workHistoryMonthly', '\uC6D4\uAC04 \uAE30\uB85D', languageCode),
+            icon: <HistoryIcon />,
+            path: '/work-history-monthly',
+          },
+          {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
@@ -671,7 +681,16 @@ const MainLayout = () => {
                   languageCode
                 ),
               }
-            : child
+            : child.path === '/work-history-monthly'
+              ? {
+                  ...child,
+                  label: getUiMessage(
+                    'menu.workHistoryMonthly',
+                    resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
+                    languageCode
+                  ),
+                }
+              : child
         );
         const childPaths = new Set(item.children.map((child) => child.path));
 
@@ -706,6 +725,22 @@ const MainLayout = () => {
 
         if (childPaths.has('/employee')) {
           visibleChildren = visibleChildren.filter((child) => child.path !== '/customer');
+        }
+
+        if (childPaths.has('/work-history') && childPaths.has('/attendance')) {
+          const preferredRecordPaths = [
+            '/work-history',
+            '/work-history-monthly',
+            '/attendance',
+          ];
+          visibleChildren = [
+            ...preferredRecordPaths.map(
+              (path) => visibleChildren.find((child) => child.path === path) || null
+            ),
+            ...visibleChildren.filter(
+              (child) => !preferredRecordPaths.includes(child.path)
+            ),
+          ].filter(Boolean);
         }
 
         if (visibleChildren.length === 0) return null;
@@ -757,6 +792,24 @@ const MainLayout = () => {
     },
     [languageCode]
   );
+  const resolveWorkHistoryMonthlyTabLabel = React.useCallback(
+    (kind = 'list') => {
+      const baseLabel = getUiMessage(
+        'menu.workHistoryMonthly',
+        resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
+        languageCode
+      );
+      const suffixByKind =
+        languageCode === 'ko'
+          ? { list: '\uBAA9\uB85D', detail: '\uC0C1\uC138' }
+          : languageCode === 'vi'
+            ? { list: 'Danh sach', detail: 'Chi tiet' }
+            : { list: 'List', detail: 'Detail' };
+      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
+      return `${baseLabel} - ${suffixByKind.list}`;
+    },
+    [languageCode]
+  );
   const resolveAttendanceTabLabel = React.useCallback(
     (kind = 'list') => {
       const baseLabel = getUiMessage('menu.attendance', 'Attendance', languageCode);
@@ -786,6 +839,12 @@ const MainLayout = () => {
       if (path.startsWith('/work-history/') && path !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
+      if (path === '/work-history-monthly') {
+        return resolveWorkHistoryMonthlyTabLabel('list');
+      }
+      if (path.startsWith('/work-history-monthly/') && path !== '/work-history-monthly') {
+        return resolveWorkHistoryMonthlyTabLabel('detail');
+      }
       if (path === '/attendance') {
         return resolveAttendanceTabLabel('list');
       }
@@ -804,6 +863,7 @@ const MainLayout = () => {
       flattenedMenuItems,
       languageCode,
       resolveAttendanceTabLabel,
+      resolveWorkHistoryMonthlyTabLabel,
       resolveWorkHistoryTabLabel,
     ]
   );
@@ -835,6 +895,23 @@ const MainLayout = () => {
       if (tabPath.startsWith('/work-history/') && tabPath !== '/work-history') {
         return resolveWorkHistoryTabLabel('detail');
       }
+      if (tabPath === '/work-history-monthly') {
+        return resolveWorkHistoryMonthlyTabLabel('list');
+      }
+      if (
+        tabPath.startsWith('/work-history-monthly/') &&
+        tabPath !== '/work-history-monthly' &&
+        typeof tab?.label === 'string' &&
+        tab.label.trim()
+      ) {
+        return tab.label;
+      }
+      if (
+        tabPath.startsWith('/work-history-monthly/') &&
+        tabPath !== '/work-history-monthly'
+      ) {
+        return resolveWorkHistoryMonthlyTabLabel('detail');
+      }
       if (tabPath === '/attendance') {
         return resolveAttendanceTabLabel('list');
       }
@@ -862,6 +939,7 @@ const MainLayout = () => {
       flattenedMenuItems,
       languageCode,
       resolveAttendanceTabLabel,
+      resolveWorkHistoryMonthlyTabLabel,
       resolveWorkHistoryTabLabel,
     ]
   );
@@ -983,6 +1061,13 @@ const MainLayout = () => {
         // For work history detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/work-history/') && nextPathname !== '/work-history') {
           openOptions.replacePrefix = '/work-history/';
+        }
+        // For monthly work history detail pages, ensure only one detail tab is open.
+        if (
+          nextPathname.startsWith('/work-history-monthly/') &&
+          nextPathname !== '/work-history-monthly'
+        ) {
+          openOptions.replacePrefix = '/work-history-monthly/';
         }
         // For attendance detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/attendance/') && nextPathname !== '/attendance') {

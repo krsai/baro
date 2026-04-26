@@ -82,10 +82,6 @@ const LABELS = {
   processPlaceholder: '공정을 선택하세요.',
   noProcessesAvailable: '선택 가능한 공정이 없습니다.',
   quantity: '생산량',
-  ct: 'CT',
-  ctUnit: '초',
-  amount: '금액',
-  amountUnit: '동',
   addBelow: '아래 작업자 추가',
   remove: '작업자 삭제',
 };
@@ -488,13 +484,6 @@ const buildDisplayProcessName = (process, languageCode) => {
   );
   return localizedName || toText(process?.name) || '-';
 };
-const buildDisplayCtText = (process, labels) =>
-  process
-    ? `${formatNumberWithCommas(Number(process?.ctSeconds) || 0, {
-        fallback: '0',
-        maximumFractionDigits: 0,
-      })}${labels.ctUnit}`
-    : '-';
 const buildProcessIdentityKey = (process) => {
   const processKey = toText(process?.processKey || process?.id);
   if (processKey) return processKey;
@@ -1402,18 +1391,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           >
             {buildDisplayProcessName(option?.process, languageCode)}
           </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{
-              display: 'block',
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {buildDisplayCtText(option?.process, LABELS)}
-          </Typography>
         </Stack>
       </Box>
     ),
@@ -1664,17 +1641,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                   {pagedRows.map((row) => {
                     const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
                     const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
-                    const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
-                    const rowCtSeconds = Math.max(0, Math.round(Number(rowProcess?.ctSeconds) || 0));
-                    const rowContractedSeconds = rowCtSeconds * quantityNumber;
-                    const rowAmountText =
-                      hasFactoryWage && rowContractedSeconds > 0
-                        ? `${formatNumberWithCommas(rowContractedSeconds * selectedFactoryWagePerSecond, {
-                            fallback: '0',
-                            maximumFractionDigits: 0,
-                          })}${LABELS.amountUnit}`
-                        : '-';
-                    const ctText = buildDisplayCtText(rowProcess, LABELS);
                     const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
                     const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
                     const styleOptions = resolveStyleOptions(rowForOptions);
@@ -1840,20 +1806,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             fullWidth
                             autoFocus={shouldFocusQuantity}
                           />
-                          <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-                            <TextField
-                              label={LABELS.ct}
-                              size="small"
-                              value={ctText}
-                              InputProps={{ readOnly: true }}
-                            />
-                            <TextField
-                              label={LABELS.amount}
-                              size="small"
-                              value={rowAmountText}
-                              InputProps={{ readOnly: true }}
-                            />
-                          </Box>
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
                             <Tooltip title={LABELS.addBelow}>
                               <span>
@@ -1898,12 +1850,10 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                 <Table size="small" sx={{ tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ width: '16%' }}>{LABELS.worker}</TableCell>
-                      <TableCell sx={{ width: '26%' }}>{LABELS.style}</TableCell>
-                      <TableCell sx={{ width: '23%' }}>{LABELS.process}</TableCell>
-                      <TableCell sx={{ width: '9%' }} align="right">{LABELS.quantity}</TableCell>
-                      <TableCell sx={{ width: '8%' }}>{LABELS.ct}</TableCell>
-                      <TableCell sx={{ width: '10%' }} align="right">{LABELS.amount}</TableCell>
+                      <TableCell sx={{ width: '18%' }}>{LABELS.worker}</TableCell>
+                      <TableCell sx={{ width: '31%' }}>{LABELS.style}</TableCell>
+                      <TableCell sx={{ width: '28%' }}>{LABELS.process}</TableCell>
+                      <TableCell sx={{ width: '13%' }} align="right">{LABELS.quantity}</TableCell>
                       <TableCell sx={{ width: 88 }} align="right">&nbsp;</TableCell>
                     </TableRow>
                   </TableHead>
@@ -1912,15 +1862,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                       const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
                       const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
                       const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
-                      const rowCtSeconds = Math.max(0, Math.round(Number(rowProcess?.ctSeconds) || 0));
-                      const rowContractedSeconds = rowCtSeconds * quantityNumber;
-                      const rowAmountText =
-                        hasFactoryWage && rowContractedSeconds > 0
-                          ? `${formatNumberWithCommas(rowContractedSeconds * selectedFactoryWagePerSecond, {
-                              fallback: '0',
-                              maximumFractionDigits: 0,
-                            })}${LABELS.amountUnit}`
-                          : '-';
                       const quantityValue =
                         quantityNumber > 0
                           ? formatNumberWithCommas(quantityNumber, {
@@ -1928,7 +1869,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               maximumFractionDigits: 0,
                             })
                           : '-';
-                      const ctText = buildDisplayCtText(rowProcess, LABELS);
                       const isEditingRow = true;
                       const rowGroupMeta = workerGroupMetaByRowId.get(row?.id) || {
                         groupId: 0,
@@ -2192,13 +2132,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 {quantityValue}
                               </Box>
                             )}
-                          </TableCell>
-                          <TableCell sx={{ py: 0.75, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{ctText}</TableCell>
-                          <TableCell
-                            align="right"
-                            sx={{ py: 0.75, whiteSpace: 'nowrap', verticalAlign: 'middle' }}
-                          >
-                            {rowAmountText}
                           </TableCell>
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             <Stack

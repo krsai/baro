@@ -10,9 +10,9 @@ import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage'
 
 const TEXT = {
   detailTitle: {
-    ko: '기록 상세',
-    en: 'Log Detail',
-    vi: 'Chi tiet ghi chep',
+    ko: '일일 기록 상세',
+    en: 'Daily Record Detail',
+    vi: 'Chi tiet ghi chep ngay',
   },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
@@ -51,9 +51,9 @@ const resolveText = (bundle, languageCode, fallback = '') =>
 
 const normalizeWorkLogId = (value) => String(value || '').trim();
 const buildWorkListTabLabel = (languageCode) => {
-  if (languageCode === 'en') return 'Log List';
-  if (languageCode === 'vi') return 'Danh sach ghi chep';
-  return '기록 목록';
+  if (languageCode === 'en') return 'Daily Records';
+  if (languageCode === 'vi') return 'Ghi chep ngay';
+  return '일일 기록';
 };
 
 const WorkEntry = () => {
