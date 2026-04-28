@@ -5964,6 +5964,22 @@ const validateWorkLogWorkerEmploymentWindow = async ({
   workDate: string;
   workerIds: number[];
 }) => {
+  const isWorkerAvailableOnWorkDate = (
+    worker: { joinedAt?: unknown; leftAt?: unknown } | null | undefined,
+    targetWorkDate: string
+  ) => {
+    if (!worker) return false;
+    const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
+    if (joinedDateKey && targetWorkDate < joinedDateKey) {
+      return false;
+    }
+    const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
+    if (leftDateKey && targetWorkDate > leftDateKey) {
+      return false;
+    }
+    return true;
+  };
+
   if (workerIds.length === 0) {
     return {
       status: 200,
@@ -5984,25 +6000,21 @@ const validateWorkLogWorkerEmploymentWindow = async ({
       leftAt: true,
     },
   });
-  const workerById = new Map<number, { joinedDateKey: string; leftDateKey: string }>();
+  const workerById = new Map<number, { joinedAt: unknown; leftAt: unknown }>();
   workers.forEach((worker) => {
     const workerId = toPositiveIntOrNull(worker.id);
     if (workerId === null) return;
     workerById.set(workerId, {
-      joinedDateKey: toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE),
-      leftDateKey: toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE),
+      joinedAt: worker.joinedAt,
+      leftAt: worker.leftAt,
     });
   });
 
   const invalidWorkerIds: number[] = [];
   workerIds.forEach((workerId) => {
-    const window = workerById.get(workerId);
-    if (!window) return;
-    if (window.joinedDateKey && workDate < window.joinedDateKey) {
-      invalidWorkerIds.push(workerId);
-      return;
-    }
-    if (window.leftDateKey && workDate > window.leftDateKey) {
+    const worker = workerById.get(workerId);
+    if (!worker) return;
+    if (!isWorkerAvailableOnWorkDate(worker, workDate)) {
       invalidWorkerIds.push(workerId);
     }
   });
@@ -6289,10 +6301,6 @@ const buildWorkLogContextResponse = async ({
           is: {
             orgId,
             ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
-            AND: [
-              { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
-              { OR: [{ leftAt: null }, { leftAt: { gte: dateRange.startAt } }] },
-            ],
           },
         },
       },
@@ -6305,6 +6313,8 @@ const buildWorkLogContextResponse = async ({
             orgMembershipId: true,
             name: true,
             factoryId: true,
+            joinedAt: true,
+            leftAt: true,
             membership: {
               select: {
                 email: true,
@@ -6345,9 +6355,23 @@ const buildWorkLogContextResponse = async ({
       : [],
   ]);
 
+  const workersForDate = lineAssignments.filter((assignment) => {
+    const employee = assignment?.employee;
+    if (!employee) return false;
+    const joinedDateKey = toDateKeyInTimeZone(employee.joinedAt, BUSINESS_TIME_ZONE);
+    if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
+      return false;
+    }
+    const leftDateKey = toDateKeyInTimeZone(employee.leftAt, BUSINESS_TIME_ZONE);
+    if (leftDateKey && normalizedWorkDate > leftDateKey) {
+      return false;
+    }
+    return true;
+  });
+
   return {
     line: { id: line.id, name: line.name ?? "" },
-    workers: lineAssignments.map(toWorkLogContextWorkerResponse),
+    workers: workersForDate.map(toWorkLogContextWorkerResponse),
     assignments: assignmentPlans
       .map((plan) =>
         toWorkLogContextAssignmentResponse({
