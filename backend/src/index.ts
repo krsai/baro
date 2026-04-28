@@ -3200,87 +3200,6 @@ const syncStyleProcessActualTimesFromWorkRecords = async (
   }
 };
 
-type AtSyncEventSource =
-  | "attendance_put"
-  | "worklog_post"
-  | "worklog_put"
-  | "worklog_delete";
-
-type TriggerAtSyncFromEventOptions = {
-  trainingMonthKeys?: Array<string | null | undefined>;
-};
-
-const atEventSyncInProgressOrgIds = new Set<number>();
-
-const resolveEventTrainingMonthKeys = (
-  options: TriggerAtSyncFromEventOptions
-): string[] => {
-  const explicitMonthKeys = ensureArray(options.trainingMonthKeys)
-    .map((monthKey) => normalizeMonthKey(monthKey))
-    .filter((monthKey) => monthKey !== "");
-  const deduped = Array.from(new Set(explicitMonthKeys));
-  if (deduped.length > 0) return deduped;
-  const fallback = resolveAtSyncTrainingMonthKey();
-  return fallback ? [fallback] : [];
-};
-
-const triggerAtSyncFromEvent = (
-  orgId: number,
-  source: AtSyncEventSource,
-  options: TriggerAtSyncFromEventOptions = {}
-) => {
-  const trainingMonthKeys = resolveEventTrainingMonthKeys(options);
-  if (trainingMonthKeys.length === 0) {
-    console.log(
-      `[AT sync][event:${source}] orgId=${orgId} skipped=no_training_month`
-    );
-    return;
-  }
-
-  if (atAutoSyncInProgress) {
-    console.log(
-      `[AT sync][event:${source}] orgId=${orgId} note=scheduler_in_progress`
-    );
-  }
-
-  if (atEventSyncInProgressOrgIds.has(orgId)) {
-    console.log(
-      `[AT sync][event:${source}] orgId=${orgId} skipped=already_in_progress`
-    );
-    return;
-  }
-
-  atEventSyncInProgressOrgIds.add(orgId);
-  const startedAt = Date.now();
-  const monthLabel = trainingMonthKeys.join(",");
-  (async () => {
-    let updatedStyles = 0;
-    let updatedProcesses = 0;
-    for (const trainingMonthKey of trainingMonthKeys) {
-      const result = await syncStyleProcessActualTimesFromWorkRecords(orgId, {
-        trainingMonthKey,
-      });
-      updatedStyles += Number(result?.updatedStyles || 0);
-      updatedProcesses += Number(result?.updatedProcesses || 0);
-    }
-    return { updatedStyles, updatedProcesses };
-  })()
-    .then((result) => {
-      console.log(
-        `[AT sync][event:${source}] orgId=${orgId} months=${monthLabel} updatedStyles=${Number(result?.updatedStyles || 0)} updatedProcesses=${Number(result?.updatedProcesses || 0)} durationMs=${Date.now() - startedAt}`
-      );
-    })
-    .catch((error: unknown) => {
-      console.error(
-        `[AT sync][event:${source}] orgId=${orgId} failed:`,
-        getErrorMessage(error, String(error))
-      );
-    })
-    .finally(() => {
-      atEventSyncInProgressOrgIds.delete(orgId);
-    });
-};
-
 const normalizeStylePayload = (
   payload: any,
   fallbackStyleId: string | null = null,
@@ -4778,12 +4697,6 @@ const normalizeMonthKey = (value: any) => {
   const trimmed = value.trim();
   return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
-const resolveMonthKeyFromDateKey = (value: unknown): string | null => {
-  const normalizedDateKey = normalizeDateKey(value);
-  if (!normalizedDateKey) return null;
-  const monthKey = normalizeMonthKey(normalizedDateKey.slice(0, 7));
-  return monthKey || null;
-};
 const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
 const resolveFiniteEnvNumber = (
   value: unknown,
@@ -5942,9 +5855,28 @@ const validateWorkLogLineWorkers = async ({
   const matchedWorkerIdSet = new Set(
     matchedAssignments.map((assignment) => assignment.employeeId)
   );
-  const missingWorkerIds = workerIds.filter(
+  let missingWorkerIds = workerIds.filter(
     (workerId) => !matchedWorkerIdSet.has(workerId)
   );
+
+  // 과거 작업일 기준 배정 이력이 비어 있는 경우(월말 일괄입력 등)에는
+  // 현재 활성 배정(endAt = null)도 허용해 작업 기록 입력이 막히지 않도록 한다.
+  if (missingWorkerIds.length > 0) {
+    const fallbackAssignments = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        employeeId: { in: missingWorkerIds },
+        endAt: null,
+      },
+      select: { employeeId: true },
+    });
+    fallbackAssignments.forEach((assignment) => {
+      matchedWorkerIdSet.add(assignment.employeeId);
+    });
+    missingWorkerIds = workerIds.filter(
+      (workerId) => !matchedWorkerIdSet.has(workerId)
+    );
+  }
 
   return {
     status: 200,
@@ -6290,8 +6222,27 @@ const buildWorkLogContextResponse = async ({
       resolveOptionalString(item.name, "") ?? "",
     ])
   );
+  const lineAssignmentSelect = {
+    employeeId: true,
+    lineId: true,
+    employee: {
+      select: {
+        id: true,
+        orgMembershipId: true,
+        name: true,
+        factoryId: true,
+        joinedAt: true,
+        leftAt: true,
+        membership: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    },
+  } as const;
 
-  const [lineAssignments, assignmentPlans] = await Promise.all([
+  const [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
     prisma.lineAssignment.findMany({
       where: {
         lineId: line.id,
@@ -6304,25 +6255,7 @@ const buildWorkLogContextResponse = async ({
           },
         },
       },
-      select: {
-        employeeId: true,
-        lineId: true,
-        employee: {
-          select: {
-            id: true,
-            orgMembershipId: true,
-            name: true,
-            factoryId: true,
-            joinedAt: true,
-            leftAt: true,
-            membership: {
-              select: {
-                email: true,
-              },
-            },
-          },
-        },
-      },
+      select: lineAssignmentSelect,
       orderBy: [{ employeeId: "asc" }],
     }),
     factoryLineIds.length > 0
@@ -6355,19 +6288,46 @@ const buildWorkLogContextResponse = async ({
       : [],
   ]);
 
-  const workersForDate = lineAssignments.filter((assignment) => {
-    const employee = assignment?.employee;
-    if (!employee) return false;
-    const joinedDateKey = toDateKeyInTimeZone(employee.joinedAt, BUSINESS_TIME_ZONE);
-    if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
-      return false;
+  const filterWorkersByEmploymentWindow = (rows: any[]) =>
+    ensureArray(rows).filter((assignment) => {
+      const employee = assignment?.employee;
+      if (!employee) return false;
+      const joinedDateKey = toDateKeyInTimeZone(employee.joinedAt, BUSINESS_TIME_ZONE);
+      if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
+        return false;
+      }
+      const leftDateKey = toDateKeyInTimeZone(employee.leftAt, BUSINESS_TIME_ZONE);
+      if (leftDateKey && normalizedWorkDate > leftDateKey) {
+        return false;
+      }
+      return true;
+    });
+
+  let workersForDate = filterWorkersByEmploymentWindow(lineAssignmentsOnWorkDate);
+
+  if (workersForDate.length === 0) {
+    const activeLineAssignments = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        endAt: null,
+        employee: {
+          is: {
+            orgId,
+            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+          },
+        },
+      },
+      select: lineAssignmentSelect,
+      orderBy: [{ employeeId: "asc" }],
+    });
+    const fallbackWorkers = filterWorkersByEmploymentWindow(activeLineAssignments);
+    if (fallbackWorkers.length > 0) {
+      workersForDate = fallbackWorkers;
+      console.log(
+        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_active_assignments`
+      );
     }
-    const leftDateKey = toDateKeyInTimeZone(employee.leftAt, BUSINESS_TIME_ZONE);
-    if (leftDateKey && normalizedWorkDate > leftDateKey) {
-      return false;
-    }
-    return true;
-  });
+  }
 
   return {
     line: { id: line.id, name: line.name ?? "" },
@@ -13015,9 +12975,6 @@ app.put("/attendance-entries", async (req, res) => {
   });
 
   res.json(savedRows.map(toAttendanceEntryResponse));
-  triggerAtSyncFromEvent(organization.id, "attendance_put", {
-    trainingMonthKeys: [resolveMonthKeyFromDateKey(workDate)],
-  });
 });
 
 app.get("/work-logs", async (req, res) => {
@@ -13320,9 +13277,6 @@ app.post("/work-logs", async (req, res) => {
     records: normalized.records,
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
-  triggerAtSyncFromEvent(organization.id, "worklog_post", {
-    trainingMonthKeys: [resolveMonthKeyFromDateKey(normalized.workDate)],
-  });
 });
 
 app.put("/work-logs/:id", async (req, res) => {
@@ -13505,12 +13459,6 @@ app.put("/work-logs/:id", async (req, res) => {
     records: normalized.records,
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
-  triggerAtSyncFromEvent(organization.id, "worklog_put", {
-    trainingMonthKeys: [
-      resolveMonthKeyFromDateKey(existing.workDate),
-      resolveMonthKeyFromDateKey(normalized.workDate),
-    ],
-  });
 });
 
 app.delete("/work-logs/:id", async (req, res) => {
@@ -13536,9 +13484,6 @@ app.delete("/work-logs/:id", async (req, res) => {
     where: { id: existing.id },
   });
   res.status(204).send();
-  triggerAtSyncFromEvent(organization.id, "worklog_delete", {
-    trainingMonthKeys: [resolveMonthKeyFromDateKey(existing.workDate)],
-  });
 });
 
 app.get("/assignment-board-view", async (req, res) => {

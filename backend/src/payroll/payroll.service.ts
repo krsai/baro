@@ -168,6 +168,62 @@ export const listPayrollSnapshots = async (orgId: number) =>
     select: { id: true, month: true, lockedAt: true, lockedBy: true, createdAt: true },
   });
 
+const buildFixedSalaryFallbackIndex = (snapshotData: unknown) => {
+  const byWorkerId = new Map<number, number>();
+  const byEmployeeKey = new Map<string, number>();
+
+  ensureArray(snapshotData)
+    .map(normalizePayrollSnapshotEmployee)
+    .forEach((employee) => {
+      if (employee.payType !== "FIXED") return;
+      const fixedSalary = toPayrollAmount(employee.fixedSalary, 0);
+      if (fixedSalary <= 0) return;
+
+      const workerId = toPositiveIntOrNull(employee.workerId);
+      if (workerId !== null && !byWorkerId.has(workerId)) {
+        byWorkerId.set(workerId, fixedSalary);
+      }
+
+      const employeeKey = String(employee.employeeKey || "").trim();
+      if (employeeKey && !byEmployeeKey.has(employeeKey)) {
+        byEmployeeKey.set(employeeKey, fixedSalary);
+      }
+    });
+
+  return { byWorkerId, byEmployeeKey };
+};
+
+const resolveFixedSalaryWithFallback = ({
+  fixedSalary,
+  workerId,
+  employeeKey,
+  fallbackByWorkerId,
+  fallbackByEmployeeKey,
+}: {
+  fixedSalary: unknown;
+  workerId: unknown;
+  employeeKey: string;
+  fallbackByWorkerId: Map<number, number>;
+  fallbackByEmployeeKey: Map<string, number>;
+}) => {
+  const direct = toPayrollAmount(fixedSalary, 0);
+  if (direct > 0) return direct;
+
+  const normalizedWorkerId = toPositiveIntOrNull(workerId);
+  if (normalizedWorkerId !== null) {
+    const workerFallback = toPayrollAmount(
+      fallbackByWorkerId.get(normalizedWorkerId),
+      0
+    );
+    if (workerFallback > 0) return workerFallback;
+  }
+
+  const keyFallback = toPayrollAmount(fallbackByEmployeeKey.get(employeeKey), 0);
+  if (keyFallback > 0) return keyFallback;
+
+  return 0;
+};
+
 export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
@@ -184,6 +240,16 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       employees: ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee),
     };
   }
+
+  const previousSnapshot = await prisma.payrollSnapshot.findFirst({
+    where: {
+      orgId,
+      month: { lt: month },
+    },
+    orderBy: { month: "desc" },
+    select: { data: true },
+  });
+  const fixedSalaryFallback = buildFixedSalaryFallbackIndex(previousSnapshot?.data);
 
   const workLogs = await prisma.workLog.findMany({
     where: {
@@ -262,6 +328,13 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     const workerName = resolvePayrollEmployeeName(employee);
     const employeeKey = buildPayrollEmployeeKey(employee?.id, workerName);
     const payType = resolveEmployeeEffectivePayType(employee);
+    const resolvedFixedSalary = resolveFixedSalaryWithFallback({
+      fixedSalary: employee?.fixedSalary,
+      workerId: employee?.id,
+      employeeKey,
+      fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
+      fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
+    });
     employeeMap.set(employeeKey, {
       employeeKey,
       workerId: employee?.id ?? null,
@@ -272,7 +345,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       baseEarnings: 0,
-      fixedSalary: payType === "FIXED" ? toPayrollAmount(employee?.fixedSalary, 0) : 0,
+      fixedSalary: payType === "FIXED" ? resolvedFixedSalary : 0,
       processes: new Map(),
     });
   });
@@ -299,7 +372,15 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
 
       if (!employeeMap.has(key)) {
         const employeeFixedSalary =
-          effectivePayType === "FIXED" ? toPayrollAmount(employee?.fixedSalary, 0) : 0;
+          effectivePayType === "FIXED"
+            ? resolveFixedSalaryWithFallback({
+                fixedSalary: employee?.fixedSalary,
+                workerId: record.workerId ?? employee?.id,
+                employeeKey: key,
+                fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
+                fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
+              })
+            : 0;
         employeeMap.set(key, {
           employeeKey: key,
           workerId: record.workerId ?? null,

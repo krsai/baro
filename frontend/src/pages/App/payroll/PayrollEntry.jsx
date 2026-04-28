@@ -19,6 +19,9 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import DeleteActionButton from '../../../components/DeleteActionButton';
+import LockToggleSwitch from '../../../components/LockToggleSwitch';
+import SaveButton from '../../../components/SaveButton';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -47,16 +50,19 @@ const formatWagePerSecond = (value) =>
   })} 동/초`;
 
 const sanitizeMoneyInput = (value) => String(value ?? '').replace(/[^\d]/g, '');
+
 const parseMoneyInput = (value) => {
   const sanitized = sanitizeMoneyInput(value);
   if (!sanitized) return 0;
   const parsed = Number(sanitized);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
 const toMoneyNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
 const getEmployeeKey = (employee, index) => {
   const rawKey = String(employee?.employeeKey || '').trim();
   if (rawKey) return rawKey;
@@ -64,20 +70,26 @@ const getEmployeeKey = (employee, index) => {
   if (Number.isFinite(workerId) && workerId > 0) return `w-${workerId}`;
   return `n-${index}`;
 };
+
 const getPayTypeLabel = (value) =>
   String(value || '').trim().toUpperCase() === 'CT' ? '성과급' : '고정급';
+
 const getOverrideDraftFromEmployee = (employee) => ({
   fixedSalary:
     String(employee?.payType || '').trim().toUpperCase() === 'FIXED' &&
     toMoneyNumber(employee?.fixedSalary) > 0
       ? String(Math.round(toMoneyNumber(employee?.fixedSalary)))
       : '',
-  bonus: toMoneyNumber(employee?.bonus) > 0 ? String(Math.round(toMoneyNumber(employee?.bonus))) : '',
+  bonus:
+    toMoneyNumber(employee?.bonus) > 0
+      ? String(Math.round(toMoneyNumber(employee?.bonus)))
+      : '',
   deduction:
     toMoneyNumber(employee?.deduction) > 0
       ? String(Math.round(toMoneyNumber(employee?.deduction)))
       : '',
 });
+
 const amountFieldSx = {
   minWidth: 132,
   '& input': {
@@ -99,8 +111,8 @@ const PayrollEntry = () => {
     () => monthFromParam ?? new Date().toISOString().slice(0, 7)
   );
   const [loading, setLoading] = useState(false);
-  const [locking, setLocking] = useState(false);
-  const [unlocking, setUnlocking] = useState(false);
+  const [lockMutating, setLockMutating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [payrollData, setPayrollData] = useState(null);
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
   const [manualOverrides, setManualOverrides] = useState({});
@@ -151,27 +163,30 @@ const PayrollEntry = () => {
     setManualOverrides(nextOverrides);
   }, [payrollData]);
 
-  const handleCalculate = () => {
+  const handleCalculate = useCallback(() => {
     if (!payMonth) {
       showNotification('정산 월을 선택하세요.', 'error');
       return;
     }
     fetchPayroll(payMonth);
-  };
+  }, [payMonth, showNotification, fetchPayroll]);
 
-  const handleOverrideChange = useCallback((employeeKey, field) => (event) => {
-    const nextValue = sanitizeMoneyInput(event.target.value);
-    setManualOverrides((prev) => ({
-      ...prev,
-      [employeeKey]: {
-        fixedSalary: '',
-        bonus: '',
-        deduction: '',
-        ...(prev[employeeKey] || {}),
-        [field]: nextValue,
-      },
-    }));
-  }, []);
+  const handleOverrideChange = useCallback(
+    (employeeKey, field) => (event) => {
+      const nextValue = sanitizeMoneyInput(event.target.value);
+      setManualOverrides((prev) => ({
+        ...prev,
+        [employeeKey]: {
+          fixedSalary: '',
+          bonus: '',
+          deduction: '',
+          ...(prev[employeeKey] || {}),
+          [field]: nextValue,
+        },
+      }));
+    },
+    []
+  );
 
   const employees = payrollData?.employees ?? [];
   const isLocked = payrollData?.locked === true;
@@ -182,18 +197,28 @@ const PayrollEntry = () => {
       employees.map((employee, index) => {
         const employeeKey = getEmployeeKey(employee, index);
         const override = manualOverrides[employeeKey] || getOverrideDraftFromEmployee(employee);
-        const payType = String(employee?.payType || '').trim().toUpperCase() === 'CT' ? 'CT' : 'FIXED';
+        const payType =
+          String(employee?.payType || '').trim().toUpperCase() === 'CT' ? 'CT' : 'FIXED';
         const processCount = Array.isArray(employee?.processes) ? employee.processes.length : 0;
+
+        const fixedSalaryDraft = sanitizeMoneyInput(override.fixedSalary);
+        const resolvedFixedSalary =
+          fixedSalaryDraft !== ''
+            ? parseMoneyInput(fixedSalaryDraft)
+            : toMoneyNumber(employee?.fixedSalary);
+
         const baseEarnings =
           payType === 'FIXED'
             ? isLocked
               ? toMoneyNumber(employee?.fixedSalary)
-              : parseMoneyInput(override.fixedSalary)
+              : resolvedFixedSalary
             : toMoneyNumber(employee?.baseEarnings ?? employee?.totalEarnings);
+
         const bonus = isLocked ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
         const deduction = isLocked
           ? toMoneyNumber(employee?.deduction)
           : parseMoneyInput(override.deduction);
+
         const finalEarnings = isLocked
           ? toMoneyNumber(employee?.finalEarnings ?? employee?.totalEarnings)
           : baseEarnings + bonus - deduction;
@@ -204,7 +229,7 @@ const PayrollEntry = () => {
           payType,
           processCount,
           baseEarnings,
-          fixedSalary: payType === 'FIXED' ? baseEarnings : 0,
+          fixedSalary: payType === 'FIXED' ? resolvedFixedSalary : 0,
           bonus,
           deduction,
           finalEarnings,
@@ -213,40 +238,69 @@ const PayrollEntry = () => {
     [employees, isLocked, manualOverrides]
   );
 
-  const totalBaseEarnings = computedEmployees.reduce((sum, employee) => sum + employee.baseEarnings, 0);
+  const totalBaseEarnings = computedEmployees.reduce(
+    (sum, employee) => sum + employee.baseEarnings,
+    0
+  );
   const totalBonus = computedEmployees.reduce((sum, employee) => sum + employee.bonus, 0);
-  const totalDeduction = computedEmployees.reduce((sum, employee) => sum + employee.deduction, 0);
+  const totalDeduction = computedEmployees.reduce(
+    (sum, employee) => sum + employee.deduction,
+    0
+  );
   const totalFinalEarnings = computedEmployees.reduce(
     (sum, employee) => sum + employee.finalEarnings,
     0
   );
-  const fixedEmployeeCount = computedEmployees.filter((employee) => employee.payType === 'FIXED').length;
 
-  const handleLock = async () => {
-    if (!payrollData || payrollData.locked) return;
+  const canToggleLock = Boolean(payrollData) && (!isLocked || isAdmin);
+  const canDeleteCurrentPayroll = Boolean(payrollData) && !isLocked;
+
+  const buildSnapshotEmployeesPayload = useCallback(
+    () =>
+      computedEmployees.map((employee) => ({
+        employeeKey: employee.employeeKey,
+        workerId: employee.workerId ?? null,
+        workerName: employee.workerName ?? '',
+        orgRole: employee.orgRole ?? '',
+        roleName: employee.roleName ?? '',
+        payType: employee.payType,
+        bankName: employee.bankName ?? null,
+        bankAccountNumber: employee.bankAccountNumber ?? null,
+        baseEarnings: employee.payType === 'CT' ? employee.baseEarnings : 0,
+        fixedSalary: employee.payType === 'FIXED' ? employee.fixedSalary : 0,
+        bonus: employee.bonus,
+        deduction: employee.deduction,
+        finalEarnings: employee.finalEarnings,
+        totalEarnings: employee.finalEarnings,
+        processes: Array.isArray(employee.processes)
+          ? employee.processes.map((process) => ({
+              processCode: process.processCode ?? '',
+              processName: process.processName ?? '',
+              totalQuantity: toMoneyNumber(process.totalQuantity),
+              totalCtSeconds: toMoneyNumber(process.totalCtSeconds),
+              wagePerSecond: toMoneyNumber(process.wagePerSecond),
+              totalEarnings: toMoneyNumber(process.totalEarnings),
+            }))
+          : [],
+      })),
+    [computedEmployees]
+  );
+
+  const handleSaveAndLock = useCallback(async () => {
+    if (!payrollData || payrollData.locked || !currentMonth) return false;
 
     const missingFixedSalaryEmployee = computedEmployees.find(
-      (employee) =>
-        employee.payType === 'FIXED' &&
-        sanitizeMoneyInput(manualOverrides[employee.employeeKey]?.fixedSalary || '') === ''
+      (employee) => employee.payType === 'FIXED' && toMoneyNumber(employee.fixedSalary) <= 0
     );
     if (missingFixedSalaryEmployee) {
       showNotification(
         `${missingFixedSalaryEmployee.workerName || '고정급 직원'} 기준 급여를 입력하세요.`,
         'error'
       );
-      return;
+      return false;
     }
 
-    if (
-      !window.confirm(
-        `${currentMonth} 급여를 확정하시겠습니까? 확정 후에는 보너스/공제 내역까지 함께 저장됩니다.`
-      )
-    ) {
-      return;
-    }
-
-    setLocking(true);
+    setLockMutating(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       await requestJSON('/payroll/lock' + query, {
@@ -255,73 +309,100 @@ const PayrollEntry = () => {
         body: JSON.stringify({
           month: currentMonth,
           lockedBy: activeProfile?.email || activeProfile?.name || '관리자',
-          employees: computedEmployees.map((employee) => ({
-            employeeKey: employee.employeeKey,
-            workerId: employee.workerId ?? null,
-            workerName: employee.workerName ?? '',
-            orgRole: employee.orgRole ?? '',
-            roleName: employee.roleName ?? '',
-            payType: employee.payType,
-            bankName: employee.bankName ?? null,
-            bankAccountNumber: employee.bankAccountNumber ?? null,
-            baseEarnings: employee.payType === 'CT' ? employee.baseEarnings : 0,
-            fixedSalary: employee.payType === 'FIXED' ? employee.fixedSalary : 0,
-            bonus: employee.bonus,
-            deduction: employee.deduction,
-            finalEarnings: employee.finalEarnings,
-            totalEarnings: employee.finalEarnings,
-            processes: Array.isArray(employee.processes)
-              ? employee.processes.map((process) => ({
-                  processCode: process.processCode ?? '',
-                  processName: process.processName ?? '',
-                  totalQuantity: toMoneyNumber(process.totalQuantity),
-                  totalCtSeconds: toMoneyNumber(process.totalCtSeconds),
-                  wagePerSecond: toMoneyNumber(process.wagePerSecond),
-                  totalEarnings: toMoneyNumber(process.totalEarnings),
-                }))
-              : [],
-          })),
+          employees: buildSnapshotEmployeesPayload(),
         }),
       });
-      showNotification(`${currentMonth} 급여가 확정되었습니다.`, 'success');
-      closeEntry();
+      showNotification(`${currentMonth} 급여가 저장되고 잠금 처리되었습니다.`, 'success');
+      await fetchPayroll(currentMonth);
+      return true;
     } catch (error) {
       if (error?.message?.includes('already locked')) {
-        showNotification('이미 확정된 월입니다.', 'warning');
+        showNotification('이미 잠금된 월입니다.', 'warning');
+        await fetchPayroll(currentMonth);
       } else if (error?.message?.includes('insufficient org role')) {
-        showNotification('급여 확정 권한이 없습니다.', 'error');
+        showNotification('급여 잠금 권한이 없습니다.', 'error');
       } else {
-        showNotification(error?.message || '급여 확정에 실패했습니다.', 'error');
+        showNotification(error?.message || '급여 저장에 실패했습니다.', 'error');
       }
+      return false;
     } finally {
-      setLocking(false);
+      setLockMutating(false);
     }
-  };
+  }, [
+    payrollData,
+    currentMonth,
+    computedEmployees,
+    showNotification,
+    activeOrgId,
+    activeProfile?.email,
+    activeProfile?.name,
+    buildSnapshotEmployeesPayload,
+    fetchPayroll,
+  ]);
 
-  const handleUnlock = async () => {
-    if (!payrollData?.locked || !currentMonth) return;
-    if (!window.confirm(`${currentMonth} 급여 확정을 취소하시겠습니까? 다시 계산 상태로 되돌아갑니다.`)) {
-      return;
+  const handleUnlockByToggle = useCallback(async () => {
+    if (!payrollData?.locked || !currentMonth) return false;
+    if (!isAdmin) {
+      showNotification('급여 잠금 해제는 관리자만 가능합니다.', 'error');
+      return false;
     }
 
-    setUnlocking(true);
+    if (!window.confirm(`${currentMonth} 급여 잠금을 해제하시겠습니까?`)) {
+      return false;
+    }
+
+    setLockMutating(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       await requestJSON(`/payroll/snapshots/${currentMonth}` + query, {
         method: 'DELETE',
       });
-      showNotification(`${currentMonth} 급여 확정이 취소되었습니다.`, 'success');
+      showNotification(`${currentMonth} 급여 잠금이 해제되었습니다.`, 'success');
       await fetchPayroll(currentMonth);
+      return true;
     } catch (error) {
-      if (error?.message?.includes('insufficient org role')) {
-        showNotification('급여 확정 취소는 관리자만 가능합니다.', 'error');
-      } else {
-        showNotification(error?.message || '급여 확정 취소에 실패했습니다.', 'error');
-      }
+      showNotification(error?.message || '급여 잠금 해제에 실패했습니다.', 'error');
+      return false;
     } finally {
-      setUnlocking(false);
+      setLockMutating(false);
     }
-  };
+  }, [payrollData?.locked, currentMonth, isAdmin, activeOrgId, showNotification, fetchPayroll]);
+
+  const handleLockToggle = useCallback(
+    async (_event, nextLocked) => {
+      if (!payrollData || lockMutating) return;
+      if (nextLocked) {
+        await handleSaveAndLock();
+        return;
+      }
+      await handleUnlockByToggle();
+    },
+    [payrollData, lockMutating, handleSaveAndLock, handleUnlockByToggle]
+  );
+
+  const handleDeleteCurrentPayroll = useCallback(() => {
+    if (!payrollData) return;
+    if (isLocked) {
+      showNotification('잠금된 급여는 삭제할 수 없습니다.', 'warning');
+      return;
+    }
+    if (!window.confirm('현재 급여 계산 화면을 삭제하시겠습니까?')) return;
+
+    if (isNew) {
+      setPayrollData(null);
+      setExpandedWorkerId(null);
+      setManualOverrides({});
+      showNotification('급여 계산 화면을 초기화했습니다.', 'success');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      closeEntry();
+    } finally {
+      setDeleting(false);
+    }
+  }, [payrollData, isLocked, showNotification, isNew, closeEntry]);
 
   return (
     <AppPageContainer>
@@ -330,37 +411,50 @@ const PayrollEntry = () => {
           sx={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 2,
+            alignItems: { xs: 'stretch', md: 'center' },
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 1.5,
             mb: 2,
           }}
         >
-          <Box>
-            <Typography variant="h6">
-              {isNew ? '급여 계산' : `급여 ${monthFromParam}`}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {isLocked
-                ? `${payrollData.lockedBy || '-'} · ${
-                    payrollData.lockedAt
-                      ? new Date(payrollData.lockedAt).toLocaleString('ko-KR', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : '-'
-                  } 확정`
-                : payrollData
-                  ? fixedEmployeeCount > 0
-                    ? `고정급 ${fixedEmployeeCount}명은 기준 급여를 입력한 뒤 보너스/공제를 반영하세요.`
-                    : '성과급 계산액에 보너스/공제를 반영한 뒤 확정할 수 있습니다.'
-                  : '월을 선택하면 작업 기록 기준으로 급여를 계산합니다.'}
-            </Typography>
-          </Box>
-          <Chip
-            label={isLocked ? '확정됨' : payrollData ? '미확정' : '대기'}
-            color={isLocked ? 'success' : payrollData ? 'warning' : 'default'}
-            variant="outlined"
-          />
+          <Typography variant="h6">{isNew ? '급여 계산' : `급여 ${monthFromParam}`}</Typography>
+
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+            {payrollData && (
+              <Chip
+                label={isLocked ? '잠금' : '미잠금'}
+                color={isLocked ? 'success' : 'warning'}
+                variant="outlined"
+                size="small"
+              />
+            )}
+            {payrollData && (
+              <LockToggleSwitch
+                checked={isLocked}
+                disabled={!canToggleLock || lockMutating}
+                onChange={handleLockToggle}
+                ariaLabel={`급여 잠금 ${currentMonth}`}
+              />
+            )}
+            {payrollData && (
+              <DeleteActionButton
+                disabled={!canDeleteCurrentPayroll || lockMutating || deleting}
+                title={
+                  canDeleteCurrentPayroll ? '삭제' : '잠금된 급여는 삭제할 수 없습니다.'
+                }
+                onClick={handleDeleteCurrentPayroll}
+              />
+            )}
+            {payrollData && (
+              <SaveButton
+                onClick={handleSaveAndLock}
+                disabled={isLocked || lockMutating || computedEmployees.length === 0}
+                loading={lockMutating}
+              >
+                저장
+              </SaveButton>
+            )}
+          </Stack>
         </Box>
 
         {isNew && (
@@ -420,6 +514,7 @@ const PayrollEntry = () => {
                     총 최종 급여 {formatDong(totalFinalEarnings)}
                   </Typography>
                 </Box>
+
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
@@ -452,7 +547,9 @@ const PayrollEntry = () => {
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
                                     {employee.roleName || '-'}
-                                    {employee.processCount > 0 ? ` · ${employee.processCount}개 공정` : ''}
+                                    {employee.processCount > 0
+                                      ? ` · ${employee.processCount}개 공정`
+                                      : ''}
                                   </Typography>
                                 </Stack>
                               </TableCell>
@@ -517,7 +614,8 @@ const PayrollEntry = () => {
                                   variant="body2"
                                   sx={{
                                     fontWeight: 700,
-                                    color: employee.finalEarnings < 0 ? 'error.main' : 'text.primary',
+                                    color:
+                                      employee.finalEarnings < 0 ? 'error.main' : 'text.primary',
                                   }}
                                 >
                                   {formatDong(employee.finalEarnings)}
@@ -577,7 +675,9 @@ const PayrollEntry = () => {
                                             />
                                           ) : (
                                             employee.processes.map((process, processIndex) => (
-                                              <TableRow key={`${employee.employeeKey}-process-${processIndex}`}>
+                                              <TableRow
+                                                key={`${employee.employeeKey}-process-${processIndex}`}
+                                              >
                                                 <TableCell>
                                                   {process.processName || process.processCode || '-'}
                                                 </TableCell>
@@ -634,32 +734,6 @@ const PayrollEntry = () => {
                 </TableContainer>
               </Paper>
             )}
-
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button variant="outlined" onClick={closeEntry}>
-                {isLocked ? '닫기' : '취소'}
-              </Button>
-              {isLocked && isAdmin && (
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  onClick={handleUnlock}
-                  disabled={unlocking}
-                >
-                  {unlocking ? '처리 중...' : '확정 취소'}
-                </Button>
-              )}
-              {!isLocked && computedEmployees.length > 0 && (
-                <Button
-                  variant="contained"
-                  color="success"
-                  onClick={handleLock}
-                  disabled={locking}
-                >
-                  {locking ? '처리 중...' : '급여 확정'}
-                </Button>
-              )}
-            </Stack>
           </>
         )}
 

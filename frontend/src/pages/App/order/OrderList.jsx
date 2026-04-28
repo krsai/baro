@@ -23,7 +23,6 @@ import {
   Stack,
   CircularProgress,
   Tooltip,
-  Switch,
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -36,7 +35,9 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
+import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
+import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import PageSectionHeader from '../../../components/PageSectionHeader';
@@ -3548,39 +3549,25 @@ const OrderList = () => {
                           {order.dueDate || '-'}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
-                          <Switch
-                            size="small"
+                          <LockToggleSwitch
                             checked={Boolean(order?.isModificationLocked)}
                             disabled={listLockToggleDisabled}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                            }}
+                            stopPropagation
                             onChange={(event, checked) => {
-                              event.stopPropagation();
                               handleListModificationLockToggle(order, checked);
                             }}
-                            inputProps={{
-                              'aria-label': `${orderPageText.lockColumn} ${order.orderNumber || ''}`.trim(),
-                            }}
+                            ariaLabel={`${orderPageText.lockColumn} ${order.orderNumber || ''}`.trim()}
                           />
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
-                          <IconButton
-                            size="small"
-                            color="error"
+                          <DeleteActionButton
                             disabled={!deletable}
-                            title={
-                              deletable
-                                ? orderPageText.deleteOrder
-                                : orderPageText.modificationLocked
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation();
+                            title={deletable ? orderPageText.deleteOrder : orderPageText.modificationLocked}
+                            stopPropagation
+                            onClick={() => {
                               handleDeleteOrder(order);
                             }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          />
                         </TableCell>
                       </TableRow>
                     );
