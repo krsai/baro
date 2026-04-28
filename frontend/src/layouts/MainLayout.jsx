@@ -542,7 +542,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
             path: '/payroll',
-            disabled: true,
           },
           {
             label: getUiMessage('menu.productionResult', '\uC0DD\uC0B0 \uACB0\uACFC', languageCode),
