@@ -61,6 +61,8 @@ export const toDateKeyInTimeZone = (
   input: unknown,
   timeZone = "Asia/Seoul"
 ): string => {
+  if (input === null || input === undefined) return "";
+  if (typeof input === "string" && input.trim() === "") return "";
   const date = input instanceof Date ? input : new Date(input as any);
   if (Number.isNaN(date.getTime())) return "";
   try {

@@ -32,6 +32,8 @@ const buildWorkDateRange = (workDate: unknown) => {
 const BUSINESS_TIME_ZONE =
   resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
 const toDateKeyInTimeZone = (input: unknown, timeZone = BUSINESS_TIME_ZONE): string => {
+  if (input === null || input === undefined) return "";
+  if (typeof input === "string" && input.trim() === "") return "";
   const date = input instanceof Date ? input : new Date(input as any);
   if (Number.isNaN(date.getTime())) return "";
   try {

@@ -4713,6 +4713,8 @@ const WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = resolveFiniteEnvNumber(
   1
 );
 const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
+  if (input === null || input === undefined) return "";
+  if (typeof input === "string" && input.trim() === "") return "";
   const date = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(date.getTime())) return "";
   try {
