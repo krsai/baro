@@ -5911,7 +5911,7 @@ const validateWorkLogLineWorkers = async ({
       const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
       if (joinedDateKey && workDate < joinedDateKey) return;
       const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
-      if (leftDateKey && workDate > leftDateKey) return;
+      if (leftDateKey) return;
       matchedWorkerIdSet.add(workerId);
     });
     missingWorkerIds = workerIds.filter(
@@ -5950,19 +5950,16 @@ const validateWorkLogWorkerEmploymentWindow = async ({
       .trim()
       .toUpperCase();
     const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
+    const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
+    const isMembershipActive = membershipStatus === "ACTIVE";
+    const isLeftAtMissing = !leftDateKey;
     if (joinedDateKey && targetWorkDate < joinedDateKey) {
       return false;
     }
-    if (membershipStatus !== "ACTIVE" && membershipStatus !== "TERMINATED") {
+    if (!isMembershipActive) {
       return false;
     }
-    // ACTIVE membership is treated as currently employed even if legacy leftAt
-    // data remains populated.
-    if (membershipStatus === "ACTIVE") {
-      return true;
-    }
-    const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
-    if (leftDateKey && targetWorkDate > leftDateKey) {
+    if (!isLeftAtMissing) {
       return false;
     }
     return true;
@@ -6478,6 +6475,8 @@ const buildWorkLogContextResponse = async ({
         return;
       }
       const normalizedMembershipStatus = membershipStatus.toUpperCase();
+      const isMembershipActive = normalizedMembershipStatus === "ACTIVE";
+      const isLeftAtMissing = !leftDateKey;
 
       if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
         droppedWorkers.push({
@@ -6486,23 +6485,19 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
-      if (normalizedMembershipStatus !== "ACTIVE" && normalizedMembershipStatus !== "TERMINATED") {
+      // Only currently-employed workers are eligible for work-log entry.
+      if (!isMembershipActive) {
         droppedWorkers.push({
           ...baseInfo,
-          reason: "membership_not_active_or_terminated",
+          reason: "membership_not_active",
         });
         return;
       }
-      // ACTIVE membership is treated as currently employed even if legacy leftAt
-      // data remains populated.
-      if (
-        normalizedMembershipStatus !== "ACTIVE" &&
-        leftDateKey &&
-        normalizedWorkDate > leftDateKey
-      ) {
+      // If leftAt exists, treat worker as resigned and exclude regardless of date.
+      if (!isLeftAtMissing) {
         droppedWorkers.push({
           ...baseInfo,
-          reason: "workDate_after_leftAt",
+          reason: "leftAt_exists",
         });
         return;
       }
@@ -6739,6 +6734,36 @@ const buildWorkLogContextResponse = async ({
         lineAssignmentsOnWorkDate: lineAssignmentsOnWorkDate.length,
         assignmentPlansInFactory: assignmentPlans.length,
       },
+      lineAssignmentsOnWorkDateWorkers: lineAssignmentsOnWorkDate.map((assignment) => {
+        const employee = assignment?.employee;
+        const membershipStatus = String(employee?.membership?.status ?? "")
+          .trim()
+          .toUpperCase();
+        const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
+        const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
+        const joinedPass = !(joinedDateKey && normalizedWorkDate < joinedDateKey);
+        const isMembershipActive = membershipStatus === "ACTIVE";
+        const isLeftAtMissing = !leftDateKey;
+        const membershipPass = isMembershipActive;
+        const leftPass = isLeftAtMissing;
+        return {
+          workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
+          workerName: resolveOptionalString(employee?.name, "") ?? "",
+          membershipStatus,
+          membershipRole: String(employee?.membership?.role ?? "").trim().toUpperCase(),
+          roleCode: String(employee?.role?.code ?? "").trim().toUpperCase(),
+          workerFactoryId: toPositiveIntOrNull(employee?.factoryId),
+          joinedAtRaw: employee?.joinedAt ?? null,
+          leftAtRaw: employee?.leftAt ?? null,
+          joinedDateKey,
+          leftDateKey,
+          isLeftAtMissing,
+          joinedPass,
+          membershipPass,
+          leftPass,
+          finalPass: joinedPass && membershipPass && leftPass,
+        };
+      }),
       stageSummaries: filterDebugStages,
       stageReasonTotals: filterDebugStages.map((stage) => ({
         stage: stage.stage,

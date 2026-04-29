@@ -740,7 +740,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!selectedLineId || !workDateKey) return '';
     return `${selectedLineId}:${workDateKey}`;
   }, [selectedLineId, workDateKey]);
-  const workerDebugEnabled = true;
+  const workerDebugEnabled = false;
 
   useEffect(() => {
     const abortController = new AbortController();
