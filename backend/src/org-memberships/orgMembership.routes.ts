@@ -626,7 +626,53 @@ export const createOrgMembershipRouter = ({
         },
       });
 
-      if (currentStatus !== "ACTIVE") {
+      if (currentStatus === "ACTIVE" && membership.status === "TERMINATED") {
+        const hasActiveAssignment = await prisma.lineAssignment.findFirst({
+          where: {
+            employeeId: upsertedEmployee.id,
+            endAt: null,
+            line: {
+              orgId: membership.orgId,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (!hasActiveAssignment) {
+          const latestEndedAssignment = await prisma.lineAssignment.findFirst({
+            where: {
+              employeeId: upsertedEmployee.id,
+              endAt: { not: null },
+              line: {
+                orgId: membership.orgId,
+              },
+            },
+            select: {
+              lineId: true,
+              line: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+            orderBy: [{ endAt: "desc" }, { id: "desc" }],
+          });
+
+          if (latestEndedAssignment?.lineId) {
+            await prisma.lineAssignment.create({
+              data: {
+                employeeId: upsertedEmployee.id,
+                lineId: latestEndedAssignment.lineId,
+                startAt: now,
+              },
+            });
+            await prisma.employee.update({
+              where: { id: upsertedEmployee.id },
+              data: { lineName: latestEndedAssignment.line?.name ?? null },
+            });
+          }
+        }
+      } else if (currentStatus !== "ACTIVE") {
         await closeActiveLineAssignments(upsertedEmployee.id, now);
       }
     }
