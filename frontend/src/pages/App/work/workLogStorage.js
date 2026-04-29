@@ -56,6 +56,7 @@ export const loadWorkLogContext = async (options = {}) => {
     factoryId: options?.factoryId,
     lineId: options?.lineId,
     workDate: options?.workDate,
+    debug: options?.debug ? 1 : undefined,
   });
   return requestJSON(`/work-log-context${query}`, buildReadRequestOptions(options));
 };

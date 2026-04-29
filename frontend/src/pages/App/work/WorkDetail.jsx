@@ -740,6 +740,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!selectedLineId || !workDateKey) return '';
     return `${selectedLineId}:${workDateKey}`;
   }, [selectedLineId, workDateKey]);
+  const workerDebugEnabled = true;
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -890,11 +891,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       factoryId: selectedFactoryId,
       lineId: selectedLineId,
       workDate: workDateKey,
+      debug: workerDebugEnabled,
       skipGlobalLoading: true,
       signal: abortController.signal,
     })
       .then((context) => {
         if (cancelled) return;
+        if (workerDebugEnabled && context?._debug) {
+          console.warn('[work-log-context][debug]', context._debug);
+        }
         setAssignmentOptions(normalizeAssignmentPlanOptions(context?.assignments));
         setLineWorkers(normalizeWorkerOptions(context?.workers));
         if (context?.line) {
@@ -910,7 +915,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       cancelled = true;
       abortController.abort();
     };
-  }, [activeOrgId, currentContextKey, initialContext, initialContextKey, initialLog?.id, prefetchedAssignments, prefetchedWorkers, selectedFactoryId, selectedLineId, workDateKey]);
+  }, [activeOrgId, currentContextKey, initialContext, initialContextKey, initialLog?.id, prefetchedAssignments, prefetchedWorkers, selectedFactoryId, selectedLineId, workDateKey, workerDebugEnabled]);
 
   useEffect(() => {
     if (!initialLog?.id || initialRowsHydratedRef.current) return;

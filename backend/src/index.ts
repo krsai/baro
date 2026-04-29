@@ -6193,18 +6193,20 @@ const buildWorkLogContextResponse = async ({
   lineId = null,
   lineName = null,
   workDate = null,
+  debug = false,
 }: {
   orgId: number;
   factoryId?: number | null;
   lineId?: number | null;
   lineName?: string | null;
   workDate?: string | null;
+  debug?: boolean;
 }) => {
   const normalizedLineId = toPositiveIntOrNull(lineId);
   const normalizedFactoryId = toPositiveIntOrNull(factoryId);
   const normalizedWorkDate = normalizeDateKey(workDate);
   if (!normalizedLineId || !normalizedWorkDate) {
-    return {
+    const response = {
       line: normalizedLineId
         ? {
             id: normalizedLineId,
@@ -6214,6 +6216,19 @@ const buildWorkLogContextResponse = async ({
       workers: [],
       assignments: [],
     };
+    if (debug) {
+      return {
+        ...response,
+        _debug: {
+          reason: "missing_line_or_work_date",
+          orgId,
+          factoryId: normalizedFactoryId,
+          lineId: normalizedLineId,
+          workDate: normalizedWorkDate,
+        },
+      };
+    }
+    return response;
   }
 
   const line = await prisma.line.findFirst({
@@ -6225,7 +6240,7 @@ const buildWorkLogContextResponse = async ({
     select: { id: true, name: true, factoryId: true },
   });
   if (!line) {
-    return {
+    const response = {
       line: normalizedLineId
         ? {
             id: normalizedLineId,
@@ -6235,15 +6250,41 @@ const buildWorkLogContextResponse = async ({
       workers: [],
       assignments: [],
     };
+    if (debug) {
+      return {
+        ...response,
+        _debug: {
+          reason: "line_not_found_or_factory_mismatch",
+          orgId,
+          factoryId: normalizedFactoryId,
+          lineId: normalizedLineId,
+          workDate: normalizedWorkDate,
+        },
+      };
+    }
+    return response;
   }
 
   const dateRange = buildWorkDateRange(normalizedWorkDate);
   if (!dateRange) {
-    return {
+    const response = {
       line: { id: line.id, name: line.name ?? "" },
       workers: [],
       assignments: [],
     };
+    if (debug) {
+      return {
+        ...response,
+        _debug: {
+          reason: "invalid_date_range",
+          orgId,
+          factoryId: normalizedFactoryId,
+          lineId: line.id,
+          workDate: normalizedWorkDate,
+        },
+      };
+    }
+    return response;
   }
 
   const factoryLines = await prisma.line.findMany({
@@ -6633,7 +6674,7 @@ const buildWorkLogContextResponse = async ({
     });
   }
 
-  return {
+  const response = {
     line: { id: line.id, name: line.name ?? "" },
     workers: workersForDate.map(toWorkLogContextWorkerResponse),
     assignments: assignmentPlans
@@ -6644,6 +6685,31 @@ const buildWorkLogContextResponse = async ({
         })
       )
       .filter((plan) => Boolean(plan?.ctSnapshot?.totalCtSeconds)),
+  };
+  if (!debug) return response;
+
+  return {
+    ...response,
+    _debug: {
+      orgId,
+      factoryId: normalizedFactoryId,
+      lineId: line.id,
+      lineName: line.name ?? "",
+      workDate: normalizedWorkDate,
+      baseCounts: {
+        lineAssignmentsOnWorkDate: lineAssignmentsOnWorkDate.length,
+        assignmentPlansInFactory: assignmentPlans.length,
+      },
+      stageSummaries: filterDebugStages,
+      finalWorkerCount: response.workers.length,
+      finalWorkerIds: response.workers
+        .map((worker) => toPositiveIntOrNull(worker?.id))
+        .filter((workerId): workerId is number => workerId !== null),
+      fallbackUsed:
+        workersForDate.length > 0 && lineAssignmentsOnWorkDate.length === 0
+          ? "fallback"
+          : "on_work_date_assignments",
+    },
   };
 };
 const resolveWorkLogUpdatedBy = async (orgId: number, req: Request): Promise<string | null> => {
@@ -13346,6 +13412,9 @@ app.get("/work-log-context", async (req, res) => {
   const lineId = toPositiveIntOrNull(req.query.lineId);
   const factoryId = toPositiveIntOrNull(req.query.factoryId);
   const workDate = normalizeDateKey(req.query.workDate);
+  const debug =
+    String(req.query.debug || "").trim() === "1" ||
+    String(req.query.debug || "").trim().toLowerCase() === "true";
   if (!lineId) {
     return res.status(400).json({ ok: false, error: "lineId is required" });
   }
@@ -13358,6 +13427,7 @@ app.get("/work-log-context", async (req, res) => {
     factoryId,
     lineId,
     workDate,
+    debug,
   });
 
   res.json(context);
