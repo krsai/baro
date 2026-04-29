@@ -817,7 +817,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
         if (draft.joinedAt) employeePayload.joinedAt = draft.joinedAt;
-        if (draft.leftAt) employeePayload.leftAt = draft.leftAt;
+        if (Object.prototype.hasOwnProperty.call(draft, 'leftAt')) {
+          const normalizedLeftAt = String(draft.leftAt || '').trim();
+          employeePayload.leftAt = normalizedLeftAt ? normalizedLeftAt : null;
+        }
 
         const savedEmployee = await requestJSON('/employees', {
           method: 'POST',

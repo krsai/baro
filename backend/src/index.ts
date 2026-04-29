@@ -5946,17 +5946,10 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     targetWorkDate: string
   ) => {
     if (!worker) return false;
-    const membershipStatus = String(worker.membershipStatus ?? "")
-      .trim()
-      .toUpperCase();
     const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
     const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
-    const isMembershipActive = membershipStatus === "ACTIVE";
     const isLeftAtMissing = !leftDateKey;
     if (joinedDateKey && targetWorkDate < joinedDateKey) {
-      return false;
-    }
-    if (!isMembershipActive) {
       return false;
     }
     if (!isLeftAtMissing) {
@@ -6474,22 +6467,12 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
-      const normalizedMembershipStatus = membershipStatus.toUpperCase();
-      const isMembershipActive = normalizedMembershipStatus === "ACTIVE";
       const isLeftAtMissing = !leftDateKey;
 
       if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
         droppedWorkers.push({
           ...baseInfo,
           reason: "workDate_before_joinedAt",
-        });
-        return;
-      }
-      // Only currently-employed workers are eligible for work-log entry.
-      if (!isMembershipActive) {
-        droppedWorkers.push({
-          ...baseInfo,
-          reason: "membership_not_active",
         });
         return;
       }
@@ -6742,9 +6725,8 @@ const buildWorkLogContextResponse = async ({
         const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
         const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
         const joinedPass = !(joinedDateKey && normalizedWorkDate < joinedDateKey);
-        const isMembershipActive = membershipStatus === "ACTIVE";
         const isLeftAtMissing = !leftDateKey;
-        const membershipPass = isMembershipActive;
+        const membershipPass = true;
         const leftPass = isLeftAtMissing;
         return {
           workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
