@@ -5878,6 +5878,47 @@ const validateWorkLogLineWorkers = async ({
     );
   }
 
+  // Legacy fallback: if line assignment history is missing, allow workers whose
+  // denormalized employee.lineName still matches the selected line.
+  if (missingWorkerIds.length > 0) {
+    const fallbackLegacyWorkers = await prisma.employee.findMany({
+      where: {
+        orgId,
+        id: { in: missingWorkerIds },
+        ...(factoryId !== null ? { factoryId } : {}),
+        lineName: {
+          equals: line.name,
+          mode: "insensitive",
+        },
+        membership: {
+          role: "WORKER",
+          status: "ACTIVE",
+        },
+        role: {
+          code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
+        },
+      },
+      select: {
+        id: true,
+        joinedAt: true,
+        leftAt: true,
+      },
+    });
+
+    fallbackLegacyWorkers.forEach((worker) => {
+      const workerId = toPositiveIntOrNull(worker.id);
+      if (workerId === null) return;
+      const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
+      if (joinedDateKey && workDate < joinedDateKey) return;
+      const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
+      if (leftDateKey && workDate > leftDateKey) return;
+      matchedWorkerIdSet.add(workerId);
+    });
+    missingWorkerIds = workerIds.filter(
+      (workerId) => !matchedWorkerIdSet.has(workerId)
+    );
+  }
+
   return {
     status: 200,
     error: null as string | null,
@@ -6231,11 +6272,19 @@ const buildWorkLogContextResponse = async ({
         orgMembershipId: true,
         name: true,
         factoryId: true,
+        lineName: true,
         joinedAt: true,
         leftAt: true,
+        role: {
+          select: {
+            code: true,
+          },
+        },
         membership: {
           select: {
             email: true,
+            role: true,
+            status: true,
           },
         },
       },
@@ -6292,6 +6341,16 @@ const buildWorkLogContextResponse = async ({
     ensureArray(rows).filter((assignment) => {
       const employee = assignment?.employee;
       if (!employee) return false;
+      if (employee?.membership?.role !== "WORKER") {
+        return false;
+      }
+      if (employee?.membership?.status !== "ACTIVE") {
+        return false;
+      }
+      const workerRoleCode = String(employee?.role?.code ?? "").trim().toUpperCase();
+      if (workerRoleCode !== DEFAULT_EMPLOYEE_ROLE_CODE_SEWING) {
+        return false;
+      }
       const joinedDateKey = toDateKeyInTimeZone(employee.joinedAt, BUSINESS_TIME_ZONE);
       if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
         return false;
@@ -6325,6 +6384,43 @@ const buildWorkLogContextResponse = async ({
       workersForDate = fallbackWorkers;
       console.log(
         `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_active_assignments`
+      );
+    }
+  }
+
+  // Legacy fallback: keep old employee.lineName mapping working when lineAssignment
+  // history is missing or has not been migrated.
+  if (workersForDate.length === 0) {
+    const legacyWorkers = await prisma.employee.findMany({
+      where: {
+        orgId,
+        ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+        lineName: {
+          equals: line.name,
+          mode: "insensitive",
+        },
+        membership: {
+          role: "WORKER",
+          status: "ACTIVE",
+        },
+        role: {
+          code: DEFAULT_EMPLOYEE_ROLE_CODE_SEWING,
+        },
+      },
+      select: lineAssignmentSelect.employee.select,
+      orderBy: [{ id: "asc" }],
+    });
+    const legacyWorkersForDate = filterWorkersByEmploymentWindow(
+      legacyWorkers.map((employee) => ({
+        employeeId: employee.id,
+        lineId: line.id,
+        employee,
+      }))
+    );
+    if (legacyWorkersForDate.length > 0) {
+      workersForDate = legacyWorkersForDate;
+      console.log(
+        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_employee_line_name`
       );
     }
   }
