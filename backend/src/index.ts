@@ -6337,6 +6337,11 @@ const buildWorkLogContextResponse = async ({
       : [],
   ]);
 
+  const hasInProgressAssignmentOnLine = assignmentPlans.some((plan) => {
+    const planLineId = toPositiveIntOrNull(plan?.lineId);
+    return planLineId === line.id && !Boolean(plan?.isCompleted);
+  });
+
   const filterWorkersByEmploymentWindow = (rows: any[]) =>
     ensureArray(rows).filter((assignment) => {
       const employee = assignment?.employee;
@@ -6362,7 +6367,39 @@ const buildWorkLogContextResponse = async ({
       return true;
     });
 
-  let workersForDate = filterWorkersByEmploymentWindow(lineAssignmentsOnWorkDate);
+  let workerCandidates = [...lineAssignmentsOnWorkDate];
+
+  // If the line has at least one in-progress assignment card, allow current
+  // line members regardless of assignment date window.
+  if (hasInProgressAssignmentOnLine) {
+    const activeLineAssignments = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        endAt: null,
+        employee: {
+          is: {
+            orgId,
+            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+          },
+        },
+      },
+      select: lineAssignmentSelect,
+      orderBy: [{ employeeId: "asc" }],
+    });
+    const mergedByEmployeeId = new Map<number, any>();
+    [...lineAssignmentsOnWorkDate, ...activeLineAssignments].forEach((item) => {
+      const employeeId = toPositiveIntOrNull(item?.employeeId ?? item?.employee?.id);
+      if (employeeId === null) return;
+      if (mergedByEmployeeId.has(employeeId)) return;
+      mergedByEmployeeId.set(employeeId, item);
+    });
+    workerCandidates = Array.from(mergedByEmployeeId.values());
+    console.log(
+      `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=merge_date_and_active_assignments`
+    );
+  }
+
+  let workersForDate = filterWorkersByEmploymentWindow(workerCandidates);
 
   if (workersForDate.length === 0) {
     const activeLineAssignments = await prisma.lineAssignment.findMany({
