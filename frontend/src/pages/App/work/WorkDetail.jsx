@@ -899,6 +899,18 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         if (cancelled) return;
         if (workerDebugEnabled && context?._debug) {
           console.warn('[work-log-context][debug]', context._debug);
+          if (Array.isArray(context?._debug?.stageReasonTotals)) {
+            console.warn(
+              '[work-log-context][debug][reason-totals]',
+              context._debug.stageReasonTotals
+            );
+          }
+          if (Array.isArray(context?._debug?.stageDropExamples)) {
+            console.warn(
+              '[work-log-context][debug][drop-examples]',
+              context._debug.stageDropExamples
+            );
+          }
         }
         setAssignmentOptions(normalizeAssignmentPlanOptions(context?.assignments));
         setLineWorkers(normalizeWorkerOptions(context?.workers));

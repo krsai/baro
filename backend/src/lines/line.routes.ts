@@ -64,7 +64,9 @@ const buildLineEligibleWorkerWhere = (
     ? {
         AND: [
           { OR: [{ joinedAt: null }, { joinedAt: { lte: dateRange.endAt } }] },
-          { OR: [{ leftAt: null }, { leftAt: { gte: dateRange.startAt } }] },
+          // ACTIVE membership is treated as currently employed even if legacy
+          // leftAt data remains populated.
+          { membership: { status: "ACTIVE" } },
         ],
       }
     : {}),

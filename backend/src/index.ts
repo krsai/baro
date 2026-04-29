@@ -5938,13 +5938,28 @@ const validateWorkLogWorkerEmploymentWindow = async ({
   workerIds: number[];
 }) => {
   const isWorkerAvailableOnWorkDate = (
-    worker: { joinedAt?: unknown; leftAt?: unknown } | null | undefined,
+    worker: {
+      joinedAt?: unknown;
+      leftAt?: unknown;
+      membershipStatus?: unknown;
+    } | null | undefined,
     targetWorkDate: string
   ) => {
     if (!worker) return false;
+    const membershipStatus = String(worker.membershipStatus ?? "")
+      .trim()
+      .toUpperCase();
     const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
     if (joinedDateKey && targetWorkDate < joinedDateKey) {
       return false;
+    }
+    if (membershipStatus !== "ACTIVE" && membershipStatus !== "TERMINATED") {
+      return false;
+    }
+    // ACTIVE membership is treated as currently employed even if legacy leftAt
+    // data remains populated.
+    if (membershipStatus === "ACTIVE") {
+      return true;
     }
     const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
     if (leftDateKey && targetWorkDate > leftDateKey) {
@@ -5971,15 +5986,24 @@ const validateWorkLogWorkerEmploymentWindow = async ({
       id: true,
       joinedAt: true,
       leftAt: true,
+      membership: {
+        select: {
+          status: true,
+        },
+      },
     },
   });
-  const workerById = new Map<number, { joinedAt: unknown; leftAt: unknown }>();
+  const workerById = new Map<
+    number,
+    { joinedAt: unknown; leftAt: unknown; membershipStatus: unknown }
+  >();
   workers.forEach((worker) => {
     const workerId = toPositiveIntOrNull(worker.id);
     if (workerId === null) return;
     workerById.set(workerId, {
       joinedAt: worker.joinedAt,
       leftAt: worker.leftAt,
+      membershipStatus: worker.membership?.status,
     });
   });
 
@@ -6453,6 +6477,8 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
+      const normalizedMembershipStatus = membershipStatus.toUpperCase();
+
       if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
         droppedWorkers.push({
           ...baseInfo,
@@ -6460,7 +6486,20 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
-      if (leftDateKey && normalizedWorkDate > leftDateKey) {
+      if (normalizedMembershipStatus !== "ACTIVE" && normalizedMembershipStatus !== "TERMINATED") {
+        droppedWorkers.push({
+          ...baseInfo,
+          reason: "membership_not_active_or_terminated",
+        });
+        return;
+      }
+      // ACTIVE membership is treated as currently employed even if legacy leftAt
+      // data remains populated.
+      if (
+        normalizedMembershipStatus !== "ACTIVE" &&
+        leftDateKey &&
+        normalizedWorkDate > leftDateKey
+      ) {
         droppedWorkers.push({
           ...baseInfo,
           reason: "workDate_after_leftAt",
@@ -6701,6 +6740,14 @@ const buildWorkLogContextResponse = async ({
         assignmentPlansInFactory: assignmentPlans.length,
       },
       stageSummaries: filterDebugStages,
+      stageReasonTotals: filterDebugStages.map((stage) => ({
+        stage: stage.stage,
+        droppedByReason: stage.droppedByReason,
+      })),
+      stageDropExamples: filterDebugStages.map((stage) => ({
+        stage: stage.stage,
+        examples: stage.droppedWorkers.slice(0, 5),
+      })),
       finalWorkerCount: response.workers.length,
       finalWorkerIds: response.workers
         .map((worker) => toPositiveIntOrNull(worker?.id))
