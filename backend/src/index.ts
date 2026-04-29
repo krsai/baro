@@ -6266,6 +6266,8 @@ const buildWorkLogContextResponse = async ({
   const lineAssignmentSelect = {
     employeeId: true,
     lineId: true,
+    startAt: true,
+    endAt: true,
     employee: {
       select: {
         id: true,
@@ -6337,22 +6339,119 @@ const buildWorkLogContextResponse = async ({
       : [],
   ]);
 
-  const filterWorkersByEmploymentWindow = (rows: any[]) =>
-    ensureArray(rows).filter((assignment) => {
+  const filterDebugStages: Array<{
+    stage: string;
+    total: number;
+    passed: number;
+    dropped: number;
+    droppedByReason: Record<string, number>;
+    droppedWorkers: Array<{
+      employeeId: number | null;
+      name: string;
+      reason: string;
+      workerFactoryId: number | null;
+      joinedDateKey: string;
+      leftDateKey: string;
+      assignmentStartDateKey: string;
+      assignmentEndDateKey: string;
+      membershipStatus: string;
+      membershipRole: string;
+      roleCode: string;
+    }>;
+  }> = [];
+  const filterWorkersByEmploymentWindow = (rows: any[], stage: string) => {
+    const safeRows = ensureArray(rows);
+    const passed: any[] = [];
+    const droppedWorkers: Array<{
+      employeeId: number | null;
+      name: string;
+      reason: string;
+      workerFactoryId: number | null;
+      joinedDateKey: string;
+      leftDateKey: string;
+      assignmentStartDateKey: string;
+      assignmentEndDateKey: string;
+      membershipStatus: string;
+      membershipRole: string;
+      roleCode: string;
+    }> = [];
+
+    safeRows.forEach((assignment) => {
       const employee = assignment?.employee;
-      if (!employee) return false;
-      const joinedDateKey = toDateKeyInTimeZone(employee.joinedAt, BUSINESS_TIME_ZONE);
+      const employeeId = toPositiveIntOrNull(employee?.id ?? assignment?.employeeId);
+      const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
+      const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
+      const assignmentStartDateKey = toDateKeyInTimeZone(
+        assignment?.startAt,
+        BUSINESS_TIME_ZONE
+      );
+      const assignmentEndDateKey = toDateKeyInTimeZone(
+        assignment?.endAt,
+        BUSINESS_TIME_ZONE
+      );
+      const membershipStatus = String(employee?.membership?.status ?? "").trim();
+      const membershipRole = String(employee?.membership?.role ?? "").trim();
+      const roleCode = String(employee?.role?.code ?? "").trim();
+      const baseInfo = {
+        employeeId,
+        name: resolveOptionalString(employee?.name, "") ?? "",
+        workerFactoryId: toPositiveIntOrNull(employee?.factoryId),
+        joinedDateKey,
+        leftDateKey,
+        assignmentStartDateKey,
+        assignmentEndDateKey,
+        membershipStatus,
+        membershipRole,
+        roleCode,
+      };
+
+      if (!employee) {
+        droppedWorkers.push({
+          ...baseInfo,
+          reason: "missing_employee",
+        });
+        return;
+      }
       if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
-        return false;
+        droppedWorkers.push({
+          ...baseInfo,
+          reason: "workDate_before_joinedAt",
+        });
+        return;
       }
-      const leftDateKey = toDateKeyInTimeZone(employee.leftAt, BUSINESS_TIME_ZONE);
       if (leftDateKey && normalizedWorkDate > leftDateKey) {
-        return false;
+        droppedWorkers.push({
+          ...baseInfo,
+          reason: "workDate_after_leftAt",
+        });
+        return;
       }
-      return true;
+      passed.push(assignment);
     });
 
-  let workersForDate = filterWorkersByEmploymentWindow(lineAssignmentsOnWorkDate);
+    const droppedByReason = droppedWorkers.reduce<Record<string, number>>(
+      (acc, item) => {
+        const key = item.reason || "unknown";
+        acc[key] = (acc[key] ?? 0) + 1;
+        return acc;
+      },
+      {}
+    );
+    filterDebugStages.push({
+      stage,
+      total: safeRows.length,
+      passed: passed.length,
+      dropped: droppedWorkers.length,
+      droppedByReason,
+      droppedWorkers,
+    });
+    return passed;
+  };
+
+  let workersForDate = filterWorkersByEmploymentWindow(
+    lineAssignmentsOnWorkDate,
+    "line_assignments_on_work_date"
+  );
 
   if (workersForDate.length === 0) {
     const activeLineAssignments = await prisma.lineAssignment.findMany({
@@ -6369,7 +6468,10 @@ const buildWorkLogContextResponse = async ({
       select: lineAssignmentSelect,
       orderBy: [{ employeeId: "asc" }],
     });
-    const fallbackWorkers = filterWorkersByEmploymentWindow(activeLineAssignments);
+    const fallbackWorkers = filterWorkersByEmploymentWindow(
+      activeLineAssignments,
+      "fallback_active_line_assignments"
+    );
     if (fallbackWorkers.length > 0) {
       workersForDate = fallbackWorkers;
       console.log(
@@ -6405,7 +6507,8 @@ const buildWorkLogContextResponse = async ({
         employeeId: employee.id,
         lineId: line.id,
         employee,
-      }))
+      })),
+      "fallback_employee_line_name"
     );
     if (legacyWorkersForDate.length > 0) {
       workersForDate = legacyWorkersForDate;
@@ -6475,7 +6578,10 @@ const buildWorkLogContextResponse = async ({
           return activeLineId === line.id;
         }
       );
-      const fallbackWorkers = filterWorkersByEmploymentWindow(historicalCandidates);
+      const fallbackWorkers = filterWorkersByEmploymentWindow(
+        historicalCandidates,
+        "fallback_historical_line_assignments"
+      );
       if (fallbackWorkers.length > 0) {
         workersForDate = fallbackWorkers;
         console.log(
@@ -6483,6 +6589,48 @@ const buildWorkLogContextResponse = async ({
         );
       }
     }
+  }
+
+  if (workersForDate.length === 0) {
+    const activeAssignmentsAllFactories = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        endAt: null,
+        employee: {
+          is: {
+            orgId,
+          },
+        },
+      },
+      select: lineAssignmentSelect,
+      orderBy: [{ employeeId: "asc" }],
+    });
+    const activeAssignmentsOnSelectedFactory = activeAssignmentsAllFactories.filter(
+      (assignment) => {
+        if (!normalizedFactoryId) return true;
+        const workerFactoryId = toPositiveIntOrNull(assignment?.employee?.factoryId);
+        return workerFactoryId === normalizedFactoryId;
+      }
+    );
+
+    console.log(
+      `[work-log-context][debug] orgId=${orgId} lineId=${line.id} lineName=${line.name ?? ""} factoryId=${normalizedFactoryId ?? "null"} workDate=${normalizedWorkDate} finalWorkers=0`
+    );
+    console.log(
+      `[work-log-context][debug] baseCounts onWorkDate=${lineAssignmentsOnWorkDate.length} activeAnyFactory=${activeAssignmentsAllFactories.length} activeSelectedFactory=${activeAssignmentsOnSelectedFactory.length} assignmentPlans=${assignmentPlans.length}`
+    );
+    filterDebugStages.forEach((stageSummary) => {
+      console.log(
+        `[work-log-context][debug] stage=${stageSummary.stage} total=${stageSummary.total} passed=${stageSummary.passed} dropped=${stageSummary.dropped} droppedByReason=${JSON.stringify(
+          stageSummary.droppedByReason
+        )}`
+      );
+      stageSummary.droppedWorkers.slice(0, 40).forEach((worker) => {
+        console.log(
+          `[work-log-context][debug] stage=${stageSummary.stage} drop workerId=${worker.employeeId ?? "null"} name=${worker.name || "-"} reason=${worker.reason} workerFactoryId=${worker.workerFactoryId ?? "null"} joined=${worker.joinedDateKey || "-"} left=${worker.leftDateKey || "-"} assignmentStart=${worker.assignmentStartDateKey || "-"} assignmentEnd=${worker.assignmentEndDateKey || "-"} membershipStatus=${worker.membershipStatus || "-"} membershipRole=${worker.membershipRole || "-"} roleCode=${worker.roleCode || "-"}`
+        );
+      });
+    });
   }
 
   return {
