@@ -13367,27 +13367,48 @@ app.put("/attendance-entries", async (req, res) => {
   }
 
   const savedRows = await prisma.$transaction(async (tx) => {
-    await tx.attendanceEntry.deleteMany({
-      where: {
-        orgId: organization.id,
-        factoryId,
-        workDate,
-      },
-    });
-
-    if (writableRows.length > 0) {
-      await tx.attendanceEntry.createMany({
-        data: writableRows.map((row) => ({
+    if (normalized.rows.length === 0) {
+      await tx.attendanceEntry.deleteMany({
+        where: {
           orgId: organization.id,
           factoryId,
-          workerId: row.workerId,
           workDate,
-          clockIn: row.clockIn,
-          clockOut: row.clockOut,
-          workedSeconds: row.workedSeconds,
-          note: row.note,
-        })),
+        },
       });
+      return [];
+    }
+
+    if (writableRows.length > 0) {
+      await Promise.all(
+        writableRows.map((row) =>
+          tx.attendanceEntry.upsert({
+            where: {
+              orgId_factoryId_workerId_workDate: {
+                orgId: organization.id,
+                factoryId,
+                workerId: row.workerId,
+                workDate,
+              },
+            },
+            create: {
+              orgId: organization.id,
+              factoryId,
+              workerId: row.workerId,
+              workDate,
+              clockIn: row.clockIn,
+              clockOut: row.clockOut,
+              workedSeconds: row.workedSeconds,
+              note: row.note,
+            },
+            update: {
+              clockIn: row.clockIn,
+              clockOut: row.clockOut,
+              workedSeconds: row.workedSeconds,
+              note: row.note,
+            },
+          })
+        )
+      );
     }
 
     return tx.attendanceEntry.findMany({
