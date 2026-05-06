@@ -27,24 +27,197 @@ import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchAttributes } from '../../../utils/attributeApi';
 
-const EMPLOYEE_STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: '재직' },
-  { value: 'SUSPENDED', label: '휴직' },
-  { value: 'TERMINATED', label: '퇴사' },
-];
-const EMPLOYEE_STATUS_FILTER_OPTIONS = [
-  { value: 'ACTIVE', label: '재직' },
-  { value: 'SUSPENDED', label: '휴직' },
-  { value: 'TERMINATED', label: '퇴사' },
-  { value: 'ALL', label: '전체 상태' },
-];
-
-const ORG_ROLE_OPTIONS = [
-  { value: 'ADMIN', label: '관리자' },
-  { value: 'OPERATOR', label: '운영자' },
-  { value: 'ACCOUNTANT', label: '회계사' },
-  { value: 'WORKER', label: '작업자' },
-];
+const EMPLOYEE_STATUS_VALUES = ['ACTIVE', 'SUSPENDED', 'TERMINATED'];
+const EMPLOYEE_STATUS_FILTER_VALUES = [...EMPLOYEE_STATUS_VALUES, 'ALL'];
+const ORG_ROLE_VALUES = ['ADMIN', 'OPERATOR', 'ACCOUNTANT', 'WORKER'];
+const EMPLOYEE_STATUS_LABELS = {
+  ACTIVE: { ko: '재직', en: 'Active', vi: 'Dang lam' },
+  SUSPENDED: { ko: '휴직', en: 'Suspended', vi: 'Tam nghi' },
+  TERMINATED: { ko: '퇴사', en: 'Terminated', vi: 'Nghi viec' },
+  ALL: { ko: '전체 상태', en: 'All statuses', vi: 'Tat ca trang thai' },
+};
+const ORG_ROLE_LABELS = {
+  ADMIN: { ko: '관리자', en: 'Admin', vi: 'Quan tri' },
+  OPERATOR: { ko: '운영자', en: 'Operator', vi: 'Van hanh' },
+  ACCOUNTANT: { ko: '회계사', en: 'Accountant', vi: 'Ke toan' },
+  WORKER: { ko: '작업자', en: 'Cong nhan' },
+};
+const EMPLOYEE_BOARD_TEXT = {
+  pageTitle: { ko: '직원 관리', en: 'Employee Management', vi: 'Quan ly nhan vien' },
+  addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
+  drawerAddTitle: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
+  drawerEditTitle: { ko: '직원 수정', en: 'Edit Employee', vi: 'Sua nhan vien' },
+  requiredHint: {
+    ko: '* 표시 항목은 필수 입력입니다.',
+    en: '* Marked fields are required.',
+    vi: '* Cac muc danh dau la bat buoc.',
+  },
+  loginEmailLabel: { ko: '로그인 이메일', en: 'Login Email', vi: 'Email dang nhap' },
+  loginEmailHelperRequired: {
+    ko: '관리자/운영자는 로그인 이메일이 필요합니다.',
+    en: 'Admin/Operator roles require a login email.',
+    vi: 'Vai tro Quan tri/Van hanh can email dang nhap.',
+  },
+  loginEmailHelperOptional: {
+    ko: '작업자/회계사는 비워두면 사번(내부키)으로 생성됩니다.',
+    en: 'For Worker/Accountant, leave blank to generate an internal employee code.',
+    vi: 'Voi Cong nhan/Ke toan, de trong de tao ma nhan vien noi bo.',
+  },
+  employeeCodePrefix: { ko: '사번', en: 'Employee Code', vi: 'Ma nhan vien' },
+  nameLabel: { ko: '이름', en: 'Name', vi: 'Ten' },
+  requiredInput: { ko: '필수 입력', en: 'Required', vi: 'Bat buoc' },
+  bankLabel: { ko: '은행', en: 'Bank', vi: 'Ngan hang' },
+  accountLabel: { ko: '계좌번호', en: 'Account Number', vi: 'So tai khoan' },
+  roleLabel: { ko: '권한', en: 'Role', vi: 'Quyen' },
+  jobLabel: { ko: '직무', en: 'Job Role', vi: 'Vai tro cong viec' },
+  factoryLabel: { ko: '공장', en: 'Factory', vi: 'Nha may' },
+  factorySelect: { ko: '공장 선택', en: 'Select Factory', vi: 'Chon nha may' },
+  allFactory: { ko: '전체 공장', en: 'All Factories', vi: 'Tat ca nha may' },
+  noFactory: { ko: '공장 없음', en: 'No Factory', vi: 'Khong nha may' },
+  factoryRequiredAuto: {
+    ko: '필수 항목(내 소속 공장으로 자동 설정)',
+    en: 'Required (auto-set to your assigned factory)',
+    vi: 'Bat buoc (tu dong dat theo nha may cua ban)',
+  },
+  payTypeLabel: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
+  fixedSalaryLabel: { ko: '고정급 금액', en: 'Fixed Salary', vi: 'Muc luong co dinh' },
+  moneyPlaceholder: { ko: '예: 8,000,000', en: 'e.g. 8,000,000', vi: 'Vi du: 8,000,000' },
+  joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
+  leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
+  statusLabel: { ko: '상태', en: 'Status', vi: 'Trang thai' },
+  drawerHint: {
+    ko: '직원 목록에서 선택한 항목을 여기서 수정하고 저장합니다.',
+    en: 'Edit and save the selected employee here.',
+    vi: 'Chinh sua va luu nhan vien da chon tai day.',
+  },
+  cancelButton: { ko: '취소', en: 'Cancel', vi: 'Huy' },
+  pendingTitle: { ko: '승인 대기 목록', en: 'Pending Approvals', vi: 'Danh sach cho duyet' },
+  emailColumn: { ko: '이메일', en: 'Email', vi: 'Email' },
+  requestDateColumn: { ko: '요청일', en: 'Requested At', vi: 'Ngay yeu cau' },
+  actionColumn: { ko: '액션', en: 'Action', vi: 'Tac vu' },
+  approve: { ko: '승인', en: 'Approve', vi: 'Duyet' },
+  approving: { ko: '승인 중...', en: 'Approving...', vi: 'Dang duyet...' },
+  reject: { ko: '반려', en: 'Reject', vi: 'Tu choi' },
+  rejecting: { ko: '반려 중...', en: 'Rejecting...', vi: 'Dang tu choi...' },
+  activeListTitle: {
+    ko: '재직/퇴직 직원 목록',
+    en: 'Active/Former Employees',
+    vi: 'Danh sach nhan vien dang lam/nghi viec',
+  },
+  searchPlaceholder: {
+    ko: '이름, 이메일, 직무 검색',
+    en: 'Search name, email, or job role',
+    vi: 'Tim ten, email, hoac vai tro',
+  },
+  nameColumn: { ko: '이름', en: 'Name', vi: 'Ten' },
+  emailOrCodeColumn: { ko: '이메일/사번', en: 'Email/Code', vi: 'Email/Ma NV' },
+  payTypeColumn: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
+  joinedAtColumn: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
+  leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
+  noSearchResult: { ko: '검색 결과가 없습니다.', en: 'No search results.', vi: 'Khong co ket qua tim kiem.' },
+  noEmployeeRows: { ko: '표시할 직원이 없습니다.', en: 'No employees to display.', vi: 'Khong co nhan vien de hien thi.' },
+  terminatedPreserveNote: {
+    ko: '퇴사 처리 시 기존 생산/급여 집계 데이터는 보존됩니다.',
+    en: 'When terminated, existing production/payroll aggregate data is preserved.',
+    vi: 'Khi nghi viec, du lieu tong hop san xuat/luong hien co van duoc giu nguyen.',
+  },
+  rehiredNote: {
+    ko: '재입사 처리됩니다. 저장 후 라인 배정을 확인해주세요.',
+    en: 'This will be treated as rehire. Please review line assignment after saving.',
+    vi: 'Se duoc xu ly la tai gia nhap. Hay kiem tra phan cong chuyen sau khi luu.',
+  },
+  errLoadMembership: {
+    ko: '조직 멤버 정보를 불러오지 못했습니다.',
+    en: 'Failed to load organization members.',
+    vi: 'Khong the tai thong tin thanh vien to chuc.',
+  },
+  errLoadFactory: {
+    ko: '공장 정보를 불러오지 못했습니다.',
+    en: 'Failed to load factory information.',
+    vi: 'Khong the tai thong tin nha may.',
+  },
+  errLoadEmployee: {
+    ko: '직원 정보를 불러오지 못했습니다.',
+    en: 'Failed to load employee information.',
+    vi: 'Khong the tai thong tin nhan vien.',
+  },
+  errLoadJobRole: {
+    ko: '직무 정보를 불러오지 못했습니다.',
+    en: 'Failed to load job role information.',
+    vi: 'Khong the tai thong tin vai tro cong viec.',
+  },
+  errNeedFactoryBeforeApprove: {
+    ko: '승인 전에 공장을 선택해 주세요.',
+    en: 'Please select a factory before approval.',
+    vi: 'Vui long chon nha may truoc khi duyet.',
+  },
+  errNeedRoleBeforeApprove: {
+    ko: '승인 전에 역할을 선택해 주세요.',
+    en: 'Please select a role before approval.',
+    vi: 'Vui long chon quyen truoc khi duyet.',
+  },
+  approveSuccess: { ko: '승인을 완료했습니다.', en: 'Approval completed.', vi: 'Da duyet xong.' },
+  approveError: { ko: '승인에 실패했습니다.', en: 'Approval failed.', vi: 'Duyet that bai.' },
+  rejectSuccess: { ko: '반려 처리를 완료했습니다.', en: 'Rejection completed.', vi: 'Da tu choi xong.' },
+  rejectError: { ko: '반려 처리에 실패했습니다.', en: 'Rejection failed.', vi: 'Tu choi that bai.' },
+  employeeSaved: { ko: '직원 정보가 저장되었습니다.', en: 'Employee information saved.', vi: 'Da luu thong tin nhan vien.' },
+  employeeSaveError: { ko: '직원 정보 저장에 실패했습니다.', en: 'Failed to save employee information.', vi: 'Khong the luu thong tin nhan vien.' },
+  errNoEditPermission: { ko: '직원 수정 권한이 없습니다.', en: 'No permission to edit employees.', vi: 'Ban khong co quyen sua nhan vien.' },
+  errInvalidEmail: { ko: '유효한 이메일 형식이 아닙니다.', en: 'Invalid email format.', vi: 'Dinh dang email khong hop le.' },
+  errNameRequired: { ko: '이름은 필수 입력입니다.', en: 'Name is required.', vi: 'Ten la bat buoc.' },
+  errNeedLoginEmail: {
+    ko: '관리자/운영자는 로그인 이메일이 필요합니다.',
+    en: 'Admin/Operator roles require a login email.',
+    vi: 'Vai tro Quan tri/Van hanh can email dang nhap.',
+  },
+  errInvalidDateRange: {
+    ko: '입사일/퇴사일 형식이 올바르지 않습니다.',
+    en: 'Join/leave date format is invalid.',
+    vi: 'Dinh dang ngay vao lam/nghi viec khong hop le.',
+  },
+  errLeftBeforeJoin: {
+    ko: '퇴사일은 입사일 이후여야 합니다.',
+    en: 'Leave date must be after join date.',
+    vi: 'Ngay nghi viec phai sau ngay vao lam.',
+  },
+  errNeedFactory: { ko: '공장을 선택해 주세요.', en: 'Please select a factory.', vi: 'Vui long chon nha may.' },
+  errInvalidFactory: { ko: '유효한 공장을 선택해 주세요.', en: 'Please select a valid factory.', vi: 'Vui long chon nha may hop le.' },
+  errEmailAlreadyRegisteredDetail: {
+    ko: '이미 등록된 이메일입니다. 기존 직원을 선택해 수정해 주세요.',
+    en: 'This email is already registered. Select existing employee to edit.',
+    vi: 'Email nay da duoc dang ky. Hay chon nhan vien da co de sua.',
+  },
+  errMemberNotFound: {
+    ko: '선택한 직원 정보를 찾을 수 없습니다.',
+    en: 'Could not find selected employee.',
+    vi: 'Khong tim thay nhan vien da chon.',
+  },
+  errEmailAlreadyRegistered: {
+    ko: '이미 등록된 이메일입니다.',
+    en: 'This email is already registered.',
+    vi: 'Email nay da duoc dang ky.',
+  },
+  errEmployeeSaveFailed: { ko: '직원 저장에 실패했습니다.', en: 'Failed to save employee.', vi: 'Luu nhan vien that bai.' },
+};
+const resolveLocalized = (entry, languageCode = 'ko') =>
+  entry?.[languageCode] || entry?.ko || entry?.en || entry?.vi || '';
+const text = (key, languageCode = 'ko') =>
+  resolveLocalized(EMPLOYEE_BOARD_TEXT[key], languageCode);
+const getEmployeeStatusOptions = (languageCode = 'ko') =>
+  EMPLOYEE_STATUS_VALUES.map((value) => ({
+    value,
+    label: resolveLocalized(EMPLOYEE_STATUS_LABELS[value], languageCode),
+  }));
+const getEmployeeStatusFilterOptions = (languageCode = 'ko') =>
+  EMPLOYEE_STATUS_FILTER_VALUES.map((value) => ({
+    value,
+    label: resolveLocalized(EMPLOYEE_STATUS_LABELS[value], languageCode),
+  }));
+const getOrgRoleOptions = (languageCode = 'ko') =>
+  ORG_ROLE_VALUES.map((value) => ({
+    value,
+    label: resolveLocalized(ORG_ROLE_LABELS[value], languageCode),
+  }));
 
 const WORKER_JOB_ROLE_CODES = new Set([
   'WORKER_SUPERVISOR',
@@ -56,10 +229,6 @@ const WORKER_JOB_ROLE_CODES = new Set([
   'WORKER_OTHER',
 ]);
 const DEFAULT_WORKER_JOB_ROLE_CODE = 'WORKER_SEWING';
-const ORG_ROLE_LABELS = ORG_ROLE_OPTIONS.reduce((map, option) => {
-  map[option.value] = option.label;
-  return map;
-}, {});
 const ORG_ROLE_SORT_ORDER = {
   ADMIN: 1,
   OPERATOR: 2,
@@ -67,10 +236,10 @@ const ORG_ROLE_SORT_ORDER = {
   WORKER: 4,
 };
 
-const getRoleOptionsByOrgType = (orgType) =>
+const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
   String(orgType || '').toUpperCase() === 'BRAND'
-    ? ORG_ROLE_OPTIONS.filter((option) => option.value !== 'WORKER')
-    : ORG_ROLE_OPTIONS;
+    ? getOrgRoleOptions(languageCode).filter((option) => option.value !== 'WORKER')
+    : getOrgRoleOptions(languageCode);
 const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
@@ -104,12 +273,15 @@ const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
 const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER';
 const isWorkerJobRoleOption = (role) =>
   WORKER_JOB_ROLE_CODES.has(String(role?.code || '').trim().toUpperCase());
-const getOrgRoleLabel = (value) => ORG_ROLE_LABELS[String(value || '').toUpperCase()] || '-';
+const getOrgRoleLabel = (value, languageCode = 'ko') =>
+  resolveLocalized(ORG_ROLE_LABELS[String(value || '').toUpperCase()], languageCode) || '-';
 const getOrgRoleSortOrder = (value) =>
   ORG_ROLE_SORT_ORDER[String(value || '').toUpperCase()] || Number.MAX_SAFE_INTEGER;
-const getEmployeeStatusLabel = (value) =>
-  EMPLOYEE_STATUS_OPTIONS.find((option) => option.value === String(value || '').toUpperCase())
-    ?.label || '-';
+const getEmployeeStatusLabel = (value, languageCode = 'ko') =>
+  resolveLocalized(
+    EMPLOYEE_STATUS_LABELS[String(value || '').toUpperCase()],
+    languageCode
+  ) || '-';
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const emitMembershipUpdated = ({ orgId, pendingCount }) => {
   if (typeof window === 'undefined') return;
@@ -238,6 +410,10 @@ const EmployeeRow = React.memo(
           currentUserName,
         }),
       [currentUserName, employee, member, useEmailFallback]
+    );
+    const employeeStatusOptions = useMemo(
+      () => getEmployeeStatusOptions(languageCode),
+      [languageCode]
     );
     const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
     const [draft, setDraft] = useState(baseDraft);
@@ -388,7 +564,7 @@ const EmployeeRow = React.memo(
               value={draft.fixedSalary}
               onChange={(e) => handleDraftChange({ fixedSalary: formatMoneyInput(e.target.value) })}
               disabled={isUpdating || isBulkSaving}
-              placeholder="예: 8,000,000"
+              placeholder={text('moneyPlaceholder', languageCode)}
               sx={{ minWidth: 150 }}
             />
           ) : (
@@ -406,7 +582,7 @@ const EmployeeRow = React.memo(
             onChange={(e) => handleDraftChange({ status: e.target.value })}
             disabled={isUpdating || isBulkSaving}
           >
-            {EMPLOYEE_STATUS_OPTIONS.map((option) => (
+            {employeeStatusOptions.map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
               </MenuItem>
@@ -414,12 +590,12 @@ const EmployeeRow = React.memo(
           </TextField>
           {draft.status === 'TERMINATED' && (
             <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-              퇴사 처리 시 기존 생산/급여 집계 데이터는 보존됩니다.
+              {text('terminatedPreserveNote', languageCode)}
             </Typography>
           )}
           {member.status === 'TERMINATED' && draft.status === 'ACTIVE' && (
             <Typography variant="caption" color="primary" display="block" mt={0.5}>
-              재입사 처리됩니다. 저장 후 라인 배정을 확인해주세요.
+              {text('rehiredNote', languageCode)}
             </Typography>
           )}
         </TableCell>
@@ -487,8 +663,16 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [updatingEmployeeIds, setUpdatingEmployeeIds] = useState({});
 
   const roleOptions = useMemo(
-    () => getRoleOptionsByOrgType(activeOrgType),
-    [activeOrgType]
+    () => getRoleOptionsByOrgType(activeOrgType, languageCode),
+    [activeOrgType, languageCode]
+  );
+  const employeeStatusOptions = useMemo(
+    () => getEmployeeStatusOptions(languageCode),
+    [languageCode]
+  );
+  const employeeStatusFilterOptions = useMemo(
+    () => getEmployeeStatusFilterOptions(languageCode),
+    [languageCode]
   );
   const isAdmin = overrideOrgId != null ? true : isAdminOrgRole(activeOrgRole);
   const canManageMembers =
@@ -541,9 +725,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       emitMembershipUpdated({ orgId, pendingCount: pendingList.length });
     } catch (_error) {
       emitMembershipUpdated({ orgId, pendingCount: 0 });
-      setStatusMessage({ type: 'error', text: '조직 멤버 정보를 불러오지 못했습니다.' });
+      setStatusMessage({ type: 'error', text: text('errLoadMembership', languageCode) });
     }
-  }, []);
+  }, [languageCode]);
 
   const fetchFactories = useCallback(async (orgId, orgType) => {
     if (!orgId) return;
@@ -562,9 +746,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           : allFactories;
       setFactories(visibleFactories);
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '공장 정보를 불러오지 못했습니다.' });
+      setStatusMessage({ type: 'error', text: text('errLoadFactory', languageCode) });
     }
-  }, [isAdmin, operatorFactoryId]);
+  }, [isAdmin, languageCode, operatorFactoryId]);
 
   const fetchEmployees = useCallback(async (orgId, factoryId) => {
     if (!orgId) return;
@@ -578,9 +762,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       );
       setEmployees(Array.isArray(data) ? data : []);
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: '직원 정보를 불러오지 못했습니다.' });
+      setStatusMessage({ type: 'error', text: text('errLoadEmployee', languageCode) });
     }
-  }, [activeOrgType, isAdmin, operatorFactoryId]);
+  }, [activeOrgType, isAdmin, languageCode, operatorFactoryId]);
 
   const fetchJobRoles = useCallback(async (orgId) => {
     if (!orgId) return;
@@ -597,9 +781,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setJobRoleOptions(sortJobRoleOptions(roles.filter(isWorkerJobRoleOption)));
     } catch (_error) {
       setJobRoleOptions([]);
-      setStatusMessage({ type: 'error', text: '직무 정보를 불러오지 못했습니다.' });
+      setStatusMessage({ type: 'error', text: text('errLoadJobRole', languageCode) });
     }
-  }, []);
+  }, [languageCode]);
 
   useEffect(() => {
     if (!activeOrgId) return;
@@ -647,13 +831,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       ).toUpperCase();
 
       if (activeOrgType !== 'BRAND' && !factoryId) {
-        setStatusMessage({ type: 'error', text: '승인 전에 공장을 선택해 주세요.' });
+        setStatusMessage({ type: 'error', text: text('errNeedFactoryBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
       }
 
       if (!selectedRole) {
-        setStatusMessage({ type: 'error', text: '승인 전에 역할을 선택해 주세요.' });
+        setStatusMessage({ type: 'error', text: text('errNeedRoleBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
       }
@@ -673,9 +857,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           fetchMemberships(activeOrgId),
           fetchEmployees(activeOrgId, selectedFactoryFilterId),
         ]);
-        setStatusMessage({ type: 'success', text: '승인을 완료했습니다.' });
+        setStatusMessage({ type: 'success', text: text('approveSuccess', languageCode) });
       } catch (error) {
-        setStatusMessage({ type: 'error', text: error?.message || '승인에 실패했습니다.' });
+        setStatusMessage({
+          type: 'error',
+          text: error?.message || text('approveError', languageCode),
+        });
       } finally {
         setApprovingId(null);
       }
@@ -687,6 +874,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       defaultPendingFactoryId,
       fetchEmployees,
       fetchMemberships,
+      languageCode,
       myEmail,
       pendingFactoryOverrides,
       pendingRoleOverrides,
@@ -707,9 +895,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       });
 
       await fetchMemberships(activeOrgId);
-      setStatusMessage({ type: 'success', text: '반려 처리를 완료했습니다.' });
+      setStatusMessage({ type: 'success', text: text('rejectSuccess', languageCode) });
     } catch (error) {
-      setStatusMessage({ type: 'error', text: error?.message || '반려 처리에 실패했습니다.' });
+      setStatusMessage({
+        type: 'error',
+        text: error?.message || text('rejectError', languageCode),
+      });
     } finally {
       setRejectingId(null);
     }
@@ -834,10 +1025,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
         upsertActiveMember(savedMember);
         upsertEmployeeForCurrentFilter(savedEmployee);
-        setStatusMessage({ type: 'success', text: '직원 정보가 저장되었습니다.' });
+        setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
         return true;
       } catch (error) {
-        setStatusMessage({ type: 'error', text: error?.message || '직원 정보 저장에 실패했습니다.' });
+        setStatusMessage({
+          type: 'error',
+          text: error?.message || text('employeeSaveError', languageCode),
+        });
         return false;
       } finally {
         setUpdatingEmployeeIds((prev) => ({ ...prev, [member.id]: false }));
@@ -845,6 +1039,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       }
     },
     [
+      languageCode,
       myEmail,
       updatingEmployeeIds,
       updatingMembershipIds,
@@ -936,13 +1131,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       }
       return next;
     });
-  }, []);
+  }, [languageCode]);
 
   const handleDrawerSave = useCallback(async () => {
     if (isDrawerSaving || !activeOrgId) return;
 
     if (!canManageMembers) {
-      setStatusMessage({ type: 'error', text: '직원 수정 권한이 없습니다.' });
+      setStatusMessage({ type: 'error', text: text('errNoEditPermission', languageCode) });
       return;
     }
 
@@ -965,33 +1160,33 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       !isAdmin && operatorFactoryId ? operatorFactoryId : drawerDraft.factoryId;
 
     if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
-      setStatusMessage({ type: 'error', text: '유효한 이메일 형식이 아닙니다.' });
+      setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
       return;
     }
     if (!normalizedName) {
-      setStatusMessage({ type: 'error', text: '이름은 필수 입력입니다.' });
+      setStatusMessage({ type: 'error', text: text('errNameRequired', languageCode) });
       return;
     }
     if (roleNeedsLoginEmail && (!normalizedDrawerEmail || !normalizedDrawerEmail.includes('@'))) {
-      setStatusMessage({ type: 'error', text: '관리자/운영자는 로그인 이메일이 필요합니다.' });
+      setStatusMessage({ type: 'error', text: text('errNeedLoginEmail', languageCode) });
       return;
     }
     if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
-      setStatusMessage({ type: 'error', text: '입사일/퇴사일 형식이 올바르지 않습니다.' });
+      setStatusMessage({ type: 'error', text: text('errInvalidDateRange', languageCode) });
       return;
     }
     if (normalizedJoinedAt && normalizedLeftAt && normalizedJoinedAt > normalizedLeftAt) {
-      setStatusMessage({ type: 'error', text: '퇴사일은 입사일 이후여야 합니다.' });
+      setStatusMessage({ type: 'error', text: text('errLeftBeforeJoin', languageCode) });
       return;
     }
 
     if (activeOrgType !== 'BRAND') {
       if (!selectedFactoryId) {
-        setStatusMessage({ type: 'error', text: '공장을 선택해 주세요.' });
+        setStatusMessage({ type: 'error', text: text('errNeedFactory', languageCode) });
         return;
       }
       if (!Number.isFinite(Number(selectedFactoryId))) {
-        setStatusMessage({ type: 'error', text: '유효한 공장을 선택해 주세요.' });
+        setStatusMessage({ type: 'error', text: text('errInvalidFactory', languageCode) });
         return;
       }
     }
@@ -1009,7 +1204,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             (member) => normalizeEmail(member?.email) === normalizedDrawerEmail
           );
           if (duplicatedMember) {
-            throw new Error('이미 등록된 이메일입니다. 기존 직원을 선택해 수정해 주세요.');
+            throw new Error(text('errEmailAlreadyRegisteredDetail', languageCode));
           }
         }
 
@@ -1028,7 +1223,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       } else {
         targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
         if (!targetMember) {
-          throw new Error('선택한 직원 정보를 찾을 수 없습니다.');
+          throw new Error(text('errMemberNotFound', languageCode));
         }
 
         const currentMemberEmail = normalizeEmail(targetMember.email);
@@ -1039,7 +1234,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               && normalizeEmail(member?.email) === normalizedDrawerEmail
           );
           if (duplicatedMember) {
-            throw new Error('이미 등록된 이메일입니다.');
+            throw new Error(text('errEmailAlreadyRegistered', languageCode));
           }
           membershipEmailForSave = normalizedDrawerEmail;
         } else if (
@@ -1047,7 +1242,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           && roleNeedsLoginEmail
           && isInternalMemberEmail(currentMemberEmail)
         ) {
-          throw new Error('관리자/운영자는 로그인 이메일이 필요합니다.');
+          throw new Error(text('errNeedLoginEmail', languageCode));
         } else if (
           !normalizedDrawerEmail
           && !roleNeedsLoginEmail
@@ -1082,7 +1277,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         setIsAddDrawerOpen(false);
       }
     } catch (error) {
-      setStatusMessage({ type: 'error', text: error?.message || '직원 저장에 실패했습니다.' });
+      setStatusMessage({
+        type: 'error',
+        text: error?.message || text('errEmployeeSaveFailed', languageCode),
+      });
     } finally {
       setIsDrawerSaving(false);
     }
@@ -1098,6 +1296,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     handleEmployeeSave,
     isAdmin,
     isDrawerSaving,
+    languageCode,
     operatorFactoryId,
     pendingMembers,
     roleOptions,
@@ -1127,13 +1326,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
     return statusFilteredActiveMembers.filter((member) => {
       const employee = employeeByMembership.get(member.id) || null;
-      const roleLabel = getOrgRoleLabel(member.role);
+      const roleLabel = getOrgRoleLabel(member.role, languageCode);
       const jobRoleLabel =
         employee?.roleName ||
         jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))?.name ||
         '';
-      const statusLabel =
-        EMPLOYEE_STATUS_OPTIONS.find((option) => option.value === member.status)?.label || '';
+      const statusLabel = getEmployeeStatusLabel(member.status, languageCode);
       const factoryName =
         factoryById.get(String(employee?.factoryId || ''))?.name || '';
       const searchableText = [
@@ -1156,6 +1354,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     employeeByMembership,
     factoryById,
     jobRoleOptions,
+    languageCode,
     searchTerm,
     statusFilteredActiveMembers,
   ]);
@@ -1220,7 +1419,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   return (
     <AppPageContainer
-      title="직원 관리"
+      title={text('pageTitle', languageCode)}
       titleActions={(
         canManageMembers ? (
           <Button
@@ -1228,7 +1427,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             onClick={openAddDrawer}
             disabled={!activeOrgId}
           >
-            직원 추가
+            {text('addEmployee', languageCode)}
           </Button>
         ) : null
       )}
@@ -1264,13 +1463,17 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 gap: 2,
               }}
             >
-              <Typography variant="h6">{isCreateDrawerMode ? '직원 추가' : '직원 수정'}</Typography>
+              <Typography variant="h6">
+                {isCreateDrawerMode
+                  ? text('drawerAddTitle', languageCode)
+                  : text('drawerEditTitle', languageCode)}
+              </Typography>
               <Typography variant="caption" color="error.main">
-                * 표시 항목은 필수 입력입니다.
+                {text('requiredHint', languageCode)}
               </Typography>
               <TextField
                 size="small"
-                label="로그인 이메일"
+                label={text('loginEmailLabel', languageCode)}
                 value={drawerEmail}
                 onChange={(e) => setDrawerEmail(e.target.value)}
                 placeholder="admin@company.com"
@@ -1278,34 +1481,35 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 autoFocus
                 helperText={
                   isLoginRequiredRole(drawerDraft.orgRole)
-                    ? '관리자/운영자는 로그인 이메일이 필요합니다.'
-                    : '작업자/회계사는 비워두면 사번(내부키)으로 생성됩니다.'
+                    ? text('loginEmailHelperRequired', languageCode)
+                    : text('loginEmailHelperOptional', languageCode)
                 }
               />
               {!isCreateDrawerMode && isInternalMemberEmail(selectedMember?.email) && (
                 <Typography variant="caption" color="text.secondary">
-                  사번: {getMemberUniqueCode(selectedMember?.id, selectedMember?.orgId)}
+                  {text('employeeCodePrefix', languageCode)}:{' '}
+                  {getMemberUniqueCode(selectedMember?.id, selectedMember?.orgId)}
                 </Typography>
               )}
               <TextField
                 size="small"
-                label="이름"
+                label={text('nameLabel', languageCode)}
                 required
                 value={drawerDraft.name}
                 onChange={(e) => handleDrawerDraftChange({ name: e.target.value })}
                 disabled={isDrawerSaving}
-                helperText="필수 입력"
+                helperText={text('requiredInput', languageCode)}
               />
               <TextField
                 size="small"
-                label="은행"
+                label={text('bankLabel', languageCode)}
                 value={drawerDraft.bankName}
                 onChange={(e) => handleDrawerDraftChange({ bankName: e.target.value })}
                 disabled={isDrawerSaving}
               />
               <TextField
                 size="small"
-                label="계좌번호"
+                label={text('accountLabel', languageCode)}
                 value={drawerDraft.bankAccountNumber}
                 onChange={(e) => handleDrawerDraftChange({ bankAccountNumber: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1313,7 +1517,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label="권한"
+                label={text('roleLabel', languageCode)}
                 value={drawerDraft.orgRole}
                 onChange={(e) => handleDrawerDraftChange({ orgRole: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1328,7 +1532,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 <TextField
                   select
                   size="small"
-                  label="직무"
+                  label={text('jobLabel', languageCode)}
                   value={drawerEffectiveJobRoleId}
                   onChange={(e) => handleDrawerDraftChange({ jobRoleId: e.target.value })}
                   disabled={isDrawerSaving}
@@ -1344,18 +1548,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 <TextField
                   select
                   size="small"
-                  label="공장"
+                  label={text('factoryLabel', languageCode)}
                   required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving || (!isAdmin && Boolean(operatorFactoryId))}
                   helperText={
                     !isAdmin && Boolean(operatorFactoryId)
-                      ? '필수 항목(내 소속 공장으로 자동 설정)'
-                      : '필수 입력'
+                      ? text('factoryRequiredAuto', languageCode)
+                      : text('requiredInput', languageCode)
                   }
                 >
-                  {isAdmin && <MenuItem value="">공장 선택</MenuItem>}
+                  {isAdmin && <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>}
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1366,7 +1570,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label="급여 타입"
+                label={text('payTypeLabel', languageCode)}
                 value={drawerDraft.payType}
                 onChange={(e) => handleDrawerDraftChange({ payType: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1380,19 +1584,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               {String(drawerDraft.payType || '').toUpperCase() === 'FIXED' && (
                 <TextField
                   size="small"
-                  label="고정급 금액"
+                  label={text('fixedSalaryLabel', languageCode)}
                   value={drawerDraft.fixedSalary}
                   onChange={(e) =>
                     handleDrawerDraftChange({ fixedSalary: formatMoneyInput(e.target.value) })
                   }
                   disabled={isDrawerSaving}
-                  placeholder="예: 8,000,000"
+                  placeholder={text('moneyPlaceholder', languageCode)}
                 />
               )}
               <TextField
                 size="small"
                 type="date"
-                label="입사일"
+                label={text('joinedAtLabel', languageCode)}
                 value={drawerDraft.joinedAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ joinedAt: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1401,7 +1605,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 type="date"
-                label="퇴사일"
+                label={text('leftAtLabel', languageCode)}
                 value={drawerDraft.leftAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ leftAt: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1410,19 +1614,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label="상태"
+                label={text('statusLabel', languageCode)}
                 value={drawerDraft.status}
                 onChange={(e) => handleDrawerDraftChange({ status: e.target.value })}
                 disabled={isDrawerSaving}
               >
-                {EMPLOYEE_STATUS_OPTIONS.map((option) => (
+                {employeeStatusOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>
                 ))}
               </TextField>
               <Typography variant="caption" color="text.secondary">
-                직원 목록에서 선택한 항목을 여기서 수정하고 저장합니다.
+                {text('drawerHint', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
                 <Button
@@ -1430,7 +1634,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   onClick={() => setIsAddDrawerOpen(false)}
                   disabled={isDrawerSaving}
                 >
-                  닫기
+                  {text('cancelButton', languageCode)}
                 </Button>
                 <SaveButton
                   onClick={handleDrawerSave}
@@ -1445,18 +1649,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         {pendingMembers.length > 0 && (
           <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              승인 대기 목록
+              {text('pendingTitle', languageCode)}
             </Typography>
 
             <TableContainer>
               <Table size="small">
                 <TableHead>
                     <TableRow>
-                      <TableCell>이메일</TableCell>
-                      <TableCell>공장</TableCell>
-                      <TableCell>권한</TableCell>
-                      <TableCell>요청일</TableCell>
-                      <TableCell>액션</TableCell>
+                      <TableCell>{text('emailColumn', languageCode)}</TableCell>
+                      <TableCell>{text('factoryLabel', languageCode)}</TableCell>
+                      <TableCell>{text('roleLabel', languageCode)}</TableCell>
+                      <TableCell>{text('requestDateColumn', languageCode)}</TableCell>
+                      <TableCell>{text('actionColumn', languageCode)}</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1467,7 +1671,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableCell>
                         {activeOrgType === 'BRAND' ? (
                           <Typography variant="body2" color="text.secondary">
-                            공장 없음
+                            {text('noFactory', languageCode)}
                           </Typography>
                         ) : (
                           <TextField
@@ -1483,7 +1687,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             disabled={!isAdmin}
                             sx={{ minWidth: 150 }}
                           >
-                            {isAdmin && <MenuItem value="">공장 선택</MenuItem>}
+                            {isAdmin && <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>}
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}
@@ -1524,7 +1728,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             onClick={() => handleApprove(member)}
                             disabled={Boolean(approvingId) || Boolean(rejectingId)}
                           >
-                            {approvingId === member.id ? '승인 중...' : '승인'}
+                            {approvingId === member.id
+                              ? text('approving', languageCode)
+                              : text('approve', languageCode)}
                           </Button>
                           <Button
                             variant="outlined"
@@ -1533,7 +1739,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             onClick={() => handleReject(member)}
                             disabled={Boolean(approvingId) || Boolean(rejectingId)}
                           >
-                            {rejectingId === member.id ? '반려 중...' : '반려'}
+                            {rejectingId === member.id
+                              ? text('rejecting', languageCode)
+                              : text('reject', languageCode)}
                           </Button>
                         </Box>
                       </TableCell>
@@ -1557,7 +1765,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             }}
           >
             <Typography variant="h6">
-              재직/퇴직 직원 목록
+              {text('activeListTitle', languageCode)}
             </Typography>
             <Box
               sx={{
@@ -1571,18 +1779,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <SearchInput
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="이름, 이메일, 직무 검색"
+                placeholder={text('searchPlaceholder', languageCode)}
                 sx={{ width: { xs: '100%', md: 280 } }}
               />
               <TextField
                 select
-                label="상태"
+                label={text('statusLabel', languageCode)}
                 size="small"
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value)}
                 sx={{ minWidth: 160, width: { xs: '100%', md: 'auto' } }}
               >
-                {EMPLOYEE_STATUS_FILTER_OPTIONS.map((option) => (
+                {employeeStatusFilterOptions.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>
@@ -1591,14 +1799,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               {canFilterByFactory && (
                 <TextField
                   select
-                  label="공장"
+                  label={text('factoryLabel', languageCode)}
                   size="small"
                   value={selectedFactoryFilterId}
                   onChange={(e) => setSelectedFactoryFilterId(e.target.value)}
                   disabled={!isAdmin}
                   sx={{ minWidth: 220, width: { xs: '100%', md: 'auto' } }}
                 >
-                  {isAdmin && <MenuItem value="">전체 공장</MenuItem>}
+                  {isAdmin && <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>}
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1613,27 +1821,31 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>이름</TableCell>
-                  <TableCell>이메일/사번</TableCell>
-                  <TableCell>권한</TableCell>
-                  <TableCell>직무</TableCell>
-                  <TableCell>급여 타입</TableCell>
-                  <TableCell>상태</TableCell>
-                  <TableCell>입사일</TableCell>
-                  <TableCell>퇴사일</TableCell>
+                  <TableCell>{text('nameColumn', languageCode)}</TableCell>
+                  <TableCell>{text('emailOrCodeColumn', languageCode)}</TableCell>
+                  <TableCell>{text('roleLabel', languageCode)}</TableCell>
+                  <TableCell>{text('jobLabel', languageCode)}</TableCell>
+                  <TableCell>{text('payTypeColumn', languageCode)}</TableCell>
+                  <TableCell>{text('statusLabel', languageCode)}</TableCell>
+                  <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
+                  <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
                     colSpan={8}
-                    message={searchTerm ? '검색 결과가 없습니다.' : '표시할 직원이 없습니다.'}
+                    message={
+                      searchTerm
+                        ? text('noSearchResult', languageCode)
+                        : text('noEmployeeRows', languageCode)
+                    }
                     sx={{ py: 2 }}
                   />
                 ) : (
                   sortedActiveMembers.map((member) => {
                     const employee = employeeByMembership.get(member.id) || null;
-                    const roleLabel = getOrgRoleLabel(member.role);
+                    const roleLabel = getOrgRoleLabel(member.role, languageCode);
                     const jobRoleLabel =
                       employee?.roleName ||
                       jobRoleOptions.find((role) => String(role?.id) === String(employee?.roleId))
@@ -1666,7 +1878,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
-                        <TableCell>{getEmployeeStatusLabel(member.status)}</TableCell>
+                        <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
                       </TableRow>

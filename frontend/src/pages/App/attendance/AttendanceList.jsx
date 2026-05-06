@@ -562,6 +562,7 @@ const AttendanceList = () => {
       title={getUiMessage('menu.attendance', 'Attendance', languageCode)}
       toolbar={(
         <PageToolbar
+          showLastUpdater={false}
           left={(
             <SearchInput
               value={searchTerm}
