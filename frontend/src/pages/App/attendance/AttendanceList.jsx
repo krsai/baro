@@ -181,6 +181,30 @@ const toAverageHoursTextFromRow = (row, languageCode) => {
   return toHoursTextFromSeconds(avgSeconds, languageCode);
 };
 
+const WEEKDAY_TOKENS = {
+  ko: ['\uC77C', '\uC6D4', '\uD654', '\uC218', '\uBAA9', '\uAE08', '\uD1A0'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  vi: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
+};
+
+const buildWorkDateDisplay = (workDate, languageCode) => {
+  const dateText = String(workDate || '').trim();
+  if (!dateText) return { dateText: '-', weekdayText: '', isSunday: false };
+
+  const parsedDate = dayjs(dateText);
+  if (!parsedDate.isValid()) return { dateText, weekdayText: '', isSunday: false };
+
+  const dayIndex = parsedDate.day();
+  const tokens = WEEKDAY_TOKENS[languageCode] || WEEKDAY_TOKENS.ko;
+  const weekdayToken = tokens[dayIndex];
+
+  return {
+    dateText,
+    weekdayText: weekdayToken ? `(${weekdayToken})` : '',
+    isSunday: dayIndex === 0,
+  };
+};
+
 const AttendanceList = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
@@ -696,7 +720,30 @@ const AttendanceList = () => {
                     onDoubleClick={() => handleOpenDetail(row)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.workDate}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      {(() => {
+                        const { dateText, weekdayText, isSunday } = buildWorkDateDisplay(
+                          row.workDate,
+                          languageCode
+                        );
+                        return (
+                          <>
+                            {dateText}
+                            {weekdayText ? (
+                              <span
+                                style={{
+                                  marginLeft: 6,
+                                  color: isSunday ? '#d32f2f' : 'inherit',
+                                  fontWeight: isSunday ? 700 : 500,
+                                }}
+                              >
+                                {weekdayText}
+                              </span>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell align="right">
                       {formatNumberWithCommas(row.enteredWorkerCount, {
                         fallback: '0',
