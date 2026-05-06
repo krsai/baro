@@ -33,7 +33,7 @@ import {
   fetchStyles as fetchStylesFromApi,
   deleteStyle,
 } from '../../../utils/styleApi';
-import { buildQueryString } from '../../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import {
@@ -81,6 +81,12 @@ const formatAtReliabilityLabel = (reliability) => {
   const percent = Number(reliability?.percent);
   if (!Number.isFinite(percent)) return '0%';
   return `${Math.max(0, Math.min(100, Math.round(percent)))}%`;
+};
+const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
+  const percentLabel = formatAtReliabilityLabel(reliability);
+  if (languageCode === 'en') return `Reliability ${percentLabel}`;
+  if (languageCode === 'vi') return `Do tin cay ${percentLabel}`;
+  return `신뢰도 ${percentLabel}`;
 };
 const resolveStAtGapPalette = (meta) =>
   ST_AT_GAP_PALETTE[meta?.severity] || ST_AT_GAP_PALETTE[TIME_DIVERGENCE_SEVERITY.NORMAL];
@@ -157,6 +163,7 @@ const StyleBoard = () => {
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isAtSyncRunning, setAtSyncRunning] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [styleToDelete, setStyleToDelete] = useState(null);
   const refreshStyles = useCallback(async ({ forceRefresh = false } = {}) => {
@@ -201,6 +208,42 @@ const StyleBoard = () => {
       label: getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode),
     });
   };
+
+  const handleAtSyncClick = useCallback(async () => {
+    if (!activeOrgId || isAtSyncRunning) return;
+    setAtSyncRunning(true);
+    try {
+      const result = await requestJSON(
+        `/at-sync/run-now${buildQueryString({ orgId: activeOrgId })}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'current' }),
+        }
+      );
+      await refreshStyles({ forceRefresh: true });
+      showNotification(
+        getUiMessage(
+          'styleBoard.atSyncSuccess',
+          `AT 갱신 완료 (${result?.updatedProcesses ?? 0}개 공정, 기준월 ${result?.trainingMonthKey || '-'})`,
+          languageCode
+        ),
+        'success'
+      );
+    } catch (error) {
+      showNotification(
+        error?.message ||
+          getUiMessage(
+            'styleBoard.atSyncError',
+            'AT 갱신에 실패했습니다.',
+            languageCode
+          ),
+        'error'
+      );
+    } finally {
+      setAtSyncRunning(false);
+    }
+  }, [activeOrgId, isAtSyncRunning, languageCode, refreshStyles, showNotification]);
 
   const handleDeleteClick = (style, event) => {
     event.stopPropagation();
@@ -318,9 +361,23 @@ const StyleBoard = () => {
     <AppPageContainer
       title={getUiMessage('menu.style', '스타일', languageCode)}
       titleActions={(
-        <Button onClick={handleAddNewClick} variant="contained" color="primary">
-          {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {canViewProcessSummary ? (
+            <Button
+              onClick={handleAtSyncClick}
+              variant="outlined"
+              color="primary"
+              disabled={isAtSyncRunning || !activeOrgId}
+            >
+              {isAtSyncRunning
+                ? getUiMessage('styleBoard.atSyncRunning', 'AT 갱신 중...', languageCode)
+                : getUiMessage('styleBoard.atSync', 'AT 갱신', languageCode)}
+            </Button>
+          ) : null}
+          <Button onClick={handleAddNewClick} variant="contained" color="primary">
+            {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
+          </Button>
+        </Box>
       )}
       toolbar={(
         <PageToolbar
@@ -406,7 +463,10 @@ const StyleBoard = () => {
                         {style.styleAtReliability && style.hasTotalAT && (
                           <Chip
                             size="small"
-                            label={formatAtReliabilityLabel(style.styleAtReliability)}
+                            label={formatAtReliabilityBadgeLabel(
+                              style.styleAtReliability,
+                              languageCode
+                            )}
                             sx={{
                               ...AT_RELIABILITY_CHIP_SX,
                               backgroundColor: (AT_RELIABILITY_PALETTE[style.styleAtReliability.status] || AT_RELIABILITY_PALETTE[AT_RELIABILITY_STATUS.COLLECTING]).bg,

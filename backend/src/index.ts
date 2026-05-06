@@ -443,6 +443,7 @@ const isWorkerEmployeeRoleCode = (value: unknown): boolean =>
 const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
+const AT_AUTO_SYNC_ENABLED = false;
 const DEFAULT_TIME_REF_QUANTITY = 1000;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
@@ -2312,6 +2313,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
   };
 
   const attendanceSecondsByWorkerDate = new Map<string, number>();
+  const maxAttendanceDateByFactory = new Map<string, string>();
   if (USE_ATTENDANCE_INPUT_FOR_AT && workLogs.length > 0) {
     const explicitWorkDates = Array.from(
       new Set(
@@ -2362,10 +2364,16 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
             !normalizedWorkDate ||
             resolvedFactoryId === null ||
             resolvedWorkerId === null ||
-            workedSeconds === null ||
-            workedSeconds <= 0 ||
             !isEligibleWorkerOnDate(resolvedWorkerId, normalizedWorkDate)
           ) {
+            return;
+          }
+          const factoryTrackerKey = String(resolvedFactoryId);
+          const currentMaxDate = maxAttendanceDateByFactory.get(factoryTrackerKey) || "";
+          if (!currentMaxDate || normalizedWorkDate > currentMaxDate) {
+            maxAttendanceDateByFactory.set(factoryTrackerKey, normalizedWorkDate);
+          }
+          if (workedSeconds === null || workedSeconds <= 0) {
             return;
           }
           attendanceSecondsByWorkerDate.set(
@@ -2468,9 +2476,24 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     }
     return sum;
   };
+  const filteredWorkLogs =
+    USE_ATTENDANCE_INPUT_FOR_AT && normalizedRequestedWorkDate === ""
+      ? workLogs.filter((workLog) => {
+          const normalizedWorkDate = normalizeDateKey(workLog.workDate);
+          const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
+          if (!normalizedWorkDate || resolvedFactoryId === null) {
+            return false;
+          }
+          const maxAttendanceDate =
+            maxAttendanceDateByFactory.get(String(resolvedFactoryId)) || "";
+          return maxAttendanceDate !== "" && normalizedWorkDate <= maxAttendanceDate;
+        })
+      : workLogs;
+  if (filteredWorkLogs.length === 0) return [];
+
   const previousPeriodEndDateByFactory = new Map<string, string>();
 
-  return workLogs.reduce((drafts, workLog) => {
+  return filteredWorkLogs.reduce((drafts, workLog) => {
     const normalizedWorkDate = normalizeDateKey(workLog.workDate);
     const monthKey = normalizeMonthKey(normalizedWorkDate.slice(0, 7));
     const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
@@ -16528,6 +16551,10 @@ const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
 };
 
 const startAutoAtSyncScheduler = () => {
+  if (!AT_AUTO_SYNC_ENABLED) {
+    console.log("[AT sync][scheduler] disabled (manual trigger only)");
+    return;
+  }
   if (atAutoSyncTimer) return;
   runAutoAtSyncIfDue("startup").catch((error: unknown) => {
     console.error(
