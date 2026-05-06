@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  Collapse,
   FormControlLabel,
   IconButton,
   Paper,
@@ -27,6 +28,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveButton from '../../../../components/SaveButton';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { fetchProcessMasterOptions } from '../../../../utils/attributeApi';
@@ -103,6 +106,8 @@ const STYLE_PROCESS_MESSAGES = {
     textProcessLabel: '공정(텍스트)',
     textProcessPlaceholder: '예: 앞판 어깨 봉제',
     selectionComposerTitle: '선택 방식(대상/동작)',
+    selectionComposerExpand: '선택 방식 펼치기',
+    selectionComposerCollapse: '선택 방식 접기',
     selectionComposerHint:
       '저장은 위 텍스트를 기준으로 처리됩니다. 아래 조합 방식은 보관 및 장기 전환 개발용입니다.',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
@@ -117,8 +122,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: '동작 규격',
     addActionBadge: '동작 등록',
     selectedActionLabel: '선택된 동작',
-    actionLimitHint: '동작은 최대 3개까지 등록할 수 있습니다.',
-    actionInputHint: '직접 입력 후 Enter(또는 바로 추가)로 추가',
+    actionInputHint: '직접 입력 후 엔터로 추가가 가능합니다.',
     specLabel: '대상 규격',
     specPlaceholder: '예: 3선',
     processCodeLabel: '공정코드',
@@ -175,6 +179,8 @@ const STYLE_PROCESS_MESSAGES = {
     textProcessLabel: 'Process Text',
     textProcessPlaceholder: 'e.g. Front panel shoulder join',
     selectionComposerTitle: 'Selection mode (target/action)',
+    selectionComposerExpand: 'Expand selection mode',
+    selectionComposerCollapse: 'Collapse selection mode',
     selectionComposerHint:
       'Saving uses the text field above as primary. Use this composer for preservation and future migration.',
     loadingOptions: 'Loading process composition options...',
@@ -189,8 +195,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: 'Action Spec',
     addActionBadge: 'Add Action',
     selectedActionLabel: 'Selected actions',
-    actionLimitHint: 'You can register up to 3 actions.',
-    actionInputHint: 'Type and press Enter (or just Add)',
+    actionInputHint: 'Type directly and press Enter to add.',
     specLabel: 'Target Spec',
     specPlaceholder: 'e.g. 3-line',
     processCodeLabel: 'Process Code',
@@ -247,6 +252,8 @@ const STYLE_PROCESS_MESSAGES = {
     textProcessLabel: 'Cong doan (van ban)',
     textProcessPlaceholder: 'vi du: may noi vai than truoc',
     selectionComposerTitle: 'Che do chon (doi tuong/thao tac)',
+    selectionComposerExpand: 'Mo rong che do chon',
+    selectionComposerCollapse: 'Thu gon che do chon',
     selectionComposerHint:
       'He thong luu theo text o tren. Khuon duoi duoc giu de bao ton va chuyen doi dai han.',
     loadingOptions: 'Dang tai tu dien to hop cong doan...',
@@ -261,8 +268,7 @@ const STYLE_PROCESS_MESSAGES = {
     actionSpecLabel: 'Quy cach thao tac',
     addActionBadge: 'Them thao tac',
     selectedActionLabel: 'Thao tac da chon',
-    actionLimitHint: 'Co the dang ky toi da 3 thao tac.',
-    actionInputHint: 'Nhap truc tiep roi nhan Enter (hoac bam Them)',
+    actionInputHint: 'Co the nhap truc tiep va nhan Enter de them.',
     specLabel: 'Quy cach doi tuong',
     specPlaceholder: 'vi du: 3 kim',
     processCodeLabel: 'Ma cong doan',
@@ -1566,6 +1572,7 @@ const StyleProcess = ({
   const [actionSpecInputValue, setActionSpecInputValue] = useState('');
   const [actionCandidate, setActionCandidate] = useState(null);
   const [actionSpecCandidate, setActionSpecCandidate] = useState(null);
+  const [isSelectionComposerExpanded, setIsSelectionComposerExpanded] = useState(false);
   const [targetComposerOpen, setTargetComposerOpen] = useState(false);
   const [actionComposerOpen, setActionComposerOpen] = useState(false);
   const deferredAddDraft = useDeferredValue(addDraft);
@@ -2351,6 +2358,7 @@ const StyleProcess = ({
     if (!canStartAdd) return;
     setEditingInstanceId(null);
     setIsAddingRow(true);
+    setIsSelectionComposerExpanded(false);
     setAddDraft(createEmptyDraft());
     setPartInputValue('');
     setTargetInputValue('');
@@ -2369,6 +2377,7 @@ const StyleProcess = ({
   const handleCancelAddRow = () => {
     setIsAddingRow(false);
     setEditingInstanceId(null);
+    setIsSelectionComposerExpanded(false);
     setAddDraft(createEmptyDraft());
     setPartInputValue('');
     setTargetInputValue('');
@@ -2388,6 +2397,7 @@ const StyleProcess = ({
     if (!process) return;
     setIsAddingRow(false);
     setEditingInstanceId(process.instanceId);
+    setIsSelectionComposerExpanded(false);
     setAddDraft(buildDraftFromProcess(process, displayOrderQuantity, languageCode));
     setPartInputValue('');
     setTargetInputValue('');
@@ -2590,6 +2600,8 @@ const StyleProcess = ({
   const actionComposerOptions = isSelectingActionSpec
     ? filteredActionSpecOptionsWithNone
     : availableActionOptions;
+  const isTargetLimitReached = selectedTargetPairs.length >= DRAFT_TARGET_SLOT_FIELDS.length;
+  const isActionLimitReached = selectedActionPairs.length >= DRAFT_ACTION_SLOT_FIELDS.length;
   const filterComposerOptions = useCallback(
     (options, state, { includeNoneCode, noneOption }) => {
       const normalizedInput = normalizeProcessMasterMatchText(state?.inputValue);
@@ -2950,26 +2962,42 @@ const StyleProcess = ({
                 }}
               >
                 <Stack spacing={1}>
-                  <Box>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                       {getStyleProcessMessage(languageCode, 'selectionComposerTitle')}
                     </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                      {getStyleProcessMessage(languageCode, 'selectionComposerHint')}
-                    </Typography>
-                  </Box>
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => setIsSelectionComposerExpanded((prev) => !prev)}
+                      endIcon={
+                        isSelectionComposerExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />
+                      }
+                    >
+                      {getStyleProcessMessage(
+                        languageCode,
+                        isSelectionComposerExpanded ? 'selectionComposerCollapse' : 'selectionComposerExpand'
+                      )}
+                    </Button>
+                  </Stack>
+                  <Collapse in={isSelectionComposerExpanded} timeout="auto" unmountOnExit>
+                    <Stack spacing={1}>
+                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                        {getStyleProcessMessage(languageCode, 'selectionComposerHint')}
+                      </Typography>
 
-                  <Stack
-                    direction={{ xs: 'column', xl: 'row' }}
-                    spacing={1}
-                    sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
-                  >
+                      <Stack
+                        direction={{ xs: 'column', xl: 'row' }}
+                        spacing={1}
+                        sx={{ alignItems: { xs: 'stretch', xl: 'flex-start' } }}
+                      >
                     <Stack spacing={0.75} sx={{ flex: 2, minWidth: 320 }}>
                       <Autocomplete
                         freeSolo
                         forcePopupIcon
                         autoHighlight
                         size="small"
+                        disabled={isTargetLimitReached && !isSelectingTargetSpec}
                         open={targetComposerOpen}
                         onOpen={() => setTargetComposerOpen(true)}
                         onClose={() => setTargetComposerOpen(false)}
@@ -3006,7 +3034,7 @@ const StyleProcess = ({
                             placeholder={
                               isSelectingTargetSpec
                                 ? `${getStyleProcessMessage(languageCode, 'noSpecOption')} / ${getStyleProcessMessage(languageCode, 'specPlaceholder')}`
-                                : getStyleProcessMessage(languageCode, 'targetLabel')
+                                : getStyleProcessMessage(languageCode, 'actionInputHint')
                             }
                             onKeyDown={handleTargetComposerEnterSelect}
                             InputProps={{
@@ -3111,6 +3139,7 @@ const StyleProcess = ({
                         forcePopupIcon
                         autoHighlight
                         size="small"
+                        disabled={isActionLimitReached && !isSelectingActionSpec}
                         open={actionComposerOpen}
                         onOpen={() => setActionComposerOpen(true)}
                         onClose={() => setActionComposerOpen(false)}
@@ -3244,14 +3273,12 @@ const StyleProcess = ({
                           },
                         }}
                       />
-                      <Typography variant="caption" color="text.secondary">
-                        {getStyleProcessMessage(languageCode, 'actionLimitHint')}
-                      </Typography>
                     </Stack>
                   </Stack>
                 </Stack>
+                  </Collapse>
+                </Stack>
               </Box>
-            </Stack>
             <Stack
               direction={{ xs: 'column', xl: 'row' }}
               spacing={1}
@@ -3376,6 +3403,7 @@ const StyleProcess = ({
                 {addError}
               </Typography>
             )}
+          </Stack>
           </Stack>
         </Paper>
       )}
