@@ -82,6 +82,11 @@ const ORDER_STATUS_TEXT_DEFAULTS = {
     en: 'All',
     vi: 'Tat ca',
   },
+  filterExcludeDoneLabel: {
+    ko: '\uC644\uB8CC \uC81C\uC678',
+    en: 'All Except Done',
+    vi: 'Tat ca tru hoan thanh',
+  },
   noneLabel: {
     ko: '---',
     en: '---',
@@ -111,6 +116,9 @@ export const ORDER_STATUS_TEXT = {
   get filterAllLabel() {
     return getOrderStatusText('filterAllLabel');
   },
+  get filterExcludeDoneLabel() {
+    return getOrderStatusText('filterExcludeDoneLabel');
+  },
   get noneLabel() {
     return getOrderStatusText('noneLabel', '---');
   },
@@ -138,6 +146,10 @@ export const ORDER_STATUS_OPTIONS = [
     value: ORDER_STATUS_KEYS.IN_PROGRESS,
     labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.IN_PROGRESS],
   }),
+  createLocalizedOption({
+    value: ORDER_STATUS_KEYS.PRODUCTION_DONE,
+    labelKey: ORDER_STATUS_LABEL_KEYS[ORDER_STATUS_KEYS.PRODUCTION_DONE],
+  }),
 ];
 
 const normalizeOrderStatusToken = (value) =>
@@ -152,6 +164,7 @@ const ORDER_STATUS_LEGACY_CODE_MAP = {
   '\uC791\uC5C5\uC911': ORDER_STATUS_KEYS.IN_PROGRESS,
   '\uC81C\uC791': ORDER_STATUS_KEYS.IN_PROGRESS,
   '\uC0DD\uC0B0': ORDER_STATUS_KEYS.IN_PROGRESS,
+  '\uC644\uB8CC': ORDER_STATUS_KEYS.PRODUCTION_DONE,
   '\uC0DD\uC0B0\uC644\uB8CC': ORDER_STATUS_KEYS.PRODUCTION_DONE,
   '\uCD9C\uACE0\uC644\uB8CC': ORDER_STATUS_KEYS.SHIPPED,
   '\uCD9C\uACE0': ORDER_STATUS_KEYS.SHIPPED,

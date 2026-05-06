@@ -66,6 +66,7 @@ import {
 } from '../../../constants/productAttributes';
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName } from '../../../utils/appLanguage';
 import {
+  ORDER_STATUS_KEYS,
   ORDER_STATUS_OPTIONS,
   ORDER_STATUS_TEXT,
   getOrderStatusLabel as getOrderStatusLabelFromConst,
@@ -106,6 +107,7 @@ const ORDER_PROGRESS_STAGE_NONE = '__NONE__';
 const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
 const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
 const ORDER_FILTER_ALL = 'ALL';
+const ORDER_FILTER_EXCEPT_DONE = '__EXCEPT_DONE__';
 const ORDER_DETAIL_VIEW_MODES = {
   VERTICAL: 'vertical',
   HORIZONTAL: 'horizontal',
@@ -1704,6 +1706,8 @@ const OrderList = () => {
       const matchesProgress =
         progressFilter === ORDER_FILTER_ALL
           ? true
+          : progressFilter === ORDER_FILTER_EXCEPT_DONE
+            ? normalizedProgressStage !== ORDER_STATUS_KEYS.PRODUCTION_DONE
           : progressFilter === ORDER_PROGRESS_STAGE_NONE
             ? !normalizedProgressStage
             : normalizedProgressStage === normalizeOrderProgressStage(progressFilter);
@@ -1825,6 +1829,10 @@ const OrderList = () => {
       {
         value: ORDER_FILTER_ALL,
         label: ORDER_STATUS_TEXT.filterAllLabel,
+      },
+      {
+        value: ORDER_FILTER_EXCEPT_DONE,
+        label: ORDER_STATUS_TEXT.filterExcludeDoneLabel,
       },
       ...ORDER_STATUS_OPTIONS.map((option) => ({
         value: option.value,

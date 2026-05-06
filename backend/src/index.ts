@@ -220,6 +220,7 @@ const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
   ["작업중", "IN_PROGRESS"],
   ["제작", "IN_PROGRESS"],
   ["생산", "IN_PROGRESS"],
+  ["완료", "PRODUCTION_DONE"],
   ["생산완료", "PRODUCTION_DONE"],
   ["출고완료", "SHIPPED"],
   ["출고", "SHIPPED"],
