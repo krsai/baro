@@ -23,9 +23,9 @@ const resolveText = (bundle, languageCode) =>
 
 const DASHBOARD_TEXT = {
   title: {
-    ko: '라이트 홈',
-    en: 'Light Home',
-    vi: 'Trang chu nhe',
+    ko: '대시보드',
+    en: 'Dashboard',
+    vi: 'Bang dieu khien',
   },
   subtitle: {
     ko: '가벼운 첫 화면입니다. 필요한 지표와 기능을 순서대로 붙여나갈 수 있습니다.',

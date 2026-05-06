@@ -50,6 +50,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import { getUiMessage } from '../constants/uiMessages';
@@ -84,6 +85,22 @@ const SITUATION_BOARD_LABELS = {
   ko: '\uC0C1\uD669\uD310',
   en: 'Situation Board',
   vi: 'Bang tinh hinh',
+};
+const DASHBOARD_LABELS = {
+  ko: '\uB300\uC2DC\uBCF4\uB4DC',
+  en: 'Dashboard',
+  vi: 'Bang dieu khien',
+};
+const MENU_GROUP_KEYS = {
+  ORDER: 'ORDER',
+  PRODUCTION: 'PRODUCTION',
+  RECORDS: 'RECORDS',
+  INVENTORY: 'INVENTORY',
+  ACCOUNTING: 'ACCOUNTING',
+  ADMIN: 'ADMIN',
+  MISC: 'MISC',
+  ATTRIBUTE: 'ATTRIBUTE',
+  SYSTEM: 'SYSTEM',
 };
 
 const toPathname = (path) => {
@@ -285,21 +302,34 @@ const MainLayout = () => {
   const recentTabHistoryRef = useRef([]);
   const headerOffset = `${Math.max(56, Math.round(headerHeight || 64))}px`;
 
+  const setExpandedMenuGroup = React.useCallback((menuGroupKey) => {
+    setOrderOpen(menuGroupKey === MENU_GROUP_KEYS.ORDER);
+    setProductionOpen(menuGroupKey === MENU_GROUP_KEYS.PRODUCTION);
+    setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
+    setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
+    setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
+    setAdminOpen(menuGroupKey === MENU_GROUP_KEYS.ADMIN);
+    setMiscOpen(menuGroupKey === MENU_GROUP_KEYS.MISC);
+    setAttributeOpen(menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE);
+    setSystemOpen(menuGroupKey === MENU_GROUP_KEYS.SYSTEM);
+  }, []);
+
   useEffect(() => {
     currentPathRef.current = currentPath;
   }, [currentPath]);
 
   useEffect(() => {
     if (currentPath.startsWith('/attribute')) {
-      setAttributeOpen(true);
+      setExpandedMenuGroup(MENU_GROUP_KEYS.ATTRIBUTE);
+      return;
     }
     if (
       currentPath.startsWith('/system-setting') ||
       currentPath.startsWith('/system-onboarding')
     ) {
-      setSystemOpen(true);
+      setExpandedMenuGroup(MENU_GROUP_KEYS.SYSTEM);
     }
-  }, [currentPath]);
+  }, [currentPath, setExpandedMenuGroup]);
 
   useEffect(() => {
     const element = appBarRef.current;
@@ -433,11 +463,16 @@ const MainLayout = () => {
   const menuItems = useMemo(() => {
     const baseItems = [
       {
+        label: resolveLocalizedLabel(DASHBOARD_LABELS, languageCode),
+        icon: <DashboardIcon />,
+        path: '/workspace',
+      },
+      {
         label: getUiMessage('menu.sales', '\uC601\uC5C5 \uAD00\uB9AC', languageCode),
         icon: <ShoppingCartIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.ORDER,
         isOpen: orderOpen,
-        setOpen: setOrderOpen,
         children: [
           {
             label: getUiMessage('menu.order', '\uC8FC\uBB38', languageCode),
@@ -455,8 +490,8 @@ const MainLayout = () => {
         label: resolveLocalizedLabel(OPERATIONS_MANAGEMENT_LABELS, languageCode),
         icon: <ProductionQuantityLimitsIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.PRODUCTION,
         isOpen: productionOpen,
-        setOpen: setProductionOpen,
         children: [
           {
             label: getUiMessage('menu.line', '\uB77C\uC778', languageCode),
@@ -496,8 +531,8 @@ const MainLayout = () => {
         label: resolveLocalizedLabel(PRODUCTION_MANAGEMENT_LABELS, languageCode),
         icon: <HistoryIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.RECORDS,
         isOpen: recordsOpen,
-        setOpen: setRecordsOpen,
         children: [
           {
             label: getUiMessage('menu.workHistory', '\uAE30\uB85D', languageCode),
@@ -520,8 +555,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.inventory', '\uC7AC\uACE0 \uAD00\uB9AC', languageCode),
         icon: <Inventory2Icon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.INVENTORY,
         isOpen: inventoryOpen,
-        setOpen: setInventoryOpen,
         children: [
           {
             label: getUiMessage('menu.inventoryIssue', '\uC7AC\uACE0 \uBD88\uCD9C', languageCode),
@@ -535,8 +570,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.accounting', '\uD68C\uACC4 \uAD00\uB9AC', languageCode),
         icon: <AccountBalanceWalletIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.ACCOUNTING,
         isOpen: accountingOpen,
-        setOpen: setAccountingOpen,
         children: [
           {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
@@ -555,8 +590,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),
         icon: <OrganizationIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.ADMIN,
         isOpen: adminOpen,
-        setOpen: setAdminOpen,
         children: [
           {
             label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
@@ -585,8 +620,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.misc', '\uAE30\uD0C0 \uAD00\uB9AC', languageCode),
         icon: <MoreHorizIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.MISC,
         isOpen: miscOpen,
-        setOpen: setMiscOpen,
         children: [
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
@@ -599,8 +634,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.attribute', '\uC18D\uC131 \uAD00\uB9AC', languageCode),
         icon: <DnsIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.ATTRIBUTE,
         isOpen: attributeOpen,
-        setOpen: setAttributeOpen,
         children: [
           ...(isSystemProfile
             ? [
@@ -635,8 +670,8 @@ const MainLayout = () => {
         label: getUiMessage('menu.system', '\uC2DC\uC2A4\uD15C \uC124\uC815', languageCode),
         icon: <TuneIcon />,
         isParent: true,
+        menuGroupKey: MENU_GROUP_KEYS.SYSTEM,
         isOpen: systemOpen,
-        setOpen: setSystemOpen,
         children: [
           {
             label: getUiMessage('menu.staticOptions', '\uC815\uC801 \uC0AC\uC804', languageCode),
@@ -1432,7 +1467,11 @@ const MainLayout = () => {
               onClick={() => {
                 if (isMenuDisabled) return;
                 if (menu.isParent) {
-                  menu.setOpen(!menu.isOpen);
+                  if (menu.isOpen) {
+                    setExpandedMenuGroup(null);
+                  } else {
+                    setExpandedMenuGroup(menu.menuGroupKey || null);
+                  }
                   return;
                 }
                 handleMenuItemClick(menu.path);
