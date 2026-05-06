@@ -730,15 +730,18 @@ const AttendanceList = () => {
                           <>
                             {dateText}
                             {weekdayText ? (
-                              <span
-                                style={{
-                                  marginLeft: 6,
-                                  color: isSunday ? '#d32f2f' : 'inherit',
-                                  fontWeight: isSunday ? 700 : 500,
-                                }}
-                              >
-                                {weekdayText}
-                              </span>
+                              isSunday ? (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    color: '#d32f2f',
+                                  }}
+                                >
+                                  {weekdayText}
+                                </span>
+                              ) : (
+                                ` ${weekdayText}`
+                              )
                             ) : null}
                           </>
                         );
