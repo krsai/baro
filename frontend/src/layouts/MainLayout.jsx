@@ -114,7 +114,6 @@ const toPathname = (path) => {
 const isKeepAliveCandidatePath = (path) => {
   const pathname = toPathname(path);
   if (!pathname || pathname === '/') return false;
-  if (pathname === EMPTY_WORKSPACE_PATH) return false;
   if (pathname === '/login') return false;
   if (pathname.startsWith('/auth')) return false;
   return true;
@@ -135,7 +134,7 @@ const buildTabLoadingCounts = (scopes = []) => {
     if (entry?.groupId !== 'workspace') return;
     const rootScopeId = String(entry?.scopeId || '').split('::')[0];
     const tabId = toPathname(rootScopeId);
-    if (!tabId || tabId === '/' || tabId === EMPTY_WORKSPACE_PATH) return;
+    if (!tabId || tabId === '/') return;
     const activeRequestCount = Number(entry?.activeRequestCount) || 0;
     if (activeRequestCount <= 0) return;
     next.set(tabId, (next.get(tabId) || 0) + activeRequestCount);
@@ -990,7 +989,6 @@ const MainLayout = () => {
     }
     if (
       currentPath === '/' ||
-      currentPath === EMPTY_WORKSPACE_PATH ||
       currentPath === '/login' ||
       currentPath.startsWith('/auth')
     ) {
@@ -1181,7 +1179,6 @@ const MainLayout = () => {
     if (isLoggingOutRef.current) return;
     if (
       currentPath === '/' ||
-      currentPath === EMPTY_WORKSPACE_PATH ||
       currentPath === '/login' ||
       currentPath.startsWith('/auth')
     ) {
@@ -1221,7 +1218,6 @@ const MainLayout = () => {
   useEffect(() => {
     if (
       currentPath === '/' ||
-      currentPath === EMPTY_WORKSPACE_PATH ||
       currentPath === '/login' ||
       currentPath.startsWith('/auth')
     ) {
