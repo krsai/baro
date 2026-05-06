@@ -77,7 +77,7 @@ const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionP
 const ProductionResult = lazyImportWithRetry(() => import('./pages/App/ProductionResult'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
-const WorkspaceShell = () => null;
+const WorkspaceDashboard = lazyImportWithRetry(() => import('./pages/App/WorkspaceDashboard'));
 const WORKSPACE_PATH = '/workspace';
 
 const AuthOnlyRoute = () => {
@@ -226,7 +226,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'workspace',
-            element: <WorkspaceShell />,
+            element: <WorkspaceDashboard />,
           },
           {
             path: 'business',
