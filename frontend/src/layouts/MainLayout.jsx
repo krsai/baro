@@ -1351,6 +1351,13 @@ const MainLayout = () => {
           targetPath: EMPTY_WORKSPACE_PATH,
           sourcePath: currentPath,
         };
+        if (currentPath === EMPTY_WORKSPACE_PATH) {
+          pendingNavigationPathRef.current = null;
+          pendingCloseTabRef.current = null;
+          pendingManualTabCloseRef.current = null;
+          closeTab(tabIdToClose);
+          return;
+        }
         navigate(EMPTY_WORKSPACE_PATH, { replace: true });
         schedulePendingNavigationCleanup(currentPathRef.current, EMPTY_WORKSPACE_PATH);
         return;
