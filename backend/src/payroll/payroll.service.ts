@@ -361,6 +361,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
       fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
     });
+    const resolvedCtAmount = payType === "CT" ? resolvedFixedSalary : 0;
     employeeMap.set(employeeKey, {
       employeeKey,
       workerId: employee?.id ?? null,
@@ -371,7 +372,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
       productionEarnings: 0,
-      ctAmount: 0,
+      ctAmount: resolvedCtAmount,
       fixedSalary: payType === "FIXED" ? resolvedFixedSalary : 0,
       processes: new Map(),
     });
@@ -398,16 +399,14 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           : 0;
 
       if (!employeeMap.has(key)) {
-        const employeeFixedSalary =
-          effectivePayType === "FIXED"
-            ? resolveFixedSalaryWithFallback({
-                fixedSalary: employee?.fixedSalary,
-                workerId: record.workerId ?? employee?.id,
-                employeeKey: key,
-                fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
-                fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
-              })
-            : 0;
+        const employeeFixedSalary = resolveFixedSalaryWithFallback({
+          fixedSalary: employee?.fixedSalary,
+          workerId: record.workerId ?? employee?.id,
+          employeeKey: key,
+          fallbackByWorkerId: fixedSalaryFallback.byWorkerId,
+          fallbackByEmployeeKey: fixedSalaryFallback.byEmployeeKey,
+        });
+        const employeeCtAmount = effectivePayType === "CT" ? employeeFixedSalary : 0;
         employeeMap.set(key, {
           employeeKey: key,
           workerId: record.workerId ?? null,
@@ -418,8 +417,8 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
           productionEarnings: 0,
-          ctAmount: 0,
-          fixedSalary: employeeFixedSalary,
+          ctAmount: employeeCtAmount,
+          fixedSalary: effectivePayType === "FIXED" ? employeeFixedSalary : 0,
           processes: new Map(),
         });
       }

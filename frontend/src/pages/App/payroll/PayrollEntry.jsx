@@ -606,7 +606,7 @@ const PayrollEntry = () => {
                                     size="small"
                                     value={formatMoneyInput(override.ctAmount)}
                                     onChange={handleOverrideChange(employee.employeeKey, 'ctAmount')}
-                                    placeholder="성과급 금액"
+                                    placeholder="기본급"
                                     sx={amountFieldSx}
                                     inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
                                   />

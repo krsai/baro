@@ -81,6 +81,7 @@ const EMPLOYEE_BOARD_TEXT = {
   },
   payTypeLabel: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   fixedSalaryLabel: { ko: '고정급 금액', en: 'Fixed Salary', vi: 'Muc luong co dinh' },
+  ctSalaryLabel: { ko: '기본급 금액', en: 'Base Salary Amount', vi: 'Muc luong co ban' },
   moneyPlaceholder: { ko: '예: 8,000,000', en: 'e.g. 8,000,000', vi: 'Vi du: 8,000,000' },
   joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtLabel: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
@@ -271,6 +272,10 @@ const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
 const canViewFixedSalaryByRole = (role) =>
   FIXED_SALARY_VIEWER_ROLES.has(String(role || '').toUpperCase());
+const isSalaryAmountPayType = (payType) => {
+  const normalizedPayType = String(payType || '').toUpperCase();
+  return normalizedPayType === 'FIXED' || normalizedPayType === 'CT';
+};
 
 const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
 const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER';
@@ -566,7 +571,7 @@ const EmployeeRow = React.memo(
         </TableCell>
 
         <TableCell>
-          {draft.payType === 'FIXED' ? (
+          {isSalaryAmountPayType(draft.payType) ? (
             <TextField
               size="small"
               value={draft.fixedSalary}
@@ -1006,7 +1011,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         const normalizedPayType = String(
           draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED')
         ).toUpperCase();
-        const isFixedPayType = normalizedPayType === 'FIXED';
+        const isSalaryPayType = isSalaryAmountPayType(normalizedPayType);
         const currentEmployee = employeeByMembership.get(member.id) || null;
         const parsedDraftFixedSalary = parseMoneyInput(draft.fixedSalary);
 
@@ -1017,7 +1022,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
           payType: normalizedPayType,
-          fixedSalary: isFixedPayType
+          fixedSalary: isSalaryPayType
             ? (
               canViewFixedSalary
                 ? parsedDraftFixedSalary
@@ -1145,7 +1150,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         next.payType = 'CT';
       }
 
-      if (String(next.payType || '').toUpperCase() !== 'FIXED') {
+      if (!isSalaryAmountPayType(next.payType)) {
         next.fixedSalary = '';
       }
       if (hasLeftAtPatch && !hasStatusPatch && normalizedLeftAt) {
@@ -1603,10 +1608,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
-              {String(drawerDraft.payType || '').toUpperCase() === 'FIXED' && canViewFixedSalary && (
+              {isSalaryAmountPayType(drawerDraft.payType) && canViewFixedSalary && (
                 <TextField
                   size="small"
-                  label={text('fixedSalaryLabel', languageCode)}
+                  label={text(
+                    String(drawerDraft.payType || '').toUpperCase() === 'CT'
+                      ? 'ctSalaryLabel'
+                      : 'fixedSalaryLabel',
+                    languageCode
+                  )}
                   value={drawerDraft.fixedSalary}
                   onChange={(e) =>
                     handleDrawerDraftChange({ fixedSalary: formatMoneyInput(e.target.value) })
@@ -1885,10 +1895,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       payTypeOptions.find((option) => option.value === payTypeValue)?.label ||
                       payTypeValue ||
                       '-';
-                    const fixedSalaryDisplay =
-                      payTypeValue === 'FIXED'
-                        ? formatFixedSalaryDisplay(employee?.fixedSalary)
-                        : '-';
+                    const fixedSalaryDisplay = isSalaryAmountPayType(payTypeValue)
+                      ? formatFixedSalaryDisplay(employee?.fixedSalary)
+                      : '-';
                     const displayName = getEmployeeDisplayName(
                       member,
                       employee,

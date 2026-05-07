@@ -326,12 +326,9 @@ export const createEmployeeRouter = ({
       roleId: resolvedRoleId,
       payType: payType !== undefined ? payTypeValue : existingEmployee?.payType,
     });
-    const resolvedFixedSalary =
-      resolvedPayType === "FIXED"
-        ? hasFixedSalaryInput
-          ? fixedSalaryParseResult.value
-          : existingEmployee?.fixedSalary ?? null
-        : null;
+    const resolvedFixedSalary = hasFixedSalaryInput
+      ? fixedSalaryParseResult.value
+      : existingEmployee?.fixedSalary ?? null;
 
     const data: any = {
       orgId: membership.orgId,
