@@ -137,18 +137,28 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
   const storedTotalEarnings = toPayrollAmountOrNull(employee?.totalEarnings);
   const bonus = toPayrollAmount(employee?.bonus, 0);
   const deduction = toPayrollAmount(employee?.deduction, 0);
+  const fixedSalary =
+    payType === "FIXED"
+      ? toPayrollAmountOrNull(employee?.fixedSalary) ??
+        (toPayrollAmountOrNull(employee?.finalEarnings) ?? storedTotalEarnings ?? 0) -
+          bonus +
+          deduction
+      : 0;
+  const productionEarnings =
+    payType === "CT"
+      ? toPayrollAmountOrNull(employee?.productionEarnings) ??
+        toPayrollAmountOrNull(employee?.baseEarnings) ??
+        0
+      : 0;
+  const ctAmount = payType === "CT" ? toPayrollAmount(employee?.ctAmount, 0) : 0;
   const baseEarnings =
-    toPayrollAmountOrNull(employee?.baseEarnings) ??
-    (payType === "CT" ? storedTotalEarnings ?? 0 : 0);
+    payType === "FIXED"
+      ? fixedSalary
+      : productionEarnings + ctAmount;
   const finalEarnings =
     toPayrollAmountOrNull(employee?.finalEarnings) ??
     storedTotalEarnings ??
-    (payType === "FIXED"
-      ? toPayrollAmount(employee?.fixedSalary, 0) + bonus - deduction
-      : baseEarnings + bonus - deduction);
-  const fixedSalary =
-    toPayrollAmountOrNull(employee?.fixedSalary) ??
-    (payType === "FIXED" ? finalEarnings - bonus + deduction : 0);
+    (baseEarnings + bonus - deduction);
 
   return {
     employeeKey:
@@ -161,6 +171,8 @@ export const normalizePayrollSnapshotEmployee = (employee: any) => {
     payType,
     bankName: resolveOptionalString(employee?.bankName, null),
     bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
+    productionEarnings,
+    ctAmount,
     baseEarnings,
     fixedSalary,
     bonus,
@@ -322,7 +334,8 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       payType: "CT" | "FIXED";
       bankName: string | null;
       bankAccountNumber: string | null;
-      baseEarnings: number;
+      productionEarnings: number;
+      ctAmount: number;
       fixedSalary: number;
       processes: Map<
         string,
@@ -357,7 +370,8 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
       payType,
       bankName: resolveOptionalString(employee?.bankName, null),
       bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
-      baseEarnings: 0,
+      productionEarnings: 0,
+      ctAmount: 0,
       fixedSalary: payType === "FIXED" ? resolvedFixedSalary : 0,
       processes: new Map(),
     });
@@ -403,14 +417,15 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
           payType: effectivePayType,
           bankName: resolveOptionalString(employee?.bankName, null),
           bankAccountNumber: resolveOptionalString(employee?.bankAccountNumber, null),
-          baseEarnings: 0,
+          productionEarnings: 0,
+          ctAmount: 0,
           fixedSalary: employeeFixedSalary,
           processes: new Map(),
         });
       }
 
       const emp = employeeMap.get(key)!;
-      emp.baseEarnings += earnings;
+      emp.productionEarnings += earnings;
 
       const processName = resolveWorkRecordProcessName(record) ?? "";
       const processKey = record.processCode || processName || "unknown";
@@ -433,7 +448,9 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   const employees = Array.from(employeeMap.values())
     .map((emp) => {
       const resolvedBaseEarnings =
-        emp.payType === "FIXED" ? toPayrollAmount(emp.fixedSalary, 0) : emp.baseEarnings;
+        emp.payType === "FIXED"
+          ? toPayrollAmount(emp.fixedSalary, 0)
+          : toPayrollAmount(emp.productionEarnings, 0) + toPayrollAmount(emp.ctAmount, 0);
       return {
         employeeKey: emp.employeeKey,
         workerId: emp.workerId,
@@ -443,6 +460,8 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
         payType: emp.payType,
         bankName: emp.bankName,
         bankAccountNumber: emp.bankAccountNumber,
+        productionEarnings: emp.payType === "CT" ? toPayrollAmount(emp.productionEarnings, 0) : 0,
+        ctAmount: emp.payType === "CT" ? toPayrollAmount(emp.ctAmount, 0) : 0,
         baseEarnings: resolvedBaseEarnings,
         fixedSalary: emp.payType === "FIXED" ? toPayrollAmount(emp.fixedSalary, 0) : 0,
         bonus: 0,

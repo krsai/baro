@@ -90,6 +90,11 @@ const getOverrideDraftFromEmployee = (employee) => ({
     toMoneyNumber(employee?.fixedSalary) > 0
       ? String(Math.round(toMoneyNumber(employee?.fixedSalary)))
       : '',
+  ctAmount:
+    String(employee?.payType || '').trim().toUpperCase() === 'CT' &&
+    toMoneyNumber(employee?.ctAmount) > 0
+      ? String(Math.round(toMoneyNumber(employee?.ctAmount)))
+      : '',
   bonus:
     toMoneyNumber(employee?.bonus) > 0
       ? String(Math.round(toMoneyNumber(employee?.bonus)))
@@ -209,6 +214,7 @@ const PayrollEntry = () => {
         ...prev,
         [employeeKey]: {
           fixedSalary: '',
+          ctAmount: '',
           bonus: '',
           deduction: '',
           ...(prev[employeeKey] || {}),
@@ -232,19 +238,29 @@ const PayrollEntry = () => {
         const payType =
           String(employee?.payType || '').trim().toUpperCase() === 'CT' ? 'CT' : 'FIXED';
         const processCount = Array.isArray(employee?.processes) ? employee.processes.length : 0;
+        const productionEarnings = toMoneyNumber(
+          employee?.productionEarnings ?? employee?.baseEarnings ?? employee?.totalEarnings
+        );
 
         const fixedSalaryDraft = sanitizeMoneyInput(override.fixedSalary);
         const resolvedFixedSalary =
           fixedSalaryDraft !== ''
             ? parseMoneyInput(fixedSalaryDraft)
             : toMoneyNumber(employee?.fixedSalary);
+        const ctAmountDraft = sanitizeMoneyInput(override.ctAmount);
+        const resolvedCtAmount =
+          ctAmountDraft !== ''
+            ? parseMoneyInput(ctAmountDraft)
+            : toMoneyNumber(employee?.ctAmount);
 
         const baseEarnings =
           payType === 'FIXED'
             ? isMonthClosed
               ? toMoneyNumber(employee?.fixedSalary)
               : resolvedFixedSalary
-            : toMoneyNumber(employee?.baseEarnings ?? employee?.totalEarnings);
+            : isMonthClosed
+              ? toMoneyNumber(employee?.baseEarnings ?? employee?.totalEarnings)
+              : productionEarnings + resolvedCtAmount;
 
         const bonus = isMonthClosed ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
         const deduction = isMonthClosed
@@ -260,6 +276,8 @@ const PayrollEntry = () => {
           employeeKey,
           payType,
           processCount,
+          productionEarnings: payType === 'CT' ? productionEarnings : 0,
+          ctAmount: payType === 'CT' ? resolvedCtAmount : 0,
           baseEarnings,
           fixedSalary: payType === 'FIXED' ? resolvedFixedSalary : 0,
           bonus,
@@ -298,6 +316,8 @@ const PayrollEntry = () => {
         payType: employee.payType,
         bankName: employee.bankName ?? null,
         bankAccountNumber: employee.bankAccountNumber ?? null,
+        productionEarnings: employee.payType === 'CT' ? employee.productionEarnings : 0,
+        ctAmount: employee.payType === 'CT' ? employee.ctAmount : 0,
         baseEarnings: employee.payType === 'CT' ? employee.baseEarnings : 0,
         fixedSalary: employee.payType === 'FIXED' ? employee.fixedSalary : 0,
         bonus: employee.bonus,
@@ -538,6 +558,7 @@ const PayrollEntry = () => {
                         const expanded = expandedWorkerId === employee.employeeKey;
                         const override = manualOverrides[employee.employeeKey] || {
                           fixedSalary: '',
+                          ctAmount: '',
                           bonus: '',
                           deduction: '',
                         };
@@ -577,6 +598,15 @@ const PayrollEntry = () => {
                                     value={formatMoneyInput(override.fixedSalary)}
                                     onChange={handleOverrideChange(employee.employeeKey, 'fixedSalary')}
                                     placeholder="기준 급여"
+                                    sx={amountFieldSx}
+                                    inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+                                  />
+                                ) : employee.payType === 'CT' && canEditCurrentPayroll ? (
+                                  <TextField
+                                    size="small"
+                                    value={formatMoneyInput(override.ctAmount)}
+                                    onChange={handleOverrideChange(employee.employeeKey, 'ctAmount')}
+                                    placeholder="성과급 금액"
                                     sx={amountFieldSx}
                                     inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
                                   />
