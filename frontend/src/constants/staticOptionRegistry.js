@@ -114,7 +114,8 @@ const RAW_STATIC_OPTION_GROUPS = [
       createItem('CT', { ko: '성과급', en: 'Piece Rate', vi: 'Luong san pham' }, [
         '성과급',
       ]),
-      createItem('FIXED', { ko: '고정급', en: 'Fixed Salary', vi: 'Luong co dinh' }, [
+      createItem('FIXED', { ko: '기본급', en: 'Base Salary', vi: 'Luong co ban' }, [
+        '기본급',
         '고정급',
       ]),
     ],

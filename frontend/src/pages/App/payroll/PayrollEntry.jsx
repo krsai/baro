@@ -82,7 +82,7 @@ const getEmployeeKey = (employee, index) => {
 };
 
 const getPayTypeLabel = (value) =>
-  String(value || '').trim().toUpperCase() === 'CT' ? '성과급' : '고정급';
+  String(value || '').trim().toUpperCase() === 'CT' ? '성과급' : '기본급';
 
 const getOverrideDraftFromEmployee = (employee) => ({
   fixedSalary:
@@ -350,7 +350,7 @@ const PayrollEntry = () => {
     );
     if (missingFixedSalaryEmployee) {
       showNotification(
-        `${missingFixedSalaryEmployee.workerName || '고정급 직원'} 기준 급여를 입력하세요.`,
+        `${missingFixedSalaryEmployee.workerName || '기본급 직원'} 기준 급여를 입력하세요.`,
         'error'
       );
       return false;

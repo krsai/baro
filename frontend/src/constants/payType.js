@@ -12,9 +12,9 @@ export const PAY_TYPE_DEFAULT_LABELS = {
     vi: 'Luong san pham',
   },
   [PAY_TYPE_KEYS.FIXED]: {
-    ko: '\uACE0\uC815\uAE09',
-    en: 'Fixed Salary',
-    vi: 'Luong co dinh',
+    ko: '\uAE30\uBCF8\uAE09',
+    en: 'Base Salary',
+    vi: 'Luong co ban',
   },
 };
 

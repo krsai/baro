@@ -80,7 +80,7 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Bat buoc (tu dong dat theo nha may cua ban)',
   },
   payTypeLabel: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
-  fixedSalaryLabel: { ko: '고정급 금액', en: 'Fixed Salary', vi: 'Muc luong co dinh' },
+  fixedSalaryLabel: { ko: '기본급 금액', en: 'Base Salary Amount', vi: 'Muc luong co ban' },
   ctSalaryLabel: { ko: '기본급 금액', en: 'Base Salary Amount', vi: 'Muc luong co ban' },
   moneyPlaceholder: { ko: '예: 8,000,000', en: 'e.g. 8,000,000', vi: 'Vi du: 8,000,000' },
   joinedAtLabel: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
