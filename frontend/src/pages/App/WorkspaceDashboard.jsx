@@ -73,11 +73,39 @@ const buildSummaryCards = (languageCode) => [
       vi: 'Don hang chua khoa',
     },
     description: {
-      ko: '잠금이 꺼진 주문 수',
-      en: 'Orders with edit lock off',
-      vi: 'So don hang tat khoa sua',
+      ko: '상태별 주문 수',
+      en: 'Orders by status',
+      vi: 'So don hang theo trang thai',
     },
-    value: '—',
+    statusItems: [
+      {
+        key: 'editable',
+        label: {
+          ko: '수정',
+          en: 'Editable',
+          vi: 'Sua',
+        },
+        value: '—',
+      },
+      {
+        key: 'received',
+        label: {
+          ko: '접수',
+          en: 'Received',
+          vi: 'Da nhan',
+        },
+        value: '—',
+      },
+      {
+        key: 'in-progress',
+        label: {
+          ko: '진행',
+          en: 'In Progress',
+          vi: 'Dang tien hanh',
+        },
+        value: '—',
+      },
+    ],
     badge: resolveText(DASHBOARD_TEXT.pending, languageCode),
   },
   {
@@ -194,9 +222,29 @@ const WorkspaceDashboard = () => {
                   <Typography variant="subtitle2">{resolveText(card.title, languageCode)}</Typography>
                   <Chip label={card.badge} size="small" variant="outlined" />
                 </Stack>
-                <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1, mb: 0.5 }}>
-                  {card.value}
-                </Typography>
+                {Array.isArray(card.statusItems) && card.statusItems.length > 0 ? (
+                  <Stack spacing={0.5} sx={{ mb: 0.5 }}>
+                    {card.statusItems.map((status) => (
+                      <Stack
+                        key={status.key}
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                      >
+                        <Typography variant="body2" color="text.secondary">
+                          {resolveText(status.label, languageCode)}
+                        </Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+                          {status.value}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="h4" sx={{ fontWeight: 700, lineHeight: 1.1, mb: 0.5 }}>
+                    {card.value}
+                  </Typography>
+                )}
                 <Typography variant="caption" color="text.secondary">
                   {resolveText(card.description, languageCode)}
                 </Typography>

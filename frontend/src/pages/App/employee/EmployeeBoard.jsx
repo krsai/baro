@@ -242,6 +242,7 @@ const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
     : getOrgRoleOptions(languageCode);
 const MEMBER_REVIEWER_ROLES = new Set(['ADMIN', 'OPERATOR']);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR']);
+const FIXED_SALARY_VIEWER_ROLES = new Set(['ADMIN', 'ACCOUNTANT']);
 const INTERNAL_MEMBER_EMAIL_PREFIX = 'emp+';
 const INTERNAL_MEMBER_EMAIL_DOMAIN = 'baro.local';
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
@@ -268,6 +269,8 @@ const getMemberIdentityLabel = (member) =>
     : String(member?.email || '-');
 const isLoginRequiredRole = (role) =>
   LOGIN_REQUIRED_ROLES.has(String(role || '').toUpperCase());
+const canViewFixedSalaryByRole = (role) =>
+  FIXED_SALARY_VIEWER_ROLES.has(String(role || '').toUpperCase());
 
 const isAdminOrgRole = (value) => String(value || '').toUpperCase() === 'ADMIN';
 const isWorkerOrgRole = (value) => String(value || '').toUpperCase() === 'WORKER';
@@ -322,6 +325,11 @@ const formatDate = (value) => {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString();
+};
+const formatFixedSalaryDisplay = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return '-';
+  return Math.round(parsed).toLocaleString('en-US');
 };
 const formatDateInput = (value) => {
   if (!value) return '';
@@ -675,6 +683,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     [languageCode]
   );
   const isAdmin = overrideOrgId != null ? true : isAdminOrgRole(activeOrgRole);
+  const canViewFixedSalary =
+    overrideOrgId != null || canViewFixedSalaryByRole(activeOrgRole);
   const canManageMembers =
     overrideOrgId != null ||
     MEMBER_REVIEWER_ROLES.has(String(activeOrgRole || '').toUpperCase());
@@ -993,17 +1003,27 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           savedMember = await saveMembership();
         }
 
+        const normalizedPayType = String(
+          draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED')
+        ).toUpperCase();
+        const isFixedPayType = normalizedPayType === 'FIXED';
+        const currentEmployee = employeeByMembership.get(member.id) || null;
+        const parsedDraftFixedSalary = parseMoneyInput(draft.fixedSalary);
+
         const employeePayload = {
           orgMembershipId: member.id,
           name: draft.name,
           bankName: draft.bankName,
           bankAccountNumber: draft.bankAccountNumber,
           roleId: draft.orgRole === 'WORKER' && draft.jobRoleId ? Number(draft.jobRoleId) : null,
-          payType: draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED'),
-          fixedSalary:
-            (draft.payType || (draft.orgRole === 'WORKER' ? 'CT' : 'FIXED')) === 'FIXED'
-              ? parseMoneyInput(draft.fixedSalary)
-              : null,
+          payType: normalizedPayType,
+          fixedSalary: isFixedPayType
+            ? (
+              canViewFixedSalary
+                ? parsedDraftFixedSalary
+                : parsedDraftFixedSalary ?? parseMoneyInput(currentEmployee?.fixedSalary)
+            )
+            : null,
         };
 
         if (draft.factoryId) employeePayload.factoryId = Number(draft.factoryId);
@@ -1041,6 +1061,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     [
       languageCode,
       myEmail,
+      canViewFixedSalary,
+      employeeByMembership,
       updatingEmployeeIds,
       updatingMembershipIds,
       upsertActiveMember,
@@ -1581,7 +1603,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
-              {String(drawerDraft.payType || '').toUpperCase() === 'FIXED' && (
+              {String(drawerDraft.payType || '').toUpperCase() === 'FIXED' && canViewFixedSalary && (
                 <TextField
                   size="small"
                   label={text('fixedSalaryLabel', languageCode)}
@@ -1646,7 +1668,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           </Drawer>
         )}
 
-        {pendingMembers.length > 0 && (
+        {canManageMembers && pendingMembers.length > 0 && (
           <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
               {text('pendingTitle', languageCode)}
@@ -1826,6 +1848,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('roleLabel', languageCode)}</TableCell>
                   <TableCell>{text('jobLabel', languageCode)}</TableCell>
                   <TableCell>{text('payTypeColumn', languageCode)}</TableCell>
+                  {canViewFixedSalary && (
+                    <TableCell align="right">{text('fixedSalaryLabel', languageCode)}</TableCell>
+                  )}
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
                   <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
@@ -1834,7 +1859,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={8}
+                    colSpan={canViewFixedSalary ? 9 : 8}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -1860,6 +1885,10 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       payTypeOptions.find((option) => option.value === payTypeValue)?.label ||
                       payTypeValue ||
                       '-';
+                    const fixedSalaryDisplay =
+                      payTypeValue === 'FIXED'
+                        ? formatFixedSalaryDisplay(employee?.fixedSalary)
+                        : '-';
                     const displayName = getEmployeeDisplayName(
                       member,
                       employee,
@@ -1878,6 +1907,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
                         <TableCell>{payTypeLabel}</TableCell>
+                        {canViewFixedSalary && (
+                          <TableCell align="right">{fixedSalaryDisplay}</TableCell>
+                        )}
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>

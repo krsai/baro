@@ -186,12 +186,16 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.WORK_HISTORY:
     case FEATURE_KEYS.BUSINESS:
     case FEATURE_KEYS.LINE:
-    case FEATURE_KEYS.EMPLOYEE:
     case FEATURE_KEYS.CUSTOMER:
     case FEATURE_KEYS.HOLIDAY:
       return (
         isManufacturer &&
         hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
+      );
+    case FEATURE_KEYS.EMPLOYEE:
+      return (
+        isManufacturer &&
+        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR, ORG_ROLES.ACCOUNTANT)
       );
     case FEATURE_KEYS.ATTRIBUTE:
       return (
