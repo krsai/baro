@@ -44,7 +44,7 @@ const PayrollBoard = () => {
       } catch (error) {
         if (!cancelled) {
           setSnapshots([]);
-          showNotification(error?.message || '급여 확정 내역을 불러오지 못했습니다.', 'error');
+          showNotification(error?.message || '급여 스냅샷 내역을 불러오지 못했습니다.', 'error');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -91,8 +91,8 @@ const PayrollBoard = () => {
                   <TableCell sx={{ fontWeight: 700 }}>정산 월</TableCell>
                   <TableCell sx={{ fontWeight: 700 }} align="right">대상 인원</TableCell>
                   <TableCell sx={{ fontWeight: 700 }} align="right">총 급여</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>확정자</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>확정 일시</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>저장자</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>저장 일시</TableCell>
                   <TableCell sx={{ fontWeight: 700 }} align="center">상태</TableCell>
                 </TableRow>
               </TableHead>
@@ -102,7 +102,7 @@ const PayrollBoard = () => {
                 ) : snapshots.length === 0 ? (
                   <TableStatusRow
                     colSpan={6}
-                    message="확정된 급여 내역이 없습니다. '급여 계산 추가'로 시작하세요."
+                    message="저장된 급여 스냅샷이 없습니다. '급여 계산 추가'로 시작하세요."
                   />
                 ) : (
                   snapshots.map((snapshot) => {
@@ -133,7 +133,7 @@ const PayrollBoard = () => {
                             : '-'}
                         </TableCell>
                         <TableCell align="center">
-                          <Chip size="small" label="확정됨" color="success" variant="outlined" />
+                          <Chip size="small" label="스냅샷" color="default" variant="outlined" />
                         </TableCell>
                       </TableRow>
                     );

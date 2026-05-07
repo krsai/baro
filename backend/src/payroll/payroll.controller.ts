@@ -5,7 +5,7 @@ import {
   deletePayrollSnapshot,
   getPayrollByMonth,
   listPayrollSnapshots,
-  lockPayrollSnapshot,
+  savePayrollSnapshot,
 } from "./payroll.service";
 
 export const listPayrollSnapshotsController = async (req: Request, res: Response) => {
@@ -28,23 +28,24 @@ export const getPayrollController = async (req: Request, res: Response) => {
   return res.json(payroll);
 };
 
-export const lockPayrollController = async (req: Request, res: Response) => {
+export const savePayrollSnapshotController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ["ADMIN", "ACCOUNTANT"],
   });
   if (!accessContext) return;
 
-  const snapshot = await lockPayrollSnapshot({
+  const snapshot = await savePayrollSnapshot({
     orgId: accessContext.organization.id,
     month: String(req.body?.month || ""),
-    lockedBy:
+    savedBy:
+      resolveOptionalString(req.body?.savedBy, null) ??
       resolveOptionalString(req.body?.lockedBy, null) ??
       accessContext.requesterEmail ??
       "unknown",
     employees: req.body?.employees,
   });
 
-  return res.status(201).json(snapshot);
+  return res.json(snapshot);
 };
 
 export const deletePayrollSnapshotController = async (req: Request, res: Response) => {

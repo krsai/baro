@@ -46,6 +46,16 @@ const getPayrollMonthRange = (month: string) => {
   return { start, endExclusive };
 };
 
+const isPayrollMonthClosed = (month: string, now = new Date()) => {
+  const [yearText, monthText] = String(month || "").split("-");
+  const year = Number(yearText);
+  const monthNumber = Number(monthText);
+  if (!Number.isFinite(year) || !Number.isFinite(monthNumber)) return false;
+  if (monthNumber < 1 || monthNumber > 12) return false;
+  const nextMonthStartUtc = new Date(Date.UTC(year, monthNumber, 1));
+  return now.getTime() >= nextMonthStartUtc.getTime();
+};
+
 const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
   resolveOptionalString(
     employee?.name ?? fallback ?? employee?.membership?.email ?? null,
@@ -165,7 +175,7 @@ export const listPayrollSnapshots = async (orgId: number) =>
   prisma.payrollSnapshot.findMany({
     where: { orgId },
     orderBy: { month: "desc" },
-    select: { id: true, month: true, lockedAt: true, lockedBy: true, createdAt: true },
+    select: { id: true, month: true, data: true, lockedAt: true, lockedBy: true, createdAt: true },
   });
 
 const buildFixedSalaryFallbackIndex = (snapshotData: unknown) => {
@@ -227,13 +237,16 @@ const resolveFixedSalaryWithFallback = ({
 export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  const monthClosed = isPayrollMonthClosed(month);
 
   const snapshot = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
   });
   if (snapshot) {
     return {
-      locked: true,
+      locked: false,
+      snapshotExists: true,
+      monthClosed,
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
       month,
@@ -451,37 +464,53 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
     })
     .sort((a, b) => b.finalEarnings - a.finalEarnings);
 
-  return { locked: false, month, employees };
+  return {
+    locked: false,
+    snapshotExists: false,
+    monthClosed,
+    month,
+    employees,
+  };
 };
 
-export const lockPayrollSnapshot = async ({
+export const savePayrollSnapshot = async ({
   orgId,
   month: monthInput,
-  lockedBy,
+  savedBy,
   employees,
 }: {
   orgId: number;
   month: string;
-  lockedBy: string;
-  employees: any;
+  savedBy: string;
+  employees?: any;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
-
-  const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month: { orgId, month } },
-  });
-  if (existing) {
-    throw createHttpError(409, "already locked");
+  if (isPayrollMonthClosed(month)) {
+    throw createHttpError(409, "payroll month closed");
   }
 
-  return prisma.payrollSnapshot.create({
-    data: {
+  const normalizedInputEmployees = ensureArray(employees).map(normalizePayrollSnapshotEmployee);
+  const snapshotEmployees =
+    normalizedInputEmployees.length > 0
+      ? normalizedInputEmployees
+      : (await getPayrollByMonth(orgId, month)).employees.map(normalizePayrollSnapshotEmployee);
+  const savedAt = new Date();
+  const savedByText = String(savedBy || "unknown");
+
+  return prisma.payrollSnapshot.upsert({
+    where: { orgId_month: { orgId, month } },
+    create: {
       orgId,
       month,
-      data: ensureArray(employees).map(normalizePayrollSnapshotEmployee),
-      lockedAt: new Date(),
-      lockedBy: String(lockedBy || "unknown"),
+      data: snapshotEmployees,
+      lockedAt: savedAt,
+      lockedBy: savedByText,
+    },
+    update: {
+      data: snapshotEmployees,
+      lockedAt: savedAt,
+      lockedBy: savedByText,
     },
   });
 };
@@ -489,6 +518,9 @@ export const lockPayrollSnapshot = async ({
 export const deletePayrollSnapshot = async (orgId: number, monthInput: string) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
+  if (isPayrollMonthClosed(month)) {
+    throw createHttpError(409, "payroll month closed");
+  }
 
   const existing = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },

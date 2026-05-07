@@ -20,7 +20,6 @@ import {
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
-import LockToggleSwitch from '../../../components/LockToggleSwitch';
 import SaveButton from '../../../components/SaveButton';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
@@ -56,6 +55,17 @@ const parseMoneyInput = (value) => {
   if (!sanitized) return 0;
   const parsed = Number(sanitized);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatMoneyInput = (value) => {
+  const sanitized = sanitizeMoneyInput(value);
+  if (!sanitized) return '';
+  const parsed = Number(sanitized);
+  if (!Number.isFinite(parsed)) return '';
+  return formatNumberWithCommas(parsed, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  });
 };
 
 const toMoneyNumber = (value) => {
@@ -100,18 +110,17 @@ const amountFieldSx = {
 const PayrollEntry = () => {
   const { payrollId } = useParams();
   const { navigateToPath, showNotification } = useAppActions();
-  const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
+  const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
 
   const isNew = !payrollId || payrollId === 'new';
   const monthFromParam = isNew ? null : payrollId;
-  const isAdmin = String(activeOrgRole || '').trim().toUpperCase() === 'ADMIN';
 
   const [payMonth, setPayMonth] = useState(
     () => monthFromParam ?? new Date().toISOString().slice(0, 7)
   );
   const [loading, setLoading] = useState(false);
-  const [lockMutating, setLockMutating] = useState(false);
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [payrollData, setPayrollData] = useState(null);
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
@@ -163,13 +172,35 @@ const PayrollEntry = () => {
     setManualOverrides(nextOverrides);
   }, [payrollData]);
 
-  const handleCalculate = useCallback(() => {
+  const handleCalculate = useCallback(async () => {
     if (!payMonth) {
       showNotification('정산 월을 선택하세요.', 'error');
       return;
     }
-    fetchPayroll(payMonth);
-  }, [payMonth, showNotification, fetchPayroll]);
+
+    setSavingSnapshot(true);
+    try {
+      const query = buildQueryString({ orgId: activeOrgId });
+      await requestJSON('/payroll/snapshots' + query, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month: payMonth,
+          savedBy: activeProfile?.email || activeProfile?.name || '관리자',
+        }),
+      });
+      await fetchPayroll(payMonth);
+      showNotification(`${payMonth} 급여 스냅샷을 생성했습니다.`, 'success');
+    } catch (error) {
+      if (error?.message?.includes('payroll month closed')) {
+        showNotification('해당 월은 이미 지나서 생성할 수 없습니다.', 'warning');
+      } else {
+        showNotification(error?.message || '급여 계산 생성에 실패했습니다.', 'error');
+      }
+    } finally {
+      setSavingSnapshot(false);
+    }
+  }, [activeOrgId, activeProfile?.email, activeProfile?.name, fetchPayroll, payMonth, showNotification]);
 
   const handleOverrideChange = useCallback(
     (employeeKey, field) => (event) => {
@@ -189,8 +220,9 @@ const PayrollEntry = () => {
   );
 
   const employees = payrollData?.employees ?? [];
-  const isLocked = payrollData?.locked === true;
   const currentMonth = payrollData?.month || payMonth;
+  const isMonthClosed = payrollData?.monthClosed === true;
+  const snapshotExists = payrollData?.snapshotExists === true;
 
   const computedEmployees = useMemo(
     () =>
@@ -209,17 +241,17 @@ const PayrollEntry = () => {
 
         const baseEarnings =
           payType === 'FIXED'
-            ? isLocked
+            ? isMonthClosed
               ? toMoneyNumber(employee?.fixedSalary)
               : resolvedFixedSalary
             : toMoneyNumber(employee?.baseEarnings ?? employee?.totalEarnings);
 
-        const bonus = isLocked ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
-        const deduction = isLocked
+        const bonus = isMonthClosed ? toMoneyNumber(employee?.bonus) : parseMoneyInput(override.bonus);
+        const deduction = isMonthClosed
           ? toMoneyNumber(employee?.deduction)
           : parseMoneyInput(override.deduction);
 
-        const finalEarnings = isLocked
+        const finalEarnings = isMonthClosed
           ? toMoneyNumber(employee?.finalEarnings ?? employee?.totalEarnings)
           : baseEarnings + bonus - deduction;
 
@@ -235,7 +267,7 @@ const PayrollEntry = () => {
           finalEarnings,
         };
       }),
-    [employees, isLocked, manualOverrides]
+    [employees, isMonthClosed, manualOverrides]
   );
 
   const totalBaseEarnings = computedEmployees.reduce(
@@ -252,8 +284,8 @@ const PayrollEntry = () => {
     0
   );
 
-  const canToggleLock = Boolean(payrollData) && (!isLocked || isAdmin);
-  const canDeleteCurrentPayroll = Boolean(payrollData) && !isLocked;
+  const canEditCurrentPayroll = Boolean(payrollData) && !isMonthClosed;
+  const canDeleteCurrentPayroll = Boolean(payrollData) && snapshotExists && !isMonthClosed;
 
   const buildSnapshotEmployeesPayload = useCallback(
     () =>
@@ -286,8 +318,12 @@ const PayrollEntry = () => {
     [computedEmployees]
   );
 
-  const handleSaveAndLock = useCallback(async () => {
-    if (!payrollData || payrollData.locked || !currentMonth) return false;
+  const handleSaveSnapshot = useCallback(async () => {
+    if (!payrollData || !currentMonth) return false;
+    if (isMonthClosed) {
+      showNotification('해당 월은 이미 지나서 수정할 수 없습니다.', 'warning');
+      return false;
+    }
 
     const missingFixedSalaryEmployee = computedEmployees.find(
       (employee) => employee.payType === 'FIXED' && toMoneyNumber(employee.fixedSalary) <= 0
@@ -300,37 +336,38 @@ const PayrollEntry = () => {
       return false;
     }
 
-    setLockMutating(true);
+    setSavingSnapshot(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON('/payroll/lock' + query, {
+      await requestJSON('/payroll/snapshots' + query, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           month: currentMonth,
-          lockedBy: activeProfile?.email || activeProfile?.name || '관리자',
+          savedBy: activeProfile?.email || activeProfile?.name || '관리자',
           employees: buildSnapshotEmployeesPayload(),
         }),
       });
-      showNotification(`${currentMonth} 급여가 저장되고 잠금 처리되었습니다.`, 'success');
+      showNotification(`${currentMonth} 급여 스냅샷을 저장했습니다.`, 'success');
       await fetchPayroll(currentMonth);
       return true;
     } catch (error) {
-      if (error?.message?.includes('already locked')) {
-        showNotification('이미 잠금된 월입니다.', 'warning');
+      if (error?.message?.includes('payroll month closed')) {
+        showNotification('해당 월은 이미 지나서 수정할 수 없습니다.', 'warning');
         await fetchPayroll(currentMonth);
       } else if (error?.message?.includes('insufficient org role')) {
-        showNotification('급여 잠금 권한이 없습니다.', 'error');
+        showNotification('급여 저장 권한이 없습니다.', 'error');
       } else {
         showNotification(error?.message || '급여 저장에 실패했습니다.', 'error');
       }
       return false;
     } finally {
-      setLockMutating(false);
+      setSavingSnapshot(false);
     }
   }, [
     payrollData,
     currentMonth,
+    isMonthClosed,
     computedEmployees,
     showNotification,
     activeOrgId,
@@ -340,69 +377,36 @@ const PayrollEntry = () => {
     fetchPayroll,
   ]);
 
-  const handleUnlockByToggle = useCallback(async () => {
-    if (!payrollData?.locked || !currentMonth) return false;
-    if (!isAdmin) {
-      showNotification('급여 잠금 해제는 관리자만 가능합니다.', 'error');
-      return false;
+  const handleDeleteCurrentPayroll = useCallback(async () => {
+    if (!payrollData || !currentMonth) return;
+    if (isMonthClosed) {
+      showNotification('해당 월은 이미 지나서 삭제할 수 없습니다.', 'warning');
+      return;
     }
-
-    if (!window.confirm(`${currentMonth} 급여 잠금을 해제하시겠습니까?`)) {
-      return false;
+    if (!snapshotExists) {
+      showNotification('삭제할 스냅샷이 없습니다.', 'warning');
+      return;
     }
+    if (!window.confirm('현재 급여 계산 스냅샷을 삭제하시겠습니까?')) return;
 
-    setLockMutating(true);
+    setDeleting(true);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       await requestJSON(`/payroll/snapshots/${currentMonth}` + query, {
         method: 'DELETE',
       });
-      showNotification(`${currentMonth} 급여 잠금이 해제되었습니다.`, 'success');
-      await fetchPayroll(currentMonth);
-      return true;
-    } catch (error) {
-      showNotification(error?.message || '급여 잠금 해제에 실패했습니다.', 'error');
-      return false;
-    } finally {
-      setLockMutating(false);
-    }
-  }, [payrollData?.locked, currentMonth, isAdmin, activeOrgId, showNotification, fetchPayroll]);
-
-  const handleLockToggle = useCallback(
-    async (_event, nextLocked) => {
-      if (!payrollData || lockMutating) return;
-      if (nextLocked) {
-        await handleSaveAndLock();
-        return;
-      }
-      await handleUnlockByToggle();
-    },
-    [payrollData, lockMutating, handleSaveAndLock, handleUnlockByToggle]
-  );
-
-  const handleDeleteCurrentPayroll = useCallback(() => {
-    if (!payrollData) return;
-    if (isLocked) {
-      showNotification('잠금된 급여는 삭제할 수 없습니다.', 'warning');
-      return;
-    }
-    if (!window.confirm('현재 급여 계산 화면을 삭제하시겠습니까?')) return;
-
-    if (isNew) {
-      setPayrollData(null);
-      setExpandedWorkerId(null);
-      setManualOverrides({});
-      showNotification('급여 계산 화면을 초기화했습니다.', 'success');
-      return;
-    }
-
-    setDeleting(true);
-    try {
+      showNotification(`${currentMonth} 급여 스냅샷을 삭제했습니다.`, 'success');
       closeEntry();
+    } catch (error) {
+      if (error?.message?.includes('payroll month closed')) {
+        showNotification('해당 월은 이미 지나서 삭제할 수 없습니다.', 'warning');
+      } else {
+        showNotification(error?.message || '급여 삭제에 실패했습니다.', 'error');
+      }
     } finally {
       setDeleting(false);
     }
-  }, [payrollData, isLocked, showNotification, isNew, closeEntry]);
+  }, [activeOrgId, closeEntry, currentMonth, isMonthClosed, payrollData, showNotification, snapshotExists]);
 
   return (
     <AppPageContainer>
@@ -422,34 +426,26 @@ const PayrollEntry = () => {
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
             {payrollData && (
               <Chip
-                label={isLocked ? '잠금' : '미잠금'}
-                color={isLocked ? 'success' : 'warning'}
+                label={isMonthClosed ? '수정 마감' : '수정 가능'}
+                color={isMonthClosed ? 'default' : 'success'}
                 variant="outlined"
                 size="small"
               />
             )}
             {payrollData && (
-              <LockToggleSwitch
-                checked={isLocked}
-                disabled={!canToggleLock || lockMutating}
-                onChange={handleLockToggle}
-                ariaLabel={`급여 잠금 ${currentMonth}`}
-              />
-            )}
-            {payrollData && (
               <DeleteActionButton
-                disabled={!canDeleteCurrentPayroll || lockMutating || deleting}
+                disabled={!canDeleteCurrentPayroll || savingSnapshot || deleting}
                 title={
-                  canDeleteCurrentPayroll ? '삭제' : '잠금된 급여는 삭제할 수 없습니다.'
+                  canDeleteCurrentPayroll ? '삭제' : '해당 월은 삭제할 수 없습니다.'
                 }
                 onClick={handleDeleteCurrentPayroll}
               />
             )}
             {payrollData && (
               <SaveButton
-                onClick={handleSaveAndLock}
-                disabled={isLocked || lockMutating || computedEmployees.length === 0}
-                loading={lockMutating}
+                onClick={handleSaveSnapshot}
+                disabled={!canEditCurrentPayroll || savingSnapshot || computedEmployees.length === 0}
+                loading={savingSnapshot}
               >
                 저장
               </SaveButton>
@@ -477,8 +473,12 @@ const PayrollEntry = () => {
                 size="small"
                 sx={{ width: { xs: '100%', sm: 220 } }}
               />
-              <Button variant="contained" onClick={handleCalculate} disabled={loading || !payMonth}>
-                {loading ? '계산 중...' : '계산하기'}
+              <Button
+                variant="contained"
+                onClick={handleCalculate}
+                disabled={loading || savingSnapshot || !payMonth}
+              >
+                {loading || savingSnapshot ? '계산 중...' : '계산하기'}
               </Button>
             </Stack>
           </Paper>
@@ -486,6 +486,11 @@ const PayrollEntry = () => {
 
         {payrollData && (
           <>
+            {isMonthClosed && (
+              <Alert severity="info" sx={{ mb: 1.5 }}>
+                해당 월은 이미 지나서 수정/삭제가 불가능합니다.
+              </Alert>
+            )}
             {computedEmployees.length === 0 ? (
               <Alert severity="info">{currentMonth} 기간에 급여 대상 직원이 없습니다.</Alert>
             ) : (
@@ -566,10 +571,10 @@ const PayrollEntry = () => {
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                {employee.payType === 'FIXED' && !isLocked ? (
+                                {employee.payType === 'FIXED' && canEditCurrentPayroll ? (
                                   <TextField
                                     size="small"
-                                    value={override.fixedSalary}
+                                    value={formatMoneyInput(override.fixedSalary)}
                                     onChange={handleOverrideChange(employee.employeeKey, 'fixedSalary')}
                                     placeholder="기준 급여"
                                     sx={amountFieldSx}
@@ -582,12 +587,12 @@ const PayrollEntry = () => {
                                 )}
                               </TableCell>
                               <TableCell align="right">
-                                {isLocked ? (
+                                {!canEditCurrentPayroll ? (
                                   <Typography variant="body2">{formatDong(employee.bonus)}</Typography>
                                 ) : (
                                   <TextField
                                     size="small"
-                                    value={override.bonus}
+                                    value={formatMoneyInput(override.bonus)}
                                     onChange={handleOverrideChange(employee.employeeKey, 'bonus')}
                                     placeholder="0"
                                     sx={amountFieldSx}
@@ -596,12 +601,12 @@ const PayrollEntry = () => {
                                 )}
                               </TableCell>
                               <TableCell align="right">
-                                {isLocked ? (
+                                {!canEditCurrentPayroll ? (
                                   <Typography variant="body2">{formatDong(employee.deduction)}</Typography>
                                 ) : (
                                   <TextField
                                     size="small"
-                                    value={override.deduction}
+                                    value={formatMoneyInput(override.deduction)}
                                     onChange={handleOverrideChange(employee.employeeKey, 'deduction')}
                                     placeholder="0"
                                     sx={amountFieldSx}
