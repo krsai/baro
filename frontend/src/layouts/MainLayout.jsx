@@ -59,7 +59,13 @@ import useNetworkLoading from '../hooks/useNetworkLoading';
 import { RequestScopeBoundary } from '../context/RequestScopeContext';
 
 const DRAWER_WIDTH = 260;
+const TAB_BAR_HEIGHT = 41;
 const EMPTY_WORKSPACE_PATH = '/workspace';
+const EMPTY_WORKSPACE_HINT = {
+  ko: '메뉴를 이용하세요.',
+  en: 'Use the menu to continue.',
+  vi: 'Hay su dung menu.',
+};
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const DAILY_WORK_HISTORY_LABELS = {
   ko: '\uC77C\uC77C \uAE30\uB85D',
@@ -158,6 +164,20 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   const activeTabValue = tabsForRender.some((tab) => tab.id === currentPath)
     ? currentPath
     : false;
+
+  if (tabsForRender.length === 0) {
+    return (
+      <Box
+        sx={{
+          borderBottom: 1,
+          borderColor: 'divider',
+          bgcolor: '#f4f6f8',
+          minHeight: `${TAB_BAR_HEIGHT}px`,
+          height: `${TAB_BAR_HEIGHT}px`,
+        }}
+      />
+    );
+  }
 
   return (
     <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
@@ -1409,6 +1429,12 @@ const MainLayout = () => {
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
+  const isEmptyWorkspaceScreen =
+    currentPath === EMPTY_WORKSPACE_PATH && openTabs.length === 0;
+  const emptyWorkspaceHint = resolveLocalizedLabel(
+    EMPTY_WORKSPACE_HINT,
+    languageCode
+  );
   const getMenuItemSx = React.useCallback(({ selected = false, nested = false, disabled = false } = {}) => {
     const baseSx = nested ? { pl: 4 } : {};
 
@@ -1737,30 +1763,68 @@ const MainLayout = () => {
             position: 'relative',
           }}
         >
-          {Array.from(mountedTabOutlets.entries()).map(([path, element]) => (
-            <RequestScopeBoundary
-              key={path}
-              scopeId={path}
-              active={currentPath === path}
+          {isEmptyWorkspaceScreen ? (
+            <Box
+              sx={{
+                minHeight: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                px: 2,
+              }}
             >
-              <Box
-                sx={{
-                  display: currentPath === path ? 'flex' : 'none',
-                  flexDirection: 'column',
-                  minHeight: '100%',
-                  minWidth: 0,
-                }}
-              >
-                {element}
-              </Box>
-            </RequestScopeBoundary>
-          ))}
-          {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
-            <RequestScopeBoundary scopeId={currentPath} active>
-              {routeOutlet}
-            </RequestScopeBoundary>
-          ) : null}
-          {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
+              <Stack spacing={1.5} alignItems="center">
+                <Typography
+                  sx={{
+                    fontSize: { xs: '2.4rem', md: '3.4rem' },
+                    fontWeight: 800,
+                    letterSpacing: '0.2em',
+                    lineHeight: 1,
+                    color: 'rgba(15, 23, 42, 0.82)',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  LINEOS
+                </Typography>
+                <Typography
+                  variant="body1"
+                  sx={{
+                    color: 'text.secondary',
+                    fontWeight: 500,
+                  }}
+                >
+                  {emptyWorkspaceHint}
+                </Typography>
+              </Stack>
+            </Box>
+          ) : (
+            <>
+              {Array.from(mountedTabOutlets.entries()).map(([path, element]) => (
+                <RequestScopeBoundary
+                  key={path}
+                  scopeId={path}
+                  active={currentPath === path}
+                >
+                  <Box
+                    sx={{
+                      display: currentPath === path ? 'flex' : 'none',
+                      flexDirection: 'column',
+                      minHeight: '100%',
+                      minWidth: 0,
+                    }}
+                  >
+                    {element}
+                  </Box>
+                </RequestScopeBoundary>
+              ))}
+              {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
+                <RequestScopeBoundary scopeId={currentPath} active>
+                  {routeOutlet}
+                </RequestScopeBoundary>
+              ) : null}
+              {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
+            </>
+          )}
         </Box>
       </Box>
     </Box>

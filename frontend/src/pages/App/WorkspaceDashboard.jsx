@@ -189,12 +189,6 @@ const WorkspaceDashboard = () => {
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <Stack spacing={2}>
         <Paper variant="outlined" sx={{ p: 2.25 }}>
-          <Typography variant="body1" color="text.secondary">
-            {resolveText(DASHBOARD_TEXT.subtitle, languageCode)}
-          </Typography>
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: 2.25 }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(DASHBOARD_TEXT.summaryTitle, languageCode)}
           </Typography>
