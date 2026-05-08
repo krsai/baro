@@ -8,7 +8,6 @@ import {
   Checkbox,
   Chip,
   Collapse,
-  FormControlLabel,
   IconButton,
   Paper,
   Stack,
@@ -146,6 +145,7 @@ const STYLE_PROCESS_MESSAGES = {
     orderColumn: '순서',
     codeColumn: '코드',
     processColumn: '공정명',
+    selectionSummaryLabel: '선택 조합',
     actionColumn: '작업',
     empty: '등록된 공정이 없습니다. 상단의 공정 추가로 바로 입력해보세요.',
     total: '개당 시간 합계',
@@ -219,6 +219,7 @@ const STYLE_PROCESS_MESSAGES = {
     orderColumn: 'Order',
     codeColumn: 'Code',
     processColumn: 'Process',
+    selectionSummaryLabel: 'Selection',
     actionColumn: 'Action',
     empty: 'No processes yet. Add one from the panel above.',
     total: 'Per-piece Total',
@@ -292,6 +293,7 @@ const STYLE_PROCESS_MESSAGES = {
     orderColumn: 'Thu tu',
     codeColumn: 'Ma',
     processColumn: 'Ten cong doan',
+    selectionSummaryLabel: 'Lua chon',
     actionColumn: 'Tac vu',
     empty: 'Chua co cong doan nao. Hay them o khung ben tren.',
     total: 'Tong thoi gian moi san pham',
@@ -1077,7 +1079,8 @@ const buildProcessPayload = (
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
-  const reviewNeedsCheck = Boolean(draft?.needsReview);
+  const reviewNeedsCheck =
+    Boolean(draft?.needsReview) || hasReviewCommentText(reviewComment);
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
   const ptPerPiece =
     ptTotalForDisplay == null
@@ -2647,6 +2650,18 @@ const StyleProcess = ({
             const previewStTotalSeconds =
               resolveProcessStPerPieceSeconds(process, displayOrderQuantity);
             const reviewMeta = parseProcessReviewMeta(process);
+            const mainProcessLabel = resolveLocalizedProcessDisplayLabel(
+              process,
+              languageCode,
+              getStyleProcessMessage(languageCode, 'processColumn'),
+              compositionMasterLookupByKind
+            );
+            const selectionSummaryLabel = buildProcessNameFromComposition(
+              process?.processComposition,
+              languageCode,
+              '',
+              compositionMasterLookupByKind
+            );
 
             return (
               <TableRow
@@ -2706,29 +2721,29 @@ const StyleProcess = ({
                 </TableCell>
 
                 <TableCell>
-                  <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                    <span>
-                      {resolveLocalizedProcessDisplayLabel(
-                        process,
-                        languageCode,
-                        getStyleProcessMessage(languageCode, 'processColumn'),
-                        compositionMasterLookupByKind
-                      )}
-                    </span>
-                    {reviewMeta.needsReview ? (
-                      <Tooltip
-                        title={
-                          reviewMeta.reviewComment ||
-                          getStyleProcessMessage(languageCode, 'reviewRequiredLabel')
-                        }
-                      >
-                        <Chip
-                          size="small"
-                          label={getStyleProcessMessage(languageCode, 'reviewBadge')}
-                          color="warning"
-                          variant="outlined"
-                        />
-                      </Tooltip>
+                  <Stack spacing={0.25}>
+                    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                      <span>{mainProcessLabel}</span>
+                      {reviewMeta.needsReview ? (
+                        <Tooltip
+                          title={
+                            reviewMeta.reviewComment ||
+                            getStyleProcessMessage(languageCode, 'reviewRequiredLabel')
+                          }
+                        >
+                          <Chip
+                            size="small"
+                            label={getStyleProcessMessage(languageCode, 'reviewBadge')}
+                            color="warning"
+                            variant="outlined"
+                          />
+                        </Tooltip>
+                      ) : null}
+                    </Stack>
+                    {selectionSummaryLabel ? (
+                      <Typography variant="caption" color="text.secondary">
+                        {`${getStyleProcessMessage(languageCode, 'selectionSummaryLabel')}: ${selectionSummaryLabel}`}
+                      </Typography>
                     ) : null}
                   </Stack>
                 </TableCell>
@@ -3274,129 +3289,169 @@ const StyleProcess = ({
                         }}
                       />
                     </Stack>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={1}
+                      sx={{ alignItems: { xs: 'stretch', sm: 'flex-start' } }}
+                    >
+                      <TextField
+                        size="small"
+                        type="number"
+                        label={getStyleProcessMessage(languageCode, 'repeatCountLabel')}
+                        value={addDraft.repeatCount ?? '1'}
+                        onChange={(event) => {
+                          setAddDraft((prev) => ({
+                            ...prev,
+                            repeatCount: event.target.value,
+                          }));
+                          setAddError('');
+                        }}
+                        inputProps={{ min: 1, step: 1 }}
+                        sx={{ width: 140 }}
+                      />
+                      <TextField
+                        size="small"
+                        label={getStyleProcessMessage(languageCode, 'processCodeLabel')}
+                        value={addDraft.processCode ?? ''}
+                        onChange={(event) => {
+                          setAddDraft((prev) => ({
+                            ...prev,
+                            processCode: event.target.value,
+                          }));
+                          setAddError('');
+                        }}
+                        placeholder={getStyleProcessMessage(languageCode, 'processCodePlaceholder')}
+                        sx={{ minWidth: 210, flex: 1 }}
+                      />
+                    </Stack>
                   </Stack>
                 </Stack>
                   </Collapse>
                 </Stack>
               </Box>
-            <Stack
-              direction={{ xs: 'column', xl: 'row' }}
-              spacing={1}
-              sx={{ alignItems: { xs: 'stretch', xl: 'center' } }}
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  xl: 'minmax(300px, 2.4fr) 120px 132px 132px minmax(280px, 1.9fr) auto',
+                },
+                gap: 1,
+                alignItems: 'start',
+              }}
             >
-              <Box
-                sx={{
-                  flex: 1,
-                  minHeight: 56,
-                  px: 1.5,
-                  py: 1.25,
-                  borderRadius: 1.5,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  backgroundColor: 'common.white',
-                }}
-              >
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>
-                  {getStyleProcessMessage(languageCode, 'previewLabel')}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {addPreviewProcess
+              <TextField
+                size="small"
+                label={getStyleProcessMessage(languageCode, 'previewLabel')}
+                value={
+                  addPreviewProcess
                     ? resolveLocalizedProcessDisplayLabel(
                         addPreviewProcess,
                         languageCode,
                         getStyleProcessMessage(languageCode, 'processColumn'),
                         compositionMasterLookupByKind
                       )
-                    : getStyleProcessMessage(languageCode, 'previewEmpty')}
-                </Typography>
-              </Box>
-
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <TextField
+                    : getStyleProcessMessage(languageCode, 'previewEmpty')
+                }
+                InputProps={{ readOnly: true }}
+                inputProps={{ tabIndex: -1 }}
+                sx={{
+                  minWidth: 0,
+                  '& .MuiInputBase-input': {
+                    fontWeight: 600,
+                  },
+                }}
+              />
+              <TextField
+                size="small"
+                type="number"
+                label={`${getStyleProcessMessage(languageCode, 'ptLabel')}(${ptTimeRefQuantityLabel})`}
+                value={addDraft.pt}
+                onChange={(event) => {
+                  setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
+                }}
+                onKeyDown={handleNumberInputEnterKeyDown}
+                onWheel={(e) => e.target.blur()}
+                inputProps={{ min: 0 }}
+                placeholder="-"
+                sx={{ width: 120 }}
+              />
+              <TextField
+                size="small"
+                type="number"
+                label={`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
+                value={resolveDraftStInputValue(addDraft)}
+                onChange={(event) => {
+                  setAddDraft((prev) => ({
+                    ...prev,
+                    st: event.target.value,
+                  }));
+                }}
+                onKeyDown={handleNumberInputEnterKeyDown}
+                onWheel={(e) => e.target.blur()}
+                inputProps={{ min: 0 }}
+                placeholder={
+                  addPreviewStTotalSeconds == null
+                    ? '-'
+                    : toDraftNumberText(addPreviewStTotalSeconds)
+                }
+                sx={{ width: 132 }}
+              />
+              <TextField
+                size="small"
+                label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
+                value={formatAtSecondsOrBlank(addPreviewAtTotalSeconds)}
+                InputProps={{ readOnly: true }}
+                inputProps={{ tabIndex: -1 }}
+                sx={{ width: 132 }}
+              />
+              <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 280 }}>
+                <Checkbox
                   size="small"
-                  type="number"
-                  label={`${getStyleProcessMessage(languageCode, 'ptLabel')}(${ptTimeRefQuantityLabel})`}
-                  value={addDraft.pt}
+                  checked={
+                    Boolean(addDraft.needsReview) || hasReviewCommentText(addDraft.reviewComment)
+                  }
                   onChange={(event) => {
-                    setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
-                  }}
-                  onKeyDown={handleNumberInputEnterKeyDown}
-                  onWheel={(e) => e.target.blur()}
-                  inputProps={{ min: 0 }}
-                  placeholder="-"
-                  sx={{ width: 120 }}
-                />
-                <TextField
-                  size="small"
-                  type="number"
-                  label={`${getStyleProcessMessage(languageCode, 'stLabel')}(${stBucketQuantityLabel})`}
-                  value={resolveDraftStInputValue(addDraft)}
-                  onChange={(event) => {
+                    const checked = Boolean(event.target.checked);
                     setAddDraft((prev) => ({
                       ...prev,
-                      st: event.target.value,
+                      needsReview: checked,
+                      reviewComment: checked ? prev.reviewComment : '',
                     }));
                   }}
-                  onKeyDown={handleNumberInputEnterKeyDown}
-                  onWheel={(e) => e.target.blur()}
-                  inputProps={{ min: 0 }}
-                  placeholder={
-                    addPreviewStTotalSeconds == null
-                      ? '-'
-                      : toDraftNumberText(addPreviewStTotalSeconds)
-                  }
-                  sx={{ width: 132 }}
                 />
+                <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>
+                  {getStyleProcessMessage(languageCode, 'reviewRequiredLabel')}
+                </Typography>
                 <TextField
                   size="small"
-                  label={`${getStyleProcessMessage(languageCode, 'atLabel')}(${timeRefQuantityLabel})`}
-                  value={formatAtSecondsOrBlank(addPreviewAtTotalSeconds)}
-                  InputProps={{ readOnly: true }}
-                  inputProps={{ tabIndex: -1 }}
-                  sx={{ width: 132 }}
+                  value={addDraft.reviewComment || ''}
+                  onChange={(event) => {
+                    const nextComment = event.target.value;
+                    setAddDraft((prev) => ({
+                      ...prev,
+                      reviewComment: nextComment,
+                      needsReview: hasReviewCommentText(nextComment) ? true : prev.needsReview,
+                    }));
+                  }}
+                  onBlur={() => setAddError('')}
+                  placeholder={getStyleProcessMessage(languageCode, 'reviewCommentPlaceholder')}
+                  sx={{ flex: 1, minWidth: 0 }}
                 />
-                <Stack spacing={0.25} sx={{ minWidth: 260 }}>
-                  <FormControlLabel
-                    sx={{ m: 0, '.MuiFormControlLabel-label': { fontSize: '0.8rem' } }}
-                    control={(
-                      <Checkbox
-                        size="small"
-                        checked={Boolean(addDraft.needsReview)}
-                        onChange={(event) => {
-                          setAddDraft((prev) => ({
-                            ...prev,
-                            needsReview: event.target.checked,
-                          }));
-                        }}
-                      />
-                    )}
-                    label={getStyleProcessMessage(languageCode, 'reviewRequiredLabel')}
-                  />
-                  <TextField
-                    size="small"
-                    value={addDraft.reviewComment || ''}
-                    onChange={(event) => {
-                      setAddDraft((prev) => ({
-                        ...prev,
-                        reviewComment: event.target.value,
-                      }));
-                    }}
-                    onBlur={() => setAddError('')}
-                    label={getStyleProcessMessage(languageCode, 'reviewCommentLabel')}
-                    placeholder={getStyleProcessMessage(languageCode, 'reviewCommentPlaceholder')}
-                    sx={{ minWidth: 240 }}
-                  />
-                </Stack>
-                <Stack direction="row" spacing={0.75}>
-                  <SaveButton onClick={handleSaveAddRow}>
-                    {getStyleProcessMessage(languageCode, 'add')}
-                  </SaveButton>
-                  <Button variant="outlined" onClick={handleCancelAddRow}>
-                    {getStyleProcessMessage(languageCode, 'cancel')}
-                  </Button>
-                </Stack>
               </Stack>
-            </Stack>
+              <Stack
+                direction="row"
+                spacing={0.75}
+                sx={{ justifyContent: { xs: 'flex-end', xl: 'flex-start' } }}
+              >
+                <Button variant="outlined" onClick={handleCancelAddRow}>
+                  {getStyleProcessMessage(languageCode, 'cancel')}
+                </Button>
+                <SaveButton onClick={handleSaveAddRow}>
+                  {getStyleProcessMessage(languageCode, 'add')}
+                </SaveButton>
+              </Stack>
+            </Box>
 
             {addError && (
               <Typography variant="caption" color="error">

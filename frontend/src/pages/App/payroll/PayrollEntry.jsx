@@ -19,7 +19,6 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import DeleteActionButton from '../../../components/DeleteActionButton';
 import SaveButton from '../../../components/SaveButton';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
@@ -114,7 +113,7 @@ const amountFieldSx = {
 
 const PayrollEntry = () => {
   const { payrollId } = useParams();
-  const { navigateToPath, showNotification } = useAppActions();
+  const { showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
 
@@ -126,17 +125,9 @@ const PayrollEntry = () => {
   );
   const [loading, setLoading] = useState(false);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [payrollData, setPayrollData] = useState(null);
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
   const [manualOverrides, setManualOverrides] = useState({});
-
-  const closeEntry = useCallback(() => {
-    navigateToPath('/payroll', {
-      label: '급여 계산',
-      closeTabId: isNew ? '/payroll/new' : `/payroll/${payrollId}`,
-    });
-  }, [isNew, navigateToPath, payrollId]);
 
   const fetchPayroll = useCallback(
     async (month) => {
@@ -228,7 +219,6 @@ const PayrollEntry = () => {
   const employees = payrollData?.employees ?? [];
   const currentMonth = payrollData?.month || payMonth;
   const isMonthClosed = payrollData?.monthClosed === true;
-  const snapshotExists = payrollData?.snapshotExists === true;
 
   const computedEmployees = useMemo(
     () =>
@@ -303,7 +293,6 @@ const PayrollEntry = () => {
   );
 
   const canEditCurrentPayroll = Boolean(payrollData) && !isMonthClosed;
-  const canDeleteCurrentPayroll = Boolean(payrollData) && snapshotExists && !isMonthClosed;
 
   const buildSnapshotEmployeesPayload = useCallback(
     () =>
@@ -397,37 +386,6 @@ const PayrollEntry = () => {
     fetchPayroll,
   ]);
 
-  const handleDeleteCurrentPayroll = useCallback(async () => {
-    if (!payrollData || !currentMonth) return;
-    if (isMonthClosed) {
-      showNotification('해당 월은 이미 지나서 삭제할 수 없습니다.', 'warning');
-      return;
-    }
-    if (!snapshotExists) {
-      showNotification('삭제할 스냅샷이 없습니다.', 'warning');
-      return;
-    }
-    if (!window.confirm('현재 급여 계산 스냅샷을 삭제하시겠습니까?')) return;
-
-    setDeleting(true);
-    try {
-      const query = buildQueryString({ orgId: activeOrgId });
-      await requestJSON(`/payroll/snapshots/${currentMonth}` + query, {
-        method: 'DELETE',
-      });
-      showNotification(`${currentMonth} 급여 스냅샷을 삭제했습니다.`, 'success');
-      closeEntry();
-    } catch (error) {
-      if (error?.message?.includes('payroll month closed')) {
-        showNotification('해당 월은 이미 지나서 삭제할 수 없습니다.', 'warning');
-      } else {
-        showNotification(error?.message || '급여 삭제에 실패했습니다.', 'error');
-      }
-    } finally {
-      setDeleting(false);
-    }
-  }, [activeOrgId, closeEntry, currentMonth, isMonthClosed, payrollData, showNotification, snapshotExists]);
-
   return (
     <AppPageContainer>
       <Box sx={{ width: '100%', maxWidth: 1280 }}>
@@ -444,23 +402,6 @@ const PayrollEntry = () => {
           <Typography variant="h6">{isNew ? '급여 계산' : `급여 ${monthFromParam}`}</Typography>
 
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-            {payrollData && (
-              <Chip
-                label={isMonthClosed ? '수정 마감' : '수정 가능'}
-                color={isMonthClosed ? 'default' : 'success'}
-                variant="outlined"
-                size="small"
-              />
-            )}
-            {payrollData && (
-              <DeleteActionButton
-                disabled={!canDeleteCurrentPayroll || savingSnapshot || deleting}
-                title={
-                  canDeleteCurrentPayroll ? '삭제' : '해당 월은 삭제할 수 없습니다.'
-                }
-                onClick={handleDeleteCurrentPayroll}
-              />
-            )}
             {payrollData && (
               <SaveButton
                 onClick={handleSaveSnapshot}
