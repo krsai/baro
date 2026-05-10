@@ -33,7 +33,6 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
@@ -964,12 +963,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Horizontal'
             : '가로',
-      styleRegister:
-        languageCode === 'vi'
-          ? 'Dang ky style'
-          : languageCode === 'en'
-            ? 'Register Style'
-            : '스타일 등록',
       styleAdd: getUiMessage('styleBoard.addStyle', 'Add Style', languageCode),
       detailStyleNameCode:
         languageCode === 'vi'
@@ -1073,12 +1066,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Add new color:'
             : '새 색상 추가:',
-      newStyleTab:
-        languageCode === 'vi'
-          ? 'Style moi'
-          : languageCode === 'en'
-            ? 'New Style'
-            : '신규 스타일',
       manager:
         languageCode === 'vi'
           ? 'Quan ly'
@@ -1337,6 +1324,12 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Locked orders cannot be edited or deleted.'
             : '잠긴 주문은 수정하거나 삭제할 수 없습니다.',
+      modificationLockedNotice:
+        languageCode === 'vi'
+          ? 'Don hang dang bi khoa.'
+          : languageCode === 'en'
+            ? 'This order is locked.'
+            : '주문이 잠겨 있습니다.',
     }),
     [languageCode]
   );
@@ -2615,6 +2608,10 @@ const OrderList = () => {
   };
 
   const handleAddItem = () => {
+    if (isCurrentOrderModificationLocked) {
+      showNotification(orderPageText.modificationLockedNotice, 'warning');
+      return;
+    }
     const nextItem = createOrderItem();
     setFormData((prev) => ({ ...prev, items: [...prev.items, nextItem] }));
     focusStyleInput(nextItem.id);
@@ -3046,14 +3043,6 @@ const OrderList = () => {
 
   const getOrderTotal = () =>
     formData.items.reduce((sum, item) => sum + getItemTotal(item), 0);
-
-  const handleOpenStyleRegistration = () => {
-    saveOrderDraft(formData);
-    navigateToPath('/style/new', {
-      label: orderPageText.newStyleTab,
-      skipUnsavedChangesCheck: true,
-    });
-  };
 
   const handleClearDraft = () => {
     clearOrderDraft();
@@ -3694,11 +3683,7 @@ const OrderList = () => {
             </ToggleButtonGroup>
           </Stack>
         </Box>
-        <Box
-          component="fieldset"
-          disabled={isCurrentOrderModificationLocked}
-          sx={{ border: 0, m: 0, p: 0, minWidth: 0 }}
-        >
+        <Box sx={{ minWidth: 0 }}>
           <Box
             sx={{
               mt: 1,
@@ -3783,13 +3768,6 @@ const OrderList = () => {
             </Typography>
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button
-                variant="outlined"
-                startIcon={<OpenInNewIcon />}
-                onClick={handleOpenStyleRegistration}
-              >
-                {orderPageText.styleRegister}
-              </Button>
-              <Button
                 ref={styleAddButtonRef}
                 variant="outlined"
                 startIcon={<AddIcon />}
@@ -3799,6 +3777,12 @@ const OrderList = () => {
               </Button>
             </Stack>
           </Box>
+
+          <Box
+            component="fieldset"
+            disabled={isCurrentOrderModificationLocked}
+            sx={{ border: 0, m: 0, p: 0, minWidth: 0 }}
+          >
 
           <Paper variant="outlined" sx={{ mb: 2 }}>
             <TableContainer
@@ -4455,6 +4439,7 @@ const OrderList = () => {
             {orderPageText.orderTotalQuantity}: {formatQuantityDisplay(getOrderTotal())}
           </Typography>
         </Box>
+          </Box>
         </Box>
       </Paper>
     </AppPageContainer>
