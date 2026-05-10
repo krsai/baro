@@ -175,13 +175,35 @@ const formatInteger = (value) =>
     maximumFractionDigits: 0,
   });
 
-const formatCountValue = (value, loading, suffix) => {
+const COUNT_VALUE_SUFFIX = {
+  order: {
+    ko: '건',
+    en: ' orders',
+    vi: ' don',
+  },
+  quantity: {
+    ko: '개',
+    en: ' pcs',
+    vi: ' cai',
+  },
+};
+
+const resolveCountSuffix = (type, languageCode) =>
+  COUNT_VALUE_SUFFIX[type]?.[languageCode] ||
+  COUNT_VALUE_SUFFIX[type]?.ko ||
+  '';
+
+const formatCountValue = (value, loading, type, languageCode) => {
   if (loading) return '...';
-  return `${formatInteger(Math.max(0, Number(value) || 0))}${suffix}`;
+  return `${formatInteger(Math.max(0, Number(value) || 0))}${resolveCountSuffix(
+    type,
+    languageCode
+  )}`;
 };
 
 const formatPercentValue = (value, loading, pendingValue = '--%') => {
   if (loading) return '...';
+  if (value === '' || value === null || value === undefined) return pendingValue;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return pendingValue;
   return `${formatInteger(parsed)}%`;
@@ -239,7 +261,12 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
         en: getOrderStatusLabel(statusKey, statusKey, 'en'),
         vi: getOrderStatusLabel(statusKey, statusKey, 'vi'),
       },
-      value: formatCountValue(summaryData?.orderCounts?.[statusKey], summaryLoading, '건'),
+      value: formatCountValue(
+        summaryData?.orderCounts?.[statusKey],
+        summaryLoading,
+        'order',
+        languageCode
+      ),
     })),
     badge: resolveText(
       summaryLoading ? DASHBOARD_TEXT.syncing : DASHBOARD_TEXT.live,
@@ -266,7 +293,12 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
           en: 'Assigned Orders',
           vi: 'So don da phan cong',
         },
-        value: formatCountValue(summaryData?.monthlyAssignedOrderCount, summaryLoading, '건'),
+        value: formatCountValue(
+          summaryData?.monthlyAssignedOrderCount,
+          summaryLoading,
+          'order',
+          languageCode
+        ),
       },
       {
         key: 'assigned-quantity',
@@ -275,7 +307,12 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
           en: 'Assigned Quantity',
           vi: 'So luong da phan cong',
         },
-        value: formatCountValue(summaryData?.monthlyAssignedQuantity, summaryLoading, '개'),
+        value: formatCountValue(
+          summaryData?.monthlyAssignedQuantity,
+          summaryLoading,
+          'quantity',
+          languageCode
+        ),
       },
     ],
     badge: resolveText(
@@ -501,20 +538,14 @@ const WorkspaceDashboard = () => {
                         <Typography variant="body2" color="text.secondary">
                           {resolveText(status.label, languageCode)}
                         </Typography>
-                        <Typography
-                          variant="h6"
-                          sx={{ fontWeight: 700, lineHeight: 1.1 }}
-                        >
+                        <Typography variant="body1" sx={{ lineHeight: 1.3 }}>
                           {status.value}
                         </Typography>
                       </Stack>
                     ))}
                   </Stack>
                 ) : (
-                  <Typography
-                    variant="h4"
-                    sx={{ fontWeight: 700, lineHeight: 1.1, mb: 0.5 }}
-                  >
+                  <Typography variant="body1" sx={{ lineHeight: 1.3, mb: 0.5 }}>
                     {card.value}
                   </Typography>
                 )}
