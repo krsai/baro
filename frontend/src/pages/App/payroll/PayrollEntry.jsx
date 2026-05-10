@@ -112,6 +112,63 @@ const amountFieldSx = {
   },
 };
 
+const PAYROLL_FLOW_TEXT = {
+  loadError: {
+    ko: '급여 데이터를 불러오지 못했습니다.',
+    en: 'Failed to load payroll data.',
+    vi: 'Khong the tai du lieu bang luong.',
+  },
+  monthRequired: {
+    ko: '정산 월을 선택하세요.',
+    en: 'Select a payroll month.',
+    vi: 'Hay chon thang tinh luong.',
+  },
+  snapshotCreated: {
+    ko: '{month} 급여 스냅샷을 생성했습니다.',
+    en: 'Created payroll snapshot for {month}.',
+    vi: 'Da tao ban chup bang luong cho {month}.',
+  },
+  snapshotSaved: {
+    ko: '{month} 급여 스냅샷을 저장했습니다.',
+    en: 'Saved payroll snapshot for {month}.',
+    vi: 'Da luu ban chup bang luong cho {month}.',
+  },
+  createClosed: {
+    ko: '해당 월은 이미 지나서 생성할 수 없습니다.',
+    en: 'That month is already closed and cannot be created.',
+    vi: 'Thang do da dong va khong the tao moi.',
+  },
+  editClosed: {
+    ko: '해당 월은 이미 지나서 수정할 수 없습니다.',
+    en: 'That month is already closed and cannot be edited.',
+    vi: 'Thang do da dong va khong the chinh sua.',
+  },
+  settlementIncomplete: {
+    ko: '급여 정산 전에 수량 정산에서 검토 필요 또는 차단 항목을 먼저 정리하세요.',
+    en: 'Before payroll, clear the review or blocked rows in Quantity Settlement.',
+    vi: 'Truoc khi tinh luong, hay xu ly cac dong can xem xet hoac bi chan trong doi chieu so luong.',
+  },
+  settlementPending: {
+    ko: '급여 정산 전에 수량 정산을 완료하세요. 검토 필요 {reviewRows}건, 차단 {blockedRows}건이 남아 있습니다.',
+    en: 'Complete Quantity Settlement before payroll. {reviewRows} review rows and {blockedRows} blocked rows still remain.',
+    vi: 'Hay hoan tat doi chieu so luong truoc khi tinh luong. Van con {reviewRows} dong can xem xet va {blockedRows} dong bi chan.',
+  },
+  settlementNoWorkLogs: {
+    ko: '이 달 수량 정산 대상이 아직 없습니다. 먼저 작업 기록을 입력하고 수량 정산을 확인하세요.',
+    en: 'There are no quantity-settlement rows for this month yet. Enter work logs first, then check Quantity Settlement.',
+    vi: 'Thang nay chua co dong doi chieu so luong. Hay nhap ghi chep cong viec truoc, sau do kiem tra doi chieu so luong.',
+  },
+};
+
+const resolvePayrollText = (node, languageCode, replacements = null) => {
+  const template = node?.[languageCode] || node?.ko || node?.en || '';
+  if (!replacements) return template;
+  return Object.entries(replacements).reduce(
+    (message, [key, value]) => message.split(`{${key}}`).join(String(value)),
+    template
+  );
+};
+
 const PayrollEntry = () => {
   const { payrollId } = useParams();
   const { showNotification } = useAppActions();
@@ -130,9 +187,15 @@ const PayrollEntry = () => {
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
   const [manualOverrides, setManualOverrides] = useState({});
   const [settlementSummary, setSettlementSummary] = useState(null);
+  const payrollText = useCallback(
+    (key, replacements = null) =>
+      resolvePayrollText(PAYROLL_FLOW_TEXT[key], languageCode, replacements),
+    [languageCode]
+  );
 
   const fetchPayroll = useCallback(
-    async (month) => {
+    async (month, options = {}) => {
+      const showWorkflowToast = options.showWorkflowToast !== false;
       setLoading(true);
       setPayrollData(null);
       setExpandedWorkerId(null);
@@ -143,17 +206,31 @@ const PayrollEntry = () => {
         setPayMonth(data?.month || month);
         try {
           const settlement = await fetchQuantitySettlement({ orgId: activeOrgId, month });
-          setSettlementSummary(settlement?.summary ?? null);
+          const summary = settlement?.summary ?? null;
+          setSettlementSummary(summary);
+          if (showWorkflowToast) {
+            const reviewRows = Number(summary?.reviewRows) || 0;
+            const blockedRows = Number(summary?.blockedRows) || 0;
+            const activeRows = Number(summary?.activeRows) || 0;
+            if (reviewRows > 0 || blockedRows > 0) {
+              showNotification(
+                payrollText('settlementPending', { reviewRows, blockedRows }),
+                'warning'
+              );
+            } else if (activeRows === 0) {
+              showNotification(payrollText('settlementNoWorkLogs'), 'info');
+            }
+          }
         } catch {
           setSettlementSummary(null);
         }
       } catch (error) {
-        showNotification(error?.message || '급여 데이터를 불러오지 못했습니다.', 'error');
+        showNotification(error?.message || payrollText('loadError'), 'error');
       } finally {
         setLoading(false);
       }
     },
-    [activeOrgId, showNotification]
+    [activeOrgId, payrollText, showNotification]
   );
 
   useEffect(() => {
@@ -178,7 +255,7 @@ const PayrollEntry = () => {
 
   const handleCalculate = useCallback(async () => {
     if (!payMonth) {
-      showNotification('정산 월을 선택하세요.', 'error');
+      showNotification(payrollText('monthRequired'), 'error');
       return;
     }
 
@@ -193,20 +270,28 @@ const PayrollEntry = () => {
           savedBy: activeProfile?.email || activeProfile?.name || '관리자',
         }),
       });
-      await fetchPayroll(payMonth);
-      showNotification(`${payMonth} 급여 스냅샷을 생성했습니다.`, 'success');
+      await fetchPayroll(payMonth, { showWorkflowToast: false });
+      showNotification(payrollText('snapshotCreated', { month: payMonth }), 'success');
     } catch (error) {
       if (error?.message?.includes('payroll month closed')) {
-        showNotification('해당 월은 이미 지나서 생성할 수 없습니다.', 'warning');
+        showNotification(payrollText('createClosed'), 'warning');
       } else if (error?.message?.includes('quantity settlement incomplete')) {
-        showNotification('수량 정산에서 검토 필요 항목을 먼저 정리하세요.', 'warning');
+        showNotification(payrollText('settlementIncomplete'), 'warning');
       } else {
         showNotification(error?.message || '급여 계산 생성에 실패했습니다.', 'error');
       }
     } finally {
       setSavingSnapshot(false);
     }
-  }, [activeOrgId, activeProfile?.email, activeProfile?.name, fetchPayroll, payMonth, showNotification]);
+  }, [
+    activeOrgId,
+    activeProfile?.email,
+    activeProfile?.name,
+    fetchPayroll,
+    payMonth,
+    payrollText,
+    showNotification,
+  ]);
 
   const handleOverrideChange = useCallback(
     (employeeKey, field) => (event) => {
@@ -340,7 +425,7 @@ const PayrollEntry = () => {
   const handleSaveSnapshot = useCallback(async () => {
     if (!payrollData || !currentMonth) return false;
     if (isMonthClosed) {
-      showNotification('해당 월은 이미 지나서 수정할 수 없습니다.', 'warning');
+      showNotification(payrollText('editClosed'), 'warning');
       return false;
     }
 
@@ -367,15 +452,15 @@ const PayrollEntry = () => {
           employees: buildSnapshotEmployeesPayload(),
         }),
       });
-      showNotification(`${currentMonth} 급여 스냅샷을 저장했습니다.`, 'success');
-      await fetchPayroll(currentMonth);
+      showNotification(payrollText('snapshotSaved', { month: currentMonth }), 'success');
+      await fetchPayroll(currentMonth, { showWorkflowToast: false });
       return true;
     } catch (error) {
       if (error?.message?.includes('payroll month closed')) {
-        showNotification('해당 월은 이미 지나서 수정할 수 없습니다.', 'warning');
-        await fetchPayroll(currentMonth);
+        showNotification(payrollText('editClosed'), 'warning');
+        await fetchPayroll(currentMonth, { showWorkflowToast: false });
       } else if (error?.message?.includes('quantity settlement incomplete')) {
-        showNotification('수량 정산에서 검토 필요 항목을 먼저 정리하세요.', 'warning');
+        showNotification(payrollText('settlementIncomplete'), 'warning');
       } else if (error?.message?.includes('insufficient org role')) {
         showNotification('급여 저장 권한이 없습니다.', 'error');
       } else {
@@ -396,6 +481,7 @@ const PayrollEntry = () => {
     activeProfile?.name,
     buildSnapshotEmployeesPayload,
     fetchPayroll,
+    payrollText,
   ]);
 
   return (
@@ -468,7 +554,10 @@ const PayrollEntry = () => {
               (Number(settlementSummary.reviewRows) > 0 ||
                 Number(settlementSummary.blockedRows) > 0) && (
                 <Alert severity="warning" sx={{ mb: 1.5 }}>
-                  {`수량 정산 미완료: 검토 필요 ${settlementSummary.reviewRows || 0}건, 차단 ${settlementSummary.blockedRows || 0}건`}
+                  {payrollText('settlementPending', {
+                    reviewRows: settlementSummary.reviewRows || 0,
+                    blockedRows: settlementSummary.blockedRows || 0,
+                  })}
                 </Alert>
               )}
             {computedEmployees.length === 0 ? (

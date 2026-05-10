@@ -25,14 +25,14 @@ const TEXT = {
     vi: 'Khong the tai ghi chep.',
   },
   saveSuccess: {
-    ko: '기록을 저장했습니다.',
-    en: 'Log saved.',
-    vi: 'Da luu ghi chep.',
+    ko: '작업 기록을 저장했습니다. 다음 단계에서 수량 정산을 진행하세요.',
+    en: 'Work log saved. Next, continue in Quantity Settlement.',
+    vi: 'Da luu ghi chep cong viec. Tiep theo, hay thuc hien doi chieu so luong.',
   },
   updateSuccess: {
-    ko: '기록을 수정했습니다.',
-    en: 'Log updated.',
-    vi: 'Da cap nhat ghi chep.',
+    ko: '작업 기록을 수정했습니다. 다음 단계에서 수량 정산을 다시 확인하세요.',
+    en: 'Work log updated. Next, review Quantity Settlement again.',
+    vi: 'Da cap nhat ghi chep cong viec. Tiep theo, hay kiem tra lai doi chieu so luong.',
   },
   saveError: {
     ko: '기록 저장에 실패했습니다.',

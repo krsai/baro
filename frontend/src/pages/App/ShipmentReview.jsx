@@ -67,20 +67,90 @@ const PAGE_TEXT = {
     en: 'Failed to load quantity settlement.',
     vi: 'Khong the tai du lieu doi chieu so luong.',
   },
+  workflowNeedWorkLogs: {
+    ko: '이 달은 작업 기록이 없습니다. 먼저 작업 기록을 입력한 뒤 수량 정산을 진행하세요.',
+    en: 'There are no work logs for this month yet. Enter work logs first, then continue in Quantity Settlement.',
+    vi: 'Thang nay chua co ghi chep cong viec. Hay nhap ghi chep cong viec truoc, sau do tiep tuc doi chieu so luong.',
+  },
+  workflowPendingPayroll: {
+    ko: '수량 정산을 저장했습니다. 아직 검토 필요 또는 차단 항목이 있어 급여 정산으로 넘어갈 수 없습니다.',
+    en: 'Quantity settlement was saved, but payroll cannot continue yet because review or blocked rows still remain.',
+    vi: 'Da luu doi chieu so luong, nhung chua the chuyen sang bang luong vi van con dong can xem xet hoac bi chan.',
+  },
+  workflowReadyForPayroll: {
+    ko: '수량 정산을 저장했습니다. 다음 단계에서 급여 정산을 진행하세요.',
+    en: 'Quantity settlement saved. Next, continue in Payroll.',
+    vi: 'Da luu doi chieu so luong. Tiep theo, hay thuc hien bang luong.',
+  },
+  storageNotReady: {
+    ko: '정산 저장소 테이블이 서버에 아직 반영되지 않았습니다. 관리자에게 DB 업데이트 적용을 요청하세요.',
+    en: 'The settlement storage table is not available on the server yet. Ask an admin to apply the database update.',
+    vi: 'Bang luu doi chieu chua duoc cap nhat tren may chu. Hay yeu cau quan tri vien cap nhat co so du lieu.',
+  },
   locked: {
-    ko: '이 월은 급여가 저장되어 있어 정산을 수정할 수 없습니다.',
+    ko: '이 월은 급여가 이미 저장되어 있어 정산을 수정할 수 없습니다.',
     en: 'This month is locked because payroll has already been saved.',
     vi: 'Thang nay da bi khoa vi bang luong da duoc luu.',
   },
   payrollBlock: {
-    ko: '검토 필요 또는 차단 상태가 남아 있으면 급여 저장이 차단됩니다.',
-    en: 'Payroll saving is blocked while any rows remain in review or blocked status.',
-    vi: 'Khong the luu bang luong khi van con dong can xem xet hoac bi chan.',
+    ko: '작업기록 > 수량 정산 > 급여 정산 순서로 진행합니다. 청구서 생성 여부와 별개로, 검토 필요 또는 차단 상태가 남아 있으면 급여 저장이 차단됩니다.',
+    en: 'Follow Work Logs > Quantity Settlement > Payroll. Payroll saving is blocked while any rows remain in review or blocked status, regardless of invoice creation.',
+    vi: 'Thuc hien theo thu tu Ghi chep cong viec > Doi chieu so luong > Bang luong. Viec luu bang luong bi chan neu van con dong can xem xet hoac bi chan, khong phu thuoc vao viec tao hoa don.',
   },
   noRows: {
     ko: '표시할 주문 항목이 없습니다.',
     en: 'No order items to display.',
     vi: 'Khong co muc don hang de hien thi.',
+  },
+  noRowsNoOrders: {
+    ko: '현재 워크스페이스에 진행 중인 주문이 없습니다.',
+    en: 'There are no active orders in this workspace.',
+    vi: 'Khong co don hang dang hoat dong trong workspace nay.',
+  },
+  noRowsNoWorkLogs: {
+    ko: '선택한 월의 작업 기록이 없습니다. 이전 달 기록이 없어도 오류는 아니며, 이 달의 추정 생산량만 0으로 보입니다.',
+    en: 'There are no work logs for the selected month. Missing records from previous months do not cause an error; only this month stays at 0.',
+    vi: 'Khong co ghi chep cong viec trong thang da chon. Thieu du lieu thang truoc khong gay loi; chi co san luong uoc tinh cua thang nay hien la 0.',
+  },
+  noRowsFiltered: {
+    ko: '현재 보기 필터에서는 표시할 항목이 없습니다. 보기 값을 전체로 바꿔 보세요.',
+    en: 'Nothing matches the current view filter. Switch the view to All.',
+    vi: 'Khong co muc nao phu hop bo loc hien tai. Hay chuyen sang Tat ca.',
+  },
+  noRowsNoMatches: {
+    ko: '검색 조건에 맞는 항목이 없습니다.',
+    en: 'No rows match the current search.',
+    vi: 'Khong co dong nao khop voi tim kiem hien tai.',
+  },
+  usageTitle: {
+    ko: '사용 방법',
+    en: 'How To Use',
+    vi: 'Cach su dung',
+  },
+  usage1: {
+    ko: '1. 정산 월을 선택하면 그 달의 작업 기록만으로 추정 생산량을 계산합니다.',
+    en: '1. Select a month. Estimated production is calculated only from work logs in that month.',
+    vi: '1. Chon thang. San luong uoc tinh chi duoc tinh tu ghi chep cong viec trong thang do.',
+  },
+  usage2: {
+    ko: '2. QC 확정, 청구 대상, 급여 대상을 입력합니다. 청구서 문서 생성은 나중에 해도 됩니다.',
+    en: '2. Fill in QC Confirmed, Billable, and Payroll quantities. Creating the invoice document can happen later.',
+    vi: '2. Nhap so luong QC xac nhan, tinh hoa don va tinh luong. Viec tao chung tu hoa don co the lam sau.',
+  },
+  usage3: {
+    ko: '3. 공정 체크가 50~51처럼 어긋나면 검토 필요로 표시됩니다. 사유를 고르고 메모를 남기세요.',
+    en: '3. If process counts differ, such as 50 to 51, the row is marked for review. Choose a reason and leave a memo.',
+    vi: '3. Neu so lan cong doan lech nhau, vi du 50 den 51, dong se duoc danh dau can xem xet. Chon ly do va ghi chu.',
+  },
+  usage4: {
+    ko: '4. 검토 필요/차단 상태가 모두 정리되어야 급여 저장이 가능합니다.',
+    en: '4. Payroll can be saved only after all review and blocked rows are cleared.',
+    vi: '4. Chi co the luu bang luong sau khi da xu ly het cac dong can xem xet va bi chan.',
+  },
+  usage5: {
+    ko: '5. 청구서 기능이 아직 없어도 수량 정산과 급여 정산은 먼저 진행할 수 있습니다.',
+    en: '5. Even if invoice creation is not built yet, quantity settlement and payroll can still proceed first.',
+    vi: '5. Ngay ca khi chuc nang tao hoa don chua co, doi chieu so luong va bang luong van co the thuc hien truoc.',
   },
   filters: {
     all: { ko: '전체', en: 'All', vi: 'Tat ca' },
@@ -212,7 +282,7 @@ const ShipmentReview = () => {
   const [saving, setSaving] = useState(false);
   const [dataset, setDataset] = useState(null);
   const [draftRows, setDraftRows] = useState([]);
-  const [filterMode, setFilterMode] = useState('active');
+  const [filterMode, setFilterMode] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [dirty, setDirty] = useState(false);
 
@@ -263,7 +333,14 @@ const ShipmentReview = () => {
       setDataset(response);
       setDraftRows(initializeDraftRows(response?.rows));
       setDirty(false);
+      const orderCount = Number(response?.sourceSummary?.orderCount) || 0;
+      const workLogCount = Number(response?.sourceSummary?.workLogCount) || 0;
+      if (orderCount > 0 && workLogCount === 0) {
+        showNotification(text('workflowNeedWorkLogs'), 'info');
+      }
     } catch (error) {
+      setDataset(null);
+      setDraftRows([]);
       showNotification(error?.message || text('loadError'), 'error');
     } finally {
       setLoading(false);
@@ -292,7 +369,7 @@ const ShipmentReview = () => {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!month || dataset?.locked) return;
+    if (!month || dataset?.locked || dataset?.storageReady === false) return;
     setSaving(true);
     try {
       const payloadRows = draftRows.map((row) => ({
@@ -335,7 +412,11 @@ const ShipmentReview = () => {
       setDataset(response);
       setDraftRows(initializeDraftRows(response?.rows));
       setDirty(false);
-      showNotification(text('saveSuccess'), 'success');
+      if ((Number(response?.summary?.unresolvedRows) || 0) > 0) {
+        showNotification(text('workflowPendingPayroll'), 'warning');
+      } else {
+        showNotification(text('workflowReadyForPayroll') || text('saveSuccess'), 'success');
+      }
     } catch (error) {
       showNotification(error?.message || text('saveError'), 'error');
     } finally {
@@ -346,6 +427,7 @@ const ShipmentReview = () => {
     activeProfile?.email,
     activeProfile?.name,
     dataset?.locked,
+    dataset?.storageReady,
     draftRows,
     initializeDraftRows,
     month,
@@ -354,6 +436,8 @@ const ShipmentReview = () => {
   ]);
 
   const localSummary = useMemo(() => computeSummary(draftRows), [draftRows]);
+  const storageReady = dataset?.storageReady !== false;
+  const saveDisabled = loading || saving || dataset?.locked || !dirty || !storageReady;
 
   const visibleRows = useMemo(() => {
     const keyword = String(searchText || '').trim().toLowerCase();
@@ -378,6 +462,26 @@ const ShipmentReview = () => {
       return haystack.includes(keyword);
     });
   }, [draftRows, filterMode, searchText]);
+
+  const emptyStateMessage = useMemo(() => {
+    const orderCount = Number(dataset?.sourceSummary?.orderCount) || 0;
+    const workLogCount = Number(dataset?.sourceSummary?.workLogCount) || 0;
+    const totalRows = Array.isArray(draftRows) ? draftRows.length : 0;
+    const hasSearch = String(searchText || '').trim().length > 0;
+
+    if (hasSearch) return text('noRowsNoMatches');
+    if (totalRows > 0 && filterMode !== 'all') return text('noRowsFiltered');
+    if (orderCount === 0) return text('noRowsNoOrders');
+    if (workLogCount === 0) return text('noRowsNoWorkLogs');
+    return text('noRows');
+  }, [
+    dataset?.sourceSummary?.orderCount,
+    dataset?.sourceSummary?.workLogCount,
+    draftRows,
+    filterMode,
+    searchText,
+    text,
+  ]);
 
   return (
     <AppPageContainer
@@ -418,11 +522,11 @@ const ShipmentReview = () => {
                 onChange={(event) => setFilterMode(event.target.value)}
                 sx={{ width: { xs: '100%', sm: 180 } }}
               >
+                <MenuItem value="all">{text('filters.all')}</MenuItem>
                 <MenuItem value="active">{text('filters.active')}</MenuItem>
                 <MenuItem value="review">{text('filters.review')}</MenuItem>
                 <MenuItem value="blocked">{text('filters.blocked')}</MenuItem>
                 <MenuItem value="confirmed">{text('filters.confirmed')}</MenuItem>
-                <MenuItem value="all">{text('filters.all')}</MenuItem>
               </TextField>
               <TextField
                 label={text('search')}
@@ -434,14 +538,27 @@ const ShipmentReview = () => {
             </Stack>
 
             <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <SaveButton onClick={handleSave} disabled={loading || saving || dataset?.locked || !dirty} loading={saving} />
+              <SaveButton onClick={handleSave} disabled={saveDisabled} loading={saving} />
             </Stack>
           </Stack>
         </Paper>
 
+        {!storageReady && (
+          <Alert severity="error">{dataset?.storageMessage || text('storageNotReady')}</Alert>
+        )}
         {dataset?.locked && <Alert severity="warning">{text('locked')}</Alert>}
         <Alert severity={localSummary.blocked > 0 || localSummary.review > 0 ? 'warning' : 'success'}>
           {text('payrollBlock')}
+        </Alert>
+        <Alert severity="info">
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+            {text('usageTitle')}
+          </Typography>
+          <Typography variant="body2">{text('usage1')}</Typography>
+          <Typography variant="body2">{text('usage2')}</Typography>
+          <Typography variant="body2">{text('usage3')}</Typography>
+          <Typography variant="body2">{text('usage4')}</Typography>
+          <Typography variant="body2">{text('usage5')}</Typography>
         </Alert>
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -475,7 +592,7 @@ const ShipmentReview = () => {
                   <TableRow>
                     <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
                       <Typography variant="body2" color="text.secondary">
-                        {text('noRows')}
+                        {emptyStateMessage}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -525,7 +642,7 @@ const ShipmentReview = () => {
                               handleCellChange(row.rowId, 'targetQuantity', event.target.value)
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
                           />
                         </TableCell>
@@ -537,7 +654,7 @@ const ShipmentReview = () => {
                               handleCellChange(row.rowId, 'confirmedQuantity', event.target.value)
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
                           />
                         </TableCell>
@@ -548,7 +665,7 @@ const ShipmentReview = () => {
                               handleCellChange(row.rowId, 'billableQuantity', event.target.value)
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
                           />
                         </TableCell>
@@ -563,7 +680,7 @@ const ShipmentReview = () => {
                               )
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
                           />
                         </TableCell>
@@ -583,7 +700,7 @@ const ShipmentReview = () => {
                               handleCellChange(row.rowId, 'reasonCode', event.target.value)
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             fullWidth
                           >
                             <MenuItem value="">{text('reasons.none')}</MenuItem>
@@ -601,7 +718,7 @@ const ShipmentReview = () => {
                               handleCellChange(row.rowId, 'memo', event.target.value)
                             }
                             size="small"
-                            disabled={dataset?.locked}
+                            disabled={dataset?.locked || !storageReady}
                             fullWidth
                           />
                         </TableCell>

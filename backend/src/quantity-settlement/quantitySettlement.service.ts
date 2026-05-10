@@ -1,5 +1,5 @@
 import { prisma } from "../db";
-import { createHttpError } from "../utils/http";
+import { createHttpError, getErrorCode, getErrorMessage } from "../utils/http";
 import {
   ensureArray,
   resolveOptionalString,
@@ -37,6 +37,49 @@ const getOrderAccessWhere = (orgId: number) => [{ orgId }, { buyerOrgId: orgId }
 const assertMonth = (month: string) => {
   if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
     throw createHttpError(400, "month is required (format: YYYY-MM)");
+  }
+};
+
+const resolveQuantitySettlementStorageErrorMessage = (error: unknown) => {
+  const rawMessage = getErrorMessage(error, String(error || ""));
+  if (/QuantitySettlementSnapshot/i.test(rawMessage)) {
+    return "quantity settlement storage is not ready on server. Apply the backend database update first";
+  }
+  return "quantity settlement storage is not ready on server. Apply the backend database update first";
+};
+
+const isQuantitySettlementStorageMissing = (error: unknown) =>
+  getErrorCode(error) === "P2021" &&
+  /QuantitySettlementSnapshot/i.test(getErrorMessage(error, ""));
+
+const loadQuantitySettlementSnapshotSafe = async (orgId: number, month: string) => {
+  if (!quantitySettlementSnapshotModel) {
+    return {
+      storageReady: false,
+      storageMessage:
+        "quantity settlement storage is not ready on server. Apply the backend database update first",
+      snapshot: null,
+    };
+  }
+
+  try {
+    const snapshot = await quantitySettlementSnapshotModel.findUnique({
+      where: { orgId_month: { orgId, month } },
+    });
+    return {
+      storageReady: true,
+      storageMessage: "",
+      snapshot,
+    };
+  } catch (error) {
+    if (isQuantitySettlementStorageMissing(error)) {
+      return {
+        storageReady: false,
+        storageMessage: resolveQuantitySettlementStorageErrorMessage(error),
+        snapshot: null,
+      };
+    }
+    throw error;
   }
 };
 
@@ -465,10 +508,8 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
   const month = String(monthInput || "");
   assertMonth(month);
 
-  const [snapshot, payrollSnapshot, orders, workLogs] = await Promise.all([
-    quantitySettlementSnapshotModel.findUnique({
-      where: { orgId_month: { orgId, month } },
-    }),
+  const [snapshotState, payrollSnapshot, orders, workLogs] = await Promise.all([
+    loadQuantitySettlementSnapshotSafe(orgId, month),
     prisma.payrollSnapshot.findUnique({
       where: { orgId_month: { orgId, month } },
       select: { id: true, lockedAt: true, lockedBy: true },
@@ -505,18 +546,30 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
 
   const aggregates = buildWorkRecordAggregates(workLogs);
   const baseRows = buildBaseRows(orders, aggregates);
-  const savedRows = ensureArray(snapshot?.data).map(buildNormalizedSnapshotRow);
+  const savedRows = ensureArray(snapshotState.snapshot?.data).map(buildNormalizedSnapshotRow);
   const rows = mergeSavedRows(baseRows, savedRows);
   const summary = buildSummary(rows);
+  const workRecordCount = workLogs.reduce(
+    (sum, workLog) => sum + ensureArray(workLog?.workRecords).length,
+    0
+  );
 
   return {
     month,
     locked: Boolean(payrollSnapshot),
     lockedAt: payrollSnapshot?.lockedAt ?? null,
     lockedBy: payrollSnapshot?.lockedBy ?? null,
-    snapshotExists: Boolean(snapshot),
-    updatedAt: snapshot?.updatedAt ?? null,
-    updatedBy: snapshot?.updatedBy ?? snapshot?.createdBy ?? null,
+    snapshotExists: Boolean(snapshotState.snapshot),
+    storageReady: snapshotState.storageReady,
+    storageMessage: snapshotState.storageMessage,
+    updatedAt: snapshotState.snapshot?.updatedAt ?? null,
+    updatedBy: snapshotState.snapshot?.updatedBy ?? snapshotState.snapshot?.createdBy ?? null,
+    sourceSummary: {
+      orderCount: orders.length,
+      workLogCount: workLogs.length,
+      workRecordCount,
+      baseRowCount: baseRows.length,
+    },
     rows,
     summary,
   };
@@ -536,6 +589,13 @@ export const saveQuantitySettlementByMonth = async ({
   const month = String(monthInput || "");
   assertMonth(month);
 
+  if (!quantitySettlementSnapshotModel) {
+    throw createHttpError(
+      503,
+      "quantity settlement storage is not ready on server. Apply the backend database update first"
+    );
+  }
+
   const payrollSnapshot = await prisma.payrollSnapshot.findUnique({
     where: { orgId_month: { orgId, month } },
     select: { id: true },
@@ -548,20 +608,27 @@ export const saveQuantitySettlementByMonth = async ({
     .map(buildNormalizedSnapshotRow)
     .filter((row) => row.rowId);
 
-  await quantitySettlementSnapshotModel.upsert({
-    where: { orgId_month: { orgId, month } },
-    create: {
-      orgId,
-      month,
-      data: payloadRows,
-      createdBy: resolveOptionalString(savedBy, "unknown") || "unknown",
-      updatedBy: resolveOptionalString(savedBy, "unknown") || "unknown",
-    },
-    update: {
-      data: payloadRows,
-      updatedBy: resolveOptionalString(savedBy, "unknown") || "unknown",
-    },
-  });
+  try {
+    await quantitySettlementSnapshotModel.upsert({
+      where: { orgId_month: { orgId, month } },
+      create: {
+        orgId,
+        month,
+        data: payloadRows,
+        createdBy: resolveOptionalString(savedBy, "unknown") || "unknown",
+        updatedBy: resolveOptionalString(savedBy, "unknown") || "unknown",
+      },
+      update: {
+        data: payloadRows,
+        updatedBy: resolveOptionalString(savedBy, "unknown") || "unknown",
+      },
+    });
+  } catch (error) {
+    if (isQuantitySettlementStorageMissing(error)) {
+      throw createHttpError(503, resolveQuantitySettlementStorageErrorMessage(error));
+    }
+    throw error;
+  }
 
   return getQuantitySettlementByMonth(orgId, month);
 };

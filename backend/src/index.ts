@@ -16336,13 +16336,23 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
       error: "another update completed first. Refresh and try again",
     });
   }
+  const rawErrorMessage = getErrorMessage(error, String(error));
+  if (prismaErrorCode === "P2021") {
+    const missingTableMessage =
+      /QuantitySettlementSnapshot/i.test(rawErrorMessage)
+        ? "quantity settlement storage is not ready on server. Apply the backend database update first"
+        : "server database schema is missing a required table. Update the backend and database schema, then try again";
+    return res.status(503).json({
+      ok: false,
+      error: missingTableMessage,
+    });
+  }
   if (prismaErrorCode === "P2011") {
     return res.status(400).json({
       ok: false,
       error: "required data is missing. Check the form and try again",
     });
   }
-  const rawErrorMessage = getErrorMessage(error, String(error));
   if (
     /invalid input value for enum\s+"?WorkOrderStatus"?/i.test(rawErrorMessage) &&
     /EDITING/i.test(rawErrorMessage)
