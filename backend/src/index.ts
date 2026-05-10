@@ -26,6 +26,7 @@ import {
   requireSystemAdmin,
 } from "./middleware/access";
 import { payrollRouter } from "./payroll/payroll.routes";
+import { quantitySettlementRouter } from "./quantity-settlement/quantitySettlement.routes";
 import {
   getCurrentRequestActor,
   runWithRequestActor,
@@ -16211,6 +16212,7 @@ app.post("/at-sync/run-now", async (req, res) => {
 // ─── Payroll ───────────────────────────────────────────────────────────────
 
 app.use(payrollRouter);
+app.use(quantitySettlementRouter);
 
 // ───────────────────────────────────────────────────────────────────────────
 

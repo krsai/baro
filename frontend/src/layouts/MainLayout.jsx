@@ -540,10 +540,9 @@ const MainLayout = () => {
             disabled: true,
           },
           {
-            label: getUiMessage('menu.shipmentReview', '\uCD9C\uACE0 \uAC80\uD1A0', languageCode),
+            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
             icon: <LocalShippingIcon />,
             path: '/shipment-review',
-            disabled: true,
           },
         ],
       },

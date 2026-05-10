@@ -164,6 +164,7 @@ model Organization {
   assignmentCards           AssignmentCard[]
   assignmentPlans           AssignmentPlan[]
   payrollSnapshots          PayrollSnapshot[]
+  quantitySettlementSnapshots QuantitySettlementSnapshot[]
   attendanceEntries         AttendanceEntry[]
   atTrainingBuckets         AtTrainingBucket[]
   atTrainingBucketProcesses AtTrainingBucketProcess[]
@@ -735,6 +736,22 @@ model PayrollSnapshot {
   lockedBy  String
   createdAt DateTime @default(now())
   createdBy String   @default("system@baro.local")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, month])
+  @@index([orgId])
+}
+
+model QuantitySettlementSnapshot {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  month     String
+  data      Json
+  createdAt DateTime @default(now())
+  createdBy String   @default("system@baro.local")
+  updatedAt DateTime @updatedAt
+  updatedBy String   @default("system@baro.local")
 
   organization Organization @relation(fields: [orgId], references: [id])
 

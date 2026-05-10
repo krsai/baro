@@ -34,7 +34,7 @@ export const UI_MESSAGES = {
     productionPlan: { ko: '작업 계획 현황', en: 'Production Plan', vi: 'Ke hoach san xuat' },
     standardReview: { ko: '표준 공임 검토', en: 'Standard Review', vi: 'Xem xet cong chuan' },
     workHistory: { ko: '기록', en: 'Logs', vi: 'Ghi chep' },
-    shipmentReview: { ko: '출고 검토', en: 'Shipment Review', vi: 'Kiem tra xuat hang' },
+    shipmentReview: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Doi chieu so luong' },
     attendance: { ko: '출퇴근', en: 'Attendance', vi: 'Cham cong' },
     inventory: { ko: '재고 관리', en: 'Inventory', vi: 'Ton kho' },
     inventoryIssue: { ko: '재고 불출', en: 'Inventory Issue', vi: 'Xuat kho' },

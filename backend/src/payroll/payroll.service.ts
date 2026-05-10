@@ -15,6 +15,7 @@ import {
   resolveWorkRecordProcessName,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
+import { assertQuantitySettlementReadyForPayroll } from "../quantity-settlement/quantitySettlement.service";
 
 const toPayrollAmountOrNull = (value: unknown): number | null => {
   const parsed = Number(value);
@@ -507,6 +508,7 @@ export const savePayrollSnapshot = async ({
   if (isPayrollMonthClosed(month)) {
     throw createHttpError(409, "payroll month closed");
   }
+  await assertQuantitySettlementReadyForPayroll(orgId, month);
 
   const normalizedInputEmployees = ensureArray(employees).map(normalizePayrollSnapshotEmployee);
   const snapshotEmployees =

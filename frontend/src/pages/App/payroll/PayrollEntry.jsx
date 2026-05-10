@@ -27,6 +27,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeLabel as getLocalizedPayTypeLabel } from '../../../constants/payType';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
+import { fetchQuantitySettlement } from '../../../utils/quantitySettlementApi';
 
 const formatDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value)), {
@@ -128,6 +129,7 @@ const PayrollEntry = () => {
   const [payrollData, setPayrollData] = useState(null);
   const [expandedWorkerId, setExpandedWorkerId] = useState(null);
   const [manualOverrides, setManualOverrides] = useState({});
+  const [settlementSummary, setSettlementSummary] = useState(null);
 
   const fetchPayroll = useCallback(
     async (month) => {
@@ -139,6 +141,12 @@ const PayrollEntry = () => {
         const data = await requestJSON('/payroll' + query);
         setPayrollData(data);
         setPayMonth(data?.month || month);
+        try {
+          const settlement = await fetchQuantitySettlement({ orgId: activeOrgId, month });
+          setSettlementSummary(settlement?.summary ?? null);
+        } catch {
+          setSettlementSummary(null);
+        }
       } catch (error) {
         showNotification(error?.message || '급여 데이터를 불러오지 못했습니다.', 'error');
       } finally {
@@ -190,6 +198,8 @@ const PayrollEntry = () => {
     } catch (error) {
       if (error?.message?.includes('payroll month closed')) {
         showNotification('해당 월은 이미 지나서 생성할 수 없습니다.', 'warning');
+      } else if (error?.message?.includes('quantity settlement incomplete')) {
+        showNotification('수량 정산에서 검토 필요 항목을 먼저 정리하세요.', 'warning');
       } else {
         showNotification(error?.message || '급여 계산 생성에 실패했습니다.', 'error');
       }
@@ -364,6 +374,8 @@ const PayrollEntry = () => {
       if (error?.message?.includes('payroll month closed')) {
         showNotification('해당 월은 이미 지나서 수정할 수 없습니다.', 'warning');
         await fetchPayroll(currentMonth);
+      } else if (error?.message?.includes('quantity settlement incomplete')) {
+        showNotification('수량 정산에서 검토 필요 항목을 먼저 정리하세요.', 'warning');
       } else if (error?.message?.includes('insufficient org role')) {
         showNotification('급여 저장 권한이 없습니다.', 'error');
       } else {
@@ -452,6 +464,13 @@ const PayrollEntry = () => {
                 해당 월은 이미 지나서 수정/삭제가 불가능합니다.
               </Alert>
             )}
+            {settlementSummary &&
+              (Number(settlementSummary.reviewRows) > 0 ||
+                Number(settlementSummary.blockedRows) > 0) && (
+                <Alert severity="warning" sx={{ mb: 1.5 }}>
+                  {`수량 정산 미완료: 검토 필요 ${settlementSummary.reviewRows || 0}건, 차단 ${settlementSummary.blockedRows || 0}건`}
+                </Alert>
+              )}
             {computedEmployees.length === 0 ? (
               <Alert severity="info">{currentMonth} 기간에 급여 대상 직원이 없습니다.</Alert>
             ) : (
