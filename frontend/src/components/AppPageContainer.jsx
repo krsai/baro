@@ -42,7 +42,7 @@ const AppPageContainer = ({
       >
         {/* Page Header */}
         {resolvedHeader && (
-          <Box sx={{ pb: 2, borderBottom: '1px solid #e0e0e0', minWidth: 0 }}>
+          <Box sx={{ pb: 2, minWidth: 0 }}>
             {resolvedHeader}
           </Box>
         )}
