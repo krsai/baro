@@ -539,11 +539,6 @@ const MainLayout = () => {
             path: '/st-review',
             disabled: true,
           },
-          {
-            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/shipment-review',
-          },
         ],
       },
       {
@@ -562,11 +557,17 @@ const MainLayout = () => {
             label: getUiMessage('menu.workHistoryMonthly', '\uC6D4\uAC04 \uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history-monthly',
+            disabled: true,
           },
           {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
+          },
+          {
+            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/shipment-review',
           },
         ],
       },
