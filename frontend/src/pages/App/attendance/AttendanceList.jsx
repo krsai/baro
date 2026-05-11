@@ -17,8 +17,6 @@ import {
   Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
@@ -595,13 +593,24 @@ const AttendanceList = () => {
             />
           )}
           right={[
-            <Tooltip key="prev" title={resolveText(TEXT.prevMonth, languageCode, 'Previous month')}>
-              <span>
-                <IconButton onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}>
-                  <ChevronLeftIcon />
-                </IconButton>
-              </span>
-            </Tooltip>,
+            <FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
+              <InputLabel id="attendance-list-factory-label">
+                {resolveText(TEXT.factory, languageCode, 'Factory')}
+              </InputLabel>
+              <Select
+                labelId="attendance-list-factory-label"
+                value={selectedFactoryId}
+                label={resolveText(TEXT.factory, languageCode, 'Factory')}
+                onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
+                disabled={loadingFactories || factories.length === 0}
+              >
+                {factories.map((factory) => (
+                  <MenuItem key={factory.id} value={String(factory.id)}>
+                    {factory.name || `Factory ${factory.id}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>,
             <LocalizationProvider
               key="month-picker"
               dateAdapter={AdapterDayjs}
@@ -622,31 +631,24 @@ const AttendanceList = () => {
                 }}
               />
             </LocalizationProvider>,
-            <Tooltip key="next" title={resolveText(TEXT.nextMonth, languageCode, 'Next month')}>
-              <span>
-                <IconButton onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}>
-                  <ChevronRightIcon />
-                </IconButton>
-              </span>
-            </Tooltip>,
-            <FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
-              <InputLabel id="attendance-list-factory-label">
-                {resolveText(TEXT.factory, languageCode, 'Factory')}
-              </InputLabel>
-              <Select
-                labelId="attendance-list-factory-label"
-                value={selectedFactoryId}
-                label={resolveText(TEXT.factory, languageCode, 'Factory')}
-                onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
-                disabled={loadingFactories || factories.length === 0}
+            <Stack key="month-shift" sx={{ gap: '2px' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}
+                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
               >
-                {factories.map((factory) => (
-                  <MenuItem key={factory.id} value={String(factory.id)}>
-                    {factory.name || `Factory ${factory.id}`}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>,
+                M+
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}
+                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+              >
+                M-
+              </Button>
+            </Stack>,
             <Button
               key="import"
               variant="outlined"

@@ -684,15 +684,6 @@ const AttendanceBoard = ({
           )}
           right={(
             <>
-              <CustomDatePicker
-                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
-                value={selectedDate}
-                onChange={(value) => {
-                  if (!value || !value.isValid?.()) return;
-                  setSelectedDate(value.startOf('day'));
-                }}
-                slotProps={{ textField: { sx: { minWidth: 160 } } }}
-              />
               <FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel id="attendance-factory-select-label">
                   {resolveText(TEXT.factory, languageCode, 'Factory')}
@@ -714,6 +705,15 @@ const AttendanceBoard = ({
                   ))}
                 </Select>
               </FormControl>
+              <CustomDatePicker
+                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
+                value={selectedDate}
+                onChange={(value) => {
+                  if (!value || !value.isValid?.()) return;
+                  setSelectedDate(value.startOf('day'));
+                }}
+                slotProps={{ textField: { sx: { minWidth: 160 } } }}
+              />
               <Button
                 variant="outlined"
                 startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}

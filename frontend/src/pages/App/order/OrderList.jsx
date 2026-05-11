@@ -28,8 +28,6 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
@@ -3391,13 +3389,6 @@ const OrderList = () => {
                 flexShrink: 0,
               }}
             >
-              <IconButton
-                size="small"
-                onClick={() => shiftDueDateFilterMonth(-1)}
-                title={orderPageText.previousMonth}
-              >
-                <ChevronLeftIcon sx={{ fontSize: 18 }} />
-              </IconButton>
               <CustomDatePicker
                 value={dueDateFilterStart}
                 onChange={handleDueDateFilterStartChange}
@@ -3411,13 +3402,6 @@ const OrderList = () => {
                 onChange={handleDueDateFilterEndChange}
                 slotProps={ORDER_FILTER_DATE_PICKER_SLOT_PROPS}
               />
-              <IconButton
-                size="small"
-                onClick={() => shiftDueDateFilterMonth(1)}
-                title={orderPageText.nextMonth}
-              >
-                <ChevronRightIcon sx={{ fontSize: 18 }} />
-              </IconButton>
               <Stack sx={{ gap: '2px' }}>
                 <Button
                   size="small"

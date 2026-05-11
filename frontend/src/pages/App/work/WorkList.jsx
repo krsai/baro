@@ -19,8 +19,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
@@ -466,13 +464,6 @@ const WorkList = () => {
                   flexShrink: 0,
                 }}
               >
-                <IconButton
-                  size="small"
-                  onClick={() => shiftDateFilterMonth(-1)}
-                  title={resolveText(TEXT.prevMonth, languageCode, '이전 달')}
-                >
-                  <ChevronLeftIcon sx={{ fontSize: 18 }} />
-                </IconButton>
                 <CustomDatePicker
                   value={dateFilterStart}
                   onChange={handleDateFilterStartChange}
@@ -486,13 +477,6 @@ const WorkList = () => {
                   onChange={handleDateFilterEndChange}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                 />
-                <IconButton
-                  size="small"
-                  onClick={() => shiftDateFilterMonth(1)}
-                  title={resolveText(TEXT.nextMonth, languageCode, '다음 달')}
-                >
-                  <ChevronRightIcon sx={{ fontSize: 18 }} />
-                </IconButton>
                 <Stack sx={{ gap: '2px' }}>
                   <Button
                     size="small"

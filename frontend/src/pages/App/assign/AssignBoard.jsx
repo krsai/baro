@@ -23,8 +23,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CloseIcon from '@mui/icons-material/Close';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { useBeforeUnload, useBlocker, useLocation } from 'react-router-dom';
@@ -4898,19 +4896,6 @@ const AssignBoard = () => {
                   {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <IconButton
-                    size="small"
-                    onClick={handlePrevMonthFrom}
-                    title={getUiMessage(
-                      'common.previousMonthFirstDay',
-                      '이전 달 1일',
-                      languageCode
-                    )}
-                    sx={{ p: 0.25 }}
-                    disabled={controlsDisabled}
-                  >
-                    <ChevronLeftIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
                   <CustomDatePicker
                     value={viewStart}
                     onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
@@ -4922,19 +4907,6 @@ const AssignBoard = () => {
                     onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
                     disabled={controlsDisabled}
                   />
-                  <IconButton
-                    size="small"
-                    onClick={handleNextMonthTo}
-                    title={getUiMessage(
-                      'common.nextMonthLastDay',
-                      '다음 달 말일',
-                      languageCode
-                    )}
-                    sx={{ p: 0.25 }}
-                    disabled={controlsDisabled}
-                  >
-                    <ChevronRightIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
                   <Stack sx={{ gap: '2px' }}>
                     <Button
                       size="small"

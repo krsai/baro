@@ -12,7 +12,6 @@ import {
   Divider,
   Drawer,
   FormControl,
-  IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
@@ -28,8 +27,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useLocation } from 'react-router-dom';
 import CustomDatePicker from '../../../components/CustomDatePicker';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -2428,14 +2425,6 @@ const ProductionPlanBoard = () => {
                   계획 일정 달력 (월)
                 </Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <IconButton
-                    size="small"
-                    onClick={() => setCalendarMonth((prev) => addMonths(prev, -1))}
-                    title="이전 달"
-                    sx={{ p: 0.25 }}
-                  >
-                    <ChevronLeftIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
                   <CustomDatePicker
                     value={calendarMonth}
                     onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
@@ -2445,14 +2434,6 @@ const ProductionPlanBoard = () => {
                     value={calendarMonthEnd}
                     onChange={(val) => { if (val?.isValid?.()) setCalendarMonth(toMonthStart(val.toDate())); }}
                   />
-                  <IconButton
-                    size="small"
-                    onClick={() => setCalendarMonth((prev) => addMonths(prev, 1))}
-                    title="다음 달"
-                    sx={{ p: 0.25 }}
-                  >
-                    <ChevronRightIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
                   <Stack sx={{ gap: '2px' }}>
                     <Button
                       size="small"

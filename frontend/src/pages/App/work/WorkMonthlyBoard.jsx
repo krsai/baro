@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Button,
   FormControl,
-  IconButton,
   InputLabel,
   MenuItem,
   Paper,
@@ -17,8 +17,6 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -382,13 +380,6 @@ const WorkMonthlyBoard = () => {
                 ))}
               </Select>
             </FormControl>,
-            <Tooltip key="prev" title={resolveText(TEXT.prevMonth, languageCode, '이전 달')}>
-              <span>
-                <IconButton onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}>
-                  <ChevronLeftIcon />
-                </IconButton>
-              </span>
-            </Tooltip>,
             <LocalizationProvider
               key="month-picker"
               dateAdapter={AdapterDayjs}
@@ -403,13 +394,24 @@ const WorkMonthlyBoard = () => {
                 slotProps={MONTH_PICKER_SLOT_PROPS}
               />
             </LocalizationProvider>,
-            <Tooltip key="next" title={resolveText(TEXT.nextMonth, languageCode, '다음 달')}>
-              <span>
-                <IconButton onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}>
-                  <ChevronRightIcon />
-                </IconButton>
-              </span>
-            </Tooltip>,
+            <Stack key="month-shift" sx={{ gap: '2px' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedMonth((prev) => prev.add(1, 'month'))}
+                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+              >
+                M+
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setSelectedMonth((prev) => prev.subtract(1, 'month'))}
+                sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+              >
+                M-
+              </Button>
+            </Stack>
           ]}
         />
       )}
