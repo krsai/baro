@@ -395,6 +395,20 @@ const AttendanceList = () => {
       }
     });
 
+    // Include manually registered holidays in the selected month
+    // even when there are no attendance entries on that date.
+    holidayKeys.forEach((holidayKey) => {
+      const dateKey = String(holidayKey || '').trim();
+      if (!dateKey.startsWith(`${monthKey}-`)) return;
+      if (groupedByDate.has(dateKey)) return;
+      groupedByDate.set(dateKey, {
+        workDate: dateKey,
+        workerIds: new Set(),
+        workedSecondsTotal: 0,
+        noteCount: 0,
+      });
+    });
+
     return Array.from(groupedByDate.values())
       .map((item) => ({
         workDate: item.workDate,
@@ -408,7 +422,7 @@ const AttendanceList = () => {
         (left, right) =>
           dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
       );
-  }, [rows]);
+  }, [holidayKeys, monthKey, rows]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
