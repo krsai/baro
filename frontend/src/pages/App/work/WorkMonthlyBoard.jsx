@@ -37,8 +37,8 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { HOLIDAY_UPDATED_EVENT, loadHolidays } from '../../../utils/localData';
 import { loadWorkLogs } from './workLogStorage';
 import {
   aggregateMonthlyWorkerRows,
@@ -128,12 +128,12 @@ const WorkMonthlyBoard = () => {
   const [selectedMonth, setSelectedMonth] = useState(() => dayjs().startOf('month'));
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const [rows, setRows] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const { holidayKeys } = useHolidayCalendar(activeOrgId);
 
   const monthRange = useMemo(() => buildMonthRange(selectedMonth), [selectedMonth]);
   const selectedFactoryIdNumber = useMemo(
@@ -144,26 +144,6 @@ const WorkMonthlyBoard = () => {
     () => factories.find((factory) => String(factory?.id) === String(selectedFactoryId)) || null,
     [factories, selectedFactoryId]
   );
-
-  useEffect(() => {
-    const handleHolidayUpdated = (event) => {
-      const nextKeys = Array.isArray(event?.detail?.holidays)
-        ? event.detail.holidays
-        : loadHolidays();
-      setHolidayKeys(nextKeys);
-    };
-    const handleStorage = (event) => {
-      if (event?.key && event.key !== 'baro_holidays_v1') return;
-      setHolidayKeys(loadHolidays());
-    };
-
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-    window.addEventListener('storage', handleStorage);
-    return () => {
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;

@@ -33,6 +33,7 @@ import CustomDatePicker from '../../../components/CustomDatePicker';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
+import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -47,11 +48,6 @@ import {
 } from './constants';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { fetchStyleById } from '../../../utils/styleApi';
-import {
-  HOLIDAY_UPDATED_EVENT,
-  STORAGE_KEYS,
-  loadHolidays,
-} from '../../../utils/localData';
 import {
   AT_RELIABILITY_STATUS,
   DEFAULT_TIME_REF_QUANTITY,
@@ -2307,8 +2303,7 @@ const AssignBoard = () => {
   const historySnapshotRef = useRef('');
   const historyApplyingRef = useRef(false);
   const [historyStatus, setHistoryStatus] = useState({ undoCount: 0, redoCount: 0 });
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
-  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+  const { holidaySet } = useHolidayCalendar(activeOrgId);
   const MAX_RANGE_DAYS = 92;
   const [viewStart, setViewStart] = useState(() => getMonthStartDate());
   const [viewEnd, setViewEnd] = useState(() => getMonthEndDate());
@@ -2965,25 +2960,6 @@ const AssignBoard = () => {
       syncHistoryStatus,
     ]
   );
-
-  useEffect(() => {
-    const syncHolidays = () => {
-      setHolidayKeys(loadHolidays());
-    };
-
-    const handleStorage = (event) => {
-      if (event?.key && event.key !== STORAGE_KEYS.holidays) return;
-      syncHolidays();
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
-    };
-  }, []);
 
   useEffect(() => {
     const newStart = new Date(viewStart);

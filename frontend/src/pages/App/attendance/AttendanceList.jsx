@@ -40,8 +40,8 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { HOLIDAY_UPDATED_EVENT, loadHolidays } from '../../../utils/localData';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
   buildAttendanceImportPlan,
@@ -69,6 +69,7 @@ const TEXT = {
   typeSunday: { ko: '일요일', en: 'Sunday', vi: 'Chu nhat' },
   typeHoliday: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
   typeNone: { ko: '-', en: '-', vi: '-' },
+  typeMissing: { ko: '\uBBF8\uC785\uB825', en: 'Missing', vi: 'Chua nhap' },
   loading: {
     ko: '출퇴근 기록을 불러오는 중입니다.',
     en: 'Loading attendance...',
@@ -229,13 +230,16 @@ const buildWorkDateDisplay = (workDate, languageCode, holidaySet) => {
   };
 };
 
-const buildWorkTypeText = ({ isSunday, isHoliday, languageCode }) => {
+const buildWorkTypeText = ({ isSunday, isHoliday, hasEntries, languageCode }) => {
   const types = [];
   if (isSunday) {
     types.push(resolveText(TEXT.typeSunday, languageCode, 'Sunday'));
   }
   if (isHoliday) {
     types.push(resolveText(TEXT.typeHoliday, languageCode, 'Holiday'));
+  }
+  if (types.length === 0 && !hasEntries) {
+    return resolveText(TEXT.typeMissing, languageCode, 'Missing');
   }
   if (types.length === 0) return resolveText(TEXT.typeNone, languageCode, '-');
   return types.join(' + ');
@@ -256,36 +260,10 @@ const AttendanceList = () => {
   const [importingFile, setImportingFile] = useState(false);
   const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const fileInputRef = useRef(null);
 
   const monthKey = useMemo(() => selectedMonth.format('YYYY-MM'), [selectedMonth]);
-  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-
-    const syncHolidayKeys = () => {
-      setHolidayKeys(loadHolidays());
-    };
-
-    const handleHolidayUpdated = (event) => {
-      const updatedKeys = event?.detail?.holidays;
-      if (Array.isArray(updatedKeys)) {
-        setHolidayKeys(updatedKeys);
-        return;
-      }
-      syncHolidayKeys();
-    };
-
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-    window.addEventListener('storage', syncHolidayKeys);
-
-    return () => {
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-      window.removeEventListener('storage', syncHolidayKeys);
-    };
-  }, []);
+  const { holidaySet } = useHolidayCalendar(activeOrgId);
 
   useEffect(() => {
     let cancelled = false;
@@ -407,20 +385,34 @@ const AttendanceList = () => {
       }
     });
 
-    return Array.from(groupedByDate.values())
-      .map((item) => ({
-        workDate: item.workDate,
-        enteredWorkerCount: item.workerIds.size,
-        workedSecondsTotal: item.workedSecondsTotal,
+    const nextRows = [];
+    let cursor = selectedMonth.startOf('month');
+    const monthEnd = selectedMonth.endOf('month');
+
+    while (!cursor.isAfter(monthEnd, 'day')) {
+      const workDate = cursor.format('YYYY-MM-DD');
+      const item = groupedByDate.get(workDate);
+      const enteredWorkerCount = item?.workerIds?.size || 0;
+      const noteCount = item?.noteCount || 0;
+      const workedSecondsTotal = item?.workedSecondsTotal || 0;
+
+      nextRows.push({
+        workDate,
+        enteredWorkerCount,
+        workedSecondsTotal,
         workedSecondsAverage:
-          item.workerIds.size > 0 ? item.workedSecondsTotal / item.workerIds.size : null,
-        noteCount: item.noteCount,
-      }))
-      .sort(
-        (left, right) =>
-          dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
-      );
-  }, [rows]);
+          enteredWorkerCount > 0 ? workedSecondsTotal / enteredWorkerCount : null,
+        noteCount,
+        hasEntries: enteredWorkerCount > 0 || noteCount > 0,
+      });
+      cursor = cursor.add(1, 'day');
+    }
+
+    return nextRows.sort(
+      (left, right) =>
+        dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
+    );
+  }, [rows, selectedMonth]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -791,6 +783,7 @@ const AttendanceList = () => {
                   const workTypeText = buildWorkTypeText({
                     isSunday,
                     isHoliday,
+                    hasEntries: Boolean(row.hasEntries),
                     languageCode,
                   });
 
@@ -830,7 +823,9 @@ const AttendanceList = () => {
                               color="error"
                               onClick={(event) => handleDelete(event, row)}
                               onDoubleClick={(event) => event.stopPropagation()}
-                              disabled={deletingWorkDate === String(row.workDate)}
+                              disabled={
+                                deletingWorkDate === String(row.workDate) || !row.hasEntries
+                              }
                             >
                               <DeleteOutlineIcon fontSize="small" />
                             </IconButton>

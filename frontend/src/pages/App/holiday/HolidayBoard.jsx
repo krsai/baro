@@ -1,5 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -21,8 +22,9 @@ import SaveButton from '../../../components/SaveButton';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
-import { loadHolidays, saveHolidays } from '../../../utils/localData';
+import { fetchHolidayKeys, normalizeHolidayList, saveHolidayKeys } from '../../../utils/holidayApi';
 
 const getTodayStart = () => dayjs().startOf('day');
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
@@ -87,11 +89,14 @@ const HolidayDay = (props) => {
 
 const HolidayBoard = () => {
   const { showNotification } = useAppActions();
+  const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
 
   const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [savedHolidayKeys, setSavedHolidayKeys] = useState(() => loadHolidays());
-  const [draftHolidayKeys, setDraftHolidayKeys] = useState(() => loadHolidays());
+  const [savedHolidayKeys, setSavedHolidayKeys] = useState([]);
+  const [draftHolidayKeys, setDraftHolidayKeys] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const calendarLocale = useMemo(
@@ -154,6 +159,24 @@ const HolidayBoard = () => {
         'Failed to save holiday changes.',
         languageCode
       ),
+      loading: getUiMessage(
+        'holidayBoard.loading',
+        languageCode === 'vi'
+          ? 'Dang tai ngay nghi...'
+          : languageCode === 'en'
+            ? 'Loading holidays...'
+            : '휴일 정보를 불러오는 중입니다.',
+        languageCode
+      ),
+      fetchError: getUiMessage(
+        'holidayBoard.fetchError',
+        languageCode === 'vi'
+          ? 'Khong the tai du lieu ngay nghi.'
+          : languageCode === 'en'
+            ? 'Failed to load holiday data.'
+            : '휴일 정보를 불러오지 못했습니다.',
+        languageCode
+      ),
     }),
     [draftHolidayKeys.length, languageCode]
   );
@@ -168,6 +191,52 @@ const HolidayBoard = () => {
   );
 
   useUnsavedChanges(isDirty);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    let cancelled = false;
+
+    if (!activeOrgId) {
+      setSavedHolidayKeys([]);
+      setDraftHolidayKeys([]);
+      setLoadError('');
+      setIsLoading(false);
+      return () => {
+        cancelled = true;
+        abortController.abort();
+      };
+    }
+
+    setIsLoading(true);
+    setLoadError('');
+    fetchHolidayKeys({
+      orgId: activeOrgId,
+      signal: abortController.signal,
+      forceRefresh: true,
+    })
+      .then((nextKeys) => {
+        if (cancelled) return;
+        const normalizedKeys = normalizeHolidayList(nextKeys);
+        setSavedHolidayKeys(normalizedKeys);
+        setDraftHolidayKeys(normalizedKeys);
+      })
+      .catch((_error) => {
+        if (cancelled || abortController.signal.aborted) return;
+        setSavedHolidayKeys([]);
+        setDraftHolidayKeys([]);
+        setLoadError(text.fetchError);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [activeOrgId, languageCode]);
 
   const updateDraftHolidayKeys = useCallback((nextKeys) => {
     setDraftHolidayKeys(normalizeHolidayKeys(nextKeys));
@@ -206,8 +275,8 @@ const HolidayBoard = () => {
     [draftHolidayKeys, isSaving, updateDraftHolidayKeys]
   );
 
-  const handleSaveChanges = useCallback(() => {
-    if (isSaving) return;
+  const handleSaveChanges = useCallback(async () => {
+    if (isSaving || !activeOrgId || isLoading || loadError) return;
 
     if (!isDirty) {
       showNotification(text.noChanges, 'info');
@@ -216,9 +285,13 @@ const HolidayBoard = () => {
 
     setIsSaving(true);
     try {
-      const saved = saveHolidays(draftHolidayKeys);
+      const saved = await saveHolidayKeys({
+        orgId: activeOrgId,
+        holidays: draftHolidayKeys,
+      });
       setSavedHolidayKeys(saved);
       setDraftHolidayKeys(saved);
+      setLoadError('');
       showNotification(text.saveSuccess, 'success');
     } catch (_error) {
       showNotification(text.saveError, 'error');
@@ -226,9 +299,12 @@ const HolidayBoard = () => {
       setIsSaving(false);
     }
   }, [
+    activeOrgId,
     draftHolidayKeys,
     isDirty,
+    isLoading,
     isSaving,
+    loadError,
     showNotification,
     text.noChanges,
     text.saveError,
@@ -241,7 +317,7 @@ const HolidayBoard = () => {
       titleActions={(
         <SaveButton
           onClick={handleSaveChanges}
-          disabled={isSaving || !isDirty}
+          disabled={isLoading || isSaving || !isDirty || !activeOrgId || Boolean(loadError)}
           loading={isSaving}
         />
       )}
@@ -257,6 +333,12 @@ const HolidayBoard = () => {
         />
       )}
     >
+      {loadError ? (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {loadError}
+        </Alert>
+      ) : null}
+
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Paper
           variant="outlined"
@@ -281,7 +363,13 @@ const HolidayBoard = () => {
             <Button
               variant={isSelectedHoliday ? 'outlined' : 'contained'}
               onClick={handleToggleSelectedHoliday}
-              disabled={isSelectedSunday || isSaving}
+              disabled={
+                isLoading ||
+                isSelectedSunday ||
+                isSaving ||
+                !activeOrgId ||
+                Boolean(loadError)
+              }
             >
               {isSelectedHoliday ? text.unregisterSelected : text.registerSelected}
             </Button>
@@ -293,7 +381,7 @@ const HolidayBoard = () => {
             )}
 
             <Typography variant="caption" color="text.secondary">
-              {text.pastDateHint}
+              {isLoading ? text.loading : text.pastDateHint}
             </Typography>
           </Stack>
         </Paper>

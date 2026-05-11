@@ -111,12 +111,16 @@ export const fetchHolidayKeys = async ({
     return serverKeys;
   }
 
-  return persistHolidayKeys({
-    orgId: normalizedOrgId,
-    holidays: legacyKeys,
-    skipGlobalLoading,
-    signal,
-  });
+  try {
+    return await persistHolidayKeys({
+      orgId: normalizedOrgId,
+      holidays: legacyKeys,
+      skipGlobalLoading,
+      signal,
+    });
+  } catch (_error) {
+    return legacyKeys;
+  }
 };
 
 export const saveHolidayKeys = async ({

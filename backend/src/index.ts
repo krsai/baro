@@ -167,6 +167,9 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("AssignmentCard", "payload")) {
     staleSignals.push("AssignmentCard.payload missing");
   }
+  if (!modelByName.has("OrganizationHoliday")) {
+    staleSignals.push("OrganizationHoliday model missing");
+  }
   if (hasField("WorkRecord", "processName")) {
     staleSignals.push("WorkRecord.processName still present");
   }
@@ -13244,8 +13247,9 @@ app.get("/holidays", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+  const holidayModel = (prisma as any).organizationHoliday;
 
-  const rows = await prisma.organizationHoliday.findMany({
+  const rows = await holidayModel.findMany({
     where: { orgId: organization.id },
     select: { holidayDate: true },
     orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
@@ -13260,15 +13264,17 @@ app.put("/holidays", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+  const holidayModel = (prisma as any).organizationHoliday;
 
   const holidayDateKeys = normalizeHolidayDateKeyList(req.body?.holidays);
   const savedRows = await prisma.$transaction(async (tx) => {
-    await tx.organizationHoliday.deleteMany({
+    const holidayTx = (tx as any).organizationHoliday;
+    await holidayTx.deleteMany({
       where: { orgId: organization.id },
     });
 
     if (holidayDateKeys.length > 0) {
-      await tx.organizationHoliday.createMany({
+      await holidayTx.createMany({
         data: holidayDateKeys.map((holidayDate) => ({
           orgId: organization.id,
           holidayDate,
@@ -13277,7 +13283,7 @@ app.put("/holidays", async (req, res) => {
       });
     }
 
-    return tx.organizationHoliday.findMany({
+    return holidayTx.findMany({
       where: { orgId: organization.id },
       select: { holidayDate: true },
       orderBy: [{ holidayDate: "asc" }, { id: "asc" }],

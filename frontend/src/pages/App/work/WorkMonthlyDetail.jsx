@@ -7,8 +7,8 @@ import TableStatusRow from '../../../components/TableStatusRow';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { HOLIDAY_UPDATED_EVENT, loadHolidays } from '../../../utils/localData';
 import { loadWorkLogs } from './workLogStorage';
 import {
   buildMonthlyWorkerDetail,
@@ -80,12 +80,12 @@ const WorkMonthlyDetail = () => {
   const normalizedFactoryId = normalizePositiveId(factoryId);
   const normalizedWorkerId = normalizePositiveId(workerId);
 
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [summary, setSummary] = useState(null);
   const [rows, setRows] = useState([]);
+  const { holidayKeys } = useHolidayCalendar(activeOrgId);
 
   const monthRange = useMemo(
     () => buildMonthRange(normalizedMonthKey || undefined),
@@ -102,26 +102,6 @@ const WorkMonthlyDetail = () => {
       ...(closeTabId ? { closeTabId } : {}),
     });
   }, [languageCode, navigateToPath, normalizedFactoryId, normalizedMonthKey, normalizedWorkerId]);
-
-  useEffect(() => {
-    const handleHolidayUpdated = (event) => {
-      const nextKeys = Array.isArray(event?.detail?.holidays)
-        ? event.detail.holidays
-        : loadHolidays();
-      setHolidayKeys(nextKeys);
-    };
-    const handleStorage = (event) => {
-      if (event?.key && event.key !== 'baro_holidays_v1') return;
-      setHolidayKeys(loadHolidays());
-    };
-
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-    window.addEventListener('storage', handleStorage);
-    return () => {
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, []);
 
   useEffect(() => {
     const abortController = new AbortController();

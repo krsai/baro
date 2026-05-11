@@ -35,6 +35,7 @@ import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEven
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { getGenderLabel } from '../../../constants/productAttributes';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
@@ -49,11 +50,6 @@ import {
   resolveProcessExactStPerPieceSeconds,
   resolveStBucketQuantity,
 } from '../../../utils/processTime';
-import {
-  HOLIDAY_UPDATED_EVENT,
-  STORAGE_KEYS,
-  loadHolidays,
-} from '../../../utils/localData';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../../../constants/timeThresholds';
 import {
   hasAssignmentCtSnapshot,
@@ -877,8 +873,7 @@ const ProductionPlanBoard = () => {
   const [assignmentProgressById, setAssignmentProgressById] = useState(() => new Map());
   const [lineWorkers, setLineWorkers] = useState([]);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
-  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
-  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+  const { holidaySet } = useHolidayCalendar(activeOrgId);
   const [baseDate] = useState(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -1198,25 +1193,6 @@ const ProductionPlanBoard = () => {
     }
     return rows;
   }, [calendarDays]);
-
-  useEffect(() => {
-    const syncHolidays = () => {
-      setHolidayKeys(loadHolidays());
-    };
-
-    const handleStorage = (event) => {
-      if (event?.key && event.key !== STORAGE_KEYS.holidays) return;
-      syncHolidays();
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, syncHolidays);
-    };
-  }, []);
 
   const calendarBarData = useMemo(() => {
     return weekRows.map((weekDays) => {
