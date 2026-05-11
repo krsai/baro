@@ -2656,8 +2656,8 @@ const OrderList = () => {
       sortStyleItemsForDisplay();
     });
   }, [sortStyleItemsForDisplay]);
-  const isTabAutocompleteSelection = (event, reason) =>
-    event?.key === 'Tab' && reason === 'selectOption';
+  const shouldAdvanceAfterAutocompleteSelection = (_event, reason) =>
+    reason === 'selectOption';
 
   const handleStyleChange = (itemIdOrIds, style, options = {}) => {
     if (!selectedBuyerName) {
@@ -3837,7 +3837,7 @@ const OrderList = () => {
                               disabled={!selectedBuyerName}
                               onChange={(event, newValue, reason) =>
                                 handleStyleChange(group.rowItemIds, newValue, {
-                                  focusNext: isTabAutocompleteSelection(event, reason),
+                                  focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
                                   focusItemId: group.rows[0]?.item?.id || '',
                                 })
                               }
@@ -3880,7 +3880,7 @@ const OrderList = () => {
                                 loading={creatingColorItemId === item.id}
                                 onChange={(event, newValue, reason) => {
                                   void handleColorChange(colorTargetIds, newValue, {
-                                    focusNext: isTabAutocompleteSelection(event, reason),
+                                    focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
                                     focusItemId: item.id,
                                   });
                                 }}
@@ -3935,7 +3935,7 @@ const OrderList = () => {
                               value={selectedGenderOption}
                               onChange={(event, newValue, reason) =>
                                 handleGenderChange(item.id, newValue, {
-                                  focusNext: isTabAutocompleteSelection(event, reason),
+                                  focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
                                 })
                               }
                               getOptionLabel={(option) => option?.label || option?.code || ''}
@@ -4172,7 +4172,7 @@ const OrderList = () => {
                                   disabled={!selectedBuyerName}
                                   onChange={(event, newValue, reason) => {
                                     const shouldFocusNext =
-                                      isTabAutocompleteSelection(event, reason) ||
+                                      shouldAdvanceAfterAutocompleteSelection(event, reason) ||
                                       pendingHorizontalStyleTabFocusItemIdRef.current ===
                                         colorInputTargetId;
                                     handleStyleChange(group.rowItemIds, newValue, {
@@ -4238,7 +4238,7 @@ const OrderList = () => {
                                   loading={creatingColorItemId === colorInputTargetId}
                                   onChange={(event, newValue, reason) => {
                                     void handleColorChange(colorTargetIds, newValue, {
-                                      focusNext: isTabAutocompleteSelection(event, reason),
+                                      focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
                                       focusItemId: colorInputTargetId,
                                     });
                                   }}
