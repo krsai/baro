@@ -4874,6 +4874,42 @@ const toHolidayDateKeyResponse = (rows: any) =>
     .map((row) => normalizeDateKey(row?.holidayDate))
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => left.localeCompare(right));
+let organizationHolidayStorageReadyPromise: Promise<void> | null = null;
+const ensureOrganizationHolidayStorageReady = async () => {
+  if (organizationHolidayStorageReadyPromise) {
+    await organizationHolidayStorageReadyPromise;
+    return;
+  }
+
+  organizationHolidayStorageReadyPromise = (async () => {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OrganizationHoliday" (
+        "id" SERIAL NOT NULL,
+        "orgId" INTEGER NOT NULL,
+        "holidayDate" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "OrganizationHoliday_pkey" PRIMARY KEY ("id")
+      )
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "OrganizationHoliday_orgId_holidayDate_key"
+      ON "OrganizationHoliday" ("orgId", "holidayDate")
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE INDEX IF NOT EXISTS "OrganizationHoliday_orgId_holidayDate_idx"
+      ON "OrganizationHoliday" ("orgId", "holidayDate")
+    `);
+  })();
+
+  try {
+    await organizationHolidayStorageReadyPromise;
+  } catch (error) {
+    organizationHolidayStorageReadyPromise = null;
+    throw error;
+  }
+};
 const toAttendanceEntryResponse = (entry: any) => ({
   id: entry?.id ?? null,
   orgId: entry?.orgId ?? null,
@@ -13247,13 +13283,38 @@ app.get("/holidays", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+
+  try {
+    await ensureOrganizationHolidayStorageReady();
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: getErrorMessage(error, "failed to initialize holiday storage"),
+    });
+  }
+
   const holidayModel = (prisma as any).organizationHoliday;
 
-  const rows = await holidayModel.findMany({
-    where: { orgId: organization.id },
-    select: { holidayDate: true },
-    orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
-  });
+  let rows: Array<{ holidayDate: string }> = [];
+  try {
+    rows = await holidayModel.findMany({
+      where: { orgId: organization.id },
+      select: { holidayDate: true },
+      orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+    });
+  } catch (error) {
+    if (getErrorCode(error) === "P2021") {
+      organizationHolidayStorageReadyPromise = null;
+      await ensureOrganizationHolidayStorageReady();
+      rows = await holidayModel.findMany({
+        where: { orgId: organization.id },
+        select: { holidayDate: true },
+        orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+      });
+    } else {
+      throw error;
+    }
+  }
 
   return res.json(toHolidayDateKeyResponse(rows));
 });
@@ -13264,31 +13325,73 @@ app.put("/holidays", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+
+  try {
+    await ensureOrganizationHolidayStorageReady();
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      error: getErrorMessage(error, "failed to initialize holiday storage"),
+    });
+  }
+
   const holidayModel = (prisma as any).organizationHoliday;
 
   const holidayDateKeys = normalizeHolidayDateKeyList(req.body?.holidays);
-  const savedRows = await prisma.$transaction(async (tx) => {
-    const holidayTx = (tx as any).organizationHoliday;
-    await holidayTx.deleteMany({
-      where: { orgId: organization.id },
-    });
-
-    if (holidayDateKeys.length > 0) {
-      await holidayTx.createMany({
-        data: holidayDateKeys.map((holidayDate) => ({
-          orgId: organization.id,
-          holidayDate,
-        })),
-        skipDuplicates: true,
+  let savedRows: Array<{ holidayDate: string }> = [];
+  try {
+    savedRows = await prisma.$transaction(async (tx) => {
+      const holidayTx = (tx as any).organizationHoliday;
+      await holidayTx.deleteMany({
+        where: { orgId: organization.id },
       });
-    }
 
-    return holidayTx.findMany({
-      where: { orgId: organization.id },
-      select: { holidayDate: true },
-      orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+      if (holidayDateKeys.length > 0) {
+        await holidayTx.createMany({
+          data: holidayDateKeys.map((holidayDate) => ({
+            orgId: organization.id,
+            holidayDate,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return holidayTx.findMany({
+        where: { orgId: organization.id },
+        select: { holidayDate: true },
+        orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+      });
     });
-  });
+  } catch (error) {
+    if (getErrorCode(error) === "P2021") {
+      organizationHolidayStorageReadyPromise = null;
+      await ensureOrganizationHolidayStorageReady();
+      savedRows = await prisma.$transaction(async (tx) => {
+        const holidayTx = (tx as any).organizationHoliday;
+        await holidayTx.deleteMany({
+          where: { orgId: organization.id },
+        });
+
+        if (holidayDateKeys.length > 0) {
+          await holidayTx.createMany({
+            data: holidayDateKeys.map((holidayDate) => ({
+              orgId: organization.id,
+              holidayDate,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        return holidayTx.findMany({
+          where: { orgId: organization.id },
+          select: { holidayDate: true },
+          orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+        });
+      });
+    } else {
+      throw error;
+    }
+  }
 
   return res.json(toHolidayDateKeyResponse(savedRows));
 });

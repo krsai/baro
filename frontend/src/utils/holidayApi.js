@@ -1,6 +1,7 @@
 import { buildQueryString, requestJSON } from './apiClient';
 
 export const HOLIDAY_UPDATED_EVENT = 'baro:holidays-updated';
+export const LEGACY_HOLIDAY_STORAGE_KEY = 'baro_holidays_v1';
 
 const HOLIDAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -17,6 +18,26 @@ export const normalizeHolidayList = (list = []) =>
         .filter(Boolean)
     )
   ).sort((left, right) => left.localeCompare(right));
+
+const readLegacyHolidayKeys = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LEGACY_HOLIDAY_STORAGE_KEY);
+    if (!raw) return [];
+    return normalizeHolidayList(JSON.parse(raw));
+  } catch (_error) {
+    return [];
+  }
+};
+
+const clearLegacyHolidayKeys = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(LEGACY_HOLIDAY_STORAGE_KEY);
+  } catch (_error) {
+    // Ignore cleanup failures for legacy browser data.
+  }
+};
 
 const emitHolidayUpdated = (orgId, holidays) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -69,15 +90,43 @@ export const fetchHolidayKeys = async ({
   const normalizedOrgId = Number(orgId);
   if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return [];
 
-  const response = await requestJSON(
-    '/holidays' + buildQueryString({ orgId: normalizedOrgId }),
-    {
-      skipGlobalLoading,
-      signal,
-      forceRefresh,
+  try {
+    const response = await requestJSON(
+      '/holidays' + buildQueryString({ orgId: normalizedOrgId }),
+      {
+        skipGlobalLoading,
+        signal,
+        forceRefresh,
+      }
+    );
+    const serverKeys = normalizeHolidayResponse(response);
+    if (serverKeys.length > 0) {
+      clearLegacyHolidayKeys();
+      return serverKeys;
     }
-  );
-  return normalizeHolidayResponse(response);
+
+    const legacyKeys = readLegacyHolidayKeys();
+    if (legacyKeys.length === 0) {
+      return serverKeys;
+    }
+
+    try {
+      return await persistHolidayKeys({
+        orgId: normalizedOrgId,
+        holidays: legacyKeys,
+        skipGlobalLoading,
+        signal,
+      });
+    } catch (_persistError) {
+      return legacyKeys;
+    }
+  } catch (error) {
+    const legacyKeys = readLegacyHolidayKeys();
+    if (legacyKeys.length > 0) {
+      return legacyKeys;
+    }
+    throw error;
+  }
 };
 
 export const saveHolidayKeys = async ({
