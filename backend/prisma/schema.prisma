@@ -166,6 +166,7 @@ model Organization {
   payrollSnapshots          PayrollSnapshot[]
   quantitySettlementSnapshots QuantitySettlementSnapshot[]
   attendanceEntries         AttendanceEntry[]
+  holidays                  OrganizationHoliday[]
   atTrainingBuckets         AtTrainingBucket[]
   atTrainingBucketProcesses AtTrainingBucketProcess[]
   manufacturerRelationships OrgRelationship[]         @relation("ManufacturerOrgRelationships")
@@ -348,6 +349,20 @@ model AttendanceEntry {
   @@index([orgId, workDate])
   @@index([orgId, factoryId, workDate])
   @@index([orgId, workerId, workDate])
+}
+
+model OrganizationHoliday {
+  id          Int      @id @default(autoincrement())
+  orgId       Int
+  holidayDate String
+  createdAt   DateTime @default(now())
+  createdBy   String   @default("system@baro.local")
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, holidayDate])
+  @@index([orgId, holidayDate])
 }
 
 model LineAssignment {

@@ -4858,6 +4858,19 @@ const normalizeAttendanceEntryPayloadList = (entries: any) => {
     duplicateWorkerId,
   };
 };
+const normalizeHolidayDateKeyList = (holidays: any): string[] =>
+  Array.from(
+    new Set(
+      ensureArray(holidays)
+        .map((value) => normalizeDateKey(value))
+        .filter((value): value is string => Boolean(value))
+    )
+  ).sort((left, right) => left.localeCompare(right));
+const toHolidayDateKeyResponse = (rows: any) =>
+  ensureArray(rows)
+    .map((row) => normalizeDateKey(row?.holidayDate))
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right));
 const toAttendanceEntryResponse = (entry: any) => ({
   id: entry?.id ?? null,
   orgId: entry?.orgId ?? null,
@@ -13223,6 +13236,55 @@ app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
     id: updatedPlan.externalId,
     isCompleted: updatedPlan.isCompleted,
   });
+});
+
+app.get("/holidays", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_ACCESS_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  const rows = await prisma.organizationHoliday.findMany({
+    where: { orgId: organization.id },
+    select: { holidayDate: true },
+    orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+  });
+
+  return res.json(toHolidayDateKeyResponse(rows));
+});
+
+app.put("/holidays", async (req, res) => {
+  const accessContext = await requireOrgRole(req, res, {
+    allowedRoles: ORG_MANAGEMENT_ROLES,
+  });
+  if (!accessContext) return;
+  const { organization } = accessContext;
+
+  const holidayDateKeys = normalizeHolidayDateKeyList(req.body?.holidays);
+  const savedRows = await prisma.$transaction(async (tx) => {
+    await tx.organizationHoliday.deleteMany({
+      where: { orgId: organization.id },
+    });
+
+    if (holidayDateKeys.length > 0) {
+      await tx.organizationHoliday.createMany({
+        data: holidayDateKeys.map((holidayDate) => ({
+          orgId: organization.id,
+          holidayDate,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return tx.organizationHoliday.findMany({
+      where: { orgId: organization.id },
+      select: { holidayDate: true },
+      orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
+    });
+  });
+
+  return res.json(toHolidayDateKeyResponse(savedRows));
 });
 
 app.get("/attendance-entries", async (req, res) => {
