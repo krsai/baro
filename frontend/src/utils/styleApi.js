@@ -1,14 +1,12 @@
-import { loadStyles } from './localData';
 import { normalizeProcesses } from './processTime';
 import { buildQueryString, createHttpError, requestJSON } from './apiClient';
 import {
   emitWorkspaceDataChanged,
   WORKSPACE_DATA_TOPICS,
 } from './workspaceDataEvents';
-const STYLE_MIGRATION_KEY = 'baro_style_migrated_to_api_v1';
+
 const STYLE_BY_ID_CACHE_TTL_MS = 30 * 1000;
 
-let migrationPromise = null;
 const styleByIdCache = new Map();
 const styleByIdInFlight = new Map();
 
@@ -78,17 +76,12 @@ const removeStyleFromCache = (styleId, options = {}) => {
     styleByIdCache.delete(scopedKey);
   }
 
-  // Also clear any stale entries for the same style id from other scopes.
   const suffix = `:${normalizedStyleId}`;
   Array.from(styleByIdCache.keys()).forEach((cacheKey) => {
     if (cacheKey.endsWith(suffix)) {
       styleByIdCache.delete(cacheKey);
     }
   });
-};
-
-const triggerStyleMigrationInBackground = () => {
-  ensureStyleMigrationOnce().catch(() => {});
 };
 
 const fetchStylesFromServer = async (options = {}) => {
@@ -109,60 +102,10 @@ const fetchStylesFromServer = async (options = {}) => {
   return data.map(normalizeStyle);
 };
 
-const importStylesToServer = async (styles) => {
-  const data = await requestJSON('/styles/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ styles }),
-  });
-  if (!Array.isArray(data)) return [];
-  return data.map(normalizeStyle);
-};
-
-export const ensureStyleMigrationOnce = async () => {
-  if (typeof window === 'undefined') return;
-  if (window.localStorage.getItem(STYLE_MIGRATION_KEY) === '1') return;
-  if (migrationPromise) {
-    await migrationPromise;
-    return;
-  }
-
-  migrationPromise = (async () => {
-    const localStyles = loadStyles().map(normalizeStyle);
-    if (localStyles.length === 0) {
-      window.localStorage.setItem(STYLE_MIGRATION_KEY, '1');
-      return;
-    }
-
-    const serverStyles = await fetchStylesFromServer();
-    if (serverStyles.length === 0) {
-      try {
-        await importStylesToServer(localStyles);
-      } catch (error) {
-        if (error?.status !== 409) {
-          throw error;
-        }
-      }
-    }
-
-    window.localStorage.setItem(STYLE_MIGRATION_KEY, '1');
-  })();
-
-  try {
-    await migrationPromise;
-  } finally {
-    migrationPromise = null;
-  }
-};
-
 export const fetchStyles = async (options = {}) => {
   const orgIdNum = toPositiveOrgId(options?.orgId);
-  const hasOrgFilter = orgIdNum !== null;
-  if (!hasOrgFilter) {
-    await ensureStyleMigrationOnce();
-  }
   const styles = await fetchStylesFromServer({
-    orgId: hasOrgFilter ? orgIdNum : null,
+    orgId: orgIdNum,
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     compact: Boolean(options?.compact),
     forceRefresh: Boolean(options?.forceRefresh),
@@ -172,7 +115,7 @@ export const fetchStyles = async (options = {}) => {
   });
   styles.forEach((style) => {
     writeStyleToCache(style, {
-      orgId: hasOrgFilter ? orgIdNum : null,
+      orgId: orgIdNum,
       ownerOrgId: style?.ownerOrgId ?? style?.customerOrgId,
     });
   });
@@ -199,7 +142,7 @@ export const fetchStyleById = async (styleId, options = {}) => {
     }
   }
 
-  const requestFromServer = async () => {
+  const requestPromise = (async () => {
     const query = buildQueryString({
       orgId: toPositiveOrgId(options?.orgId),
       ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
@@ -213,28 +156,6 @@ export const fetchStyleById = async (styleId, options = {}) => {
       ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     });
     return normalized;
-  };
-
-  const requestPromise = (async () => {
-    if (options?.skipMigration) {
-      return requestFromServer();
-    }
-
-    if (options?.waitForMigration) {
-      await ensureStyleMigrationOnce();
-      return requestFromServer();
-    }
-
-    const migrationTask = ensureStyleMigrationOnce().catch(() => null);
-    try {
-      return await requestFromServer();
-    } catch (error) {
-      if (error?.status !== 404) {
-        throw error;
-      }
-      await migrationTask;
-      return requestFromServer();
-    }
   })();
 
   styleByIdInFlight.set(cacheKey, requestPromise);
@@ -246,7 +167,6 @@ export const fetchStyleById = async (styleId, options = {}) => {
 };
 
 export const createStyle = async (style, options = {}) => {
-  triggerStyleMigrationInBackground();
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),
   });
@@ -269,7 +189,6 @@ export const createStyle = async (style, options = {}) => {
 };
 
 export const updateStyle = async (styleId, style, options = {}) => {
-  triggerStyleMigrationInBackground();
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
@@ -293,7 +212,6 @@ export const updateStyle = async (styleId, style, options = {}) => {
 };
 
 export const deleteStyle = async (styleId, options = {}) => {
-  triggerStyleMigrationInBackground();
   const query = buildQueryString({
     orgId: toPositiveOrgId(options?.orgId),
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),

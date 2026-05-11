@@ -48,11 +48,6 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
-import {
-  loadOrderDraft,
-  saveOrderDraft,
-  clearOrderDraft,
-} from '../../../utils/localData';
 import { fetchStyles as fetchStylesFromApi } from '../../../utils/styleApi';
 import { createColorAttribute, fetchAttributes } from '../../../utils/attributeApi';
 import {
@@ -1088,12 +1083,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Failed to load order partner information.'
             : '주문 파트너 정보를 불러오지 못했습니다.',
-      draftLoaded:
-        languageCode === 'vi'
-          ? 'Da tai don hang tam da luu.'
-          : languageCode === 'en'
-            ? 'Loaded the saved order draft.'
-            : '임시 저장한 주문을 불러왔습니다.',
       orderNotFound:
         languageCode === 'vi'
           ? 'Khong tim thay thong tin don hang.'
@@ -1202,12 +1191,6 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'An error occurred while adding a color.'
             : '색상 추가 중 오류가 발생했습니다.',
-      draftCleared:
-        languageCode === 'vi'
-          ? 'Da xoa ban nhap tam.'
-          : languageCode === 'en'
-            ? 'Draft cleared.'
-            : '임시 저장본을 삭제했습니다.',
       validationOrderNumberRequired:
         languageCode === 'vi'
           ? 'Hay nhap so don hang.'
@@ -1655,13 +1638,7 @@ const OrderList = () => {
     detailInitKeyRef.current = initKey;
 
     if (isNewOrder) {
-      const draft = loadOrderDraft();
-      if (draft) {
-        setFormData(normalizeOrderForm(draft));
-        showNotification(orderPageText.draftLoaded, 'info');
-      } else {
-        setFormData(buildInitialFormData());
-      }
+      setFormData(buildInitialFormData());
       return;
     }
 
@@ -1677,18 +1654,12 @@ const OrderList = () => {
     isNewOrder,
     navigateToPath,
     orderId,
-    orderPageText.draftLoaded,
     orderPageText.listTitle,
     orderPageText.orderNotFound,
     orders,
     ordersLoaded,
     showNotification,
   ]);
-
-  useEffect(() => {
-    if (!isDetailMode || !isNewOrder) return;
-    saveOrderDraft(formData);
-  }, [formData, isDetailMode, isNewOrder]);
 
   const filteredOrders = useMemo(() => {
     const lowerTerm = deferredSearchTerm.toLowerCase();
@@ -3042,15 +3013,6 @@ const OrderList = () => {
   const getOrderTotal = () =>
     formData.items.reduce((sum, item) => sum + getItemTotal(item), 0);
 
-  const handleClearDraft = () => {
-    clearOrderDraft();
-    setFormData(buildInitialFormData());
-    showNotification(orderPageText.draftCleared, 'info');
-    if (isDetailMode) {
-      closeDetailAndGoList();
-    }
-  };
-
   const validateOrder = () => {
     const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
     const resolvedSellerOrgName = fixedSellerOrg?.name || formData.sellerOrgName;
@@ -3298,7 +3260,6 @@ const OrderList = () => {
       }
 
       emitOrderDataChanged();
-      clearOrderDraft();
       showNotification(orderPageText.orderSaved, 'success');
       if (isNewOrder && createdOrder?.id) {
         navigateToPath(`/order/${createdOrder.id}`, {
@@ -3620,11 +3581,6 @@ const OrderList = () => {
             alignItems="center"
             justifyContent={{ xs: 'flex-end', md: 'flex-end' }}
           >
-            {isNewOrder && (
-              <Button onClick={handleClearDraft} color="inherit" disabled={isSavingOrder}>
-                {getUiMessage('orderDetail.clearDraft', 'Clear Draft', languageCode)}
-              </Button>
-            )}
             <LastUpdaterLabel />
             <SaveButton
               onClick={handleSave}
