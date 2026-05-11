@@ -42,6 +42,7 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import { HOLIDAY_UPDATED_EVENT, loadHolidays } from '../../../utils/localData';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
   buildAttendanceImportPlan,
@@ -60,10 +61,15 @@ const TEXT = {
   },
   searchPlaceholder: { ko: '날짜 검색', en: 'Search date', vi: 'Tim ngay' },
   workDate: { ko: '근무일자', en: 'Work Date', vi: 'Ngay lam viec' },
+  workType: { ko: '타입', en: 'Type', vi: 'Loai' },
   enteredWorkers: { ko: '입력 인원', en: 'Entered Workers', vi: 'So nguoi da nhap' },
   workedHoursTotal: { ko: '입력 근무합계', en: 'Total Worked', vi: 'Tong gio da nhap' },
   workedHoursAverage: { ko: '인력 평균 근무시간', en: 'Avg Worked', vi: 'Gio trung binh' },
   noteCount: { ko: '메모 건수', en: 'Notes', vi: 'So ghi chu' },
+  holidayMark: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
+  typeSunday: { ko: '일요일', en: 'Sunday', vi: 'Chu nhat' },
+  typeHoliday: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
+  typeNone: { ko: '-', en: '-', vi: '-' },
   loading: {
     ko: '출퇴근 기록을 불러오는 중입니다.',
     en: 'Loading attendance...',
@@ -187,12 +193,17 @@ const WEEKDAY_TOKENS = {
   vi: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'],
 };
 
-const buildWorkDateDisplay = (workDate, languageCode) => {
+const buildWorkDateDisplay = (workDate, languageCode, holidaySet) => {
   const dateText = String(workDate || '').trim();
-  if (!dateText) return { dateText: '-', weekdayText: '', isSunday: false };
+  if (!dateText) {
+    return { dateText: '-', weekdayText: '', isSunday: false, isHoliday: false };
+  }
+  const isHoliday = holidaySet?.has(dateText);
 
   const parsedDate = dayjs(dateText);
-  if (!parsedDate.isValid()) return { dateText, weekdayText: '', isSunday: false };
+  if (!parsedDate.isValid()) {
+    return { dateText, weekdayText: '', isSunday: false, isHoliday: Boolean(isHoliday) };
+  }
 
   const dayIndex = parsedDate.day();
   const tokens = WEEKDAY_TOKENS[languageCode] || WEEKDAY_TOKENS.ko;
@@ -202,7 +213,20 @@ const buildWorkDateDisplay = (workDate, languageCode) => {
     dateText,
     weekdayText: weekdayToken ? `(${weekdayToken})` : '',
     isSunday: dayIndex === 0,
+    isHoliday: Boolean(isHoliday),
   };
+};
+
+const buildWorkTypeText = ({ isSunday, isHoliday, languageCode }) => {
+  const types = [];
+  if (isSunday) {
+    types.push(resolveText(TEXT.typeSunday, languageCode, 'Sunday'));
+  }
+  if (isHoliday) {
+    types.push(resolveText(TEXT.typeHoliday, languageCode, 'Holiday'));
+  }
+  if (types.length === 0) return resolveText(TEXT.typeNone, languageCode, '-');
+  return types.join(' + ');
 };
 
 const AttendanceList = () => {
@@ -220,9 +244,36 @@ const AttendanceList = () => {
   const [importingFile, setImportingFile] = useState(false);
   const [deletingWorkDate, setDeletingWorkDate] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
+  const [holidayKeys, setHolidayKeys] = useState(() => loadHolidays());
   const fileInputRef = useRef(null);
 
   const monthKey = useMemo(() => selectedMonth.format('YYYY-MM'), [selectedMonth]);
+  const holidaySet = useMemo(() => new Set(holidayKeys), [holidayKeys]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const syncHolidayKeys = () => {
+      setHolidayKeys(loadHolidays());
+    };
+
+    const handleHolidayUpdated = (event) => {
+      const updatedKeys = event?.detail?.holidays;
+      if (Array.isArray(updatedKeys)) {
+        setHolidayKeys(updatedKeys);
+        return;
+      }
+      syncHolidayKeys();
+    };
+
+    window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
+    window.addEventListener('storage', syncHolidayKeys);
+
+    return () => {
+      window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
+      window.removeEventListener('storage', syncHolidayKeys);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -686,6 +737,7 @@ const AttendanceList = () => {
             <TableHead>
               <TableRow>
                 <TableCell>{resolveText(TEXT.workDate, languageCode, 'Work Date')}</TableCell>
+                <TableCell>{resolveText(TEXT.workType, languageCode, 'Type')}</TableCell>
                 <TableCell align="right">
                   {resolveText(TEXT.enteredWorkers, languageCode, 'Entered Workers')}
                 </TableCell>
@@ -704,84 +756,94 @@ const AttendanceList = () => {
             <TableBody>
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
-                  colSpan={6}
+                  colSpan={7}
                   message={resolveText(TEXT.loading, languageCode, 'Loading attendance...')}
                 />
               ) : !selectedFactoryId || filteredRows.length === 0 ? (
                 <TableStatusRow
-                  colSpan={6}
+                  colSpan={7}
                   message={resolveText(TEXT.empty, languageCode, 'No attendance records found.')}
                 />
               ) : (
-                filteredRows.map((row) => (
-                  <TableRow
-                    key={row.workDate}
-                    hover
-                    onDoubleClick={() => handleOpenDetail(row)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {(() => {
-                        const { dateText, weekdayText, isSunday } = buildWorkDateDisplay(
-                          row.workDate,
-                          languageCode
-                        );
-                        return (
-                          <>
-                            {dateText}
-                            {weekdayText ? (
-                              isSunday ? (
-                                <span
-                                  style={{
-                                    marginLeft: 6,
-                                    color: '#d32f2f',
-                                  }}
-                                >
-                                  {weekdayText}
-                                </span>
-                              ) : (
-                                ` ${weekdayText}`
-                              )
-                            ) : null}
-                          </>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell align="right">
-                      {formatNumberWithCommas(row.enteredWorkerCount, {
-                        fallback: '0',
-                        maximumFractionDigits: 0,
-                      })}
-                    </TableCell>
-                    <TableCell align="right">
-                      {toHoursTextFromSeconds(row.workedSecondsTotal, languageCode)}
-                    </TableCell>
-                    <TableCell align="right">
-                      {toAverageHoursTextFromRow(row, languageCode)}
-                    </TableCell>
-                    <TableCell align="right">
-                      {formatNumberWithCommas(row.noteCount, {
-                        fallback: '0',
-                        maximumFractionDigits: 0,
-                      })}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
-                        <span>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={(event) => handleDelete(event, row)}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                            disabled={deletingWorkDate === String(row.workDate)}
-                          >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredRows.map((row) => {
+                  const { dateText, weekdayText, isSunday, isHoliday } = buildWorkDateDisplay(
+                    row.workDate,
+                    languageCode,
+                    holidaySet
+                  );
+                  const isSpecialDay = isSunday || isHoliday;
+                  const workTypeText = buildWorkTypeText({
+                    isSunday,
+                    isHoliday,
+                    languageCode,
+                  });
+
+                  return (
+                    <TableRow
+                      key={row.workDate}
+                      hover
+                      onDoubleClick={() => handleOpenDetail(row)}
+                      sx={{
+                        cursor: 'pointer',
+                        ...(isSpecialDay
+                          ? {
+                              backgroundColor: '#FFF1F3',
+                              '&:hover': {
+                                backgroundColor: '#FFE4E8 !important',
+                              },
+                              '& > .MuiTableCell-root': {
+                                color: '#B42334',
+                              },
+                            }
+                          : {}),
+                      }}
+                    >
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {dateText}
+                        {weekdayText ? ` ${weekdayText}` : ''}
+                        {isHoliday ? (
+                          <span style={{ marginLeft: 6, fontWeight: 700 }}>
+                            [{resolveText(TEXT.holidayMark, languageCode, 'Holiday')}]
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
+                      <TableCell align="right">
+                        {formatNumberWithCommas(row.enteredWorkerCount, {
+                          fallback: '0',
+                          maximumFractionDigits: 0,
+                        })}
+                      </TableCell>
+                      <TableCell align="right">
+                        {toHoursTextFromSeconds(row.workedSecondsTotal, languageCode)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {toAverageHoursTextFromRow(row, languageCode)}
+                      </TableCell>
+                      <TableCell align="right">
+                        {formatNumberWithCommas(row.noteCount, {
+                          fallback: '0',
+                          maximumFractionDigits: 0,
+                        })}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={(event) => handleDelete(event, row)}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                              disabled={deletingWorkDate === String(row.workDate)}
+                            >
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
