@@ -1,17 +1,18 @@
 /* src/styles/base.css */
 
-/* 네이티브 앱과 유사한 사용성을 위해 전체 텍스트 선택을 방지합니다. */
+/* Disable global text selection to match the app interaction model. */
 html,
 body,
 #root {
-  -webkit-user-select: none; /* Safari */
-  -moz-user-select: none;    /* Firefox */
-  -ms-user-select: none;     /* IE10+/Edge */
-  user-select: none;         /* Standard */
-  cursor: default;           /* 텍스트 위에서도 기본 화살표 커서 유지 */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  cursor: default;
+  overscroll-behavior-x: none;
 }
 
-/* 입력 필드, 텍스트 영역 등은 선택 및 커서 조작이 가능해야 합니다. */
+/* Inputs remain selectable and editable. */
 input,
 textarea,
 [contenteditable="true"] {

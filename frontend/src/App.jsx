@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
@@ -38,7 +38,66 @@ const RouteLoadingFallback = () => {
   );
 };
 
+const HORIZONTAL_SCROLL_OVERFLOW_VALUES = new Set(['auto', 'scroll', 'overlay']);
+
+const resolveHorizontalWheelDelta = (event) => {
+  const deltaX = Number(event?.deltaX) || 0;
+  if (deltaX !== 0) return deltaX;
+  if (event?.shiftKey) {
+    return Number(event?.deltaY) || 0;
+  }
+  return 0;
+};
+
+const isHorizontallyScrollable = (node) => {
+  if (!(node instanceof HTMLElement)) return false;
+  const style = window.getComputedStyle(node);
+  if (!HORIZONTAL_SCROLL_OVERFLOW_VALUES.has(style.overflowX)) return false;
+  return node.scrollWidth > node.clientWidth + 1;
+};
+
+const findHorizontalScrollContainer = (startNode) => {
+  let current =
+    startNode instanceof HTMLElement
+      ? startNode
+      : startNode?.parentElement instanceof HTMLElement
+        ? startNode.parentElement
+        : null;
+
+  while (current) {
+    if (isHorizontallyScrollable(current)) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  const rootScroller =
+    document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
+  return isHorizontallyScrollable(rootScroller) ? rootScroller : null;
+};
+
 const App = () => {
+  useEffect(() => {
+    const handleWheel = (event) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+
+      const horizontalDelta = resolveHorizontalWheelDelta(event);
+      if (!horizontalDelta) return;
+
+      const scrollContainer = findHorizontalScrollContainer(event.target);
+      if (scrollContainer) {
+        scrollContainer.scrollLeft += horizontalDelta;
+      }
+
+      event.preventDefault();
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener('wheel', handleWheel, true);
+    };
+  }, []);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
