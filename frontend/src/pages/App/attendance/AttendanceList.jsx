@@ -62,9 +62,9 @@ const TEXT = {
   searchPlaceholder: { ko: '날짜 검색', en: 'Search date', vi: 'Tim ngay' },
   workDate: { ko: '근무일자', en: 'Work Date', vi: 'Ngay lam viec' },
   workType: { ko: '타입', en: 'Type', vi: 'Loai' },
-  enteredWorkers: { ko: '입력 인원', en: 'Entered Workers', vi: 'So nguoi da nhap' },
-  workedHoursTotal: { ko: '입력 근무합계', en: 'Total Worked', vi: 'Tong gio da nhap' },
-  workedHoursAverage: { ko: '인력 평균 근무시간', en: 'Avg Worked', vi: 'Gio trung binh' },
+  enteredWorkers: { ko: '인원', en: 'Workers', vi: 'So nguoi' },
+  workedHoursTotal: { ko: '근무시간 합계', en: 'Total Hours', vi: 'Tong gio lam' },
+  workedHoursAverage: { ko: '평균 근무시간', en: 'Avg Hours', vi: 'Gio lam trung binh' },
   noteCount: { ko: '메모 건수', en: 'Notes', vi: 'So ghi chu' },
   holidayMark: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
   typeSunday: { ko: '일요일', en: 'Sunday', vi: 'Chu nhat' },
@@ -185,6 +185,19 @@ const toAverageHoursTextFromRow = (row, languageCode) => {
   if (!Number.isFinite(workerCount) || workerCount <= 0) return '-';
   if (!Number.isFinite(avgSeconds)) return '-';
   return toHoursTextFromSeconds(avgSeconds, languageCode);
+};
+const toTotalHoursTextFromRow = (row, languageCode) => {
+  const totalSeconds = Number(row?.workedSecondsTotal);
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '-';
+  return toHoursTextFromSeconds(totalSeconds, languageCode);
+};
+const toCountTextOrDash = (value) => {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return '-';
+  return formatNumberWithCommas(count, {
+    fallback: '-',
+    maximumFractionDigits: 0,
+  });
 };
 
 const WEEKDAY_TOKENS = {
@@ -395,20 +408,6 @@ const AttendanceList = () => {
       }
     });
 
-    // Include manually registered holidays in the selected month
-    // even when there are no attendance entries on that date.
-    holidayKeys.forEach((holidayKey) => {
-      const dateKey = String(holidayKey || '').trim();
-      if (!dateKey.startsWith(`${monthKey}-`)) return;
-      if (groupedByDate.has(dateKey)) return;
-      groupedByDate.set(dateKey, {
-        workDate: dateKey,
-        workerIds: new Set(),
-        workedSecondsTotal: 0,
-        noteCount: 0,
-      });
-    });
-
     return Array.from(groupedByDate.values())
       .map((item) => ({
         workDate: item.workDate,
@@ -422,7 +421,7 @@ const AttendanceList = () => {
         (left, right) =>
           dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
       );
-  }, [holidayKeys, monthKey, rows]);
+  }, [rows]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -805,9 +804,6 @@ const AttendanceList = () => {
                               '&:hover': {
                                 backgroundColor: '#FFE4E8 !important',
                               },
-                              '& > .MuiTableCell-root': {
-                                color: '#B42334',
-                              },
                             }
                           : {}),
                       }}
@@ -815,31 +811,14 @@ const AttendanceList = () => {
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
                         {dateText}
                         {weekdayText ? ` ${weekdayText}` : ''}
-                        {isHoliday ? (
-                          <span style={{ marginLeft: 6, fontWeight: 700 }}>
-                            [{resolveText(TEXT.holidayMark, languageCode, 'Holiday')}]
-                          </span>
-                        ) : null}
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
-                      <TableCell align="right">
-                        {formatNumberWithCommas(row.enteredWorkerCount, {
-                          fallback: '0',
-                          maximumFractionDigits: 0,
-                        })}
-                      </TableCell>
-                      <TableCell align="right">
-                        {toHoursTextFromSeconds(row.workedSecondsTotal, languageCode)}
-                      </TableCell>
+                      <TableCell align="right">{toCountTextOrDash(row.enteredWorkerCount)}</TableCell>
+                      <TableCell align="right">{toTotalHoursTextFromRow(row, languageCode)}</TableCell>
                       <TableCell align="right">
                         {toAverageHoursTextFromRow(row, languageCode)}
                       </TableCell>
-                      <TableCell align="right">
-                        {formatNumberWithCommas(row.noteCount, {
-                          fallback: '0',
-                          maximumFractionDigits: 0,
-                        })}
-                      </TableCell>
+                      <TableCell align="right">{toCountTextOrDash(row.noteCount)}</TableCell>
                       <TableCell align="right">
                         <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                           <span>
