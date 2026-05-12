@@ -29,9 +29,7 @@ export const getPayrollController = async (req: Request, res: Response) => {
 };
 
 export const savePayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ["ADMIN", "ACCOUNTANT"],
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
 
   const snapshot = await savePayrollSnapshot({
@@ -49,9 +47,7 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
 };
 
 export const deletePayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ["ADMIN"],
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
 
   const result = await deletePayrollSnapshot(
@@ -60,3 +56,4 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
   );
   return res.json(result);
 };
+

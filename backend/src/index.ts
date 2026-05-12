@@ -501,7 +501,7 @@ const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ACCOUNTANT",
   "WORKER",
 ];
-const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ["ADMIN", "OPERATOR"];
+const ORG_MANAGEMENT_ROLES: OrgUserRole[] = ORG_ACCESS_ROLES;
 const MEMBERSHIP_STATUSES = new Set([
   "PENDING",
   "ACTIVE",
@@ -14788,9 +14788,7 @@ app.get("/orders", async (req, res) => {
 });
 
 app.post("/orders", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {
@@ -14836,9 +14834,7 @@ app.post("/orders", async (req, res) => {
 });
 
 app.put("/orders/:orderId", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {
@@ -14957,9 +14953,7 @@ app.put("/orders/:orderId", async (req, res) => {
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {
@@ -15117,9 +15111,7 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
 });
 
 app.delete("/orders/:orderId", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
   const { organization } = accessContext;
   if (!organization) {

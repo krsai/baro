@@ -1,4 +1,8 @@
 import { PROCESS_MANAGEMENT_ENABLED } from '../constants/featureFlags';
+import {
+  getAllowedFeaturesForRole,
+  loadRoleAccessPolicy,
+} from './roleAccessPolicy';
 
 const ORG_TYPES = {
   MANUFACTURER: 'MANUFACTURER',
@@ -31,38 +35,11 @@ const FEATURE_KEYS = {
   ATTRIBUTE: 'ATTRIBUTE',
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
+  SUBSCRIPTION: 'SUBSCRIPTION',
   SYSTEM_SETTING: 'SYSTEM_SETTING',
   SYSTEM_ONBOARDING: 'SYSTEM_ONBOARDING',
   PROFILE: 'PROFILE',
 };
-
-const MANUFACTURER_FEATURES = new Set([
-  FEATURE_KEYS.PROFILE,
-  FEATURE_KEYS.ORDER,
-  FEATURE_KEYS.STYLE,
-  FEATURE_KEYS.ST_REVIEW,
-  FEATURE_KEYS.SHIPMENT_REVIEW,
-  FEATURE_KEYS.ASSIGNMENT,
-  FEATURE_KEYS.PRODUCTION_PLAN,
-  FEATURE_KEYS.PRODUCTION_RESULT,
-  FEATURE_KEYS.INVENTORY,
-  FEATURE_KEYS.ATTENDANCE,
-  FEATURE_KEYS.WORK_HISTORY,
-  FEATURE_KEYS.PAYROLL,
-  FEATURE_KEYS.BUSINESS,
-  FEATURE_KEYS.LINE,
-  FEATURE_KEYS.EMPLOYEE,
-  FEATURE_KEYS.CUSTOMER,
-  FEATURE_KEYS.ATTRIBUTE,
-  FEATURE_KEYS.PERMISSION,
-  FEATURE_KEYS.HOLIDAY,
-]);
-
-const BRAND_FEATURES = new Set([
-  FEATURE_KEYS.PROFILE,
-  FEATURE_KEYS.ORDER,
-  FEATURE_KEYS.STYLE,
-]);
 
 const normalizeUpper = (value) =>
   typeof value === 'string' ? value.trim().toUpperCase() : '';
@@ -99,6 +76,18 @@ const hasOrgRole = (context, ...roles) =>
 
 const hasOrgType = (context, ...orgTypes) =>
   context.entryType === 'ORG' && orgTypes.includes(context.orgType);
+
+const resolveFeatureSetForContext = (context) => {
+  if (!context || context.entryType !== 'ORG') return new Set();
+  const policy = loadRoleAccessPolicy();
+  return new Set(
+    getAllowedFeaturesForRole({
+      orgType: context.orgType,
+      orgRole: context.orgRole,
+      policy,
+    })
+  );
+};
 
 const buildAccessContext = ({
   isAuthenticated,
@@ -145,6 +134,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     return (
       context.systemRole === 'SYSTEM_ADMIN' &&
       (featureKey === FEATURE_KEYS.ATTRIBUTE ||
+        featureKey === FEATURE_KEYS.SUBSCRIPTION ||
         featureKey === FEATURE_KEYS.SYSTEM_SETTING ||
         featureKey === FEATURE_KEYS.SYSTEM_ONBOARDING ||
         featureKey === FEATURE_KEYS.EMPLOYEE)
@@ -152,82 +142,20 @@ const canAccessFeatureByContext = (featureKey, context) => {
   }
 
   const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND);
-  const isManufacturer = hasOrgType(context, ORG_TYPES.MANUFACTURER);
-  const isBrand = hasOrgType(context, ORG_TYPES.BRAND);
-
-  // Org admin is the top role within the same org type feature scope.
-  if (hasOrgRole(context, ORG_ROLES.ADMIN)) {
-    if (isManufacturer) return MANUFACTURER_FEATURES.has(featureKey);
-    if (isBrand) return BRAND_FEATURES.has(featureKey);
-  }
-
-  if (hasOrgRole(context, ORG_ROLES.WORKER)) {
-    return featureKey === FEATURE_KEYS.PROFILE;
-  }
+  const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
-    case FEATURE_KEYS.ORDER:
-    case FEATURE_KEYS.STYLE:
-      return (
-        isOrgMember &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
-      );
-    case FEATURE_KEYS.ST_REVIEW:
-    case FEATURE_KEYS.SHIPMENT_REVIEW:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
-      );
-    case FEATURE_KEYS.ASSIGNMENT:
-    case FEATURE_KEYS.INVENTORY:
-    case FEATURE_KEYS.ATTENDANCE:
-    case FEATURE_KEYS.WORK_HISTORY:
-    case FEATURE_KEYS.BUSINESS:
-    case FEATURE_KEYS.LINE:
-    case FEATURE_KEYS.CUSTOMER:
-    case FEATURE_KEYS.HOLIDAY:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
-      );
-    case FEATURE_KEYS.EMPLOYEE:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR, ORG_ROLES.ACCOUNTANT)
-      );
-    case FEATURE_KEYS.ATTRIBUTE:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
-      );
-    case FEATURE_KEYS.PRODUCTION_PLAN:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.OPERATOR)
-      );
-    case FEATURE_KEYS.PRODUCTION_RESULT:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
-      );
-    case FEATURE_KEYS.PAYROLL:
-      return (
-        isManufacturer &&
-        hasOrgRole(context, ORG_ROLES.ADMIN, ORG_ROLES.ACCOUNTANT)
-      );
-    case FEATURE_KEYS.PERMISSION:
-      return isManufacturer && hasOrgRole(context, ORG_ROLES.ADMIN);
     case FEATURE_KEYS.SYSTEM_SETTING:
     case FEATURE_KEYS.SYSTEM_ONBOARDING:
       return false;
     default:
-      return false;
+      return isOrgMember && featureSet.has(featureKey);
   }
 };
 
-const resolveFeatureByPath = (pathname) => {
+export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path === '/') return null;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
@@ -248,6 +176,7 @@ const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/attribute')) return FEATURE_KEYS.ATTRIBUTE;
   if (path.startsWith('/permission')) return FEATURE_KEYS.PERMISSION;
   if (path.startsWith('/holiday')) return FEATURE_KEYS.HOLIDAY;
+  if (path === '/system-setting' || path === '/system-setting/') return FEATURE_KEYS.SUBSCRIPTION;
   if (path.startsWith('/system-setting')) return FEATURE_KEYS.SYSTEM_SETTING;
   if (path.startsWith('/system-onboarding')) return FEATURE_KEYS.SYSTEM_ONBOARDING;
   if (path.startsWith('/profile')) return FEATURE_KEYS.PROFILE;

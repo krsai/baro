@@ -20,9 +20,7 @@ export const getQuantitySettlementController = async (req: Request, res: Respons
 };
 
 export const saveQuantitySettlementController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ["ADMIN", "OPERATOR", "ACCOUNTANT"],
-  });
+  const accessContext = await requireOrgRole(req, res);
   if (!accessContext) return;
 
   const settlement = await saveQuantitySettlementByMonth({
@@ -37,3 +35,4 @@ export const saveQuantitySettlementController = async (req: Request, res: Respon
 
   return res.json(settlement);
 };
+

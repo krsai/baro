@@ -480,8 +480,8 @@ const MainLayout = () => {
     }
   }, [canViewSystemOnboardingMenu]);
 
-  const menuItems = useMemo(() => {
-    const baseItems = [
+  const baseMenuBlueprint = useMemo(() => {
+    return [
       {
         label: resolveLocalizedLabel(DASHBOARD_LABELS, languageCode),
         icon: <DashboardIcon />,
@@ -699,6 +699,11 @@ const MainLayout = () => {
             path: '/system-setting/static-options',
           },
           {
+            label: getUiMessage('menu.accessPolicy', 'Access Policy', languageCode),
+            icon: <TuneIcon />,
+            path: '/system-setting/access-policy',
+          },
+          {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,
             path: '/system-onboarding',
@@ -710,14 +715,40 @@ const MainLayout = () => {
         ],
       },
     ];
+  }, [
+    accountingOpen,
+    adminOpen,
+    attributeOpen,
+    inventoryOpen,
+    languageCode,
+    miscOpen,
+    orderOpen,
+    pendingEmployeeCount,
+    pendingOnboardingCount,
+    productionOpen,
+    recordsOpen,
+    isSystemProfile,
+    systemOpen,
+  ]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.__BARO_MENU_BLUEPRINT__ = baseMenuBlueprint;
+    window.dispatchEvent(
+      new CustomEvent('baro:menu-blueprint-updated', {
+        detail: { items: baseMenuBlueprint },
+      })
+    );
+  }, [baseMenuBlueprint]);
+
+  const menuItems = useMemo(() => {
     const customerMenuItem = {
       label: getUiMessage('menu.customer', '\uACE0\uAC1D', languageCode),
       icon: <PeopleIcon />,
       path: '/customer',
     };
 
-    return baseItems
+    return baseMenuBlueprint
       .map((item) => {
         if (!item.isParent) {
           return hasPathAccess(item.path) ? item : null;
@@ -805,20 +836,9 @@ const MainLayout = () => {
       })
       .filter(Boolean);
   }, [
-    accountingOpen,
-    adminOpen,
-    attributeOpen,
+    baseMenuBlueprint,
     hasPathAccess,
-    inventoryOpen,
     languageCode,
-    miscOpen,
-    orderOpen,
-    pendingEmployeeCount,
-    pendingOnboardingCount,
-    productionOpen,
-    recordsOpen,
-    isSystemProfile,
-    systemOpen,
   ]);
   const flattenedMenuItems = useMemo(
     () =>

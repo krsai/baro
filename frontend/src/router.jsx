@@ -53,6 +53,7 @@ const Line = lazyImportWithRetry(() => import('./pages/App/Line'));
 const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
 const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemBoard'));
 const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
+const AccessPolicyBoard = lazyImportWithRetry(() => import('./pages/App/system/AccessPolicyBoard'));
 const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
 const Customer = lazyImportWithRetry(() => import('./pages/App/Customer'));
 const Style = lazyImportWithRetry(() => import('./pages/App/Style'));
@@ -247,6 +248,10 @@ const router = createBrowserRouter([
           {
             path: 'system-setting/static-options',
             element: <StaticOptionBoard />,
+          },
+          {
+            path: 'system-setting/access-policy',
+            element: <AccessPolicyBoard />,
           },
           {
             path: 'system-onboarding',
