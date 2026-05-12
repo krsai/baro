@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import { ORG_ROLE_DEFAULT_LABELS } from '../../../constants/organizationAccess';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -44,33 +45,91 @@ const NON_EDITABLE_FEATURE_KEYS = new Set([
   'PROFILE',
 ]);
 
-const ROLE_LABELS = {
-  [ORG_ROLE_KEYS.ADMIN]: 'Admin',
-  [ORG_ROLE_KEYS.OPERATOR]: 'Operator',
-  [ORG_ROLE_KEYS.ACCOUNTANT]: 'Accountant',
-  [ORG_ROLE_KEYS.WORKER]: 'Worker',
+const ACCESS_POLICY_TEXT = {
+  pageTitle: {
+    ko: '접근 권한',
+    en: 'Access Policy',
+    vi: 'Chinh sach truy cap',
+  },
+  saved: {
+    ko: '접근 권한을 저장했습니다.',
+    en: 'Access policy saved.',
+    vi: 'Da luu chinh sach truy cap.',
+  },
+  reset: {
+    ko: '접근 권한을 기본값으로 되돌렸습니다.',
+    en: 'Access policy reset to default.',
+    vi: 'Da dat lai chinh sach truy cap ve mac dinh.',
+  },
+  systemAdminOnly: {
+    ko: '시스템 관리자만 접근 권한을 수정할 수 있습니다.',
+    en: 'Only system admins can edit access policy.',
+    vi: 'Chi quan tri he thong moi co the sua chinh sach truy cap.',
+  },
+  autoLinked: {
+    ko: '이 표는 현재 메뉴 순서와 자동으로 연결됩니다.',
+    en: 'This table is linked to current menu order automatically.',
+    vi: 'Bang nay tu dong lien ket voi thu tu menu hien tai.',
+  },
+  targetScope: {
+    ko: '적용 대상: 제조사 조직 역할',
+    en: 'Target scope: Manufacturer organization roles',
+    vi: 'Pham vi ap dung: vai tro to chuc nha san xuat',
+  },
+  group: {
+    ko: '그룹',
+    en: 'Group',
+    vi: 'Nhom',
+  },
+  menu: {
+    ko: '메뉴',
+    en: 'Menu',
+    vi: 'Menu',
+  },
+  feature: {
+    ko: '기능',
+    en: 'Feature',
+    vi: 'Tinh nang',
+  },
+  noMenu: {
+    ko: '아직 메뉴 구성을 불러오지 못했습니다.',
+    en: 'Menu blueprint not available yet.',
+    vi: 'Chua the tai cau hinh menu.',
+  },
 };
 
 const FEATURE_LABELS = {
-  ORDER: 'Order',
-  STYLE: 'Style',
-  ST_REVIEW: 'ST Review',
-  SHIPMENT_REVIEW: 'Quantity Settlement',
-  ASSIGNMENT: 'Assignment',
-  PRODUCTION_PLAN: 'Production Plan',
-  PRODUCTION_RESULT: 'Production Result',
-  INVENTORY: 'Inventory',
-  ATTENDANCE: 'Attendance',
-  WORK_HISTORY: 'Work History',
-  PAYROLL: 'Payroll',
-  BUSINESS: 'Business',
-  LINE: 'Line',
-  EMPLOYEE: 'Employee',
-  CUSTOMER: 'Customer',
-  ATTRIBUTE: 'Attribute',
-  PERMISSION: 'Permission',
-  HOLIDAY: 'Holiday',
-  SUBSCRIPTION: 'Subscription',
+  ORDER: { ko: '주문', en: 'Order', vi: 'Don hang' },
+  STYLE: { ko: '스타일', en: 'Style', vi: 'Style' },
+  ST_REVIEW: { ko: '표준 공임 검토', en: 'ST Review', vi: 'Xem xet cong chuan' },
+  SHIPMENT_REVIEW: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Doi chieu so luong' },
+  ASSIGNMENT: { ko: '배정', en: 'Assignment', vi: 'Phan cong' },
+  PRODUCTION_PLAN: { ko: '생산 계획', en: 'Production Plan', vi: 'Ke hoach san xuat' },
+  PRODUCTION_RESULT: { ko: '생산 결과', en: 'Production Result', vi: 'Ket qua san xuat' },
+  INVENTORY: { ko: '재고', en: 'Inventory', vi: 'Ton kho' },
+  ATTENDANCE: { ko: '출퇴근', en: 'Attendance', vi: 'Cham cong' },
+  WORK_HISTORY: { ko: '작업 기록', en: 'Work History', vi: 'Lich su cong viec' },
+  PAYROLL: { ko: '급여 계산', en: 'Payroll', vi: 'Tinh luong' },
+  BUSINESS: { ko: '사업체', en: 'Business', vi: 'Doanh nghiep' },
+  LINE: { ko: '라인', en: 'Line', vi: 'Chuyen may' },
+  EMPLOYEE: { ko: '직원', en: 'Employee', vi: 'Nhan vien' },
+  CUSTOMER: { ko: '고객', en: 'Customer', vi: 'Khach hang' },
+  ATTRIBUTE: { ko: '속성', en: 'Attribute', vi: 'Thuoc tinh' },
+  PERMISSION: { ko: '권한', en: 'Permission', vi: 'Quyen han' },
+  HOLIDAY: { ko: '휴일', en: 'Holiday', vi: 'Ngay nghi' },
+  SUBSCRIPTION: { ko: '구독', en: 'Subscription', vi: 'Goi dich vu' },
+};
+
+const resolveLocalizedText = (localizedText, languageCode) => {
+  if (!localizedText || typeof localizedText !== 'object') return '';
+  const normalizedLanguageCode = String(languageCode || 'ko').trim().toLowerCase();
+  return (
+    localizedText[normalizedLanguageCode] ||
+    localizedText.en ||
+    localizedText.ko ||
+    localizedText.vi ||
+    ''
+  );
 };
 
 const readMenuBlueprint = () => {
@@ -119,6 +178,15 @@ const AccessPolicyBoard = () => {
   const { activeProfile } = useAuth();
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
+  const pageTitle = React.useMemo(
+    () =>
+      getUiMessage(
+        'menu.accessPolicy',
+        resolveLocalizedText(ACCESS_POLICY_TEXT.pageTitle, languageCode),
+        languageCode
+      ),
+    [languageCode]
+  );
   const isSystemAdmin =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
 
@@ -175,7 +243,11 @@ const AccessPolicyBoard = () => {
     const saved = saveRoleAccessPolicy(draftPolicy);
     setDraftPolicy(toEditablePolicy(saved));
     showNotification(
-      getUiMessage('accessPolicy.saved', 'Access policy saved.', languageCode),
+      getUiMessage(
+        'accessPolicy.saved',
+        resolveLocalizedText(ACCESS_POLICY_TEXT.saved, languageCode),
+        languageCode
+      ),
       'success'
     );
   }, [draftPolicy, languageCode, showNotification]);
@@ -184,20 +256,22 @@ const AccessPolicyBoard = () => {
     const defaults = resetRoleAccessPolicy();
     setDraftPolicy(toEditablePolicy(defaults));
     showNotification(
-      getUiMessage('accessPolicy.reset', 'Access policy reset to default.', languageCode),
+      getUiMessage(
+        'accessPolicy.reset',
+        resolveLocalizedText(ACCESS_POLICY_TEXT.reset, languageCode),
+        languageCode
+      ),
       'info'
     );
   }, [languageCode, showNotification]);
 
   if (!isSystemAdmin) {
     return (
-      <AppPageContainer
-        title={getUiMessage('menu.accessPolicy', 'Access Policy', languageCode)}
-      >
+      <AppPageContainer title={pageTitle}>
         <Alert severity="error">
           {getUiMessage(
             'accessPolicy.systemAdminOnly',
-            'Only system admins can edit access policy.',
+            resolveLocalizedText(ACCESS_POLICY_TEXT.systemAdminOnly, languageCode),
             languageCode
           )}
         </Alert>
@@ -206,12 +280,12 @@ const AccessPolicyBoard = () => {
   }
 
   return (
-    <AppPageContainer title={getUiMessage('menu.accessPolicy', 'Access Policy', languageCode)}>
+    <AppPageContainer title={pageTitle}>
       <Stack spacing={2}>
         <Alert severity="info">
           {getUiMessage(
             'accessPolicy.autoLinked',
-            'This table is linked to current menu order automatically.',
+            resolveLocalizedText(ACCESS_POLICY_TEXT.autoLinked, languageCode),
             languageCode
           )}
         </Alert>
@@ -220,7 +294,7 @@ const AccessPolicyBoard = () => {
           <Typography variant="body2" color="text.secondary">
             {getUiMessage(
               'accessPolicy.targetScope',
-              'Target scope: Manufacturer organization roles',
+              resolveLocalizedText(ACCESS_POLICY_TEXT.targetScope, languageCode),
               languageCode
             )}
           </Typography>
@@ -240,17 +314,29 @@ const AccessPolicyBoard = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ minWidth: 150 }}>
-                    {getUiMessage('accessPolicy.group', 'Group', languageCode)}
+                    {getUiMessage(
+                      'accessPolicy.group',
+                      resolveLocalizedText(ACCESS_POLICY_TEXT.group, languageCode),
+                      languageCode
+                    )}
                   </TableCell>
                   <TableCell sx={{ minWidth: 180 }}>
-                    {getUiMessage('accessPolicy.menu', 'Menu', languageCode)}
+                    {getUiMessage(
+                      'accessPolicy.menu',
+                      resolveLocalizedText(ACCESS_POLICY_TEXT.menu, languageCode),
+                      languageCode
+                    )}
                   </TableCell>
                   <TableCell sx={{ minWidth: 130 }}>
-                    {getUiMessage('accessPolicy.feature', 'Feature', languageCode)}
+                    {getUiMessage(
+                      'accessPolicy.feature',
+                      resolveLocalizedText(ACCESS_POLICY_TEXT.feature, languageCode),
+                      languageCode
+                    )}
                   </TableCell>
                   {EDITABLE_ROLE_ORDER.map((role) => (
                     <TableCell key={role} align="center" sx={{ minWidth: 120 }}>
-                      {ROLE_LABELS[role] || role}
+                      {resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role], languageCode) || role}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -261,7 +347,7 @@ const AccessPolicyBoard = () => {
                     <TableCell colSpan={3 + EDITABLE_ROLE_ORDER.length}>
                       {getUiMessage(
                         'accessPolicy.noMenu',
-                        'Menu blueprint not available yet.',
+                        resolveLocalizedText(ACCESS_POLICY_TEXT.noMenu, languageCode),
                         languageCode
                       )}
                     </TableCell>
@@ -278,7 +364,10 @@ const AccessPolicyBoard = () => {
                           </Typography>
                         </Stack>
                       </TableCell>
-                      <TableCell>{FEATURE_LABELS[row.featureKey] || row.featureKey}</TableCell>
+                      <TableCell>
+                        {resolveLocalizedText(FEATURE_LABELS[row.featureKey], languageCode) ||
+                          row.featureKey}
+                      </TableCell>
                       {EDITABLE_ROLE_ORDER.map((role) => (
                         <TableCell key={`${row.featureKey}:${role}`} align="center">
                           <Switch

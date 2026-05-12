@@ -11944,6 +11944,25 @@ const resolveColorAttributeCode = ({
   });
 };
 
+const resolveCategoryAttributeCode = ({
+  code,
+  name,
+  usedCodes,
+}: {
+  code: any;
+  name: any;
+  usedCodes: Set<string>;
+}) => {
+  const explicitCode = normalizeManagedAttributeCode(code);
+  if (explicitCode) return explicitCode;
+  if (!String(name ?? "").trim()) return "";
+  return generateUniqueManagedAttributeCode({
+    usedCodes,
+    name,
+    fallbackPrefix: "CATEGORY",
+  });
+};
+
 const syncSection = async (model: any, orgId: number, items: any, options: any = {}) => {
   const safeItems = Array.isArray(items) ? items : [];
   const incomingIds = safeItems
@@ -12210,6 +12229,74 @@ const syncGlobalColorSection = async (items: any) => {
   }
 
   return prisma.attrColor.findMany({ orderBy: { id: "asc" } });
+};
+
+const listGlobalCategorySection = async (fallbackOrgId: number | null = null) => {
+  const firstCategory = await prisma.attrCategory.findFirst({
+    select: { orgId: true },
+    orderBy: [{ orgId: "asc" }, { id: "asc" }],
+  });
+  const sourceOrgId = firstCategory?.orgId ?? fallbackOrgId;
+  if (!sourceOrgId) return [];
+  return prisma.attrCategory.findMany({
+    where: { orgId: sourceOrgId },
+    orderBy: { id: "asc" },
+  });
+};
+
+const syncGlobalCategorySection = async (
+  items: any,
+  options: {
+    fallbackOrgId?: number | null;
+  } = {}
+) => {
+  const organizations = await prisma.organization.findMany({
+    where: {
+      type: { in: ["MANUFACTURER", "BRAND"] },
+    },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  const organizationIds = organizations
+    .map((item) => toPositiveIntOrNull(item.id))
+    .filter((id): id is number => id !== null);
+  const fallbackOrgId = toPositiveIntOrNull(options.fallbackOrgId) ?? organizationIds[0] ?? null;
+  if (!fallbackOrgId) return [];
+
+  const sourceRows = await syncSection(prisma.attrCategory, fallbackOrgId, items, {
+    resolveCode: ({ code, name, usedCodes }: { code: string; name: string; usedCodes: Set<string> }) =>
+      resolveCategoryAttributeCode({ code, name, usedCodes }),
+    trackCode: normalizeManagedAttributeCode,
+  });
+
+  const replicatedRows = sourceRows.map((row: any) => ({
+    code: row.code,
+    name: row.name,
+    nameKo: row.nameKo,
+    nameEn: row.nameEn,
+    nameVi: row.nameVi,
+  }));
+
+  await Promise.all(
+    organizationIds
+      .filter((orgId) => orgId !== fallbackOrgId)
+      .map((orgId) =>
+        syncSection(prisma.attrCategory, orgId, replicatedRows, {
+          resolveCode: ({
+            code,
+            name,
+            usedCodes,
+          }: {
+            code: string;
+            name: string;
+            usedCodes: Set<string>;
+          }) => resolveCategoryAttributeCode({ code, name, usedCodes }),
+          trackCode: normalizeManagedAttributeCode,
+        })
+      )
+  );
+
+  return sourceRows;
 };
 
 const syncRoleSection = async (orgId: number, items: any) => {
@@ -16070,10 +16157,7 @@ app.get("/attributes", async (req, res) => {
         })
       : Promise.resolve([]),
     includeCategories
-      ? prisma.attrCategory.findMany({
-          where: { orgId: organization.id },
-          orderBy: { id: "asc" },
-        })
+      ? listGlobalCategorySection(organization.id)
       : Promise.resolve([]),
     includeRoles
       ? ensureDefaultEmployeeRoles(organization.id).then((items) =>
@@ -16271,7 +16355,7 @@ app.put("/attributes", async (req, res) => {
   }
   if (payload.categories) {
     tasks.push(
-      syncSection(prisma.attrCategory, organization.id, payload.categories).then(
+      syncGlobalCategorySection(payload.categories, { fallbackOrgId: organization.id }).then(
         (data) => {
           response.categories = data;
         }

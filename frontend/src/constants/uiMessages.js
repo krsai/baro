@@ -51,6 +51,7 @@ export const UI_MESSAGES = {
     profile: { ko: '개인 정보', en: 'Profile', vi: 'Ho so ca nhan' },
     subscription: { ko: '구독 관리', en: 'Subscription', vi: 'Goi dich vu' },
     system: { ko: '시스템 설정', en: 'System', vi: 'He thong' },
+    accessPolicy: { ko: '접근 권한', en: 'Access Policy', vi: 'Chinh sach truy cap' },
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
     attributeColors: { ko: '색상 관리', en: 'Color Management', vi: 'Quan ly mau' },
     attributeCategories: {

@@ -392,6 +392,11 @@ const writeAttributesCache = (cacheKey, data) => {
   });
 };
 
+const clearAllAttributeCacheVariants = () => {
+  attributesCache.clear();
+  attributesInFlight.clear();
+};
+
 const clearAttributeCacheVariants = (orgId, hasOrgFilter) => {
   const cacheBaseKey = `${toAttributeCacheBaseKey(orgId, hasOrgFilter)}::`;
   for (const key of attributesCache.keys()) {
@@ -476,7 +481,11 @@ export const updateAttributes = async (payload, options = {}) => {
     }
   );
   const normalizedPartial = normalizePartialAttributes(data);
-  clearAttributeCacheVariants(orgId, hasOrgScope);
+  if (Array.isArray(body.colors) || Array.isArray(body.categories)) {
+    clearAllAttributeCacheVariants();
+  } else {
+    clearAttributeCacheVariants(orgId, hasOrgScope);
+  }
   return normalizedPartial;
 };
 
@@ -530,7 +539,7 @@ export const createColorAttribute = async (payload, options = {}) => {
     }
   );
   const normalizedColor = normalizeAttributeItem(data);
-  clearAttributeCacheVariants(orgId, hasOrgScope);
+  clearAllAttributeCacheVariants();
   return normalizedColor;
 };
 

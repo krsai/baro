@@ -11,7 +11,14 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import StyleIcon from '@mui/icons-material/Style';
 import ContentCutIcon from '@mui/icons-material/ContentCut';
 import HistoryIcon from '@mui/icons-material/History';
+import GroupIcon from '@mui/icons-material/Group';
+import DnsIcon from '@mui/icons-material/Dns';
+import TuneIcon from '@mui/icons-material/Tune';
 import AppPageContainer from '../../components/AppPageContainer';
+import {
+  STATIC_OPTION_GROUPS,
+  countStaticOptionItems,
+} from '../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../constants/uiMessages';
 import {
   ORDER_STATUS_KEYS,
@@ -41,6 +48,11 @@ const DASHBOARD_TEXT = {
     ko: '핵심 요약',
     en: 'Key Summary',
     vi: 'Tom tat chinh',
+  },
+  systemSummaryTitle: {
+    ko: '시스템 요약',
+    en: 'System Summary',
+    vi: 'Tom tat he thong',
   },
   quickActionTitle: {
     ko: '빠른 이동',
@@ -82,6 +94,11 @@ const DASHBOARD_TEXT = {
     en: 'Failed to load dashboard summary.',
     vi: 'Khong the tai tom tat bang dieu khien.',
   },
+  systemPolicyLinked: {
+    ko: '메뉴 연동',
+    en: 'Menu-linked',
+    vi: 'Lien ket menu',
+  },
 };
 
 const ORDER_STATUS_SUMMARY_KEYS = [
@@ -108,6 +125,14 @@ const createEmptySummary = () => ({
   monthlyAssignedOrderCount: EMPTY_SUMMARY.monthlyAssignedOrderCount,
   monthlyAssignedQuantity: EMPTY_SUMMARY.monthlyAssignedQuantity,
   materialStockRate: EMPTY_SUMMARY.materialStockRate,
+});
+
+const EMPTY_SYSTEM_SUMMARY = Object.freeze({
+  pendingOnboardingCount: 0,
+});
+
+const createEmptySystemSummary = () => ({
+  pendingOnboardingCount: EMPTY_SYSTEM_SUMMARY.pendingOnboardingCount,
 });
 
 const normalizeDateKey = (value) => {
@@ -207,6 +232,11 @@ const formatPercentValue = (value, loading, pendingValue = '--%') => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return pendingValue;
   return `${formatInteger(parsed)}%`;
+};
+
+const formatPlainValue = (value, loading) => {
+  if (loading) return '...';
+  return formatInteger(Math.max(0, Number(value) || 0));
 };
 
 const buildSummaryData = ({ orders, assignments }) => {
@@ -337,28 +367,124 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
   },
 ];
 
-const buildQuickActions = (languageCode) => [
+const buildSystemSummaryCards = ({ languageCode, summaryLoading, systemSummaryData }) => [
   {
-    path: '/order',
-    label: getUiMessage('menu.order', '주문', languageCode),
-    icon: <ShoppingCartIcon fontSize="small" />,
+    key: 'system-access-policy',
+    title: {
+      ko: '접근 권한',
+      en: 'Access Policy',
+      vi: 'Chinh sach truy cap',
+    },
+    description: {
+      ko: '현재 메뉴 구조에 연결된 역할별 접근 권한을 관리합니다.',
+      en: 'Manage role-based access linked to the current menu structure.',
+      vi: 'Quan ly quyen truy cap theo vai tro duoc lien ket voi cau truc menu hien tai.',
+    },
+    value: resolveText(DASHBOARD_TEXT.systemPolicyLinked, languageCode),
+    badge: resolveText(DASHBOARD_TEXT.slotStatus, languageCode),
   },
   {
-    path: '/style',
-    label: getUiMessage('menu.style', '스타일', languageCode),
-    icon: <StyleIcon fontSize="small" />,
+    key: 'system-onboarding',
+    title: {
+      ko: '가입 승인',
+      en: 'Onboarding Approval',
+      vi: 'Duyet dang ky',
+    },
+    description: {
+      ko: '대기 중인 조직 가입 요청을 검토하고 승인합니다.',
+      en: 'Review and approve pending organization onboarding requests.',
+      vi: 'Xem xet va phe duyet cac yeu cau dang ky to chuc dang cho xu ly.',
+    },
+    statusItems: [
+      {
+        key: 'pending-onboarding-count',
+        label: {
+          ko: '대기 요청',
+          en: 'Pending Requests',
+          vi: 'Yeu cau cho duyet',
+        },
+        value: formatPlainValue(systemSummaryData?.pendingOnboardingCount, summaryLoading),
+      },
+    ],
+    badge: resolveText(summaryLoading ? DASHBOARD_TEXT.syncing : DASHBOARD_TEXT.live, languageCode),
   },
   {
-    path: '/assignment',
-    label: getUiMessage('menu.assignment', '배정', languageCode),
-    icon: <ContentCutIcon fontSize="small" />,
-  },
-  {
-    path: '/work-history',
-    label: getUiMessage('menu.workHistory', '기록', languageCode),
-    icon: <HistoryIcon fontSize="small" />,
+    key: 'system-static-options',
+    title: {
+      ko: '정적 사전',
+      en: 'Static Dictionary',
+      vi: 'Tu dien tinh',
+    },
+    description: {
+      ko: '앱 전반에서 쓰는 정적 코드와 별칭 사전을 확인합니다.',
+      en: 'Review the static codes and aliases used across the app.',
+      vi: 'Kiem tra cac ma tinh va alias duoc su dung trong toan bo ung dung.',
+    },
+    statusItems: [
+      {
+        key: 'static-option-group-count',
+        label: {
+          ko: '그룹 수',
+          en: 'Groups',
+          vi: 'So nhom',
+        },
+        value: formatPlainValue(STATIC_OPTION_GROUPS.length, false),
+      },
+      {
+        key: 'static-option-item-count',
+        label: {
+          ko: '항목 수',
+          en: 'Items',
+          vi: 'So muc',
+        },
+        value: formatPlainValue(countStaticOptionItems(), false),
+      },
+    ],
+    badge: resolveText(DASHBOARD_TEXT.slotStatus, languageCode),
   },
 ];
+
+const buildQuickActions = (languageCode, isSystemProfile) =>
+  isSystemProfile
+    ? [
+        {
+          path: '/system-setting/access-policy',
+          label: getUiMessage('menu.accessPolicy', 'Access Policy', languageCode),
+          icon: <TuneIcon fontSize="small" />,
+        },
+        {
+          path: '/system-onboarding',
+          label: getUiMessage('menu.onboardingApproval', 'Onboarding Approval', languageCode),
+          icon: <GroupIcon fontSize="small" />,
+        },
+        {
+          path: '/system-setting/static-options',
+          label: getUiMessage('menu.staticOptions', 'Static Dictionary', languageCode),
+          icon: <DnsIcon fontSize="small" />,
+        },
+      ]
+    : [
+        {
+          path: '/order',
+          label: getUiMessage('menu.order', '주문', languageCode),
+          icon: <ShoppingCartIcon fontSize="small" />,
+        },
+        {
+          path: '/style',
+          label: getUiMessage('menu.style', '스타일', languageCode),
+          icon: <StyleIcon fontSize="small" />,
+        },
+        {
+          path: '/assignment',
+          label: getUiMessage('menu.assignment', '배정', languageCode),
+          icon: <ContentCutIcon fontSize="small" />,
+        },
+        {
+          path: '/work-history',
+          label: getUiMessage('menu.workHistory', '기록', languageCode),
+          icon: <HistoryIcon fontSize="small" />,
+        },
+      ];
 
 const WorkspaceDashboard = () => {
   const { languageCode } = useLanguage();
@@ -369,9 +495,14 @@ const WorkspaceDashboard = () => {
     devProfile,
     accessProfile,
     activeOrgId,
+    activeProfile,
   } = useAuth();
-  const [summaryData, setSummaryData] = useState(null);
+  const [summaryData, setSummaryData] = useState(() => createEmptySummary());
+  const [systemSummaryData, setSystemSummaryData] = useState(() =>
+    createEmptySystemSummary()
+  );
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
 
   const authState = useMemo(
     () => ({
@@ -385,6 +516,40 @@ const WorkspaceDashboard = () => {
 
   const loadSummaryData = useCallback(
     async ({ forceRefresh = false, cancelledRef = null } = {}) => {
+      if (isSystemProfile) {
+        if (!cancelledRef?.current) {
+          setSummaryLoading(true);
+        }
+
+        try {
+          const data = await requestJSON('/system/onboarding-requests', {
+            forceRefresh,
+            skipGlobalLoading: true,
+          });
+          const pendingOnboardingCount = Array.isArray(data?.pendingCompanyRequests)
+            ? data.pendingCompanyRequests.length
+            : 0;
+          if (!cancelledRef?.current) {
+            setSystemSummaryData({
+              pendingOnboardingCount,
+            });
+          }
+        } catch (error) {
+          if (!cancelledRef?.current) {
+            setSystemSummaryData(createEmptySystemSummary());
+            showNotification(
+              error?.message || resolveText(DASHBOARD_TEXT.summaryLoadError, languageCode),
+              'error'
+            );
+          }
+        } finally {
+          if (!cancelledRef?.current) {
+            setSummaryLoading(false);
+          }
+        }
+        return;
+      }
+
       if (!activeOrgId) {
         if (!cancelledRef?.current) {
           setSummaryData(createEmptySummary());
@@ -434,7 +599,7 @@ const WorkspaceDashboard = () => {
         }
       }
     },
-    [activeOrgId, languageCode, showNotification]
+    [activeOrgId, isSystemProfile, languageCode, showNotification]
   );
 
   useEffect(() => {
@@ -448,12 +613,12 @@ const WorkspaceDashboard = () => {
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
-    isActive: true,
+    isActive: !isSystemProfile,
     onRefresh: () => loadSummaryData({ forceRefresh: true }),
   });
 
   useEffect(() => {
-    if (!activeOrgId) return undefined;
+    if (!activeOrgId || isSystemProfile) return undefined;
     return subscribeOrderModificationLockChanged((detail) => {
       const eventOrgId = Number(detail?.orgId);
       const currentOrgId = Number(activeOrgId);
@@ -468,24 +633,30 @@ const WorkspaceDashboard = () => {
       }
       void loadSummaryData({ forceRefresh: true });
     });
-  }, [activeOrgId, loadSummaryData]);
+  }, [activeOrgId, isSystemProfile, loadSummaryData]);
 
   const summaryCards = useMemo(
     () =>
-      buildSummaryCards({
-        languageCode,
-        summaryData,
-        summaryLoading,
-      }),
-    [languageCode, summaryData, summaryLoading]
+      isSystemProfile
+        ? buildSystemSummaryCards({
+            languageCode,
+            summaryLoading,
+            systemSummaryData,
+          })
+        : buildSummaryCards({
+            languageCode,
+            summaryData,
+            summaryLoading,
+          }),
+    [isSystemProfile, languageCode, summaryData, summaryLoading, systemSummaryData]
   );
 
   const quickActions = useMemo(
     () =>
-      buildQuickActions(languageCode).filter((item) =>
+      buildQuickActions(languageCode, isSystemProfile).filter((item) =>
         canAccessPath(item.path, authState)
       ),
-    [authState, languageCode]
+    [authState, isSystemProfile, languageCode]
   );
 
   return (
@@ -493,7 +664,12 @@ const WorkspaceDashboard = () => {
       <Stack spacing={2}>
         <Paper variant="outlined" sx={{ p: 2.25 }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
-            {resolveText(DASHBOARD_TEXT.summaryTitle, languageCode)}
+            {resolveText(
+              isSystemProfile
+                ? DASHBOARD_TEXT.systemSummaryTitle
+                : DASHBOARD_TEXT.summaryTitle,
+              languageCode
+            )}
           </Typography>
           <Box
             sx={{

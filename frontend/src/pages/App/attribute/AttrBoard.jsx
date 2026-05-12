@@ -8,9 +8,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Grid,
   IconButton,
   Paper,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -375,6 +375,8 @@ const AttributeRow = memo(function AttributeRow({
 const AttributeSection = memo(function AttributeSection({
   config,
   rows,
+  isLoading = false,
+  fillHeight = false,
   onAddRow,
   onDeleteRow,
   onRowChange,
@@ -387,9 +389,25 @@ const AttributeSection = memo(function AttributeSection({
   return (
     <Paper
       variant="outlined"
-      sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column' }}
+      sx={{
+        p: 2,
+        height: fillHeight ? '100%' : 'auto',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        borderRadius: 2,
+      }}
     >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: { xs: 'flex-start', md: 'center' },
+          gap: 1.5,
+          flexWrap: 'wrap',
+          mb: 2,
+        }}
+      >
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
@@ -430,7 +448,16 @@ const AttributeSection = memo(function AttributeSection({
         </Stack>
       </Box>
 
-      <TableContainer sx={{ maxHeight: 420, overflow: 'auto' }}>
+      <TableContainer
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1.5,
+        }}
+      >
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
@@ -443,6 +470,26 @@ const AttributeSection = memo(function AttributeSection({
             </TableRow>
           </TableHead>
           <TableBody>
+            {isLoading && rows.length === 0
+              ? Array.from({ length: 10 }).map((_, index) => (
+                  <TableRow key={`loading-${config.key}-${index}`}>
+                    {config.columns.map((col) => (
+                      <TableCell key={`${col.field}-${index}`}>
+                        <Skeleton variant="rounded" height={40} />
+                      </TableCell>
+                    ))}
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Skeleton
+                        variant="circular"
+                        width={24}
+                        height={24}
+                        sx={{ mx: 'auto' }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
+              : null}
+
             {rows.map((row) => (
               <AttributeRow
                 key={row.id}
@@ -457,7 +504,7 @@ const AttributeSection = memo(function AttributeSection({
               />
             ))}
 
-            {rows.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={config.columns.length + 1}
@@ -683,12 +730,19 @@ const ProcessComposerDialog = memo(function ProcessComposerDialog({
   );
 });
 
-const AttrBoard = ({ sectionKey = null, orgId = null }) => {
+const AttrBoard = ({
+  sectionKey = null,
+  orgId = null,
+  toolbar = null,
+  isReady = true,
+  externalLoading = false,
+}) => {
   const { showNotification } = useAppActions();
   const [canManageProcesses, setCanManageProcesses] = useState(true);
   const [isProcessGuideOpen, setIsProcessGuideOpen] = useState(false);
   const [isProcessComposerOpen, setIsProcessComposerOpen] = useState(false);
   const [pendingCodeFocus, setPendingCodeFocus] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const enabledSectionSet = useMemo(() => {
     if (!sectionKey) return null;
     return new Set([sectionKey]);
@@ -750,9 +804,17 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
   useUnsavedChanges(isDirty);
 
   useEffect(() => {
+    if (!isReady) {
+      setIsLoading(false);
+      return () => {};
+    }
+
     let cancelled = false;
 
     const loadAttributes = async () => {
+      if (!cancelled) {
+        setIsLoading(true);
+      }
       try {
         const data = await fetchAttributes({
           orgId,
@@ -772,6 +834,9 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
         setCanManageProcesses(true);
         setFormData(cloneDeep(initialData));
         setOriginalData(cloneDeep(initialData));
+      } finally {
+        if (cancelled) return;
+        setIsLoading(false);
       }
     };
 
@@ -779,7 +844,7 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
     return () => {
       cancelled = true;
     };
-  }, [includeSectionOptions, orgId]);
+  }, [includeSectionOptions, isReady, orgId]);
 
   useEffect(() => {
     if (sectionKey !== 'processes') return () => {};
@@ -919,6 +984,9 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
   return (
     <AppPageContainer
       title={boardTitle}
+      toolbar={toolbar}
+      sx={{ height: '100%', minHeight: 0 }}
+      contentSx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
       titleActions={(
         <SaveButton
           onClick={handleSave}
@@ -932,16 +1000,26 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
           코드가 중복된 행이 있습니다. 코드명은 섹션 내에서 유일해야 합니다.
         </Alert>
       ) : null}
-      <Grid container spacing={3}>
+      <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
         {visibleSectionConfigs.map((config) => (
-          <Grid item xs={12} key={config.key}>
+          <Box
+            key={config.key}
+            sx={{
+              flex: visibleSectionConfigs.length === 1 ? 1 : '0 0 auto',
+              minHeight: 0,
+            }}
+          >
             <AttributeSection
               config={config}
               rows={formData[config.key] || []}
+              isLoading={externalLoading || isLoading}
+              fillHeight={visibleSectionConfigs.length === 1}
               onAddRow={handleAddRow}
               onDeleteRow={handleDeleteRow}
               onRowChange={handleRowChange}
-              focusRowId={pendingCodeFocus?.sectionKey === config.key ? pendingCodeFocus.rowId : null}
+              focusRowId={
+                pendingCodeFocus?.sectionKey === config.key ? pendingCodeFocus.rowId : null
+              }
               onCodeFocusHandled={(rowId) => handleCodeFocusHandled(config.key, rowId)}
               duplicateCodeSet={duplicateCodeMap[config.key] || EMPTY_CODE_SET}
               onOpenGuide={
@@ -951,9 +1029,9 @@ const AttrBoard = ({ sectionKey = null, orgId = null }) => {
                 config.key === 'processes' ? () => setIsProcessComposerOpen(true) : undefined
               }
             />
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Stack>
       <ProcessNamingGuideDialog
         open={isProcessGuideOpen}
         onClose={() => setIsProcessGuideOpen(false)}
