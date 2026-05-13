@@ -97,6 +97,7 @@ const MENU_GROUP_KEYS = {
   ADMIN: 'ADMIN',
   MISC: 'MISC',
   ATTRIBUTE: 'ATTRIBUTE',
+  PROCESS_MASTER: 'PROCESS_MASTER',
   SYSTEM: 'SYSTEM',
 };
 
@@ -322,6 +323,7 @@ const MainLayout = () => {
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [miscOpen, setMiscOpen] = useState(false);
   const [attributeOpen, setAttributeOpen] = useState(false);
+  const [processMasterOpen, setProcessMasterOpen] = useState(false);
   const [systemOpen, setSystemOpen] = useState(false);
   const [pendingEmployeeCount, setPendingEmployeeCount] = useState(0);
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0);
@@ -346,6 +348,7 @@ const MainLayout = () => {
     setAdminOpen(menuGroupKey === MENU_GROUP_KEYS.ADMIN);
     setMiscOpen(menuGroupKey === MENU_GROUP_KEYS.MISC);
     setAttributeOpen(menuGroupKey === MENU_GROUP_KEYS.ATTRIBUTE);
+    setProcessMasterOpen(menuGroupKey === MENU_GROUP_KEYS.PROCESS_MASTER);
     setSystemOpen(menuGroupKey === MENU_GROUP_KEYS.SYSTEM);
   }, []);
 
@@ -354,6 +357,10 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
+    if (currentPath.startsWith('/attribute/processes')) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.PROCESS_MASTER);
+      return;
+    }
     if (currentPath.startsWith('/attribute')) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ATTRIBUTE);
       return;
@@ -686,28 +693,6 @@ const MainLayout = () => {
                   icon: <DnsIcon />,
                   path: '/attribute/categories',
                 },
-                {
-                  label: getUiMessage('menu.processMaster', '\uACF5\uC815 \uB9C8\uC2A4\uD130', languageCode),
-                  icon: <DnsIcon />,
-                  path: '/attribute/processes',
-                  children: [
-                    {
-                      label: getUiMessage('menu.processTargets', '\uB300\uC0C1 \uAD00\uB9AC', languageCode),
-                      icon: <DnsIcon />,
-                      path: '/attribute/processes/targets',
-                    },
-                    {
-                      label: getUiMessage('menu.processActions', '\uB3D9\uC791 \uAD00\uB9AC', languageCode),
-                      icon: <DnsIcon />,
-                      path: '/attribute/processes/actions',
-                    },
-                    {
-                      label: getUiMessage('menu.processSpecs', '\uADDC\uACA9 \uAD00\uB9AC', languageCode),
-                      icon: <DnsIcon />,
-                      path: '/attribute/processes/specs',
-                    },
-                  ],
-                },
               ]
             : [
                 {
@@ -722,6 +707,34 @@ const MainLayout = () => {
               ]),
         ],
       },
+      ...(isSystemProfile
+        ? [
+            {
+              label: getUiMessage('menu.processMaster', '\uACF5\uC815 \uB9C8\uC2A4\uD130', languageCode),
+              icon: <DnsIcon />,
+              isParent: true,
+              menuGroupKey: MENU_GROUP_KEYS.PROCESS_MASTER,
+              isOpen: processMasterOpen,
+              children: [
+                {
+                  label: getUiMessage('menu.processTargets', '\uB300\uC0C1 \uAD00\uB9AC', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes/targets',
+                },
+                {
+                  label: getUiMessage('menu.processActions', '\uB3D9\uC791 \uAD00\uB9AC', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes/actions',
+                },
+                {
+                  label: getUiMessage('menu.processSpecs', '\uADDC\uACA9 \uAD00\uB9AC', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes/specs',
+                },
+              ],
+            },
+          ]
+        : []),
       {
         label: getUiMessage('menu.system', '\uC2DC\uC2A4\uD15C \uC124\uC815', languageCode),
         icon: <TuneIcon />,
@@ -761,6 +774,7 @@ const MainLayout = () => {
     orderOpen,
     pendingEmployeeCount,
     pendingOnboardingCount,
+    processMasterOpen,
     productionOpen,
     recordsOpen,
     isSystemProfile,

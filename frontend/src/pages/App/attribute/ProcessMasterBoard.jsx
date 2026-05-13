@@ -310,6 +310,15 @@ const normalizeUsageConflictRow = (item = {}) => ({
     ? item.sampleStyleProcessIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
     : [],
 });
+const toProcessMasterPayloadRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    id: row.id,
+    code: toTrimmedText(row.code),
+    nameKo: toTrimmedText(row.nameKo),
+    nameEn: toTrimmedText(row.nameEn),
+    nameVi: toTrimmedText(row.nameVi),
+    sortOrder: index + 1,
+  }));
 
 const buildProcessMasterTableContainerSx = (maxHeight) => ({
   flex: maxHeight ? '0 0 auto' : 1,
@@ -1198,12 +1207,6 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
       }, {}),
     [formData]
   );
-  const hasLegacyData = useMemo(
-    () =>
-      (Array.isArray(formData?.locations) ? formData.locations.length : 0) > 0 ||
-      (Array.isArray(formData?.targetToTargets) ? formData.targetToTargets.length : 0) > 0,
-    [formData.locations, formData.targetToTargets]
-  );
 
   const isDirty = useMemo(
     () =>
@@ -1212,9 +1215,8 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
       ) ||
       RELATION_SECTION_KEYS.some(
         (key) => !areRelationRowsEqual(formData[key], originalData[key])
-      ) ||
-      hasLegacyData,
-    [formData, hasLegacyData, originalData]
+      ),
+    [formData, originalData]
   );
 
   useUnsavedChanges(isDirty);
@@ -1254,16 +1256,16 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
   useEffect(() => {
     const targetRows = Array.isArray(formData?.targets) ? formData.targets : [];
     setSelectedTargetRowId((prev) => {
-      if (targetRows.length === 0) return null;
-      return targetRows.some((row) => row.id === prev) ? prev : targetRows[0].id;
+      if (!prev) return null;
+      return targetRows.some((row) => row.id === prev) ? prev : null;
     });
   }, [formData.targets]);
 
   useEffect(() => {
     const actionRows = Array.isArray(formData?.actions) ? formData.actions : [];
     setSelectedActionRowId((prev) => {
-      if (actionRows.length === 0) return null;
-      return actionRows.some((row) => row.id === prev) ? prev : actionRows[0].id;
+      if (!prev) return null;
+      return actionRows.some((row) => row.id === prev) ? prev : null;
     });
   }, [formData.actions]);
 
@@ -1687,18 +1689,11 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
     setIsSaving(true);
     try {
       const payload = MASTER_SECTIONS.reduce((acc, section) => {
-        acc[section.key] = (formData[section.key] || []).map((row, index) => ({
-          id: row.id,
-          code: toTrimmedText(row.code),
-          nameKo: toTrimmedText(row.nameKo),
-          nameEn: toTrimmedText(row.nameEn),
-          nameVi: toTrimmedText(row.nameVi),
-          sortOrder: index + 1,
-        }));
+        acc[section.key] = toProcessMasterPayloadRows(formData[section.key]);
         return acc;
       }, {});
-      payload.locations = [];
-      payload.parts = [];
+      payload.locations = toProcessMasterPayloadRows(formData.locations);
+      payload.parts = payload.locations;
       payload.relations = {
         targetToTargetSpecs: (formData.targetToTargetSpecs || []).map((row) => ({
           id: row.id ?? undefined,
@@ -1716,7 +1711,14 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
           actionCode: normalizeRelationCode(row.parentCode),
           actionSpecCode: normalizeRelationCode(row.childCode),
         })),
-        targetToTargets: [],
+        targetToTargets: (formData.targetToTargets || []).map((row) => ({
+          id: row.id ?? undefined,
+          type: 'TARGET_TARGET',
+          parentCode: normalizeRelationCode(row.parentCode),
+          childCode: normalizeRelationCode(row.childCode),
+          targetCode: normalizeRelationCode(row.parentCode),
+          linkedTargetCode: normalizeRelationCode(row.childCode),
+        })),
       };
 
       const data = await updateProcessMasterOptions(payload);
@@ -1762,8 +1764,8 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
   const isTargetView = resolvedViewKey === 'targets';
   const isActionView = resolvedViewKey === 'actions';
   const isSpecView = resolvedViewKey === 'specs';
-  const showTargetSection = !isActionView;
-  const showActionSection = !isTargetView;
+  const showTargetSection = !isActionView && !isSpecView;
+  const showActionSection = !isTargetView && !isSpecView;
   const pageTitle = isTargetView
     ? '대상 관리'
     : isActionView
@@ -1783,16 +1785,18 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
     : isActionView
       ? '선택형 공정에서 조합할 동작 기본 항목과 연결 규격을 관리합니다.'
       : isSpecView
-        ? '대상과 동작에 연결되는 규격 후보를 관리합니다. 각 행을 선택해 연결된 규격만 정리할 수 있습니다.'
+        ? '대상이나 동작에 연결해 사용할 규격 후보를 직접 입력하고 관리합니다.'
         : '직접 텍스트 입력 공정은 그대로 사용하고, 이 메뉴는 대상·동작 선택형 공정에서 쓰는 다국어 항목을 관리합니다.';
   const pageIntroCaption = isSpecView
-    ? '스타일 공정 입력 화면에서는 선택한 대상 또는 동작에 연결된 규격만 함께 선택할 수 있습니다.'
+    ? '여기서 등록한 규격은 나중에 대상 관리나 동작 관리 화면에서 필요한 항목에 연결해서 사용합니다.'
     : '스타일 공정 입력 화면에서는 대상과 동작을 각각 복수 선택할 수 있고, 선택한 항목에 연결된 규격만 함께 고를 수 있습니다.';
   const pageIntroDetail = isTargetView
     ? '대상을 선택하면 바로 아래에서 대상 규격을 함께 등록하고 연결할 수 있습니다.'
     : isActionView
       ? '동작을 선택하면 바로 아래에서 동작 규격을 함께 등록하고 연결할 수 있습니다.'
-      : '여기서 등록한 한국어·영어·베트남어명이 선택형 공정명 생성과 이후 표준화 기준으로 사용됩니다.';
+      : isSpecView
+        ? '데이터가 없어도 규격 코드와 다국어명을 먼저 등록할 수 있고, 연결 여부는 이후 화면에서 설정됩니다.'
+        : '여기서 등록한 한국어·영어·베트남어명이 선택형 공정명 생성과 이후 표준화 기준으로 사용됩니다.';
 
   return (
     <AppPageContainer
@@ -1826,6 +1830,25 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
         </Paper>
 
         <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+          {isSpecView && (
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <ProcessMasterSection
+                sectionKey="targetSpecs"
+                title="대상 규격 등록"
+                description="대상 관리에서 연결해 사용할 규격 후보의 다국어명을 입력합니다. 연결 자체는 대상 관리 화면에서 설정합니다."
+                rows={formData.targetSpecs || []}
+                languageCode={languageCode}
+                onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteRow}
+                onRowChange={handleRowChange}
+                focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
+                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
+                duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
+                usageConflictMap={usageConflictMap}
+              />
+            </Box>
+          )}
+
           {showTargetSection && (
             <Box sx={{ flex: 1, minHeight: 0 }}>
               <ProcessMasterSection
@@ -1869,6 +1892,25 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
                     relationRows={formData.targetToTargetSpecs}
                   />
                 )}
+              />
+            </Box>
+          )}
+
+          {isSpecView && (
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <ProcessMasterSection
+                sectionKey="actionSpecs"
+                title="동작 규격 등록"
+                description="동작 관리에서 연결해 사용할 규격 후보의 다국어명을 입력합니다. 연결 자체는 동작 관리 화면에서 설정합니다."
+                rows={formData.actionSpecs || []}
+                languageCode={languageCode}
+                onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteRow}
+                onRowChange={handleRowChange}
+                focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
+                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
+                duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
+                usageConflictMap={usageConflictMap}
               />
             </Box>
           )}
