@@ -9313,21 +9313,8 @@ const PROCESS_MASTER_DEFAULT_OPTIONS: Record<
     { ko: "다림", en: "Press", vi: "Ui" },
   ],
   TARGET_SPEC: [
-    { ko: "메인 라벨", en: "Main label", vi: "Nhan chinh" },
-    { ko: "사이즈 라벨", en: "Size label", vi: "Nhan size" },
-    { ko: "10mm", en: "10mm", vi: "10mm" },
-    { ko: "20mm", en: "20mm", vi: "20mm" },
-    { ko: "KHOEN D", en: "D-ring", vi: "Khoen D" },
   ],
   ACTION_SPEC: [
-    { ko: "1줄", en: "1 line", vi: "1 duong" },
-    { ko: "2줄", en: "2 lines", vi: "2 duong" },
-    { ko: "3실", en: "3 threads", vi: "3 soi" },
-    { ko: "4실", en: "4 threads", vi: "4 soi" },
-    { ko: "5실", en: "5 threads", vi: "5 soi" },
-    { ko: "5mm", en: "5mm", vi: "5mm" },
-    { ko: "7mm", en: "7mm", vi: "7mm" },
-    { ko: "완성", en: "Finished", vi: "Hoan tat" },
   ],
 };
 

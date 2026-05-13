@@ -2,6 +2,9 @@ import React from 'react';
 import { Box, Stack, Divider } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
 
+const PAGE_PADDING = { xs: 1.5, md: 2 };
+const NEGATIVE_PAGE_PADDING = { xs: -1.5, md: -2 };
+
 const AppPageContainer = ({
   title,
   titleActions = null,
@@ -30,19 +33,45 @@ const AppPageContainer = ({
   ) : null;
 
   return (
-    <Box component="main" sx={{ flexGrow: 1, p: 0, minWidth: 0 }}>
+    <Box
+      component="main"
+      sx={{
+        flexGrow: 1,
+        p: 0,
+        minWidth: 0,
+        minHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <Stack
         spacing={2.5}
         sx={{
-          height: '100%',
-          p: { xs: 1.5, md: 2 },
+          flexGrow: 1,
+          minHeight: '100%',
+          p: PAGE_PADDING,
           minWidth: 0,
           ...sx,
         }}
       >
         {/* Page Header */}
         {resolvedHeader && (
-          <Box sx={{ pb: 2, minWidth: 0 }}>
+          <Box
+            sx={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
+              mt: NEGATIVE_PAGE_PADDING,
+              mx: NEGATIVE_PAGE_PADDING,
+              px: PAGE_PADDING,
+              pt: PAGE_PADDING,
+              pb: 2,
+              minWidth: 0,
+              bgcolor: 'background.paper',
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+            }}
+          >
             {resolvedHeader}
           </Box>
         )}

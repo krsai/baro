@@ -23,7 +23,9 @@
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
     "process-master:cleanup-duplicates": "node scripts/cleanup-process-master-duplicates.js",
-    "process-master:cleanup-duplicates:apply": "node scripts/cleanup-process-master-duplicates.js --apply"
+    "process-master:cleanup-duplicates:apply": "node scripts/cleanup-process-master-duplicates.js --apply",
+    "process-master:clear-specs": "node scripts/clear-process-master-specs.js",
+    "process-master:clear-specs:apply": "node scripts/clear-process-master-specs.js --apply"
   },
   "keywords": [],
   "author": "",
