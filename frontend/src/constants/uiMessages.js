@@ -65,7 +65,7 @@ export const UI_MESSAGES = {
     logout: { ko: '로그아웃', en: 'Logout', vi: 'Dang xuat' },
   },
   workHistoryView: {
-    daily: { ko: '일일', en: 'Daily', vi: 'Ngay' },
+    daily: { ko: '일간', en: 'Daily', vi: 'Ngay' },
     monthly: { ko: '월간', en: 'Monthly', vi: 'Thang' },
   },
   orderDetail: {

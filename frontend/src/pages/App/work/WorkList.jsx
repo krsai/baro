@@ -504,7 +504,7 @@ const WorkList = ({
                   aria-label="work-history-view-mode"
                 >
                   <ToggleButton value={WORK_VIEW_MODES.DAILY}>
-                    {getUiMessage('workHistoryView.daily', '\uC77C\uC77C', languageCode)}
+                    {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
                   </ToggleButton>
                   <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
                     {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}

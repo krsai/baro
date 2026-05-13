@@ -19,6 +19,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -49,6 +50,7 @@ import {
 } from './workMonthlyUtils';
 
 const TEXT = {
+  add: { ko: '\uAE30\uB85D \uCD94\uAC00', en: 'Add Log', vi: 'Them ghi chep' },
   title: { ko: '월간 기록', en: 'Monthly Records', vi: 'Ghi chep thang' },
   searchPlaceholder: {
     ko: '작업자, 라인 검색',
@@ -125,6 +127,12 @@ const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
         : '월간 기록 상세';
   const parts = [title, workerName, monthKey].filter(Boolean);
   return parts.join(': ');
+};
+
+const buildWorkCreateTabLabel = (languageCode) => {
+  if (languageCode === 'en') return 'New Daily Record';
+  if (languageCode === 'vi') return 'Tao ghi chep ngay';
+  return '\uC77C\uAC04 \uAE30\uB85D \uC2E0\uADDC';
 };
 
 const WorkMonthlyBoard = ({
@@ -343,6 +351,12 @@ const WorkMonthlyBoard = ({
     [onViewModeChange, viewMode]
   );
 
+  const handleAdd = useCallback(() => {
+    navigateToPath('/work-history/new', {
+      label: buildWorkCreateTabLabel(languageCode),
+    });
+  }, [languageCode, navigateToPath]);
+
   return (
     <AppPageContainer
       title={getUiMessage(
@@ -350,8 +364,14 @@ const WorkMonthlyBoard = ({
         resolveText(TEXT.title, languageCode, '월간 기록'),
         languageCode
       )}
+      titleActions={(
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+          {resolveText(TEXT.add, languageCode, '\uAE30\uB85D \uCD94\uAC00')}
+        </Button>
+      )}
       toolbar={(
         <PageToolbar
+          showLastUpdater={false}
           left={(
             <SearchInput
               value={searchTerm}
@@ -402,7 +422,7 @@ const WorkMonthlyBoard = ({
               aria-label="work-history-view-mode"
             >
               <ToggleButton value={WORK_VIEW_MODES.DAILY}>
-                {getUiMessage('workHistoryView.daily', '\uC77C\uC77C', languageCode)}
+                {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
               </ToggleButton>
               <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
                 {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
