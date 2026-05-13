@@ -31,6 +31,7 @@ const AppPageContainer = ({
       {toolbar}
     </Stack>
   ) : null;
+  const hasHeader = Boolean(resolvedHeader);
 
   return (
     <Box
@@ -49,7 +50,9 @@ const AppPageContainer = ({
         sx={{
           flexGrow: 1,
           minHeight: '100%',
-          p: PAGE_PADDING,
+          px: PAGE_PADDING,
+          pb: PAGE_PADDING,
+          pt: hasHeader ? 0 : PAGE_PADDING,
           minWidth: 0,
           ...sx,
         }}
@@ -61,11 +64,10 @@ const AppPageContainer = ({
               position: 'sticky',
               top: 0,
               zIndex: 10,
-              mt: NEGATIVE_PAGE_PADDING,
               mx: NEGATIVE_PAGE_PADDING,
               px: PAGE_PADDING,
-              pt: PAGE_PADDING,
-              pb: 2,
+              pt: { xs: 1, md: 1.25 },
+              pb: { xs: 1.5, md: 2 },
               minWidth: 0,
               bgcolor: 'background.paper',
               borderBottom: '1px solid',

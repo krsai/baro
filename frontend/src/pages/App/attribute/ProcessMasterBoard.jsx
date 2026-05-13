@@ -41,6 +41,7 @@ const MASTER_SECTIONS = [
 ];
 
 const RELATION_SECTION_KEYS = ['targetToTargetSpecs', 'actionToActionSpecs'];
+const PROCESS_MASTER_VIEW_KEYS = new Set(['overview', 'targets', 'actions', 'specs']);
 
 const createEmptyMasterData = () => ({
   locations: [],
@@ -1167,7 +1168,7 @@ const ProcessMasterLinkedSpecSection = ({
   );
 };
 
-const ProcessMasterBoard = () => {
+const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
   const [formData, setFormData] = useState(() => createEmptyMasterData());
@@ -1757,9 +1758,45 @@ const ProcessMasterBoard = () => {
     }
   }, [duplicateCodeMap, formData, isSaving, showNotification]);
 
+  const resolvedViewKey = PROCESS_MASTER_VIEW_KEYS.has(viewKey) ? viewKey : 'overview';
+  const isTargetView = resolvedViewKey === 'targets';
+  const isActionView = resolvedViewKey === 'actions';
+  const isSpecView = resolvedViewKey === 'specs';
+  const showTargetSection = !isActionView;
+  const showActionSection = !isTargetView;
+  const pageTitle = isTargetView
+    ? '대상 관리'
+    : isActionView
+      ? '동작 관리'
+      : isSpecView
+        ? '규격 관리'
+        : '공정 마스터';
+  const pageIntroTitle = isTargetView
+    ? '대상 마스터 관리'
+    : isActionView
+      ? '동작 마스터 관리'
+      : isSpecView
+        ? '규격 마스터 관리'
+        : '대상·동작 다국어 등록';
+  const pageIntroDescription = isTargetView
+    ? '선택형 공정에서 조합할 대상 기본 항목과 연결 규격을 관리합니다.'
+    : isActionView
+      ? '선택형 공정에서 조합할 동작 기본 항목과 연결 규격을 관리합니다.'
+      : isSpecView
+        ? '대상과 동작에 연결되는 규격 후보를 관리합니다. 각 행을 선택해 연결된 규격만 정리할 수 있습니다.'
+        : '직접 텍스트 입력 공정은 그대로 사용하고, 이 메뉴는 대상·동작 선택형 공정에서 쓰는 다국어 항목을 관리합니다.';
+  const pageIntroCaption = isSpecView
+    ? '스타일 공정 입력 화면에서는 선택한 대상 또는 동작에 연결된 규격만 함께 선택할 수 있습니다.'
+    : '스타일 공정 입력 화면에서는 대상과 동작을 각각 복수 선택할 수 있고, 선택한 항목에 연결된 규격만 함께 고를 수 있습니다.';
+  const pageIntroDetail = isTargetView
+    ? '대상을 선택하면 바로 아래에서 대상 규격을 함께 등록하고 연결할 수 있습니다.'
+    : isActionView
+      ? '동작을 선택하면 바로 아래에서 동작 규격을 함께 등록하고 연결할 수 있습니다.'
+      : '여기서 등록한 한국어·영어·베트남어명이 선택형 공정명 생성과 이후 표준화 기준으로 사용됩니다.';
+
   return (
     <AppPageContainer
-      title="공정 관리"
+      title={pageTitle}
       titleActions={(
         <SaveButton
           onClick={handleSave}
@@ -1774,102 +1811,114 @@ const ProcessMasterBoard = () => {
         <Paper variant="outlined" sx={{ p: 2, flexShrink: 0 }}>
           <Stack spacing={0.5}>
             <Typography variant="subtitle2" fontWeight={700}>
-              대상·동작 다국어 등록
+              {pageIntroTitle}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              직접 텍스트 입력 공정은 그대로 사용하고, 이 메뉴는 대상·동작 선택형 공정에서 쓰는 다국어 항목을 관리합니다.
+              {pageIntroDescription}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              스타일 공정 입력 화면에서는 대상과 동작을 각각 복수 선택할 수 있고, 선택한 항목에 연결된 규격만 함께 고를 수 있습니다.
+              {pageIntroCaption}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              여기서 등록한 한국어·영어·베트남어명이 선택형 공정명 생성과 이후 표준화 기준으로 사용됩니다.
+              {pageIntroDetail}
             </Typography>
           </Stack>
         </Paper>
 
         <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-          <Box sx={{ flex: 1, minHeight: 0 }}>
-            <ProcessMasterSection
-              sectionKey="targets"
-              title="대상 등록"
-              description="선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 대상 규격을 함께 등록할 수 있습니다."
-              rows={formData.targets || []}
-              languageCode={languageCode}
-              onAddRow={handleAddRow}
-              onDeleteRow={handleDeleteRow}
-              onRowChange={handleRowChange}
-              focusRowId={pendingCodeFocus?.sectionKey === 'targets' ? pendingCodeFocus.rowId : null}
-              onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targets', rowId)}
-              duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
-              usageConflictMap={usageConflictMap}
-              selectedRowId={selectedTargetRowId}
-              onSelectRow={handleSelectMasterRow}
-              expandedRowId={selectedTargetRowId}
-              renderExpandedPanel={() => (
-                <ProcessMasterLinkedSpecSection
-                  sectionKey="targetSpecs"
-                  title="대상 규격"
-                  description="선택한 대상에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
-                  rows={formData.targetSpecs || []}
-                  languageCode={languageCode}
-                  onAddOrLinkRow={handleAddOrLinkTargetSpec}
-                  onUnlinkRow={handleUnlinkTargetSpec}
-                  onDeleteRow={handleDeleteRow}
-                  onRowChange={handleRowChange}
-                  focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
-                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
-                  duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
-                  usageConflictMap={usageConflictMap}
-                  maxHeight={220}
-                  parentLabel="대상"
-                  parentRow={selectedTargetRow}
-                  relationRows={formData.targetToTargetSpecs}
-                />
-              )}
-            />
-          </Box>
+          {showTargetSection && (
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <ProcessMasterSection
+                sectionKey="targets"
+                title="대상 등록"
+                description={
+                  isSpecView
+                    ? '규격을 관리할 대상을 먼저 선택하세요. 선택한 대상에 연결된 규격만 바로 아래에서 등록하거나 해제할 수 있습니다.'
+                    : '선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 대상 규격을 함께 등록할 수 있습니다.'
+                }
+                rows={formData.targets || []}
+                languageCode={languageCode}
+                onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteRow}
+                onRowChange={handleRowChange}
+                focusRowId={pendingCodeFocus?.sectionKey === 'targets' ? pendingCodeFocus.rowId : null}
+                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targets', rowId)}
+                duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
+                usageConflictMap={usageConflictMap}
+                selectedRowId={selectedTargetRowId}
+                onSelectRow={handleSelectMasterRow}
+                expandedRowId={selectedTargetRowId}
+                renderExpandedPanel={() => (
+                  <ProcessMasterLinkedSpecSection
+                    sectionKey="targetSpecs"
+                    title="대상 규격"
+                    description="선택한 대상에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+                    rows={formData.targetSpecs || []}
+                    languageCode={languageCode}
+                    onAddOrLinkRow={handleAddOrLinkTargetSpec}
+                    onUnlinkRow={handleUnlinkTargetSpec}
+                    onDeleteRow={handleDeleteRow}
+                    onRowChange={handleRowChange}
+                    focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
+                    onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
+                    duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
+                    usageConflictMap={usageConflictMap}
+                    maxHeight={220}
+                    parentLabel="대상"
+                    parentRow={selectedTargetRow}
+                    relationRows={formData.targetToTargetSpecs}
+                  />
+                )}
+              />
+            </Box>
+          )}
 
-          <Box sx={{ flex: 1, minHeight: 0 }}>
-            <ProcessMasterSection
-              sectionKey="actions"
-              title="동작 등록"
-              description="선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 동작 규격을 함께 등록할 수 있습니다."
-              rows={formData.actions || []}
-              languageCode={languageCode}
-              onAddRow={handleAddRow}
-              onDeleteRow={handleDeleteRow}
-              onRowChange={handleRowChange}
-              focusRowId={pendingCodeFocus?.sectionKey === 'actions' ? pendingCodeFocus.rowId : null}
-              onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actions', rowId)}
-              duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
-              usageConflictMap={usageConflictMap}
-              selectedRowId={selectedActionRowId}
-              onSelectRow={handleSelectMasterRow}
-              expandedRowId={selectedActionRowId}
-              renderExpandedPanel={() => (
-                <ProcessMasterLinkedSpecSection
-                  sectionKey="actionSpecs"
-                  title="동작 규격"
-                  description="선택한 동작에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
-                  rows={formData.actionSpecs || []}
-                  languageCode={languageCode}
-                  onAddOrLinkRow={handleAddOrLinkActionSpec}
-                  onUnlinkRow={handleUnlinkActionSpec}
-                  onDeleteRow={handleDeleteRow}
-                  onRowChange={handleRowChange}
-                  focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
-                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
-                  duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
-                  usageConflictMap={usageConflictMap}
-                  maxHeight={220}
-                  parentLabel="동작"
-                  parentRow={selectedActionRow}
-                  relationRows={formData.actionToActionSpecs}
-                />
-              )}
-            />
-          </Box>
+          {showActionSection && (
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <ProcessMasterSection
+                sectionKey="actions"
+                title="동작 등록"
+                description={
+                  isSpecView
+                    ? '규격을 관리할 동작을 먼저 선택하세요. 선택한 동작에 연결된 규격만 바로 아래에서 등록하거나 해제할 수 있습니다.'
+                    : '선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 동작 규격을 함께 등록할 수 있습니다.'
+                }
+                rows={formData.actions || []}
+                languageCode={languageCode}
+                onAddRow={handleAddRow}
+                onDeleteRow={handleDeleteRow}
+                onRowChange={handleRowChange}
+                focusRowId={pendingCodeFocus?.sectionKey === 'actions' ? pendingCodeFocus.rowId : null}
+                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actions', rowId)}
+                duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
+                usageConflictMap={usageConflictMap}
+                selectedRowId={selectedActionRowId}
+                onSelectRow={handleSelectMasterRow}
+                expandedRowId={selectedActionRowId}
+                renderExpandedPanel={() => (
+                  <ProcessMasterLinkedSpecSection
+                    sectionKey="actionSpecs"
+                    title="동작 규격"
+                    description="선택한 동작에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+                    rows={formData.actionSpecs || []}
+                    languageCode={languageCode}
+                    onAddOrLinkRow={handleAddOrLinkActionSpec}
+                    onUnlinkRow={handleUnlinkActionSpec}
+                    onDeleteRow={handleDeleteRow}
+                    onRowChange={handleRowChange}
+                    focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
+                    onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
+                    duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
+                    usageConflictMap={usageConflictMap}
+                    maxHeight={220}
+                    parentLabel="동작"
+                    parentRow={selectedActionRow}
+                    relationRows={formData.actionToActionSpecs}
+                  />
+                )}
+              />
+            </Box>
+          )}
         </Stack>
       </Stack>
     </AppPageContainer>
