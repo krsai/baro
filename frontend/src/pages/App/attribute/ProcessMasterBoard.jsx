@@ -4,7 +4,7 @@ import {
   Box,
   Button,
   Chip,
-  Grid,
+  Collapse,
   IconButton,
   Paper,
   Radio,
@@ -336,12 +336,15 @@ const ProcessMasterSection = ({
   maxHeight = null,
   selectedRowId = null,
   onSelectRow,
+  expandedRowId = null,
+  renderExpandedPanel = null,
 }) => {
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => compareMasterRowsByLanguage(left, right, languageCode)),
     [languageCode, rows]
   );
   const isSelectable = typeof onSelectRow === 'function';
+  const canRenderExpandedPanel = typeof renderExpandedPanel === 'function';
   const columnCount = isSelectable ? 8 : 7;
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
@@ -472,136 +475,156 @@ const ProcessMasterSection = ({
                   } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
                 : '';
               const isSelected = selectedRowId === row.id;
+              const isExpanded = expandedRowId === row.id;
               return (
-                <TableRow
-                  key={row.id}
-                  hover
-                  selected={isSelected}
-                  onClick={() => {
-                    if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
-                  }}
-                  sx={
-                    isSelectable
-                      ? {
-                          cursor: 'pointer',
-                          '&.Mui-selected': { backgroundColor: 'rgba(25, 118, 210, 0.10)' },
-                          '&.Mui-selected:hover': { backgroundColor: 'rgba(25, 118, 210, 0.14)' },
-                        }
-                      : undefined
-                  }
-                >
-                {isSelectable ? (
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Radio
-                      size="small"
-                      checked={isSelected}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelectRow(sectionKey, row.id);
-                      }}
-                    />
-                  </TableCell>
-                ) : null}
-                <TableCell>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    value={row.code || ''}
-                    onChange={(event) => onRowChange(sectionKey, row.id, 'code', event.target.value)}
-                    onFocus={() => {
-                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
+                <React.Fragment key={row.id}>
+                  <TableRow
+                    hover
+                    selected={isSelected}
+                    onClick={() => {
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: true });
                     }}
-                    placeholder="CODE"
-                    inputRef={focusRowId === row.id ? focusInputRef : undefined}
-                    error={
-                      isDuplicateCode
-                    }
-                    helperText={
-                      isDuplicateCode
-                        ? '중복 코드'
+                    sx={
+                      isSelectable
+                        ? {
+                            cursor: 'pointer',
+                            '&.Mui-selected': { backgroundColor: 'rgba(25, 118, 210, 0.10)' },
+                            '&.Mui-selected:hover': { backgroundColor: 'rgba(25, 118, 210, 0.14)' },
+                          }
                         : undefined
                     }
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    value={row.nameKo || ''}
-                    onChange={(event) => onRowChange(sectionKey, row.id, 'nameKo', event.target.value)}
-                    onFocus={() => {
-                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
-                    }}
-                    placeholder="한국어"
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    value={row.nameEn || ''}
-                    onChange={(event) => onRowChange(sectionKey, row.id, 'nameEn', event.target.value)}
-                    onFocus={() => {
-                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
-                    }}
-                    placeholder="English"
-                  />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    value={row.nameVi || ''}
-                    onChange={(event) => onRowChange(sectionKey, row.id, 'nameVi', event.target.value)}
-                    onFocus={() => {
-                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id);
-                    }}
-                    placeholder="Tieng Viet"
-                  />
-                </TableCell>
-                <TableCell sx={{ textAlign: 'center' }}>
-                  {usageConflict ? (
-                    <Tooltip title={usageTooltipTitle}>
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
-                        {usageConflict.styleProcessCount}
-                      </Typography>
-                    </Tooltip>
-                  ) : (
-                    <Typography variant="body2" color="text.disabled">
-                      0
-                    </Typography>
-                  )}
-                </TableCell>
-                <TableCell sx={{ textAlign: 'center' }}>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontWeight: isDuplicateCode ? 700 : 400, color: isDuplicateCode ? 'error.main' : 'text.disabled' }}
                   >
-                    {isDuplicateCode ? '중복' : '-'}
-                  </Typography>
-                </TableCell>
-                <TableCell sx={{ textAlign: 'center' }}>
-                  {usageConflict ? (
-                    <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
-                      <span>
-                        <IconButton size="small" disabled>
+                    {isSelectable ? (
+                      <TableCell sx={{ textAlign: 'center' }}>
+                        <Radio
+                          size="small"
+                          checked={isSelected}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelectRow(sectionKey, row.id, { toggle: true });
+                          }}
+                        />
+                      </TableCell>
+                    ) : null}
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={row.code || ''}
+                        onChange={(event) => onRowChange(sectionKey, row.id, 'code', event.target.value)}
+                        onFocus={() => {
+                          if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: false });
+                        }}
+                        placeholder="CODE"
+                        inputRef={focusRowId === row.id ? focusInputRef : undefined}
+                        error={
+                          isDuplicateCode
+                        }
+                        helperText={
+                          isDuplicateCode
+                            ? '중복 코드'
+                            : undefined
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={row.nameKo || ''}
+                        onChange={(event) => onRowChange(sectionKey, row.id, 'nameKo', event.target.value)}
+                        onFocus={() => {
+                          if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: false });
+                        }}
+                        placeholder="한국어"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={row.nameEn || ''}
+                        onChange={(event) => onRowChange(sectionKey, row.id, 'nameEn', event.target.value)}
+                        onFocus={() => {
+                          if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: false });
+                        }}
+                        placeholder="English"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        value={row.nameVi || ''}
+                        onChange={(event) => onRowChange(sectionKey, row.id, 'nameVi', event.target.value)}
+                        onFocus={() => {
+                          if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: false });
+                        }}
+                        placeholder="Tieng Viet"
+                      />
+                    </TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      {usageConflict ? (
+                        <Tooltip title={usageTooltipTitle}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: 'error.main' }}>
+                            {usageConflict.styleProcessCount}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled">
+                          0
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Typography
+                        variant="body2"
+                        sx={{ fontWeight: isDuplicateCode ? 700 : 400, color: isDuplicateCode ? 'error.main' : 'text.disabled' }}
+                      >
+                        {isDuplicateCode ? '중복' : '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      {usageConflict ? (
+                        <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
+                          <span>
+                            <IconButton size="small" disabled>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDeleteRow(sectionKey, row.id);
+                          }}
+                        >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
-                      </span>
-                    </Tooltip>
-                  ) : (
-                    <IconButton
-                      size="small"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDeleteRow(sectionKey, row.id);
-                      }}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                </TableCell>
-                </TableRow>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  {canRenderExpandedPanel && isExpanded ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columnCount}
+                        sx={{
+                          p: 0,
+                          borderBottom: 0,
+                          backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                        }}
+                      >
+                        <Collapse in timeout="auto" unmountOnExit>
+                          <Box sx={{ p: 1.5 }}>
+                            {renderExpandedPanel(row)}
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </React.Fragment>
               );
             })}
             {displayRows.length === 0 ? (
@@ -1341,11 +1364,12 @@ const ProcessMasterBoard = () => {
     setPendingCodeFocus({ sectionKey, rowId });
   }, []);
 
-  const handleSelectMasterRow = useCallback((sectionKey, rowId) => {
+  const handleSelectMasterRow = useCallback((sectionKey, rowId, options = {}) => {
+    const shouldToggle = options?.toggle !== false;
     if (sectionKey === 'targets') {
-      setSelectedTargetRowId(rowId);
+      setSelectedTargetRowId((prev) => (shouldToggle && prev === rowId ? null : rowId));
     } else if (sectionKey === 'actions') {
-      setSelectedActionRowId(rowId);
+      setSelectedActionRowId((prev) => (shouldToggle && prev === rowId ? null : rowId));
     }
   }, []);
 
@@ -1764,117 +1788,89 @@ const ProcessMasterBoard = () => {
           </Stack>
         </Paper>
 
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.5,
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <Typography variant="subtitle1" fontWeight={700}>
-            대상 등록
-          </Typography>
-          <Grid container spacing={2} alignItems="stretch" sx={{ flex: 1, minHeight: 0 }}>
-            <Grid item xs={12} xl={6} sx={{ display: 'flex', minHeight: 0 }}>
-              <ProcessMasterSection
-                sectionKey="targets"
-                title="대상"
-                description="선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 한 공정에 여러 대상을 함께 선택할 수 있습니다."
-                rows={formData.targets || []}
-                languageCode={languageCode}
-                onAddRow={handleAddRow}
-                onDeleteRow={handleDeleteRow}
-                onRowChange={handleRowChange}
-                focusRowId={pendingCodeFocus?.sectionKey === 'targets' ? pendingCodeFocus.rowId : null}
-                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targets', rowId)}
-                duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
-                usageConflictMap={usageConflictMap}
-                selectedRowId={selectedTargetRowId}
-                onSelectRow={handleSelectMasterRow}
-              />
-            </Grid>
-            <Grid item xs={12} xl={6} sx={{ display: 'flex', minHeight: 0 }}>
-              <ProcessMasterLinkedSpecSection
-                sectionKey="targetSpecs"
-                title="대상 규격"
-                description="선택한 대상에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
-                rows={formData.targetSpecs || []}
-                languageCode={languageCode}
-                onAddOrLinkRow={handleAddOrLinkTargetSpec}
-                onUnlinkRow={handleUnlinkTargetSpec}
-                onDeleteRow={handleDeleteRow}
-                onRowChange={handleRowChange}
-                focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
-                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
-                duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
-                usageConflictMap={usageConflictMap}
-                parentLabel="대상"
-                parentRow={selectedTargetRow}
-                relationRows={formData.targetToTargetSpecs}
-              />
-            </Grid>
-          </Grid>
-        </Paper>
+        <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <ProcessMasterSection
+              sectionKey="targets"
+              title="대상 등록"
+              description="선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 대상 규격을 함께 등록할 수 있습니다."
+              rows={formData.targets || []}
+              languageCode={languageCode}
+              onAddRow={handleAddRow}
+              onDeleteRow={handleDeleteRow}
+              onRowChange={handleRowChange}
+              focusRowId={pendingCodeFocus?.sectionKey === 'targets' ? pendingCodeFocus.rowId : null}
+              onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targets', rowId)}
+              duplicateCodeSet={duplicateCodeMap.targets || EMPTY_CODE_SET}
+              usageConflictMap={usageConflictMap}
+              selectedRowId={selectedTargetRowId}
+              onSelectRow={handleSelectMasterRow}
+              expandedRowId={selectedTargetRowId}
+              renderExpandedPanel={() => (
+                <ProcessMasterLinkedSpecSection
+                  sectionKey="targetSpecs"
+                  title="대상 규격"
+                  description="선택한 대상에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+                  rows={formData.targetSpecs || []}
+                  languageCode={languageCode}
+                  onAddOrLinkRow={handleAddOrLinkTargetSpec}
+                  onUnlinkRow={handleUnlinkTargetSpec}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'targetSpecs' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('targetSpecs', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.targetSpecs || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={220}
+                  parentLabel="대상"
+                  parentRow={selectedTargetRow}
+                  relationRows={formData.targetToTargetSpecs}
+                />
+              )}
+            />
+          </Box>
 
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.5,
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <Typography variant="subtitle1" fontWeight={700}>
-            동작 등록
-          </Typography>
-          <Grid container spacing={2} alignItems="stretch" sx={{ flex: 1, minHeight: 0 }}>
-            <Grid item xs={12} xl={6} sx={{ display: 'flex', minHeight: 0 }}>
-              <ProcessMasterSection
-                sectionKey="actions"
-                title="동작"
-                description="선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 한 공정에 여러 동작을 함께 선택할 수 있습니다."
-                rows={formData.actions || []}
-                languageCode={languageCode}
-                onAddRow={handleAddRow}
-                onDeleteRow={handleDeleteRow}
-                onRowChange={handleRowChange}
-                focusRowId={pendingCodeFocus?.sectionKey === 'actions' ? pendingCodeFocus.rowId : null}
-                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actions', rowId)}
-                duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
-                usageConflictMap={usageConflictMap}
-                selectedRowId={selectedActionRowId}
-                onSelectRow={handleSelectMasterRow}
-              />
-            </Grid>
-            <Grid item xs={12} xl={6} sx={{ display: 'flex', minHeight: 0 }}>
-              <ProcessMasterLinkedSpecSection
-                sectionKey="actionSpecs"
-                title="동작 규격"
-                description="선택한 동작에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
-                rows={formData.actionSpecs || []}
-                languageCode={languageCode}
-                onAddOrLinkRow={handleAddOrLinkActionSpec}
-                onUnlinkRow={handleUnlinkActionSpec}
-                onDeleteRow={handleDeleteRow}
-                onRowChange={handleRowChange}
-                focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
-                onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
-                duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
-                usageConflictMap={usageConflictMap}
-                parentLabel="동작"
-                parentRow={selectedActionRow}
-                relationRows={formData.actionToActionSpecs}
-              />
-            </Grid>
-          </Grid>
-        </Paper>
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <ProcessMasterSection
+              sectionKey="actions"
+              title="동작 등록"
+              description="선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 동작 규격을 함께 등록할 수 있습니다."
+              rows={formData.actions || []}
+              languageCode={languageCode}
+              onAddRow={handleAddRow}
+              onDeleteRow={handleDeleteRow}
+              onRowChange={handleRowChange}
+              focusRowId={pendingCodeFocus?.sectionKey === 'actions' ? pendingCodeFocus.rowId : null}
+              onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actions', rowId)}
+              duplicateCodeSet={duplicateCodeMap.actions || EMPTY_CODE_SET}
+              usageConflictMap={usageConflictMap}
+              selectedRowId={selectedActionRowId}
+              onSelectRow={handleSelectMasterRow}
+              expandedRowId={selectedActionRowId}
+              renderExpandedPanel={() => (
+                <ProcessMasterLinkedSpecSection
+                  sectionKey="actionSpecs"
+                  title="동작 규격"
+                  description="선택한 동작에 연결할 규격 후보의 다국어명을 관리합니다. 스타일 입력에서는 연결된 규격만 선택됩니다."
+                  rows={formData.actionSpecs || []}
+                  languageCode={languageCode}
+                  onAddOrLinkRow={handleAddOrLinkActionSpec}
+                  onUnlinkRow={handleUnlinkActionSpec}
+                  onDeleteRow={handleDeleteRow}
+                  onRowChange={handleRowChange}
+                  focusRowId={pendingCodeFocus?.sectionKey === 'actionSpecs' ? pendingCodeFocus.rowId : null}
+                  onCodeFocusHandled={(rowId) => handleCodeFocusHandled('actionSpecs', rowId)}
+                  duplicateCodeSet={duplicateCodeMap.actionSpecs || EMPTY_CODE_SET}
+                  usageConflictMap={usageConflictMap}
+                  maxHeight={220}
+                  parentLabel="동작"
+                  parentRow={selectedActionRow}
+                  relationRows={formData.actionToActionSpecs}
+                />
+              )}
+            />
+          </Box>
+        </Stack>
       </Stack>
     </AppPageContainer>
   );
