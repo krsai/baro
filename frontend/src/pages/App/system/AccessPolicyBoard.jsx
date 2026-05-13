@@ -138,24 +138,38 @@ const readMenuBlueprint = () => {
   return Array.isArray(rows) ? rows : [];
 };
 
+const appendMenuRows = (nodes = [], groupLabels = [], orderedRows = []) => {
+  (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+    const nodeLabel = String(node?.label || '').trim();
+    if (Array.isArray(node?.children) && node.children.length > 0) {
+      appendMenuRows(
+        node.children,
+        nodeLabel ? [...groupLabels, nodeLabel] : groupLabels,
+        orderedRows
+      );
+      return;
+    }
+
+    const path = String(node?.path || '').trim();
+    if (!path) return;
+    const featureKey = resolveFeatureByPath(path);
+    if (!featureKey || NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return;
+    orderedRows.push({
+      groupLabel: groupLabels.filter(Boolean).join(' > ') || '-',
+      menuLabel: nodeLabel || path,
+      path,
+      featureKey,
+    });
+  });
+};
+
 const extractMenuRows = (menuBlueprint = []) => {
   const orderedRows = [];
 
   (Array.isArray(menuBlueprint) ? menuBlueprint : []).forEach((group) => {
     if (!group?.isParent || !Array.isArray(group?.children)) return;
     const groupLabel = String(group?.label || '').trim() || '-';
-    group.children.forEach((child) => {
-      const path = String(child?.path || '').trim();
-      if (!path) return;
-      const featureKey = resolveFeatureByPath(path);
-      if (!featureKey || NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return;
-      orderedRows.push({
-        groupLabel,
-        menuLabel: String(child?.label || '').trim() || path,
-        path,
-        featureKey,
-      });
-    });
+    appendMenuRows(group.children, [groupLabel], orderedRows);
   });
 
   return orderedRows;

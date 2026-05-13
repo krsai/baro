@@ -118,6 +118,31 @@ const isKeepAliveCandidatePath = (path) => {
 
 const resolveLocalizedLabel = (bundle, languageCode) =>
   bundle?.[languageCode] || bundle?.ko || '';
+const hasNestedMenuChildren = (item) => Array.isArray(item?.children) && item.children.length > 0;
+const matchesMenuPath = (itemPath, currentPath) => {
+  const normalizedItemPath = toPathname(itemPath);
+  const normalizedCurrentPath = toPathname(currentPath);
+  if (!normalizedItemPath || normalizedItemPath === '/') {
+    return normalizedCurrentPath === normalizedItemPath;
+  }
+  return (
+    normalizedCurrentPath === normalizedItemPath ||
+    normalizedCurrentPath.startsWith(`${normalizedItemPath}/`)
+  );
+};
+const flattenNestedMenuItems = (items = []) =>
+  (Array.isArray(items) ? items : []).flatMap((item) => {
+    if (hasNestedMenuChildren(item)) {
+      const nestedItems = flattenNestedMenuItems(item.children);
+      return item?.path ? [item, ...nestedItems] : nestedItems;
+    }
+    return item?.path ? [item] : [];
+  });
+const hasSelectedNestedMenuItem = (item, currentPath) => {
+  if (matchesMenuPath(item?.path, currentPath)) return true;
+  if (!hasNestedMenuChildren(item)) return false;
+  return item.children.some((child) => hasSelectedNestedMenuItem(child, currentPath));
+};
 
 const resolveNameFromEmail = (email) => {
   const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -661,13 +686,40 @@ const MainLayout = () => {
                   icon: <DnsIcon />,
                   path: '/attribute/categories',
                 },
+                {
+                  label: getUiMessage('menu.processMaster', '\uACF5\uC815 \uB9C8\uC2A4\uD130', languageCode),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes',
+                  children: [
+                    {
+                      label: getUiMessage('menu.processTargets', '\uB300\uC0C1 \uAD00\uB9AC', languageCode),
+                      icon: <DnsIcon />,
+                      path: '/attribute/processes/targets',
+                    },
+                    {
+                      label: getUiMessage('menu.processActions', '\uB3D9\uC791 \uAD00\uB9AC', languageCode),
+                      icon: <DnsIcon />,
+                      path: '/attribute/processes/actions',
+                    },
+                    {
+                      label: getUiMessage('menu.processSpecs', '\uADDC\uACA9 \uAD00\uB9AC', languageCode),
+                      icon: <DnsIcon />,
+                      path: '/attribute/processes/specs',
+                    },
+                  ],
+                },
               ]
-            : []),
-          {
-            label: getUiMessage('menu.attributeProcesses', '\uACF5\uC815 \uAD00\uB9AC', languageCode),
-            icon: <DnsIcon />,
-            path: '/attribute/processes',
-          },
+            : [
+                {
+                  label: getUiMessage(
+                    'menu.attributeProcesses',
+                    '\uACF5\uC815 \uAD00\uB9AC',
+                    languageCode
+                  ),
+                  icon: <DnsIcon />,
+                  path: '/attribute/processes',
+                },
+              ]),
         ],
       },
       {
@@ -731,15 +783,27 @@ const MainLayout = () => {
       icon: <PeopleIcon />,
       path: '/customer',
     };
+    const filterVisibleMenuChildren = (children = []) =>
+      (Array.isArray(children) ? children : [])
+        .map((child) => {
+          if (hasNestedMenuChildren(child)) {
+            const visibleNestedChildren = filterVisibleMenuChildren(child.children);
+            if (visibleNestedChildren.length === 0) return null;
+            return {
+              ...child,
+              children: visibleNestedChildren,
+            };
+          }
+          return hasPathAccess(child.path) ? child : null;
+        })
+        .filter(Boolean);
 
     return baseMenuBlueprint
       .map((item) => {
         if (!item.isParent) {
           return hasPathAccess(item.path) ? item : null;
         }
-        let visibleChildren = item.children.filter((child) =>
-          hasPathAccess(child.path)
-        );
+        let visibleChildren = filterVisibleMenuChildren(item.children);
         visibleChildren = visibleChildren.map((child) =>
           child.path === '/work-history'
             ? {
@@ -815,10 +879,7 @@ const MainLayout = () => {
     languageCode,
   ]);
   const flattenedMenuItems = useMemo(
-    () =>
-      menuItems.flatMap((item) =>
-        item.isParent ? item.children : [item]
-      ),
+    () => flattenNestedMenuItems(menuItems),
     [menuItems]
   );
   const resolveWorkHistoryTabLabel = React.useCallback(
@@ -1430,57 +1491,136 @@ const MainLayout = () => {
     EMPTY_WORKSPACE_HINT,
     languageCode
   );
-  const getMenuItemSx = React.useCallback(({ selected = false, nested = false, disabled = false } = {}) => {
-    const baseSx = nested ? { pl: 4 } : {};
+  const getMenuItemSx = React.useCallback(
+    ({ selected = false, nestedLevel = 0, disabled = false } = {}) => {
+      const baseSx = nestedLevel > 0 ? { pl: 2 + nestedLevel * 2 } : {};
 
-    if (disabled) {
-      return {
-        ...baseSx,
-        backgroundColor: 'rgba(0, 0, 0, 0.03)',
-        color: 'text.disabled',
-        '& .MuiListItemIcon-root': {
-          color: 'text.disabled',
-        },
-        '& .MuiBadge-badge': {
-          opacity: 0.55,
-        },
-        '&.Mui-disabled': {
-          opacity: 1,
-          cursor: 'not-allowed',
-        },
-        '&:hover': {
+      if (disabled) {
+        return {
+          ...baseSx,
           backgroundColor: 'rgba(0, 0, 0, 0.03)',
-        },
-      };
-    }
+          color: 'text.disabled',
+          '& .MuiListItemIcon-root': {
+            color: 'text.disabled',
+          },
+          '& .MuiBadge-badge': {
+            opacity: 0.55,
+          },
+          '&.Mui-disabled': {
+            opacity: 1,
+            cursor: 'not-allowed',
+          },
+          '&:hover': {
+            backgroundColor: 'rgba(0, 0, 0, 0.03)',
+          },
+        };
+      }
 
-    if (selected) {
+      if (selected) {
+        return {
+          ...baseSx,
+          backgroundColor: 'rgba(25, 118, 210, 0.08)',
+          color: 'primary.main',
+          '& .MuiListItemIcon-root': {
+            color: 'primary.main',
+          },
+          '&:hover': {
+            backgroundColor: 'rgba(25, 118, 210, 0.12)',
+          },
+        };
+      }
+
       return {
         ...baseSx,
-        backgroundColor: 'rgba(25, 118, 210, 0.08)',
-        color: 'primary.main',
-        '& .MuiListItemIcon-root': {
-          color: 'primary.main',
-        },
         '&:hover': {
-          backgroundColor: 'rgba(25, 118, 210, 0.12)',
+          backgroundColor: 'rgba(0, 0, 0, 0.04)',
         },
       };
-    }
+    },
+    []
+  );
+  const renderNestedMenuItems = React.useCallback(
+    (items = [], nestedLevel = 1) =>
+      (Array.isArray(items) ? items : []).map((item) => {
+        if (hasNestedMenuChildren(item)) {
+          const isGroupSelected = hasSelectedNestedMenuItem(item, currentPath);
+          return (
+            <React.Fragment key={item.path || `${item.label}-${nestedLevel}`}>
+              <Box
+                sx={{
+                  pl: 2 + nestedLevel * 2,
+                  pr: 2,
+                  pt: 1.25,
+                  pb: 0.5,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 700,
+                    color: isGroupSelected ? 'primary.main' : 'text.secondary',
+                  }}
+                >
+                  {item.label}
+                </Typography>
+              </Box>
+              <List component="div" disablePadding>
+                {renderNestedMenuItems(item.children, nestedLevel + 1)}
+              </List>
+            </React.Fragment>
+          );
+        }
 
-    return {
-      ...baseSx,
-      '&:hover': {
-        backgroundColor: 'rgba(0, 0, 0, 0.04)',
-      },
-    };
-  }, []);
+        const isItemSelected = matchesMenuPath(item.path, currentPath);
+        const isItemDisabled = Boolean(item.disabled);
+
+        return (
+          <ListItem
+            button
+            key={item.path}
+            disabled={isItemDisabled}
+            onClick={() => {
+              if (isItemDisabled) return;
+              handleMenuItemClick(item.path);
+            }}
+            selected={isItemSelected}
+            sx={getMenuItemSx({
+              selected: isItemSelected,
+              nestedLevel,
+              disabled: isItemDisabled,
+            })}
+          >
+            <ListItemIcon sx={{ minWidth: '40px' }} />
+            <ListItemText
+              primary={(
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>{item.label}</span>
+                  {(Boolean(item.badgeLabel) || Number(item.badgeCount) > 0) && (
+                    <Badge
+                      color={item.badgeLabel ? 'warning' : 'error'}
+                      badgeContent={item.badgeLabel || item.badgeCount}
+                      sx={{
+                        '& .MuiBadge-badge': {
+                          position: 'static',
+                          transform: 'none',
+                        },
+                      }}
+                    />
+                  )}
+                </Box>
+              )}
+            />
+          </ListItem>
+        );
+      }),
+    [currentPath, getMenuItemSx, handleMenuItemClick]
+  );
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
       <List sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 0 } }}>
         {menuItems.map((menu) => {
-          const isMenuSelected = !menu.isParent && currentPath === menu.path;
+          const isMenuSelected = !menu.isParent && matchesMenuPath(menu.path, currentPath);
           const isMenuDisabled = Boolean(menu.disabled);
 
           return (
@@ -1510,51 +1650,7 @@ const MainLayout = () => {
             {menu.isParent && (
               <Collapse in={menu.isOpen} timeout={120}>
                 <List component="div" disablePadding>
-                  {menu.children.map((child) => {
-                    const isChildSelected =
-                      currentPath === child.path ||
-                      (currentPath ? currentPath.startsWith(child.path + '/') : false);
-                    const isChildDisabled = Boolean(child.disabled);
-
-                    return (
-                      <ListItem
-                        button
-                        key={child.path}
-                        disabled={isChildDisabled}
-                        onClick={() => {
-                          if (isChildDisabled) return;
-                          handleMenuItemClick(child.path);
-                        }}
-                        selected={isChildSelected}
-                        sx={getMenuItemSx({
-                          selected: isChildSelected,
-                          nested: true,
-                          disabled: isChildDisabled,
-                        })}
-                      >
-                        <ListItemIcon sx={{ minWidth: '40px' }} />
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <span>{child.label}</span>
-                              {(Boolean(child.badgeLabel) || Number(child.badgeCount) > 0) && (
-                                <Badge
-                                  color={child.badgeLabel ? 'warning' : 'error'}
-                                  badgeContent={child.badgeLabel || child.badgeCount}
-                                  sx={{
-                                    '& .MuiBadge-badge': {
-                                      position: 'static',
-                                      transform: 'none',
-                                    },
-                                  }}
-                                />
-                              )}
-                            </Box>
-                          }
-                        />
-                      </ListItem>
-                    );
-                  })}
+                  {renderNestedMenuItems(menu.children, 1)}
                 </List>
               </Collapse>
             )}
