@@ -3604,35 +3604,16 @@ const OrderList = () => {
         </Alert>
       )}
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1.5 }}>
-          <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={detailViewMode}
-              onChange={handleDetailViewModeChange}
-              aria-label="order-detail-view-mode"
-            >
-              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
-                {orderPageText.detailViewModeHorizontal}
-              </ToggleButton>
-              <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
-                {orderPageText.detailViewModeVertical}
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
-        </Box>
+      <Box sx={{ minWidth: 0 }}>
         <Box sx={{ minWidth: 0 }}>
           <Box
             sx={{
-              mt: 1,
               display: 'grid',
               gap: 2,
               gridTemplateColumns: {
                 xs: '1fr',
                 md: 'repeat(2, minmax(0, 1fr))',
-                lg: 'minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(240px, 1.2fr) minmax(180px, 0.9fr)',
+                lg: 'minmax(180px, 1fr) minmax(240px, 1.2fr) minmax(240px, 1.2fr) minmax(180px, 0.9fr) auto',
               },
               alignItems: 'start',
             }}
@@ -3698,6 +3679,29 @@ const OrderList = () => {
               fullWidth
               InputLabelProps={{ shrink: true }}
             />
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: { xs: 'flex-start', md: 'flex-end' },
+                gridColumn: { xs: '1', md: 'span 2', lg: '5' },
+              }}
+            >
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={detailViewMode}
+                onChange={handleDetailViewModeChange}
+                aria-label="order-detail-view-mode"
+              >
+                <ToggleButton value={ORDER_DETAIL_VIEW_MODES.HORIZONTAL}>
+                  {orderPageText.detailViewModeHorizontal}
+                </ToggleButton>
+                <ToggleButton value={ORDER_DETAIL_VIEW_MODES.VERTICAL}>
+                  {orderPageText.detailViewModeVertical}
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
           </Box>
 
           <Divider sx={{ my: 3 }} />
@@ -4381,7 +4385,7 @@ const OrderList = () => {
         </Box>
           </Box>
         </Box>
-      </Paper>
+      </Box>
     </AppPageContainer>
   );
 };

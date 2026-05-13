@@ -68,16 +68,6 @@ const EMPTY_WORKSPACE_HINT = {
   vi: 'Hay su dung menu.',
 };
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
-const DAILY_WORK_HISTORY_LABELS = {
-  ko: '\uC77C\uC77C \uAE30\uB85D',
-  en: 'Daily Records',
-  vi: 'Ghi chep ngay',
-};
-const MONTHLY_WORK_HISTORY_LABELS = {
-  ko: '\uC6D4\uAC04 \uAE30\uB85D',
-  en: 'Monthly Records',
-  vi: 'Ghi chep thang',
-};
 const OPERATIONS_MANAGEMENT_LABELS = {
   ko: '\uC6B4\uC601 \uAD00\uB9AC',
   en: 'Operations',
@@ -549,15 +539,9 @@ const MainLayout = () => {
         isOpen: recordsOpen,
         children: [
           {
-            label: getUiMessage('menu.workHistory', '\uAE30\uB85D', languageCode),
+            label: getUiMessage('menu.workHistory', '\uC791\uC5C5 \uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
-          },
-          {
-            label: getUiMessage('menu.workHistoryMonthly', '\uC6D4\uAC04 \uAE30\uB85D', languageCode),
-            icon: <HistoryIcon />,
-            path: '/work-history-monthly',
-            disabled: true,
           },
           {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
@@ -761,20 +745,11 @@ const MainLayout = () => {
             ? {
                 ...child,
                 label: getUiMessage(
-                  'menu.workHistoryDaily',
-                  resolveLocalizedLabel(DAILY_WORK_HISTORY_LABELS, languageCode),
+                  'menu.workHistory',
+                  '\uC791\uC5C5 \uAE30\uB85D',
                   languageCode
                 ),
               }
-            : child.path === '/work-history-monthly'
-              ? {
-                  ...child,
-                  label: getUiMessage(
-                    'menu.workHistoryMonthly',
-                    resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
-                    languageCode
-                  ),
-                }
               : child
         );
         const childPaths = new Set(item.children.map((child) => child.path));
@@ -815,7 +790,6 @@ const MainLayout = () => {
         if (childPaths.has('/work-history') && childPaths.has('/attendance')) {
           const preferredRecordPaths = [
             '/work-history',
-            '/work-history-monthly',
             '/attendance',
           ];
           visibleChildren = [
@@ -850,8 +824,8 @@ const MainLayout = () => {
   const resolveWorkHistoryTabLabel = React.useCallback(
     (kind = 'list') => {
       const baseLabel = getUiMessage(
-        'menu.workHistoryDaily',
-        resolveLocalizedLabel(DAILY_WORK_HISTORY_LABELS, languageCode),
+        'menu.workHistory',
+        '\uC791\uC5C5 \uAE30\uB85D',
         languageCode
       );
       const suffixByKind =
@@ -869,8 +843,8 @@ const MainLayout = () => {
   const resolveWorkHistoryMonthlyTabLabel = React.useCallback(
     (kind = 'list') => {
       const baseLabel = getUiMessage(
-        'menu.workHistoryMonthly',
-        resolveLocalizedLabel(MONTHLY_WORK_HISTORY_LABELS, languageCode),
+        'menu.workHistory',
+        '\uC791\uC5C5 \uAE30\uB85D',
         languageCode
       );
       const suffixByKind =

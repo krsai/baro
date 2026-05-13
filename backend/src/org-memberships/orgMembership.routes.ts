@@ -125,11 +125,53 @@ export const createOrgMembershipRouter = ({
 
     const status = resolveStatus(req.query.status);
     const email = normalizeEmail(req.query.email);
+    const systemOnly =
+      String(req.query.systemOnly ?? "")
+        .trim()
+        .toLowerCase() === "1" ||
+      String(req.query.systemOnly ?? "")
+        .trim()
+        .toLowerCase() === "true";
+    let systemUserEmails: string[] = [];
+    if (systemOnly) {
+      const requesterEmail = normalizeEmail(getRequesterEmail(req));
+      if (!requesterEmail) {
+        return res.status(401).json({ ok: false, error: "request user email is required" });
+      }
+      const requesterSystemUser = await prisma.systemUser.findUnique({
+        where: { email: requesterEmail },
+        select: { systemRole: true },
+      });
+      if (requesterSystemUser?.systemRole !== "SYSTEM_ADMIN") {
+        return res.status(403).json({ ok: false, error: "system admin access required" });
+      }
+
+      const systemUsers = await prisma.systemUser.findMany({
+        select: { email: true },
+        orderBy: { id: "asc" },
+      });
+      systemUserEmails = Array.from(
+        new Set(
+          systemUsers
+            .map((item) => normalizeEmail(item?.email))
+            .filter(Boolean)
+        )
+      );
+      if (systemUserEmails.length === 0) {
+        return res.json([]);
+      }
+    }
     const where: Prisma.OrgMembershipWhereInput = {
       orgId: organization.id,
       ...(status ? { status: status as any } : {}),
-      ...(email ? { email } : {}),
     };
+    if (email && systemOnly) {
+      where.AND = [{ email }, { email: { in: systemUserEmails } }];
+    } else if (email) {
+      where.email = email;
+    } else if (systemOnly) {
+      where.email = { in: systemUserEmails };
+    }
     const members = await prisma.orgMembership.findMany({
       where,
       orderBy: { id: "asc" },

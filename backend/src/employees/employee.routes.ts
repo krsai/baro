@@ -165,6 +165,42 @@ export const createEmployeeRouter = ({
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
     }
+    const systemOnly =
+      String(req.query.systemOnly ?? "")
+        .trim()
+        .toLowerCase() === "1" ||
+      String(req.query.systemOnly ?? "")
+        .trim()
+        .toLowerCase() === "true";
+    let systemUserEmails: string[] = [];
+    if (systemOnly) {
+      const requesterEmail = getRequesterEmail(req);
+      if (!requesterEmail) {
+        return res.status(401).json({ ok: false, error: "request user email is required" });
+      }
+      const requesterSystemUser = await prisma.systemUser.findUnique({
+        where: { email: requesterEmail },
+        select: { systemRole: true },
+      });
+      if (requesterSystemUser?.systemRole !== "SYSTEM_ADMIN") {
+        return res.status(403).json({ ok: false, error: "system admin access required" });
+      }
+
+      const systemUsers = await prisma.systemUser.findMany({
+        select: { email: true },
+        orderBy: { id: "asc" },
+      });
+      systemUserEmails = Array.from(
+        new Set(
+          systemUsers
+            .map((item) => String(item?.email || "").trim().toLowerCase())
+            .filter(Boolean)
+        )
+      );
+      if (systemUserEmails.length === 0) {
+        return res.json([]);
+      }
+    }
     const factoryId = Number(req.query.factoryId);
     const membershipRole =
       typeof req.query.membershipRole === "string"
@@ -192,10 +228,21 @@ export const createEmployeeRouter = ({
     if (membershipRole && excludeMembershipRole && membershipRole === excludeMembershipRole) {
       return res.json([]);
     }
+    const membershipWhere: any = membershipFilter
+      ? {
+          ...membershipFilter,
+        }
+      : {};
+    if (systemOnly) {
+      membershipWhere.email = { in: systemUserEmails };
+    }
+
     const where: any = {
       orgId: organization.id,
       ...(Number.isFinite(factoryId) ? { factoryId } : {}),
-      ...(membershipFilter ? { membership: membershipFilter } : {}),
+      ...(Object.keys(membershipWhere).length > 0
+        ? { membership: membershipWhere }
+        : {}),
     };
     const employees = await prisma.employee.findMany({
       where,

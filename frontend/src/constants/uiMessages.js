@@ -33,7 +33,7 @@ export const UI_MESSAGES = {
     assignment: { ko: '배정', en: 'Assign', vi: 'Phan cong' },
     productionPlan: { ko: '작업 계획 현황', en: 'Production Plan', vi: 'Ke hoach san xuat' },
     standardReview: { ko: '표준 공임 검토', en: 'Standard Review', vi: 'Xem xet cong chuan' },
-    workHistory: { ko: '기록', en: 'Logs', vi: 'Ghi chep' },
+    workHistory: { ko: '작업 기록', en: 'Work Logs', vi: 'Nhat ky cong viec' },
     shipmentReview: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Doi chieu so luong' },
     attendance: { ko: '출퇴근', en: 'Attendance', vi: 'Cham cong' },
     inventory: { ko: '재고 관리', en: 'Inventory', vi: 'Ton kho' },
@@ -63,6 +63,10 @@ export const UI_MESSAGES = {
     staticOptions: { ko: '정적 사전', en: 'Static Dictionary', vi: 'Tu dien tinh' },
     onboardingApproval: { ko: '가입 승인', en: 'Onboarding Approval', vi: 'Duyet dang ky' },
     logout: { ko: '로그아웃', en: 'Logout', vi: 'Dang xuat' },
+  },
+  workHistoryView: {
+    daily: { ko: '일일', en: 'Daily', vi: 'Ngay' },
+    monthly: { ko: '월간', en: 'Monthly', vi: 'Thang' },
   },
   orderDetail: {
     newTitle: { ko: '신규 주문 등록', en: 'New Order', vi: 'Tao don hang moi' },

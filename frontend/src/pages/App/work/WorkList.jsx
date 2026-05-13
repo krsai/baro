@@ -9,6 +9,8 @@ import {
   Paper,
   Select,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -90,6 +92,11 @@ const DAILY_LOG_LABELS = {
   vi: 'Ghi chep ngay',
 };
 
+const WORK_VIEW_MODES = {
+  DAILY: 'daily',
+  MONTHLY: 'monthly',
+};
+
 const FILTER_DATE_PICKER_SLOT_PROPS = {
   textField: {
     sx: {
@@ -164,7 +171,10 @@ const resolveAverageCtSecondsPerWorker = (log) => {
   return Math.round(totalCtSeconds / workerCount);
 };
 
-const WorkList = () => {
+const WorkList = ({
+  viewMode = WORK_VIEW_MODES.DAILY,
+  onViewModeChange = () => {},
+}) => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -312,6 +322,15 @@ const WorkList = () => {
     });
   }, [languageCode, navigateToPath]);
 
+  const handleViewModeToggle = useCallback(
+    (_event, nextMode) => {
+      if (!nextMode || nextMode === viewMode) return;
+      if (nextMode !== WORK_VIEW_MODES.DAILY && nextMode !== WORK_VIEW_MODES.MONTHLY) return;
+      onViewModeChange(nextMode);
+    },
+    [onViewModeChange, viewMode]
+  );
+
   const handleOpen = useCallback(
     (log) => {
       if (!log?.id) return;
@@ -392,8 +411,8 @@ const WorkList = () => {
         <Stack spacing={1}>
           <PageSectionHeader
             title={getUiMessage(
-              'menu.workHistoryDaily',
-              resolveText(DAILY_LOG_LABELS, languageCode),
+              'menu.workHistory',
+              '\uC791\uC5C5 \uAE30\uB85D',
               languageCode
             )}
             actions={
@@ -477,6 +496,20 @@ const WorkList = () => {
                   onChange={handleDateFilterEndChange}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                 />
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={viewMode}
+                  onChange={handleViewModeToggle}
+                  aria-label="work-history-view-mode"
+                >
+                  <ToggleButton value={WORK_VIEW_MODES.DAILY}>
+                    {getUiMessage('workHistoryView.daily', '\uC77C\uC77C', languageCode)}
+                  </ToggleButton>
+                  <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
+                    {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
+                  </ToggleButton>
+                </ToggleButtonGroup>
                 <Stack sx={{ gap: '2px' }}>
                   <Button
                     size="small"

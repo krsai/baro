@@ -8,6 +8,8 @@ import {
   Paper,
   Select,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -80,6 +82,11 @@ const TEXT = {
   selectFactory: { ko: '공장 선택', en: 'Select factory', vi: 'Chon nha may' },
 };
 
+const WORK_VIEW_MODES = {
+  DAILY: 'daily',
+  MONTHLY: 'monthly',
+};
+
 const MONTH_PICKER_SLOT_PROPS = {
   textField: {
     size: 'small',
@@ -120,7 +127,10 @@ const buildMonthlyDetailTabLabel = (workerName, monthKey, languageCode) => {
   return parts.join(': ');
 };
 
-const WorkMonthlyBoard = () => {
+const WorkMonthlyBoard = ({
+  viewMode = WORK_VIEW_MODES.MONTHLY,
+  onViewModeChange = () => {},
+}) => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -324,10 +334,19 @@ const WorkMonthlyBoard = () => {
     [languageCode, monthRange.monthKey, navigateToPath, selectedFactoryIdNumber]
   );
 
+  const handleViewModeToggle = useCallback(
+    (_event, nextMode) => {
+      if (!nextMode || nextMode === viewMode) return;
+      if (nextMode !== WORK_VIEW_MODES.DAILY && nextMode !== WORK_VIEW_MODES.MONTHLY) return;
+      onViewModeChange(nextMode);
+    },
+    [onViewModeChange, viewMode]
+  );
+
   return (
     <AppPageContainer
       title={getUiMessage(
-        'menu.workHistoryMonthly',
+        'menu.workHistory',
         resolveText(TEXT.title, languageCode, '월간 기록'),
         languageCode
       )}
@@ -374,6 +393,21 @@ const WorkMonthlyBoard = () => {
                 slotProps={MONTH_PICKER_SLOT_PROPS}
               />
             </LocalizationProvider>,
+            <ToggleButtonGroup
+              key="view-mode"
+              size="small"
+              exclusive
+              value={viewMode}
+              onChange={handleViewModeToggle}
+              aria-label="work-history-view-mode"
+            >
+              <ToggleButton value={WORK_VIEW_MODES.DAILY}>
+                {getUiMessage('workHistoryView.daily', '\uC77C\uC77C', languageCode)}
+              </ToggleButton>
+              <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
+                {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
+              </ToggleButton>
+            </ToggleButtonGroup>,
             <Stack key="month-shift" sx={{ gap: '2px' }}>
               <Button
                 size="small"

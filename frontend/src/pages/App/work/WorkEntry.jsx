@@ -51,9 +51,9 @@ const resolveText = (bundle, languageCode, fallback = '') =>
 
 const normalizeWorkLogId = (value) => String(value || '').trim();
 const buildWorkListTabLabel = (languageCode) => {
-  if (languageCode === 'en') return 'Daily Records';
-  if (languageCode === 'vi') return 'Ghi chep ngay';
-  return '일일 기록';
+  if (languageCode === 'en') return 'Work Logs';
+  if (languageCode === 'vi') return 'Nhat ky cong viec';
+  return '작업 기록';
 };
 
 const WorkEntry = () => {

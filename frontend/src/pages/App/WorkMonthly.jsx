@@ -1,8 +1,8 @@
 import React from 'react';
-import WorkMonthlyBoard from './work/WorkMonthlyBoard';
+import { Navigate } from 'react-router-dom';
 
 const WorkMonthly = () => {
-  return <WorkMonthlyBoard />;
+  return <Navigate to="/work-history?view=monthly" replace />;
 };
 
 export default WorkMonthly;

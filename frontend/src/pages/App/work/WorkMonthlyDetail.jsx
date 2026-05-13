@@ -19,7 +19,7 @@ import {
 
 const TEXT = {
   title: { ko: '월간 기록 상세', en: 'Monthly Detail', vi: 'Chi tiet thang' },
-  backToList: { ko: '월간 기록 목록', en: 'Monthly Records', vi: 'Danh sach ghi chep thang' },
+  backToList: { ko: '작업 기록 목록', en: 'Work Logs', vi: 'Nhat ky cong viec' },
   searchPlaceholder: {
     ko: '작업일, 라인 검색',
     en: 'Search date, line',
@@ -65,9 +65,9 @@ const formatDuration = (seconds, languageCode) => {
 };
 
 const buildMonthlyListTabLabel = (languageCode) => {
-  if (languageCode === 'en') return 'Monthly Records';
-  if (languageCode === 'vi') return 'Ghi chep thang';
-  return '월간 기록';
+  if (languageCode === 'en') return 'Work Logs';
+  if (languageCode === 'vi') return 'Nhat ky cong viec';
+  return '작업 기록';
 };
 
 const WorkMonthlyDetail = () => {
@@ -97,7 +97,7 @@ const WorkMonthlyDetail = () => {
       normalizedMonthKey && normalizedFactoryId && normalizedWorkerId
         ? `/work-history-monthly/${normalizedMonthKey}/${normalizedFactoryId}/${normalizedWorkerId}`
         : null;
-    navigateToPath('/work-history-monthly', {
+    navigateToPath('/work-history?view=monthly', {
       label: buildMonthlyListTabLabel(languageCode),
       ...(closeTabId ? { closeTabId } : {}),
     });
@@ -275,7 +275,7 @@ const WorkMonthlyDetail = () => {
       title={resolveText(TEXT.title, languageCode, '월간 기록 상세')}
       titleActions={(
         <Button variant="outlined" onClick={closeDetail}>
-          {resolveText(TEXT.backToList, languageCode, '월간 기록 목록')}
+          {resolveText(TEXT.backToList, languageCode, '작업 기록 목록')}
         </Button>
       )}
       toolbar={(
