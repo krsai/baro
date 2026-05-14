@@ -74,7 +74,10 @@ import {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+const JSON_BODY_LIMIT =
+  String(process.env.JSON_BODY_LIMIT || "10mb").trim() || "10mb";
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 app.use((req, _res, next) =>
   runWithRequestActor(getRequesterEmail(req), () => next())
 );

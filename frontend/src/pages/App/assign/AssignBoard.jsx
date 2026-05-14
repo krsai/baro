@@ -156,6 +156,14 @@ const buildAssignableCardSearchText = (card) =>
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+const formatQuantityRatio = (unassignedQuantity, orderTotalQuantity) =>
+  `${formatNumberWithCommas(unassignedQuantity, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })}/${formatNumberWithCommas(orderTotalQuantity, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  })}`;
 
 const UnassignedCardItem = React.memo(function UnassignedCardItem({
   card,
@@ -188,6 +196,8 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel({
   filteredCardCount,
   groupedFilteredCards,
+  filteredUnassignedQuantity,
+  filteredOrderTotalQuantity,
   loading,
   selectedCardId,
   languageCode,
@@ -206,6 +216,17 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
           orderCount: groupedFilteredCards.length,
         }
       );
+  const quantitySummary = getUiMessage(
+    'assign.quantityCompact',
+    '수량 {quantity}',
+    languageCode,
+    {
+      quantity: formatQuantityRatio(
+        filteredUnassignedQuantity,
+        filteredOrderTotalQuantity
+      ),
+    }
+  );
 
   return (
     <Stack spacing={1.5} sx={{ minWidth: 0 }}>
@@ -214,7 +235,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
           {getUiMessage('assign.unassignedCards', '미배정 카드', languageCode)}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {summaryText}
+          {loading ? summaryText : `${summaryText} · ${quantitySummary}`}
         </Typography>
       </Box>
       <Stack
@@ -271,6 +292,18 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
                   `${group.cards.length}개`,
                   languageCode,
                   { count: group.cards.length }
+                )}{' '}
+                ·{' '}
+                {getUiMessage(
+                  'assign.quantityCompact',
+                  '수량 {quantity}',
+                  languageCode,
+                  {
+                    quantity: formatQuantityRatio(
+                      group.unassignedQuantity,
+                      group.orderTotalQuantity
+                    ),
+                  }
                 )}
               </Typography>
             </Box>
@@ -3528,6 +3561,26 @@ const AssignBoard = () => {
       (card) => (cardSearchTextById.get(String(card.id)) || '').includes(lower)
     );
   }, [cardSearchTextById, deferredSearchTerm, unassignedCards]);
+  const unassignedQuantityByOrderNo = useMemo(() => {
+    const totals = new Map();
+    unassignedCards.forEach((card) => {
+      const orderNo =
+        normalizeKey(card?.orderNo) ||
+        getUiMessage('assign.fallbackOrderNumber', 'No Order No.', languageCode);
+      totals.set(orderNo, (totals.get(orderNo) || 0) + Math.max(0, Number(card?.quantity) || 0));
+    });
+    return totals;
+  }, [languageCode, unassignedCards]);
+  const totalOrderQuantityByOrderNo = useMemo(() => {
+    const totals = new Map();
+    cards.forEach((card) => {
+      const orderNo =
+        normalizeKey(card?.orderNo) ||
+        getUiMessage('assign.fallbackOrderNumber', 'No Order No.', languageCode);
+      totals.set(orderNo, (totals.get(orderNo) || 0) + Math.max(0, Number(card?.quantity) || 0));
+    });
+    return totals;
+  }, [cards, languageCode]);
 
   const compareUnassignedCardAsc = useCallback((left, right) => {
     const leftStyleKey =
@@ -3600,6 +3653,12 @@ const AssignBoard = () => {
     return Array.from(groups.values())
       .map((group) => ({
         ...group,
+        unassignedQuantity:
+          Number(unassignedQuantityByOrderNo.get(group.orderNo)) || 0,
+        orderTotalQuantity: Math.max(
+          Number(unassignedQuantityByOrderNo.get(group.orderNo)) || 0,
+          Number(totalOrderQuantityByOrderNo.get(group.orderNo)) || 0
+        ),
         cards: [...group.cards].sort(compareUnassignedCardAsc),
       }))
       .sort((a, b) => {
@@ -3613,7 +3672,29 @@ const AssignBoard = () => {
         }
         return a.orderNo.localeCompare(b.orderNo, undefined, { numeric: true });
       });
-  }, [compareUnassignedCardAsc, filteredCards, languageCode]);
+  }, [
+    compareUnassignedCardAsc,
+    filteredCards,
+    languageCode,
+    totalOrderQuantityByOrderNo,
+    unassignedQuantityByOrderNo,
+  ]);
+  const filteredUnassignedQuantity = useMemo(
+    () =>
+      groupedFilteredCards.reduce(
+        (sum, group) => sum + (Number(group.unassignedQuantity) || 0),
+        0
+      ),
+    [groupedFilteredCards]
+  );
+  const filteredOrderTotalQuantity = useMemo(
+    () =>
+      groupedFilteredCards.reduce(
+        (sum, group) => sum + (Number(group.orderTotalQuantity) || 0),
+        0
+      ),
+    [groupedFilteredCards]
+  );
 
   const lineById = useMemo(
     () => new Map((Array.isArray(lines) ? lines : []).map((line) => [String(line.id), line])),
@@ -4857,6 +4938,8 @@ const AssignBoard = () => {
             <UnassignedCardGroupsPanel
               filteredCardCount={filteredCards.length}
               groupedFilteredCards={groupedFilteredCards}
+              filteredUnassignedQuantity={filteredUnassignedQuantity}
+              filteredOrderTotalQuantity={filteredOrderTotalQuantity}
               loading={loading}
               selectedCardId={selectedCardId}
               languageCode={languageCode}
