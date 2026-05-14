@@ -2052,15 +2052,19 @@ const OrderList = () => {
 
       (Array.isArray(group.rows) ? group.rows : []).forEach((row) => {
         if (row?.isColorFirstRow || !currentColorGroup) {
+          const rowItemIds =
+            Array.isArray(row?.colorRowItemIds) && row.colorRowItemIds.length > 0
+              ? row.colorRowItemIds.map((itemId) => String(itemId || '').trim()).filter(Boolean)
+              : [String(row?.item?.id || '').trim()].filter(Boolean);
+          const stableColorRowKeyBase = rowItemIds.length
+            ? rowItemIds.join('|')
+            : `${group.styleId || group.styleName || group.styleCode || 'group'}-${nextDisplayNo}`;
           currentColorGroup = {
-            key: `${group.key}-${row?.item?.id || row?.displayNo || nextDisplayNo}`,
+            key: `color-row:${stableColorRowKeyBase}`,
             displayNo: nextDisplayNo++,
             colorDisplayName: getResolvedColorLabel(row?.item) || '-',
             rows: [],
-            rowItemIds:
-              Array.isArray(row?.colorRowItemIds) && row.colorRowItemIds.length > 0
-                ? row.colorRowItemIds
-                : [String(row?.item?.id || '').trim()].filter(Boolean),
+            rowItemIds,
           };
           colorGroupRows.push(currentColorGroup);
         }
