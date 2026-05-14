@@ -133,12 +133,14 @@ const SearchableSelect = ({
             ...(params.inputProps || {}),
             ...restCustomInputProps,
             onKeyDown: (event) => {
-              params.inputProps?.onKeyDown?.(event);
+              customInputOnKeyDown?.(event);
+              textFieldOnKeyDown?.(event);
               if (!event.defaultPrevented) {
                 handleKeyboardSelect(event);
               }
-              customInputOnKeyDown?.(event);
-              textFieldOnKeyDown?.(event);
+              if (!event.defaultPrevented) {
+                params.inputProps?.onKeyDown?.(event);
+              }
             },
           }}
         />
