@@ -6782,8 +6782,7 @@ const buildWorkLogContextResponse = async ({
           ...plan,
           lineName: lineNameById.get(Number(plan?.lineId)) || "",
         })
-      )
-      .filter((plan) => Boolean(plan?.ctSnapshot?.totalCtSeconds)),
+      ),
   };
   if (!debug) return response;
 

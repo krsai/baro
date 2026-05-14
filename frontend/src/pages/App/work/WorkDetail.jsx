@@ -466,12 +466,17 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
 };
 const normalizeWorkerOptions = (workers = []) =>
   sortByLabel(Array.isArray(workers) ? workers : [], (worker) => worker?.name || worker?.email || '');
-const normalizeAssignmentPlanOptions = (plans = []) =>
+const normalizeAssignmentPlans = (plans = []) =>
   sortByLabel(
     (Array.isArray(plans) ? plans : [])
-      .filter((plan) => hasAssignmentCtSnapshot(plan) && !Boolean(plan?.isCompleted))
       .map((plan) => enrichAssignmentPlan(plan)),
     (plan) => formatAssignmentLabel(plan)
+  );
+const filterAssignmentsWithCt = (plans = []) =>
+  (Array.isArray(plans) ? plans : []).filter((plan) => hasAssignmentCtSnapshot(plan));
+const normalizeAssignmentPlanOptions = (plans = []) =>
+  filterAssignmentsWithCt(normalizeAssignmentPlans(plans)).filter(
+    (plan) => !Boolean(plan?.isCompleted)
   );
 const buildDisplayProcessName = (process, languageCode) => {
   if (!process) return '-';
@@ -501,6 +506,7 @@ const buildDisplayProcessCode = (process) =>
 const buildProcessOptionDisplayLabel = (process, languageCode) => {
   const processName = buildDisplayProcessName(process, languageCode);
   const processCode = buildDisplayProcessCode(process);
+  if (processCode && (!processName || processName === '-')) return processCode;
   return processCode ? `${processCode} · ${processName}` : processName;
 };
 const buildProcessIdentityKey = (process) => {
@@ -731,6 +737,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     normalizeWorkerOptions(initialContext?.workers)
   );
   const [processAttributes, setProcessAttributes] = useState([]);
+  const [allAssignmentPlans, setAllAssignmentPlans] = useState(() =>
+    normalizeAssignmentPlans(initialContext?.assignments)
+  );
   const [assignmentOptions, setAssignmentOptions] = useState(() =>
     normalizeAssignmentPlanOptions(initialContext?.assignments)
   );
@@ -750,9 +759,21 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     () => normalizeWorkerOptions(initialContext?.workers),
     [initialContext?.workers]
   );
-  const prefetchedAssignments = useMemo(
-    () => normalizeAssignmentPlanOptions(initialContext?.assignments),
+  const prefetchedAllAssignments = useMemo(
+    () => normalizeAssignmentPlans(initialContext?.assignments),
     [initialContext?.assignments]
+  );
+  const prefetchedCtAssignments = useMemo(
+    () => filterAssignmentsWithCt(prefetchedAllAssignments),
+    [prefetchedAllAssignments]
+  );
+  const prefetchedAssignments = useMemo(
+    () => prefetchedCtAssignments.filter((plan) => !Boolean(plan?.isCompleted)),
+    [prefetchedCtAssignments]
+  );
+  const ctAssignmentPool = useMemo(
+    () => filterAssignmentsWithCt(allAssignmentPlans),
+    [allAssignmentPlans]
   );
 
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
@@ -808,6 +829,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     setFactories(initialFactoryOption ? [initialFactoryOption] : []);
     setLines(initialLineOption ? [initialLineOption] : []);
     setLineWorkers(prefetchedWorkers);
+    setAllAssignmentPlans(prefetchedAllAssignments);
     setAssignmentOptions(prefetchedAssignments);
     setRows(
       hasInitialRecords
@@ -815,7 +837,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
             buildHydratedRows({
               records: initialLog?.records,
               workers: prefetchedWorkers,
-              assignments: prefetchedAssignments,
+              assignments: prefetchedCtAssignments,
             })
           )
         : []
@@ -824,7 +846,20 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     setSearchTerm('');
     setFormError('');
     setBaseLoading(!initialLog?.id);
-  }, [hasInitialRecords, initialFactoryOption, initialLineOption, initialLog?.createdAt, initialLog?.id, initialLog?.note, initialLog?.records, initialLog?.workDate, prefetchedAssignments, prefetchedWorkers]);
+  }, [
+    hasInitialRecords,
+    initialFactoryOption,
+    initialLineOption,
+    initialLog?.createdAt,
+    initialLog?.id,
+    initialLog?.note,
+    initialLog?.records,
+    initialLog?.workDate,
+    prefetchedAllAssignments,
+    prefetchedAssignments,
+    prefetchedCtAssignments,
+    prefetchedWorkers,
+  ]);
   useEffect(() => {
     const abortController = new AbortController();
     let cancelled = false;
@@ -902,12 +937,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   useEffect(() => {
     if (!selectedFactoryId || !selectedLineId) {
       setLineWorkers([]);
+      setAllAssignmentPlans([]);
       setAssignmentOptions([]);
       setLineDataLoading(false);
       return;
     }
     if (initialLog?.id && initialContext && currentContextKey === initialContextKey) {
       setLineWorkers(prefetchedWorkers);
+      setAllAssignmentPlans(prefetchedAllAssignments);
       setAssignmentOptions(prefetchedAssignments);
       setLineDataLoading(false);
       return;
@@ -941,7 +978,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
             );
           }
         }
-        setAssignmentOptions(normalizeAssignmentPlanOptions(context?.assignments));
+        const normalizedAssignments = normalizeAssignmentPlans(context?.assignments);
+        const normalizedCtAssignments = filterAssignmentsWithCt(normalizedAssignments);
+        setAllAssignmentPlans(normalizedAssignments);
+        setAssignmentOptions(
+          normalizedCtAssignments.filter((plan) => !Boolean(plan?.isCompleted))
+        );
         setLineWorkers(normalizeWorkerOptions(context?.workers));
         if (context?.line) {
           setLines((currentLines) =>
@@ -956,7 +998,20 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       cancelled = true;
       abortController.abort();
     };
-  }, [activeOrgId, currentContextKey, initialContext, initialContextKey, initialLog?.id, prefetchedAssignments, prefetchedWorkers, selectedFactoryId, selectedLineId, workDateKey, workerDebugEnabled]);
+  }, [
+    activeOrgId,
+    currentContextKey,
+    initialContext,
+    initialContextKey,
+    initialLog?.id,
+    prefetchedAllAssignments,
+    prefetchedAssignments,
+    prefetchedWorkers,
+    selectedFactoryId,
+    selectedLineId,
+    workDateKey,
+    workerDebugEnabled,
+  ]);
 
   useEffect(() => {
     if (!initialLog?.id || initialRowsHydratedRef.current) return;
@@ -965,10 +1020,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       initialRowsHydratedRef.current = true;
       return;
     }
-    const hydratedRows = buildHydratedRows({ records: initialLog?.records, workers: lineWorkers, assignments: assignmentOptions });
+    const hydratedRows = buildHydratedRows({
+      records: initialLog?.records,
+      workers: lineWorkers,
+      assignments: ctAssignmentPool,
+    });
     setRows(hydratedRows.length > 0 ? sortRowsByWorker(hydratedRows) : []);
     initialRowsHydratedRef.current = true;
-  }, [assignmentOptions, hasInitialRecords, initialLog, lineWorkers, selectedFactoryId, selectedLineId]);
+  }, [ctAssignmentPool, hasInitialRecords, initialLog, lineWorkers, selectedFactoryId, selectedLineId]);
 
   useEffect(() => {
     if (initialLog?.id && hasInitialRecords) return;
@@ -1051,12 +1110,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   }, [processAttributes]);
   const assignmentOptionMap = useMemo(
     () =>
-      assignmentOptions.reduce((map, assignment) => {
+      ctAssignmentPool.reduce((map, assignment) => {
         const key = toText(assignment?.dbId || assignment?.id);
         if (key) map.set(key, assignment);
         return map;
       }, new Map()),
-    [assignmentOptions]
+    [ctAssignmentPool]
   );
   const resolveAssignmentForRow = useCallback(
     (row) => resolveAssignmentOption(row?.assignment, assignmentOptionMap),
@@ -1169,7 +1228,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     const groupMetaByKey = new Map();
     const seenPlanIds = new Set();
 
-    assignmentOptions.forEach((plan) => {
+    ctAssignmentPool.forEach((plan) => {
       const planId = toPositiveIdOrNull(plan?.dbId);
       if (!planId || seenPlanIds.has(planId)) return;
       seenPlanIds.add(planId);
@@ -1207,7 +1266,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     });
 
     return { planMetaById, groupMetaByKey };
-  }, [assignmentOptions]);
+  }, [ctAssignmentPool]);
   const assignmentProcessUsageBuckets = useMemo(() => {
     const buckets = new Map();
     summary.records.forEach((record) => {
@@ -1275,11 +1334,36 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     return rowMetaMap;
   }, [assignmentProcessUsageBuckets]);
   const autoExceededNote = useMemo(() => summary.records.map((record) => {
-    const plan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
+    const plan = ctAssignmentPool.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
     const baselineQuantity = resolveBaselineQuantity(plan);
     if (!baselineQuantity || record.quantity <= baselineQuantity) return null;
     return `${record.workerName || '-'} / ${formatAssignmentLabel(plan)} / ${record.processName || '-'} ${record.quantity - baselineQuantity}개 초과`;
-  }).filter(Boolean).join('\n'), [assignmentOptions, summary.records]);
+  }).filter(Boolean).join('\n'), [ctAssignmentPool, summary.records]);
+  const missingCtStyleLabels = useMemo(() => {
+    const labels = [];
+    const seen = new Set();
+    allAssignmentPlans.forEach((plan) => {
+      if (hasAssignmentCtSnapshot(plan)) return;
+      const styleLabel = toText(formatAssignmentLabel(plan));
+      const orderNo = toText(plan?.orderNo);
+      const orderQuantity = resolveBaselineQuantity(plan);
+      const compactMeta = [orderNo, orderQuantity ? formatCount(orderQuantity) : null]
+        .filter(Boolean)
+        .join(' ');
+      const label = [styleLabel, compactMeta].filter(Boolean).join(' · ');
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      labels.push(label);
+    });
+    return labels;
+  }, [allAssignmentPlans]);
+  const ctWarningMessage = useMemo(() => {
+    if (ctAssignmentPool.length > 0) return '';
+    if (missingCtStyleLabels.length > 0) {
+      return `CT 미저장 스타일: ${missingCtStyleLabels.join(', ')}`;
+    }
+    return 'CT가 저장된 배정카드가 없습니다.';
+  }, [ctAssignmentPool.length, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
     (row) => ensureOptionIncluded(lineWorkers, row?.worker, (item) => item?.id || item?.name),
     [lineWorkers]
@@ -1350,25 +1434,20 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!styleOption) return '';
     const orderNo = toText(styleOption?.orderNo);
     const orderQuantity = resolveBaselineQuantity(styleOption);
-    const parts = [];
-    if (orderNo) parts.push(`${LABELS.orderNo} ${orderNo}`);
-    if (orderQuantity) parts.push(`${LABELS.orderQuantity} ${formatCount(orderQuantity)}`);
-    return parts.join(' · ');
+    return [orderNo, orderQuantity ? formatCount(orderQuantity) : null]
+      .filter(Boolean)
+      .join(' ');
   }, []);
-  const getStyleOptionStatusLabel = useCallback(
+  const getStyleExceptionLabel = useCallback(
     (styleOption, workerOption) => {
       if (!styleOption) return '';
-      const orderMetaLabel = buildStyleOrderMetaLabel(styleOption);
-      let exceptionLabel = '';
-      if (isStyleExceptionForWorker(styleOption, workerOption)) {
-        const lineName = toText(styleOption?.lineName);
-        exceptionLabel = [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
-          .filter(Boolean)
-          .join(' · ');
-      }
-      return [orderMetaLabel, exceptionLabel].filter(Boolean).join(' · ');
+      if (!isStyleExceptionForWorker(styleOption, workerOption)) return '';
+      const lineName = toText(styleOption?.lineName);
+      return [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
+        .filter(Boolean)
+        .join(' · ');
     },
-    [buildStyleOrderMetaLabel, isStyleExceptionForWorker]
+    [isStyleExceptionForWorker]
   );
   const getStyleOptionLabel = useCallback((option) => {
     if (!option) return '';
@@ -1795,14 +1874,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
             <Alert severity="warning">선택한 라인/작업일 기준으로 작업자가 없습니다.</Alert>
           ) : rows.length === 0 ? (
             <Stack spacing={1.5} alignItems="flex-start">
-              {assignmentOptions.length === 0 ? <Alert severity="warning">CT가 저장된 배정카드가 없습니다.</Alert> : null}
+              {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               <Alert severity="info">첫 작업자 입력 행을 준비 중입니다.</Alert>
             </Stack>
           ) : filteredRows.length === 0 ? (
             <Alert severity="info">검색 결과가 없습니다.</Alert>
           ) : (
             <Stack spacing={1.25}>
-              {assignmentOptions.length === 0 ? <Alert severity="warning">CT가 저장된 배정카드가 없습니다.</Alert> : null}
+              {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {isMobile ? (
                 <Stack spacing={1}>
                   {pagedRows.map((row) => {
@@ -1814,8 +1893,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                     const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
                     const styleOptions = resolveStyleOptions(rowForOptions);
                     const selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
-                    const selectedStyleStatusLabel = selectedStyleOption
-                      ? getStyleOptionStatusLabel(selectedStyleOption, row?.worker)
+                    const selectedStyleOrderLabel = selectedStyleOption
+                      ? buildStyleOrderMetaLabel(selectedStyleOption)
+                      : '';
+                    const selectedStyleExceptionLabel = selectedStyleOption
+                      ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
                       : '';
                     const processOptions = resolveProcessOptions(rowForOptions);
                     const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
@@ -1898,39 +1980,54 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               autoFocus: shouldFocusWorker,
                             }}
                           />
-                          <SearchableSelect
-                            label={LABELS.style}
-                            options={styleOptions}
-                            value={selectedStyleOption}
-                            onChange={(_event, value) => handleStyleChange(row.id, value)}
-                            autoSelect={false}
-                            disabled={styleDisabled}
-                            autoHighlight
-                            openOnFocus
-                            selectOnFocus
-                            clearOnBlur={false}
-                            handleHomeEndKeys
-                            getOptionLabel={getStyleOptionLabel}
-                            isOptionEqualToValue={(option, value) =>
-                              toText(option?.id || option?.dbId) ===
-                              toText(value?.id || value?.dbId)
-                            }
-                            renderOption={renderStyleOption}
-                            textFieldProps={{
-                              size: 'small',
-                              placeholder: stylePlaceholder,
-                              autoFocus: shouldFocusStyle,
-                            }}
-                          />
-                          {selectedStyleStatusLabel ? (
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              sx={{ mt: -0.5, fontSize: '0.68rem', lineHeight: 1.2 }}
-                            >
-                              {selectedStyleStatusLabel}
-                            </Typography>
-                          ) : null}
+                          <Stack spacing={0.35}>
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <SearchableSelect
+                                  label={LABELS.style}
+                                  options={styleOptions}
+                                  value={selectedStyleOption}
+                                  onChange={(_event, value) => handleStyleChange(row.id, value)}
+                                  autoSelect={false}
+                                  disabled={styleDisabled}
+                                  autoHighlight
+                                  openOnFocus
+                                  selectOnFocus
+                                  clearOnBlur={false}
+                                  handleHomeEndKeys
+                                  getOptionLabel={getStyleOptionLabel}
+                                  isOptionEqualToValue={(option, value) =>
+                                    toText(option?.id || option?.dbId) ===
+                                    toText(value?.id || value?.dbId)
+                                  }
+                                  renderOption={renderStyleOption}
+                                  textFieldProps={{
+                                    size: 'small',
+                                    placeholder: stylePlaceholder,
+                                    autoFocus: shouldFocusStyle,
+                                  }}
+                                />
+                              </Box>
+                              {selectedStyleOrderLabel ? (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ flexShrink: 0, fontSize: '0.72rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}
+                                >
+                                  {selectedStyleOrderLabel}
+                                </Typography>
+                              ) : null}
+                            </Stack>
+                            {selectedStyleExceptionLabel ? (
+                              <Typography
+                                variant="caption"
+                                color="warning.main"
+                                sx={{ fontSize: '0.68rem', lineHeight: 1.2 }}
+                              >
+                                {selectedStyleExceptionLabel}
+                              </Typography>
+                            ) : null}
+                          </Stack>
                           <SearchableSelect
                             label={LABELS.process}
                             options={processOptions}
@@ -2065,8 +2162,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                       const selectedStyleOption = isEditingRow
                         ? resolveSelectedStyleOption(rowForOptions, styleOptions)
                         : null;
-                      const selectedStyleStatusLabel = selectedStyleOption
-                        ? getStyleOptionStatusLabel(selectedStyleOption, row?.worker)
+                      const selectedStyleOrderLabel = selectedStyleOption
+                        ? buildStyleOrderMetaLabel(selectedStyleOption)
+                        : '';
+                      const selectedStyleExceptionLabel = selectedStyleOption
+                        ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
                         : '';
                       const processOptions = isEditingRow ? resolveProcessOptions(rowForOptions) : [];
                       const selectedProcessOption = isEditingRow
@@ -2175,30 +2275,54 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
-                              <SearchableSelect
-                                label={LABELS.style}
-                                options={styleOptions}
-                                value={selectedStyleOption}
-                                onChange={(_event, value) => handleStyleChange(row.id, value)}
-                                autoSelect={false}
-                                disabled={styleDisabled}
-                                autoHighlight
-                                openOnFocus
-                                selectOnFocus
-                                clearOnBlur={false}
-                                handleHomeEndKeys
-                                getOptionLabel={getStyleOptionLabel}
-                                isOptionEqualToValue={(option, value) =>
-                                  toText(option?.id || option?.dbId) ===
-                                  toText(value?.id || value?.dbId)
-                                }
-                                renderOption={renderStyleOption}
-                                textFieldProps={{
-                                  size: 'small',
-                                  placeholder: stylePlaceholder,
-                                  autoFocus: shouldFocusStyle,
-                                }}
-                              />
+                              <Stack spacing={0.35}>
+                                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                                    <SearchableSelect
+                                      label={LABELS.style}
+                                      options={styleOptions}
+                                      value={selectedStyleOption}
+                                      onChange={(_event, value) => handleStyleChange(row.id, value)}
+                                      autoSelect={false}
+                                      disabled={styleDisabled}
+                                      autoHighlight
+                                      openOnFocus
+                                      selectOnFocus
+                                      clearOnBlur={false}
+                                      handleHomeEndKeys
+                                      getOptionLabel={getStyleOptionLabel}
+                                      isOptionEqualToValue={(option, value) =>
+                                        toText(option?.id || option?.dbId) ===
+                                        toText(value?.id || value?.dbId)
+                                      }
+                                      renderOption={renderStyleOption}
+                                      textFieldProps={{
+                                        size: 'small',
+                                        placeholder: stylePlaceholder,
+                                        autoFocus: shouldFocusStyle,
+                                      }}
+                                    />
+                                  </Box>
+                                  {selectedStyleOrderLabel ? (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ flexShrink: 0, fontSize: '0.72rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}
+                                    >
+                                      {selectedStyleOrderLabel}
+                                    </Typography>
+                                  ) : null}
+                                </Stack>
+                                {selectedStyleExceptionLabel ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="warning.main"
+                                    sx={{ fontSize: '0.68rem', lineHeight: 1.2 }}
+                                  >
+                                    {selectedStyleExceptionLabel}
+                                  </Typography>
+                                ) : null}
+                              </Stack>
                             ) : (
                               <Box
                                 onClick={(event) => {
@@ -2215,15 +2339,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 {selectedStyleOption ? getStyleOptionLabel(selectedStyleOption) : '-'}
                               </Box>
                             )}
-                            {selectedStyleStatusLabel ? (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ mt: 0.4, display: 'block', fontSize: '0.68rem', lineHeight: 1.2 }}
-                              >
-                                {selectedStyleStatusLabel}
-                              </Typography>
-                            ) : null}
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
