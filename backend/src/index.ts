@@ -5380,6 +5380,655 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
     orderIds,
   });
 };
+const toUtcDateFromDateKeyForAssignmentSchedule = (
+  dateKeyInput: any
+): Date | null => {
+  const dateKey = normalizeDateKey(dateKeyInput);
+  const parts = parseDateKeyParts(dateKey);
+  if (!parts) return null;
+  const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  if (Number.isNaN(utcDate.getTime())) return null;
+  return utcDate;
+};
+const toDateKeyFromUtcDateForAssignmentSchedule = (date: Date): string =>
+  date.toISOString().slice(0, 10);
+const shiftDateKeyByDaysForAssignmentSchedule = (
+  dateKeyInput: any,
+  days: number
+): string | null => {
+  const baseDate = toUtcDateFromDateKeyForAssignmentSchedule(dateKeyInput);
+  if (!baseDate) return null;
+  baseDate.setUTCDate(baseDate.getUTCDate() + Math.trunc(days));
+  return toDateKeyFromUtcDateForAssignmentSchedule(baseDate);
+};
+const diffDateKeysByDaysForAssignmentSchedule = (
+  fromDateKeyInput: any,
+  toDateKeyInput: any
+): number | null => {
+  const fromDate = toUtcDateFromDateKeyForAssignmentSchedule(fromDateKeyInput);
+  const toDate = toUtcDateFromDateKeyForAssignmentSchedule(toDateKeyInput);
+  if (!fromDate || !toDate) return null;
+  return Math.round((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+};
+const countDateRangeDaysInclusiveForAssignmentSchedule = (
+  startDateKeyInput: any,
+  endDateKeyInput: any
+): number => {
+  const diffDays = diffDateKeysByDaysForAssignmentSchedule(
+    startDateKeyInput,
+    endDateKeyInput
+  );
+  if (diffDays == null || diffDays < 0) return 0;
+  return diffDays + 1;
+};
+const toEpochDayFromDateKeyForAssignmentSchedule = (
+  dateKeyInput: any
+): number | null => {
+  const date = toUtcDateFromDateKeyForAssignmentSchedule(dateKeyInput);
+  if (!date) return null;
+  return Math.trunc(date.getTime() / (24 * 60 * 60 * 1000));
+};
+const resolveAssignmentProducedQuantityFromProcessTotals = ({
+  processTotals,
+  baselineQuantity,
+}: {
+  processTotals: number[];
+  baselineQuantity: number | null;
+}): number => {
+  const normalizedTotals = ensureArray(processTotals)
+    .map((value) => Math.max(0, Math.round(Number(value) || 0)))
+    .filter((value) => value > 0);
+  const sumQuantity = normalizedTotals.reduce((sum, value) => sum + value, 0);
+  if (normalizedTotals.length <= 1) return sumQuantity;
+
+  const maxProcessQuantity = Math.max(...normalizedTotals);
+  // 다공정에서 동일 완성수량이 반복 기록되면(sum 과대) 생산량은 공정 최대치로 본다.
+  if (baselineQuantity != null && baselineQuantity > 0) {
+    const tolerance = Math.max(1, Math.round(baselineQuantity * 0.15));
+    if (
+      sumQuantity > baselineQuantity + tolerance &&
+      maxProcessQuantity <= baselineQuantity + tolerance
+    ) {
+      return maxProcessQuantity;
+    }
+  }
+  if (sumQuantity >= maxProcessQuantity * 2) {
+    return maxProcessQuantity;
+  }
+  return sumQuantity;
+};
+const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
+  value: any
+): string => {
+  const processId = toPositiveIntOrNull(value?.processId);
+  if (processId != null) return `id:${processId}`;
+  const processCode = resolveOptionalString(value?.processCode, null);
+  if (processCode) return `code:${normalizeComparableText(processCode)}`;
+  return "unknown";
+};
+const allocateExtendedDurationsByPlannedRatio = (
+  plannedDurations: number[],
+  targetTotalDays: number
+): number[] => {
+  const normalizedPlanned = ensureArray(plannedDurations).map((value) =>
+    Math.max(1, Math.round(Number(value) || 1))
+  );
+  if (normalizedPlanned.length === 0) return [];
+  const plannedTotal = normalizedPlanned.reduce((sum, value) => sum + value, 0);
+  if (targetTotalDays <= plannedTotal) {
+    return [...normalizedPlanned];
+  }
+
+  const extraDays = targetTotalDays - plannedTotal;
+  const baseAdds = normalizedPlanned.map((duration) =>
+    Math.floor((duration / plannedTotal) * extraDays)
+  );
+  let remaining = extraDays - baseAdds.reduce((sum, value) => sum + value, 0);
+  const rankedByRemainder = normalizedPlanned
+    .map((duration, index) => ({
+      index,
+      remainder: (duration / plannedTotal) * extraDays - (baseAdds[index] || 0),
+    }))
+    .sort((a, b) => {
+      if (b.remainder !== a.remainder) return b.remainder - a.remainder;
+      return a.index - b.index;
+    });
+  for (let i = 0; i < rankedByRemainder.length && remaining > 0; i += 1) {
+    const targetIndex = rankedByRemainder[i]!.index;
+    baseAdds[targetIndex] = (baseAdds[targetIndex] || 0) + 1;
+    remaining -= 1;
+  }
+
+  return normalizedPlanned.map((duration, index) => duration + (baseAdds[index] || 0));
+};
+const syncAssignmentSchedulesFromWorkRecordPlans = async ({
+  orgId,
+  assignmentPlanIds,
+}: {
+  orgId: number;
+  assignmentPlanIds: any;
+}): Promise<{ updatedAssignmentCount: number }> => {
+  const normalizedPlanIds = normalizePlanIdList(assignmentPlanIds);
+  if (normalizedPlanIds.length === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const [boardState, affectedPlans] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { id: true, assignments: true },
+    }),
+    prisma.assignmentPlan.findMany({
+      where: { orgId, id: { in: normalizedPlanIds } },
+      select: { id: true, externalId: true, lineId: true },
+    }),
+  ]);
+  if (!boardState || affectedPlans.length === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const lineIds = Array.from(
+    new Set(
+      affectedPlans
+        .map((plan) => toPositiveIntOrNull(plan?.lineId))
+        .filter((lineId): lineId is number => lineId !== null)
+    )
+  );
+  if (lineIds.length === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const linePlans = await prisma.assignmentPlan.findMany({
+    where: {
+      orgId,
+      lineId: { in: lineIds },
+    },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      quantity: true,
+      startIndex: true,
+      endIndex: true,
+      startDayOffsetPercent: true,
+      startDayPercent: true,
+      endDayPercent: true,
+    },
+    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+  });
+  if (linePlans.length === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const linePlanIds = linePlans.map((plan) => plan.id);
+  const workRecords =
+    linePlanIds.length > 0
+      ? await prisma.workRecord.findMany({
+          where: {
+            orgId,
+            assignmentPlanId: { in: linePlanIds },
+          },
+          select: {
+            assignmentPlanId: true,
+            processId: true,
+            processCode: true,
+            quantity: true,
+            workLog: {
+              select: {
+                workDate: true,
+              },
+            },
+          },
+        })
+      : [];
+
+  const baselineQuantityByPlanId = linePlans.reduce((map, plan) => {
+    const baselineQuantity = toOptionalNonNegativeInt(plan?.quantity, null);
+    if (baselineQuantity != null && baselineQuantity > 0) {
+      map.set(plan.id, baselineQuantity);
+    }
+    return map;
+  }, new Map<number, number>());
+
+  const processBucketsByPlanDate = new Map<
+    number,
+    Map<string, Map<string, number>>
+  >();
+  workRecords.forEach((record) => {
+    const planId = toPositiveIntOrNull(record?.assignmentPlanId);
+    if (!planId || !baselineQuantityByPlanId.has(planId)) return;
+    const workDateKey = normalizeDateKey(record?.workLog?.workDate);
+    if (!workDateKey) return;
+    const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
+    if (quantity <= 0) return;
+
+    const byDate = processBucketsByPlanDate.get(planId) || new Map<string, Map<string, number>>();
+    const byProcess =
+      byDate.get(workDateKey) || new Map<string, number>();
+    const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    byProcess.set(processKey, (byProcess.get(processKey) || 0) + quantity);
+    byDate.set(workDateKey, byProcess);
+    processBucketsByPlanDate.set(planId, byDate);
+  });
+
+  const completionDateByPlanId = new Map<number, string>();
+  linePlans.forEach((plan) => {
+    const baselineQuantity = baselineQuantityByPlanId.get(plan.id);
+    if (baselineQuantity == null || baselineQuantity <= 0) return;
+
+    const byDate = processBucketsByPlanDate.get(plan.id);
+    if (!byDate || byDate.size === 0) return;
+
+    const cumulativeByProcess = new Map<string, number>();
+    const sortedDateKeys = Array.from(byDate.keys()).sort((a, b) => a.localeCompare(b));
+    for (const dateKey of sortedDateKeys) {
+      const byProcess = byDate.get(dateKey);
+      if (!byProcess) continue;
+      byProcess.forEach((value, processKey) => {
+        cumulativeByProcess.set(
+          processKey,
+          (cumulativeByProcess.get(processKey) || 0) + Math.max(0, Math.round(value))
+        );
+      });
+
+      const producedQuantity = resolveAssignmentProducedQuantityFromProcessTotals({
+        processTotals: Array.from(cumulativeByProcess.values()),
+        baselineQuantity,
+      });
+      if (producedQuantity >= baselineQuantity) {
+        completionDateByPlanId.set(plan.id, dateKey);
+        break;
+      }
+    }
+  });
+
+  const planByExternalId = linePlans.reduce((map, plan) => {
+    if (!plan?.externalId || map.has(plan.externalId)) return map;
+    map.set(plan.externalId, plan);
+    return map;
+  }, new Map<string, any>());
+  const targetLineIdSet = new Set(lineIds.map((lineId) => String(lineId)));
+
+  const stateAssignments = normalizeStateAssignments(boardState.assignments);
+  const changedExternalIds = new Set<string>();
+
+  const updateAssignmentRange = ({
+    entry,
+    nextStartDateKey,
+    nextEndDateKey,
+    epochOffset,
+  }: {
+    entry: any;
+    nextStartDateKey: string;
+    nextEndDateKey: string;
+    epochOffset: number | null;
+  }) => {
+    const nextStartEpochDay = toEpochDayFromDateKeyForAssignmentSchedule(nextStartDateKey);
+    const nextEndEpochDay = toEpochDayFromDateKeyForAssignmentSchedule(nextEndDateKey);
+    if (nextStartEpochDay == null || nextEndEpochDay == null) return;
+
+    const nextStartIndexRaw =
+      epochOffset == null ? toSignedInt(entry.assignment?.startIndex, 0) : nextStartEpochDay - epochOffset;
+    const nextEndIndexRaw =
+      epochOffset == null ? toSignedInt(entry.assignment?.endIndex, nextStartIndexRaw) : nextEndEpochDay - epochOffset;
+    const nextStartIndex = Math.max(0, Math.trunc(nextStartIndexRaw));
+    const nextEndIndex = Math.max(nextStartIndex, Math.trunc(nextEndIndexRaw));
+
+    const prevStartDateKey = normalizeDateKey(entry.assignment?.startDateKey) || entry.startDateKey;
+    const prevEndDateKey = normalizeDateKey(entry.assignment?.endDateKey) || entry.endDateKey;
+    const prevStartIndex = toSignedInt(entry.assignment?.startIndex, 0);
+    const prevEndIndex = Math.max(
+      prevStartIndex,
+      toSignedInt(entry.assignment?.endIndex, prevStartIndex)
+    );
+
+    const isChanged =
+      prevStartDateKey !== nextStartDateKey ||
+      prevEndDateKey !== nextEndDateKey ||
+      prevStartIndex !== nextStartIndex ||
+      prevEndIndex !== nextEndIndex;
+    if (!isChanged) return;
+
+    entry.startDateKey = nextStartDateKey;
+    entry.endDateKey = nextEndDateKey;
+    entry.assignment = {
+      ...entry.assignment,
+      startDateKey: nextStartDateKey,
+      endDateKey: nextEndDateKey,
+      startIndex: nextStartIndex,
+      endIndex: nextEndIndex,
+    };
+    changedExternalIds.add(entry.externalId);
+  };
+
+  lineIds.forEach((lineId) => {
+    const lineIdText = String(lineId);
+    if (!targetLineIdSet.has(lineIdText)) return;
+
+    const lineCandidates = stateAssignments
+      .map((assignment, stateIndex) => ({ assignment, stateIndex }))
+      .filter(({ assignment }) => String(assignment?.lineId ?? "") === lineIdText)
+      .filter(({ assignment }) => {
+        const externalId = resolveAssignmentExternalId(assignment);
+        if (!externalId) return false;
+        const plan = planByExternalId.get(externalId);
+        return Boolean(plan && Number(plan.lineId) === Number(lineId));
+      });
+    if (lineCandidates.length === 0) return;
+
+    let missingDateCandidateCount = 0;
+    const lineEntries = lineCandidates
+      .map(({ assignment, stateIndex }) => {
+        const externalId = resolveAssignmentExternalId(assignment);
+        if (!externalId) return null;
+        const plan = planByExternalId.get(externalId);
+        if (!plan || Number(plan.lineId) !== Number(lineId)) return null;
+
+        const startDateKey =
+          normalizeDateKey(assignment?.startDateKey) ||
+          normalizeDateKey(resolveAssignmentStartDateKey(assignment));
+        const endDateKeyFromState = normalizeDateKey(assignment?.endDateKey);
+        const startIndex = toSignedInt(assignment?.startIndex, 0);
+        const endIndex = Math.max(startIndex, toSignedInt(assignment?.endIndex, startIndex));
+        const fallbackSpanDays = Math.max(0, endIndex - startIndex);
+        const endDateKey =
+          endDateKeyFromState ||
+          (startDateKey
+            ? shiftDateKeyByDaysForAssignmentSchedule(startDateKey, fallbackSpanDays)
+            : null);
+        if (!startDateKey || !endDateKey) {
+          missingDateCandidateCount += 1;
+          return null;
+        }
+
+        const plannedDurationDays = Math.max(
+          1,
+          countDateRangeDaysInclusiveForAssignmentSchedule(startDateKey, endDateKey)
+        );
+        return {
+          externalId,
+          planId: plan.id,
+          stateIndex,
+          assignment: { ...assignment },
+          startDateKey,
+          endDateKey,
+          plannedDurationDays,
+          completionDateKey:
+            normalizeDateKey(completionDateByPlanId.get(plan.id) || "") || null,
+        };
+      })
+      .filter((entry): entry is any => Boolean(entry))
+      .sort((a, b) => {
+        const startCompare = a.startDateKey.localeCompare(b.startDateKey);
+        if (startCompare !== 0) return startCompare;
+        const endCompare = a.endDateKey.localeCompare(b.endDateKey);
+        if (endCompare !== 0) return endCompare;
+        return String(a.externalId).localeCompare(String(b.externalId));
+      });
+    if (missingDateCandidateCount > 0) return;
+    if (lineEntries.length === 0) return;
+
+    const anchorEpochOffsets = lineEntries
+      .map((entry) => {
+        const startEpochDay = toEpochDayFromDateKeyForAssignmentSchedule(entry.startDateKey);
+        if (startEpochDay == null) return null;
+        const startIndex = toSignedInt(entry.assignment?.startIndex, 0);
+        return startEpochDay - startIndex;
+      })
+      .filter((value): value is number => Number.isFinite(value));
+    const epochOffset = anchorEpochOffsets.length > 0 ? anchorEpochOffsets[0]! : null;
+
+    const chains: any[][] = [];
+    lineEntries.forEach((entry) => {
+      const lastChain = chains.length > 0 ? chains[chains.length - 1]! : null;
+      if (!lastChain || lastChain.length === 0) {
+        chains.push([entry]);
+        return;
+      }
+      const prev = lastChain[lastChain.length - 1];
+      const gapFromPrev = diffDateKeysByDaysForAssignmentSchedule(
+        prev.endDateKey,
+        entry.startDateKey
+      );
+      if (gapFromPrev != null && gapFromPrev <= 1) {
+        lastChain.push(entry);
+        return;
+      }
+      chains.push([entry]);
+    });
+
+    chains.forEach((chain) => {
+      let cursor = 0;
+      while (cursor < chain.length) {
+        const first = chain[cursor];
+        if (!first?.completionDateKey) {
+          cursor += 1;
+          continue;
+        }
+        let blockEndIndex = cursor;
+        while (blockEndIndex + 1 < chain.length && chain[blockEndIndex + 1]?.completionDateKey) {
+          blockEndIndex += 1;
+        }
+        const block = chain.slice(cursor, blockEndIndex + 1);
+        const oldBlockEndDateKey = block[block.length - 1]!.endDateKey;
+        const blockCompletionKeys = block
+          .map((entry) => normalizeDateKey(entry?.completionDateKey))
+          .filter((value): value is string => Boolean(value));
+        if (blockCompletionKeys.length === 0) {
+          cursor = blockEndIndex + 1;
+          continue;
+        }
+        const actualBlockEndDateKey = blockCompletionKeys.reduce((max, key) =>
+          key > max ? key : max
+        );
+        const overrunDays = diffDateKeysByDaysForAssignmentSchedule(
+          oldBlockEndDateKey,
+          actualBlockEndDateKey
+        );
+        if (overrunDays == null || overrunDays <= 0) {
+          cursor = blockEndIndex + 1;
+          continue;
+        }
+
+        const uniqueCompletionDates = new Set(blockCompletionKeys);
+        const shouldDistributeByRatio =
+          block.length > 1 && uniqueCompletionDates.size === 1;
+
+        if (shouldDistributeByRatio) {
+          const blockStartDateKey = block[0]!.startDateKey;
+          const targetTotalDays = countDateRangeDaysInclusiveForAssignmentSchedule(
+            blockStartDateKey,
+            actualBlockEndDateKey
+          );
+          if (targetTotalDays > 0) {
+            const plannedDurations = block.map((entry) =>
+              Math.max(
+                1,
+                countDateRangeDaysInclusiveForAssignmentSchedule(
+                  entry.startDateKey,
+                  entry.endDateKey
+                )
+              )
+            );
+            const allocatedDurations = allocateExtendedDurationsByPlannedRatio(
+              plannedDurations,
+              targetTotalDays
+            );
+            let nextStartDateKey: string | null = blockStartDateKey;
+            block.forEach((entry, index) => {
+              if (!nextStartDateKey) return;
+              const allocatedDays = Math.max(1, allocatedDurations[index] || 1);
+              const nextEndDateKey =
+                shiftDateKeyByDaysForAssignmentSchedule(
+                  nextStartDateKey,
+                  allocatedDays - 1
+                ) || nextStartDateKey;
+              updateAssignmentRange({
+                entry,
+                nextStartDateKey,
+                nextEndDateKey,
+                epochOffset,
+              });
+              nextStartDateKey =
+                shiftDateKeyByDaysForAssignmentSchedule(nextEndDateKey, 1) || null;
+            });
+          }
+        } else {
+          let nextStartDateKey: string | null = block[0]!.startDateKey;
+          block.forEach((entry) => {
+            if (!nextStartDateKey) return;
+            const plannedDays = Math.max(
+              1,
+              countDateRangeDaysInclusiveForAssignmentSchedule(
+                entry.startDateKey,
+                entry.endDateKey
+              )
+            );
+            const minEndDateKey =
+              shiftDateKeyByDaysForAssignmentSchedule(nextStartDateKey, plannedDays - 1) ||
+              nextStartDateKey;
+            const completionDateKey = normalizeDateKey(entry?.completionDateKey);
+            const nextEndDateKey =
+              completionDateKey && completionDateKey > minEndDateKey
+                ? completionDateKey
+                : minEndDateKey;
+            updateAssignmentRange({
+              entry,
+              nextStartDateKey,
+              nextEndDateKey,
+              epochOffset,
+            });
+            nextStartDateKey =
+              shiftDateKeyByDaysForAssignmentSchedule(nextEndDateKey, 1) || null;
+          });
+        }
+
+        const newBlockEndDateKey = block[block.length - 1]!.endDateKey;
+        const shiftedDays = diffDateKeysByDaysForAssignmentSchedule(
+          oldBlockEndDateKey,
+          newBlockEndDateKey
+        );
+        if (shiftedDays != null && shiftedDays > 0) {
+          for (let i = blockEndIndex + 1; i < chain.length; i += 1) {
+            const target = chain[i]!;
+            const shiftedStart =
+              shiftDateKeyByDaysForAssignmentSchedule(target.startDateKey, shiftedDays) ||
+              target.startDateKey;
+            const shiftedEnd =
+              shiftDateKeyByDaysForAssignmentSchedule(target.endDateKey, shiftedDays) ||
+              target.endDateKey;
+            updateAssignmentRange({
+              entry: target,
+              nextStartDateKey: shiftedStart,
+              nextEndDateKey: shiftedEnd,
+              epochOffset,
+            });
+          }
+        }
+
+        cursor = blockEndIndex + 1;
+      }
+    });
+
+    lineEntries.forEach((entry) => {
+      stateAssignments[entry.stateIndex] = normalizeStateAssignmentItem(entry.assignment);
+    });
+  });
+
+  if (changedExternalIds.size === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const nowIso = new Date().toISOString();
+  const nextAssignments = stateAssignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (!externalId || !changedExternalIds.has(externalId)) {
+      return normalizeStateAssignmentItem(assignment);
+    }
+    const currentVersion = toNonNegativeInt(assignment?.version, 0);
+    return normalizeStateAssignmentItem({
+      ...assignment,
+      id: externalId,
+      version: currentVersion + 1,
+      versionUpdatedAt: nowIso,
+    });
+  });
+
+  const nextAssignmentByExternalId = nextAssignments.reduce((map, item) => {
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, item);
+    return map;
+  }, new Map<string, any>());
+  const planUpdates = linePlans
+    .filter((plan) => changedExternalIds.has(plan.externalId))
+    .map((plan) => {
+      const assignment = nextAssignmentByExternalId.get(plan.externalId);
+      if (!assignment) return null;
+      const startIndex = toSignedInt(assignment?.startIndex, plan.startIndex);
+      const endIndex = Math.max(
+        startIndex,
+        toSignedInt(assignment?.endIndex, Math.max(startIndex, plan.endIndex))
+      );
+      return {
+        id: plan.id,
+        data: {
+          startIndex,
+          endIndex,
+          startDayOffsetPercent: toOptionalFloat(
+            assignment?.startDayOffsetPercent,
+            plan.startDayOffsetPercent ?? null
+          ),
+          startDayPercent: toOptionalFloat(
+            assignment?.startDayPercent,
+            plan.startDayPercent ?? null
+          ),
+          endDayPercent: toOptionalFloat(
+            assignment?.endDayPercent,
+            plan.endDayPercent ?? null
+          ),
+          updatedAt: new Date(),
+        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+      };
+    })
+    .filter((item): item is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
+      Boolean(item)
+    );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.assignmentBoardState.update({
+      where: { id: boardState.id },
+      data: {
+        assignments: nextAssignments,
+      },
+    });
+    if (planUpdates.length > 0) {
+      await Promise.all(
+        planUpdates.map((row) =>
+          tx.assignmentPlan.update({
+            where: { id: row.id },
+            data: row.data,
+          })
+        )
+      );
+    }
+  });
+
+  return {
+    updatedAssignmentCount: changedExternalIds.size,
+  };
+};
+const syncAssignmentSchedulesFromWorkRecords = async ({
+  orgId,
+  records,
+}: {
+  orgId: number;
+  records: any;
+}): Promise<{ updatedAssignmentCount: number }> =>
+  syncAssignmentSchedulesFromWorkRecordPlans({
+    orgId,
+    assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records),
+  });
 const resolveWorkRecordProcessMetric = (
   processCodeInput: any,
   processNameInput: any
@@ -13685,6 +14334,19 @@ app.post("/work-logs", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
+  try {
+    await syncAssignmentSchedulesFromWorkRecords({
+      orgId: organization.id,
+      records: normalized.records,
+    });
+  } catch (error) {
+    console.warn(
+      `[assignment-schedule-sync] orgId=${organization.id} mode=create failed: ${getErrorMessage(
+        error,
+        "failed to sync assignment schedule after work-log create"
+      )}`
+    );
+  }
   await syncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
@@ -13715,6 +14377,13 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(404)
       .json({ ok: false, error: translateWorkLogErrorMessage("work log not found") });
   }
+  const existingPlanIdRows = await prisma.workRecord.findMany({
+    where: { orgId: organization.id, workLogId: existing.id },
+    select: { assignmentPlanId: true },
+  });
+  const existingAssignmentPlanIds = normalizePlanIdList(
+    existingPlanIdRows.map((row) => row.assignmentPlanId)
+  );
 
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
   if (normalized.invalidWorkerRecordIndex >= 0) {
@@ -13856,6 +14525,25 @@ app.put("/work-logs/:id", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
+  const updatedAssignmentPlanIds = normalizePlanIdList(
+    collectWorkRecordAssignmentPlanIds(normalized.records)
+  );
+  try {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId: organization.id,
+      assignmentPlanIds: [
+        ...existingAssignmentPlanIds,
+        ...updatedAssignmentPlanIds,
+      ],
+    });
+  } catch (error) {
+    console.warn(
+      `[assignment-schedule-sync] orgId=${organization.id} mode=update failed: ${getErrorMessage(
+        error,
+        "failed to sync assignment schedule after work-log update"
+      )}`
+    );
+  }
   await syncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
@@ -13881,10 +14569,30 @@ app.delete("/work-logs/:id", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
+  const existingPlanIdRows = await prisma.workRecord.findMany({
+    where: { orgId: organization.id, workLogId: existing.id },
+    select: { assignmentPlanId: true },
+  });
+  const existingAssignmentPlanIds = normalizePlanIdList(
+    existingPlanIdRows.map((row) => row.assignmentPlanId)
+  );
 
   await prisma.workLog.delete({
     where: { id: existing.id },
   });
+  try {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId: organization.id,
+      assignmentPlanIds: existingAssignmentPlanIds,
+    });
+  } catch (error) {
+    console.warn(
+      `[assignment-schedule-sync] orgId=${organization.id} mode=delete failed: ${getErrorMessage(
+        error,
+        "failed to sync assignment schedule after work-log delete"
+      )}`
+    );
+  }
   res.status(204).send();
 });
 
