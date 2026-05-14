@@ -77,6 +77,7 @@ const LABELS = {
   selectStyleFirst: '스타일을 먼저 선택하세요.',
   assignmentException: '예외',
   assignmentOtherLine: '다른 라인 배정',
+  orderNo: '주문번호',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
@@ -1225,7 +1226,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const renderStyleOption = useCallback(
     (props, option) => {
       const isException = isOtherLineAssignmentOption(option, selectedLineId);
+      const orderNo = toText(option?.orderNo);
       const lineName = toText(option?.lineName);
+      const secondaryText = orderNo ? `${LABELS.orderNo} ${orderNo}` : lineName;
       const description = formatAssignmentLabel(option);
       return (
         <Box
@@ -1267,7 +1270,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                 />
               ) : null}
             </Stack>
-            {lineName ? (
+            {secondaryText ? (
               <Typography
                 variant="caption"
                 color="text.secondary"
@@ -1278,7 +1281,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                   textOverflow: 'ellipsis',
                 }}
               >
-                {lineName}
+                {secondaryText}
               </Typography>
             ) : null}
           </Stack>
