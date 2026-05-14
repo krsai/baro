@@ -605,7 +605,7 @@ const MainLayout = () => {
             path: '/system-setting',
           },
           {
-            label: getUiMessage('menu.line', '\uB77C\uC778', languageCode),
+            label: getUiMessage('menu.line', '라인 관리', languageCode),
             icon: <ContentCut />,
             path: '/line',
           },
