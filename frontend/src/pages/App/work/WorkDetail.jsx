@@ -375,24 +375,6 @@ const buildWorkerStyleProcessSignature = (value = {}) => {
   }
   return `${workerMetric.key}:${styleMetric.key}:${processMetric.key}`;
 };
-const collectAssignmentProcessRows = (records = []) => {
-  const buckets = new Map();
-  records.forEach((record) => {
-    const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
-    if (!assignmentPlanId) return;
-    const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
-    if (quantity <= 0) return;
-    const processMetric = buildProcessMetric(record);
-    const bucketKey = `${assignmentPlanId}:${processMetric.key}`;
-    const current = buckets.get(bucketKey);
-    if (current) {
-      current.quantity += quantity;
-      return;
-    }
-    buckets.set(bucketKey, { assignmentPlanId, processLabel: processMetric.label, quantity });
-  });
-  return Array.from(buckets.values());
-};
 const findDuplicateRow = (records = []) => {
   const seen = new Set();
   for (const record of records) {
@@ -1161,6 +1143,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         workerId: toPositiveIdOrNull(row?.worker?.id),
         workerName: toText(row?.worker?.name),
         customerName: toText(assignment?.customer),
+        orderNo: toText(assignment?.orderNo),
         styleUid: toPositiveIdOrNull(assignment?.styleUid ?? row?.styleUid),
         styleId: toText(assignment?.styleId),
         styleName: toText(assignment?.label),
@@ -1181,7 +1164,51 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     const totalContractedSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
     return { records, workerCount, totalContractedSeconds };
   }, [resolveAssignmentForRow, resolveProcessForRow, rows]);
-  const exceededRowMetaByRowId = useMemo(() => {
+  const assignmentLimitGroupMeta = useMemo(() => {
+    const planMetaById = new Map();
+    const groupMetaByKey = new Map();
+    const seenPlanIds = new Set();
+
+    assignmentOptions.forEach((plan) => {
+      const planId = toPositiveIdOrNull(plan?.dbId);
+      if (!planId || seenPlanIds.has(planId)) return;
+      seenPlanIds.add(planId);
+
+      const orderNo = toText(plan?.orderNo);
+      const groupKey = orderNo ? `order:${toKey(orderNo)}` : `plan:${planId}`;
+      const groupLabel = orderNo || formatAssignmentLabel(plan) || `PLAN:${planId}`;
+      const baselineQuantity = Math.max(0, Math.round(Number(resolveBaselineQuantity(plan)) || 0));
+      planMetaById.set(planId, { groupKey, groupLabel, orderNo });
+
+      const currentGroup = groupMetaByKey.get(groupKey);
+      if (currentGroup) {
+        currentGroup.baselineQuantity += baselineQuantity;
+        if (!currentGroup.orderNo && orderNo) currentGroup.orderNo = orderNo;
+        return;
+      }
+
+      groupMetaByKey.set(groupKey, {
+        groupKey,
+        groupLabel,
+        orderNo,
+        baselineQuantity,
+      });
+    });
+
+    groupMetaByKey.forEach((groupMeta) => {
+      const baselineQuantity = Math.max(0, Math.round(Number(groupMeta?.baselineQuantity) || 0));
+      groupMeta.baselineQuantity = baselineQuantity;
+      groupMeta.maxAllowed = baselineQuantity
+        ? Math.max(
+            baselineQuantity,
+            Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
+          )
+        : 0;
+    });
+
+    return { planMetaById, groupMetaByKey };
+  }, [assignmentOptions]);
+  const assignmentProcessUsageBuckets = useMemo(() => {
     const buckets = new Map();
     summary.records.forEach((record) => {
       const rowId = toText(record?.rowId);
@@ -1190,14 +1217,24 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       if (!rowId || !assignmentPlanId || quantity <= 0) return;
 
       const processMetric = buildProcessMetric(record);
-      const bucketKey = `${assignmentPlanId}:${processMetric.key}`;
-      const current = buckets.get(bucketKey);
-      if (current) {
-        current.totalQuantity += quantity;
-        current.rowIds.add(rowId);
+      if (!processMetric?.key || processMetric.key === 'unknown') return;
+
+      const planMeta = assignmentLimitGroupMeta.planMetaById.get(assignmentPlanId) || {
+        groupKey: `plan:${assignmentPlanId}`,
+        groupLabel: toText(record?.orderNo) || toText(record?.styleId) || `PLAN:${assignmentPlanId}`,
+        orderNo: toText(record?.orderNo),
+      };
+      const bucketKey = `${planMeta.groupKey}:${processMetric.key}`;
+      const currentBucket = buckets.get(bucketKey);
+      if (currentBucket) {
+        currentBucket.totalQuantity += quantity;
+        currentBucket.rowIds.add(rowId);
         return;
       }
       buckets.set(bucketKey, {
+        groupKey: planMeta.groupKey,
+        groupLabel: planMeta.groupLabel,
+        orderNo: planMeta.orderNo,
         assignmentPlanId,
         processLabel: processMetric.label,
         totalQuantity: quantity,
@@ -1205,33 +1242,38 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       });
     });
 
-    const rowMetaMap = new Map();
-    buckets.forEach((bucket) => {
-      const matchedPlan = assignmentOptions.find(
-        (item) => toPositiveIdOrNull(item?.dbId) === bucket.assignmentPlanId
-      );
-      const baselineQuantity = resolveBaselineQuantity(matchedPlan);
-      if (!baselineQuantity) return;
-      const maxAllowed = Math.max(
+    return Array.from(buckets.values()).map((bucket) => {
+      const groupMeta = assignmentLimitGroupMeta.groupMetaByKey.get(bucket.groupKey);
+      const baselineQuantity = Math.max(0, Math.round(Number(groupMeta?.baselineQuantity) || 0));
+      const maxAllowed = Math.max(0, Math.round(Number(groupMeta?.maxAllowed) || 0));
+      return {
+        ...bucket,
         baselineQuantity,
-        Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
-      );
-      if (bucket.totalQuantity <= maxAllowed) return;
-
-      const exceededQuantity = bucket.totalQuantity - maxAllowed;
+        maxAllowed,
+        exceededQuantity: maxAllowed ? Math.max(0, bucket.totalQuantity - maxAllowed) : 0,
+      };
+    });
+  }, [assignmentLimitGroupMeta, summary.records]);
+  const exceededRowMetaByRowId = useMemo(() => {
+    const rowMetaMap = new Map();
+    assignmentProcessUsageBuckets.forEach((bucket) => {
+      if (!bucket.maxAllowed || bucket.totalQuantity <= bucket.maxAllowed) return;
       bucket.rowIds.forEach((rowId) => {
         rowMetaMap.set(rowId, {
           assignmentPlanId: bucket.assignmentPlanId,
+          groupKey: bucket.groupKey,
+          groupLabel: bucket.groupLabel,
+          orderNo: bucket.orderNo,
           processLabel: bucket.processLabel,
-          baselineQuantity,
-          maxAllowed,
+          baselineQuantity: bucket.baselineQuantity,
+          maxAllowed: bucket.maxAllowed,
           totalQuantity: bucket.totalQuantity,
-          exceededQuantity,
+          exceededQuantity: bucket.exceededQuantity,
         });
       });
     });
     return rowMetaMap;
-  }, [assignmentOptions, summary.records]);
+  }, [assignmentProcessUsageBuckets]);
   const autoExceededNote = useMemo(() => summary.records.map((record) => {
     const plan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
     const baselineQuantity = resolveBaselineQuantity(plan);
@@ -1304,18 +1346,29 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     },
     [selectedLineId]
   );
+  const buildStyleOrderMetaLabel = useCallback((styleOption) => {
+    if (!styleOption) return '';
+    const orderNo = toText(styleOption?.orderNo);
+    const orderQuantity = resolveBaselineQuantity(styleOption);
+    const parts = [];
+    if (orderNo) parts.push(`${LABELS.orderNo} ${orderNo}`);
+    if (orderQuantity) parts.push(`${LABELS.orderQuantity} ${formatCount(orderQuantity)}`);
+    return parts.join(' · ');
+  }, []);
   const getStyleOptionStatusLabel = useCallback(
     (styleOption, workerOption) => {
       if (!styleOption) return '';
-      if (!isStyleExceptionForWorker(styleOption, workerOption)) {
-        return '';
+      const orderMetaLabel = buildStyleOrderMetaLabel(styleOption);
+      let exceptionLabel = '';
+      if (isStyleExceptionForWorker(styleOption, workerOption)) {
+        const lineName = toText(styleOption?.lineName);
+        exceptionLabel = [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
+          .filter(Boolean)
+          .join(' · ');
       }
-      const lineName = toText(styleOption?.lineName);
-      return [LABELS.assignmentException, lineName || LABELS.assignmentOtherLine]
-        .filter(Boolean)
-        .join(' · ');
+      return [orderMetaLabel, exceptionLabel].filter(Boolean).join(' · ');
     },
-    [isStyleExceptionForWorker]
+    [buildStyleOrderMetaLabel, isStyleExceptionForWorker]
   );
   const getStyleOptionLabel = useCallback((option) => {
     if (!option) return '';
@@ -1324,15 +1377,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const renderStyleOption = useCallback(
     (props, option) => {
       const isException = isOtherLineAssignmentOption(option, selectedLineId);
-      const orderNo = toText(option?.orderNo);
-      const orderQuantity = resolveBaselineQuantity(option);
+      const orderMetaText = buildStyleOrderMetaLabel(option);
       const lineName = toText(option?.lineName);
-      const orderMetaText = [
-        orderNo ? `${LABELS.orderNo} ${orderNo}` : '',
-        orderQuantity ? `${LABELS.orderQuantity} ${formatCount(orderQuantity)}` : '',
-      ]
-        .filter(Boolean)
-        .join(' · ');
       const secondaryText = orderMetaText || lineName;
       const description = formatAssignmentLabel(option);
       return (
@@ -1393,7 +1439,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         </Box>
       );
     },
-    [selectedLineId]
+    [buildStyleOrderMetaLabel, selectedLineId]
   );
   const resolveProcessOptions = useCallback(
     (row) => {
@@ -1663,13 +1709,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       setFormError('같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
       return;
     }
-    const excessiveProcess = collectAssignmentProcessRows(summary.records).find((row) => {
-      const matchedPlan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === row.assignmentPlanId);
-      const baselineQuantity = resolveBaselineQuantity(matchedPlan);
-      if (!baselineQuantity) return false;
-      const maxAllowed = Math.max(baselineQuantity, Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER));
-      return row.quantity > maxAllowed;
-    });
+    const excessiveProcess = assignmentProcessUsageBuckets.find(
+      (bucket) => bucket.maxAllowed > 0 && bucket.totalQuantity > bucket.maxAllowed
+    );
     if (excessiveProcess) {
       setFormError('배정카드 허용 수량을 초과한 공정이 있습니다.');
       return;
@@ -1688,7 +1730,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [assignmentOptions, autoExceededNote, currentFactory?.name, hasFactoryWage, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  }, [assignmentProcessUsageBuckets, autoExceededNote, currentFactory?.name, hasFactoryWage, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -1881,7 +1923,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             }}
                           />
                           {selectedStyleStatusLabel ? (
-                            <Typography variant="caption" color="text.secondary" sx={{ mt: -0.5 }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ mt: -0.5, fontSize: '0.68rem', lineHeight: 1.2 }}
+                            >
                               {selectedStyleStatusLabel}
                             </Typography>
                           ) : null}
@@ -2170,7 +2216,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               </Box>
                             )}
                             {selectedStyleStatusLabel ? (
-                              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.4, display: 'block' }}>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ mt: 0.4, display: 'block', fontSize: '0.68rem', lineHeight: 1.2 }}
+                              >
                                 {selectedStyleStatusLabel}
                               </Typography>
                             ) : null}

@@ -564,20 +564,6 @@ const WorkList = ({
                   onChange={handleDateFilterEndChange}
                   slotProps={FILTER_DATE_PICKER_SLOT_PROPS}
                 />
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={viewMode}
-                  onChange={handleViewModeToggle}
-                  aria-label="work-history-view-mode"
-                >
-                  <ToggleButton value={WORK_VIEW_MODES.DAILY}>
-                    {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
-                  </ToggleButton>
-                  <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
-                    {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
-                  </ToggleButton>
-                </ToggleButtonGroup>
                 <Stack sx={{ gap: '2px' }}>
                   <Button
                     size="small"
@@ -596,6 +582,20 @@ const WorkList = ({
                     M-
                   </Button>
                 </Stack>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={viewMode}
+                  onChange={handleViewModeToggle}
+                  aria-label="work-history-view-mode"
+                >
+                  <ToggleButton value={WORK_VIEW_MODES.DAILY}>
+                    {getUiMessage('workHistoryView.daily', '\uC77C\uAC04', languageCode)}
+                  </ToggleButton>
+                  <ToggleButton value={WORK_VIEW_MODES.MONTHLY}>
+                    {getUiMessage('workHistoryView.monthly', '\uC6D4\uAC04', languageCode)}
+                  </ToggleButton>
+                </ToggleButtonGroup>
               </Stack>
             </Box>
           </Box>
