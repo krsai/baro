@@ -295,7 +295,11 @@ const hasRelationshipPair = (pairs, buyerOrgId, sellerOrgId) => {
 };
 const getStyleGroupKey = (item, deferredMergeRowIdSet = null) => {
   const rowId = String(item?.id || '').trim();
-  if (rowId && deferredMergeRowIdSet?.has(rowId)) {
+  if (
+    rowId &&
+    deferredMergeRowIdSet?.has(rowId) &&
+    shouldKeepDeferredRowSeparated(item)
+  ) {
     return `item:${rowId}`;
   }
   if (item?.styleId) return `style:${item.styleId}`;
@@ -641,6 +645,18 @@ const normalizeSizeQuantities = (value = {}) => {
 };
 const hasAnySizeQuantity = (sizeQuantities = {}) =>
   SIZE_COLUMNS.some((size) => Number(sizeQuantities?.[size]) > 0);
+function shouldKeepDeferredRowSeparated(item) {
+  const styleIdentity = getStyleIdentity(item);
+  const colorIdentity = getItemColorIdentity(item);
+  const normalizedGender = normalizeGenderCode(item?.gender, '');
+  const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
+  return (
+    !styleIdentity ||
+    !colorIdentity ||
+    !normalizedGender ||
+    !hasAnySizeQuantity(normalizedSizeQuantities)
+  );
+}
 const sumSizeQuantities = (sizeQuantities = {}) =>
   SIZE_COLUMNS.reduce((sum, size) => sum + (Number(sizeQuantities?.[size]) || 0), 0);
 const buildSizeQuantitiesFromLegacyRows = (rows = []) =>

@@ -25,7 +25,6 @@ import {
   Typography,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import ProductionQuantityLimitsIcon from '@mui/icons-material/ProductionQuantityLimits';
 import OrganizationIcon from '@mui/icons-material/AccountTree';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -41,8 +40,6 @@ import HistoryIcon from '@mui/icons-material/History';
 import CloseIcon from '@mui/icons-material/Close';
 import DnsIcon from '@mui/icons-material/Dns';
 import ContentCut from '@mui/icons-material/ContentCut';
-import TimelineIcon from '@mui/icons-material/Timeline';
-import FactCheckIcon from '@mui/icons-material/FactCheck';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
@@ -68,20 +65,10 @@ const EMPTY_WORKSPACE_HINT = {
   vi: 'Hay su dung menu.',
 };
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
-const OPERATIONS_MANAGEMENT_LABELS = {
-  ko: '\uC6B4\uC601 \uAD00\uB9AC',
-  en: 'Operations',
-  vi: 'Quan ly van hanh',
-};
 const PRODUCTION_MANAGEMENT_LABELS = {
   ko: '\uC0DD\uC0B0 \uAD00\uB9AC',
   en: 'Production',
   vi: 'Quan ly san xuat',
-};
-const SITUATION_BOARD_LABELS = {
-  ko: '\uC0C1\uD669\uD310',
-  en: 'Situation Board',
-  vi: 'Bang tinh hinh',
 };
 const DASHBOARD_LABELS = {
   ko: '\uB300\uC2DC\uBCF4\uB4DC',
@@ -90,7 +77,6 @@ const DASHBOARD_LABELS = {
 };
 const MENU_GROUP_KEYS = {
   ORDER: 'ORDER',
-  PRODUCTION: 'PRODUCTION',
   RECORDS: 'RECORDS',
   INVENTORY: 'INVENTORY',
   ACCOUNTING: 'ACCOUNTING',
@@ -317,7 +303,6 @@ const MainLayout = () => {
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
-  const [productionOpen, setProductionOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
@@ -341,7 +326,6 @@ const MainLayout = () => {
 
   const setExpandedMenuGroup = React.useCallback((menuGroupKey) => {
     setOrderOpen(menuGroupKey === MENU_GROUP_KEYS.ORDER);
-    setProductionOpen(menuGroupKey === MENU_GROUP_KEYS.PRODUCTION);
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
@@ -529,47 +513,17 @@ const MainLayout = () => {
         ],
       },
       {
-        label: resolveLocalizedLabel(OPERATIONS_MANAGEMENT_LABELS, languageCode),
-        icon: <ProductionQuantityLimitsIcon />,
-        isParent: true,
-        menuGroupKey: MENU_GROUP_KEYS.PRODUCTION,
-        isOpen: productionOpen,
-        children: [
-          {
-            label: getUiMessage('menu.line', '\uB77C\uC778', languageCode),
-            icon: <ContentCut />,
-            path: '/line',
-          },
-          {
-            label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
-            icon: <ContentCut />,
-            path: '/assignment',
-          },
-          {
-            label: resolveLocalizedLabel(SITUATION_BOARD_LABELS, languageCode),
-            icon: <TimelineIcon />,
-            path: '/production-plan',
-            disabled: true,
-          },
-          {
-            label: getUiMessage(
-              'menu.standardReview',
-              '\uD45C\uC900 \uACF5\uC784 \uAC80\uD1A0',
-              languageCode
-            ),
-            icon: <FactCheckIcon />,
-            path: '/st-review',
-            disabled: true,
-          },
-        ],
-      },
-      {
         label: resolveLocalizedLabel(PRODUCTION_MANAGEMENT_LABELS, languageCode),
         icon: <HistoryIcon />,
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.RECORDS,
         isOpen: recordsOpen,
         children: [
+          {
+            label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
+            icon: <ContentCut />,
+            path: '/assignment',
+          },
           {
             label: getUiMessage('menu.workHistory', '\uC791\uC5C5 \uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
@@ -649,6 +603,11 @@ const MainLayout = () => {
             label: getUiMessage('menu.subscription', '\uAD6C\uB3C5 \uAD00\uB9AC', languageCode),
             icon: <TuneIcon />,
             path: '/system-setting',
+          },
+          {
+            label: getUiMessage('menu.line', '\uB77C\uC778', languageCode),
+            icon: <ContentCut />,
+            path: '/line',
           },
         ],
       },
@@ -775,7 +734,6 @@ const MainLayout = () => {
     pendingEmployeeCount,
     pendingOnboardingCount,
     processMasterOpen,
-    productionOpen,
     recordsOpen,
     isSystemProfile,
     systemOpen,
@@ -843,29 +801,13 @@ const MainLayout = () => {
           ].filter(Boolean);
         }
 
-        if (childPaths.has('/assignment')) {
-          const preferredProductionPaths = [
-            '/line',
-            '/assignment',
-            '/production-plan',
-            '/st-review',
-          ];
-          visibleChildren = [
-            ...preferredProductionPaths.map(
-              (path) => visibleChildren.find((child) => child.path === path) || null
-            ),
-            ...visibleChildren.filter(
-              (child) => !preferredProductionPaths.includes(child.path)
-            ),
-          ].filter(Boolean);
-        }
-
         if (childPaths.has('/employee')) {
           visibleChildren = visibleChildren.filter((child) => child.path !== '/customer');
         }
 
-        if (childPaths.has('/work-history') && childPaths.has('/attendance')) {
+        if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
           const preferredRecordPaths = [
+            '/assignment',
             '/work-history',
             '/attendance',
           ];
