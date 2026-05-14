@@ -22,7 +22,9 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt })
   const { languageCode } = useLanguage();
   const isDeltaCard = card.type === 'DELTA';
   const basis = isDeltaCard ? 'NONE' : getCardBasis(card);
-  const isDisabled = basis === 'NONE';
+  const isDisabledByBasis = basis === 'NONE';
+  const isDisabledByOrderLock = card?.isManualOrderLocked === false;
+  const isDisabled = isDisabledByBasis || isDisabledByOrderLock;
   const genderLabel = getGenderLabel(card.gender, card.gender || '', languageCode);
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: `card-${card.id}`,
@@ -50,6 +52,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt })
     if (typeof event?.button === 'number' && event.button !== 0) return;
     onDisabledDragAttempt?.({
       card,
+      reason: isDisabledByOrderLock ? 'ORDER_UNLOCKED' : 'MISSING_PT_OR_ST',
       clientX: Number(event?.clientX),
       clientY: Number(event?.clientY),
     });

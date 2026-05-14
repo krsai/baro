@@ -55,7 +55,6 @@ const { useDeferredValue } = React;
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
-const ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = 3;
 const ROWS_PER_PAGE = 30;
 const LABELS = {
   title: '기록 상세',
@@ -79,7 +78,7 @@ const LABELS = {
   assignmentOtherLine: '다른 라인 배정',
   orderNo: '주문번호',
   orderQuantity: '주문수량',
-  assignmentQuantityExceeded: '배정카드 허용 수량 초과',
+  assignmentQuantityExceeded: '주문 수량 초과',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
@@ -110,7 +109,7 @@ const formatCount = (value) =>
   });
 const buildQuantityExceededHelperText = (meta) => {
   if (!meta) return '';
-  return `${LABELS.assignmentQuantityExceeded}: 허용 ${formatCount(meta.maxAllowed)}개 / 누적 ${formatCount(
+  return `${LABELS.assignmentQuantityExceeded}: 주문 ${formatCount(meta.limitQuantity)}개 / 누적 ${formatCount(
     meta.totalQuantity
   )}개 / 초과 ${formatCount(meta.exceededQuantity)}개`;
 };
@@ -1257,12 +1256,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     groupMetaByKey.forEach((groupMeta) => {
       const baselineQuantity = Math.max(0, Math.round(Number(groupMeta?.baselineQuantity) || 0));
       groupMeta.baselineQuantity = baselineQuantity;
-      groupMeta.maxAllowed = baselineQuantity
-        ? Math.max(
-            baselineQuantity,
-            Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
-          )
-        : 0;
+      groupMeta.limitQuantity = baselineQuantity > 0 ? baselineQuantity : 0;
     });
 
     return { planMetaById, groupMetaByKey };
@@ -1304,19 +1298,19 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     return Array.from(buckets.values()).map((bucket) => {
       const groupMeta = assignmentLimitGroupMeta.groupMetaByKey.get(bucket.groupKey);
       const baselineQuantity = Math.max(0, Math.round(Number(groupMeta?.baselineQuantity) || 0));
-      const maxAllowed = Math.max(0, Math.round(Number(groupMeta?.maxAllowed) || 0));
+      const limitQuantity = Math.max(0, Math.round(Number(groupMeta?.limitQuantity) || 0));
       return {
         ...bucket,
         baselineQuantity,
-        maxAllowed,
-        exceededQuantity: maxAllowed ? Math.max(0, bucket.totalQuantity - maxAllowed) : 0,
+        limitQuantity,
+        exceededQuantity: limitQuantity ? Math.max(0, bucket.totalQuantity - limitQuantity) : 0,
       };
     });
   }, [assignmentLimitGroupMeta, summary.records]);
   const exceededRowMetaByRowId = useMemo(() => {
     const rowMetaMap = new Map();
     assignmentProcessUsageBuckets.forEach((bucket) => {
-      if (!bucket.maxAllowed || bucket.totalQuantity <= bucket.maxAllowed) return;
+      if (!bucket.limitQuantity || bucket.totalQuantity <= bucket.limitQuantity) return;
       bucket.rowIds.forEach((rowId) => {
         rowMetaMap.set(rowId, {
           assignmentPlanId: bucket.assignmentPlanId,
@@ -1325,7 +1319,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           orderNo: bucket.orderNo,
           processLabel: bucket.processLabel,
           baselineQuantity: bucket.baselineQuantity,
-          maxAllowed: bucket.maxAllowed,
+          limitQuantity: bucket.limitQuantity,
           totalQuantity: bucket.totalQuantity,
           exceededQuantity: bucket.exceededQuantity,
         });
@@ -1333,12 +1327,18 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     });
     return rowMetaMap;
   }, [assignmentProcessUsageBuckets]);
-  const autoExceededNote = useMemo(() => summary.records.map((record) => {
-    const plan = ctAssignmentPool.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
-    const baselineQuantity = resolveBaselineQuantity(plan);
-    if (!baselineQuantity || record.quantity <= baselineQuantity) return null;
-    return `${record.workerName || '-'} / ${formatAssignmentLabel(plan)} / ${record.processName || '-'} ${record.quantity - baselineQuantity}개 초과`;
-  }).filter(Boolean).join('\n'), [ctAssignmentPool, summary.records]);
+  const autoExceededNote = useMemo(
+    () =>
+      assignmentProcessUsageBuckets
+        .filter((bucket) => bucket.limitQuantity > 0 && bucket.totalQuantity > bucket.limitQuantity)
+        .map((bucket) => {
+          const targetLabel = toText(bucket.orderNo) || toText(bucket.groupLabel) || '-';
+          const processLabel = toText(bucket.processLabel) || '-';
+          return `${targetLabel} / ${processLabel} ${formatCount(bucket.exceededQuantity)}개 초과`;
+        })
+        .join('\n'),
+    [assignmentProcessUsageBuckets]
+  );
   const missingCtStyleLabels = useMemo(() => {
     const labels = [];
     const seen = new Set();
@@ -1788,13 +1788,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       setFormError('같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
       return;
     }
-    const excessiveProcess = assignmentProcessUsageBuckets.find(
-      (bucket) => bucket.maxAllowed > 0 && bucket.totalQuantity > bucket.maxAllowed
-    );
-    if (excessiveProcess) {
-      setFormError('배정카드 허용 수량을 초과한 공정이 있습니다.');
-      return;
-    }
     onSave?.({
       workDate: workDateKey,
       factoryId: selectedFactoryId,
@@ -1809,7 +1802,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [assignmentProcessUsageBuckets, autoExceededNote, currentFactory?.name, hasFactoryWage, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, currentFactory?.name, hasFactoryWage, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>

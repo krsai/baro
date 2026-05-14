@@ -13,7 +13,6 @@ import {
   MenuItem,
   Paper,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
@@ -844,6 +843,7 @@ const getTotalStForOrderQuantity = (processes, orderQuantity) =>
 
 const createCardId = (orderId, styleId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
+const isCardManualOrderLocked = (card) => card?.isManualOrderLocked !== false;
 
 const buildCardsFromOrders = ({ orders, styles }) => {
   const styleMap = new Map((Array.isArray(styles) ? styles : []).map((style) => [style.id, style]));
@@ -2420,15 +2420,26 @@ const AssignBoard = () => {
     const now = Date.now();
     if (now - disabledCardDragNoticeAtRef.current < 1200) return;
     disabledCardDragNoticeAtRef.current = now;
-    const message = getUiMessage(
-      'assign.dragRequiresPtOrSt',
-      languageCode === 'vi'
-        ? 'Chi co the phan cong sau khi dang ky PT/ST.'
-        : languageCode === 'en'
-          ? 'You can assign only after registering PT/ST.'
-          : 'PT/ST 등록 후에 배정이 가능합니다.',
-      languageCode
-    );
+    const message =
+      payload?.reason === 'ORDER_UNLOCKED'
+        ? getUiMessage(
+            'assign.dragRequiresOrderManualLock',
+            languageCode === 'vi'
+              ? 'Chi co the phan cong tren lich khi don hang da duoc khoa thu cong.'
+              : languageCode === 'en'
+                ? 'Scheduling is allowed only when the order is manually locked.'
+                : '주문을 수동 잠금한 상태에서만 스케줄 배정이 가능합니다.',
+            languageCode
+          )
+        : getUiMessage(
+            'assign.dragRequiresPtOrSt',
+            languageCode === 'vi'
+              ? 'Chi co the phan cong sau khi dang ky PT/ST.'
+              : languageCode === 'en'
+                ? 'You can assign only after registering PT/ST.'
+                : 'PT/ST 등록 후에 배정이 가능합니다.',
+            languageCode
+          );
     const pointerX = Number(payload?.clientX);
     const pointerY = Number(payload?.clientY);
     if (Number.isFinite(pointerX) && Number.isFinite(pointerY)) {
@@ -2747,6 +2758,17 @@ const AssignBoard = () => {
       return getUiMessage(
         'assign.versionConflict',
         'The server data is newer than this screen. Reload the assignment page and try again.',
+        languageCode
+      );
+    }
+    if (raw.toLowerCase().includes('order manual lock required before scheduling assignment')) {
+      return getUiMessage(
+        'assign.orderManualLockRequiredSaveError',
+        languageCode === 'vi'
+          ? 'Chi co the luu thay doi phan cong khi don hang da duoc khoa thu cong.'
+          : languageCode === 'en'
+            ? 'You can save scheduling changes only when the order is manually locked.'
+            : '주문이 수동 잠금된 상태에서만 배정 변경을 저장할 수 있습니다.',
         languageCode
       );
     }
@@ -3078,9 +3100,13 @@ const AssignBoard = () => {
           const nextStyles = Array.isArray(assignmentCardsResponse?.styles)
             ? assignmentCardsResponse.styles
             : [];
-          const nextCards = Array.isArray(assignmentCardsResponse?.cards)
+          const nextCards = (Array.isArray(assignmentCardsResponse?.cards)
             ? assignmentCardsResponse.cards
-            : [];
+            : []
+          ).map((card) => ({
+            ...card,
+            isManualOrderLocked: isCardManualOrderLocked(card),
+          }));
           applyLoadedBoardData({
             nextStyles,
             nextLines,
@@ -3545,6 +3571,14 @@ const AssignBoard = () => {
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
     [cards, assignedCardIds]
+  );
+  const unlockedUnassignedCardCount = useMemo(
+    () =>
+      unassignedCards.reduce(
+        (count, card) => count + (isCardManualOrderLocked(card) ? 0 : 1),
+        0
+      ),
+    [unassignedCards]
   );
   const cardSearchTextById = useMemo(
     () =>
@@ -4023,12 +4057,11 @@ const AssignBoard = () => {
     if (!contextMenuState || contextMenuState.targetType !== 'card') return null;
     return cardById.get(String(contextMenuState.id)) || null;
   }, [contextMenuState, cardById]);
-  const contextMenuTargetAssignmentCompleted = Boolean(contextMenuTargetAssignment?.isCompleted);
   const contextSplitDisabled = useMemo(() => {
     if (!contextMenuState) return true;
     if (contextMenuState.targetType === 'assignment') {
       if (!contextMenuTargetAssignment) return true;
-      if (contextMenuTargetAssignmentCompleted) return true;
+      if (Boolean(contextMenuTargetAssignment?.isCompleted)) return true;
       return Number(contextMenuTargetAssignment.quantity ?? 0) <= 1;
     }
     if (!contextMenuTargetCard) return true;
@@ -4036,7 +4069,6 @@ const AssignBoard = () => {
   }, [
     contextMenuState,
     contextMenuTargetAssignment,
-    contextMenuTargetAssignmentCompleted,
     contextMenuTargetCard,
   ]);
 
@@ -4054,32 +4086,6 @@ const AssignBoard = () => {
     setSelectedCardId(cardId);
   }, []);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
-  const handleContextToggleAssignmentCompletion = useCallback(() => {
-    if (!contextMenuTargetAssignment) return;
-    const targetId = String(contextMenuTargetAssignment.id);
-    const nextCompleted = !Boolean(contextMenuTargetAssignment.isCompleted);
-    const nowIso = new Date().toISOString();
-
-    setAssignments((prev) =>
-      prev.map((item) => {
-        if (String(item?.id) !== targetId) return item;
-        const baseQuantity = Number(item?.quantity);
-        const resolvedFinalQuantity =
-          Number.isFinite(baseQuantity) && baseQuantity > 0
-            ? Math.round(baseQuantity)
-            : null;
-        return normalizeAssignmentLayout({
-          ...item,
-          isCompleted: nextCompleted,
-          finalQuantity: nextCompleted
-            ? item?.finalQuantity ?? resolvedFinalQuantity
-            : null,
-          completedAt: nextCompleted ? item?.completedAt || nowIso : null,
-        });
-      })
-    );
-    setContextMenuState(null);
-  }, [contextMenuTargetAssignment]);
   const handleContextOpenDetail = useCallback(() => {
     if (!contextMenuState) return;
     if (contextMenuState.targetType === 'assignment') {
@@ -4280,6 +4286,22 @@ const AssignBoard = () => {
       const cardId = activeId.replace('card-', '');
       const card = cardById.get(cardId);
       if (!card) {
+        setActiveDrag(null);
+        return;
+      }
+      if (!isCardManualOrderLocked(card)) {
+        showNotification(
+          getUiMessage(
+            'assign.dragRequiresOrderManualLock',
+            languageCode === 'vi'
+              ? 'Chi co the phan cong tren lich khi don hang da duoc khoa thu cong.'
+              : languageCode === 'en'
+                ? 'Scheduling is allowed only when the order is manually locked.'
+                : '주문을 수동 잠금한 상태에서만 스케줄 배정이 가능합니다.',
+            languageCode
+          ),
+          'warning'
+        );
         setActiveDrag(null);
         return;
       }
@@ -4611,6 +4633,7 @@ const AssignBoard = () => {
       totalAt: basis === 'AT' ? assignment.totalSeconds ?? 0 : 0,
       totalSt: basis === 'ST' ? assignment.totalSeconds ?? 0 : 0,
       status: basis === 'ST' ? 'ST' : basis === 'PT' || basis === 'CT' ? 'PT' : 'NONE',
+      isManualOrderLocked: true,
     };
   };
 
@@ -4933,6 +4956,19 @@ const AssignBoard = () => {
             </Button>
           </Stack>
         </Box>
+        {unlockedUnassignedCardCount > 0 ? (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            {getUiMessage(
+              'assign.manualLockRequiredForSchedulingBanner',
+              languageCode === 'vi'
+                ? `Co ${unlockedUnassignedCardCount} the chua khoa thu cong. Chi co the phan cong tren lich sau khi khoa don hang.`
+                : languageCode === 'en'
+                  ? `${unlockedUnassignedCardCount} cards are from unlocked orders. Lock the order manually before scheduling.`
+                  : `수동 잠금되지 않은 주문 카드가 ${unlockedUnassignedCardCount}건 있습니다. 주문을 수동 잠금한 뒤 스케줄 배정을 진행해 주세요.`,
+              languageCode
+            )}
+          </Alert>
+        ) : null}
         <Grid container spacing={2} sx={{ minWidth: 0 }}>
           <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
             <UnassignedCardGroupsPanel
@@ -5048,48 +5084,6 @@ const AssignBoard = () => {
           <MenuItem onClick={handleContextOpenDetail} disabled={controlsDisabled}>
             {getUiMessage('assign.contextOpenDetail', 'Open Detail', languageCode)}
           </MenuItem>
-          {contextMenuState?.targetType === 'assignment' ? (
-            <MenuItem
-              onClick={handleContextToggleAssignmentCompletion}
-              disabled={controlsDisabled || !contextMenuTargetAssignment}
-              sx={{ minWidth: 240 }}
-            >
-              <Box
-                sx={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1.5,
-                }}
-              >
-                <Typography variant="inherit">
-                  {getUiMessage('assign.contextStatusToggle', '진행/완료', languageCode)}
-                </Typography>
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Typography variant="caption" color="text.secondary">
-                    {contextMenuTargetAssignmentCompleted
-                      ? getUiMessage('assign.statusCompleted', '완료', languageCode)
-                      : getUiMessage('assign.statusInProgress', '진행', languageCode)}
-                  </Typography>
-                  <Switch
-                    size="small"
-                    edge="end"
-                    checked={contextMenuTargetAssignmentCompleted}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={handleContextToggleAssignmentCompletion}
-                    inputProps={{
-                      'aria-label': getUiMessage(
-                        'assign.contextStatusToggle',
-                        '진행/완료',
-                        languageCode
-                      ),
-                    }}
-                  />
-                </Stack>
-              </Box>
-            </MenuItem>
-          ) : null}
           <Divider />
           <MenuItem onClick={handleContextSplit} disabled={controlsDisabled || contextSplitDisabled}>
             {getUiMessage('assign.contextSplitQuantity', 'Split Quantity', languageCode)}

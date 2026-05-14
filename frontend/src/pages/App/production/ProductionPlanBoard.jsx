@@ -369,6 +369,22 @@ const buildAssignmentProgressMap = (rows) =>
         },
       ])
   );
+const isAssignmentWorkCompleted = (assignment) => {
+  const baselineQuantity = Number(assignment?.progress?.baselineQuantity);
+  const producedQuantity = Number(assignment?.progress?.producedQuantity);
+  if (
+    Number.isFinite(baselineQuantity) &&
+    baselineQuantity > 0 &&
+    Number.isFinite(producedQuantity)
+  ) {
+    return producedQuantity >= baselineQuantity;
+  }
+  const progressPercent = Number(assignment?.progress?.progressPercent);
+  if (Number.isFinite(progressPercent)) {
+    return progressPercent >= 100;
+  }
+  return false;
+};
 
 const resolveLineDailyCapacitySeconds = (line, headcount) => {
   const directCapacity = Number(line?.dailyCapacitySeconds);
@@ -863,7 +879,6 @@ const ProductionPlanBoard = () => {
   const { languageCode } = useLanguage();
   const isProductionPlanRouteActive = location.pathname === '/production-plan';
   const [loading, setLoading] = useState(false);
-  const [savingAssignmentId, setSavingAssignmentId] = useState(null);
   const [deltaDialog, setDeltaDialog] = useState(null); // { mode, deltaCard, ... }
   const [cards, setCards] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -1048,7 +1063,7 @@ const ProductionPlanBoard = () => {
             acc.notReady += 1;
             return acc;
           }
-          if (assignment?.isCompleted) acc.completed += 1;
+          if (isAssignmentWorkCompleted(assignment)) acc.completed += 1;
           else acc.inProgress += 1;
           return acc;
         },
@@ -1126,28 +1141,6 @@ const ProductionPlanBoard = () => {
         'ko-KR'
       ),
     [selectedAssignment?.quantity]
-  );
-  const renderActionButtonLabel = (label, busy) => (
-    <Box
-      sx={{
-        position: 'relative',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth: 44,
-      }}
-    >
-      <Box component="span" sx={{ visibility: busy ? 'hidden' : 'visible' }}>
-        {label}
-      </Box>
-      {busy && (
-        <CircularProgress
-          size={16}
-          color="inherit"
-          sx={{ position: 'absolute' }}
-        />
-      )}
-    </Box>
   );
   const selectedCtStatus = resolveAssignmentSnapshotState(selectedAssignment);
 
@@ -1654,7 +1647,7 @@ const ProductionPlanBoard = () => {
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.STYLES],
     isActive: isProductionPlanRouteActive,
-    isBlocked: loading || Boolean(savingAssignmentId),
+    isBlocked: loading,
     onRefresh: refreshStyles,
     shouldHandle: shouldRefreshStyles,
   });
@@ -1663,7 +1656,7 @@ const ProductionPlanBoard = () => {
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
     isActive: isProductionPlanRouteActive,
-    isBlocked: loading || Boolean(savingAssignmentId),
+    isBlocked: loading,
     onRefresh: refreshBoardState,
     shouldHandle: (detail) => detail?.source !== PRODUCTION_PLAN_SYNC_SOURCE,
   });
@@ -1797,99 +1790,10 @@ const ProductionPlanBoard = () => {
     [activeOrgId, activeProfile?.email, activeProfile?.employeeName, activeProfile?.label, activeProfile?.name, baseDate, cards, refreshBoardState, styleById]
   );
 
-  const handleToggleCompletion = useCallback(async (assignment) => {
-    const assignmentId = String(assignment?.id || '').trim();
-    if (!assignmentId || savingAssignmentId) return;
-
-    const query = buildQueryString({ orgId: activeOrgId });
-    const isCompleted = Boolean(assignment?.isCompleted);
-
-    setSavingAssignmentId(assignmentId);
-    try {
-      let completionResult = null;
-      if (isCompleted) {
-        completionResult = await requestJSON(`/assignment-plans/${encodeURIComponent(assignmentId)}/reopen${query}`, {
-          method: 'PATCH',
-          skipGlobalLoading: true,
-        });
-      } else {
-        completionResult = await requestJSON(`/assignment-plans/${encodeURIComponent(assignmentId)}/complete${query}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-          skipGlobalLoading: true,
-        });
-      }
-      const nextIsCompleted = Boolean(completionResult?.isCompleted ?? !isCompleted);
-      const nextFinalQuantity = nextIsCompleted
-        ? toNonNegativeInt(completionResult?.finalQuantity, null)
-        : null;
-      const nextCompletedAt = nextIsCompleted
-        ? String(completionResult?.completedAt || assignment?.completedAt || new Date().toISOString())
-        : null;
-
-      setAssignments((prevAssignments) =>
-        (Array.isArray(prevAssignments) ? prevAssignments : []).map((item) => {
-          if (String(item?.id || '') !== assignmentId) return item;
-          return {
-            ...item,
-            isCompleted: nextIsCompleted,
-            finalQuantity: nextFinalQuantity,
-            completedAt: nextCompletedAt,
-          };
-        })
-      );
-      emitWorkspaceDataChanged({
-        topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
-        orgId: activeOrgId,
-        assignmentIds: [assignmentId],
-        source: PRODUCTION_PLAN_SYNC_SOURCE,
-      });
-
-      const progressRows = await requestJSON(
-        '/assignment-plan-progress' +
-          buildQueryString({
-            orgId: activeOrgId,
-            ids: assignmentId,
-          }),
-        {
-          forceRefresh: true,
-          skipGlobalLoading: true,
-        }
-      ).catch(() => []);
-
-      const progressRow = Array.isArray(progressRows)
-        ? progressRows.find((row) => String(row?.id || '') === assignmentId) || null
-        : null;
-      if (progressRow) {
-        const progressEntry = buildAssignmentProgressMap([progressRow]).get(assignmentId);
-        if (progressEntry) {
-          setAssignmentProgressById((prevMap) => {
-            const nextMap = new Map(prevMap);
-            nextMap.set(assignmentId, progressEntry);
-            return nextMap;
-          });
-        }
-      }
-
-      showNotification(
-        isCompleted ? '작업이 진행 상태로 전환되었습니다.' : '작업이 완료 상태로 전환되었습니다.',
-        'success'
-      );
-    } catch (error) {
-      showNotification(
-        resolveBoardSaveErrorMessage(error, '작업 상태 변경에 실패했습니다.'),
-        'error'
-      );
-    } finally {
-      setSavingAssignmentId(null);
-    }
-  }, [activeOrgId, savingAssignmentId, showNotification]);
-
   // ?? Delta card ?ы띁 ??????????????????????????????????????????????
   const findMatchingAssignmentsForDelta = (deltaCard) =>
     assignmentsForView.filter((a) => {
-      if (a.isCompleted) return false;
+      if (isAssignmentWorkCompleted(a)) return false;
       const card = cardById.get(String(a.cardId));
       return (
         (card?.styleId === deltaCard.styleId || a.label === deltaCard.label) &&
@@ -2155,21 +2059,20 @@ const ProductionPlanBoard = () => {
                     <TableCell>예상 일정</TableCell>
                     <TableCell>진행률</TableCell>
                     <TableCell>작업 상태</TableCell>
-                    <TableCell align="center">처리</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading ? (
-                    <TableStatusRow colSpan={10} message="불러오는 중..." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={9} message="불러오는 중..." sx={{ py: 2 }} />
                   ) : reviewAssignments.length === 0 ? (
-                    <TableStatusRow colSpan={10} message="표시할 배정 작업이 없습니다." sx={{ py: 2 }} />
+                    <TableStatusRow colSpan={9} message="표시할 배정 작업이 없습니다." sx={{ py: 2 }} />
                   ) : (
                     reviewAssignments.map((assignment) => {
                       const snapshotState = resolveAssignmentSnapshotState(assignment);
                       const statusMeta = STATUS_META[snapshotState] || STATUS_META.UNSAVED;
                       const rowSelected = String(selectedAssignment?.id || '') === String(assignment.id);
                       const isSaved = snapshotState === 'SAVED';
-                      const completionBusy = String(savingAssignmentId || '') === String(assignment.id);
+                      const isCompleted = isAssignmentWorkCompleted(assignment);
 
                       return (
                         <TableRow
@@ -2269,36 +2172,13 @@ const ProductionPlanBoard = () => {
                             {isSaved ? (
                               <Chip
                                 size="small"
-                                label={assignment.isCompleted ? '완료' : '진행'}
-                                color={assignment.isCompleted ? 'success' : 'default'}
-                                variant={assignment.isCompleted ? 'filled' : 'outlined'}
+                                label={isCompleted ? '완료' : '진행'}
+                                color={isCompleted ? 'success' : 'default'}
+                                variant={isCompleted ? 'filled' : 'outlined'}
                               />
                             ) : (
                               <Typography variant="caption" color="text.secondary">
                                 CT 미저장
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell align="center" sx={{ minWidth: 104 }}>
-                            {isSaved && !isLineLeaderView ? (
-                              <Button
-                                size="small"
-                                variant={assignment.isCompleted ? 'outlined' : 'contained'}
-                                color={assignment.isCompleted ? 'warning' : 'success'}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleToggleCompletion(assignment);
-                                }}
-                                disabled={Boolean(savingAssignmentId)}
-                              >
-                                {renderActionButtonLabel(
-                                  assignment.isCompleted ? '진행' : '완료',
-                                  completionBusy
-                                )}
-                              </Button>
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                {isLineLeaderView ? '조회 전용' : '-'}
                               </Typography>
                             )}
                           </TableCell>

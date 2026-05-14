@@ -4680,9 +4680,7 @@ const toOrderResponse = (
   const ownerOrgId = order.buyerOrgId ?? order.orgId ?? null;
   const isManualModificationLocked = Boolean(order?.modificationLockedAt);
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
-  const isModificationLocked =
-    isManualModificationLocked ||
-    isAssignmentModificationLocked;
+  const isModificationLocked = isManualModificationLocked;
   const status = resolveCanonicalWorkOrderStatusForLockState({
     status: order.status,
     isManualLocked: isManualModificationLocked,
@@ -4709,8 +4707,7 @@ const toOrderResponse = (
     isModificationLocked,
     isManualModificationLocked,
     isAssignmentModificationLocked,
-    canToggleModificationLock:
-      !isAssignmentModificationLocked,
+    canToggleModificationLock: true,
     modificationLockedAt: order.modificationLockedAt ?? null,
     modificationLockedBy: order.modificationLockedBy ?? "",
     createdAt: order.createdAt,
@@ -4729,20 +4726,6 @@ const normalizeMonthKey = (value: any) => {
   return /^\d{4}-\d{2}$/.test(trimmed) ? trimmed : "";
 };
 const BUSINESS_TIME_ZONE = resolveOptionalString(process.env.BUSINESS_TIME_ZONE, "Asia/Seoul") || "Asia/Seoul";
-const resolveFiniteEnvNumber = (
-  value: unknown,
-  fallback: number,
-  minimum = Number.NEGATIVE_INFINITY
-) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < minimum) return fallback;
-  return parsed;
-};
-const WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER = resolveFiniteEnvNumber(
-  process.env.WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER,
-  3,
-  1
-);
 const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   if (input === null || input === undefined) return "";
   if (typeof input === "string" && input.trim() === "") return "";
@@ -5397,10 +5380,6 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
     orderIds,
   });
 };
-const toAssignmentProcessBucketKey = (
-  assignmentPlanId: number,
-  processMetricKey: string
-) => `${assignmentPlanId}::${processMetricKey}`;
 const resolveWorkRecordProcessMetric = (
   processCodeInput: any,
   processNameInput: any
@@ -5485,55 +5464,6 @@ const formatWorkerStyleProcessIdentityLabel = (record: any) => {
   const processLabel = resolveWorkRecordProcessMetricFromRecord(record).processLabel;
   return [workerLabel, styleLabel, processLabel].filter(Boolean).join(" / ");
 };
-type AssignmentProcessQuantityBucket = {
-  assignmentPlanId: number;
-  processMetricKey: string;
-  processLabel: string;
-  quantity: number;
-};
-const collectAssignmentProcessQuantities = (records: any) => {
-  const buckets = new Map<string, AssignmentProcessQuantityBucket>();
-
-  ensureArray(records).forEach((record) => {
-    if (!record || typeof record !== "object") return;
-    const assignmentPlanId = toPositiveIntOrNull(record.assignmentPlanId);
-    if (!assignmentPlanId) return;
-
-    const quantity = toNonNegativeInt(record.quantity, 0);
-    if (quantity <= 0) return;
-
-    const processMetric = resolveWorkRecordProcessMetricFromRecord(record);
-    const bucketKey = toAssignmentProcessBucketKey(
-      assignmentPlanId,
-      processMetric.processMetricKey
-    );
-    const current = buckets.get(bucketKey);
-    if (current) {
-      current.quantity += quantity;
-      return;
-    }
-
-    buckets.set(bucketKey, {
-      assignmentPlanId,
-      processMetricKey: processMetric.processMetricKey,
-      processLabel: processMetric.processLabel,
-      quantity,
-    });
-  });
-
-  return buckets;
-};
-const resolvePositiveRoundedQuantity = (value: any): number | null => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  const rounded = Math.round(parsed);
-  return rounded > 0 ? rounded : null;
-};
-const resolveAssignmentPlanBaselineQuantity = (plan: any): number | null => {
-  const finalQuantity = resolvePositiveRoundedQuantity(plan?.finalQuantity);
-  if (finalQuantity !== null) return finalQuantity;
-  return resolvePositiveRoundedQuantity(plan?.quantity);
-};
 const formatAssignmentPlanLabel = (plan: any) => {
   const parts = [
     resolveOptionalString(plan?.orderNo, null),
@@ -5599,148 +5529,6 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
     return {
       status: 400,
       error: `ct snapshot required before work log (${preview}${extraText})`,
-    };
-  }
-
-  return { status: 200, error: null as string | null };
-};
-const validateWorkLogAssignmentProcessQuantities = async ({
-  orgId,
-  lineId,
-  records,
-  excludedWorkLogId = null,
-}: {
-  orgId: number;
-  lineId: number | null;
-  records: any;
-  excludedWorkLogId?: number | null;
-}) => {
-  const incomingBuckets = collectAssignmentProcessQuantities(records);
-  if (incomingBuckets.size === 0) {
-    return { status: 200, error: null as string | null };
-  }
-  void lineId;
-
-  const assignmentPlanIds = Array.from(
-    new Set(
-      Array.from(incomingBuckets.values()).map(
-        (bucket) => bucket.assignmentPlanId
-      )
-    )
-  );
-  const plans = await prisma.assignmentPlan.findMany({
-    where: { orgId, id: { in: assignmentPlanIds } },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      orderNo: true,
-      label: true,
-      colorName: true,
-      quantity: true,
-      finalQuantity: true,
-    },
-  });
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
-
-  const missingPlanIds = assignmentPlanIds.filter(
-    (planId) => !planById.has(planId)
-  );
-  if (missingPlanIds.length > 0) {
-    return {
-      status: 400,
-      error: `assignment plan not found (${missingPlanIds.join(",")})`,
-    };
-  }
-
-  const existingRows = await prisma.workRecord.groupBy({
-    by: ["assignmentPlanId", "processId", "processCode"],
-    where: {
-      orgId,
-      assignmentPlanId: { in: assignmentPlanIds },
-      ...(excludedWorkLogId ? { workLogId: { not: excludedWorkLogId } } : {}),
-    },
-    _sum: { quantity: true },
-  });
-  const processIds = collectPositiveIntSet(
-    ...existingRows.map((row) => row.processId)
-  );
-  const processes =
-    processIds.length > 0
-      ? await prisma.attrProcess.findMany({
-          where: { id: { in: processIds } },
-          select: { id: true, name: true },
-        })
-      : [];
-  const processNameById = new Map(
-    processes.map((process) => [process.id, resolveOptionalString(process.name, null)])
-  );
-
-  const existingBuckets = new Map<string, number>();
-  existingRows.forEach((row) => {
-    const assignmentPlanId = toPositiveIntOrNull(row.assignmentPlanId);
-    if (!assignmentPlanId) return;
-    const quantity = toNonNegativeInt(row._sum.quantity, 0);
-    if (quantity <= 0) return;
-
-    const processMetric = resolveWorkRecordProcessMetric(
-      row.processCode,
-      row.processId ? processNameById.get(Number(row.processId)) ?? null : null
-    );
-    const bucketKey = toAssignmentProcessBucketKey(
-      assignmentPlanId,
-      processMetric.processMetricKey
-    );
-    existingBuckets.set(bucketKey, (existingBuckets.get(bucketKey) || 0) + quantity);
-  });
-
-  const violations: Array<{
-    planLabel: string;
-    processLabel: string;
-    nextQuantity: number;
-    maxAllowedQuantity: number;
-  }> = [];
-
-  incomingBuckets.forEach((incoming, bucketKey) => {
-    const plan = planById.get(incoming.assignmentPlanId);
-    if (!plan) return;
-    const baselineQuantity = resolveAssignmentPlanBaselineQuantity(plan);
-    if (baselineQuantity === null) return;
-
-    const maxAllowedQuantity = Math.max(
-      baselineQuantity,
-      Math.ceil(
-        baselineQuantity * WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER
-      )
-    );
-    const existingQuantity = existingBuckets.get(bucketKey) || 0;
-    const nextQuantity = existingQuantity + incoming.quantity;
-    if (nextQuantity <= maxAllowedQuantity) return;
-
-    violations.push({
-      planLabel: formatAssignmentPlanLabel(plan),
-      processLabel: incoming.processLabel,
-      nextQuantity,
-      maxAllowedQuantity,
-    });
-  });
-
-  if (violations.length > 0) {
-    const preview = violations
-      .slice(0, 3)
-      .map(
-        (item) =>
-          `${item.planLabel} / ${item.processLabel}: ${item.nextQuantity} > ${item.maxAllowedQuantity}`
-      )
-      .join("; ");
-    const extraText =
-      violations.length > 3 ? ` (+${violations.length - 3} more)` : "";
-    return {
-      status: 400,
-      error:
-        `process quantity exceeds allowed range ` +
-        `(max ${WORK_LOG_ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER}x baseline): ` +
-        `${preview}${extraText}`,
     };
   }
 
@@ -6139,9 +5927,6 @@ const translateWorkLogErrorMessage = (error: any) => {
   ) {
     return "CT snapshot이 저장된 배정 카드만 작업 기록으로 저장할 수 있습니다.";
   }
-  if (text.startsWith("process quantity exceeds allowed range")) {
-    return "배정카드 공정 수량이 허용 범위를 초과했습니다. 수량을 확인해 주세요.";
-  }
 
   return text;
 };
@@ -6278,9 +6063,9 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
     startIndex: plan?.startIndex ?? 0,
     endIndex: plan?.endIndex ?? 0,
-    isCompleted: Boolean(plan?.isCompleted),
-    finalQuantity: plan?.finalQuantity ?? null,
-    completedAt: plan?.completedAt ?? null,
+    isCompleted: false,
+    finalQuantity: null,
+    completedAt: null,
   };
 };
 const buildWorkLogContextResponse = async ({
@@ -8163,8 +7948,8 @@ const buildOrderModificationLockState = ({
   return {
     isManualLocked,
     isAssignmentLocked: assignmentLocked,
-    canToggle: !assignmentLocked,
-    isLocked: isManualLocked || assignmentLocked,
+    canToggle: true,
+    isLocked: isManualLocked,
   };
 };
 const loadOrderAssignmentModificationLockMap = async (
@@ -8554,9 +8339,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
     startDayPercent: plan.startDayPercent ?? null,
     endDayPercent: plan.endDayPercent ?? null,
-    isCompleted: plan.isCompleted ?? false,
-    finalQuantity: plan.finalQuantity ?? null,
-    completedAt: plan.completedAt ?? null,
+    isCompleted: false,
+    finalQuantity: null,
+    completedAt: null,
     createdAt: plan.createdAt,
     updatedAt: plan.updatedAt,
   };
@@ -8584,14 +8369,6 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       });
       const totalSeconds =
         toOptionalNonNegativeInt(item.totalSeconds, null) ?? contractedSeconds;
-      const isCompleted = Boolean(item.isCompleted);
-      const finalQuantity = isCompleted
-        ? toOptionalNonNegativeInt(item.finalQuantity, undefined)
-        : null;
-      const completedAt = isCompleted
-        ? toOptionalDateValue(item.completedAt, undefined)
-        : null;
-
       return {
         lineId: lineIdNum,
         externalId,
@@ -8617,9 +8394,9 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
         startDayPercent: toOptionalFloat(item.startDayPercent, null),
         endDayPercent: toOptionalFloat(item.endDayPercent, null),
-        isCompleted,
-        finalQuantity,
-        completedAt,
+        isCompleted: false,
+        finalQuantity: null,
+        completedAt: null,
         updatedAt: new Date(),
       };
     })
@@ -8923,11 +8700,9 @@ const toAssignmentPlanWriteData = (item: any) => {
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
     startDayPercent: item.startDayPercent ?? null,
     endDayPercent: item.endDayPercent ?? null,
-    isCompleted: item.isCompleted ?? false,
-    finalQuantity:
-      item.finalQuantity === undefined ? undefined : item.finalQuantity ?? null,
-    completedAt:
-      item.completedAt === undefined ? undefined : item.completedAt ?? null,
+    isCompleted: false,
+    finalQuantity: null,
+    completedAt: null,
     updatedAt: item.updatedAt ?? new Date(),
   };
 };
@@ -13105,9 +12880,9 @@ app.get("/assignment-plans", async (req, res) => {
           normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedAt ?? null,
         startIndex: plan.startIndex,
         endIndex: plan.endIndex,
-        isCompleted: plan.isCompleted,
-        finalQuantity: plan.finalQuantity ?? null,
-        completedAt: plan.completedAt ?? null,
+        isCompleted: false,
+        finalQuantity: null,
+        completedAt: null,
       };
     })
   );
@@ -13214,13 +12989,11 @@ const buildAssignmentPlanProgressRows = async (
   return plans.map((plan) => {
     const planId = Number(plan.id);
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
-    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
+    const finalQuantity = null;
     const baselineQuantityRaw =
-      finalQuantity != null && finalQuantity > 0
-        ? finalQuantity
-        : plannedQuantity != null && plannedQuantity > 0
-          ? plannedQuantity
-          : null;
+      plannedQuantity != null && plannedQuantity > 0
+        ? plannedQuantity
+        : null;
     const producedQuantity = resolveProducedQuantity(planId, baselineQuantityRaw);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
@@ -13265,91 +13038,18 @@ app.get("/assignment-plan-progress", async (req, res) => {
 });
 
 app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-
-  const { externalId } = req.params;
-  const finalQuantity = req.body?.finalQuantity != null ? Number(req.body.finalQuantity) : null;
-  if (finalQuantity !== null && (!Number.isFinite(finalQuantity) || finalQuantity < 0)) {
-    return res.status(400).json({ ok: false, error: "finalQuantity must be a non-negative number" });
-  }
-
-  let updatedPlan: {
-    id: number;
-    externalId: string;
-    isCompleted: boolean;
-    finalQuantity: number | null;
-    completedAt: Date | null;
-  };
-  try {
-    updatedPlan = await prisma.assignmentPlan.update({
-      where: { orgId_externalId: { orgId: organization.id, externalId } },
-      data: {
-        isCompleted: true,
-        finalQuantity: finalQuantity != null ? Math.round(finalQuantity) : null,
-        completedAt: new Date(),
-      },
-      select: {
-        id: true,
-        externalId: true,
-        isCompleted: true,
-        finalQuantity: true,
-        completedAt: true,
-      },
-    });
-  } catch (error) {
-    if (getErrorCode(error) === "P2025") {
-      return res.status(404).json({ ok: false, error: "assignment plan not found" });
-    }
-    throw error;
-  }
-
-  res.json({
-    ok: true,
-    dbId: updatedPlan.id,
-    id: updatedPlan.externalId,
-    isCompleted: updatedPlan.isCompleted,
-    finalQuantity: updatedPlan.finalQuantity ?? null,
-    completedAt: updatedPlan.completedAt ?? null,
+  return res.status(410).json({
+    ok: false,
+    error:
+      "manual completion is disabled; assignment completion is derived from work log quantities",
   });
 });
 
 app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) {
-    return res.status(404).json({ ok: false, error: "organization not found" });
-  }
-
-  const { externalId } = req.params;
-  let updatedPlan: {
-    id: number;
-    externalId: string;
-    isCompleted: boolean;
-  };
-  try {
-    updatedPlan = await prisma.assignmentPlan.update({
-      where: { orgId_externalId: { orgId: organization.id, externalId } },
-      data: { isCompleted: false, finalQuantity: null, completedAt: null },
-      select: {
-        id: true,
-        externalId: true,
-        isCompleted: true,
-      },
-    });
-  } catch (error) {
-    if (getErrorCode(error) === "P2025") {
-      return res.status(404).json({ ok: false, error: "assignment plan not found" });
-    }
-    throw error;
-  }
-
-  res.json({
-    ok: true,
-    dbId: updatedPlan.id,
-    id: updatedPlan.externalId,
-    isCompleted: updatedPlan.isCompleted,
+  return res.status(410).json({
+    ok: false,
+    error:
+      "manual completion is disabled; assignment completion is derived from work log quantities",
   });
 });
 
@@ -13933,16 +13633,6 @@ app.post("/work-logs", async (req, res) => {
       .status(ctSnapshotValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
-  const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
-    orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
-    records: normalized.records,
-  });
-  if (quantityValidation.error) {
-    return res
-      .status(quantityValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(quantityValidation.error) });
-  }
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
 
   const created = await prisma.$transaction(async (tx) => {
@@ -14110,17 +13800,6 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(ctSnapshotValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
-  const quantityValidation = await validateWorkLogAssignmentProcessQuantities({
-    orgId: organization.id,
-    lineId: lineValidation.line?.id ?? normalized.lineId,
-    records: normalized.records,
-    excludedWorkLogId: existing.id,
-  });
-  if (quantityValidation.error) {
-    return res
-      .status(quantityValidation.status)
-      .json({ ok: false, error: translateWorkLogErrorMessage(quantityValidation.error) });
-  }
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -14277,6 +13956,33 @@ app.get("/assignment-cards", async (req, res) => {
         .filter((styleId): styleId is string => Boolean(styleId))
     )
   );
+  const orderManualLockRows = await prisma.workOrder.findMany({
+    where: { OR: getOrderAccessWhere(organization.id) },
+    select: {
+      orderId: true,
+      modificationLockedAt: true,
+    },
+  });
+  const manualLockByOrderId = orderManualLockRows.reduce((map, row) => {
+    const orderId = resolveOptionalString(row?.orderId, null);
+    if (!orderId) return map;
+    map.set(orderId, Boolean(row?.modificationLockedAt));
+    return map;
+  }, new Map<string, boolean>());
+  const cardsWithOrderLock = cards.map((card) => {
+    const cardIdentity =
+      resolveOptionalString(card?.originOrderId, null) ??
+      resolveOptionalString(card?.id, null);
+    const orderId = cardIdentity
+      ? extractOrderIdFromAssignmentCardText(cardIdentity)
+      : null;
+    const isManualOrderLocked =
+      orderId == null ? true : Boolean(manualLockByOrderId.get(orderId));
+    return {
+      ...card,
+      isManualOrderLocked,
+    };
+  });
   const styleSelect = {
     uid: true,
     orgId: true,
@@ -14304,7 +14010,7 @@ app.get("/assignment-cards", async (req, res) => {
     : new Map<number, any[]>();
 
   res.json({
-    cards,
+    cards: cardsWithOrderLock,
     styles: styles.map((style) =>
       toStyleResponse(style, {
         includeProcesses,
@@ -14579,6 +14285,41 @@ app.put("/assignment-board-state", async (req, res) => {
       const externalId = resolveAssignmentExternalId(item);
       return Boolean(externalId && changedIncomingExternalIds.has(externalId));
     });
+    const changedOrderIds = Array.from(
+      new Set(
+        changedIncomingAssignments
+          .map((item) => resolveOrderIdFromAssignmentBoardItem(item))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    if (changedOrderIds.length > 0) {
+      const orderRows = await tx.workOrder.findMany({
+        where: {
+          orderId: { in: changedOrderIds },
+          OR: getOrderAccessWhere(organization.id),
+        },
+        select: {
+          orderId: true,
+          modificationLockedAt: true,
+        },
+      });
+      const manualLockByOrderId = orderRows.reduce((map, row) => {
+        const orderId = resolveOptionalString(row?.orderId, null);
+        if (!orderId) return map;
+        map.set(orderId, Boolean(row?.modificationLockedAt));
+        return map;
+      }, new Map<string, boolean>());
+      const unlockedOrderIds = changedOrderIds.filter(
+        (orderId) => !Boolean(manualLockByOrderId.get(orderId))
+      );
+      if (unlockedOrderIds.length > 0) {
+        throw createHttpError(
+          409,
+          `order manual lock required before scheduling assignment: ` +
+            unlockedOrderIds.slice(0, 5).join(", ")
+        );
+      }
+    }
     const versionConflicts = findAssignmentVersionConflicts(
       changedIncomingAssignments,
       currentVersionByExternalId
@@ -15057,59 +14798,9 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
 
   const currentLockState = await getOrderModificationLockState(existing);
   const requestedLocked = Boolean(req.body.locked);
-  const shouldUnlock = !requestedLocked;
-  const releaseAssignmentsRequested = Boolean(req.body?.releaseAssignments);
-  const pastAssignmentReleaseConfirmed = Boolean(
-    req.body?.confirmPastAssignmentRelease
-  );
-  const relatedOrgIds = getOrderRelatedOrgIds(existing);
-  let assignmentReleaseSummary: {
-    orderId: string;
-    releasedAssignmentCount: number;
-    releasedPlanCount: number;
-    detachedWorkRecordCount: number;
-    affectedOrgIds: number[];
-  } | null = null;
-
-  if (shouldUnlock && currentLockState.isAssignmentLocked) {
-    const releaseSummary = await loadOrderAssignmentReleaseSummary({
-      orderId: existing.orderId,
-      orgIds: relatedOrgIds,
-    });
-    if (!releaseAssignmentsRequested) {
-      return res.status(409).json({
-        ok: false,
-        error: ORDER_MODIFICATION_UNLOCK_ASSIGNMENT_RELEASE_REQUIRED_ERROR,
-        meta: releaseSummary,
-      });
-    }
-    if (
-      releaseSummary.pastStartedAssignmentCount > 0 &&
-      !pastAssignmentReleaseConfirmed
-    ) {
-      return res.status(409).json({
-        ok: false,
-        error:
-          ORDER_MODIFICATION_UNLOCK_PAST_ASSIGNMENT_CONFIRMATION_REQUIRED_ERROR,
-        meta: releaseSummary,
-      });
-    }
-    assignmentReleaseSummary = await releaseOrderAssignmentsForUnlock({
-      orderId: existing.orderId,
-      orgIds: relatedOrgIds,
-    });
-  }
-
-  if (requestedLocked && !currentLockState.canToggle) {
-    return res.status(409).json({
-      ok: false,
-      error: ORDER_MODIFICATION_LOCK_STATE_CHANGE_ERROR,
-    });
-  }
 
   if (
-    requestedLocked === currentLockState.isManualLocked &&
-    assignmentReleaseSummary === null
+    requestedLocked === currentLockState.isManualLocked
   ) {
     const refreshedLockState = await getOrderModificationLockState(existing);
     return res.json(
@@ -15174,16 +14865,11 @@ app.post("/orders/:orderId/modification-lock", async (req, res) => {
   }
 
   const refreshedLockState = await getOrderModificationLockState(orderForResponse);
-  const responsePayload = toOrderResponse(orderForResponse, {
-    isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
-  });
-  if (assignmentReleaseSummary) {
-    return res.json({
-      ...responsePayload,
-      assignmentReleaseSummary,
-    });
-  }
-  return res.json(responsePayload);
+  return res.json(
+    toOrderResponse(orderForResponse, {
+      isAssignmentModificationLocked: refreshedLockState.isAssignmentLocked,
+    })
+  );
 });
 
 app.delete("/orders/:orderId", async (req, res) => {

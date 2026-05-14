@@ -2348,76 +2348,28 @@ const OrderList = () => {
   const performOrderLockToggle = useCallback(
     async ({ targetOrder, nextLocked, enforceDraftSaved = false }) => {
       if (!targetOrder?.id) return;
-      const shouldUnlock = !nextLocked;
 
       if (nextLocked && enforceDraftSaved && hasFormChanges) {
         showNotification(orderPageText.lockSaveFirstWarning, 'warning');
         return;
       }
 
-      const isTargetLocked = Boolean(targetOrder?.isModificationLocked);
-      const isTargetAssignmentLocked = Boolean(targetOrder?.isAssignmentModificationLocked);
       const canToggleTarget = Boolean(targetOrder?.canToggleModificationLock);
-      const shouldReleaseAssignments = shouldUnlock && isTargetLocked && isTargetAssignmentLocked;
-
-      if (!canToggleTarget && !shouldReleaseAssignments) {
+      if (!canToggleTarget) {
         showNotification(orderPageText.lockChangeNotAllowed, 'warning');
-        return;
-      }
-      if (
-        shouldReleaseAssignments &&
-        !window.confirm(orderPageText.lockUnlockReleaseAssignmentsConfirm)
-      ) {
         return;
       }
 
       setIsTogglingModificationLock(true);
       try {
-        const basePayload = {
+        const updated = await toggleOrderModificationLockToApi(
+          targetOrder.id,
+          {
           locked: nextLocked,
           lockedBy: activeProfile?.email || activeProfile?.name || orderPageText.manager,
-          releaseAssignments: shouldReleaseAssignments,
-        };
-        let updated;
-        try {
-          updated = await toggleOrderModificationLockToApi(
-            targetOrder.id,
-            {
-              ...basePayload,
-              confirmPastAssignmentRelease: false,
-            },
-            { orgId: activeOrgId }
-          );
-        } catch (error) {
-          const message = String(error?.message || '').trim();
-          if (
-            shouldReleaseAssignments &&
-            message.includes('order unlock requires past assignment release confirmation')
-          ) {
-            const meta =
-              error?.details && typeof error.details === 'object' && error.details.meta
-                ? error.details.meta
-                : null;
-            const pastStartedCount = Number(meta?.pastStartedAssignmentCount || 0);
-            const earliestPastStartDate = String(meta?.earliestPastStartDate || '').trim();
-            const confirmMessage = orderPageText.lockUnlockPastAssignmentsConfirm
-              .replace('{count}', String(pastStartedCount > 0 ? pastStartedCount : 1))
-              .replace('{date}', earliestPastStartDate || '-');
-            if (!window.confirm(confirmMessage)) {
-              return;
-            }
-            updated = await toggleOrderModificationLockToApi(
-              targetOrder.id,
-              {
-                ...basePayload,
-                confirmPastAssignmentRelease: true,
-              },
-              { orgId: activeOrgId }
-            );
-          } else {
-            throw error;
-          }
-        }
+          },
+          { orgId: activeOrgId }
+        );
         mergeOrderIntoState(updated);
         if (
           isDetailMode &&
@@ -2436,24 +2388,6 @@ const OrderList = () => {
           nextLocked ? orderPageText.lockEnabledSuccess : orderPageText.lockDisabledSuccess,
           'success'
         );
-        const releasedAssignmentCount = Number(
-          updated?.assignmentReleaseSummary?.releasedAssignmentCount || 0
-        );
-        const detachedWorkRecordCount = Number(
-          updated?.assignmentReleaseSummary?.detachedWorkRecordCount || 0
-        );
-        if (!nextLocked && releasedAssignmentCount > 0) {
-          const summaryMessage =
-            detachedWorkRecordCount > 0
-              ? orderPageText.lockReleaseSummaryWithDetachedInfo
-                  .replace('{count}', String(releasedAssignmentCount))
-                  .replace('{detached}', String(detachedWorkRecordCount))
-              : orderPageText.lockReleaseSummaryInfo.replace(
-                  '{count}',
-                  String(releasedAssignmentCount)
-                );
-          showNotification(summaryMessage, 'info');
-        }
       } catch (error) {
         showNotification(
           resolveOrderModificationLockToggleErrorMessage(error, {
