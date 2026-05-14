@@ -485,6 +485,13 @@ const buildDisplayProcessName = (process, languageCode) => {
   );
   return localizedName || toText(process?.name) || '-';
 };
+const buildDisplayProcessCode = (process) =>
+  toText(process?.code || process?.processCode || '');
+const buildProcessOptionDisplayLabel = (process, languageCode) => {
+  const processName = buildDisplayProcessName(process, languageCode);
+  const processCode = buildDisplayProcessCode(process);
+  return processCode ? `${processCode} · ${processName}` : processName;
+};
 const buildProcessIdentityKey = (process) => {
   const processKey = toText(process?.processKey || process?.id);
   if (processKey) return processKey;
@@ -1385,7 +1392,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     [resolveAssignmentForRow, resolveProcessForRow]
   );
   const getProcessOptionLabel = useCallback(
-    (option) => buildDisplayProcessName(option?.process, languageCode),
+    (option) => buildProcessOptionDisplayLabel(option?.process, languageCode),
     [languageCode]
   );
   const renderProcessOption = useCallback(
@@ -1409,7 +1416,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
               textOverflow: 'ellipsis',
             }}
           >
-            {buildDisplayProcessName(option?.process, languageCode)}
+            {buildProcessOptionDisplayLabel(option?.process, languageCode)}
           </Typography>
         </Stack>
       </Box>
