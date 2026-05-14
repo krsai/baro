@@ -2622,24 +2622,18 @@ const OrderList = () => {
   const focusFirstSizeInput = (itemId) => {
     focusInputElementInMap(sizeInputRefs, `${itemId}::${SIZE_COLUMNS[0] || ''}`);
   };
-  const deferRowMergeUntilBlur = useCallback((itemId) => {
-    const normalizedItemId = String(itemId || '').trim();
-    if (!normalizedItemId) return;
+  const deferRowMergeUntilBlur = useCallback((itemIdOrIds) => {
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    if (!targetIds.length) return;
     setDeferredMergeRowIds((prev) => {
-      if (prev.has(normalizedItemId)) return prev;
       const next = new Set(prev);
-      next.add(normalizedItemId);
-      return next;
-    });
-  }, []);
-  const clearDeferredRowMerge = useCallback((itemId) => {
-    const normalizedItemId = String(itemId || '').trim();
-    if (!normalizedItemId) return;
-    setDeferredMergeRowIds((prev) => {
-      if (!prev.has(normalizedItemId)) return prev;
-      const next = new Set(prev);
-      next.delete(normalizedItemId);
-      return next;
+      let changed = false;
+      targetIds.forEach((targetId) => {
+        if (next.has(targetId)) return;
+        next.add(targetId);
+        changed = true;
+      });
+      return changed ? next : prev;
     });
   }, []);
   const sortStyleItemsForDisplay = useCallback(() => {
@@ -2654,16 +2648,18 @@ const OrderList = () => {
       };
     });
   }, [buildSortedStyleItemGroups]);
-  const handleItemRowFocusCapture = useCallback((itemId) => {
-    deferRowMergeUntilBlur(itemId);
+  const handleItemRowFocusCapture = useCallback((itemIdOrIds) => {
+    deferRowMergeUntilBlur(itemIdOrIds);
   }, [deferRowMergeUntilBlur]);
-  const handleItemRowBlurCapture = useCallback((itemId, event) => {
-    const normalizedItemId = String(itemId || '').trim();
-    if (!normalizedItemId) return;
+  const handleItemRowBlurCapture = useCallback((itemIdOrIds, event) => {
+    const targetIds = normalizeTargetItemIds(itemIdOrIds);
+    if (!targetIds.length) return;
     const rowElement = event.currentTarget;
     window.requestAnimationFrame(() => {
       const activeElement = document.activeElement;
       if (rowElement && activeElement && rowElement.contains(activeElement)) return;
+      if (activeElement?.closest?.('.MuiAutocomplete-popper')) return;
+      if (activeElement?.closest?.('[role="listbox"]')) return;
       if (activeElement?.closest?.('[data-order-style-item-row="true"]')) return;
       sortStyleItemsForDisplay();
     });
@@ -2716,18 +2712,7 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
-    if (detailViewMode === ORDER_DETAIL_VIEW_MODES.VERTICAL && targetIdSet.size === 1) {
-      const [singleTargetId = ''] = Array.from(targetIdSet);
-      if (nextStyleIdentity) {
-        deferRowMergeUntilBlur(singleTargetId);
-      } else {
-        clearDeferredRowMerge(singleTargetId);
-      }
-    } else {
-      targetIdSet.forEach((targetId) => {
-        clearDeferredRowMerge(targetId);
-      });
-    }
+    deferRowMergeUntilBlur(targetIds);
     if (options.focusNext && options.focusItemId) {
       focusColorInput(options.focusItemId);
     }
@@ -2761,6 +2746,7 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
+    deferRowMergeUntilBlur(targetIds);
     if (options.focusNext) {
       const focusItemId = options.focusItemId || targetIds[0];
       const targetItem =
@@ -4023,23 +4009,18 @@ const OrderList = () => {
                         >
                           {formatQuantityDisplay(itemTotal)}
                         </TableCell>
-                        {isFirstRow && (
-                          <TableCell
-                            rowSpan={group.rows.length}
-                            sx={{
-                              textAlign: 'right',
-                              verticalAlign: 'top',
-                              pt: 1,
-                              fontWeight: 700,
-                              fontVariantNumeric: 'tabular-nums',
-                              color: getQuantityTextColor(groupSubtotalQuantity),
-                              backgroundColor: `${groupPastelStyle.background} !important`,
-                              borderBottomColor: `${groupPastelStyle.border} !important`,
-                            }}
-                          >
-                            {formatQuantityDisplay(groupSubtotalQuantity)}
-                          </TableCell>
-                        )}
+                        <TableCell
+                          sx={{
+                            textAlign: 'right',
+                            fontWeight: isFirstRow ? 700 : 400,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: isFirstRow
+                              ? getQuantityTextColor(groupSubtotalQuantity)
+                              : 'text.secondary',
+                          }}
+                        >
+                          {isFirstRow ? formatQuantityDisplay(groupSubtotalQuantity) : ''}
+                        </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
                             <DeleteIcon fontSize="small" />
@@ -4187,6 +4168,10 @@ const OrderList = () => {
                           <TableRow
                             key={colorRow.key}
                             data-order-style-item-row="true"
+                            onFocusCapture={() => handleItemRowFocusCapture(colorTargetIds)}
+                            onBlurCapture={(event) =>
+                              handleItemRowBlurCapture(colorTargetIds, event)
+                            }
                             sx={{
                               '& > td': {
                                 backgroundColor: groupPastelStyle.background,
@@ -4399,23 +4384,20 @@ const OrderList = () => {
                             >
                               {formatQuantityDisplay(colorRow.totalQuantity)}
                             </TableCell>
-                            {isFirstColorRow && (
-                              <TableCell
-                                rowSpan={group.colorRows.length}
-                                sx={{
-                                  textAlign: 'right',
-                                  verticalAlign: 'top',
-                                  pt: 1,
-                                  fontWeight: 700,
-                                  fontVariantNumeric: 'tabular-nums',
-                                  color: getQuantityTextColor(group.styleSubtotalQuantity),
-                                  backgroundColor: `${groupPastelStyle.background} !important`,
-                                  borderBottomColor: `${groupPastelStyle.border} !important`,
-                                }}
-                              >
-                                {formatQuantityDisplay(group.styleSubtotalQuantity)}
-                              </TableCell>
-                            )}
+                            <TableCell
+                              sx={{
+                                textAlign: 'right',
+                                fontWeight: isFirstColorRow ? 700 : 400,
+                                fontVariantNumeric: 'tabular-nums',
+                                color: isFirstColorRow
+                                  ? getQuantityTextColor(group.styleSubtotalQuantity)
+                                  : 'text.secondary',
+                              }}
+                            >
+                              {isFirstColorRow
+                                ? formatQuantityDisplay(group.styleSubtotalQuantity)
+                                : ''}
+                            </TableCell>
                             <TableCell sx={{ textAlign: 'center' }}>
                               <IconButton
                                 size="small"
