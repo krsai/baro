@@ -54,9 +54,11 @@ const SearchableSelect = ({
     onClose?.(event, reason);
   };
 
-  const handleTabSelect = (event) => {
+  const handleKeyboardSelect = (event) => {
     const highlightedOption = highlightedOptionRef.current;
-    if (event.key !== 'Tab') return;
+    const isForwardTab = event.key === 'Tab' && !event.shiftKey;
+    const isEnter = event.key === 'Enter' && !event.shiftKey;
+    if (!isForwardTab && !isEnter) return;
     if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.nativeEvent?.isComposing) return;
     if (!highlightedOption) return;
@@ -133,7 +135,7 @@ const SearchableSelect = ({
             onKeyDown: (event) => {
               params.inputProps?.onKeyDown?.(event);
               if (!event.defaultPrevented) {
-                handleTabSelect(event);
+                handleKeyboardSelect(event);
               }
               customInputOnKeyDown?.(event);
               textFieldOnKeyDown?.(event);

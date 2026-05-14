@@ -1384,7 +1384,7 @@ const OrderList = () => {
   const [formData, setFormData] = useState(buildInitialFormData);
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
-  const pendingHorizontalStyleTabFocusItemIdRef = useRef('');
+  const pendingStyleAdvanceFocusItemIdRef = useRef('');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const detailInitKeyRef = useRef(null);
   const hasTouchedDueDateFilterRef = useRef(false);
@@ -2934,17 +2934,15 @@ const OrderList = () => {
 
     if (!normalizedValue) return;
 
-    const emptyGenderRow = (Array.isArray(colorRow?.rows) ? colorRow.rows : []).find((row) => {
-      const rowGender = normalizeGenderCode(row?.item?.gender, '');
-      if (rowGender) return false;
-      return !hasAnySizeQuantity(normalizeSizeQuantities(row?.item?.sizeQuantities));
-    });
-    const emptyGenderRowId = String(emptyGenderRow?.item?.id || '').trim();
-    if (emptyGenderRowId) {
+    const reusableZeroQuantityRow = (Array.isArray(colorRow?.rows) ? colorRow.rows : []).find(
+      (row) => !hasAnySizeQuantity(normalizeSizeQuantities(row?.item?.sizeQuantities))
+    );
+    const reusableZeroQuantityRowId = String(reusableZeroQuantityRow?.item?.id || '').trim();
+    if (reusableZeroQuantityRowId) {
       setFormData((prev) => {
         const previewItems = (Array.isArray(prev.items) ? prev.items : []).map((item) => {
           const currentItemId = String(item?.id || '').trim();
-          if (currentItemId !== emptyGenderRowId) return item;
+          if (currentItemId !== reusableZeroQuantityRowId) return item;
           return {
             ...item,
             gender: normalizedGender,
@@ -3049,6 +3047,37 @@ const OrderList = () => {
 
   const getOrderTotal = () =>
     formData.items.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const buildSanitizedOrderItems = useCallback((items = []) => {
+    return (Array.isArray(items) ? items : [])
+      .map((item) => {
+        const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
+        const numericSizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
+          acc[size] = Number(normalizedSizeQuantities[size]) || 0;
+          return acc;
+        }, {});
+        const totalQuantity = sumSizeQuantities(numericSizeQuantities);
+        const safeColorCode = getItemColorCode(item);
+        const colorOption = colorOptionByCode.get(safeColorCode) || null;
+        const safeColorName = String(item.colorName || colorOption?.name || safeColorCode).trim();
+        const safeColorId =
+          Number.isFinite(Number(item.colorId)) && Number(item.colorId) > 0
+            ? Number(item.colorId)
+            : Number.isFinite(Number(colorOption?.id)) && Number(colorOption?.id) > 0
+              ? Number(colorOption.id)
+              : null;
+        return {
+          ...item,
+          styleUid: null,
+          colorId: safeColorId,
+          colorCode: safeColorCode,
+          colorName: safeColorName,
+          gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : '',
+          sizeQuantities: numericSizeQuantities,
+          totalQuantity,
+        };
+      })
+      .filter((item) => item.totalQuantity > 0);
+  }, [colorOptionByCode]);
 
   const validateOrder = () => {
     const resolvedSellerOrgId = toOrgId(fixedSellerOrg?.id ?? formData.sellerOrgId);
@@ -3096,10 +3125,14 @@ const OrderList = () => {
     ) {
       return orderPageText.validationDuplicateOrderNumber;
     }
+    const sanitizedItems = buildSanitizedOrderItems(formData.items);
     if (!formData.items.length) {
       return orderPageText.validationAddStyle;
     }
-    for (const item of formData.items) {
+    if (!sanitizedItems.length) {
+      return orderPageText.validationEnterSizeQty;
+    }
+    for (const item of sanitizedItems) {
       if (!item.styleId) {
         return orderPageText.validationSelectAllStyles;
       }
@@ -3114,7 +3147,7 @@ const OrderList = () => {
         return orderPageText.validationEnterSizeQty;
       }
     }
-    if (hasDuplicateStyleColorGender(formData.items)) {
+    if (hasDuplicateStyleColorGender(sanitizedItems)) {
       return orderPageText.validationDuplicateOnce;
     }
     return null;
@@ -3136,33 +3169,7 @@ const OrderList = () => {
       return;
     }
 
-    const sanitizedItems = formData.items.map((item) => {
-      const normalizedSizeQuantities = normalizeSizeQuantities(item.sizeQuantities);
-      const numericSizeQuantities = SIZE_COLUMNS.reduce((acc, size) => {
-        acc[size] = Number(normalizedSizeQuantities[size]) || 0;
-        return acc;
-      }, {});
-      const totalQuantity = sumSizeQuantities(numericSizeQuantities);
-      const safeColorCode = getItemColorCode(item);
-      const colorOption = colorOptionByCode.get(safeColorCode) || null;
-      const safeColorName = String(item.colorName || colorOption?.name || safeColorCode).trim();
-      const safeColorId =
-        Number.isFinite(Number(item.colorId)) && Number(item.colorId) > 0
-          ? Number(item.colorId)
-          : Number.isFinite(Number(colorOption?.id)) && Number(colorOption?.id) > 0
-            ? Number(colorOption.id)
-            : null;
-      return {
-        ...item,
-        styleUid: null,
-        colorId: safeColorId,
-        colorCode: safeColorCode,
-        colorName: safeColorName,
-        gender: GENDER_OPTIONS.includes(item.gender) ? item.gender : '',
-        sizeQuantities: numericSizeQuantities,
-        totalQuantity,
-      };
-    });
+    const sanitizedItems = buildSanitizedOrderItems(formData.items);
 
     const totalQuantity = sanitizedItems.reduce((sum, item) => sum + item.totalQuantity, 0);
 
@@ -3881,18 +3888,51 @@ const OrderList = () => {
                               options={availableStyleOptions}
                               value={groupStyleOption}
                               disabled={!selectedBuyerName}
-                              onChange={(event, newValue, reason) =>
+                              onChange={(event, newValue, reason) => {
+                                const focusItemId = group.rows[0]?.item?.id || '';
+                                const shouldFocusNext =
+                                  shouldAdvanceAfterAutocompleteSelection(event, reason) ||
+                                  pendingStyleAdvanceFocusItemIdRef.current === focusItemId;
                                 handleStyleChange(group.rowItemIds, newValue, {
-                                  focusNext: shouldAdvanceAfterAutocompleteSelection(event, reason),
-                                  focusItemId: group.rows[0]?.item?.id || '',
-                                })
-                              }
+                                  focusNext: shouldFocusNext,
+                                  focusItemId,
+                                });
+                                if (pendingStyleAdvanceFocusItemIdRef.current === focusItemId) {
+                                  pendingStyleAdvanceFocusItemIdRef.current = '';
+                                }
+                              }}
                               getOptionLabel={(option) => option?.name || ''}
                               isOptionEqualToValue={(option, value) => option?.id === value?.id}
                               autoHighlight
                               textFieldProps={{
                                 size: 'small',
                                 placeholder: orderPageText.styleSearchPlaceholder,
+                                inputProps: {
+                                  onKeyDown: (event) => {
+                                    if (
+                                      event.nativeEvent?.isComposing ||
+                                      event.ctrlKey ||
+                                      event.altKey ||
+                                      event.metaKey
+                                    ) {
+                                      return;
+                                    }
+                                    if (
+                                      (event.key === 'Tab' && !event.shiftKey) ||
+                                      (event.key === 'Enter' && !event.shiftKey)
+                                    ) {
+                                      const focusItemId = group.rows[0]?.item?.id || '';
+                                      pendingStyleAdvanceFocusItemIdRef.current = focusItemId;
+                                      window.requestAnimationFrame(() => {
+                                        if (
+                                          pendingStyleAdvanceFocusItemIdRef.current === focusItemId
+                                        ) {
+                                          pendingStyleAdvanceFocusItemIdRef.current = '';
+                                        }
+                                      });
+                                    }
+                                  },
+                                },
                                 inputRef: (node) =>
                                   setInputElementInMap(
                                     styleInputRefs,
@@ -4241,7 +4281,7 @@ const OrderList = () => {
                                   onChange={(event, newValue, reason) => {
                                     const shouldFocusNext =
                                       shouldAdvanceAfterAutocompleteSelection(event, reason) ||
-                                      pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                      pendingStyleAdvanceFocusItemIdRef.current ===
                                         colorInputTargetId;
                                     handleStyleChange(group.rowItemIds, newValue, {
                                       focusNext:
@@ -4249,10 +4289,10 @@ const OrderList = () => {
                                       focusItemId: colorInputTargetId,
                                     });
                                     if (
-                                      pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                      pendingStyleAdvanceFocusItemIdRef.current ===
                                       colorInputTargetId
                                     ) {
-                                      pendingHorizontalStyleTabFocusItemIdRef.current = '';
+                                      pendingStyleAdvanceFocusItemIdRef.current = '';
                                     }
                                   }}
                                   getOptionLabel={(option) => option?.name || ''}
@@ -4263,15 +4303,26 @@ const OrderList = () => {
                                     placeholder: orderPageText.styleSearchPlaceholder,
                                     inputProps: {
                                       onKeyDown: (event) => {
-                                        if (event.key === 'Tab' && !event.shiftKey) {
-                                          pendingHorizontalStyleTabFocusItemIdRef.current =
+                                        if (
+                                          event.nativeEvent?.isComposing ||
+                                          event.ctrlKey ||
+                                          event.altKey ||
+                                          event.metaKey
+                                        ) {
+                                          return;
+                                        }
+                                        if (
+                                          (event.key === 'Tab' && !event.shiftKey) ||
+                                          (event.key === 'Enter' && !event.shiftKey)
+                                        ) {
+                                          pendingStyleAdvanceFocusItemIdRef.current =
                                             colorInputTargetId;
                                           window.requestAnimationFrame(() => {
                                             if (
-                                              pendingHorizontalStyleTabFocusItemIdRef.current ===
+                                              pendingStyleAdvanceFocusItemIdRef.current ===
                                               colorInputTargetId
                                             ) {
-                                              pendingHorizontalStyleTabFocusItemIdRef.current = '';
+                                              pendingStyleAdvanceFocusItemIdRef.current = '';
                                             }
                                           });
                                         }
