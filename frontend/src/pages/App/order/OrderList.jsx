@@ -647,9 +647,7 @@ const hasAnySizeQuantity = (sizeQuantities = {}) =>
   SIZE_COLUMNS.some((size) => Number(sizeQuantities?.[size]) > 0);
 function shouldKeepDeferredRowSeparated(item) {
   const styleIdentity = getStyleIdentity(item);
-  const colorIdentity = getItemColorIdentity(item);
-  const normalizedGender = normalizeGenderCode(item?.gender, '');
-  return !styleIdentity || !colorIdentity || !normalizedGender;
+  return !styleIdentity;
 }
 const sumSizeQuantities = (sizeQuantities = {}) =>
   SIZE_COLUMNS.reduce((sum, size) => sum + (Number(sizeQuantities?.[size]) || 0), 0);
@@ -2726,7 +2724,7 @@ const OrderList = () => {
       ...prev,
       items: previewItems,
     }));
-    deferRowMergeUntilBlur(targetIds);
+    setDeferredMergeRowIds((prev) => (prev.size ? new Set() : prev));
     if (options.focusNext && options.focusItemId) {
       focusColorInput(options.focusItemId);
     }
@@ -2994,9 +2992,36 @@ const OrderList = () => {
       gender: normalizedGender,
       sizeQuantities,
     };
+    const referenceItemId = String(referenceItem?.id || '').trim();
+    const nextColorIdentity = getItemColorIdentity(nextItem);
 
     setFormData((prev) => {
-      const nextItems = [...(Array.isArray(prev.items) ? prev.items : []), nextItem];
+      const currentItems = Array.isArray(prev.items) ? prev.items : [];
+      const nextItems = [...currentItems];
+      let insertIndex = -1;
+
+      for (let index = 0; index < nextItems.length; index += 1) {
+        const candidate = nextItems[index];
+        const sameStyle = getStyleIdentity(candidate) === nextStyleIdentity;
+        const sameColor = getItemColorIdentity(candidate) === nextColorIdentity;
+        if (sameStyle && sameColor) {
+          insertIndex = index + 1;
+        }
+      }
+
+      if (insertIndex < 0 && referenceItemId) {
+        const referenceIndex = nextItems.findIndex(
+          (item) => String(item?.id || '').trim() === referenceItemId
+        );
+        if (referenceIndex >= 0) {
+          insertIndex = referenceIndex + 1;
+        }
+      }
+      if (insertIndex < 0) {
+        insertIndex = nextItems.length;
+      }
+
+      nextItems.splice(insertIndex, 0, nextItem);
       if (hasDuplicateStyleColorGender(nextItems)) {
         return prev;
       }
