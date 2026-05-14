@@ -96,6 +96,7 @@ const WORK_VIEW_MODES = {
   DAILY: 'daily',
   MONTHLY: 'monthly',
 };
+const WORK_LIST_FILTER_STORAGE_PREFIX = 'work-history:list-filters:v1';
 
 const FILTER_DATE_PICKER_SLOT_PROPS = {
   textField: {
@@ -160,6 +161,52 @@ const addMonths = (value, amount) => {
   const normalized = normalizeFilterDate(value) || new Date();
   return dayjs(normalized).add(amount, 'month').startOf('month').toDate();
 };
+const buildWorkListFilterStorageKey = (orgId) =>
+  `${WORK_LIST_FILTER_STORAGE_PREFIX}:${String(orgId || 'global').trim() || 'global'}`;
+const readStoredWorkListFilters = (orgId) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(buildWorkListFilterStorageKey(orgId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const storedStart = normalizeFilterDate(
+      parsed?.dateFrom ?? parsed?.dateFilterStart ?? null
+    );
+    const storedEnd = normalizeFilterDate(
+      parsed?.dateTo ?? parsed?.dateFilterEnd ?? null
+    );
+    const selectedFactoryId = String(parsed?.selectedFactoryId || '').trim();
+    if (!storedStart && !storedEnd && !selectedFactoryId) return null;
+    const dateFilterStart = storedStart || storedEnd || getMonthStart(new Date());
+    const endCandidate = storedEnd || storedStart || dateFilterStart;
+    const dateFilterEnd = endCandidate >= dateFilterStart ? endCandidate : dateFilterStart;
+    return {
+      selectedFactoryId,
+      dateFilterStart,
+      dateFilterEnd,
+    };
+  } catch (_error) {
+    return null;
+  }
+};
+const persistWorkListFilters = (orgId, { selectedFactoryId, dateFilterStart, dateFilterEnd }) => {
+  if (typeof window === 'undefined') return;
+  const startKey = buildFilterDateKey(dateFilterStart);
+  const endKey = buildFilterDateKey(dateFilterEnd);
+  if (!startKey || !endKey) return;
+  try {
+    window.sessionStorage.setItem(
+      buildWorkListFilterStorageKey(orgId),
+      JSON.stringify({
+        selectedFactoryId: String(selectedFactoryId || ''),
+        dateFrom: startKey,
+        dateTo: endKey,
+      })
+    );
+  } catch (_error) {
+    // Ignore storage errors to keep filter UX uninterrupted.
+  }
+};
 
 const resolveAverageCtSecondsPerWorker = (log) => {
   const workerCount = Math.max(0, Math.round(Number(log?.workerCount) || 0));
@@ -178,17 +225,25 @@ const WorkList = ({
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
+  const storedFilters = useMemo(
+    () => readStoredWorkListFilters(activeOrgId),
+    [activeOrgId]
+  );
 
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [factories, setFactories] = useState([]);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState(() =>
-    activeFactoryId ? String(activeFactoryId) : ''
+    activeFactoryId ? String(activeFactoryId) : storedFilters?.selectedFactoryId || ''
   );
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilterStart, setDateFilterStart] = useState(() => getMonthStart(new Date()));
-  const [dateFilterEnd, setDateFilterEnd] = useState(() => getMonthEnd(new Date()));
+  const [dateFilterStart, setDateFilterStart] = useState(
+    () => storedFilters?.dateFilterStart || getMonthStart(new Date())
+  );
+  const [dateFilterEnd, setDateFilterEnd] = useState(
+    () => storedFilters?.dateFilterEnd || getMonthEnd(new Date())
+  );
   const [deletingId, setDeletingId] = useState('');
 
   const selectedFactoryIdNumber = useMemo(() => {
@@ -198,6 +253,19 @@ const WorkList = ({
 
   const dateFrom = useMemo(() => buildFilterDateKey(dateFilterStart), [dateFilterStart]);
   const dateTo = useMemo(() => buildFilterDateKey(dateFilterEnd), [dateFilterEnd]);
+  useEffect(() => {
+    persistWorkListFilters(activeOrgId, {
+      selectedFactoryId: activeFactoryId ? String(activeFactoryId) : selectedFactoryId,
+      dateFilterStart,
+      dateFilterEnd,
+    });
+  }, [
+    activeFactoryId,
+    activeOrgId,
+    dateFilterEnd,
+    dateFilterStart,
+    selectedFactoryId,
+  ]);
 
   useEffect(() => {
     const abortController = new AbortController();
