@@ -580,11 +580,6 @@ const MainLayout = () => {
             icon: <ScheduleIcon />,
             path: '/attendance',
           },
-          {
-            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/shipment-review',
-          },
         ],
       },
       {
@@ -609,6 +604,11 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.ACCOUNTING,
         isOpen: accountingOpen,
         children: [
+          {
+            label: getUiMessage('menu.shipmentReview', '\uC218\uB7C9 \uC815\uC0B0', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/shipment-review',
+          },
           {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
@@ -849,7 +849,6 @@ const MainLayout = () => {
             '/assignment',
             '/production-plan',
             '/st-review',
-            '/shipment-review',
           ];
           visibleChildren = [
             ...preferredProductionPaths.map(

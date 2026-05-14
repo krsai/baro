@@ -21,6 +21,8 @@ import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { formatNumberWithCommas } from '../../utils/numberFormat';
+import { fetchAttributes } from '../../utils/attributeApi';
+import { resolveLocalizedAttributeName } from '../../utils/appLanguage';
 import {
   fetchQuantitySettlement,
   saveQuantitySettlement,
@@ -200,6 +202,8 @@ const resolveText = (node, languageCode) => {
   return node[languageCode] || node.ko || node.en || '';
 };
 
+const normalizeColorCodeKey = (value) => String(value ?? '').trim().toUpperCase();
+
 const formatInt = (value) =>
   formatNumberWithCommas(Number(value), {
     fallback: '0',
@@ -282,6 +286,7 @@ const ShipmentReview = () => {
   const [saving, setSaving] = useState(false);
   const [dataset, setDataset] = useState(null);
   const [draftRows, setDraftRows] = useState([]);
+  const [colorOptions, setColorOptions] = useState([]);
   const [filterMode, setFilterMode] = useState('all');
   const [searchText, setSearchText] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -350,6 +355,32 @@ const ShipmentReview = () => {
   useEffect(() => {
     loadSettlement();
   }, [loadSettlement]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadColors = async () => {
+      try {
+        const attributes = await fetchAttributes({
+          orgId: activeOrgId,
+          includeColors: true,
+          includeCategories: false,
+          includeRoles: false,
+          includeProcesses: false,
+          skipGlobalLoading: true,
+        });
+        if (!isMounted) return;
+        setColorOptions(Array.isArray(attributes?.colors) ? attributes.colors : []);
+      } catch (_error) {
+        if (!isMounted) return;
+        setColorOptions([]);
+      }
+    };
+
+    loadColors();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeOrgId]);
 
   const handleCellChange = useCallback((rowId, field, nextValue) => {
     setDraftRows((prev) =>
@@ -439,6 +470,45 @@ const ShipmentReview = () => {
   const storageReady = dataset?.storageReady !== false;
   const saveDisabled = loading || saving || dataset?.locked || !dirty || !storageReady;
 
+  const colorNameMap = useMemo(() => {
+    const byId = new Map();
+    const byCode = new Map();
+    colorOptions.forEach((color) => {
+      const localizedName = String(
+        resolveLocalizedAttributeName(color, languageCode) || color?.code || ''
+      ).trim();
+      if (!localizedName) return;
+      const numericId = Number(color?.id);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        byId.set(numericId, localizedName);
+      }
+      const codeKey = normalizeColorCodeKey(color?.code);
+      if (codeKey) {
+        byCode.set(codeKey, localizedName);
+      }
+    });
+    return { byId, byCode };
+  }, [colorOptions, languageCode]);
+
+  const resolveRowColorLabel = useCallback(
+    (row) => {
+      const numericId = Number(row?.colorId);
+      if (Number.isFinite(numericId) && numericId > 0) {
+        const byIdName = colorNameMap.byId.get(numericId);
+        if (byIdName) return byIdName;
+      }
+
+      const codeKey = normalizeColorCodeKey(row?.colorCode);
+      if (codeKey) {
+        const byCodeName = colorNameMap.byCode.get(codeKey);
+        if (byCodeName) return byCodeName;
+      }
+
+      return String(row?.colorName || row?.colorCode || '').trim();
+    },
+    [colorNameMap]
+  );
+
   const visibleRows = useMemo(() => {
     const keyword = String(searchText || '').trim().toLowerCase();
     return draftRows.filter((row) => {
@@ -456,12 +526,13 @@ const ShipmentReview = () => {
         row.styleName,
         row.colorCode,
         row.colorName,
+        resolveRowColorLabel(row),
       ]
         .join(' ')
         .toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [draftRows, filterMode, searchText]);
+  }, [draftRows, filterMode, resolveRowColorLabel, searchText]);
 
   const emptyStateMessage = useMemo(() => {
     const orderCount = Number(dataset?.sourceSummary?.orderCount) || 0;
@@ -629,7 +700,7 @@ const ShipmentReview = () => {
                             {row.styleCode || row.styleId || '-'}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" display="block">
-                            {[row.styleName, row.colorName || row.colorCode]
+                            {[row.styleName, resolveRowColorLabel(row)]
                               .filter(Boolean)
                               .join(' / ') || '-'}
                           </Typography>
