@@ -78,6 +78,7 @@ const LABELS = {
   assignmentException: '예외',
   assignmentOtherLine: '다른 라인 배정',
   orderNo: '주문번호',
+  orderQuantity: '주문수량',
   assignmentQuantityExceeded: '배정카드 허용 수량 초과',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
   process: '공정',
@@ -1324,8 +1325,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     (props, option) => {
       const isException = isOtherLineAssignmentOption(option, selectedLineId);
       const orderNo = toText(option?.orderNo);
+      const orderQuantity = resolveBaselineQuantity(option);
       const lineName = toText(option?.lineName);
-      const secondaryText = orderNo ? `${LABELS.orderNo} ${orderNo}` : lineName;
+      const orderMetaText = [
+        orderNo ? `${LABELS.orderNo} ${orderNo}` : '',
+        orderQuantity ? `${LABELS.orderQuantity} ${formatCount(orderQuantity)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const secondaryText = orderMetaText || lineName;
       const description = formatAssignmentLabel(option);
       return (
         <Box

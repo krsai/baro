@@ -55,6 +55,15 @@ const buildWorkListTabLabel = (languageCode) => {
   if (languageCode === 'vi') return 'Nhat ky cong viec';
   return '작업 기록';
 };
+const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
+  const title =
+    languageCode === 'vi'
+      ? 'Chi tiet ghi chep ngay'
+      : languageCode === 'en'
+        ? 'Daily Record Detail'
+        : '일일 기록 상세';
+  return workDateKey ? `${title}: ${workDateKey}` : title;
+};
 
 const WorkEntry = () => {
   const { workLogId } = useParams();
@@ -137,7 +146,7 @@ const WorkEntry = () => {
             return;
           }
           showNotification(resolveText(TEXT.updateSuccess, languageCode, '기록을 수정했습니다.'), 'success');
-          closeEntry();
+          setExistingLog(updated);
           return;
         }
 
@@ -148,7 +157,9 @@ const WorkEntry = () => {
         }
 
         showNotification(resolveText(TEXT.saveSuccess, languageCode, '기록을 저장했습니다.'), 'success');
-        closeEntry();
+        navigateToPath(`/work-history/${created.id}`, {
+          label: buildWorkDetailTabLabel(payload?.workDate, languageCode),
+        });
       } catch (error) {
         showNotification(
           error?.message || resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'),
@@ -158,7 +169,7 @@ const WorkEntry = () => {
         setSaving(false);
       }
     },
-    [activeOrgId, closeEntry, isEditMode, languageCode, routeWorkLogId, showNotification]
+    [activeOrgId, isEditMode, languageCode, navigateToPath, routeWorkLogId, showNotification]
   );
 
   if (loading) {
