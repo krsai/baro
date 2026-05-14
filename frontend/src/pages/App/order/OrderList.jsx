@@ -999,6 +999,12 @@ const OrderList = () => {
           : languageCode === 'en'
             ? 'Total'
             : '합계',
+      styleSubtotal:
+        languageCode === 'vi'
+          ? 'Tong style'
+          : languageCode === 'en'
+            ? 'Style Subtotal'
+            : '스타일 소계',
       styleSearchPlaceholder:
         languageCode === 'vi'
           ? 'Tim ten style'
@@ -2093,9 +2099,15 @@ const OrderList = () => {
         };
       });
 
+      const styleSubtotalQuantity = normalizedColorGroupRows.reduce(
+        (sum, colorGroupRow) => sum + (Number(colorGroupRow?.totalQuantity) || 0),
+        0
+      );
+
       return {
         ...group,
         colorRows: normalizedColorGroupRows,
+        styleSubtotalQuantity,
       };
     });
   }, [getResolvedColorLabel, groupedStyleItems]);
@@ -3768,12 +3780,17 @@ const OrderList = () => {
                     </TableCell>
                   ))}
                   <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.total}</TableCell>
+                  <TableCell sx={{ fontWeight: 'bold', width: '8%', textAlign: 'right' }}>{orderPageText.styleSubtotal}</TableCell>
                   <TableCell sx={{ fontWeight: 'bold', width: '4%', textAlign: 'center' }}>{getUiMessage('common.delete', 'Delete', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {groupedStyleItems.map((group, groupIndex) => {
                   const groupPastelStyle = getStyleGroupPastelStyle(groupIndex);
+                  const groupSubtotalQuantity = (Array.isArray(group.rows) ? group.rows : []).reduce(
+                    (sum, row) => sum + getItemTotal(row?.item),
+                    0
+                  );
                   return group.rows.map(({ item, displayNo, isColorFirstRow, colorRowSpan, colorRowItemIds }, rowIndex) => {
                     const itemTotal = getItemTotal(item);
                     const groupStyleOption =
@@ -4006,6 +4023,23 @@ const OrderList = () => {
                         >
                           {formatQuantityDisplay(itemTotal)}
                         </TableCell>
+                        {isFirstRow && (
+                          <TableCell
+                            rowSpan={group.rows.length}
+                            sx={{
+                              textAlign: 'right',
+                              verticalAlign: 'top',
+                              pt: 1,
+                              fontWeight: 700,
+                              fontVariantNumeric: 'tabular-nums',
+                              color: getQuantityTextColor(groupSubtotalQuantity),
+                              backgroundColor: `${groupPastelStyle.background} !important`,
+                              borderBottomColor: `${groupPastelStyle.border} !important`,
+                            }}
+                          >
+                            {formatQuantityDisplay(groupSubtotalQuantity)}
+                          </TableCell>
+                        )}
                         <TableCell sx={{ textAlign: 'center' }}>
                           <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
                             <DeleteIcon fontSize="small" />
@@ -4081,6 +4115,12 @@ const OrderList = () => {
                         sx={{ fontWeight: 'bold', width: 96, textAlign: 'right' }}
                       >
                         {orderPageText.total}
+                      </TableCell>
+                      <TableCell
+                        rowSpan={2}
+                        sx={{ fontWeight: 'bold', width: 112, textAlign: 'right' }}
+                      >
+                        {orderPageText.styleSubtotal}
                       </TableCell>
                       <TableCell
                         rowSpan={2}
@@ -4359,6 +4399,23 @@ const OrderList = () => {
                             >
                               {formatQuantityDisplay(colorRow.totalQuantity)}
                             </TableCell>
+                            {isFirstColorRow && (
+                              <TableCell
+                                rowSpan={group.colorRows.length}
+                                sx={{
+                                  textAlign: 'right',
+                                  verticalAlign: 'top',
+                                  pt: 1,
+                                  fontWeight: 700,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  color: getQuantityTextColor(group.styleSubtotalQuantity),
+                                  backgroundColor: `${groupPastelStyle.background} !important`,
+                                  borderBottomColor: `${groupPastelStyle.border} !important`,
+                                }}
+                              >
+                                {formatQuantityDisplay(group.styleSubtotalQuantity)}
+                              </TableCell>
+                            )}
                             <TableCell sx={{ textAlign: 'center' }}>
                               <IconButton
                                 size="small"
