@@ -2056,8 +2056,8 @@ const OrderList = () => {
             Array.isArray(row?.colorRowItemIds) && row.colorRowItemIds.length > 0
               ? row.colorRowItemIds.map((itemId) => String(itemId || '').trim()).filter(Boolean)
               : [String(row?.item?.id || '').trim()].filter(Boolean);
-          const stableColorRowKeyBase = rowItemIds.length
-            ? rowItemIds.join('|')
+          const stableColorRowKeyBase = rowItemIds[0]
+            ? rowItemIds[0]
             : `${group.styleId || group.styleName || group.styleCode || 'group'}-${nextDisplayNo}`;
           currentColorGroup = {
             key: `color-row:${stableColorRowKeyBase}`,
