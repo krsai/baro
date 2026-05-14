@@ -649,13 +649,7 @@ function shouldKeepDeferredRowSeparated(item) {
   const styleIdentity = getStyleIdentity(item);
   const colorIdentity = getItemColorIdentity(item);
   const normalizedGender = normalizeGenderCode(item?.gender, '');
-  const normalizedSizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
-  return (
-    !styleIdentity ||
-    !colorIdentity ||
-    !normalizedGender ||
-    !hasAnySizeQuantity(normalizedSizeQuantities)
-  );
+  return !styleIdentity || !colorIdentity || !normalizedGender;
 }
 const sumSizeQuantities = (sizeQuantities = {}) =>
   SIZE_COLUMNS.reduce((sum, size) => sum + (Number(sizeQuantities?.[size]) || 0), 0);
