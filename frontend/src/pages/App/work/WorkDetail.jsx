@@ -78,6 +78,7 @@ const LABELS = {
   assignmentException: '예외',
   assignmentOtherLine: '다른 라인 배정',
   orderNo: '주문번호',
+  assignmentQuantityExceeded: '배정카드 허용 수량 초과',
   selectWorkerFirst: '작업자를 먼저 선택하세요.',
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
@@ -101,6 +102,17 @@ const normalizeProcessNameKey = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
+const formatCount = (value) =>
+  formatNumberWithCommas(value, {
+    fallback: '0',
+    maximumFractionDigits: 0,
+  });
+const buildQuantityExceededHelperText = (meta) => {
+  if (!meta) return '';
+  return `${LABELS.assignmentQuantityExceeded}: 허용 ${formatCount(meta.maxAllowed)}개 / 누적 ${formatCount(
+    meta.totalQuantity
+  )}개 / 초과 ${formatCount(meta.exceededQuantity)}개`;
+};
 const toPositiveIdOrNull = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -221,14 +233,20 @@ const buildPlanProcessOptions = (plan) => {
   const sourceProcesses = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
   const mappedProcesses = sourceProcesses.map((process, index) => {
     const fallbackName = toText(process?.name) || toText(process?.processName) || `공정 ${index + 1}`;
-    const processKey = toText(process?.processKey) || toText(process?.code) || fallbackName || `process-${index + 1}`;
+    const processKey =
+      toText(process?.processKey) ||
+      toText(process?.processCode) ||
+      toText(process?.code) ||
+      fallbackName ||
+      `process-${index + 1}`;
     return {
       id: `${toText(plan?.dbId || plan?.id || 'plan')}:${processKey}`,
       processKey,
       processId: toPositiveIdOrNull(
         process?.id ?? process?.processId ?? process?.processAttributeId ?? process?.attributeId
       ),
-      code: toText(process?.code || process?.processKey),
+      processCode: toText(process?.processCode),
+      code: toText(process?.processCode || process?.code || process?.processKey),
       name: fallbackName,
       nameKo: toText(process?.nameKo || process?.processNameKo),
       nameEn: toText(process?.nameEn || process?.processNameEn),
@@ -486,7 +504,17 @@ const buildDisplayProcessName = (process, languageCode) => {
   return localizedName || toText(process?.name) || '-';
 };
 const buildDisplayProcessCode = (process) =>
-  toText(process?.code || process?.processCode || '');
+  {
+    const canonicalCode = toText(process?.processCode);
+    if (canonicalCode) return canonicalCode;
+
+    const rawCode = toText(process?.code || process?.processKey || '');
+    if (!rawCode) return '';
+
+    const instanceCodeMatch = rawCode.match(/^(.*)-\d+-\d+$/);
+    const strippedCode = toText(instanceCodeMatch?.[1] || '');
+    return strippedCode || rawCode;
+  };
 const buildProcessOptionDisplayLabel = (process, languageCode) => {
   const processName = buildDisplayProcessName(process, languageCode);
   const processCode = buildDisplayProcessCode(process);
@@ -497,7 +525,7 @@ const buildProcessIdentityKey = (process) => {
   if (processKey) return processKey;
   const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
   if (processId) return `id:${processId}`;
-  const processCode = normalizeProcessCode(process?.code || process?.processCode);
+  const processCode = normalizeProcessCode(process?.processCode || process?.code);
   if (processCode) return `code:${processCode}`;
   const processName = toText(process?.name || process?.processName);
   if (processName) return `name:${toKey(processName)}`;
@@ -662,7 +690,9 @@ const mergeProcessWithCatalog = (
 ) => {
   if (!process) return null;
   const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
-  const processCode = normalizeProcessCode(process?.code || process?.processCode || process?.processKey);
+  const processCode = normalizeProcessCode(
+    process?.processCode || process?.code || process?.processKey
+  );
   const processNameKey = normalizeProcessNameKey(process?.name || process?.processName);
   const matchedProcess =
     (processId ? processCatalogById.get(processId) : null) ||
@@ -675,7 +705,15 @@ const mergeProcessWithCatalog = (
     ...matchedProcess,
     ...process,
     processId: processId || toPositiveIdOrNull(matchedProcess?.id),
-    code: toText(process?.code || process?.processCode || matchedProcess?.code),
+    processCode: toText(
+      process?.processCode || matchedProcess?.processCode || matchedProcess?.code
+    ),
+    code: toText(
+      process?.processCode ||
+        process?.code ||
+        matchedProcess?.processCode ||
+        matchedProcess?.code
+    ),
     name: toText(process?.name || process?.processName || matchedProcess?.name),
     nameKo: toText(process?.nameKo || matchedProcess?.nameKo),
     nameEn: toText(process?.nameEn || matchedProcess?.nameEn || matchedProcess?.name),
@@ -1118,6 +1156,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       })
       .filter(({ process, row }) => process && Number(row?.quantity) > 0)
       .map(({ row, assignment, process }) => ({
+        rowId: toText(row?.id),
         workerId: toPositiveIdOrNull(row?.worker?.id),
         workerName: toText(row?.worker?.name),
         customerName: toText(assignment?.customer),
@@ -1125,7 +1164,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         styleId: toText(assignment?.styleId),
         styleName: toText(assignment?.label),
         processId: toPositiveIdOrNull(process?.processId),
-        processCode: toText(process?.code),
+        processCode: buildDisplayProcessCode(process),
         processName: toText(process?.name),
         processNameKo: toText(process?.nameKo),
         processNameEn: toText(process?.nameEn),
@@ -1141,6 +1180,57 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     const totalContractedSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
     return { records, workerCount, totalContractedSeconds };
   }, [resolveAssignmentForRow, resolveProcessForRow, rows]);
+  const exceededRowMetaByRowId = useMemo(() => {
+    const buckets = new Map();
+    summary.records.forEach((record) => {
+      const rowId = toText(record?.rowId);
+      const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
+      const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
+      if (!rowId || !assignmentPlanId || quantity <= 0) return;
+
+      const processMetric = buildProcessMetric(record);
+      const bucketKey = `${assignmentPlanId}:${processMetric.key}`;
+      const current = buckets.get(bucketKey);
+      if (current) {
+        current.totalQuantity += quantity;
+        current.rowIds.add(rowId);
+        return;
+      }
+      buckets.set(bucketKey, {
+        assignmentPlanId,
+        processLabel: processMetric.label,
+        totalQuantity: quantity,
+        rowIds: new Set([rowId]),
+      });
+    });
+
+    const rowMetaMap = new Map();
+    buckets.forEach((bucket) => {
+      const matchedPlan = assignmentOptions.find(
+        (item) => toPositiveIdOrNull(item?.dbId) === bucket.assignmentPlanId
+      );
+      const baselineQuantity = resolveBaselineQuantity(matchedPlan);
+      if (!baselineQuantity) return;
+      const maxAllowed = Math.max(
+        baselineQuantity,
+        Math.ceil(baselineQuantity * ASSIGNMENT_PROCESS_QTY_MAX_MULTIPLIER)
+      );
+      if (bucket.totalQuantity <= maxAllowed) return;
+
+      const exceededQuantity = bucket.totalQuantity - maxAllowed;
+      bucket.rowIds.forEach((rowId) => {
+        rowMetaMap.set(rowId, {
+          assignmentPlanId: bucket.assignmentPlanId,
+          processLabel: bucket.processLabel,
+          baselineQuantity,
+          maxAllowed,
+          totalQuantity: bucket.totalQuantity,
+          exceededQuantity,
+        });
+      });
+    });
+    return rowMetaMap;
+  }, [assignmentOptions, summary.records]);
   const autoExceededNote = useMemo(() => summary.records.map((record) => {
     const plan = assignmentOptions.find((item) => toPositiveIdOrNull(item?.dbId) === toPositiveIdOrNull(record?.assignmentPlanId));
     const baselineQuantity = resolveBaselineQuantity(plan);
@@ -1666,6 +1756,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
               {isMobile ? (
                 <Stack spacing={1}>
                   {pagedRows.map((row) => {
+                    const rowExceededMeta = exceededRowMetaByRowId.get(toText(row?.id)) || null;
+                    const isRowExceeded = Boolean(rowExceededMeta);
                     const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
                     const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
                     const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
@@ -1727,7 +1819,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           p: 1.25,
                           borderRadius: 2,
                           backgroundColor: groupBackgroundColor,
-                          borderColor: rowGroupMeta.isGroupStart ? '#9fb3c8' : undefined,
+                          borderColor: isRowExceeded
+                            ? 'error.main'
+                            : rowGroupMeta.isGroupStart
+                              ? '#9fb3c8'
+                              : undefined,
                           borderWidth: rowGroupMeta.isGroupStart ? 2 : 1,
                         }}
                       >
@@ -1806,6 +1902,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             label={LABELS.quantity}
                             type="number"
                             size="small"
+                            error={isRowExceeded}
+                            helperText={isRowExceeded ? buildQuantityExceededHelperText(rowExceededMeta) : ''}
                             value={row?.quantity ?? ''}
                             onChange={(event) => {
                               const nextValue = event.target.value;
@@ -1886,6 +1984,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                   </TableHead>
                   <TableBody>
                     {pagedRows.map((row) => {
+                      const rowExceededMeta = exceededRowMetaByRowId.get(toText(row?.id)) || null;
+                      const isRowExceeded = Boolean(rowExceededMeta);
                       const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
                       const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
                       const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
@@ -1966,12 +2066,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           hover
                           sx={{
                             '& > td': {
-                              backgroundColor: groupBackgroundColor,
+                              backgroundColor: isRowExceeded ? '#fff5f5' : groupBackgroundColor,
                             },
                             ...(rowGroupMeta.isGroupStart
                               ? {
                                   '& > td': {
-                                    backgroundColor: groupBackgroundColor,
+                                    backgroundColor: isRowExceeded ? '#fff5f5' : groupBackgroundColor,
                                     borderTopColor: '#9fb3c8',
                                     borderTopWidth: 2,
                                   },
@@ -2115,6 +2215,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 label={LABELS.quantity}
                                 type="number"
                                 size="small"
+                                error={isRowExceeded}
+                                helperText={isRowExceeded ? buildQuantityExceededHelperText(rowExceededMeta) : ''}
                                 value={row?.quantity ?? ''}
                                 onChange={(event) => {
                                   const nextValue = event.target.value;
