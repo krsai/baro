@@ -1209,13 +1209,46 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       processCatalogByName
     );
   }, [processCatalogByCode, processCatalogById, processCatalogByName, resolveAssignmentForRow]);
+  const rowResolvedMetaById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const rowId = toText(row?.id);
+      if (!rowId) return;
+      const assignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const process = resolveProcessForRow(row, assignment) || row?.process || null;
+      map.set(rowId, { assignment, process });
+    });
+    return map;
+  }, [resolveAssignmentForRow, resolveProcessForRow, rows]);
+  const rowSignatureCountByKey = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const rowId = toText(row?.id);
+      if (!rowId) return;
+      const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+      const signature = buildWorkerStyleProcessSignature({
+        worker: row?.worker,
+        assignment: resolvedMeta?.assignment || row?.assignment || null,
+        process: resolvedMeta?.process || row?.process || null,
+      });
+      if (!signature) return;
+      map.set(signature, (map.get(signature) || 0) + 1);
+    });
+    return map;
+  }, [rowResolvedMetaById, rows]);
+  const sortedAssignmentOptionsByLine = useMemo(
+    () => sortAssignmentOptionsByLineContext(assignmentOptions, selectedLineId),
+    [assignmentOptions, selectedLineId]
+  );
   const filteredRows = useMemo(() => {
     const keyword = toText(deferredSearchTerm).toLowerCase();
     if (!keyword) return rows;
 
     return rows.filter((row) => {
-      const assignment = resolveAssignmentForRow(row) || row?.assignment || null;
-      const process = resolveProcessForRow(row, assignment) || row?.process || null;
+      const rowId = toText(row?.id);
+      const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+      const assignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
+      const process = resolvedMeta?.process || resolveProcessForRow(row, assignment) || row?.process || null;
       const searchText = [
         row?.worker?.name,
         formatAssignmentAutocompleteLabel(assignment, selectedLineId),
@@ -1231,7 +1264,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         .toLowerCase();
       return searchText.includes(keyword);
     });
-  }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rows]);
+  }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
   const totalRowPages = useMemo(
     () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / ROWS_PER_PAGE)),
     [filteredRows]
@@ -1270,8 +1303,10 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const summary = useMemo(() => {
     const records = rows
       .map((row) => {
-        const assignment = resolveAssignmentForRow(row) || row?.assignment || null;
-        const process = resolveProcessForRow(row, assignment) || row?.process || null;
+        const rowId = toText(row?.id);
+        const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+        const assignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
+        const process = resolvedMeta?.process || resolveProcessForRow(row, assignment) || row?.process || null;
         return { row, assignment, process };
       })
       .filter(({ process, row }) => process && Number(row?.quantity) > 0)
@@ -1300,7 +1335,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     const workerCount = new Set(records.map((record) => record.workerId).filter((workerId) => workerId !== null)).size;
     const totalContractedSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
     return { records, workerCount, totalContractedSeconds };
-  }, [resolveAssignmentForRow, resolveProcessForRow, rows]);
+  }, [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows]);
   const assignmentLimitGroupMeta = useMemo(() => {
     const planMetaById = new Map();
     const groupMetaByKey = new Map();
@@ -1464,12 +1499,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     () =>
       rows.some((row) =>
         toPositiveIdOrNull(
-          resolveAssignmentForRow(row)?.dbId ??
+          rowResolvedMetaById.get(toText(row?.id))?.assignment?.dbId ??
             row?.assignment?.dbId ??
             row?.assignment?.id
         ) !== null
       ),
-    [resolveAssignmentForRow, rows]
+    [rowResolvedMetaById, rows]
   );
   const ctWarningMessage = useMemo(() => {
     if (ctAssignmentPool.length > 0) return '';
@@ -1486,21 +1521,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const resolveStyleOptions = useCallback(
     (row) => {
       const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
-      const includedAssignments = ensureOptionIncluded(
-        assignmentOptions,
+      return ensureOptionIncluded(
+        sortedAssignmentOptionsByLine,
         currentAssignment,
         (item) => item?.dbId || item?.id
       );
-      const sortedAssignments = sortAssignmentOptionsByLineContext(
-        includedAssignments,
-        selectedLineId
-      );
-      return sortedAssignments;
     },
     [
-      assignmentOptions,
       resolveAssignmentForRow,
-      selectedLineId,
+      sortedAssignmentOptionsByLine,
     ]
   );
   const resolveSelectedStyleOption = useCallback(
@@ -1515,7 +1544,10 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         if (matchedById) return matchedById;
       }
 
-      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const rowId = toText(row?.id);
+      const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+      const currentAssignment =
+        row?.assignment || resolvedMeta?.assignment || resolveAssignmentForRow(row) || null;
       if (!currentAssignment) return null;
       const assignmentId = resolveStyleOptionId(currentAssignment);
       if (assignmentId) {
@@ -1528,7 +1560,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       }
       return currentAssignment;
     },
-    [resolveAssignmentForRow]
+    [resolveAssignmentForRow, rowResolvedMetaById]
   );
   const isStyleExceptionForWorker = useCallback(
     (styleOption, workerOption) => {
@@ -1640,10 +1672,13 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   );
   const resolveProcessOptions = useCallback(
     (row) => {
+      const rowId = toText(row?.id);
       const selectedStyleId = toText(row?.styleOptionId);
-      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
+      const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+      const currentAssignment =
+        resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
       const assignmentPool = ensureOptionIncluded(
-        assignmentOptions,
+        sortedAssignmentOptionsByLine,
         currentAssignment,
         (item) => item?.dbId || item?.id
       );
@@ -1659,20 +1694,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         : [];
       const options = [];
       const seenOptionIds = new Set();
-      const reservedSignatures = new Set();
-
-      rows.forEach((otherRow) => {
-        if (toText(otherRow?.id) === toText(row?.id)) return;
-        const otherAssignment =
-          resolveAssignmentForRow(otherRow) || otherRow?.assignment || null;
-        const otherProcess =
-          resolveProcessForRow(otherRow, otherAssignment) || otherRow?.process || null;
-        const signature = buildWorkerStyleProcessSignature({
-          worker: otherRow?.worker,
-          assignment: otherAssignment,
-          process: otherProcess,
-        });
-        if (signature) reservedSignatures.add(signature);
+      const currentProcess =
+        resolveProcessForRow(row, selectedAssignment) || resolvedMeta?.process || row?.process || null;
+      const currentRowSignature = buildWorkerStyleProcessSignature({
+        worker: row?.worker,
+        assignment: selectedAssignment,
+        process: currentProcess,
       });
 
       sourceProcesses.forEach((processOption, processIndex) => {
@@ -1687,7 +1714,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           assignment: selectedAssignment,
           process: mergedProcess,
         });
-        if (candidateSignature && reservedSignatures.has(candidateSignature)) return;
+        if (candidateSignature) {
+          const usedCount = Number(rowSignatureCountByKey.get(candidateSignature) || 0);
+          const usedByOthers =
+            currentRowSignature && currentRowSignature === candidateSignature
+              ? Math.max(0, usedCount - 1)
+              : usedCount;
+          if (usedByOthers > 0) return;
+        }
         const hasEquivalentOption = options.some((option) =>
           isSameProcess(option?.process, mergedProcess)
         );
@@ -1703,8 +1737,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         });
       });
 
-      const currentProcess =
-        resolveProcessForRow(row, selectedAssignment) || row?.process || null;
       if (currentProcess) {
         const currentOptionId = buildProcessIdentityKey(currentProcess);
         const hasEquivalentOption = options.some((option) =>
@@ -1722,20 +1754,25 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       return options;
     },
     [
-      assignmentOptions,
       processCatalogByCode,
       processCatalogById,
       processCatalogByName,
       languageCode,
-      rows,
+      rowResolvedMetaById,
+      rowSignatureCountByKey,
       resolveAssignmentForRow,
       resolveProcessForRow,
+      sortedAssignmentOptionsByLine,
     ]
   );
   const resolveSelectedProcessOption = useCallback(
     (row, options) => {
-      const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
-      const currentProcess = resolveProcessForRow(row, currentAssignment) || row?.process || null;
+      const rowId = toText(row?.id);
+      const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+      const currentAssignment =
+        row?.assignment || resolvedMeta?.assignment || resolveAssignmentForRow(row) || null;
+      const currentProcess =
+        row?.process || resolveProcessForRow(row, currentAssignment) || resolvedMeta?.process || null;
       if (!currentProcess) return null;
       const targetOptionId = buildProcessIdentityKey(currentProcess);
       if (targetOptionId) {
@@ -1746,7 +1783,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       }
       return options.find((option) => isSameProcess(option?.process, currentProcess)) || null;
     },
-    [resolveAssignmentForRow, resolveProcessForRow]
+    [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById]
   );
   const getProcessOptionLabel = useCallback((option) => {
     const processCode = buildDisplayProcessCode(option?.process);
@@ -1948,6 +1985,124 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
   }, [autoExceededNote, currentFactory?.name, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  const pagedRowViewModels = useMemo(
+    () =>
+      pagedRows.map((row) => {
+        const rowId = toText(row?.id);
+        const rowExceededMeta = exceededRowMetaByRowId.get(rowId) || null;
+        const isRowExceeded = Boolean(rowExceededMeta);
+        const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
+        const rowAssignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
+        const rowProcess = resolvedMeta?.process || resolveProcessForRow(row, rowAssignment) || row?.process || null;
+        const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
+        const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
+        const styleOptions = resolveStyleOptions(rowForOptions);
+        const selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
+        const selectedStyleOrderLabel = selectedStyleOption
+          ? buildStyleOrderMetaLabel(selectedStyleOption)
+          : '';
+        const selectedStyleExceptionLabel = selectedStyleOption
+          ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
+          : '';
+        const processOptions = resolveProcessOptions(rowForOptions);
+        const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
+        const selectedProcessMetaLabel = selectedProcessOption
+          ? getProcessOptionMetaLabel(selectedProcessOption)
+          : '';
+        const workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
+        const styleDisabled = isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
+        const processDisabled =
+          isAggregateLegacyLog ||
+          !row?.worker ||
+          !selectedStyleOption ||
+          (processOptions?.length || 0) === 0;
+        const shouldFocusWorker = Boolean(
+          editingField?.rowId === row.id &&
+          editingField?.field === 'worker'
+        );
+        const shouldFocusStyle = Boolean(
+          editingField?.rowId === row.id &&
+          editingField?.field === 'style'
+        );
+        const shouldFocusProcess = Boolean(
+          editingField?.rowId === row.id &&
+          editingField?.field === 'process'
+        );
+        const shouldFocusQuantity = Boolean(
+          editingField?.rowId === row.id &&
+          editingField?.field === 'quantity'
+        );
+        const stylePlaceholder = !row?.worker
+          ? LABELS.selectWorkerFirst
+          : (styleOptions?.length || 0) === 0
+            ? LABELS.noStylesAvailable
+            : LABELS.stylePlaceholder;
+        const processPlaceholder = !row?.worker
+          ? LABELS.selectWorkerFirst
+          : !selectedStyleOption
+            ? LABELS.selectStyleFirst
+            : (processOptions?.length || 0) === 0
+              ? LABELS.noProcessesAvailable
+              : LABELS.processPlaceholder;
+        const rowGroupMeta = workerGroupMetaByRowId.get(row?.id) || {
+          groupId: 0,
+          isGroupStart: false,
+        };
+        const groupBackgroundColor =
+          rowGroupMeta.groupId % 2 === 0 ? '#ffffff' : '#f8fbff';
+        const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
+        const quantityValue =
+          quantityNumber > 0
+            ? formatNumberWithCommas(quantityNumber, {
+                fallback: '0',
+                maximumFractionDigits: 0,
+              })
+            : '-';
+        return {
+          row,
+          rowExceededMeta,
+          isRowExceeded,
+          rowWorkerOptions,
+          styleOptions,
+          selectedStyleOption,
+          selectedStyleOrderLabel,
+          selectedStyleExceptionLabel,
+          processOptions,
+          selectedProcessOption,
+          selectedProcessMetaLabel,
+          workerDisabled,
+          styleDisabled,
+          processDisabled,
+          shouldFocusWorker,
+          shouldFocusStyle,
+          shouldFocusProcess,
+          shouldFocusQuantity,
+          stylePlaceholder,
+          processPlaceholder,
+          rowGroupMeta,
+          groupBackgroundColor,
+          quantityValue,
+        };
+      }),
+    [
+      pagedRows,
+      exceededRowMetaByRowId,
+      rowResolvedMetaById,
+      resolveAssignmentForRow,
+      resolveProcessForRow,
+      resolveWorkerOptions,
+      resolveStyleOptions,
+      resolveSelectedStyleOption,
+      buildStyleOrderMetaLabel,
+      getStyleExceptionLabel,
+      resolveProcessOptions,
+      resolveSelectedProcessOption,
+      getProcessOptionMetaLabel,
+      isAggregateLegacyLog,
+      editingField,
+      workerGroupMetaByRowId,
+    ]
+  );
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -2022,67 +2177,31 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {isMobile ? (
                 <Stack spacing={1}>
-                  {pagedRows.map((row) => {
-                    const rowExceededMeta = exceededRowMetaByRowId.get(toText(row?.id)) || null;
-                    const isRowExceeded = Boolean(rowExceededMeta);
-                    const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
-                    const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
-                    const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
-                    const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
-                    const styleOptions = resolveStyleOptions(rowForOptions);
-                    const selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
-                    const selectedStyleOrderLabel = selectedStyleOption
-                      ? buildStyleOrderMetaLabel(selectedStyleOption)
-                      : '';
-                    const selectedStyleExceptionLabel = selectedStyleOption
-                      ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
-                      : '';
-                    const processOptions = resolveProcessOptions(rowForOptions);
-                    const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
-                    const selectedProcessMetaLabel = selectedProcessOption
-                      ? getProcessOptionMetaLabel(selectedProcessOption)
-                      : '';
-                    const workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
-                    const styleDisabled = isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
-                    const processDisabled =
-                      isAggregateLegacyLog ||
-                      !row?.worker ||
-                      !selectedStyleOption ||
-                      (processOptions?.length || 0) === 0;
-                    const shouldFocusWorker = Boolean(
-                      editingField?.rowId === row.id &&
-                      editingField?.field === 'worker'
-                    );
-                    const shouldFocusStyle = Boolean(
-                      editingField?.rowId === row.id &&
-                      editingField?.field === 'style'
-                    );
-                    const shouldFocusProcess = Boolean(
-                      editingField?.rowId === row.id &&
-                      editingField?.field === 'process'
-                    );
-                    const shouldFocusQuantity = Boolean(
-                      editingField?.rowId === row.id &&
-                      editingField?.field === 'quantity'
-                    );
-                    const stylePlaceholder = !row?.worker
-                      ? LABELS.selectWorkerFirst
-                      : (styleOptions?.length || 0) === 0
-                        ? LABELS.noStylesAvailable
-                        : LABELS.stylePlaceholder;
-                    const processPlaceholder = !row?.worker
-                      ? LABELS.selectWorkerFirst
-                      : !selectedStyleOption
-                        ? LABELS.selectStyleFirst
-                        : (processOptions?.length || 0) === 0
-                        ? LABELS.noProcessesAvailable
-                        : LABELS.processPlaceholder;
-                    const rowGroupMeta = workerGroupMetaByRowId.get(row?.id) || {
-                      groupId: 0,
-                      isGroupStart: false,
-                    };
-                    const groupBackgroundColor =
-                      rowGroupMeta.groupId % 2 === 0 ? '#ffffff' : '#f8fbff';
+                  {pagedRowViewModels.map((rowViewModel) => {
+                    const {
+                      row,
+                      rowExceededMeta,
+                      isRowExceeded,
+                      rowWorkerOptions,
+                      styleOptions,
+                      selectedStyleOption,
+                      selectedStyleOrderLabel,
+                      selectedStyleExceptionLabel,
+                      processOptions,
+                      selectedProcessOption,
+                      selectedProcessMetaLabel,
+                      workerDisabled,
+                      styleDisabled,
+                      processDisabled,
+                      shouldFocusWorker,
+                      shouldFocusStyle,
+                      shouldFocusProcess,
+                      shouldFocusQuantity,
+                      stylePlaceholder,
+                      processPlaceholder,
+                      rowGroupMeta,
+                      groupBackgroundColor,
+                    } = rowViewModel;
 
                     return (
                       <Paper
@@ -2308,88 +2427,33 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {pagedRows.map((row) => {
-                      const rowExceededMeta = exceededRowMetaByRowId.get(toText(row?.id)) || null;
-                      const isRowExceeded = Boolean(rowExceededMeta);
-                      const rowAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
-                      const rowProcess = resolveProcessForRow(row, rowAssignment) || row?.process || null;
-                      const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
-                      const quantityValue =
-                        quantityNumber > 0
-                          ? formatNumberWithCommas(quantityNumber, {
-                              fallback: '0',
-                              maximumFractionDigits: 0,
-                            })
-                          : '-';
+                    {pagedRowViewModels.map((rowViewModel) => {
+                      const {
+                        row,
+                        rowExceededMeta,
+                        isRowExceeded,
+                        rowWorkerOptions,
+                        styleOptions,
+                        selectedStyleOption,
+                        selectedStyleOrderLabel,
+                        selectedStyleExceptionLabel,
+                        processOptions,
+                        selectedProcessOption,
+                        selectedProcessMetaLabel,
+                        styleDisabled,
+                        processDisabled,
+                        workerDisabled,
+                        shouldFocusWorker,
+                        shouldFocusStyle,
+                        shouldFocusProcess,
+                        shouldFocusQuantity,
+                        stylePlaceholder,
+                        processPlaceholder,
+                        rowGroupMeta,
+                        groupBackgroundColor,
+                        quantityValue,
+                      } = rowViewModel;
                       const isEditingRow = true;
-                      const rowGroupMeta = workerGroupMetaByRowId.get(row?.id) || {
-                        groupId: 0,
-                        isGroupStart: false,
-                      };
-                      const groupBackgroundColor =
-                        rowGroupMeta.groupId % 2 === 0 ? '#ffffff' : '#f8fbff';
-                      const rowForOptions = isEditingRow
-                        ? { ...row, assignment: rowAssignment, process: rowProcess }
-                        : row;
-                      const rowWorkerOptions = isEditingRow ? resolveWorkerOptions(rowForOptions) : [];
-                      const styleOptions = isEditingRow ? resolveStyleOptions(rowForOptions) : [];
-                      const selectedStyleOption = isEditingRow
-                        ? resolveSelectedStyleOption(rowForOptions, styleOptions)
-                        : null;
-                      const selectedStyleOrderLabel = selectedStyleOption
-                        ? buildStyleOrderMetaLabel(selectedStyleOption)
-                        : '';
-                      const selectedStyleExceptionLabel = selectedStyleOption
-                        ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
-                        : '';
-                      const processOptions = isEditingRow ? resolveProcessOptions(rowForOptions) : [];
-                      const selectedProcessOption = isEditingRow
-                        ? resolveSelectedProcessOption(rowForOptions, processOptions)
-                        : null;
-                      const selectedProcessMetaLabel = selectedProcessOption
-                        ? getProcessOptionMetaLabel(selectedProcessOption)
-                        : '';
-                      const styleDisabled =
-                        isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
-                      const processDisabled =
-                        isAggregateLegacyLog ||
-                        !row?.worker ||
-                        !selectedStyleOption ||
-                        (processOptions?.length || 0) === 0;
-                      const workerDisabled =
-                        isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
-                      const shouldFocusWorker = Boolean(
-                        isEditingRow &&
-                          editingField?.rowId === row.id &&
-                          editingField?.field === 'worker'
-                      );
-                      const shouldFocusStyle = Boolean(
-                        isEditingRow &&
-                          editingField?.rowId === row.id &&
-                          editingField?.field === 'style'
-                      );
-                      const shouldFocusProcess = Boolean(
-                        isEditingRow &&
-                          editingField?.rowId === row.id &&
-                          editingField?.field === 'process'
-                      );
-                      const shouldFocusQuantity = Boolean(
-                        isEditingRow &&
-                          editingField?.rowId === row.id &&
-                          editingField?.field === 'quantity'
-                      );
-                      const stylePlaceholder = !row?.worker
-                        ? LABELS.selectWorkerFirst
-                        : (styleOptions?.length || 0) === 0
-                          ? LABELS.noStylesAvailable
-                          : LABELS.stylePlaceholder;
-                      const processPlaceholder = !row?.worker
-                        ? LABELS.selectWorkerFirst
-                        : !selectedStyleOption
-                          ? LABELS.selectStyleFirst
-                          : (processOptions?.length || 0) === 0
-                          ? LABELS.noProcessesAvailable
-                          : LABELS.processPlaceholder;
 
                       return (
                         <TableRow
