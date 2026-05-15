@@ -530,6 +530,11 @@ const MainLayout = () => {
             path: '/work-history',
           },
           {
+            label: getUiMessage('menu.qcReview', '검수', languageCode),
+            icon: <LocalShippingIcon />,
+            path: '/qc-review',
+          },
+          {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
             icon: <ScheduleIcon />,
             path: '/attendance',
@@ -809,6 +814,7 @@ const MainLayout = () => {
           const preferredRecordPaths = [
             '/assignment',
             '/work-history',
+            '/qc-review',
             '/attendance',
           ];
           visibleChildren = [

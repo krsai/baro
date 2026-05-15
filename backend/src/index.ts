@@ -5430,7 +5430,7 @@ const toEpochDayFromDateKeyForAssignmentSchedule = (
 };
 const resolveAssignmentProducedQuantityFromProcessTotals = ({
   processTotals,
-  baselineQuantity,
+  baselineQuantity: _baselineQuantity,
 }: {
   processTotals: number[];
   baselineQuantity: number | null;
@@ -5438,24 +5438,10 @@ const resolveAssignmentProducedQuantityFromProcessTotals = ({
   const normalizedTotals = ensureArray(processTotals)
     .map((value) => Math.max(0, Math.round(Number(value) || 0)))
     .filter((value) => value > 0);
-  const sumQuantity = normalizedTotals.reduce((sum, value) => sum + value, 0);
-  if (normalizedTotals.length <= 1) return sumQuantity;
-
-  const maxProcessQuantity = Math.max(...normalizedTotals);
-  // 다공정에서 동일 완성수량이 반복 기록되면(sum 과대) 생산량은 공정 최대치로 본다.
-  if (baselineQuantity != null && baselineQuantity > 0) {
-    const tolerance = Math.max(1, Math.round(baselineQuantity * 0.15));
-    if (
-      sumQuantity > baselineQuantity + tolerance &&
-      maxProcessQuantity <= baselineQuantity + tolerance
-    ) {
-      return maxProcessQuantity;
-    }
-  }
-  if (sumQuantity >= maxProcessQuantity * 2) {
-    return maxProcessQuantity;
-  }
-  return sumQuantity;
+  if (normalizedTotals.length === 0) return 0;
+  if (normalizedTotals.length === 1) return normalizedTotals[0]!;
+  // 완제품 수량은 공정별 누적의 최소값으로 본다.
+  return Math.min(...normalizedTotals);
 };
 const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
   value: any
@@ -6029,6 +6015,265 @@ const syncAssignmentSchedulesFromWorkRecords = async ({
     orgId,
     assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records),
   });
+const reorderAssignmentSchedulesByManualCompletion = async ({
+  orgId,
+  lineId,
+}: {
+  orgId: number;
+  lineId: number;
+}): Promise<{ updatedAssignmentCount: number }> => {
+  const normalizedLineId = toPositiveIntOrNull(lineId);
+  if (!normalizedLineId) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const [boardState, linePlans] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { id: true, assignments: true },
+    }),
+    prisma.assignmentPlan.findMany({
+      where: { orgId, lineId: normalizedLineId },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        startIndex: true,
+        endIndex: true,
+        startDayOffsetPercent: true,
+        startDayPercent: true,
+        endDayPercent: true,
+        isCompleted: true,
+        completedAt: true,
+      },
+      orderBy: [{ startIndex: "asc" }, { id: "asc" }],
+    }),
+  ]);
+  if (!boardState || linePlans.length === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const planByExternalId = new Map(
+    linePlans
+      .map((plan) => [resolveOptionalString(plan?.externalId, null), plan] as const)
+      .filter((row): row is [string, any] => Boolean(row[0]))
+  );
+  if (planByExternalId.size === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const stateAssignments = normalizeStateAssignments(boardState.assignments);
+  const lineEntries = stateAssignments
+    .map((assignment, stateIndex) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId) return null;
+      const plan = planByExternalId.get(externalId);
+      if (!plan) return null;
+      if (String(assignment?.lineId ?? "") !== String(normalizedLineId)) return null;
+
+      const startIndex = toSignedInt(assignment?.startIndex, plan.startIndex);
+      const endIndex = Math.max(startIndex, toSignedInt(assignment?.endIndex, plan.endIndex));
+      const startDateKey =
+        normalizeDateKey(assignment?.startDateKey) ||
+        normalizeDateKey(resolveAssignmentStartDateKey(assignment));
+      const endDateKeyFromState = normalizeDateKey(assignment?.endDateKey);
+      const endDateKey =
+        endDateKeyFromState ||
+        (startDateKey
+          ? shiftDateKeyByDaysForAssignmentSchedule(
+              startDateKey,
+              Math.max(0, endIndex - startIndex)
+            )
+          : null);
+      const durationDaysByDate =
+        startDateKey && endDateKey
+          ? countDateRangeDaysInclusiveForAssignmentSchedule(startDateKey, endDateKey)
+          : 0;
+      const durationDaysByIndex = Math.max(1, endIndex - startIndex + 1);
+      const durationDays =
+        durationDaysByDate > 0 ? durationDaysByDate : durationDaysByIndex;
+      const completedAt = toOptionalDateValue(plan?.completedAt, null);
+      const isCompleted = Boolean(plan?.isCompleted || completedAt);
+      return {
+        externalId,
+        plan,
+        stateIndex,
+        assignment: { ...assignment },
+        startIndex,
+        endIndex,
+        startDateKey,
+        endDateKey,
+        durationDays,
+        isCompleted,
+        completedAt,
+      };
+    })
+    .filter((entry): entry is any => Boolean(entry));
+
+  if (lineEntries.length <= 1) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  const baselineStartDateKey =
+    lineEntries
+      .map((entry) => normalizeDateKey(entry?.startDateKey))
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => a.localeCompare(b))[0] ||
+    toDateKeyInTimeZone(new Date(), BUSINESS_TIME_ZONE);
+  const anchorStartIndex = lineEntries.reduce(
+    (min, entry) => Math.min(min, toSignedInt(entry?.startIndex, 0)),
+    toSignedInt(lineEntries[0]?.startIndex, 0)
+  );
+
+  const completedEntries = lineEntries
+    .filter((entry) => entry.isCompleted)
+    .sort((a, b) => {
+      const leftTs = a.completedAt ? a.completedAt.getTime() : Number.MAX_SAFE_INTEGER;
+      const rightTs = b.completedAt ? b.completedAt.getTime() : Number.MAX_SAFE_INTEGER;
+      if (leftTs !== rightTs) return leftTs - rightTs;
+      if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
+      return String(a.externalId).localeCompare(String(b.externalId));
+    });
+  const pendingEntries = lineEntries
+    .filter((entry) => !entry.isCompleted)
+    .sort((a, b) => {
+      if (a.startIndex !== b.startIndex) return a.startIndex - b.startIndex;
+      return String(a.externalId).localeCompare(String(b.externalId));
+    });
+  const reorderedEntries = [...completedEntries, ...pendingEntries];
+
+  const changedExternalIds = new Set<string>();
+  let cursorStartIndex = anchorStartIndex;
+  reorderedEntries.forEach((entry) => {
+    const durationDays = Math.max(1, toSignedInt(entry?.durationDays, 1));
+    const nextStartIndex = cursorStartIndex;
+    const nextEndIndex = nextStartIndex + durationDays - 1;
+    const dayOffset = nextStartIndex - anchorStartIndex;
+    const nextStartDateKey =
+      shiftDateKeyByDaysForAssignmentSchedule(baselineStartDateKey, dayOffset) ||
+      baselineStartDateKey;
+    const nextEndDateKey =
+      shiftDateKeyByDaysForAssignmentSchedule(nextStartDateKey, durationDays - 1) ||
+      nextStartDateKey;
+
+    const prevStartDateKey =
+      normalizeDateKey(entry.assignment?.startDateKey) ||
+      normalizeDateKey(entry?.startDateKey) ||
+      null;
+    const prevEndDateKey =
+      normalizeDateKey(entry.assignment?.endDateKey) ||
+      normalizeDateKey(entry?.endDateKey) ||
+      null;
+    const prevStartIndex = toSignedInt(entry.assignment?.startIndex, entry.startIndex);
+    const prevEndIndex = Math.max(
+      prevStartIndex,
+      toSignedInt(entry.assignment?.endIndex, entry.endIndex)
+    );
+    const changed =
+      prevStartIndex !== nextStartIndex ||
+      prevEndIndex !== nextEndIndex ||
+      prevStartDateKey !== nextStartDateKey ||
+      prevEndDateKey !== nextEndDateKey;
+    if (changed) {
+      entry.assignment = {
+        ...entry.assignment,
+        startIndex: nextStartIndex,
+        endIndex: nextEndIndex,
+        startDateKey: nextStartDateKey,
+        endDateKey: nextEndDateKey,
+      };
+      changedExternalIds.add(entry.externalId);
+    }
+    cursorStartIndex = nextEndIndex + 1;
+  });
+
+  if (changedExternalIds.size === 0) {
+    return { updatedAssignmentCount: 0 };
+  }
+
+  lineEntries.forEach((entry) => {
+    stateAssignments[entry.stateIndex] = normalizeStateAssignmentItem(entry.assignment);
+  });
+
+  const nowIso = new Date().toISOString();
+  const nextAssignments = stateAssignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (!externalId || !changedExternalIds.has(externalId)) {
+      return normalizeStateAssignmentItem(assignment);
+    }
+    const currentVersion = toNonNegativeInt(assignment?.version, 0);
+    return normalizeStateAssignmentItem({
+      ...assignment,
+      id: externalId,
+      version: currentVersion + 1,
+      versionUpdatedAt: nowIso,
+    });
+  });
+
+  const nextAssignmentByExternalId = nextAssignments.reduce((map, item) => {
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, item);
+    return map;
+  }, new Map<string, any>());
+  const planUpdates = linePlans
+    .filter((plan) => changedExternalIds.has(plan.externalId))
+    .map((plan) => {
+      const assignment = nextAssignmentByExternalId.get(plan.externalId);
+      if (!assignment) return null;
+      const startIndex = toSignedInt(assignment?.startIndex, plan.startIndex);
+      const endIndex = Math.max(
+        startIndex,
+        toSignedInt(assignment?.endIndex, Math.max(startIndex, plan.endIndex))
+      );
+      return {
+        id: plan.id,
+        data: {
+          startIndex,
+          endIndex,
+          startDayOffsetPercent: toOptionalFloat(
+            assignment?.startDayOffsetPercent,
+            plan.startDayOffsetPercent ?? null
+          ),
+          startDayPercent: toOptionalFloat(
+            assignment?.startDayPercent,
+            plan.startDayPercent ?? null
+          ),
+          endDayPercent: toOptionalFloat(
+            assignment?.endDayPercent,
+            plan.endDayPercent ?? null
+          ),
+          updatedAt: new Date(),
+        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+      };
+    })
+    .filter((item): item is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
+      Boolean(item)
+    );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.assignmentBoardState.update({
+      where: { id: boardState.id },
+      data: {
+        assignments: nextAssignments,
+      },
+    });
+    if (planUpdates.length > 0) {
+      await Promise.all(
+        planUpdates.map((row) =>
+          tx.assignmentPlan.update({
+            where: { id: row.id },
+            data: row.data,
+          })
+        )
+      );
+    }
+  });
+
+  return {
+    updatedAssignmentCount: changedExternalIds.size,
+  };
+};
 const resolveWorkRecordProcessMetric = (
   processCodeInput: any,
   processNameInput: any
@@ -6148,6 +6393,8 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
       orderNo: true,
       label: true,
       colorName: true,
+      isCompleted: true,
+      completedAt: true,
     },
   });
   const planById = new Map(plans.map((plan) => [plan.id, plan]));
@@ -6159,6 +6406,24 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
     return {
       status: 400,
       error: `assignment plan not found (${missingPlanIds.join(",")})`,
+    };
+  }
+
+  const completedPlans = plans.filter((plan) =>
+    Boolean(plan?.isCompleted || toOptionalDateValue(plan?.completedAt, null))
+  );
+  if (completedPlans.length > 0) {
+    const preview = completedPlans
+      .slice(0, 3)
+      .map((plan) => formatAssignmentPlanLabel(plan))
+      .join(", ");
+    const extraText =
+      completedPlans.length > 3
+        ? ` (+${completedPlans.length - 3} more)`
+        : "";
+    return {
+      status: 409,
+      error: `assignment plan already completed (${preview}${extraText})`,
     };
   }
 
@@ -6570,6 +6835,9 @@ const translateWorkLogErrorMessage = (error: any) => {
   if (text.startsWith("assignment plan line mismatch")) {
     return "선택한 라인과 맞지 않는 배정카드가 포함되어 있습니다.";
   }
+  if (text.startsWith("assignment plan already completed")) {
+    return "이미 마감완료된 배정카드가 포함되어 있습니다. 관리자에게 확인해 주세요.";
+  }
   if (
     text.startsWith("ct snapshot required before work log") ||
     text.startsWith("ct agreement required before work log")
@@ -6686,6 +6954,9 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
 });
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const normalizedSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
+  const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+  const isCompleted = Boolean(plan?.isCompleted || completedAt);
   return {
     dbId: plan?.id ?? null,
     id: resolveOptionalString(plan?.externalId, "") ?? "",
@@ -6712,9 +6983,9 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
     startIndex: plan?.startIndex ?? 0,
     endIndex: plan?.endIndex ?? 0,
-    isCompleted: false,
-    finalQuantity: null,
-    completedAt: null,
+    isCompleted,
+    finalQuantity,
+    completedAt,
   };
 };
 const buildWorkLogContextResponse = async ({
@@ -6885,6 +7156,7 @@ const buildWorkLogContextResponse = async ({
           where: {
             orgId,
             lineId: { in: factoryLineIds },
+            isCompleted: false,
           },
           select: {
             id: true,
@@ -8961,6 +9233,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     ...plan,
     ctSnapshot,
   });
+  const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
+  const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+  const isCompleted = Boolean(plan?.isCompleted || completedAt);
   return {
     id: plan.externalId,
     lineId: String(plan.lineId),
@@ -8988,9 +9263,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
     startDayPercent: plan.startDayPercent ?? null,
     endDayPercent: plan.endDayPercent ?? null,
-    isCompleted: false,
-    finalQuantity: null,
-    completedAt: null,
+    isCompleted,
+    finalQuantity,
+    completedAt,
     createdAt: plan.createdAt,
     updatedAt: plan.updatedAt,
   };
@@ -9018,6 +9293,16 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       });
       const totalSeconds =
         toOptionalNonNegativeInt(item.totalSeconds, null) ?? contractedSeconds;
+      const hasIsCompleted = Object.prototype.hasOwnProperty.call(item, "isCompleted");
+      const hasFinalQuantity = Object.prototype.hasOwnProperty.call(item, "finalQuantity");
+      const hasCompletedAt = Object.prototype.hasOwnProperty.call(item, "completedAt");
+      const isCompleted = hasIsCompleted ? Boolean(item?.isCompleted) : undefined;
+      const finalQuantity = hasFinalQuantity
+        ? toOptionalNonNegativeInt(item?.finalQuantity, null)
+        : undefined;
+      const completedAt = hasCompletedAt
+        ? toOptionalDateValue(item?.completedAt, null)
+        : undefined;
       return {
         lineId: lineIdNum,
         externalId,
@@ -9043,9 +9328,9 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
         startDayPercent: toOptionalFloat(item.startDayPercent, null),
         endDayPercent: toOptionalFloat(item.endDayPercent, null),
-        isCompleted: false,
-        finalQuantity: null,
-        completedAt: null,
+        ...(hasIsCompleted ? { isCompleted } : {}),
+        ...(hasFinalQuantity ? { finalQuantity } : {}),
+        ...(hasCompletedAt ? { completedAt } : {}),
         updatedAt: new Date(),
       };
     })
@@ -9325,6 +9610,13 @@ const toAssignmentPlanWriteData = (item: any) => {
     ...item,
     ctSnapshot,
   });
+  const hasIsCompleted = Object.prototype.hasOwnProperty.call(item, "isCompleted");
+  const hasFinalQuantity = Object.prototype.hasOwnProperty.call(item, "finalQuantity");
+  const hasCompletedAt = Object.prototype.hasOwnProperty.call(item, "completedAt");
+  const completedAt =
+    hasCompletedAt && item?.completedAt !== undefined
+      ? toOptionalDateValue(item?.completedAt, null)
+      : undefined;
   return {
     lineId: item.lineId,
     cardId: item.cardId ?? null,
@@ -9349,9 +9641,11 @@ const toAssignmentPlanWriteData = (item: any) => {
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
     startDayPercent: item.startDayPercent ?? null,
     endDayPercent: item.endDayPercent ?? null,
-    isCompleted: false,
-    finalQuantity: null,
-    completedAt: null,
+    ...(hasIsCompleted ? { isCompleted: Boolean(item?.isCompleted) } : {}),
+    ...(hasFinalQuantity
+      ? { finalQuantity: toOptionalNonNegativeInt(item?.finalQuantity, null) }
+      : {}),
+    ...(hasCompletedAt ? { completedAt } : {}),
     updatedAt: item.updatedAt ?? new Date(),
   };
 };
@@ -13504,6 +13798,9 @@ app.get("/assignment-plans", async (req, res) => {
         resolveOptionalString(plan.originOrderId, null) ??
         null;
       const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
+      const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
+      const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+      const isCompleted = Boolean(plan?.isCompleted || completedAt);
       return {
         dbId: plan.id,
         id: plan.externalId,
@@ -13529,9 +13826,9 @@ app.get("/assignment-plans", async (req, res) => {
           normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedAt ?? null,
         startIndex: plan.startIndex,
         endIndex: plan.endIndex,
-        isCompleted: false,
-        finalQuantity: null,
-        completedAt: null,
+        isCompleted,
+        finalQuantity,
+        completedAt,
       };
     })
   );
@@ -13563,8 +13860,12 @@ const buildAssignmentPlanProgressRows = async (
       orderNo: true,
       customer: true,
       label: true,
+      colorId: true,
+      colorName: true,
       quantity: true,
+      isCompleted: true,
       finalQuantity: true,
+      completedAt: true,
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
@@ -13614,31 +13915,20 @@ const buildAssignmentPlanProgressRows = async (
   });
 
   const resolveProducedQuantity = (planId: number, baselineQuantity: number | null) => {
-    const sumQuantity = Math.max(0, Math.round(Number(sumByPlanId.get(planId) || 0)));
     const processTotals = processTotalsByPlanId.get(planId) || [];
-    if (processTotals.length <= 1) return sumQuantity;
-
-    const maxProcessQuantity = Math.max(...processTotals);
-    // 다공정에서 동일 완성수량이 반복 기록되면(sum 과대) 생산량은 공정 최대치로 본다.
-    if (baselineQuantity != null && baselineQuantity > 0) {
-      const tolerance = Math.max(1, Math.round(baselineQuantity * 0.15));
-      if (
-        sumQuantity > baselineQuantity + tolerance &&
-        maxProcessQuantity <= baselineQuantity + tolerance
-      ) {
-        return maxProcessQuantity;
-      }
+    if (processTotals.length > 0) {
+      return resolveAssignmentProducedQuantityFromProcessTotals({
+        processTotals,
+        baselineQuantity,
+      });
     }
-    if (sumQuantity >= maxProcessQuantity * 2) {
-      return maxProcessQuantity;
-    }
-    return sumQuantity;
+    return Math.max(0, Math.round(Number(sumByPlanId.get(planId) || 0)));
   };
 
   return plans.map((plan) => {
     const planId = Number(plan.id);
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
-    const finalQuantity = null;
+    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0
         ? plannedQuantity
@@ -13651,6 +13941,8 @@ const buildAssignmentPlanProgressRows = async (
         ? null
         : (producedQuantity / baselineQuantityRaw) * 100;
 
+    const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+    const isCompleted = Boolean(plan?.isCompleted || completedAt);
     return {
       id: plan.externalId,
       dbId: planId,
@@ -13659,6 +13951,8 @@ const buildAssignmentPlanProgressRows = async (
       orderNo: resolveOptionalString(plan.orderNo, "") || "",
       customer: resolveOptionalString(plan.customer, "") || "",
       label: resolveOptionalString(plan.label, "") || "",
+      colorId: toPositiveIntOrNull(plan.colorId),
+      colorName: resolveAssignmentPlanColorName(plan),
       plannedQuantity,
       finalQuantity,
       baselineQuantity: baselineQuantityRaw,
@@ -13666,6 +13960,8 @@ const buildAssignmentPlanProgressRows = async (
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
       progressPercent,
+      isCompleted,
+      completedAt,
     };
   });
 };
@@ -13687,10 +13983,80 @@ app.get("/assignment-plan-progress", async (req, res) => {
 });
 
 app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
-  return res.status(410).json({
-    ok: false,
-    error:
-      "manual completion is disabled; assignment completion is derived from work log quantities",
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      isCompleted: true,
+      completedAt: true,
+      quantity: true,
+      finalQuantity: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+    },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  if (plan.isCompleted || toOptionalDateValue(plan.completedAt, null)) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan already completed",
+    });
+  }
+
+  const finalQuantity = toOptionalNonNegativeInt(req.body?.finalQuantity, null);
+  if (finalQuantity === null) {
+    return res.status(400).json({ ok: false, error: "finalQuantity is required" });
+  }
+
+  const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      isCompleted: true,
+      finalQuantity,
+      completedAt,
+      updatedAt: new Date(),
+    },
+  });
+  const reorderResult = await reorderAssignmentSchedulesByManualCompletion({
+    orgId: organization.id,
+    lineId: plan.lineId,
+  });
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+  });
+
+  return res.json({
+    ok: true,
+    plan: {
+      id: updatedPlan.externalId,
+      dbId: updatedPlan.id,
+      lineId: String(updatedPlan.lineId),
+      orderNo: updatedPlan.orderNo ?? "",
+      label: updatedPlan.label ?? "",
+      colorName: resolveAssignmentPlanColorName(updatedPlan),
+      quantity: toOptionalNonNegativeInt(updatedPlan.quantity, null),
+      isCompleted: Boolean(updatedPlan.isCompleted),
+      finalQuantity: toOptionalNonNegativeInt(updatedPlan.finalQuantity, null),
+      completedAt: toIsoDateStringOrNull(updatedPlan.completedAt),
+    },
+    reorderedAssignments: reorderResult.updatedAssignmentCount,
   });
 });
 

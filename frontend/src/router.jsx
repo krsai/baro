@@ -61,6 +61,7 @@ const StyleBoard = lazyImportWithRetry(() => import('./pages/App/style/StyleBoar
 const StyleDetail = lazyImportWithRetry(() => import('./pages/App/style/StyleDetail'));
 const StReview = lazyImportWithRetry(() => import('./pages/App/StReview'));
 const ShipmentReview = lazyImportWithRetry(() => import('./pages/App/ShipmentReview'));
+const QcReview = lazyImportWithRetry(() => import('./pages/App/QcReview'));
 const Assign = lazyImportWithRetry(() => import('./pages/App/Assign'));
 const AssignDetail = lazyImportWithRetry(() => import('./pages/App/assign/AssignDetail'));
 const Work = lazyImportWithRetry(() => import('./pages/App/Work'));
@@ -288,6 +289,10 @@ const router = createBrowserRouter([
           {
             path: 'shipment-review',
             element: <ShipmentReview />,
+          },
+          {
+            path: 'qc-review',
+            element: <QcReview />,
           },
           {
             path: 'assignment',

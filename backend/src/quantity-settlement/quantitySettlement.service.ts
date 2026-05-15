@@ -354,7 +354,8 @@ const buildWorkRecordAggregates = (workLogs: any[]) => {
       const processMinQuantity = Math.min(...quantities);
       const processMaxQuantity = Math.max(...quantities);
       summaryMap.set(key, {
-        estimatedQuantity: processMaxQuantity,
+        // 완제품 수량은 공정별 누적의 최소값으로 본다.
+        estimatedQuantity: processMinQuantity,
         processMinQuantity,
         processMaxQuantity,
         processSpread: Math.max(0, processMaxQuantity - processMinQuantity),

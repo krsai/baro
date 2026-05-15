@@ -162,6 +162,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
   if (path.startsWith('/st-review')) return FEATURE_KEYS.ST_REVIEW;
   if (path.startsWith('/shipment-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
+  if (path.startsWith('/qc-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
   if (path.startsWith('/production-plan')) return FEATURE_KEYS.PRODUCTION_PLAN;
   if (path.startsWith('/production-result')) return FEATURE_KEYS.PRODUCTION_RESULT;
@@ -210,6 +211,7 @@ const ACCESS_PATH_PRIORITY = [
   '/style',
   '/st-review',
   '/shipment-review',
+  '/qc-review',
   '/assignment',
   '/production-plan',
   '/inventory',

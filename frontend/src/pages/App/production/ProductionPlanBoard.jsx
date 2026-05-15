@@ -356,6 +356,12 @@ const buildAssignmentProgressMap = (rows) =>
       .map((row) => [
         String(row.id),
         {
+          isCompleted: Boolean(row?.isCompleted),
+          finalQuantity:
+            Number.isFinite(Number(row?.finalQuantity)) && Number(row?.finalQuantity) >= 0
+              ? Number(row.finalQuantity)
+              : null,
+          completedAt: row?.completedAt || null,
           baselineQuantity:
             Number.isFinite(Number(row?.baselineQuantity)) && Number(row.baselineQuantity) > 0
               ? Number(row.baselineQuantity)
@@ -370,6 +376,9 @@ const buildAssignmentProgressMap = (rows) =>
       ])
   );
 const isAssignmentWorkCompleted = (assignment) => {
+  if (assignment?.progress?.isCompleted) {
+    return true;
+  }
   const baselineQuantity = Number(assignment?.progress?.baselineQuantity);
   const producedQuantity = Number(assignment?.progress?.producedQuantity);
   if (
