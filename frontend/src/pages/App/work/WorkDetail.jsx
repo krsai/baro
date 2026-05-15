@@ -102,6 +102,90 @@ const normalizeProcessNameKey = (value) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .toLowerCase();
+const PROCESS_INSTANCE_CODE_PATTERN = /^(.*)-\d+-\d+$/;
+const stripProcessInstanceCode = (value) => {
+  const rawCode = toText(value);
+  if (!rawCode) return '';
+  const instanceCodeMatch = rawCode.match(PROCESS_INSTANCE_CODE_PATTERN);
+  const strippedCode = toText(instanceCodeMatch?.[1] || '');
+  return strippedCode || rawCode;
+};
+const buildNormalizedProcessCodeCandidates = (value) => {
+  const rawCode = toText(value);
+  if (!rawCode) return [];
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (candidate) => {
+    const normalized = normalizeProcessCode(candidate);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  pushCandidate(rawCode);
+  const strippedCode = stripProcessInstanceCode(rawCode);
+  if (strippedCode && strippedCode !== rawCode) {
+    pushCandidate(strippedCode);
+  }
+  return candidates;
+};
+const collectNormalizedProcessCodeCandidates = (process) => {
+  const candidates = [];
+  const seen = new Set();
+  [process?.processCode, process?.code, process?.processKey].forEach((value) => {
+    buildNormalizedProcessCodeCandidates(value).forEach((candidate) => {
+      if (seen.has(candidate)) return;
+      seen.add(candidate);
+      candidates.push(candidate);
+    });
+  });
+  return candidates;
+};
+const hasMatchingProcessCode = (leftProcess, rightProcess) => {
+  const leftCandidates = collectNormalizedProcessCodeCandidates(leftProcess);
+  if (leftCandidates.length === 0) return false;
+  const rightCandidates = new Set(collectNormalizedProcessCodeCandidates(rightProcess));
+  if (rightCandidates.size === 0) return false;
+  return leftCandidates.some((candidate) => rightCandidates.has(candidate));
+};
+const collectProcessNameKeys = (process) =>
+  new Set(
+    [
+      process?.name,
+      process?.processName,
+      process?.nameKo,
+      process?.processNameKo,
+      process?.nameEn,
+      process?.processNameEn,
+      process?.nameVi,
+      process?.processNameVi,
+    ]
+      .map((value) => normalizeProcessNameKey(value))
+      .filter(Boolean)
+  );
+const hasMatchingProcessName = (leftProcess, rightProcess) => {
+  const leftNameKeys = collectProcessNameKeys(leftProcess);
+  if (leftNameKeys.size === 0) return false;
+  const rightNameKeys = collectProcessNameKeys(rightProcess);
+  if (rightNameKeys.size === 0) return false;
+  for (const nameKey of leftNameKeys) {
+    if (rightNameKeys.has(nameKey)) return true;
+  }
+  return false;
+};
+const isSameProcess = (leftProcess, rightProcess) => {
+  if (!leftProcess || !rightProcess) return false;
+  const leftProcessKey = toText(leftProcess?.processKey || leftProcess?.id);
+  const rightProcessKey = toText(rightProcess?.processKey || rightProcess?.id);
+  if (leftProcessKey && rightProcessKey && leftProcessKey === rightProcessKey) return true;
+
+  const leftProcessId = toPositiveIdOrNull(leftProcess?.processId ?? leftProcess?.id);
+  const rightProcessId = toPositiveIdOrNull(rightProcess?.processId ?? rightProcess?.id);
+  if (leftProcessId && rightProcessId && leftProcessId === rightProcessId) return true;
+
+  if (hasMatchingProcessCode(leftProcess, rightProcess)) return true;
+  return hasMatchingProcessName(leftProcess, rightProcess);
+};
 const formatCount = (value) =>
   formatNumberWithCommas(value, {
     fallback: '0',
@@ -245,7 +329,9 @@ const buildPlanProcessOptions = (plan) => {
       processId: toPositiveIdOrNull(
         process?.id ?? process?.processId ?? process?.processAttributeId ?? process?.attributeId
       ),
-      processCode: toText(process?.processCode),
+      processCode: stripProcessInstanceCode(
+        process?.processCode || process?.code || process?.processKey
+      ),
       code: toText(process?.processCode || process?.code || process?.processKey),
       name: fallbackName,
       nameKo: toText(process?.nameKo || process?.processNameKo),
@@ -309,8 +395,13 @@ const resolveBaselineQuantity = (plan) => {
 const buildProcessMetric = (process) => {
   const processId = toPositiveIdOrNull(process?.processId);
   if (processId) return { key: `id:${processId}`, label: toText(process?.name) || toText(process?.code) || `ID:${processId}` };
-  const code = toText(process?.code);
-  if (code) return { key: `code:${code.toUpperCase()}`, label: toText(process?.name) || code };
+  const code = collectNormalizedProcessCodeCandidates(process)[0] || '';
+  if (code) {
+    const displayCode = stripProcessInstanceCode(
+      process?.processCode || process?.code || process?.processKey
+    );
+    return { key: `code:${code}`, label: toText(process?.name) || displayCode || code };
+  }
   const name = toText(process?.name || process?.nameKo || process?.nameEn || process?.nameVi);
   if (name) return { key: `name:${normalizeProcessNameKey(name)}`, label: name };
   return { key: 'unknown', label: '미정 공정' };
@@ -439,8 +530,10 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         'name'
       ) ||
       assignmentProcessOptions.find((processOption) =>
-        normalizeProcessCode(processOption?.code || processOption?.processCode || processOption?.processKey) ===
-        normalizeProcessCode(record?.processCode)
+        hasMatchingProcessCode(processOption, {
+          processCode: record?.processCode,
+          code: record?.processCode,
+        })
       );
     const process = matchedProcess
       ? {
@@ -492,15 +585,12 @@ const buildDisplayProcessName = (process, languageCode) => {
 };
 const buildDisplayProcessCode = (process) =>
   {
-    const canonicalCode = toText(process?.processCode);
+    const canonicalCode = stripProcessInstanceCode(process?.processCode);
     if (canonicalCode) return canonicalCode;
 
     const rawCode = toText(process?.code || process?.processKey || '');
     if (!rawCode) return '';
-
-    const instanceCodeMatch = rawCode.match(/^(.*)-\d+-\d+$/);
-    const strippedCode = toText(instanceCodeMatch?.[1] || '');
-    return strippedCode || rawCode;
+    return stripProcessInstanceCode(rawCode);
   };
 const buildProcessOptionDisplayLabel = (process, languageCode) => {
   const processName = buildDisplayProcessName(process, languageCode);
@@ -620,52 +710,12 @@ const resolveProcessOption = (rowProcess, assignment) => {
     }
   }
 
-  const targetProcessCode = normalizeProcessCode(rowProcess?.code || rowProcess?.processCode);
-  if (targetProcessCode) {
-    const matchedByCode = processOptions.find(
-      (processOption) =>
-        normalizeProcessCode(processOption?.code || processOption?.processCode || processOption?.processKey) ===
-        targetProcessCode
-    );
-    if (matchedByCode) {
-      return mergeMatchedProcessOption(rowProcess, matchedByCode);
-    }
-  }
-
-  const targetProcessNameSet = new Set(
-    [
-      rowProcess?.name,
-      rowProcess?.processName,
-      rowProcess?.nameKo,
-      rowProcess?.processNameKo,
-      rowProcess?.nameEn,
-      rowProcess?.processNameEn,
-      rowProcess?.nameVi,
-      rowProcess?.processNameVi,
-    ]
-      .map((value) => normalizeProcessNameKey(value))
-      .filter(Boolean)
+  const matchedByCodeOrName = processOptions.find((processOption) =>
+    hasMatchingProcessCode(processOption, rowProcess) ||
+    hasMatchingProcessName(processOption, rowProcess)
   );
-  if (targetProcessNameSet.size > 0) {
-    const matchedByName = processOptions.find(
-      (processOption) =>
-        [
-          processOption?.name,
-          processOption?.processName,
-          processOption?.nameKo,
-          processOption?.processNameKo,
-          processOption?.nameEn,
-          processOption?.processNameEn,
-          processOption?.nameVi,
-          processOption?.processNameVi,
-        ]
-          .map((value) => normalizeProcessNameKey(value))
-          .filter(Boolean)
-          .some((nameKey) => targetProcessNameSet.has(nameKey))
-    );
-    if (matchedByName) {
-      return mergeMatchedProcessOption(rowProcess, matchedByName);
-    }
+  if (matchedByCodeOrName) {
+    return mergeMatchedProcessOption(rowProcess, matchedByCodeOrName);
   }
 
   return rowProcess;
@@ -678,13 +728,15 @@ const mergeProcessWithCatalog = (
 ) => {
   if (!process) return null;
   const processId = toPositiveIdOrNull(process?.processId ?? process?.id);
-  const processCode = normalizeProcessCode(
-    process?.processCode || process?.code || process?.processKey
-  );
+  const processCodeCandidates = collectNormalizedProcessCodeCandidates(process);
+  const matchedProcessByCode = processCodeCandidates.reduce((matched, codeCandidate) => {
+    if (matched) return matched;
+    return processCatalogByCode.get(codeCandidate) || null;
+  }, null);
   const processNameKey = normalizeProcessNameKey(process?.name || process?.processName);
   const matchedProcess =
     (processId ? processCatalogById.get(processId) : null) ||
-    (processCode ? processCatalogByCode.get(processCode) : null) ||
+    matchedProcessByCode ||
     (processNameKey ? processCatalogByName.get(processNameKey) : null) ||
     null;
 
@@ -1570,10 +1622,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           process: mergedProcess,
         });
         if (candidateSignature && reservedSignatures.has(candidateSignature)) return;
+        const hasEquivalentOption = options.some((option) =>
+          isSameProcess(option?.process, mergedProcess)
+        );
+        if (hasEquivalentOption) return;
         const optionId =
           buildProcessIdentityKey(mergedProcess) || `process-${processIndex + 1}`;
-        if (!optionId || seenOptionIds.has(optionId)) return;
-        seenOptionIds.add(optionId);
+        if (optionId && seenOptionIds.has(optionId)) return;
+        if (optionId) seenOptionIds.add(optionId);
         options.push({
           id: optionId,
           process: mergedProcess,
@@ -1584,7 +1640,10 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         resolveProcessForRow(row, selectedAssignment) || row?.process || null;
       if (currentProcess) {
         const currentOptionId = buildProcessIdentityKey(currentProcess);
-        if (currentOptionId && !seenOptionIds.has(currentOptionId)) {
+        const hasEquivalentOption = options.some((option) =>
+          isSameProcess(option?.process, currentProcess)
+        );
+        if (currentOptionId && !seenOptionIds.has(currentOptionId) && !hasEquivalentOption) {
           options.push({
             id: currentOptionId,
             process: currentProcess,
@@ -1608,9 +1667,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     (row, options) => {
       const currentAssignment = resolveAssignmentForRow(row) || row?.assignment || null;
       const currentProcess = resolveProcessForRow(row, currentAssignment) || row?.process || null;
+      if (!currentProcess) return null;
       const targetOptionId = buildProcessIdentityKey(currentProcess);
-      if (!targetOptionId) return null;
-      return options.find((option) => String(option?.id || '') === targetOptionId) || null;
+      if (targetOptionId) {
+        const matchedById = options.find(
+          (option) => String(option?.id || '') === targetOptionId
+        );
+        if (matchedById) return matchedById;
+      }
+      return options.find((option) => isSameProcess(option?.process, currentProcess)) || null;
     },
     [resolveAssignmentForRow, resolveProcessForRow]
   );
@@ -1974,43 +2039,48 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             }}
                           />
                           <Stack spacing={0.35}>
-                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-                              <Box sx={{ flex: 1, minWidth: 0 }}>
-                                <SearchableSelect
-                                  label={LABELS.style}
-                                  options={styleOptions}
-                                  value={selectedStyleOption}
-                                  onChange={(_event, value) => handleStyleChange(row.id, value)}
-                                  autoSelect={false}
-                                  disabled={styleDisabled}
-                                  autoHighlight
-                                  openOnFocus
-                                  selectOnFocus
-                                  clearOnBlur={false}
-                                  handleHomeEndKeys
-                                  getOptionLabel={getStyleOptionLabel}
-                                  isOptionEqualToValue={(option, value) =>
-                                    toText(option?.id || option?.dbId) ===
-                                    toText(value?.id || value?.dbId)
-                                  }
-                                  renderOption={renderStyleOption}
-                                  textFieldProps={{
-                                    size: 'small',
-                                    placeholder: stylePlaceholder,
-                                    autoFocus: shouldFocusStyle,
-                                  }}
-                                />
-                              </Box>
-                              {selectedStyleOrderLabel ? (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ flexShrink: 0, fontSize: '0.72rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}
-                                >
-                                  {selectedStyleOrderLabel}
-                                </Typography>
-                              ) : null}
-                            </Stack>
+                            <SearchableSelect
+                              label={LABELS.style}
+                              options={styleOptions}
+                              value={selectedStyleOption}
+                              onChange={(_event, value) => handleStyleChange(row.id, value)}
+                              autoSelect={false}
+                              disabled={styleDisabled}
+                              autoHighlight
+                              openOnFocus
+                              selectOnFocus
+                              clearOnBlur={false}
+                              handleHomeEndKeys
+                              getOptionLabel={getStyleOptionLabel}
+                              isOptionEqualToValue={(option, value) =>
+                                toText(option?.id || option?.dbId) ===
+                                toText(value?.id || value?.dbId)
+                              }
+                              renderOption={renderStyleOption}
+                              inputSuffix={
+                                selectedStyleOrderLabel ? (
+                                  <Typography
+                                    component="span"
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{
+                                      mr: 0.5,
+                                      fontSize: '0.72rem',
+                                      lineHeight: 1.2,
+                                      whiteSpace: 'nowrap',
+                                      pointerEvents: 'none',
+                                    }}
+                                  >
+                                    {selectedStyleOrderLabel}
+                                  </Typography>
+                                ) : null
+                              }
+                              textFieldProps={{
+                                size: 'small',
+                                placeholder: stylePlaceholder,
+                                autoFocus: shouldFocusStyle,
+                              }}
+                            />
                             {selectedStyleExceptionLabel ? (
                               <Typography
                                 variant="caption"
@@ -2269,43 +2339,48 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <Stack spacing={0.35}>
-                                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-                                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <SearchableSelect
-                                      label={LABELS.style}
-                                      options={styleOptions}
-                                      value={selectedStyleOption}
-                                      onChange={(_event, value) => handleStyleChange(row.id, value)}
-                                      autoSelect={false}
-                                      disabled={styleDisabled}
-                                      autoHighlight
-                                      openOnFocus
-                                      selectOnFocus
-                                      clearOnBlur={false}
-                                      handleHomeEndKeys
-                                      getOptionLabel={getStyleOptionLabel}
-                                      isOptionEqualToValue={(option, value) =>
-                                        toText(option?.id || option?.dbId) ===
-                                        toText(value?.id || value?.dbId)
-                                      }
-                                      renderOption={renderStyleOption}
-                                      textFieldProps={{
-                                        size: 'small',
-                                        placeholder: stylePlaceholder,
-                                        autoFocus: shouldFocusStyle,
-                                      }}
-                                    />
-                                  </Box>
-                                  {selectedStyleOrderLabel ? (
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                      sx={{ flexShrink: 0, fontSize: '0.72rem', lineHeight: 1.2, whiteSpace: 'nowrap' }}
-                                    >
-                                      {selectedStyleOrderLabel}
-                                    </Typography>
-                                  ) : null}
-                                </Stack>
+                                <SearchableSelect
+                                  label={LABELS.style}
+                                  options={styleOptions}
+                                  value={selectedStyleOption}
+                                  onChange={(_event, value) => handleStyleChange(row.id, value)}
+                                  autoSelect={false}
+                                  disabled={styleDisabled}
+                                  autoHighlight
+                                  openOnFocus
+                                  selectOnFocus
+                                  clearOnBlur={false}
+                                  handleHomeEndKeys
+                                  getOptionLabel={getStyleOptionLabel}
+                                  isOptionEqualToValue={(option, value) =>
+                                    toText(option?.id || option?.dbId) ===
+                                    toText(value?.id || value?.dbId)
+                                  }
+                                  renderOption={renderStyleOption}
+                                  inputSuffix={
+                                    selectedStyleOrderLabel ? (
+                                      <Typography
+                                        component="span"
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{
+                                          mr: 0.5,
+                                          fontSize: '0.72rem',
+                                          lineHeight: 1.2,
+                                          whiteSpace: 'nowrap',
+                                          pointerEvents: 'none',
+                                        }}
+                                      >
+                                        {selectedStyleOrderLabel}
+                                      </Typography>
+                                    ) : null
+                                  }
+                                  textFieldProps={{
+                                    size: 'small',
+                                    placeholder: stylePlaceholder,
+                                    autoFocus: shouldFocusStyle,
+                                  }}
+                                />
                                 {selectedStyleExceptionLabel ? (
                                   <Typography
                                     variant="caption"

@@ -31,10 +31,12 @@ const SearchableSelect = ({
   isOptionEqualToValue = (option, selectedValue) => option === selectedValue,
   slotProps,
   filterOptions,
+  inputSuffix = null,
   ...props
 }) => {
   const {
     inputProps: customInputProps = {},
+    InputProps: customTextFieldInputProps = {},
     onKeyDown: textFieldOnKeyDown,
     ...restTextFieldProps
   } = textFieldProps;
@@ -124,27 +126,44 @@ const SearchableSelect = ({
         },
       }}
       {...props}
-      renderInput={(params) => (
-        <TextField
-          {...params}
-          label={label}
-          {...restTextFieldProps}
-          inputProps={{
-            ...(params.inputProps || {}),
-            ...restCustomInputProps,
-            onKeyDown: (event) => {
-              customInputOnKeyDown?.(event);
-              textFieldOnKeyDown?.(event);
-              if (!event.defaultPrevented) {
-                handleKeyboardSelect(event);
-              }
-              if (!event.defaultPrevented) {
-                params.inputProps?.onKeyDown?.(event);
-              }
-            },
-          }}
-        />
-      )}
+      renderInput={(params) => {
+        const baseEndAdornment =
+          customTextFieldInputProps?.endAdornment ?? params.InputProps?.endAdornment;
+        const resolvedEndAdornment = inputSuffix ? (
+          <>
+            {inputSuffix}
+            {baseEndAdornment}
+          </>
+        ) : (
+          baseEndAdornment
+        );
+        return (
+          <TextField
+            {...params}
+            label={label}
+            {...restTextFieldProps}
+            InputProps={{
+              ...(params.InputProps || {}),
+              ...customTextFieldInputProps,
+              endAdornment: resolvedEndAdornment,
+            }}
+            inputProps={{
+              ...(params.inputProps || {}),
+              ...restCustomInputProps,
+              onKeyDown: (event) => {
+                customInputOnKeyDown?.(event);
+                textFieldOnKeyDown?.(event);
+                if (!event.defaultPrevented) {
+                  handleKeyboardSelect(event);
+                }
+                if (!event.defaultPrevented) {
+                  params.inputProps?.onKeyDown?.(event);
+                }
+              },
+            }}
+          />
+        );
+      }}
     />
   );
 };

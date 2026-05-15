@@ -13966,6 +13966,39 @@ const buildAssignmentPlanProgressRows = async (
   });
 };
 
+const resolveAssignmentPlanProducedQuantity = async ({
+  orgId,
+  planId,
+  baselineQuantity = null,
+}: {
+  orgId: number;
+  planId: number;
+  baselineQuantity?: number | null;
+}): Promise<number> => {
+  const normalizedPlanId = toPositiveIntOrNull(planId);
+  if (normalizedPlanId === null) return 0;
+
+  const processAggregates = await prisma.workRecord.groupBy({
+    by: ["processId", "processCode"],
+    where: {
+      orgId,
+      assignmentPlanId: normalizedPlanId,
+    },
+    _sum: { quantity: true },
+  });
+  const processTotals = ensureArray(processAggregates)
+    .map((row) => Math.max(0, Math.round(Number(row?._sum?.quantity ?? 0))))
+    .filter((quantity) => quantity > 0);
+
+  if (processTotals.length > 0) {
+    return resolveAssignmentProducedQuantityFromProcessTotals({
+      processTotals,
+      baselineQuantity,
+    });
+  }
+  return 0;
+};
+
 app.get("/assignment-plan-progress", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
@@ -13980,6 +14013,83 @@ app.get("/assignment-plan-progress", async (req, res) => {
 
   const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
   res.json(rows);
+});
+
+app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      isCompleted: true,
+      completedAt: true,
+      quantity: true,
+      finalQuantity: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+    },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  if (plan.isCompleted || toOptionalDateValue(plan.completedAt, null)) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan already completed",
+    });
+  }
+
+  const finalQuantity = toOptionalNonNegativeInt(req.body?.finalQuantity, null);
+  if (finalQuantity === null) {
+    return res.status(400).json({ ok: false, error: "finalQuantity is required" });
+  }
+
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      finalQuantity,
+      updatedAt: new Date(),
+    },
+  });
+
+  const plannedQuantity = toOptionalNonNegativeInt(updatedPlan.quantity, null);
+  const baselineQuantity =
+    plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
+  const producedQuantity = await resolveAssignmentPlanProducedQuantity({
+    orgId: organization.id,
+    planId: updatedPlan.id,
+    baselineQuantity,
+  });
+
+  return res.json({
+    ok: true,
+    plan: {
+      id: updatedPlan.externalId,
+      dbId: updatedPlan.id,
+      lineId: String(updatedPlan.lineId),
+      orderNo: updatedPlan.orderNo ?? "",
+      label: updatedPlan.label ?? "",
+      colorName: resolveAssignmentPlanColorName(updatedPlan),
+      quantity: toOptionalNonNegativeInt(updatedPlan.quantity, null),
+      isCompleted: Boolean(updatedPlan.isCompleted),
+      finalQuantity: toOptionalNonNegativeInt(updatedPlan.finalQuantity, null),
+      completedAt: toIsoDateStringOrNull(updatedPlan.completedAt),
+      producedQuantity,
+    },
+  });
 });
 
 app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
@@ -14022,6 +14132,23 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
   const finalQuantity = toOptionalNonNegativeInt(req.body?.finalQuantity, null);
   if (finalQuantity === null) {
     return res.status(400).json({ ok: false, error: "finalQuantity is required" });
+  }
+
+  const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
+  const baselineQuantity =
+    plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
+  const producedQuantity = await resolveAssignmentPlanProducedQuantity({
+    orgId: organization.id,
+    planId: plan.id,
+    baselineQuantity,
+  });
+  if (producedQuantity < finalQuantity) {
+    return res.status(409).json({
+      ok: false,
+      error: `work log not finalized (produced=${producedQuantity}, finalQuantity=${finalQuantity})`,
+      producedQuantity,
+      finalQuantity,
+    });
   }
 
   const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();

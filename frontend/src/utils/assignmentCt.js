@@ -10,6 +10,11 @@ const toOptionalPositiveNumber = (value, fallback = null) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 };
+const toOptionalNonNegativeNumber = (value, fallback = null) => {
+  const parsed = toOptionalNumber(value, fallback);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+};
 
 const toOptionalProcessSeconds = (value, fallback = null) => {
   const parsed = toOptionalPositiveNumber(value, fallback);
@@ -107,19 +112,24 @@ export const normalizeAssignmentCtSnapshot = (value) => {
 export const resolveAssignmentCtSnapshot = (item) =>
   normalizeAssignmentCtSnapshot(item?.ctSnapshot ?? null);
 
-export const hasAssignmentCtSnapshot = (item) =>
-  Boolean(resolveAssignmentCtSnapshot(item)?.totalCtSeconds);
-
-export const resolveAssignmentCtTotalSeconds = (item) => {
+export const resolveAssignmentCtContractedSeconds = (item) => {
   const snapshot = resolveAssignmentCtSnapshot(item);
   if (snapshot?.totalCtSeconds != null) {
     return Math.round(Number(snapshot.totalCtSeconds) || 0);
   }
-  const contracted = toOptionalPositiveNumber(item?.contractedSeconds);
+  const contracted = toOptionalNonNegativeNumber(item?.contractedSeconds);
   if (contracted != null) return Math.round(contracted);
-  const total = toOptionalPositiveNumber(item?.totalSeconds);
+  const total = toOptionalNonNegativeNumber(item?.totalSeconds);
   if (total != null) return Math.round(total);
-  return 0;
+  return null;
+};
+export const hasAssignmentCtSnapshot = (item) => {
+  const snapshot = resolveAssignmentCtSnapshot(item);
+  return Boolean(snapshot) && resolveAssignmentCtContractedSeconds(item) !== null;
+};
+
+export const resolveAssignmentCtTotalSeconds = (item) => {
+  return resolveAssignmentCtContractedSeconds(item) ?? 0;
 };
 
 export const resolveAssignmentCtUpdatedBy = (item) =>
