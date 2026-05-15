@@ -56,6 +56,9 @@ const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' })
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
 const ROWS_PER_PAGE = 30;
+const DESKTOP_VIRTUAL_ROW_HEIGHT = 66;
+const DESKTOP_VIRTUAL_OVERSCAN = 6;
+const DESKTOP_VIRTUAL_VIEWPORT_HEIGHT = 560;
 const LABELS = {
   title: '기록 상세',
   workDate: '작업일자',
@@ -831,7 +834,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
+  const [desktopVirtualScrollTop, setDesktopVirtualScrollTop] = useState(0);
   const initialRowsHydratedRef = useRef(false);
+  const desktopTableContainerRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
   const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
@@ -1276,6 +1281,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     () => filteredRows.slice(pageStartIndex, pageEndIndex),
     [filteredRows, pageEndIndex, pageStartIndex]
   );
+  useEffect(() => {
+    setDesktopVirtualScrollTop(0);
+    if (desktopTableContainerRef.current) {
+      desktopTableContainerRef.current.scrollTop = 0;
+    }
+  }, [currentPage, filteredRows.length, isMobile]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -2103,6 +2114,37 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       workerGroupMetaByRowId,
     ]
   );
+  const desktopVirtualWindow = useMemo(() => {
+    const total = pagedRowViewModels.length;
+    if (isMobile || total === 0) {
+      return { start: 0, end: total, topSpacerHeight: 0, bottomSpacerHeight: 0 };
+    }
+    const visibleCount =
+      Math.ceil(DESKTOP_VIRTUAL_VIEWPORT_HEIGHT / DESKTOP_VIRTUAL_ROW_HEIGHT) +
+      DESKTOP_VIRTUAL_OVERSCAN * 2;
+    const start = Math.max(
+      0,
+      Math.floor(desktopVirtualScrollTop / DESKTOP_VIRTUAL_ROW_HEIGHT) - DESKTOP_VIRTUAL_OVERSCAN
+    );
+    const end = Math.min(total, start + visibleCount);
+    return {
+      start,
+      end,
+      topSpacerHeight: start * DESKTOP_VIRTUAL_ROW_HEIGHT,
+      bottomSpacerHeight: Math.max(0, (total - end) * DESKTOP_VIRTUAL_ROW_HEIGHT),
+    };
+  }, [desktopVirtualScrollTop, isMobile, pagedRowViewModels.length]);
+  const desktopVisibleRowViewModels = useMemo(
+    () =>
+      isMobile
+        ? pagedRowViewModels
+        : pagedRowViewModels.slice(desktopVirtualWindow.start, desktopVirtualWindow.end),
+    [desktopVirtualWindow.end, desktopVirtualWindow.start, isMobile, pagedRowViewModels]
+  );
+  const handleDesktopTableScroll = useCallback((event) => {
+    if (isMobile) return;
+    setDesktopVirtualScrollTop(event.currentTarget.scrollTop || 0);
+  }, [isMobile]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -2295,49 +2337,46 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               </Typography>
                             ) : null}
                           </Stack>
-                          <Stack direction="row" spacing={0.35} alignItems="center" sx={{ minWidth: 0 }}>
-                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <SearchableSelect
-                                label={LABELS.process}
-                                options={processOptions}
-                                value={selectedProcessOption}
-                                onChange={(_event, value) => handleProcessChange(row.id, value)}
-                                advanceFocusOnKeyboardSelect
-                                autoSelect={false}
-                                disabled={processDisabled}
-                                autoHighlight
-                                openOnFocus
-                                selectOnFocus
-                                clearOnBlur={false}
-                                handleHomeEndKeys
-                                getOptionLabel={getProcessOptionLabel}
-                                isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                                renderOption={renderProcessOption}
-                                textFieldProps={{
-                                  size: 'small',
-                                  placeholder: processPlaceholder,
-                                  autoFocus: shouldFocusProcess,
-                                }}
-                              />
-                            </Box>
-                            {selectedProcessMetaLabel ? (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{
-                                  fontSize: '0.72rem',
-                                  lineHeight: 1.2,
-                                  maxWidth: '46%',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  flexShrink: 1,
-                                }}
-                              >
-                                {selectedProcessMetaLabel}
-                              </Typography>
-                            ) : null}
-                          </Stack>
+                          <SearchableSelect
+                            label={LABELS.process}
+                            options={processOptions}
+                            value={selectedProcessOption}
+                            onChange={(_event, value) => handleProcessChange(row.id, value)}
+                            advanceFocusOnKeyboardSelect
+                            autoSelect={false}
+                            disabled={processDisabled}
+                            autoHighlight
+                            openOnFocus
+                            selectOnFocus
+                            clearOnBlur={false}
+                            handleHomeEndKeys
+                            getOptionLabel={getProcessOptionLabel}
+                            isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                            renderOption={renderProcessOption}
+                            inputSuffix={
+                              selectedProcessMetaLabel ? (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    mr: 0.35,
+                                    fontSize: '0.72rem',
+                                    lineHeight: 1.2,
+                                    whiteSpace: 'nowrap',
+                                    pointerEvents: 'none',
+                                  }}
+                                >
+                                  {selectedProcessMetaLabel}
+                                </Typography>
+                              ) : null
+                            }
+                            textFieldProps={{
+                              size: 'small',
+                              placeholder: processPlaceholder,
+                              autoFocus: shouldFocusProcess,
+                            }}
+                          />
                           <TextField
                             label={LABELS.quantity}
                             type="number"
@@ -2415,8 +2454,18 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                   })}
                 </Stack>
               ) : (
-                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-                <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                <TableContainer
+                  ref={desktopTableContainerRef}
+                  onScroll={handleDesktopTableScroll}
+                  component={Paper}
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 2,
+                    overflow: 'auto',
+                    maxHeight: DESKTOP_VIRTUAL_VIEWPORT_HEIGHT,
+                  }}
+                >
+                <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ width: '18%' }}>{LABELS.worker}</TableCell>
@@ -2427,7 +2476,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {pagedRowViewModels.map((rowViewModel) => {
+                    {desktopVirtualWindow.topSpacerHeight > 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          sx={{ p: 0, border: 0, height: `${desktopVirtualWindow.topSpacerHeight}px` }}
+                        />
+                      </TableRow>
+                    ) : null}
+                    {desktopVisibleRowViewModels.map((rowViewModel) => {
                       const {
                         row,
                         rowExceededMeta,
@@ -2590,49 +2647,46 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
-                              <Stack direction="row" spacing={0.35} alignItems="center" sx={{ minWidth: 0 }}>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <SearchableSelect
-                                    label={LABELS.process}
-                                    options={processOptions}
-                                    value={selectedProcessOption}
-                                    onChange={(_event, value) => handleProcessChange(row.id, value)}
-                                    advanceFocusOnKeyboardSelect
-                                    autoSelect={false}
-                                    disabled={processDisabled}
-                                    autoHighlight
-                                    openOnFocus
-                                    selectOnFocus
-                                    clearOnBlur={false}
-                                    handleHomeEndKeys
-                                    getOptionLabel={getProcessOptionLabel}
-                                    isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                                    renderOption={renderProcessOption}
-                                    textFieldProps={{
-                                      size: 'small',
-                                      placeholder: processPlaceholder,
-                                      autoFocus: shouldFocusProcess,
-                                    }}
-                                  />
-                                </Box>
-                                {selectedProcessMetaLabel ? (
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{
-                                      fontSize: '0.72rem',
-                                      lineHeight: 1.2,
-                                      maxWidth: '46%',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      flexShrink: 1,
-                                    }}
-                                  >
-                                    {selectedProcessMetaLabel}
-                                  </Typography>
-                                ) : null}
-                              </Stack>
+                              <SearchableSelect
+                                label={LABELS.process}
+                                options={processOptions}
+                                value={selectedProcessOption}
+                                onChange={(_event, value) => handleProcessChange(row.id, value)}
+                                advanceFocusOnKeyboardSelect
+                                autoSelect={false}
+                                disabled={processDisabled}
+                                autoHighlight
+                                openOnFocus
+                                selectOnFocus
+                                clearOnBlur={false}
+                                handleHomeEndKeys
+                                getOptionLabel={getProcessOptionLabel}
+                                isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                                renderOption={renderProcessOption}
+                                inputSuffix={
+                                  selectedProcessMetaLabel ? (
+                                    <Typography
+                                      component="span"
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{
+                                        mr: 0.35,
+                                        fontSize: '0.72rem',
+                                        lineHeight: 1.2,
+                                        whiteSpace: 'nowrap',
+                                        pointerEvents: 'none',
+                                      }}
+                                    >
+                                      {selectedProcessMetaLabel}
+                                    </Typography>
+                                  ) : null
+                                }
+                                textFieldProps={{
+                                  size: 'small',
+                                  placeholder: processPlaceholder,
+                                  autoFocus: shouldFocusProcess,
+                                }}
+                              />
                             ) : (
                               <Box
                                 onClick={(event) => {
@@ -2754,6 +2808,14 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                         </TableRow>
                       );
                     })}
+                    {desktopVirtualWindow.bottomSpacerHeight > 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={5}
+                          sx={{ p: 0, border: 0, height: `${desktopVirtualWindow.bottomSpacerHeight}px` }}
+                        />
+                      </TableRow>
+                    ) : null}
                   </TableBody>
                 </Table>
               </TableContainer>
