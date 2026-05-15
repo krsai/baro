@@ -191,6 +191,11 @@ const formatCount = (value) =>
     fallback: '0',
     maximumFractionDigits: 0,
   });
+const resolveQuantityUnitLabel = (languageCode) => {
+  if (languageCode === 'ko') return '장';
+  if (languageCode === 'vi') return 'cái';
+  return 'pcs';
+};
 const buildQuantityExceededHelperText = (meta) => {
   if (!meta) return '';
   return `${LABELS.assignmentQuantityExceeded}: 주문 ${formatCount(meta.limitQuantity)}개 / 누적 ${formatCount(
@@ -280,31 +285,6 @@ const sortAssignmentOptionsByLineContext = (options = [], currentLineId = null) 
     if (lineCompare !== 0) return lineCompare;
     return COLLATOR.compare(formatAssignmentLabel(left), formatAssignmentLabel(right));
   });
-const sortRowsByWorker = (sourceRows = []) => {
-  const safeRows = Array.isArray(sourceRows) ? sourceRows : [];
-  return [...safeRows].sort((left, right) => {
-    const leftWorker = toText(left?.worker?.name);
-    const rightWorker = toText(right?.worker?.name);
-    if (leftWorker && !rightWorker) return -1;
-    if (!leftWorker && rightWorker) return 1;
-    const workerCompare = COLLATOR.compare(leftWorker, rightWorker);
-    if (workerCompare !== 0) return workerCompare;
-
-    const assignmentCompare = COLLATOR.compare(
-      formatAssignmentLabel(left?.assignment || {}),
-      formatAssignmentLabel(right?.assignment || {})
-    );
-    if (assignmentCompare !== 0) return assignmentCompare;
-
-    const processCompare = COLLATOR.compare(
-      toText(left?.process?.name),
-      toText(right?.process?.name)
-    );
-    if (processCompare !== 0) return processCompare;
-
-    return COLLATOR.compare(toText(left?.id), toText(right?.id));
-  });
-};
 const ensureOptionIncluded = (options = [], current, getKey) => {
   if (!current) return options;
   const currentKey = toText(getKey(current));
@@ -884,13 +864,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     setAssignmentOptions(prefetchedAssignments);
     setRows(
       hasInitialRecords
-        ? sortRowsByWorker(
-            buildHydratedRows({
-              records: initialLog?.records,
-              workers: prefetchedWorkers,
-              assignments: prefetchedCtAssignments,
-            })
-          )
+        ? buildHydratedRows({
+            records: initialLog?.records,
+            workers: prefetchedWorkers,
+            assignments: prefetchedCtAssignments,
+          })
         : []
     );
     setPage(1);
@@ -1076,7 +1054,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       workers: lineWorkers,
       assignments: ctAssignmentPool,
     });
-    setRows(hydratedRows.length > 0 ? sortRowsByWorker(hydratedRows) : []);
+    setRows(hydratedRows.length > 0 ? hydratedRows : []);
     initialRowsHydratedRef.current = true;
   }, [ctAssignmentPool, hasInitialRecords, initialLog, lineWorkers, selectedFactoryId, selectedLineId]);
 
@@ -1409,13 +1387,25 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     });
     return labels;
   }, [allAssignmentPlans]);
+  const hasRowsWithAssignmentPlanId = useMemo(
+    () =>
+      rows.some((row) =>
+        toPositiveIdOrNull(
+          resolveAssignmentForRow(row)?.dbId ??
+            row?.assignment?.dbId ??
+            row?.assignment?.id
+        ) !== null
+      ),
+    [resolveAssignmentForRow, rows]
+  );
   const ctWarningMessage = useMemo(() => {
     if (ctAssignmentPool.length > 0) return '';
+    if (hasRowsWithAssignmentPlanId) return '';
     if (missingCtStyleLabels.length > 0) {
       return `CT 미저장 스타일: ${missingCtStyleLabels.join(', ')}`;
     }
     return 'CT가 저장된 배정카드가 없습니다.';
-  }, [ctAssignmentPool.length, missingCtStyleLabels]);
+  }, [ctAssignmentPool.length, hasRowsWithAssignmentPlanId, missingCtStyleLabels]);
   const resolveWorkerOptions = useCallback(
     (row) => ensureOptionIncluded(lineWorkers, row?.worker, (item) => item?.id || item?.name),
     [lineWorkers]
@@ -1486,10 +1476,13 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!styleOption) return '';
     const orderNo = toText(styleOption?.orderNo);
     const orderQuantity = resolveBaselineQuantity(styleOption);
-    return [orderNo, orderQuantity ? formatCount(orderQuantity) : null]
+    const quantityText = orderQuantity
+      ? `${formatCount(orderQuantity)}${languageCode === 'ko' ? '' : ' '}${resolveQuantityUnitLabel(languageCode)}`
+      : null;
+    return [orderNo, quantityText]
       .filter(Boolean)
       .join(' ');
-  }, []);
+  }, [languageCode]);
   const getStyleExceptionLabel = useCallback(
     (styleOption, workerOption) => {
       if (!styleOption) return '';
@@ -1633,6 +1626,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         options.push({
           id: optionId,
           process: mergedProcess,
+          searchText: buildProcessOptionDisplayLabel(mergedProcess, languageCode),
         });
       });
 
@@ -1647,6 +1641,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
           options.push({
             id: currentOptionId,
             process: currentProcess,
+            searchText: buildProcessOptionDisplayLabel(currentProcess, languageCode),
           });
         }
       }
@@ -1658,6 +1653,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       processCatalogByCode,
       processCatalogById,
       processCatalogByName,
+      languageCode,
       rows,
       resolveAssignmentForRow,
       resolveProcessForRow,
@@ -1679,10 +1675,17 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     },
     [resolveAssignmentForRow, resolveProcessForRow]
   );
-  const getProcessOptionLabel = useCallback(
-    (option) => buildProcessOptionDisplayLabel(option?.process, languageCode),
-    [languageCode]
-  );
+  const getProcessOptionLabel = useCallback((option) => {
+    const processCode = buildDisplayProcessCode(option?.process);
+    if (processCode) return processCode;
+    return buildDisplayProcessName(option?.process, languageCode);
+  }, [languageCode]);
+  const getProcessOptionMetaLabel = useCallback((option) => {
+    const processCode = buildDisplayProcessCode(option?.process);
+    if (!processCode) return '';
+    const processName = buildDisplayProcessName(option?.process, languageCode);
+    return processName && processName !== '-' ? processName : '';
+  }, [languageCode]);
   const renderProcessOption = useCallback(
     (props, option) => (
       <Box
@@ -1750,10 +1753,8 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
   }, [initialLog?.id]);
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
     setRows((currentRows) =>
-      sortRowsByWorker(
-        currentRows.map((row) =>
-          row.id === rowId ? { ...row, worker: nextWorker || null } : row
-        )
+      currentRows.map((row) =>
+        row.id === rowId ? { ...row, worker: nextWorker || null } : row
       )
     );
   }, []);
@@ -1837,9 +1838,12 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       return;
     }
     const availableWorkerIds = new Set(lineWorkers.map((worker) => toPositiveIdOrNull(worker?.id)).filter((workerId) => workerId !== null));
+    const shouldValidateWorkerLineMembership = availableWorkerIds.size > 0;
     const invalidWorkerRecord = summary.records.find((record) => {
       const workerId = toPositiveIdOrNull(record?.workerId);
-      return !workerId || !availableWorkerIds.has(workerId);
+      if (!workerId) return true;
+      if (!shouldValidateWorkerLineMembership) return false;
+      return !availableWorkerIds.has(workerId);
     });
     if (invalidWorkerRecord) {
       setFormError('선택한 라인에 속하지 않은 작업자가 포함되어 있습니다.');
@@ -1959,6 +1963,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                       : '';
                     const processOptions = resolveProcessOptions(rowForOptions);
                     const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
+                    const selectedProcessMetaLabel = selectedProcessOption
+                      ? getProcessOptionMetaLabel(selectedProcessOption)
+                      : '';
                     const workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
                     const styleDisabled = isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
                     const processDisabled =
@@ -2064,7 +2071,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                     variant="caption"
                                     color="text.secondary"
                                     sx={{
-                                      mr: 0.5,
+                                      mr: 0.35,
                                       fontSize: '0.72rem',
                                       lineHeight: 1.2,
                                       whiteSpace: 'nowrap',
@@ -2106,6 +2113,24 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             getOptionLabel={getProcessOptionLabel}
                             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
                             renderOption={renderProcessOption}
+                            inputSuffix={
+                              selectedProcessMetaLabel ? (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{
+                                    mr: 0.35,
+                                    fontSize: '0.72rem',
+                                    lineHeight: 1.2,
+                                    whiteSpace: 'nowrap',
+                                    pointerEvents: 'none',
+                                  }}
+                                >
+                                  {selectedProcessMetaLabel}
+                                </Typography>
+                              ) : null
+                            }
                             textFieldProps={{
                               size: 'small',
                               placeholder: processPlaceholder,
@@ -2235,6 +2260,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                       const selectedProcessOption = isEditingRow
                         ? resolveSelectedProcessOption(rowForOptions, processOptions)
                         : null;
+                      const selectedProcessMetaLabel = selectedProcessOption
+                        ? getProcessOptionMetaLabel(selectedProcessOption)
+                        : '';
                       const styleDisabled =
                         isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
                       const processDisabled =
@@ -2364,7 +2392,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                         variant="caption"
                                         color="text.secondary"
                                         sx={{
-                                          mr: 0.5,
+                                          mr: 0.35,
                                           fontSize: '0.72rem',
                                           lineHeight: 1.2,
                                           whiteSpace: 'nowrap',
@@ -2425,6 +2453,24 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 getOptionLabel={getProcessOptionLabel}
                                 isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
                                 renderOption={renderProcessOption}
+                                inputSuffix={
+                                  selectedProcessMetaLabel ? (
+                                    <Typography
+                                      component="span"
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{
+                                        mr: 0.35,
+                                        fontSize: '0.72rem',
+                                        lineHeight: 1.2,
+                                        whiteSpace: 'nowrap',
+                                        pointerEvents: 'none',
+                                      }}
+                                    >
+                                      {selectedProcessMetaLabel}
+                                    </Typography>
+                                  ) : null
+                                }
                                 textFieldProps={{
                                   size: 'small',
                                   placeholder: processPlaceholder,
@@ -2445,7 +2491,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 }}
                               >
                                 {selectedProcessOption
-                                  ? getProcessOptionLabel(selectedProcessOption)
+                                  ? buildProcessOptionDisplayLabel(selectedProcessOption?.process, languageCode)
                                   : '-'}
                               </Box>
                             )}

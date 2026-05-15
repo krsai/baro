@@ -71,20 +71,28 @@ export const normalizeAssignmentCtSnapshot = (value) => {
   const processes = (Array.isArray(value.processes) ? value.processes : [])
     .map((process, index) => normalizeSnapshotProcess(process, index))
     .filter(Boolean);
-  const quantity = Math.max(
-    1,
-    Math.round(
-      toOptionalPositiveNumber(value.quantity, toOptionalPositiveNumber(value.orderQuantity, 1)) || 1
-    )
-  );
+  const quantity =
+    toOptionalNonNegativeNumber(value.quantity, toOptionalNonNegativeNumber(value.orderQuantity, null)) != null
+      ? Math.max(
+          0,
+          Math.round(
+            Number(
+              toOptionalNonNegativeNumber(
+                value.quantity,
+                toOptionalNonNegativeNumber(value.orderQuantity, null)
+              ) || 0
+            )
+          )
+        )
+      : null;
   const totalCtPerPieceSeconds =
-    toOptionalPositiveNumber(value.totalCtPerPieceSeconds ?? value.totalAgreedPerPieceSeconds) ??
+    toOptionalNonNegativeNumber(value.totalCtPerPieceSeconds ?? value.totalAgreedPerPieceSeconds) ??
     (processes.length > 0
       ? processes.reduce((sum, process) => sum + (Number(process.ctPerPieceSeconds) || 0), 0)
       : null);
   const totalCtSeconds =
-    toOptionalPositiveNumber(value.totalCtSeconds ?? value.totalAgreedSeconds) ??
-    (totalCtPerPieceSeconds != null ? totalCtPerPieceSeconds * quantity : null);
+    toOptionalNonNegativeNumber(value.totalCtSeconds ?? value.totalAgreedSeconds) ??
+    (totalCtPerPieceSeconds != null && quantity != null ? totalCtPerPieceSeconds * quantity : null);
 
   return {
     updatedAt: toOptionalDateString(value.updatedAt ?? value.agreedAt),
