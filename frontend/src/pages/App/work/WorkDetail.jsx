@@ -2106,6 +2106,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             options={rowWorkerOptions}
                             value={row?.worker || null}
                             onChange={(_event, value) => handleWorkerChange(row.id, value)}
+                            advanceFocusOnKeyboardSelect
                             autoSelect={false}
                             disabled={workerDisabled}
                             autoHighlight
@@ -2127,6 +2128,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               options={styleOptions}
                               value={selectedStyleOption}
                               onChange={(_event, value) => handleStyleChange(row.id, value)}
+                              advanceFocusOnKeyboardSelect
                               autoSelect={false}
                               disabled={styleDisabled}
                               autoHighlight
@@ -2179,6 +2181,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                             options={processOptions}
                             value={selectedProcessOption}
                             onChange={(_event, value) => handleProcessChange(row.id, value)}
+                            advanceFocusOnKeyboardSelect
                             autoSelect={false}
                             disabled={processDisabled}
                             autoHighlight
@@ -2236,7 +2239,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 event.preventDefault();
                                 return;
                               }
-                              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                              if (
+                                !event.nativeEvent.isComposing &&
+                                ((event.key === 'Enter' && !event.shiftKey) ||
+                                  (event.key === 'Tab' && !event.shiftKey))
+                              ) {
                                 event.preventDefault();
                                 handleAddBelow(row.id);
                               }
@@ -2407,6 +2414,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 options={rowWorkerOptions}
                                 value={row?.worker || null}
                                 onChange={(_event, value) => handleWorkerChange(row.id, value)}
+                                advanceFocusOnKeyboardSelect
                                 autoSelect={false}
                                 disabled={workerDisabled}
                                 autoHighlight
@@ -2448,6 +2456,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   options={styleOptions}
                                   value={selectedStyleOption}
                                   onChange={(_event, value) => handleStyleChange(row.id, value)}
+                                  advanceFocusOnKeyboardSelect
                                   autoSelect={false}
                                   disabled={styleDisabled}
                                   autoHighlight
@@ -2519,6 +2528,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 options={processOptions}
                                 value={selectedProcessOption}
                                 onChange={(_event, value) => handleProcessChange(row.id, value)}
+                                advanceFocusOnKeyboardSelect
                                 autoSelect={false}
                                 disabled={processDisabled}
                                 autoHighlight
@@ -2597,7 +2607,11 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                     event.preventDefault();
                                     return;
                                   }
-                                  if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                                  if (
+                                    !event.nativeEvent.isComposing &&
+                                    ((event.key === 'Enter' && !event.shiftKey) ||
+                                      (event.key === 'Tab' && !event.shiftKey))
+                                  ) {
                                     event.preventDefault();
                                     handleAddBelow(row.id);
                                   }

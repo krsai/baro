@@ -32,6 +32,7 @@ const SearchableSelect = ({
   slotProps,
   filterOptions,
   inputSuffix = null,
+  advanceFocusOnKeyboardSelect = false,
   ...props
 }) => {
   const {
@@ -66,8 +67,32 @@ const SearchableSelect = ({
     if (!highlightedOption) return;
     if (getOptionDisabled?.(highlightedOption)) return;
 
+    const inputElement = event.target;
     event.preventDefault();
     onChange?.(event, highlightedOption, 'selectOption');
+    if (!advanceFocusOnKeyboardSelect || !(inputElement instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      const ownerDocument = inputElement.ownerDocument || document;
+      const focusableSelector = [
+        'input:not([disabled]):not([type="hidden"])',
+        'textarea:not([disabled])',
+        'select:not([disabled])',
+        'button:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])',
+        '[contenteditable="true"]',
+      ].join(',');
+      const candidates = Array.from(ownerDocument.querySelectorAll(focusableSelector)).filter(
+        (node) => node instanceof HTMLElement && node.tabIndex >= 0
+      );
+      if (candidates.length === 0) return;
+      const currentIndex = candidates.findIndex(
+        (node) => node === inputElement || node.contains(inputElement)
+      );
+      if (currentIndex < 0) return;
+      const nextNode = candidates[currentIndex + 1];
+      if (!(nextNode instanceof HTMLElement)) return;
+      nextNode.focus();
+    });
   };
   const listboxSx = [
     {
