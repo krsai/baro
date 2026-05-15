@@ -191,6 +191,55 @@ const formatCount = (value) =>
     fallback: '0',
     maximumFractionDigits: 0,
   });
+const buildComparableWorkRecord = (record = {}) => {
+  const workerId = toPositiveIdOrNull(record?.workerId);
+  const assignmentPlanId = toPositiveIdOrNull(record?.assignmentPlanId);
+  const styleUid = toPositiveIdOrNull(record?.styleUid);
+  const styleIdKey = toKey(record?.styleId);
+  const styleNameKey = toKey(record?.styleName);
+  const processId = toPositiveIdOrNull(record?.processId);
+  const processCodeKey = normalizeProcessCode(
+    stripProcessInstanceCode(record?.processCode)
+  );
+  const processNameKey = normalizeProcessNameKey(
+    record?.processName || record?.processNameKo || record?.processNameEn || record?.processNameVi
+  );
+  const quantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
+  const styleKey = assignmentPlanId
+    ? `plan:${assignmentPlanId}`
+    : styleUid
+      ? `uid:${styleUid}`
+      : styleIdKey
+        ? `id:${styleIdKey}`
+        : styleNameKey
+          ? `name:${styleNameKey}`
+          : '';
+  const processKey = processId
+    ? `id:${processId}`
+    : processCodeKey
+      ? `code:${processCodeKey}`
+      : processNameKey
+        ? `name:${processNameKey}`
+        : '';
+
+  return {
+    workerId: workerId || null,
+    styleKey,
+    processKey,
+    quantity,
+  };
+};
+const buildComparableWorkRecords = (records = []) =>
+  (Array.isArray(records) ? records : [])
+    .map((record) => buildComparableWorkRecord(record))
+    .filter(
+      (record) =>
+        Boolean(record?.workerId) &&
+        Boolean(record?.styleKey) &&
+        Boolean(record?.processKey) &&
+        Number(record?.quantity) > 0
+    );
+const toStableSnapshotText = (value) => JSON.stringify(value ?? null);
 const resolveQuantityUnitLabel = (languageCode) => {
   if (languageCode === 'ko') return '장';
   if (languageCode === 'vi') return 'cái';
@@ -1369,6 +1418,30 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         .join('\n'),
     [assignmentProcessUsageBuckets]
   );
+  const initialComparableSnapshot = useMemo(() => {
+    if (!initialLog?.id) return null;
+    return {
+      workDate: toText(initialLog?.workDate),
+      factoryId: toPositiveIdOrNull(initialLog?.factoryId),
+      lineId: toPositiveIdOrNull(initialLog?.lineId),
+      note: toText(stripAutoNoteFromText(initialLog?.note || '')),
+      records: buildComparableWorkRecords(initialLog?.records),
+    };
+  }, [initialLog?.factoryId, initialLog?.id, initialLog?.lineId, initialLog?.note, initialLog?.records, initialLog?.workDate]);
+  const currentComparableSnapshot = useMemo(() => ({
+    workDate: toText(workDateKey),
+    factoryId: selectedFactoryId,
+    lineId: selectedLineId,
+    note: toText(note),
+    records: buildComparableWorkRecords(summary.records),
+  }), [note, selectedFactoryId, selectedLineId, summary.records, workDateKey]);
+  const isDirty = useMemo(() => {
+    if (!initialLog?.id) return true;
+    return (
+      toStableSnapshotText(currentComparableSnapshot) !==
+      toStableSnapshotText(initialComparableSnapshot)
+    );
+  }, [currentComparableSnapshot, initialComparableSnapshot, initialLog?.id]);
   const missingCtStyleLabels = useMemo(() => {
     const labels = [];
     const seen = new Set();
@@ -1825,6 +1898,9 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
 
   const handleSave = useCallback(() => {
     setFormError('');
+    if (initialLog?.id && !isDirty) {
+      return;
+    }
     if (!selectedFactoryId) {
       setFormError('공장을 선택해 주세요.');
       return;
@@ -1871,7 +1947,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, currentFactory?.name, hasFactoryWage, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, currentFactory?.name, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -1882,7 +1958,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton
           onClick={handleSave}
-          disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog}
+          disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
           loading={saving}
         />
       </Stack>
