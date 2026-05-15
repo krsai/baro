@@ -2176,46 +2176,49 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               </Typography>
                             ) : null}
                           </Stack>
-                          <SearchableSelect
-                            label={LABELS.process}
-                            options={processOptions}
-                            value={selectedProcessOption}
-                            onChange={(_event, value) => handleProcessChange(row.id, value)}
-                            advanceFocusOnKeyboardSelect
-                            autoSelect={false}
-                            disabled={processDisabled}
-                            autoHighlight
-                            openOnFocus
-                            selectOnFocus
-                            clearOnBlur={false}
-                            handleHomeEndKeys
-                            getOptionLabel={getProcessOptionLabel}
-                            isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                            renderOption={renderProcessOption}
-                            inputSuffix={
-                              selectedProcessMetaLabel ? (
-                                <Typography
-                                  component="span"
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{
-                                    mr: 0.35,
-                                    fontSize: '0.72rem',
-                                    lineHeight: 1.2,
-                                    whiteSpace: 'nowrap',
-                                    pointerEvents: 'none',
-                                  }}
-                                >
-                                  {selectedProcessMetaLabel}
-                                </Typography>
-                              ) : null
-                            }
-                            textFieldProps={{
-                              size: 'small',
-                              placeholder: processPlaceholder,
-                              autoFocus: shouldFocusProcess,
-                            }}
-                          />
+                          <Stack direction="row" spacing={0.35} alignItems="center" sx={{ minWidth: 0 }}>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <SearchableSelect
+                                label={LABELS.process}
+                                options={processOptions}
+                                value={selectedProcessOption}
+                                onChange={(_event, value) => handleProcessChange(row.id, value)}
+                                advanceFocusOnKeyboardSelect
+                                autoSelect={false}
+                                disabled={processDisabled}
+                                autoHighlight
+                                openOnFocus
+                                selectOnFocus
+                                clearOnBlur={false}
+                                handleHomeEndKeys
+                                getOptionLabel={getProcessOptionLabel}
+                                isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                                renderOption={renderProcessOption}
+                                textFieldProps={{
+                                  size: 'small',
+                                  placeholder: processPlaceholder,
+                                  autoFocus: shouldFocusProcess,
+                                }}
+                              />
+                            </Box>
+                            {selectedProcessMetaLabel ? (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                  fontSize: '0.72rem',
+                                  lineHeight: 1.2,
+                                  maxWidth: '46%',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  flexShrink: 1,
+                                }}
+                              >
+                                {selectedProcessMetaLabel}
+                              </Typography>
+                            ) : null}
+                          </Stack>
                           <TextField
                             label={LABELS.quantity}
                             type="number"
@@ -2523,46 +2526,49 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                           </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
-                              <SearchableSelect
-                                label={LABELS.process}
-                                options={processOptions}
-                                value={selectedProcessOption}
-                                onChange={(_event, value) => handleProcessChange(row.id, value)}
-                                advanceFocusOnKeyboardSelect
-                                autoSelect={false}
-                                disabled={processDisabled}
-                                autoHighlight
-                                openOnFocus
-                                selectOnFocus
-                                clearOnBlur={false}
-                                handleHomeEndKeys
-                                getOptionLabel={getProcessOptionLabel}
-                                isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                                renderOption={renderProcessOption}
-                                inputSuffix={
-                                  selectedProcessMetaLabel ? (
-                                    <Typography
-                                      component="span"
-                                      variant="caption"
-                                      color="text.secondary"
-                                      sx={{
-                                        mr: 0.35,
-                                        fontSize: '0.72rem',
-                                        lineHeight: 1.2,
-                                        whiteSpace: 'nowrap',
-                                        pointerEvents: 'none',
-                                      }}
-                                    >
-                                      {selectedProcessMetaLabel}
-                                    </Typography>
-                                  ) : null
-                                }
-                                textFieldProps={{
-                                  size: 'small',
-                                  placeholder: processPlaceholder,
-                                  autoFocus: shouldFocusProcess,
-                                }}
-                              />
+                              <Stack direction="row" spacing={0.35} alignItems="center" sx={{ minWidth: 0 }}>
+                                <Box sx={{ flex: 1, minWidth: 0 }}>
+                                  <SearchableSelect
+                                    label={LABELS.process}
+                                    options={processOptions}
+                                    value={selectedProcessOption}
+                                    onChange={(_event, value) => handleProcessChange(row.id, value)}
+                                    advanceFocusOnKeyboardSelect
+                                    autoSelect={false}
+                                    disabled={processDisabled}
+                                    autoHighlight
+                                    openOnFocus
+                                    selectOnFocus
+                                    clearOnBlur={false}
+                                    handleHomeEndKeys
+                                    getOptionLabel={getProcessOptionLabel}
+                                    isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
+                                    renderOption={renderProcessOption}
+                                    textFieldProps={{
+                                      size: 'small',
+                                      placeholder: processPlaceholder,
+                                      autoFocus: shouldFocusProcess,
+                                    }}
+                                  />
+                                </Box>
+                                {selectedProcessMetaLabel ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{
+                                      fontSize: '0.72rem',
+                                      lineHeight: 1.2,
+                                      maxWidth: '46%',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      flexShrink: 1,
+                                    }}
+                                  >
+                                    {selectedProcessMetaLabel}
+                                  </Typography>
+                                ) : null}
+                              </Stack>
                             ) : (
                               <Box
                                 onClick={(event) => {
