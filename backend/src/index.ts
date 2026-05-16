@@ -5380,6 +5380,29 @@ const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
     orderIds,
   });
 };
+const trySyncConfirmedOrdersToInProgressFromWorkRecords = async ({
+  orgId,
+  records,
+  mode,
+}: {
+  orgId: number;
+  records: any;
+  mode: "create" | "update";
+}) => {
+  try {
+    await syncConfirmedOrdersToInProgressFromWorkRecords({
+      orgId,
+      records,
+    });
+  } catch (error) {
+    console.warn(
+      `[order-progress-sync] orgId=${orgId} mode=${mode} failed: ${getErrorMessage(
+        error,
+        "failed to sync order progress after work-log save"
+      )}`
+    );
+  }
+};
 const toUtcDateFromDateKeyForAssignmentSchedule = (
   dateKeyInput: any
 ): Date | null => {
@@ -14840,9 +14863,10 @@ app.post("/work-logs", async (req, res) => {
       )}`
     );
   }
-  await syncConfirmedOrdersToInProgressFromWorkRecords({
+  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
+    mode: "create",
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
@@ -15037,9 +15061,10 @@ app.put("/work-logs/:id", async (req, res) => {
       )}`
     );
   }
-  await syncConfirmedOrdersToInProgressFromWorkRecords({
+  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
+    mode: "update",
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });

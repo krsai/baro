@@ -54,10 +54,9 @@ const { useDeferredValue } = React;
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
-const ROWS_PER_PAGE = 30;
-const DESKTOP_VIRTUAL_ROW_HEIGHT = 66;
-const DESKTOP_VIRTUAL_OVERSCAN = 6;
-const DESKTOP_VIRTUAL_VIEWPORT_HEIGHT = 560;
+const MOBILE_ROWS_PER_PAGE = 30;
+const DESKTOP_PAGE_ROW_HEIGHT = 66;
+const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
   workDate: '작업일자',
@@ -285,6 +284,26 @@ const DESKTOP_INLINE_TEXT_SX = {
   px: 1.75,
   display: 'flex',
   alignItems: 'center',
+};
+const DESKTOP_INLINE_TEXT_CONTENT_SX = {
+  minWidth: 0,
+  width: '100%',
+};
+const DESKTOP_INLINE_TEXT_LABEL_SX = {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+const DESKTOP_INLINE_TEXT_META_SX = {
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: '0.72rem',
+  lineHeight: 1.2,
 };
 const buildEditableFieldInputProps = (rowId, field, extra = {}) => ({
   ...extra,
@@ -866,9 +885,14 @@ const WorkDetail = ({
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
-  const [desktopVirtualScrollTop, setDesktopVirtualScrollTop] = useState(0);
+  const [recordsPanelHeight, setRecordsPanelHeight] = useState(null);
+  const [desktopTableAreaHeight, setDesktopTableAreaHeight] = useState(0);
+  const [desktopTableHeadHeight, setDesktopTableHeadHeight] = useState(0);
   const initialRowsHydratedRef = useRef(false);
-  const desktopTableContainerRef = useRef(null);
+  const detailMetaPanelRef = useRef(null);
+  const recordsPanelRef = useRef(null);
+  const desktopTableAreaRef = useRef(null);
+  const desktopTableHeadRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
   const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
@@ -908,6 +932,106 @@ const WorkDetail = ({
     return `${selectedLineId}:${workDateKey}`;
   }, [selectedLineId, workDateKey]);
   const workerDebugEnabled = false;
+
+  useEffect(() => {
+    if (isMobile) {
+      setRecordsPanelHeight(null);
+      return undefined;
+    }
+
+    let frameId = 0;
+    let resizeObserver = null;
+    const updateRecordsPanelHeight = () => {
+      const panel = recordsPanelRef.current;
+      if (!(panel instanceof HTMLElement)) return;
+      const rect = panel.getBoundingClientRect();
+      const nextHeight = Math.max(
+        0,
+        Math.floor(window.innerHeight - rect.top - DESKTOP_PANEL_BOTTOM_GAP)
+      );
+      if (nextHeight <= 0) return;
+      setRecordsPanelHeight((current) =>
+        current === nextHeight ? current : nextHeight
+      );
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateRecordsPanelHeight);
+    };
+
+    scheduleUpdate();
+    window.addEventListener('resize', scheduleUpdate);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        scheduleUpdate();
+      });
+      if (detailMetaPanelRef.current instanceof HTMLElement) {
+        resizeObserver.observe(detailMetaPanelRef.current);
+      }
+      if (recordsPanelRef.current instanceof HTMLElement) {
+        resizeObserver.observe(recordsPanelRef.current);
+      }
+    }
+
+    return () => {
+      window.removeEventListener('resize', scheduleUpdate);
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+    };
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setDesktopTableAreaHeight(0);
+      setDesktopTableHeadHeight(0);
+      return undefined;
+    }
+
+    let frameId = 0;
+    let resizeObserver = null;
+    const updateDesktopTableMeasurements = () => {
+      const areaHeight =
+        desktopTableAreaRef.current instanceof HTMLElement
+          ? Math.floor(desktopTableAreaRef.current.getBoundingClientRect().height)
+          : 0;
+      const headHeight =
+        desktopTableHeadRef.current instanceof HTMLElement
+          ? Math.floor(desktopTableHeadRef.current.getBoundingClientRect().height)
+          : 0;
+      setDesktopTableAreaHeight((current) =>
+        current === areaHeight ? current : areaHeight
+      );
+      setDesktopTableHeadHeight((current) =>
+        current === headHeight ? current : headHeight
+      );
+    };
+
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateDesktopTableMeasurements);
+    };
+
+    scheduleUpdate();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        scheduleUpdate();
+      });
+      if (desktopTableAreaRef.current instanceof HTMLElement) {
+        resizeObserver.observe(desktopTableAreaRef.current);
+      }
+      if (desktopTableHeadRef.current instanceof HTMLElement) {
+        resizeObserver.observe(desktopTableHeadRef.current);
+      }
+    }
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+    };
+  }, [isMobile, recordsPanelHeight]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1294,23 +1418,23 @@ const WorkDetail = ({
       return searchText.includes(keyword);
     });
   }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
+  const rowsPerPage = useMemo(() => {
+    if (isMobile) return MOBILE_ROWS_PER_PAGE;
+    const usableHeight = Math.max(0, desktopTableAreaHeight - desktopTableHeadHeight);
+    if (usableHeight <= 0) return 1;
+    return Math.max(1, Math.floor(usableHeight / DESKTOP_PAGE_ROW_HEIGHT));
+  }, [desktopTableAreaHeight, desktopTableHeadHeight, isMobile]);
   const totalRowPages = useMemo(
-    () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / ROWS_PER_PAGE)),
-    [filteredRows]
+    () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / rowsPerPage)),
+    [filteredRows, rowsPerPage]
   );
   const currentPage = Math.min(Math.max(1, page), totalRowPages);
-  const pageStartIndex = (currentPage - 1) * ROWS_PER_PAGE;
-  const pageEndIndex = Math.min(pageStartIndex + ROWS_PER_PAGE, filteredRows.length);
+  const pageStartIndex = (currentPage - 1) * rowsPerPage;
+  const pageEndIndex = Math.min(pageStartIndex + rowsPerPage, filteredRows.length);
   const pagedRows = useMemo(
     () => filteredRows.slice(pageStartIndex, pageEndIndex),
     [filteredRows, pageEndIndex, pageStartIndex]
   );
-  useEffect(() => {
-    setDesktopVirtualScrollTop(0);
-    if (desktopTableContainerRef.current) {
-      desktopTableContainerRef.current.scrollTop = 0;
-    }
-  }, [currentPage, deferredSearchTerm, isMobile, selectedLineId, workDateKey]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -1958,9 +2082,9 @@ const WorkDetail = ({
       setEditingField({ rowId: nextEditingId, field: nextEditingField, token: Date.now() });
     }
     if (nextRowIndex >= 0) {
-      setPage(Math.floor(nextRowIndex / ROWS_PER_PAGE) + 1);
+      setPage(Math.floor(nextRowIndex / rowsPerPage) + 1);
     }
-  }, [buildNextRowFromTemplate]);
+  }, [buildNextRowFromTemplate, rowsPerPage]);
   const handleRemoveRow = useCallback((rowId) => {
     setRows((currentRows) => {
       const nextRows = currentRows.filter((row) => row.id !== rowId);
@@ -2034,16 +2158,20 @@ const WorkDetail = ({
         const rowProcess = resolvedMeta?.process || resolveProcessForRow(row, rowAssignment) || row?.process || null;
         const selectedStyleDisplayLabel = rowAssignment ? getStyleOptionLabel(rowAssignment) : '-';
         const selectedProcessDisplayLabel = rowProcess
-          ? buildProcessOptionDisplayLabel(rowProcess, languageCode)
+          ? getProcessOptionLabel({ process: rowProcess })
           : '-';
         let rowWorkerOptions = [];
         let styleOptions = [];
         let selectedStyleOption = null;
-        let selectedStyleOrderLabel = '';
+        let selectedStyleOrderLabel = rowAssignment
+          ? buildStyleOrderMetaLabel(rowAssignment)
+          : '';
         let selectedStyleExceptionLabel = '';
         let processOptions = [];
         let selectedProcessOption = null;
-        let selectedProcessMetaLabel = '';
+        let selectedProcessMetaLabel = rowProcess
+          ? getProcessOptionMetaLabel({ process: rowProcess })
+          : '';
         let workerDisabled = isAggregateLegacyLog;
         let styleDisabled = isAggregateLegacyLog || !row?.worker;
         let processDisabled = isAggregateLegacyLog || !row?.worker;
@@ -2156,6 +2284,7 @@ const WorkDetail = ({
       buildStyleOrderMetaLabel,
       getStyleExceptionLabel,
       getStyleOptionLabel,
+      getProcessOptionLabel,
       resolveProcessOptions,
       resolveSelectedProcessOption,
       getProcessOptionMetaLabel,
@@ -2167,33 +2296,7 @@ const WorkDetail = ({
       languageCode,
     ]
   );
-  const desktopVirtualWindow = useMemo(() => {
-    const total = pagedRowViewModels.length;
-    if (isMobile || total === 0) {
-      return { start: 0, end: total, topSpacerHeight: 0, bottomSpacerHeight: 0 };
-    }
-    const visibleCount =
-      Math.ceil(DESKTOP_VIRTUAL_VIEWPORT_HEIGHT / DESKTOP_VIRTUAL_ROW_HEIGHT) +
-      DESKTOP_VIRTUAL_OVERSCAN * 2;
-    const start = Math.max(
-      0,
-      Math.floor(desktopVirtualScrollTop / DESKTOP_VIRTUAL_ROW_HEIGHT) - DESKTOP_VIRTUAL_OVERSCAN
-    );
-    const end = Math.min(total, start + visibleCount);
-    return {
-      start,
-      end,
-      topSpacerHeight: start * DESKTOP_VIRTUAL_ROW_HEIGHT,
-      bottomSpacerHeight: Math.max(0, (total - end) * DESKTOP_VIRTUAL_ROW_HEIGHT),
-    };
-  }, [desktopVirtualScrollTop, isMobile, pagedRowViewModels.length]);
-  const desktopVisibleRowViewModels = useMemo(
-    () =>
-      isMobile
-        ? pagedRowViewModels
-        : pagedRowViewModels.slice(desktopVirtualWindow.start, desktopVirtualWindow.end),
-    [desktopVirtualWindow.end, desktopVirtualWindow.start, isMobile, pagedRowViewModels]
-  );
+  const desktopVisibleRowViewModels = pagedRowViewModels;
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
 
@@ -2260,8 +2363,6 @@ const WorkDetail = ({
     };
   }, [
     currentPage,
-    desktopVirtualWindow.end,
-    desktopVirtualWindow.start,
     editingField,
     isMobile,
     rows.length,
@@ -2294,10 +2395,6 @@ const WorkDetail = ({
       document.removeEventListener('pointerdown', handlePointerDownOutside, true);
     };
   }, [editingRowId, isMobile]);
-  const handleDesktopTableScroll = useCallback((event) => {
-    if (isMobile) return;
-    setDesktopVirtualScrollTop(event.currentTarget.scrollTop || 0);
-  }, [isMobile]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -2331,7 +2428,11 @@ const WorkDetail = ({
   return (
     <AppPageContainer header={detailHeader}>
       <Stack spacing={2}>
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}>
+        <Paper
+          ref={detailMetaPanelRef}
+          variant="outlined"
+          sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}
+        >
           <Stack spacing={1.5}>
             <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', lg: 'minmax(220px, 1.1fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
@@ -2349,26 +2450,40 @@ const WorkDetail = ({
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5, minHeight: 420 }}>
+        <Paper
+          ref={recordsPanelRef}
+          variant="outlined"
+          sx={{
+            p: 2,
+            borderRadius: 2.5,
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            ...(isMobile || !recordsPanelHeight
+              ? { minHeight: 420 }
+              : { height: `${recordsPanelHeight}px` }),
+          }}
+        >
           <PageToolbar left={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); setPage(1); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
 
-          {!selectedFactoryId ? (
-            <Alert severity="info">공장을 선택하면 라인과 작업자를 불러옵니다.</Alert>
-          ) : !selectedLineId ? (
-            <Alert severity="info">라인을 선택하면 해당 라인의 작업자/스타일/공정 옵션을 불러옵니다.</Alert>
-          ) : lineDataLoading && rows.length === 0 ? (
-            <Alert severity="info">라인 데이터를 불러오는 중입니다.</Alert>
-          ) : lineWorkers.length === 0 && rows.length === 0 ? (
-            <Alert severity="warning">선택한 라인/작업일 기준으로 작업자가 없습니다.</Alert>
-          ) : rows.length === 0 ? (
-            <Stack spacing={1.5} alignItems="flex-start">
-              {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
-              <Alert severity="info">첫 작업자 입력 행을 준비 중입니다.</Alert>
-            </Stack>
-          ) : filteredRows.length === 0 ? (
-            <Alert severity="info">검색 결과가 없습니다.</Alert>
-          ) : (
-            <Stack spacing={1.25}>
+          <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {!selectedFactoryId ? (
+              <Alert severity="info">공장을 선택하면 라인과 작업자를 불러옵니다.</Alert>
+            ) : !selectedLineId ? (
+              <Alert severity="info">라인을 선택하면 해당 라인의 작업자/스타일/공정 옵션을 불러옵니다.</Alert>
+            ) : lineDataLoading && rows.length === 0 ? (
+              <Alert severity="info">라인 데이터를 불러오는 중입니다.</Alert>
+            ) : lineWorkers.length === 0 && rows.length === 0 ? (
+              <Alert severity="warning">선택한 라인/작업일 기준으로 작업자가 없습니다.</Alert>
+            ) : rows.length === 0 ? (
+              <Stack spacing={1.5} alignItems="flex-start">
+                {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
+                <Alert severity="info">첫 작업자 입력 행을 준비 중입니다.</Alert>
+              </Stack>
+            ) : filteredRows.length === 0 ? (
+              <Alert severity="info">검색 결과가 없습니다.</Alert>
+            ) : (
+              <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {isMobile ? (
                 <Stack spacing={1}>
@@ -2610,36 +2725,32 @@ const WorkDetail = ({
                   })}
                 </Stack>
               ) : (
-                <TableContainer
-                  ref={desktopTableContainerRef}
-                  onScroll={handleDesktopTableScroll}
-                  component={Paper}
-                  variant="outlined"
-                  sx={{
-                    borderRadius: 2,
-                    overflow: 'auto',
-                    maxHeight: DESKTOP_VIRTUAL_VIEWPORT_HEIGHT,
-                  }}
+                <Box
+                  ref={desktopTableAreaRef}
+                  sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
                 >
-                <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ width: '18%' }}>{LABELS.worker}</TableCell>
-                      <TableCell sx={{ width: '31%' }}>{LABELS.style}</TableCell>
-                      <TableCell sx={{ width: '28%' }}>{LABELS.process}</TableCell>
-                      <TableCell sx={{ width: '13%' }} align="right">{LABELS.quantity}</TableCell>
-                      <TableCell sx={{ width: 88 }} align="right">&nbsp;</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {desktopVirtualWindow.topSpacerHeight > 0 ? (
+                  <TableContainer
+                    component={Paper}
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 2,
+                      overflowX: 'auto',
+                      overflowY: 'hidden',
+                      flex: 1,
+                      minHeight: 0,
+                    }}
+                  >
+                  <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
+                    <TableHead ref={desktopTableHeadRef}>
                       <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          sx={{ p: 0, border: 0, height: `${desktopVirtualWindow.topSpacerHeight}px` }}
-                        />
+                        <TableCell sx={{ width: '18%' }}>{LABELS.worker}</TableCell>
+                        <TableCell sx={{ width: '31%' }}>{LABELS.style}</TableCell>
+                        <TableCell sx={{ width: '28%' }}>{LABELS.process}</TableCell>
+                        <TableCell sx={{ width: '13%' }} align="right">{LABELS.quantity}</TableCell>
+                        <TableCell sx={{ width: 88 }} align="right">&nbsp;</TableCell>
                       </TableRow>
-                    ) : null}
+                    </TableHead>
+                    <TableBody>
                     {desktopVisibleRowViewModels.map((rowViewModel) => {
                       const {
                         row,
@@ -2800,7 +2911,16 @@ const WorkDetail = ({
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {selectedStyleDisplayLabel}
+                                <Box sx={DESKTOP_INLINE_TEXT_CONTENT_SX}>
+                                  <Typography variant="body2" sx={DESKTOP_INLINE_TEXT_LABEL_SX}>
+                                    {selectedStyleDisplayLabel}
+                                  </Typography>
+                                  {selectedStyleOrderLabel ? (
+                                    <Typography variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_META_SX}>
+                                      {selectedStyleOrderLabel}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
                               </Box>
                             )}
                           </TableCell>
@@ -2859,7 +2979,16 @@ const WorkDetail = ({
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {selectedProcessDisplayLabel}
+                                <Box sx={DESKTOP_INLINE_TEXT_CONTENT_SX}>
+                                  <Typography variant="body2" sx={DESKTOP_INLINE_TEXT_LABEL_SX}>
+                                    {selectedProcessDisplayLabel}
+                                  </Typography>
+                                  {selectedProcessMetaLabel ? (
+                                    <Typography variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_META_SX}>
+                                      {selectedProcessMetaLabel}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
                               </Box>
                             )}
                           </TableCell>
@@ -2965,17 +3094,10 @@ const WorkDetail = ({
                         </TableRow>
                       );
                     })}
-                    {desktopVirtualWindow.bottomSpacerHeight > 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={5}
-                          sx={{ p: 0, border: 0, height: `${desktopVirtualWindow.bottomSpacerHeight}px` }}
-                        />
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
               )}
               <Box
                 sx={{
@@ -3003,6 +3125,7 @@ const WorkDetail = ({
               </Box>
             </Stack>
           )}
+          </Box>
         </Paper>
       </Stack>
     </AppPageContainer>

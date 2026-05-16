@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Autocomplete, TextField } from '@mui/material';
 import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
@@ -27,6 +27,8 @@ const SearchableSelect = ({
   autoSelect = true,
   onHighlightChange,
   onClose,
+  onOpen,
+  onInputChange,
   getOptionDisabled,
   isOptionEqualToValue = (option, selectedValue) => option === selectedValue,
   slotProps,
@@ -47,24 +49,59 @@ const SearchableSelect = ({
     ...restCustomInputProps
   } = customInputProps;
   const highlightedOptionRef = useRef(null);
+  const popupOpenRef = useRef(false);
+  const inputValueRef = useRef('');
+
+  const resolvedFilterOptions = useMemo(
+    () =>
+      filterOptions ||
+      createAutocompleteFilterOptions({
+        getOptionLabel,
+      }),
+    [filterOptions, getOptionLabel]
+  );
 
   const handleHighlightChange = (event, option, reason) => {
     highlightedOptionRef.current = option ?? null;
     onHighlightChange?.(event, option, reason);
   };
 
+  const handleOpen = (event) => {
+    popupOpenRef.current = true;
+    onOpen?.(event);
+  };
+
   const handleClose = (event, reason) => {
+    popupOpenRef.current = false;
     highlightedOptionRef.current = null;
     onClose?.(event, reason);
   };
 
-  const handleKeyboardSelect = (event) => {
+  const handleInputChange = (event, nextInputValue, reason) => {
+    inputValueRef.current = typeof nextInputValue === 'string' ? nextInputValue : '';
+    onInputChange?.(event, nextInputValue, reason);
+  };
+
+  const resolveKeyboardSelectionCandidate = () => {
     const highlightedOption = highlightedOptionRef.current;
+    if (highlightedOption && !getOptionDisabled?.(highlightedOption)) {
+      return highlightedOption;
+    }
+    if (!popupOpenRef.current) return null;
+    const filteredOptions = resolvedFilterOptions(options, {
+      inputValue: inputValueRef.current,
+      getOptionLabel,
+    });
+    return filteredOptions.find((option) => !getOptionDisabled?.(option)) ?? null;
+  };
+
+  const handleKeyboardSelect = (event) => {
     const isForwardTab = event.key === 'Tab' && !event.shiftKey;
     const isEnter = event.key === 'Enter' && !event.shiftKey;
     if (!isForwardTab && !isEnter) return;
     if (event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.nativeEvent?.isComposing) return;
+    const highlightedOption = resolveKeyboardSelectionCandidate();
     if (!highlightedOption) return;
     if (getOptionDisabled?.(highlightedOption)) return;
 
@@ -125,16 +162,13 @@ const SearchableSelect = ({
     value == null || Array.isArray(value)
       ? value
       : options.find((option) => isOptionEqualToValue(option, value)) ?? value;
-  const resolvedFilterOptions =
-    filterOptions ||
-    createAutocompleteFilterOptions({
-      getOptionLabel,
-    });
 
   return (
     <Autocomplete
       value={resolvedValue}
       onChange={onChange}
+      onOpen={handleOpen}
+      onInputChange={handleInputChange}
       options={options}
       getOptionLabel={getOptionLabel}
       filterOptions={resolvedFilterOptions}
@@ -161,6 +195,8 @@ const SearchableSelect = ({
       }}
       {...props}
       renderInput={(params) => {
+        inputValueRef.current =
+          typeof params.inputProps?.value === 'string' ? params.inputProps.value : '';
         const baseEndAdornment =
           customTextFieldInputProps?.endAdornment ?? params.InputProps?.endAdornment;
         const resolvedEndAdornment = inputSuffix ? (

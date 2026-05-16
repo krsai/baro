@@ -123,17 +123,11 @@ const OAuthCallbackRedirect = () => {
 };
 
 const RootRedirect = () => {
-  const { isAuthenticated, devBypass, devProfile, accessProfile } = useAuth();
-  const nextPath = resolveFirstAccessiblePath({
-    isAuthenticated,
-    devBypass,
-    devProfile,
-    accessProfile,
-  });
+  const { isAuthenticated } = useAuth();
 
   return (
     <Navigate
-      to={isAuthenticated ? nextPath : '/login'}
+      to={isAuthenticated ? '/workspace' : '/login'}
       replace
     />
   );
