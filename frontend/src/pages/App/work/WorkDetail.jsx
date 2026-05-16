@@ -269,6 +269,23 @@ const createBlankRow = (patch = {}) => ({
   quantity: '',
   ...patch,
 });
+const DESKTOP_INLINE_FIELD_HEIGHT = 40;
+const DESKTOP_INLINE_FIELD_SX = {
+  '& .MuiInputBase-root': {
+    minHeight: DESKTOP_INLINE_FIELD_HEIGHT,
+    alignItems: 'center',
+  },
+  '& .MuiInputBase-input': {
+    py: 1.125,
+    fontSize: '0.95rem',
+  },
+};
+const DESKTOP_INLINE_TEXT_SX = {
+  minHeight: DESKTOP_INLINE_FIELD_HEIGHT,
+  px: 1.75,
+  display: 'flex',
+  alignItems: 'center',
+};
 const buildEditableFieldInputProps = (rowId, field, extra = {}) => ({
   ...extra,
   'data-work-row-id': String(rowId || ''),
@@ -2676,7 +2693,6 @@ const WorkDetail = ({
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <SearchableSelect
-                                label={LABELS.worker}
                                 options={rowWorkerOptions}
                                 value={row?.worker || null}
                                 onChange={(_event, value) => handleWorkerChange(row.id, value)}
@@ -2692,8 +2708,10 @@ const WorkDetail = ({
                                 isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
                                 textFieldProps={{
                                   size: 'small',
+                                  hiddenLabel: true,
                                   placeholder: LABELS.workerPlaceholder,
                                   autoFocus: shouldFocusWorker,
+                                  sx: DESKTOP_INLINE_FIELD_SX,
                                   inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                                 }}
                               />
@@ -2704,9 +2722,7 @@ const WorkDetail = ({
                                   beginFieldEdit(row.id, 'worker');
                                 }}
                                 sx={{
-                                  minHeight: 24,
-                                  display: 'flex',
-                                  alignItems: 'center',
+                                  ...DESKTOP_INLINE_TEXT_SX,
                                   whiteSpace: 'nowrap',
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
@@ -2719,7 +2735,6 @@ const WorkDetail = ({
                             {isEditingRow ? (
                               <Stack spacing={0.35}>
                                 <SearchableSelect
-                                  label={LABELS.style}
                                   options={styleOptions}
                                   value={selectedStyleOption}
                                   onChange={(_event, value) => handleStyleChange(row.id, value)}
@@ -2757,8 +2772,10 @@ const WorkDetail = ({
                                   }
                                   textFieldProps={{
                                     size: 'small',
+                                    hiddenLabel: true,
                                     placeholder: stylePlaceholder,
                                     autoFocus: shouldFocusStyle,
+                                    sx: DESKTOP_INLINE_FIELD_SX,
                                     inputProps: buildEditableFieldInputProps(row.id, 'style'),
                                   }}
                                 />
@@ -2779,9 +2796,7 @@ const WorkDetail = ({
                                   beginFieldEdit(row.id, 'style');
                                 }}
                                 sx={{
-                                  minHeight: 24,
-                                  display: 'flex',
-                                  alignItems: 'center',
+                                  ...DESKTOP_INLINE_TEXT_SX,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
@@ -2792,7 +2807,6 @@ const WorkDetail = ({
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <SearchableSelect
-                                label={LABELS.process}
                                 options={processOptions}
                                 value={selectedProcessOption}
                                 onChange={(_event, value) => handleProcessChange(row.id, value)}
@@ -2827,8 +2841,10 @@ const WorkDetail = ({
                                 }
                                 textFieldProps={{
                                   size: 'small',
+                                  hiddenLabel: true,
                                   placeholder: processPlaceholder,
                                   autoFocus: shouldFocusProcess,
+                                  sx: DESKTOP_INLINE_FIELD_SX,
                                   inputProps: buildEditableFieldInputProps(row.id, 'process'),
                                 }}
                               />
@@ -2839,9 +2855,7 @@ const WorkDetail = ({
                                   beginFieldEdit(row.id, 'process');
                                 }}
                                 sx={{
-                                  minHeight: 24,
-                                  display: 'flex',
-                                  alignItems: 'center',
+                                  ...DESKTOP_INLINE_TEXT_SX,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
@@ -2852,7 +2866,6 @@ const WorkDetail = ({
                           <TableCell align="right" sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <TextField
-                                label={LABELS.quantity}
                                 type="number"
                                 size="small"
                                 error={isRowExceeded}
@@ -2886,6 +2899,9 @@ const WorkDetail = ({
                                 disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
                                 inputProps={buildEditableFieldInputProps(row.id, 'quantity', { min: 1 })}
                                 fullWidth
+                                hiddenLabel
+                                placeholder={LABELS.quantity}
+                                sx={DESKTOP_INLINE_FIELD_SX}
                                 autoFocus={shouldFocusQuantity}
                               />
                             ) : (
@@ -2895,9 +2911,7 @@ const WorkDetail = ({
                                   beginFieldEdit(row.id, 'quantity');
                                 }}
                                 sx={{
-                                  minHeight: 24,
-                                  display: 'flex',
-                                  alignItems: 'center',
+                                  ...DESKTOP_INLINE_TEXT_SX,
                                   justifyContent: 'flex-end',
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
