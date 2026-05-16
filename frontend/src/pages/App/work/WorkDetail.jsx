@@ -2420,7 +2420,7 @@ const WorkDetail = ({
                             options={rowWorkerOptions}
                             value={row?.worker || null}
                             onChange={(_event, value) => handleWorkerChange(row.id, value)}
-                            advanceFocusOnKeyboardSelect
+                            onKeyboardSelect={() => beginFieldEdit(row.id, 'style')}
                             autoSelect={false}
                             disabled={workerDisabled}
                             autoHighlight
@@ -2443,7 +2443,7 @@ const WorkDetail = ({
                               options={styleOptions}
                               value={selectedStyleOption}
                               onChange={(_event, value) => handleStyleChange(row.id, value)}
-                              advanceFocusOnKeyboardSelect
+                              onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                               autoSelect={false}
                               disabled={styleDisabled}
                               autoHighlight
@@ -2497,7 +2497,7 @@ const WorkDetail = ({
                             options={processOptions}
                             value={selectedProcessOption}
                             onChange={(_event, value) => handleProcessChange(row.id, value)}
-                            advanceFocusOnKeyboardSelect
+                            onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
                             autoSelect={false}
                             disabled={processDisabled}
                             autoHighlight
@@ -2696,7 +2696,7 @@ const WorkDetail = ({
                                 options={rowWorkerOptions}
                                 value={row?.worker || null}
                                 onChange={(_event, value) => handleWorkerChange(row.id, value)}
-                                advanceFocusOnKeyboardSelect
+                                onKeyboardSelect={() => beginFieldEdit(row.id, 'style')}
                                 autoSelect={false}
                                 disabled={workerDisabled}
                                 autoHighlight
@@ -2738,7 +2738,7 @@ const WorkDetail = ({
                                   options={styleOptions}
                                   value={selectedStyleOption}
                                   onChange={(_event, value) => handleStyleChange(row.id, value)}
-                                  advanceFocusOnKeyboardSelect
+                                  onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                                   autoSelect={false}
                                   disabled={styleDisabled}
                                   autoHighlight
@@ -2810,7 +2810,7 @@ const WorkDetail = ({
                                 options={processOptions}
                                 value={selectedProcessOption}
                                 onChange={(_event, value) => handleProcessChange(row.id, value)}
-                                advanceFocusOnKeyboardSelect
+                                onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
                                 autoSelect={false}
                                 disabled={processDisabled}
                                 autoHighlight

@@ -32,6 +32,7 @@ const SearchableSelect = ({
   slotProps,
   filterOptions,
   inputSuffix = null,
+  onKeyboardSelect,
   advanceFocusOnKeyboardSelect = false,
   ...props
 }) => {
@@ -70,6 +71,14 @@ const SearchableSelect = ({
     const inputElement = event.target;
     event.preventDefault();
     onChange?.(event, highlightedOption, 'selectOption');
+    if (onKeyboardSelect) {
+      onKeyboardSelect({
+        event,
+        highlightedOption,
+        inputElement,
+      });
+      return;
+    }
     if (!advanceFocusOnKeyboardSelect || !(inputElement instanceof HTMLElement)) return;
     window.requestAnimationFrame(() => {
       const ownerDocument = inputElement.ownerDocument || document;
