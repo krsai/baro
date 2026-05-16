@@ -19,13 +19,12 @@ import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
+import { resolveFirstAccessiblePath } from '../../utils/accessControl';
 import {
   getOrganizationTypeLabel,
   normalizeOrganizationType,
   ORGANIZATION_TYPE_KEYS,
 } from '../../constants/organizationType';
-
-const WORKSPACE_PATH = '/workspace';
 const TEST_PANEL_PASSWORD = '0031';
 
 const TEST_ACCOUNT_EMAIL_SUFFIXES = ['@test.local', '@baro.local'];
@@ -133,6 +132,9 @@ const Login = () => {
     loading,
     isSupabaseConfigured,
     enableDevBypass,
+    devBypass,
+    devProfile,
+    accessProfile,
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -161,6 +163,16 @@ const Login = () => {
   );
 
   const loginCopy = getLoginCopy(languageCode);
+  const postAuthPath = useMemo(
+    () =>
+      resolveFirstAccessiblePath({
+        isAuthenticated,
+        devBypass,
+        devProfile,
+        accessProfile,
+      }),
+    [accessProfile, devBypass, devProfile, isAuthenticated]
+  );
 
   useEffect(() => {
     if (!hasOAuthCallbackParams) return;
@@ -178,7 +190,7 @@ const Login = () => {
     if (!isAuthenticated || loading) return;
     setIsNavigatingAfterAuth(true);
     if (hasWorkspaceAccess) {
-      navigate(WORKSPACE_PATH, { replace: true });
+      navigate(postAuthPath, { replace: true });
       return;
     }
     if (requiresSubscriptionContact) {
@@ -193,6 +205,7 @@ const Login = () => {
     isAuthenticated,
     loading,
     navigate,
+    postAuthPath,
     requiresOnboarding,
     requiresSubscriptionContact,
   ]);
@@ -370,7 +383,7 @@ const Login = () => {
 
   const handleDevBypass = (profile) => {
     enableDevBypass(profile);
-    navigate(WORKSPACE_PATH, { replace: true });
+    navigate('/', { replace: true });
   };
 
   const handleTestPanelOpen = () => {

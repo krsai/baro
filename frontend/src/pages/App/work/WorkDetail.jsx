@@ -270,6 +270,11 @@ const createBlankRow = (patch = {}) => ({
   quantity: '',
   ...patch,
 });
+const resolveNextRowEditingField = (row) => {
+  if (toText(row?.styleOptionId) || row?.assignment) return 'process';
+  if (row?.worker) return 'style';
+  return 'worker';
+};
 const sortByLabel = (items, getLabel) => [...(Array.isArray(items) ? items : [])].sort((left, right) => COLLATOR.compare(toText(getLabel(left)), toText(getLabel(right))));
 const buildDatePickerLocaleText = (languageCode) => {
   if (languageCode === 'ko') return datePickerKoKR.components.MuiLocalizationProvider.defaultProps.localeText;
@@ -1906,20 +1911,22 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     if (!templateRow) return createBlankRow();
     return createBlankRow({
       worker: templateRow?.worker || null,
-      styleOptionId: '',
-      assignment: null,
+      styleOptionId: toText(templateRow?.styleOptionId),
+      assignment: templateRow?.assignment || null,
       process: null,
       quantity: '',
     });
   }, []);
   const handleAddBelow = useCallback((rowId) => {
     let nextEditingId = '';
+    let nextEditingField = 'worker';
     let nextRowIndex = -1;
     setRows((currentRows) => {
       const targetIndex = currentRows.findIndex((row) => row.id === rowId);
       const templateRow = targetIndex >= 0 ? currentRows[targetIndex] : currentRows[currentRows.length - 1] || null;
       const nextRow = buildNextRowFromTemplate(templateRow);
       nextEditingId = nextRow.id;
+      nextEditingField = resolveNextRowEditingField(nextRow);
       if (targetIndex < 0) {
         nextRowIndex = currentRows.length;
         return [...currentRows, nextRow];
@@ -1929,7 +1936,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
     });
     if (nextEditingId) {
       setEditingRowId(nextEditingId);
-      setEditingField({ rowId: nextEditingId, field: 'worker', token: Date.now() });
+      setEditingField({ rowId: nextEditingId, field: nextEditingField, token: Date.now() });
     }
     if (nextRowIndex >= 0) {
       setPage(Math.floor(nextRowIndex / ROWS_PER_PAGE) + 1);
@@ -2002,31 +2009,51 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         const rowId = toText(row?.id);
         const rowExceededMeta = exceededRowMetaByRowId.get(rowId) || null;
         const isRowExceeded = Boolean(rowExceededMeta);
+        const isEditingRow = isMobile || editingRowId === row.id;
         const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
         const rowAssignment = resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
         const rowProcess = resolvedMeta?.process || resolveProcessForRow(row, rowAssignment) || row?.process || null;
-        const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
-        const rowWorkerOptions = resolveWorkerOptions(rowForOptions);
-        const styleOptions = resolveStyleOptions(rowForOptions);
-        const selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
-        const selectedStyleOrderLabel = selectedStyleOption
-          ? buildStyleOrderMetaLabel(selectedStyleOption)
-          : '';
-        const selectedStyleExceptionLabel = selectedStyleOption
-          ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
-          : '';
-        const processOptions = resolveProcessOptions(rowForOptions);
-        const selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
-        const selectedProcessMetaLabel = selectedProcessOption
-          ? getProcessOptionMetaLabel(selectedProcessOption)
-          : '';
-        const workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
-        const styleDisabled = isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
-        const processDisabled =
-          isAggregateLegacyLog ||
-          !row?.worker ||
-          !selectedStyleOption ||
-          (processOptions?.length || 0) === 0;
+        const selectedStyleDisplayLabel = rowAssignment ? getStyleOptionLabel(rowAssignment) : '-';
+        const selectedProcessDisplayLabel = rowProcess
+          ? buildProcessOptionDisplayLabel(rowProcess, languageCode)
+          : '-';
+        let rowWorkerOptions = [];
+        let styleOptions = [];
+        let selectedStyleOption = null;
+        let selectedStyleOrderLabel = '';
+        let selectedStyleExceptionLabel = '';
+        let processOptions = [];
+        let selectedProcessOption = null;
+        let selectedProcessMetaLabel = '';
+        let workerDisabled = isAggregateLegacyLog;
+        let styleDisabled = isAggregateLegacyLog || !row?.worker;
+        let processDisabled = isAggregateLegacyLog || !row?.worker;
+
+        if (isEditingRow) {
+          const rowForOptions = { ...row, assignment: rowAssignment, process: rowProcess };
+          rowWorkerOptions = resolveWorkerOptions(rowForOptions);
+          styleOptions = resolveStyleOptions(rowForOptions);
+          selectedStyleOption = resolveSelectedStyleOption(rowForOptions, styleOptions);
+          selectedStyleOrderLabel = selectedStyleOption
+            ? buildStyleOrderMetaLabel(selectedStyleOption)
+            : '';
+          selectedStyleExceptionLabel = selectedStyleOption
+            ? getStyleExceptionLabel(selectedStyleOption, row?.worker)
+            : '';
+          processOptions = resolveProcessOptions(rowForOptions);
+          selectedProcessOption = resolveSelectedProcessOption(rowForOptions, processOptions);
+          selectedProcessMetaLabel = selectedProcessOption
+            ? getProcessOptionMetaLabel(selectedProcessOption)
+            : '';
+          workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
+          styleDisabled =
+            isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
+          processDisabled =
+            isAggregateLegacyLog ||
+            !row?.worker ||
+            !selectedStyleOption ||
+            (processOptions?.length || 0) === 0;
+        }
         const shouldFocusWorker = Boolean(
           editingField?.rowId === row.id &&
           editingField?.field === 'worker'
@@ -2071,15 +2098,18 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
             : '-';
         return {
           row,
+          isEditingRow,
           rowExceededMeta,
           isRowExceeded,
           rowWorkerOptions,
           styleOptions,
           selectedStyleOption,
+          selectedStyleDisplayLabel,
           selectedStyleOrderLabel,
           selectedStyleExceptionLabel,
           processOptions,
           selectedProcessOption,
+          selectedProcessDisplayLabel,
           selectedProcessMetaLabel,
           workerDisabled,
           styleDisabled,
@@ -2106,12 +2136,16 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       resolveSelectedStyleOption,
       buildStyleOrderMetaLabel,
       getStyleExceptionLabel,
+      getStyleOptionLabel,
       resolveProcessOptions,
       resolveSelectedProcessOption,
       getProcessOptionMetaLabel,
       isAggregateLegacyLog,
+      isMobile,
+      editingRowId,
       editingField,
       workerGroupMetaByRowId,
+      languageCode,
     ]
   );
   const desktopVirtualWindow = useMemo(() => {
@@ -2492,14 +2526,17 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                         rowWorkerOptions,
                         styleOptions,
                         selectedStyleOption,
+                        selectedStyleDisplayLabel,
                         selectedStyleOrderLabel,
                         selectedStyleExceptionLabel,
                         processOptions,
                         selectedProcessOption,
+                        selectedProcessDisplayLabel,
                         selectedProcessMetaLabel,
                         styleDisabled,
                         processDisabled,
                         workerDisabled,
+                        isEditingRow,
                         shouldFocusWorker,
                         shouldFocusStyle,
                         shouldFocusProcess,
@@ -2510,7 +2547,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                         groupBackgroundColor,
                         quantityValue,
                       } = rowViewModel;
-                      const isEditingRow = true;
 
                       return (
                         <TableRow
@@ -2641,7 +2677,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {selectedStyleOption ? getStyleOptionLabel(selectedStyleOption) : '-'}
+                                {selectedStyleDisplayLabel}
                               </Box>
                             )}
                           </TableCell>
@@ -2700,9 +2736,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                {selectedProcessOption
-                                  ? buildProcessOptionDisplayLabel(selectedProcessOption?.process, languageCode)
-                                  : '-'}
+                                {selectedProcessDisplayLabel}
                               </Box>
                             )}
                           </TableCell>

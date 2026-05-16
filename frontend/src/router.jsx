@@ -80,7 +80,6 @@ const ProductionResult = lazyImportWithRetry(() => import('./pages/App/Productio
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const WorkspaceDashboard = lazyImportWithRetry(() => import('./pages/App/WorkspaceDashboard'));
-const WORKSPACE_PATH = '/workspace';
 
 const AuthOnlyRoute = () => {
   const {
@@ -106,7 +105,7 @@ const AuthOnlyRoute = () => {
     return <Navigate to="/login" replace />;
   }
   if (hasWorkspaceAccess) {
-    return <Navigate to={WORKSPACE_PATH} replace />;
+    return <Navigate to="/" replace />;
   }
   if (requiresOnboarding) {
     return <Navigate to="/onboarding" replace />;
@@ -124,11 +123,17 @@ const OAuthCallbackRedirect = () => {
 };
 
 const RootRedirect = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, devBypass, devProfile, accessProfile } = useAuth();
+  const nextPath = resolveFirstAccessiblePath({
+    isAuthenticated,
+    devBypass,
+    devProfile,
+    accessProfile,
+  });
 
   return (
     <Navigate
-      to={isAuthenticated ? WORKSPACE_PATH : '/login'}
+      to={isAuthenticated ? nextPath : '/login'}
       replace
     />
   );
