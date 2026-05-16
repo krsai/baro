@@ -227,6 +227,10 @@ const router = createBrowserRouter([
           },
           {
             path: 'workspace',
+            element: <></>,
+          },
+          {
+            path: 'dashboard',
             element: <WorkspaceDashboard />,
           },
           {

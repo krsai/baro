@@ -492,7 +492,7 @@ const MainLayout = () => {
       {
         label: resolveLocalizedLabel(DASHBOARD_LABELS, languageCode),
         icon: <DashboardIcon />,
-        path: '/workspace',
+        path: '/dashboard',
       },
       {
         label: getUiMessage('menu.sales', '\uC601\uC5C5 \uAD00\uB9AC', languageCode),
@@ -1022,6 +1022,9 @@ const MainLayout = () => {
       return openTabs;
     }
     if (openTabs.some((tab) => tab.id === currentPath)) return openTabs;
+    if (currentPath === EMPTY_WORKSPACE_PATH) {
+      return openTabs;
+    }
     if (skipAutoOpenPathRef.current === currentPath) {
       return openTabs;
     }
@@ -1098,6 +1101,7 @@ const MainLayout = () => {
       const requestedPathname = toPathname(requestedPath);
       const nextPath = requestedPathname === '/' ? resolveAccessiblePath() : requestedPath;
       const nextPathname = toPathname(nextPath);
+      const isEmptyWorkspaceNavigation = nextPathname === EMPTY_WORKSPACE_PATH;
 
       if (!hasPathAccess(nextPathname)) {
         setPendingTabPath('');
@@ -1118,6 +1122,23 @@ const MainLayout = () => {
       if (!isSamePathNavigation && !skipUnsavedChangesCheck) {
         const confirmed = confirmDiscardUnsavedChanges({ path: currentPath });
         if (!confirmed) return;
+      }
+      if (isEmptyWorkspaceNavigation) {
+        skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
+        if (nextPath && currentRoutePath !== nextPath) {
+          setPendingTabPath('');
+          pendingCloseTabRef.current = closeTabId;
+          pendingNavigationPathRef.current = nextPathname;
+          navigate(nextPath);
+          schedulePendingNavigationCleanup(currentPathRef.current, nextPathname);
+        } else if (closeTabId && currentPath !== closeTabId) {
+          const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
+          if (!confirmed) return;
+          setPendingTabPath('');
+          pendingCloseTabRef.current = null;
+          closeTab(closeTabId);
+        }
+        return;
       }
       if (!isSamePathNavigation) {
         // For style detail pages, ensure only one is open at a time.
@@ -1218,7 +1239,8 @@ const MainLayout = () => {
     if (
       currentPath === '/' ||
       currentPath === '/login' ||
-      currentPath.startsWith('/auth')
+      currentPath.startsWith('/auth') ||
+      currentPath === EMPTY_WORKSPACE_PATH
     ) {
       return;
     }
@@ -1239,6 +1261,13 @@ const MainLayout = () => {
 
     return () => window.clearTimeout(timerId);
   }, [currentPath, pendingTabPath]);
+
+  useEffect(() => {
+    if (!openTabs.some((tab) => toPathname(tab?.id || tab?.path || '') === EMPTY_WORKSPACE_PATH)) {
+      return;
+    }
+    closeTab(EMPTY_WORKSPACE_PATH);
+  }, [closeTab, openTabs]);
 
   useEffect(() => {
     openTabs.forEach((tab) => {
