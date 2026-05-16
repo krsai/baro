@@ -55,7 +55,7 @@ const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' })
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
 const MOBILE_ROWS_PER_PAGE = 30;
-const DESKTOP_PAGE_ROW_HEIGHT = 66;
+const DEFAULT_DESKTOP_PAGE_ROW_HEIGHT = 56;
 const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
@@ -285,23 +285,27 @@ const DESKTOP_INLINE_TEXT_SX = {
   display: 'flex',
   alignItems: 'center',
 };
-const DESKTOP_INLINE_TEXT_CONTENT_SX = {
+const DESKTOP_INLINE_TEXT_PAIR_SX = {
   minWidth: 0,
   width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 0.75,
+  overflow: 'hidden',
 };
-const DESKTOP_INLINE_TEXT_LABEL_SX = {
-  display: 'block',
+const DESKTOP_INLINE_TEXT_PRIMARY_SX = {
+  flex: '0 1 auto',
   minWidth: 0,
+  whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
 };
-const DESKTOP_INLINE_TEXT_META_SX = {
-  display: 'block',
+const DESKTOP_INLINE_TEXT_SECONDARY_SX = {
+  flex: '1 1 auto',
   minWidth: 0,
+  whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
   fontSize: '0.72rem',
   lineHeight: 1.2,
 };
@@ -888,6 +892,9 @@ const WorkDetail = ({
   const [recordsPanelHeight, setRecordsPanelHeight] = useState(null);
   const [desktopTableAreaHeight, setDesktopTableAreaHeight] = useState(0);
   const [desktopTableHeadHeight, setDesktopTableHeadHeight] = useState(0);
+  const [desktopTableRowHeight, setDesktopTableRowHeight] = useState(
+    DEFAULT_DESKTOP_PAGE_ROW_HEIGHT
+  );
   const initialRowsHydratedRef = useRef(false);
   const detailMetaPanelRef = useRef(null);
   const recordsPanelRef = useRef(null);
@@ -986,6 +993,7 @@ const WorkDetail = ({
     if (isMobile) {
       setDesktopTableAreaHeight(0);
       setDesktopTableHeadHeight(0);
+      setDesktopTableRowHeight(DEFAULT_DESKTOP_PAGE_ROW_HEIGHT);
       return undefined;
     }
 
@@ -1422,8 +1430,12 @@ const WorkDetail = ({
     if (isMobile) return MOBILE_ROWS_PER_PAGE;
     const usableHeight = Math.max(0, desktopTableAreaHeight - desktopTableHeadHeight);
     if (usableHeight <= 0) return 1;
-    return Math.max(1, Math.floor(usableHeight / DESKTOP_PAGE_ROW_HEIGHT));
-  }, [desktopTableAreaHeight, desktopTableHeadHeight, isMobile]);
+    const effectiveRowHeight = Math.max(
+      1,
+      Math.floor(desktopTableRowHeight || DEFAULT_DESKTOP_PAGE_ROW_HEIGHT)
+    );
+    return Math.max(1, Math.floor(usableHeight / effectiveRowHeight));
+  }, [desktopTableAreaHeight, desktopTableHeadHeight, desktopTableRowHeight, isMobile]);
   const totalRowPages = useMemo(
     () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / rowsPerPage)),
     [filteredRows, rowsPerPage]
@@ -1435,6 +1447,28 @@ const WorkDetail = ({
     () => filteredRows.slice(pageStartIndex, pageEndIndex),
     [filteredRows, pageEndIndex, pageStartIndex]
   );
+  useEffect(() => {
+    if (isMobile) {
+      setDesktopTableRowHeight(DEFAULT_DESKTOP_PAGE_ROW_HEIGHT);
+      return undefined;
+    }
+
+    let frameId = window.requestAnimationFrame(() => {
+      const tableArea = desktopTableAreaRef.current;
+      if (!(tableArea instanceof HTMLElement)) return;
+      const rowElement = tableArea.querySelector('[data-work-desktop-row]');
+      if (!(rowElement instanceof HTMLElement)) return;
+      const nextHeight = Math.floor(rowElement.getBoundingClientRect().height);
+      if (nextHeight <= 0) return;
+      setDesktopTableRowHeight((current) =>
+        current === nextHeight ? current : nextHeight
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [currentPage, editingRowId, isMobile, pagedRows.length, recordsPanelHeight]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -2061,30 +2095,33 @@ const WorkDetail = ({
     });
   }, []);
   const handleAddBelow = useCallback((rowId) => {
-    let nextEditingId = '';
-    let nextEditingField = 'worker';
-    let nextRowIndex = -1;
-    setRows((currentRows) => {
-      const targetIndex = currentRows.findIndex((row) => row.id === rowId);
-      const templateRow = targetIndex >= 0 ? currentRows[targetIndex] : currentRows[currentRows.length - 1] || null;
-      const nextRow = buildNextRowFromTemplate(templateRow);
-      nextEditingId = nextRow.id;
-      nextEditingField = resolveNextRowEditingField(nextRow);
-      if (targetIndex < 0) {
-        nextRowIndex = currentRows.length;
-        return [...currentRows, nextRow];
-      }
-      nextRowIndex = targetIndex + 1;
-      return [...currentRows.slice(0, targetIndex + 1), nextRow, ...currentRows.slice(targetIndex + 1)];
+    const currentRows = Array.isArray(rows) ? rows : [];
+    const targetIndex = currentRows.findIndex((row) => row.id === rowId);
+    const templateRow =
+      targetIndex >= 0
+        ? currentRows[targetIndex]
+        : currentRows[currentRows.length - 1] || null;
+    const nextRow = buildNextRowFromTemplate(templateRow);
+    const nextRowIndex = targetIndex < 0 ? currentRows.length : targetIndex + 1;
+    const nextRows =
+      targetIndex < 0
+        ? [...currentRows, nextRow]
+        : [
+            ...currentRows.slice(0, targetIndex + 1),
+            nextRow,
+            ...currentRows.slice(targetIndex + 1),
+          ];
+    const nextEditingField = resolveNextRowEditingField(nextRow);
+
+    setRows(nextRows);
+    setEditingRowId(nextRow.id);
+    setEditingField({
+      rowId: nextRow.id,
+      field: nextEditingField,
+      token: Date.now(),
     });
-    if (nextEditingId) {
-      setEditingRowId(nextEditingId);
-      setEditingField({ rowId: nextEditingId, field: nextEditingField, token: Date.now() });
-    }
-    if (nextRowIndex >= 0) {
-      setPage(Math.floor(nextRowIndex / rowsPerPage) + 1);
-    }
-  }, [buildNextRowFromTemplate, rowsPerPage]);
+    setPage(Math.floor(nextRowIndex / rowsPerPage) + 1);
+  }, [buildNextRowFromTemplate, rows, rowsPerPage]);
   const handleRemoveRow = useCallback((rowId) => {
     setRows((currentRows) => {
       const nextRows = currentRows.filter((row) => row.id !== rowId);
@@ -2334,6 +2371,21 @@ const WorkDetail = ({
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
         target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
         target.focus();
+        const activeElement = target.ownerDocument?.activeElement;
+        const hasFocusedTarget =
+          activeElement === target ||
+          (activeElement instanceof HTMLElement && target.contains(activeElement));
+        if (!hasFocusedTarget) {
+          attempts += 1;
+          if (attempts >= 20) {
+            clearRequestedField();
+            return;
+          }
+          frameId = window.requestAnimationFrame(() => {
+            timeoutId = window.setTimeout(focusTargetField, 0);
+          });
+          return;
+        }
         try {
           target.select();
         } catch (_error) {
@@ -2343,8 +2395,18 @@ const WorkDetail = ({
         return;
       }
 
+      const targetRowIndex = filteredRows.findIndex(
+        (row) => String(row?.id || '') === String(requestedField.rowId)
+      );
+      if (targetRowIndex >= 0) {
+        const targetPage = Math.floor(targetRowIndex / rowsPerPage) + 1;
+        if (targetPage !== currentPage) {
+          setPage((current) => (current === targetPage ? current : targetPage));
+        }
+      }
+
       attempts += 1;
-      if (attempts >= 12) {
+      if (attempts >= 20) {
         clearRequestedField();
         return;
       }
@@ -2364,8 +2426,10 @@ const WorkDetail = ({
   }, [
     currentPage,
     editingField,
+    filteredRows,
     isMobile,
     rows.length,
+    rowsPerPage,
   ]);
   useEffect(() => {
     if (isMobile || !editingRowId) return;
@@ -2785,6 +2849,7 @@ const WorkDetail = ({
                         <TableRow
                           key={row.id}
                           hover
+                          data-work-desktop-row="true"
                           data-work-editing-row={isEditingRow ? row.id : undefined}
                           sx={{
                             '& > td': {
@@ -2911,12 +2976,12 @@ const WorkDetail = ({
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                <Box sx={DESKTOP_INLINE_TEXT_CONTENT_SX}>
-                                  <Typography variant="body2" sx={DESKTOP_INLINE_TEXT_LABEL_SX}>
+                                <Box sx={DESKTOP_INLINE_TEXT_PAIR_SX}>
+                                  <Typography component="span" variant="body2" sx={DESKTOP_INLINE_TEXT_PRIMARY_SX}>
                                     {selectedStyleDisplayLabel}
                                   </Typography>
                                   {selectedStyleOrderLabel ? (
-                                    <Typography variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_META_SX}>
+                                    <Typography component="span" variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_SECONDARY_SX}>
                                       {selectedStyleOrderLabel}
                                     </Typography>
                                   ) : null}
@@ -2979,12 +3044,12 @@ const WorkDetail = ({
                                   cursor: isAggregateLegacyLog ? 'default' : 'pointer',
                                 }}
                               >
-                                <Box sx={DESKTOP_INLINE_TEXT_CONTENT_SX}>
-                                  <Typography variant="body2" sx={DESKTOP_INLINE_TEXT_LABEL_SX}>
+                                <Box sx={DESKTOP_INLINE_TEXT_PAIR_SX}>
+                                  <Typography component="span" variant="body2" sx={DESKTOP_INLINE_TEXT_PRIMARY_SX}>
                                     {selectedProcessDisplayLabel}
                                   </Typography>
                                   {selectedProcessMetaLabel ? (
-                                    <Typography variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_META_SX}>
+                                    <Typography component="span" variant="caption" color="text.secondary" sx={DESKTOP_INLINE_TEXT_SECONDARY_SX}>
                                       {selectedProcessMetaLabel}
                                     </Typography>
                                   ) : null}

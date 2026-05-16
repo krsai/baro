@@ -100,6 +100,7 @@ const isKeepAliveCandidatePath = (path) => {
   if (!pathname || pathname === '/') return false;
   if (pathname === '/login') return false;
   if (pathname.startsWith('/auth')) return false;
+  if (pathname === EMPTY_WORKSPACE_PATH) return false;
   return true;
 };
 

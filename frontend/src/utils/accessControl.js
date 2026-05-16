@@ -207,6 +207,7 @@ export const canAccessFeature = (featureKey, authState) => {
 };
 
 const ACCESS_PATH_PRIORITY = [
+  '/workspace',
   '/order',
   '/style',
   '/st-review',
