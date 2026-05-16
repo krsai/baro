@@ -2057,10 +2057,30 @@ const WorkDetail = ({
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
     setRows((currentRows) =>
       currentRows.map((row) =>
-        row.id === rowId ? { ...row, worker: nextWorker || null } : row
+        row.id === rowId
+          ? {
+              ...row,
+              worker: nextWorker || null,
+              ...(toText(row?.worker?.id || row?.worker?.name) !==
+              toText(nextWorker?.id || nextWorker?.name)
+                ? {
+                    styleOptionId: '',
+                    assignment: null,
+                    process: null,
+                    quantity: '',
+                  }
+                : {}),
+            }
+          : row
       )
     );
   }, []);
+  const handleWorkerInputChange = useCallback((rowId, row, nextInputValue, reason) => {
+    if (reason !== 'input') return;
+    const selectedLabel = toText(row?.worker?.name);
+    if (!selectedLabel || nextInputValue === selectedLabel) return;
+    handleWorkerChange(rowId, null);
+  }, [handleWorkerChange]);
   const handleStyleChange = useCallback(
     (rowId, nextOption) =>
       updateRow(rowId, (row) => ({
@@ -2083,7 +2103,19 @@ const WorkDetail = ({
       })),
     [updateRow]
   );
+  const handleStyleInputChange = useCallback((rowId, selectedStyleOption, nextInputValue, reason) => {
+    if (reason !== 'input') return;
+    const selectedLabel = selectedStyleOption ? getStyleOptionLabel(selectedStyleOption) : '';
+    if (!selectedLabel || nextInputValue === selectedLabel) return;
+    handleStyleChange(rowId, null);
+  }, [getStyleOptionLabel, handleStyleChange]);
   const handleQuantityChange = useCallback((rowId, nextQuantity) => updateRow(rowId, (row) => ({ ...row, quantity: nextQuantity })), [updateRow]);
+  const handleProcessInputChange = useCallback((rowId, selectedProcessOption, nextInputValue, reason) => {
+    if (reason !== 'input') return;
+    const selectedLabel = selectedProcessOption ? getProcessOptionLabel(selectedProcessOption) : '';
+    if (!selectedLabel || nextInputValue === selectedLabel) return;
+    handleProcessChange(rowId, null);
+  }, [getProcessOptionLabel, handleProcessChange]);
   const buildNextRowFromTemplate = useCallback((templateRow = null) => {
     if (!templateRow) return createBlankRow();
     return createBlankRow({
@@ -2094,34 +2126,29 @@ const WorkDetail = ({
       quantity: '',
     });
   }, []);
-  const handleAddBelow = useCallback((rowId) => {
-    const currentRows = Array.isArray(rows) ? rows : [];
-    const targetIndex = currentRows.findIndex((row) => row.id === rowId);
-    const templateRow =
-      targetIndex >= 0
-        ? currentRows[targetIndex]
-        : currentRows[currentRows.length - 1] || null;
-    const nextRow = buildNextRowFromTemplate(templateRow);
-    const nextRowIndex = targetIndex < 0 ? currentRows.length : targetIndex + 1;
-    const nextRows =
-      targetIndex < 0
-        ? [...currentRows, nextRow]
-        : [
-            ...currentRows.slice(0, targetIndex + 1),
-            nextRow,
-            ...currentRows.slice(targetIndex + 1),
-          ];
+  const handleAddBelow = useCallback((rowId, templateRowOverride = null) => {
+    const nextRow = buildNextRowFromTemplate(templateRowOverride);
     const nextEditingField = resolveNextRowEditingField(nextRow);
 
-    setRows(nextRows);
+    setRows((currentRows) => {
+      const safeRows = Array.isArray(currentRows) ? currentRows : [];
+      const targetIndex = safeRows.findIndex((row) => row.id === rowId);
+      if (targetIndex < 0) {
+        return [...safeRows, nextRow];
+      }
+      return [
+        ...safeRows.slice(0, targetIndex + 1),
+        nextRow,
+        ...safeRows.slice(targetIndex + 1),
+      ];
+    });
     setEditingRowId(nextRow.id);
     setEditingField({
       rowId: nextRow.id,
       field: nextEditingField,
       token: Date.now(),
     });
-    setPage(Math.floor(nextRowIndex / rowsPerPage) + 1);
-  }, [buildNextRowFromTemplate, rows, rowsPerPage]);
+  }, [buildNextRowFromTemplate]);
   const handleRemoveRow = useCallback((rowId) => {
     setRows((currentRows) => {
       const nextRows = currentRows.filter((row) => row.id !== rowId);
@@ -2446,6 +2473,10 @@ const WorkDetail = ({
         return;
       }
 
+      if (target.closest('[data-work-edit-activator="true"]')) {
+        return;
+      }
+
       if (target.closest('.MuiAutocomplete-popper')) {
         return;
       }
@@ -2599,6 +2630,9 @@ const WorkDetail = ({
                             options={rowWorkerOptions}
                             value={row?.worker || null}
                             onChange={(_event, value) => handleWorkerChange(row.id, value)}
+                            onInputChange={(_event, nextInputValue, reason) =>
+                              handleWorkerInputChange(row.id, row, nextInputValue, reason)
+                            }
                             onKeyboardSelect={() => beginFieldEdit(row.id, 'style')}
                             autoSelect={false}
                             disabled={workerDisabled}
@@ -2622,6 +2656,9 @@ const WorkDetail = ({
                               options={styleOptions}
                               value={selectedStyleOption}
                               onChange={(_event, value) => handleStyleChange(row.id, value)}
+                              onInputChange={(_event, nextInputValue, reason) =>
+                                handleStyleInputChange(row.id, selectedStyleOption, nextInputValue, reason)
+                              }
                               onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                               autoSelect={false}
                               disabled={styleDisabled}
@@ -2676,6 +2713,9 @@ const WorkDetail = ({
                             options={processOptions}
                             value={selectedProcessOption}
                             onChange={(_event, value) => handleProcessChange(row.id, value)}
+                            onInputChange={(_event, nextInputValue, reason) =>
+                              handleProcessInputChange(row.id, selectedProcessOption, nextInputValue, reason)
+                            }
                             onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
                             autoSelect={false}
                             disabled={processDisabled}
@@ -2741,7 +2781,7 @@ const WorkDetail = ({
                                   (event.key === 'Tab' && !event.shiftKey))
                               ) {
                                 event.preventDefault();
-                                handleAddBelow(row.id);
+                                handleAddBelow(row.id, row);
                               }
                             }}
                             disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
@@ -2757,7 +2797,7 @@ const WorkDetail = ({
                                   color="primary"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    handleAddBelow(row.id);
+                                    handleAddBelow(row.id, row);
                                   }}
                                   disabled={isAggregateLegacyLog}
                                   aria-label={LABELS.addBelow}
@@ -2872,6 +2912,9 @@ const WorkDetail = ({
                                 options={rowWorkerOptions}
                                 value={row?.worker || null}
                                 onChange={(_event, value) => handleWorkerChange(row.id, value)}
+                                onInputChange={(_event, nextInputValue, reason) =>
+                                  handleWorkerInputChange(row.id, row, nextInputValue, reason)
+                                }
                                 onKeyboardSelect={() => beginFieldEdit(row.id, 'style')}
                                 autoSelect={false}
                                 disabled={workerDisabled}
@@ -2893,6 +2936,7 @@ const WorkDetail = ({
                               />
                             ) : (
                               <Box
+                                data-work-edit-activator="true"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'worker');
@@ -2914,6 +2958,9 @@ const WorkDetail = ({
                                   options={styleOptions}
                                   value={selectedStyleOption}
                                   onChange={(_event, value) => handleStyleChange(row.id, value)}
+                                  onInputChange={(_event, nextInputValue, reason) =>
+                                    handleStyleInputChange(row.id, selectedStyleOption, nextInputValue, reason)
+                                  }
                                   onKeyboardSelect={() => beginFieldEdit(row.id, 'process')}
                                   autoSelect={false}
                                   disabled={styleDisabled}
@@ -2967,6 +3014,7 @@ const WorkDetail = ({
                               </Stack>
                             ) : (
                               <Box
+                                data-work-edit-activator="true"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'style');
@@ -2995,6 +3043,9 @@ const WorkDetail = ({
                                 options={processOptions}
                                 value={selectedProcessOption}
                                 onChange={(_event, value) => handleProcessChange(row.id, value)}
+                                onInputChange={(_event, nextInputValue, reason) =>
+                                  handleProcessInputChange(row.id, selectedProcessOption, nextInputValue, reason)
+                                }
                                 onKeyboardSelect={() => beginFieldEdit(row.id, 'quantity')}
                                 autoSelect={false}
                                 disabled={processDisabled}
@@ -3035,6 +3086,7 @@ const WorkDetail = ({
                               />
                             ) : (
                               <Box
+                                data-work-edit-activator="true"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'process');
@@ -3087,7 +3139,7 @@ const WorkDetail = ({
                                       (event.key === 'Tab' && !event.shiftKey))
                                   ) {
                                     event.preventDefault();
-                                    handleAddBelow(row.id);
+                                    handleAddBelow(row.id, row);
                                   }
                                 }}
                                 disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
@@ -3100,6 +3152,7 @@ const WorkDetail = ({
                               />
                             ) : (
                               <Box
+                                data-work-edit-activator="true"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'quantity');
@@ -3129,7 +3182,7 @@ const WorkDetail = ({
                                     color="primary"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      handleAddBelow(row.id);
+                                      handleAddBelow(row.id, row);
                                     }}
                                     disabled={isAggregateLegacyLog}
                                     aria-label={LABELS.addBelow}
