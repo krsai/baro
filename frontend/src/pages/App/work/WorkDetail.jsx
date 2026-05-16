@@ -1310,7 +1310,7 @@ const WorkDetail = ({
     if (desktopTableContainerRef.current) {
       desktopTableContainerRef.current.scrollTop = 0;
     }
-  }, [currentPage, filteredRows.length, isMobile]);
+  }, [currentPage, deferredSearchTerm, isMobile, selectedLineId, workDateKey]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
