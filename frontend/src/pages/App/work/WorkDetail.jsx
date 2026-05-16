@@ -270,6 +270,11 @@ const createBlankRow = (patch = {}) => ({
   quantity: '',
   ...patch,
 });
+const buildEditableFieldInputProps = (rowId, field, extra = {}) => ({
+  ...extra,
+  'data-work-row-id': String(rowId || ''),
+  'data-work-field': field,
+});
 const resolveNextRowEditingField = (row) => {
   if (toText(row?.styleOptionId) || row?.assignment) return 'process';
   if (row?.worker) return 'style';
@@ -803,7 +808,14 @@ const mergeProcessWithCatalog = (
   };
 };
 
-const WorkDetail = ({ initialLog = null, initialContext = null, loading = false, saving = false, onSave }) => {
+const WorkDetail = ({
+  initialLog = null,
+  initialContext = null,
+  loading = false,
+  saving = false,
+  onSave,
+  onCancel,
+}) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { languageCode } = useLanguage();
   const theme = useTheme();
@@ -1140,14 +1152,6 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       if (editingField) setEditingField(null);
     }
   }, [rows]);
-  useEffect(() => {
-    if (!editingField) return;
-    if (!editingRowId || editingField.rowId !== editingRowId) return;
-    const timerId = window.setTimeout(() => {
-      setEditingField(null);
-    }, 0);
-    return () => window.clearTimeout(timerId);
-  }, [editingField, editingRowId]);
 
   const currentFactory = useMemo(() => {
     if (!selectedFactory) return null;
@@ -2175,10 +2179,89 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
         : pagedRowViewModels.slice(desktopVirtualWindow.start, desktopVirtualWindow.end),
     [desktopVirtualWindow.end, desktopVirtualWindow.start, isMobile, pagedRowViewModels]
   );
+  useEffect(() => {
+    if (!editingField?.rowId || !editingField?.field) return;
+
+    let cancelled = false;
+    let frameId = 0;
+    let timeoutId = 0;
+    let attempts = 0;
+    const requestedField = editingField;
+
+    const clearRequestedField = () => {
+      setEditingField((current) =>
+        current?.rowId === requestedField.rowId &&
+        current?.field === requestedField.field &&
+        current?.token === requestedField.token
+          ? null
+          : current
+      );
+    };
+
+    const focusTargetField = () => {
+      if (cancelled) return;
+
+      const candidates = Array.from(
+        document.querySelectorAll(
+          'input[data-work-row-id][data-work-field], textarea[data-work-row-id][data-work-field]'
+        )
+      );
+      const target = candidates.find(
+        (node) =>
+          node instanceof HTMLElement &&
+          node.dataset.workRowId === String(requestedField.rowId) &&
+          node.dataset.workField === requestedField.field
+      );
+
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        target.focus();
+        try {
+          target.select();
+        } catch (_error) {
+          // ignore non-selectable inputs
+        }
+        clearRequestedField();
+        return;
+      }
+
+      attempts += 1;
+      if (attempts >= 12) {
+        clearRequestedField();
+        return;
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        timeoutId = window.setTimeout(focusTargetField, 0);
+      });
+    };
+
+    frameId = window.requestAnimationFrame(focusTargetField);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    currentPage,
+    desktopVirtualWindow.end,
+    desktopVirtualWindow.start,
+    editingField,
+    isMobile,
+    rows.length,
+  ]);
   const handleDesktopTableScroll = useCallback((event) => {
     if (isMobile) return;
     setDesktopVirtualScrollTop(event.currentTarget.scrollTop || 0);
   }, [isMobile]);
+  const handleCancelChanges = useCallback(() => {
+    if (isDirty) {
+      const confirmed = window.confirm('저장하지 않은 변경사항을 취소하고 목록으로 돌아가시겠습니까?');
+      if (!confirmed) return;
+    }
+    onCancel?.();
+  }, [isDirty, onCancel]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -2187,6 +2270,15 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
       </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
+        {typeof onCancel === 'function' ? (
+          <Button
+            variant="outlined"
+            onClick={handleCancelChanges}
+            disabled={loading || baseLoading || lineDataLoading || saving}
+          >
+            취소
+          </Button>
+        ) : null}
         <SaveButton
           onClick={handleSave}
           disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
@@ -2315,6 +2407,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               size: 'small',
                               placeholder: LABELS.workerPlaceholder,
                               autoFocus: shouldFocusWorker,
+                              inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                             }}
                           />
                           <Stack spacing={0.35}>
@@ -2359,6 +2452,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                 size: 'small',
                                 placeholder: stylePlaceholder,
                                 autoFocus: shouldFocusStyle,
+                                inputProps: buildEditableFieldInputProps(row.id, 'style'),
                               }}
                             />
                             {selectedStyleExceptionLabel ? (
@@ -2409,6 +2503,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               size: 'small',
                               placeholder: processPlaceholder,
                               autoFocus: shouldFocusProcess,
+                              inputProps: buildEditableFieldInputProps(row.id, 'process'),
                             }}
                           />
                           <TextField
@@ -2444,7 +2539,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                               }
                             }}
                             disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
-                            inputProps={{ min: 1 }}
+                            inputProps={buildEditableFieldInputProps(row.id, 'quantity', { min: 1 })}
                             fullWidth
                             autoFocus={shouldFocusQuantity}
                           />
@@ -2588,6 +2683,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   size: 'small',
                                   placeholder: LABELS.workerPlaceholder,
                                   autoFocus: shouldFocusWorker,
+                                  inputProps: buildEditableFieldInputProps(row.id, 'worker'),
                                 }}
                               />
                             ) : (
@@ -2652,6 +2748,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                     size: 'small',
                                     placeholder: stylePlaceholder,
                                     autoFocus: shouldFocusStyle,
+                                    inputProps: buildEditableFieldInputProps(row.id, 'style'),
                                   }}
                                 />
                                 {selectedStyleExceptionLabel ? (
@@ -2721,6 +2818,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   size: 'small',
                                   placeholder: processPlaceholder,
                                   autoFocus: shouldFocusProcess,
+                                  inputProps: buildEditableFieldInputProps(row.id, 'process'),
                                 }}
                               />
                             ) : (
@@ -2775,7 +2873,7 @@ const WorkDetail = ({ initialLog = null, initialContext = null, loading = false,
                                   }
                                 }}
                                 disabled={isAggregateLegacyLog || !selectedProcessOption?.process}
-                                inputProps={{ min: 1 }}
+                                inputProps={buildEditableFieldInputProps(row.id, 'quantity', { min: 1 })}
                                 fullWidth
                                 autoFocus={shouldFocusQuantity}
                               />
