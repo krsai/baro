@@ -203,7 +203,6 @@ const WorkEntry = () => {
       loading={loading}
       saving={saving}
       onSave={handleSave}
-      onCancel={closeEntry}
     />
   );
 };

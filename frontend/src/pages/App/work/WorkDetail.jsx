@@ -2,7 +2,6 @@
 import {
   Alert,
   Box,
-  Button,
   Chip,
   CircularProgress,
   IconButton,
@@ -814,7 +813,6 @@ const WorkDetail = ({
   loading = false,
   saving = false,
   onSave,
-  onCancel,
 }) => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { languageCode } = useLanguage();
@@ -2251,17 +2249,38 @@ const WorkDetail = ({
     isMobile,
     rows.length,
   ]);
+  useEffect(() => {
+    if (isMobile || !editingRowId) return;
+
+    const handlePointerDownOutside = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const editingRowElement = target.closest('[data-work-editing-row]');
+      if (
+        editingRowElement &&
+        editingRowElement.getAttribute('data-work-editing-row') === String(editingRowId)
+      ) {
+        return;
+      }
+
+      if (target.closest('.MuiAutocomplete-popper')) {
+        return;
+      }
+
+      setEditingRowId('');
+      setEditingField(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDownOutside, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside, true);
+    };
+  }, [editingRowId, isMobile]);
   const handleDesktopTableScroll = useCallback((event) => {
     if (isMobile) return;
     setDesktopVirtualScrollTop(event.currentTarget.scrollTop || 0);
   }, [isMobile]);
-  const handleCancelChanges = useCallback(() => {
-    if (isDirty) {
-      const confirmed = window.confirm('저장하지 않은 변경사항을 취소하고 목록으로 돌아가시겠습니까?');
-      if (!confirmed) return;
-    }
-    onCancel?.();
-  }, [isDirty, onCancel]);
 
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
@@ -2270,15 +2289,6 @@ const WorkDetail = ({
       </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
-        {typeof onCancel === 'function' ? (
-          <Button
-            variant="outlined"
-            onClick={handleCancelChanges}
-            disabled={loading || baseLoading || lineDataLoading || saving}
-          >
-            취소
-          </Button>
-        ) : null}
         <SaveButton
           onClick={handleSave}
           disabled={loading || baseLoading || lineDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
@@ -2647,6 +2657,7 @@ const WorkDetail = ({
                         <TableRow
                           key={row.id}
                           hover
+                          data-work-editing-row={isEditingRow ? row.id : undefined}
                           sx={{
                             '& > td': {
                               backgroundColor: isRowExceeded ? '#fff5f5' : groupBackgroundColor,
