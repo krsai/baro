@@ -6068,6 +6068,320 @@ const normalizeAssignmentScheduleRepairPayload = (
     endDateKey,
   };
 };
+const ASSIGNMENT_SCHEDULE_REPAIR_DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
+const getAssignmentScheduleRepairLineCapacitySeconds = (
+  lineId: any,
+  lineCapacityById: Map<string, number>
+): number => {
+  const key = resolveOptionalString(lineId, null);
+  if (!key) return ASSIGNMENT_SCHEDULE_REPAIR_DAILY_CAPACITY_SECONDS;
+  const resolved = Number(lineCapacityById.get(String(key)));
+  if (!Number.isFinite(resolved) || resolved <= 0) {
+    return ASSIGNMENT_SCHEDULE_REPAIR_DAILY_CAPACITY_SECONDS;
+  }
+  return resolved;
+};
+const isNonWorkingDateKeyForAssignmentScheduleRepair = (
+  dateKeyInput: any,
+  holidaySet: Set<string>
+): boolean => {
+  const dateKey = normalizeDateKey(dateKeyInput);
+  const date = toUtcDateFromDateKeyForAssignmentSchedule(dateKey);
+  if (!date) return false;
+  return date.getUTCDay() === 0 || holidaySet.has(dateKey);
+};
+const getDayCapacitySecondsForAssignmentScheduleRepair = ({
+  lineId,
+  dateKey,
+  lineCapacityById,
+  holidaySet,
+}: {
+  lineId: any;
+  dateKey: any;
+  lineCapacityById: Map<string, number>;
+  holidaySet: Set<string>;
+}): number =>
+  isNonWorkingDateKeyForAssignmentScheduleRepair(dateKey, holidaySet)
+    ? 0
+    : getAssignmentScheduleRepairLineCapacitySeconds(lineId, lineCapacityById);
+const calculateScheduledSecondsForAssignmentScheduleRepair = ({
+  schedule,
+  lineId,
+  lineCapacityById,
+  holidaySet,
+}: {
+  schedule: any;
+  lineId: any;
+  lineCapacityById: Map<string, number>;
+  holidaySet: Set<string>;
+}): number | null => {
+  const normalized = normalizeAssignmentScheduleRepairPayload(schedule);
+  if (!normalized?.startDateKey) return null;
+
+  const startPercent = (normalized.startDayPercent ?? 100) / 100;
+  const endPercent = (normalized.endDayPercent ?? 100) / 100;
+  const spanDays = countDateRangeDaysInclusiveForAssignmentSchedule(
+    normalized.startDateKey,
+    normalized.endDateKey ?? normalized.startDateKey
+  );
+  if (spanDays <= 0) return null;
+
+  let total = 0;
+  for (let offset = 0; offset < spanDays; offset += 1) {
+    const dayKey = shiftDateKeyByDaysForAssignmentSchedule(
+      normalized.startDateKey,
+      offset
+    );
+    if (!dayKey) continue;
+    const dailyCapacity = getDayCapacitySecondsForAssignmentScheduleRepair({
+      lineId,
+      dateKey: dayKey,
+      lineCapacityById,
+      holidaySet,
+    });
+    if (dailyCapacity <= 0) continue;
+
+    if (spanDays === 1) {
+      total += dailyCapacity * startPercent;
+      continue;
+    }
+
+    if (offset === 0) {
+      total += dailyCapacity * startPercent;
+    } else if (offset === spanDays - 1) {
+      total += dailyCapacity * endPercent;
+    } else {
+      total += dailyCapacity;
+    }
+  }
+
+  return total;
+};
+const recomputeAssignmentScheduleRepairPayload = ({
+  schedule,
+  lineId,
+  totalSeconds,
+  lineCapacityById,
+  holidaySet,
+  fallback = null,
+}: {
+  schedule: any;
+  lineId: any;
+  totalSeconds: number;
+  lineCapacityById: Map<string, number>;
+  holidaySet: Set<string>;
+  fallback?: any;
+}):
+  | {
+      startIndex: number;
+      endIndex: number;
+      startDayOffsetPercent: number | null;
+      startDayPercent: number | null;
+      endDayPercent: number | null;
+      startDateKey: string | null;
+      endDateKey: string | null;
+    }
+  | null => {
+  const normalized = normalizeAssignmentScheduleRepairPayload(schedule, fallback);
+  const plannedSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (!normalized?.startDateKey || plannedSeconds <= 0) return normalized;
+
+  const startIndex = toSignedInt(normalized.startIndex, toSignedInt(fallback?.startIndex, 0));
+  const startDayOffsetPercent = toOptionalFloat(
+    normalized.startDayOffsetPercent,
+    0
+  );
+  const resolvedStartDayOffsetPercent =
+    startDayOffsetPercent == null
+      ? 0
+      : Math.max(0, Math.min(99.999, startDayOffsetPercent));
+  const startCapacity = getDayCapacitySecondsForAssignmentScheduleRepair({
+    lineId,
+    dateKey: normalized.startDateKey,
+    lineCapacityById,
+    holidaySet,
+  });
+  const startOffsetSeconds =
+    (resolvedStartDayOffsetPercent / 100) * startCapacity;
+  const startAvailable = Math.max(startCapacity - startOffsetSeconds, 0);
+  let remaining = plannedSeconds;
+  const startUse = Math.min(startAvailable, remaining);
+  const startDayPercent = startCapacity > 0 ? (startUse / startCapacity) * 100 : 0;
+  remaining -= startUse;
+
+  if (remaining <= 0) {
+    return {
+      startIndex,
+      endIndex: startIndex,
+      startDayOffsetPercent: resolvedStartDayOffsetPercent,
+      startDayPercent,
+      endDayPercent: startDayPercent,
+      startDateKey: normalized.startDateKey,
+      endDateKey: normalized.startDateKey,
+    };
+  }
+
+  const fallbackDailyCapacity = Math.max(
+    1,
+    getAssignmentScheduleRepairLineCapacitySeconds(lineId, lineCapacityById)
+  );
+  const projectedWorkingDays = Math.max(
+    1,
+    Math.ceil(plannedSeconds / fallbackDailyCapacity)
+  );
+  const maxIterations = Math.max(projectedWorkingDays + 60, 120);
+
+  let endDateKey = normalized.startDateKey;
+  let cursorDateKey = normalized.startDateKey;
+  for (let step = 0; step < maxIterations; step += 1) {
+    const nextDateKey = shiftDateKeyByDaysForAssignmentSchedule(cursorDateKey, 1);
+    if (!nextDateKey) break;
+    cursorDateKey = nextDateKey;
+    endDateKey = nextDateKey;
+
+    const dailyCapacity = getDayCapacitySecondsForAssignmentScheduleRepair({
+      lineId,
+      dateKey: nextDateKey,
+      lineCapacityById,
+      holidaySet,
+    });
+    if (dailyCapacity <= 0) {
+      continue;
+    }
+    if (remaining <= dailyCapacity) {
+      const endDayPercent = (remaining / dailyCapacity) * 100;
+      const dayDelta =
+        diffDateKeysByDaysForAssignmentSchedule(
+          normalized.startDateKey,
+          nextDateKey
+        ) ?? 0;
+      return {
+        startIndex,
+        endIndex: Math.max(startIndex, startIndex + Math.max(0, dayDelta)),
+        startDayOffsetPercent: resolvedStartDayOffsetPercent,
+        startDayPercent,
+        endDayPercent,
+        startDateKey: normalized.startDateKey,
+        endDateKey: nextDateKey,
+      };
+    }
+    remaining -= dailyCapacity;
+  }
+
+  const dayDelta =
+    diffDateKeysByDaysForAssignmentSchedule(
+      normalized.startDateKey,
+      endDateKey
+    ) ?? 0;
+  return {
+    startIndex,
+    endIndex: Math.max(startIndex, startIndex + Math.max(0, dayDelta)),
+    startDayOffsetPercent: resolvedStartDayOffsetPercent,
+    startDayPercent,
+    endDayPercent: 100,
+    startDateKey: normalized.startDateKey,
+    endDateKey,
+  };
+};
+const assignmentScheduleRepairNeedsRecompute = ({
+  schedule,
+  lineId,
+  totalSeconds,
+  lineCapacityById,
+  holidaySet,
+}: {
+  schedule: any;
+  lineId: any;
+  totalSeconds: number | null;
+  lineCapacityById: Map<string, number>;
+  holidaySet: Set<string>;
+}): boolean => {
+  const plannedSeconds = Number(totalSeconds);
+  if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
+  const scheduledSeconds = calculateScheduledSecondsForAssignmentScheduleRepair({
+    schedule,
+    lineId,
+    lineCapacityById,
+    holidaySet,
+  });
+  if (scheduledSeconds == null) return false;
+  return Math.abs(scheduledSeconds - plannedSeconds) > 1;
+};
+const buildAssignmentScheduleRepairTarget = ({
+  primary,
+  secondary = null,
+  lineCapacityById,
+  holidaySet,
+}: {
+  primary: any;
+  secondary?: any;
+  lineCapacityById: Map<string, number>;
+  holidaySet: Set<string>;
+}) => {
+  const currentSchedule = extractAssignmentScheduleRepairPayload(primary);
+  const secondarySchedule = extractAssignmentScheduleRepairPayload(secondary);
+  const snapshotSchedule =
+    normalizeAssignmentCtSnapshot(
+      primary?.ctSnapshot ??
+        primary?.ctAgreedSnapshot ??
+        secondary?.ctSnapshot ??
+        secondary?.ctAgreedSnapshot
+    )?.schedule ?? null;
+  const totalSeconds =
+    resolveAssignmentContractedSeconds(primary) ??
+    resolveAssignmentContractedSeconds(secondary);
+
+  const repairSourceSchedule =
+    currentSchedule?.startDateKey
+      ? currentSchedule
+      : secondarySchedule?.startDateKey
+        ? secondarySchedule
+        : snapshotSchedule;
+
+  if (
+    repairSourceSchedule &&
+    assignmentScheduleRepairNeedsRecompute({
+      schedule: repairSourceSchedule,
+      lineId: primary?.lineId ?? secondary?.lineId,
+      totalSeconds,
+      lineCapacityById,
+      holidaySet,
+    })
+  ) {
+    return recomputeAssignmentScheduleRepairPayload({
+      schedule: repairSourceSchedule,
+      lineId: primary?.lineId ?? secondary?.lineId,
+      totalSeconds: Math.max(0, Math.round(Number(totalSeconds) || 0)),
+      lineCapacityById,
+      holidaySet,
+      fallback: primary ?? secondary,
+    });
+  }
+
+  return (
+    normalizeAssignmentScheduleRepairPayload(snapshotSchedule, primary) ??
+    normalizeAssignmentScheduleRepairPayload(currentSchedule, primary) ??
+    normalizeAssignmentScheduleRepairPayload(secondarySchedule, secondary)
+  );
+};
+const applyAssignmentScheduleToCtSnapshot = (
+  item: any,
+  schedule: any,
+  fallbackSnapshotSource: any = null
+) => {
+  if (!schedule) return null;
+  const normalizedSnapshot = normalizeAssignmentCtSnapshot(
+    item?.ctSnapshot ??
+      item?.ctAgreedSnapshot ??
+      fallbackSnapshotSource?.ctSnapshot ??
+      fallbackSnapshotSource?.ctAgreedSnapshot
+  );
+  if (!normalizedSnapshot) return null;
+  return {
+    ...normalizedSnapshot,
+    schedule: normalizeAssignmentScheduleRepairPayload(schedule, item),
+  };
+};
 const extractAssignmentScheduleRepairPayload = (item: any) =>
   normalizeAssignmentScheduleRepairPayload(
     {
