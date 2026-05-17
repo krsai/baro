@@ -164,6 +164,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/shipment-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/qc-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
+  if (path.startsWith('/batch-progress')) return FEATURE_KEYS.ASSIGNMENT;
   if (path.startsWith('/production-plan')) return FEATURE_KEYS.PRODUCTION_PLAN;
   if (path.startsWith('/production-result')) return FEATURE_KEYS.PRODUCTION_RESULT;
   if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
@@ -214,6 +215,7 @@ const ACCESS_PATH_PRIORITY = [
   '/shipment-review',
   '/qc-review',
   '/assignment',
+  '/batch-progress',
   '/production-plan',
   '/inventory',
   '/work-history',

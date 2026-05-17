@@ -1,27 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
-  Divider,
-  LinearProgress,
   MenuItem,
   Paper,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
+import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
 import AppPageContainer from '../../components/AppPageContainer';
 
-// ─── 더미 데이터 ─────────────────────────────────────────────────────────────
+const TODAY = '2026-04-30';
+
 const DUMMY_LINES = [
   { id: 1, name: 'L15-1' },
   { id: 2, name: 'L15-2' },
@@ -34,14 +30,13 @@ const DUMMY_BATCHES = [
     lineId: 1,
     lineName: 'L15-1',
     orderNo: 'AM01160',
-    styleName: '재킷 A형',
+    styleName: '셔츠 A',
     plannedStart: '2026-04-01',
     plannedEnd: '2026-04-09',
     orderQty: 140,
     producedQty: 128,
-    // 공정별 수량 (공정 합의 최솟값 = 완성 수량)
+    qcPassedTotal: 116,
     processBreakdown: [
-      { processName: '재단', qty: 140 },
       { processName: '봉제', qty: 128 },
       { processName: '마감', qty: 128 },
     ],
@@ -54,13 +49,13 @@ const DUMMY_BATCHES = [
     lineId: 1,
     lineName: 'L15-1',
     orderNo: 'AM01161',
-    styleName: '블라우스 B형',
+    styleName: '블라우스 B',
     plannedStart: '2026-04-10',
     plannedEnd: '2026-04-19',
     orderQty: 200,
     producedQty: 200,
+    qcPassedTotal: 182,
     processBreakdown: [
-      { processName: '재단', qty: 205 },
       { processName: '봉제', qty: 200 },
       { processName: '마감', qty: 200 },
     ],
@@ -73,11 +68,12 @@ const DUMMY_BATCHES = [
     lineId: 1,
     lineName: 'L15-1',
     orderNo: 'AM01162',
-    styleName: '바지 C형',
-    plannedStart: '2026-04-20',
-    plannedEnd: '2026-04-27',
+    styleName: '바지 C',
+    plannedStart: '2026-05-02',
+    plannedEnd: '2026-05-08',
     orderQty: 80,
     producedQty: 0,
+    qcPassedTotal: 0,
     processBreakdown: [],
     isCompleted: false,
     completedAt: null,
@@ -88,14 +84,15 @@ const DUMMY_BATCHES = [
     lineId: 2,
     lineName: 'L15-2',
     orderNo: 'AM01170',
-    styleName: '스커트 D형',
+    styleName: '원피스 D',
     plannedStart: '2026-04-01',
     plannedEnd: '2026-04-15',
     orderQty: 300,
     producedQty: 312,
+    qcPassedTotal: 300,
     processBreakdown: [
-      { processName: '재단', qty: 320 },
       { processName: '봉제', qty: 312 },
+      { processName: '마감', qty: 305 },
     ],
     isCompleted: true,
     completedAt: '2026-04-30',
@@ -103,100 +100,216 @@ const DUMMY_BATCHES = [
   },
 ];
 
-// ─── 유틸 ─────────────────────────────────────────────────────────────────────
-const today = '2026-04-30';
+const STATUS_META = {
+  overdue: {
+    label: '지연',
+    color: 'warning',
+    icon: WarningAmberIcon,
+    background: 'rgba(245, 124, 0, 0.06)',
+    overlay: 'rgba(245, 124, 0, 0.12)',
+    border: 'warning.light',
+  },
+  active: {
+    label: '진행중',
+    color: 'primary',
+    icon: PlayCircleOutlineIcon,
+    background: 'rgba(2, 136, 209, 0.05)',
+    overlay: 'rgba(2, 136, 209, 0.14)',
+    border: 'primary.light',
+  },
+  pending: {
+    label: '대기',
+    color: 'default',
+    icon: PauseCircleOutlineIcon,
+    background: 'rgba(158, 158, 158, 0.05)',
+    overlay: 'rgba(158, 158, 158, 0.08)',
+    border: 'divider',
+  },
+  completed: {
+    label: '완료',
+    color: 'success',
+    icon: CheckCircleOutlineIcon,
+    background: 'rgba(117, 117, 117, 0.12)',
+    overlay: 'rgba(117, 117, 117, 0.22)',
+    border: 'grey.400',
+  },
+};
+
+const STATUS_ORDER = {
+  overdue: 0,
+  active: 1,
+  pending: 2,
+  completed: 3,
+};
+
+const formatInt = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return new Intl.NumberFormat('ko-KR').format(Math.round(number));
+};
+
+const getProgressPercent = (producedQty, orderQty) => {
+  const produced = Number(producedQty) || 0;
+  const order = Number(orderQty) || 0;
+  if (order <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((produced / order) * 100)));
+};
+
+const getCloseMode = (closedQty, orderQty) => {
+  const closed = Number(closedQty) || 0;
+  const order = Number(orderQty) || 0;
+  if (closed === order) return 'FULL';
+  if (closed < order) return 'SHORT';
+  return 'OVER';
+};
 
 const getStatus = (batch) => {
   if (batch.isCompleted) return 'completed';
-  if (batch.plannedEnd < today) return 'overdue';
-  if (batch.plannedStart <= today) return 'active';
-  return 'pending';
+  if (batch.plannedStart > TODAY) return 'pending';
+  if (batch.plannedEnd < TODAY) return 'overdue';
+  return 'active';
 };
 
-const STATUS_LABEL = {
-  completed: '완료',
-  overdue: '지연',
-  active: '진행중',
-  pending: '대기',
-};
-const STATUS_COLOR = {
-  completed: 'success',
-  overdue: 'warning',
-  active: 'primary',
-  pending: 'default',
-};
-
-const progressPercent = (produced, order) => {
-  if (!order || order <= 0) return 0;
-  return Math.min(100, Math.round((produced / order) * 100));
+const getCloseModeLabel = (closeMode) => {
+  switch (closeMode) {
+    case 'FULL':
+      return '정량 완료';
+    case 'SHORT':
+      return '미달 완료';
+    case 'OVER':
+      return '초과 완료';
+    default:
+      return '-';
+  }
 };
 
-// ─── 완료 확인 다이얼로그 대신 인라인 확인 패널 ──────────────────────────────
-const ClosePanel = ({ batch, onClose, onCancel }) => {
-  const [qty, setQty] = useState(String(batch.producedQty));
+const MetricBlock = ({ label, value, helper, align = 'left' }) => (
+  <Stack spacing={0.35} sx={{ minWidth: 120, textAlign: align }}>
+    <Typography variant="caption" color="text.secondary">
+      {label}
+    </Typography>
+    <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+      {value}
+    </Typography>
+    {helper ? (
+      <Typography variant="caption" color="text.secondary">
+        {helper}
+      </Typography>
+    ) : null}
+  </Stack>
+);
+
+const ClosePanel = ({ batch, onConfirm, onCancel }) => {
+  const [qty, setQty] = useState(String(batch.producedQty || 0));
+  const parsedQty = Math.max(0, Number(qty) || 0);
+  const closeMode = getCloseMode(parsedQty, batch.orderQty);
 
   return (
-    <Box sx={{ bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mt: 1 }}>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-        생산 완료 확정 — 최종 수량을 확인하세요.
-      </Typography>
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <TextField
-          label="확정 수량"
-          size="small"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          type="number"
-          sx={{ width: 120 }}
-        />
-        <Typography variant="body2" color="text.secondary">
-          / 주문 {batch.orderQty}장
-          {Number(qty) > batch.orderQty && (
-            <Box component="span" sx={{ color: 'warning.main', ml: 0.5 }}>
-              (초과 생산)
-            </Box>
-          )}
-          {Number(qty) < batch.orderQty && (
-            <Box component="span" sx={{ color: 'warning.main', ml: 0.5 }}>
-              (미달 — 운영 판단으로 완료)
-            </Box>
-          )}
+    <Paper
+      variant="outlined"
+      sx={{
+        mt: 1.5,
+        p: 2,
+        borderRadius: 2,
+        bgcolor: 'background.paper',
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          제작 완료 확정
         </Typography>
-      </Stack>
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-        <Button
-          variant="contained"
-          size="small"
-          color="success"
-          onClick={() => onClose(Number(qty))}
-          startIcon={<CheckCircleOutlineIcon />}
+        <Typography variant="body2" color="text.secondary">
+          작업기록 생산수량을 검토한 뒤, 이 배치의 제작 완료 수량을 확정합니다.
+        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          alignItems={{ xs: 'stretch', sm: 'center' }}
         >
-          생산 완료 확정
-        </Button>
-        <Button variant="outlined" size="small" onClick={onCancel}>
-          취소
-        </Button>
+          <TextField
+            label="확정 수량"
+            size="small"
+            type="number"
+            value={qty}
+            onChange={(event) => setQty(event.target.value)}
+            sx={{ width: { xs: '100%', sm: 140 } }}
+          />
+          <Typography variant="body2" color="text.secondary">
+            주문 {formatInt(batch.orderQty)}장 기준
+          </Typography>
+          <Chip
+            size="small"
+            color={closeMode === 'FULL' ? 'success' : closeMode === 'OVER' ? 'info' : 'warning'}
+            label={getCloseModeLabel(closeMode)}
+          />
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<CheckCircleOutlineIcon />}
+            onClick={() => onConfirm(parsedQty)}
+          >
+            제작 완료 확정
+          </Button>
+          <Button variant="outlined" onClick={onCancel}>
+            닫기
+          </Button>
+        </Stack>
       </Stack>
-    </Box>
+    </Paper>
   );
 };
 
-// ─── 메인 페이지 ──────────────────────────────────────────────────────────────
 const BatchProgress = () => {
   const [selectedLineId, setSelectedLineId] = useState('all');
-  const [batches, setBatches] = useState(DUMMY_BATCHES);
   const [closingId, setClosingId] = useState(null);
+  const [batches, setBatches] = useState(DUMMY_BATCHES);
 
-  const filtered = batches.filter(
-    (b) => selectedLineId === 'all' || String(b.lineId) === String(selectedLineId)
+  const filteredBatches = useMemo(() => {
+    const next = batches.filter(
+      (batch) => selectedLineId === 'all' || String(batch.lineId) === String(selectedLineId)
+    );
+
+    next.sort((left, right) => {
+      const leftStatus = getStatus(left);
+      const rightStatus = getStatus(right);
+      const statusDiff = STATUS_ORDER[leftStatus] - STATUS_ORDER[rightStatus];
+      if (statusDiff !== 0) return statusDiff;
+      if (left.lineId !== right.lineId) return left.lineId - right.lineId;
+      if (left.plannedStart !== right.plannedStart) {
+        return left.plannedStart.localeCompare(right.plannedStart);
+      }
+      return String(left.orderNo || '').localeCompare(String(right.orderNo || ''));
+    });
+
+    return next;
+  }, [batches, selectedLineId]);
+
+  const summary = useMemo(
+    () =>
+      filteredBatches.reduce(
+        (acc, batch) => {
+          const status = getStatus(batch);
+          acc[status] += 1;
+          return acc;
+        },
+        { overdue: 0, active: 0, pending: 0, completed: 0 }
+      ),
+    [filteredBatches]
   );
 
-  const handleConfirmClose = (batchId, qty) => {
-    setBatches((prev) =>
-      prev.map((b) =>
-        b.id === batchId
-          ? { ...b, isCompleted: true, completedAt: today, closedQty: qty }
-          : b
+  const handleConfirmClose = (batchId, closedQty) => {
+    setBatches((current) =>
+      current.map((batch) =>
+        batch.id === batchId
+          ? {
+              ...batch,
+              isCompleted: true,
+              completedAt: TODAY,
+              closedQty,
+            }
+          : batch
       )
     );
     setClosingId(null);
@@ -204,155 +317,210 @@ const BatchProgress = () => {
 
   return (
     <AppPageContainer
-      title="배정 진행도 / 생산 완료"
-      subtitle="배정된 작업 카드별 생산 수량을 확인하고, 완료된 배치를 확정합니다."
+      header={
+        <Stack spacing={0.6}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            배치 진행 / 제작 완료
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            배정 카드별 작업기록 생산수량과 검수 누적을 검토하고, 제작 완료 수량을 최종 확정하는 화면입니다.
+          </Typography>
+        </Stack>
+      }
     >
-      {/* 필터 */}
-      <Stack direction="row" spacing={2} sx={{ mb: 2 }} alignItems="center">
-        <TextField
-          select
-          label="라인"
-          size="small"
-          value={selectedLineId}
-          onChange={(e) => setSelectedLineId(e.target.value)}
-          sx={{ minWidth: 160 }}
-        >
-          <MenuItem value="all">전체 라인</MenuItem>
-          {DUMMY_LINES.map((line) => (
-            <MenuItem key={line.id} value={String(line.id)}>
-              {line.name}
-            </MenuItem>
-          ))}
-        </TextField>
-        <Typography variant="body2" color="text.secondary">
-          진행중 {filtered.filter((b) => getStatus(b) === 'active').length}건 ·
-          지연 {filtered.filter((b) => getStatus(b) === 'overdue').length}건 ·
-          완료 {filtered.filter((b) => b.isCompleted).length}건
-        </Typography>
-      </Stack>
+      <Stack spacing={2}>
+        <Alert severity="info">
+          이 화면의 계획 기간은 배정 시점의 계획을 그대로 보여줍니다. 작업기록과 검수 누적은 참고 정보이며, 제작 완료는
+          사람이 별도로 확정합니다.
+        </Alert>
 
-      {/* 카드 목록 */}
-      <Stack spacing={1.5}>
-        {filtered.map((batch) => {
-          const status = getStatus(batch);
-          const pct = progressPercent(batch.producedQty, batch.orderQty);
-          const isClosing = closingId === batch.id;
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+          <TextField
+            select
+            size="small"
+            label="라인"
+            value={selectedLineId}
+            onChange={(event) => setSelectedLineId(event.target.value)}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="all">전체 라인</MenuItem>
+            {DUMMY_LINES.map((line) => (
+              <MenuItem key={line.id} value={String(line.id)}>
+                {line.name}
+              </MenuItem>
+            ))}
+          </TextField>
 
-          return (
-            <Paper key={batch.id} variant="outlined" sx={{ p: 2 }}>
-              {/* 헤더 행 */}
-              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                <Chip
-                  label={STATUS_LABEL[status]}
-                  color={STATUS_COLOR[status]}
-                  size="small"
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {batch.lineName}
-                </Typography>
-                <Typography variant="subtitle2" fontWeight={600}>
-                  {batch.orderNo}
-                </Typography>
-                <Typography variant="body2">{batch.styleName}</Typography>
-                <Box sx={{ flex: 1 }} />
-                <Typography variant="body2" color="text.secondary">
-                  배정 기간: {batch.plannedStart} ~ {batch.plannedEnd}
-                </Typography>
-              </Stack>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip size="small" color="warning" label={`지연 ${summary.overdue}건`} />
+            <Chip size="small" color="primary" label={`진행중 ${summary.active}건`} />
+            <Chip size="small" label={`대기 ${summary.pending}건`} />
+            <Chip size="small" color="success" label={`완료 ${summary.completed}건`} />
+          </Stack>
+        </Stack>
 
-              <Divider sx={{ my: 1.5 }} />
+        <Stack spacing={1.5}>
+          {filteredBatches.map((batch) => {
+            const status = getStatus(batch);
+            const statusMeta = STATUS_META[status];
+            const progressPercent = getProgressPercent(batch.producedQty, batch.orderQty);
+            const closeMode = batch.isCompleted ? getCloseMode(batch.closedQty, batch.orderQty) : null;
+            const StatusIcon = statusMeta.icon;
+            const canClose = status !== 'pending' && !batch.isCompleted;
+            const isClosing = closingId === batch.id;
 
-              {/* 수량 + 진행도 */}
-              <Stack direction="row" spacing={3} alignItems="center">
-                <Box sx={{ minWidth: 200 }}>
-                  <Stack direction="row" spacing={0.5} alignItems="baseline">
-                    <Typography variant="h6" fontWeight={700}>
-                      {batch.producedQty}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      / {batch.orderQty}장 주문
-                    </Typography>
-                    {batch.producedQty > batch.orderQty && (
-                      <Chip label="+초과" color="info" size="small" sx={{ ml: 0.5 }} />
-                    )}
-                  </Stack>
-                  <Box sx={{ mt: 0.5 }}>
-                    <LinearProgress
-                      variant="determinate"
-                      value={pct}
-                      color={pct >= 100 ? 'success' : status === 'overdue' ? 'warning' : 'primary'}
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {pct}% 생산됨
-                    </Typography>
-                  </Box>
-                </Box>
+            return (
+              <Paper
+                key={batch.id}
+                variant="outlined"
+                sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  borderRadius: 2,
+                  borderColor: statusMeta.border,
+                  bgcolor: statusMeta.background,
+                }}
+              >
+                {status !== 'pending' ? (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: `${batch.isCompleted ? 100 : progressPercent}%`,
+                      bgcolor: statusMeta.overlay,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                ) : null}
 
-                {/* 공정별 상세 */}
-                {batch.processBreakdown.length > 0 && (
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      공정별 수량
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap">
-                      {batch.processBreakdown.map((p) => (
-                        <Chip
-                          key={p.processName}
-                          label={`${p.processName} ${p.qty}`}
-                          size="small"
-                          variant="outlined"
-                        />
-                      ))}
-                    </Stack>
-                  </Box>
-                )}
-
-                <Box sx={{ flex: 1 }} />
-
-                {/* 완료 버튼 or 완료 상태 */}
-                {batch.isCompleted ? (
-                  <Stack alignItems="flex-end" spacing={0.5}>
-                    <Chip
-                      icon={<CheckCircleOutlineIcon />}
-                      label="생산 완료"
-                      color="success"
-                      variant="outlined"
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {batch.completedAt} · 확정 {batch.closedQty}장
-                    </Typography>
-                  </Stack>
-                ) : (
-                  <Button
-                    variant={status === 'overdue' ? 'contained' : 'outlined'}
-                    color={status === 'overdue' ? 'warning' : 'primary'}
-                    size="small"
-                    startIcon={status === 'overdue' ? <WarningAmberIcon /> : <CheckCircleOutlineIcon />}
-                    onClick={() => setClosingId(isClosing ? null : batch.id)}
+                <Stack spacing={1.5} sx={{ position: 'relative', zIndex: 1, p: 2 }}>
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={1}
+                    alignItems={{ md: 'center' }}
                   >
-                    생산 완료
-                  </Button>
-                )}
-              </Stack>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <Chip
+                        icon={<StatusIcon />}
+                        size="small"
+                        color={statusMeta.color}
+                        label={statusMeta.label}
+                        variant={batch.isCompleted ? 'filled' : 'outlined'}
+                      />
+                      <Typography variant="body2" color="text.secondary">
+                        {batch.lineName}
+                      </Typography>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {batch.orderNo}
+                      </Typography>
+                      <Typography variant="body2">{batch.styleName}</Typography>
+                      {closeMode ? (
+                        <Chip
+                          size="small"
+                          color={closeMode === 'FULL' ? 'success' : closeMode === 'OVER' ? 'info' : 'warning'}
+                          label={getCloseModeLabel(closeMode)}
+                        />
+                      ) : null}
+                    </Stack>
+                    <Box sx={{ flex: 1 }} />
+                    <Typography variant="body2" color="text.secondary">
+                      배정 기간: {batch.plannedStart} ~ {batch.plannedEnd}
+                    </Typography>
+                  </Stack>
 
-              {/* 완료 확인 패널 (인라인) */}
-              {isClosing && (
-                <ClosePanel
-                  batch={batch}
-                  onClose={(qty) => handleConfirmClose(batch.id, qty)}
-                  onCancel={() => setClosingId(null)}
-                />
-              )}
+                  <Stack
+                    direction={{ xs: 'column', lg: 'row' }}
+                    spacing={2}
+                    alignItems={{ lg: 'center' }}
+                  >
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      spacing={2}
+                      flexWrap="wrap"
+                      useFlexGap
+                      sx={{ flex: 1 }}
+                    >
+                      <MetricBlock label="주문수량" value={`${formatInt(batch.orderQty)}장`} />
+                      <MetricBlock
+                        label="작업기록 생산수량"
+                        value={`${formatInt(batch.producedQty)}장`}
+                        helper="작업기록 기준"
+                      />
+                      <MetricBlock
+                        label="검수 누적"
+                        value={`${formatInt(batch.qcPassedTotal)}장`}
+                        helper="QC 누적 기준"
+                      />
+                      <MetricBlock
+                        label="진행도"
+                        value={`${progressPercent}%`}
+                        helper="작업기록 기준"
+                      />
+                    </Stack>
+
+                    <Stack alignItems={{ xs: 'flex-start', lg: 'flex-end' }} spacing={0.75}>
+                      {batch.isCompleted ? (
+                        <>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            완료일 {batch.completedAt || '-'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            확정수량 {formatInt(batch.closedQty)}장
+                          </Typography>
+                        </>
+                      ) : canClose ? (
+                        <Button
+                          variant={status === 'overdue' ? 'contained' : 'outlined'}
+                          color={status === 'overdue' ? 'warning' : 'primary'}
+                          startIcon={status === 'overdue' ? <WarningAmberIcon /> : <CheckCircleOutlineIcon />}
+                          onClick={() => setClosingId((current) => (current === batch.id ? null : batch.id))}
+                        >
+                          제작 완료 확정
+                        </Button>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          시작 전 배치입니다
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Stack>
+
+                  {batch.processBreakdown.length > 0 ? (
+                    <Stack spacing={0.75}>
+                      <Typography variant="caption" color="text.secondary">
+                        공정별 참고수량
+                      </Typography>
+                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                        {batch.processBreakdown.map((process) => (
+                          <Chip
+                            key={`${batch.id}:${process.processName}`}
+                            size="small"
+                            variant="outlined"
+                            label={`${process.processName} ${formatInt(process.qty)}장`}
+                          />
+                        ))}
+                      </Stack>
+                    </Stack>
+                  ) : null}
+
+                  {isClosing ? (
+                    <ClosePanel
+                      batch={batch}
+                      onConfirm={(qty) => handleConfirmClose(batch.id, qty)}
+                      onCancel={() => setClosingId(null)}
+                    />
+                  ) : null}
+                </Stack>
+              </Paper>
+            );
+          })}
+
+          {filteredBatches.length === 0 ? (
+            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+              <Typography color="text.secondary">표시할 배치가 없습니다.</Typography>
             </Paper>
-          );
-        })}
-
-        {filtered.length === 0 && (
-          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">배정된 카드가 없습니다.</Typography>
-          </Paper>
-        )}
+          ) : null}
+        </Stack>
       </Stack>
     </AppPageContainer>
   );

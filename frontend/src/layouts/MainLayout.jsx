@@ -526,6 +526,11 @@ const MainLayout = () => {
             path: '/assignment',
           },
           {
+            label: getUiMessage('menu.batchProgress', '배치 진행', languageCode),
+            icon: <DashboardIcon />,
+            path: '/batch-progress',
+          },
+          {
             label: getUiMessage('menu.workHistory', '\uC791\uC5C5 \uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
@@ -814,6 +819,7 @@ const MainLayout = () => {
         if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
           const preferredRecordPaths = [
             '/assignment',
+            '/batch-progress',
             '/work-history',
             '/qc-review',
             '/attendance',
