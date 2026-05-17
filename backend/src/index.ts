@@ -6038,6 +6038,204 @@ const syncAssignmentSchedulesFromWorkRecords = async ({
     orgId,
     assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records),
   });
+const normalizeAssignmentScheduleRepairPayload = (
+  value: any,
+  fallback: any = null
+): {
+  startIndex: number;
+  endIndex: number;
+  startDayOffsetPercent: number | null;
+  startDayPercent: number | null;
+  endDayPercent: number | null;
+  startDateKey: string | null;
+  endDateKey: string | null;
+} | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const fallbackStartIndex = toSignedInt(fallback?.startIndex, 0);
+  const startIndex = toSignedInt(value?.startIndex, fallbackStartIndex);
+  const endIndex = Math.max(startIndex, toSignedInt(value?.endIndex, startIndex));
+  const startDateKey = normalizeDateKey(value?.startDateKey) || null;
+  const endDateKey = normalizeDateKey(value?.endDateKey) || startDateKey;
+
+  return {
+    startIndex,
+    endIndex,
+    startDayOffsetPercent: toOptionalFloat(value?.startDayOffsetPercent, null),
+    startDayPercent: toOptionalFloat(value?.startDayPercent, null),
+    endDayPercent: toOptionalFloat(value?.endDayPercent, null),
+    startDateKey,
+    endDateKey,
+  };
+};
+const extractAssignmentScheduleRepairPayload = (item: any) =>
+  normalizeAssignmentScheduleRepairPayload(
+    {
+      startIndex: item?.startIndex,
+      endIndex: item?.endIndex,
+      startDayOffsetPercent: item?.startDayOffsetPercent,
+      startDayPercent: item?.startDayPercent,
+      endDayPercent: item?.endDayPercent,
+      startDateKey: item?.startDateKey,
+      endDateKey: item?.endDateKey,
+    },
+    item
+  );
+const isSameAssignmentScheduleRepairPayload = (left: any, right: any) =>
+  isDeepEqualByStableJson(left ?? null, right ?? null);
+const applyAssignmentScheduleRepairPayload = (item: any, schedule: any) => {
+  const normalizedSchedule = normalizeAssignmentScheduleRepairPayload(schedule, item);
+  if (!normalizedSchedule) return item;
+  return {
+    ...item,
+    ...normalizedSchedule,
+  };
+};
+const repairAssignmentScheduleDriftForOrg = async ({
+  orgId,
+}: {
+  orgId: number;
+}): Promise<{
+  updatedAssignmentCount: number;
+  updatedPlanCount: number;
+}> => {
+  const [boardState, plans] = await Promise.all([
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { id: true, assignments: true },
+    }),
+    prisma.assignmentPlan.findMany({
+      where: { orgId },
+      select: {
+        id: true,
+        externalId: true,
+        ctSnapshot: true,
+        startIndex: true,
+        endIndex: true,
+        startDayOffsetPercent: true,
+        startDayPercent: true,
+        endDayPercent: true,
+      },
+    }),
+  ]);
+  if (!boardState && plans.length === 0) {
+    return { updatedAssignmentCount: 0, updatedPlanCount: 0 };
+  }
+
+  const stateAssignments = normalizeStateAssignments(boardState?.assignments);
+  const stateAssignmentByExternalId = buildAssignmentByExternalId(stateAssignments);
+  const planByExternalId = plans.reduce((map, plan) => {
+    const externalId = resolveOptionalString(plan?.externalId, null);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, plan);
+    return map;
+  }, new Map<string, any>());
+  const nowIso = new Date().toISOString();
+  const nowDate = new Date(nowIso);
+
+  let updatedAssignmentCount = 0;
+  const nextAssignments = stateAssignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    const linkedPlan = externalId ? planByExternalId.get(externalId) ?? null : null;
+    const snapshotSchedule =
+      normalizeAssignmentCtSnapshot(
+        assignment?.ctSnapshot ?? linkedPlan?.ctSnapshot
+      )?.schedule ?? null;
+    const targetSchedule = normalizeAssignmentScheduleRepairPayload(
+      snapshotSchedule,
+      assignment
+    );
+    if (!targetSchedule) {
+      return normalizeStateAssignmentItem(assignment);
+    }
+
+    const currentSchedule = extractAssignmentScheduleRepairPayload(assignment);
+    if (isSameAssignmentScheduleRepairPayload(currentSchedule, targetSchedule)) {
+      return normalizeStateAssignmentItem(assignment);
+    }
+
+    updatedAssignmentCount += 1;
+    return normalizeStateAssignmentItem({
+      ...applyAssignmentScheduleRepairPayload(assignment, targetSchedule),
+      version: toNonNegativeInt(assignment?.version, 0) + 1,
+      versionUpdatedAt: nowIso,
+    });
+  });
+
+  let updatedPlanCount = 0;
+  const planUpdates = plans
+    .map((plan) => {
+      const stateAssignment =
+        resolveOptionalString(plan?.externalId, null)
+          ? stateAssignmentByExternalId.get(String(plan.externalId)) ?? null
+          : null;
+      const snapshotSchedule =
+        normalizeAssignmentCtSnapshot(
+          plan?.ctSnapshot ?? stateAssignment?.ctSnapshot
+        )?.schedule ?? null;
+      const targetSchedule = normalizeAssignmentScheduleRepairPayload(
+        snapshotSchedule,
+        plan
+      );
+      if (!targetSchedule) return null;
+
+      const currentSchedule = extractAssignmentScheduleRepairPayload(plan);
+      if (isSameAssignmentScheduleRepairPayload(currentSchedule, targetSchedule)) {
+        return null;
+      }
+
+      updatedPlanCount += 1;
+      return {
+        id: plan.id,
+        data: {
+          ...targetSchedule,
+          updatedAt: nowDate,
+        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+      };
+    })
+    .filter((item): item is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
+      Boolean(item)
+    );
+
+  if (!boardState || (updatedAssignmentCount === 0 && planUpdates.length === 0)) {
+    if (boardState || planUpdates.length > 0) {
+      if (planUpdates.length > 0) {
+        await prisma.$transaction(
+          planUpdates.map((row) =>
+            prisma.assignmentPlan.update({
+              where: { id: row.id },
+              data: row.data,
+            })
+          )
+        );
+      }
+    }
+    return { updatedAssignmentCount, updatedPlanCount };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (updatedAssignmentCount > 0) {
+      await tx.assignmentBoardState.update({
+        where: { id: boardState.id },
+        data: {
+          assignments: nextAssignments,
+        },
+      });
+    }
+    if (planUpdates.length > 0) {
+      await Promise.all(
+        planUpdates.map((row) =>
+          tx.assignmentPlan.update({
+            where: { id: row.id },
+            data: row.data,
+          })
+        )
+      );
+    }
+  });
+
+  return { updatedAssignmentCount, updatedPlanCount };
+};
 const reorderAssignmentSchedulesByManualCompletion = async ({
   orgId,
   lineId,
@@ -13697,6 +13895,8 @@ app.get("/assignment-plans", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
+  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
+
   const lineId = Number(req.query.lineId);
   const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
   const factoryId = Number(req.query.factoryId);
@@ -14184,10 +14384,6 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
       updatedAt: new Date(),
     },
   });
-  const reorderResult = await reorderAssignmentSchedulesByManualCompletion({
-    orgId: organization.id,
-    lineId: plan.lineId,
-  });
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
   });
@@ -14206,7 +14402,7 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
       finalQuantity: toOptionalNonNegativeInt(updatedPlan.finalQuantity, null),
       completedAt: toIsoDateStringOrNull(updatedPlan.completedAt),
     },
-    reorderedAssignments: reorderResult.updatedAssignmentCount,
+    reorderedAssignments: 0,
   });
 });
 
@@ -14850,19 +15046,6 @@ app.post("/work-logs", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
-  try {
-    await syncAssignmentSchedulesFromWorkRecords({
-      orgId: organization.id,
-      records: normalized.records,
-    });
-  } catch (error) {
-    console.warn(
-      `[assignment-schedule-sync] orgId=${organization.id} mode=create failed: ${getErrorMessage(
-        error,
-        "failed to sync assignment schedule after work-log create"
-      )}`
-    );
-  }
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
@@ -14894,14 +15077,6 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(404)
       .json({ ok: false, error: translateWorkLogErrorMessage("work log not found") });
   }
-  const existingPlanIdRows = await prisma.workRecord.findMany({
-    where: { orgId: organization.id, workLogId: existing.id },
-    select: { assignmentPlanId: true },
-  });
-  const existingAssignmentPlanIds = normalizePlanIdList(
-    existingPlanIdRows.map((row) => row.assignmentPlanId)
-  );
-
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
@@ -15042,25 +15217,6 @@ app.put("/work-logs/:id", async (req, res) => {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
     },
   });
-  const updatedAssignmentPlanIds = normalizePlanIdList(
-    collectWorkRecordAssignmentPlanIds(normalized.records)
-  );
-  try {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId: organization.id,
-      assignmentPlanIds: [
-        ...existingAssignmentPlanIds,
-        ...updatedAssignmentPlanIds,
-      ],
-    });
-  } catch (error) {
-    console.warn(
-      `[assignment-schedule-sync] orgId=${organization.id} mode=update failed: ${getErrorMessage(
-        error,
-        "failed to sync assignment schedule after work-log update"
-      )}`
-    );
-  }
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
@@ -15087,30 +15243,9 @@ app.delete("/work-logs/:id", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
-  const existingPlanIdRows = await prisma.workRecord.findMany({
-    where: { orgId: organization.id, workLogId: existing.id },
-    select: { assignmentPlanId: true },
-  });
-  const existingAssignmentPlanIds = normalizePlanIdList(
-    existingPlanIdRows.map((row) => row.assignmentPlanId)
-  );
-
   await prisma.workLog.delete({
     where: { id: existing.id },
   });
-  try {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId: organization.id,
-      assignmentPlanIds: existingAssignmentPlanIds,
-    });
-  } catch (error) {
-    console.warn(
-      `[assignment-schedule-sync] orgId=${organization.id} mode=delete failed: ${getErrorMessage(
-        error,
-        "failed to sync assignment schedule after work-log delete"
-      )}`
-    );
-  }
   res.status(204).send();
 });
 
@@ -15123,6 +15258,7 @@ app.get("/assignment-board-view", async (req, res) => {
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
 
+  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
@@ -15140,6 +15276,7 @@ app.get("/assignment-board-versions", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
+  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
     select: {
@@ -15254,6 +15391,7 @@ app.get("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
+  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
   let state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });

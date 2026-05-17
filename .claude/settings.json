@@ -6,7 +6,9 @@
       "Bash(node:*)",
       "Bash(dir:*)",
       "Bash(npx prisma migrate dev:*)",
-      "Bash(npx prisma db push:*)"
+      "Bash(npx prisma db push:*)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\krsai\\\\Desktop\\\\baro\\\\frontend\\\\src\\\\pages\\\\App\" -Directory)",
+      "Bash(Select-Object -ExpandProperty Name)"
     ],
     "additionalDirectories": [
       "c:\\Users\\krsai\\Desktop\\baro",
