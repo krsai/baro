@@ -1424,6 +1424,23 @@ const hasAssignmentCtDraftChange = ({
   );
 };
 
+function doesAssignmentScheduleNeedRecompute(
+  assignment,
+  targetTotalSeconds,
+  days,
+  lineCapacityById = null
+) {
+  const plannedSeconds = Number(targetTotalSeconds);
+  if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
+
+  const scheduledSeconds = Number(
+    getAssignmentTotalSeconds(assignment, days, lineCapacityById)
+  );
+  if (!Number.isFinite(scheduledSeconds) || scheduledSeconds < 0) return true;
+
+  return Math.abs(scheduledSeconds - plannedSeconds) > 1;
+}
+
 const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
   if (!assignment || !card) return assignment;
 
@@ -1452,7 +1469,17 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
   const currentTotalSeconds = toNonNegativeInt(assignment?.totalSeconds, 0);
-  if (hasAbsoluteScheduleKeys && currentTotalSeconds === Math.round(nextTotalSeconds)) {
+  const hasScheduleDrift = doesAssignmentScheduleNeedRecompute(
+    next,
+    nextTotalSeconds,
+    days,
+    lineCapacityById
+  );
+  if (
+    hasAbsoluteScheduleKeys &&
+    currentTotalSeconds === Math.round(nextTotalSeconds) &&
+    !hasScheduleDrift
+  ) {
     return next;
   }
   const range = recomputeAssignmentRange(next, nextTotalSeconds, days, lineCapacityById);
