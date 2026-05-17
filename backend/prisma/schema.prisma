@@ -84,6 +84,17 @@ enum ProcessMasterOptionType {
   SPEC
 }
 
+enum AssignmentCloseMode {
+  FULL
+  SHORT
+  OVER
+}
+
+enum AssignmentCloseBasis {
+  QC_BASED
+  MANUAL
+}
+
 model SystemUser {
   id         Int        @id @default(autoincrement())
   email      String     @unique
@@ -665,6 +676,11 @@ model AssignmentPlan {
   isCompleted           Boolean   @default(false)
   finalQuantity         Int?
   completedAt           DateTime?
+  closedQty             Int?
+  closedAt              DateTime?
+  closedBy              String?
+  closeMode             AssignmentCloseMode?
+  closeBasis            AssignmentCloseBasis?
   createdAt             DateTime  @default(now())
   createdBy String   @default("system@baro.local")
   updatedAt             DateTime

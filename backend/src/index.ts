@@ -5466,6 +5466,34 @@ const resolveAssignmentProducedQuantityFromProcessTotals = ({
   // 완제품 수량은 공정별 누적의 최소값으로 본다.
   return Math.min(...normalizedTotals);
 };
+const resolveAssignmentPlanClosedQty = (plan: any) =>
+  toOptionalNonNegativeInt(plan?.closedQty, toOptionalNonNegativeInt(plan?.finalQuantity, null));
+
+const resolveAssignmentPlanClosedAtValue = (plan: any) =>
+  toOptionalDateValue(plan?.closedAt, toOptionalDateValue(plan?.completedAt, null));
+
+const resolveAssignmentPlanClosedAt = (plan: any) =>
+  toIsoDateStringOrNull(resolveAssignmentPlanClosedAtValue(plan));
+
+const resolveAssignmentPlanCloseMode = ({
+  closedQty,
+  targetQty,
+}: {
+  closedQty: number | null;
+  targetQty: number | null;
+}): "FULL" | "SHORT" | "OVER" | null => {
+  if (closedQty == null) return null;
+  if (targetQty == null || targetQty <= 0) return "FULL";
+  if (closedQty === targetQty) return "FULL";
+  if (closedQty < targetQty) return "SHORT";
+  return "OVER";
+};
+
+const resolveAssignmentPlanCloseBasis = (plan: any): "QC_BASED" | "MANUAL" | null => {
+  const basis = resolveOptionalString(plan?.closeBasis, null);
+  if (basis === "QC_BASED" || basis === "MANUAL") return basis;
+  return null;
+};
 const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
   value: any
 ): string => {
@@ -7571,7 +7599,16 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const normalizedSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
-  const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+  const closedQty = resolveAssignmentPlanClosedQty(plan);
+  const closedAt = resolveAssignmentPlanClosedAt(plan);
+  const closeMode =
+    resolveOptionalString(plan?.closeMode, null) ??
+    resolveAssignmentPlanCloseMode({
+      closedQty,
+      targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+    });
+  const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+  const completedAt = closedAt;
   const isCompleted = Boolean(plan?.isCompleted || completedAt);
   return {
     dbId: plan?.id ?? null,
@@ -7601,7 +7638,12 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     endIndex: plan?.endIndex ?? 0,
     isCompleted,
     finalQuantity,
+    closedQty,
     completedAt,
+    closedAt,
+    closeMode,
+    closeBasis,
+    closedBy: resolveOptionalString(plan?.closedBy, null),
   };
 };
 const buildWorkLogContextResponse = async ({
@@ -9850,8 +9892,16 @@ const toAssignmentPlanResponse = (plan: any) => {
     ctSnapshot,
   });
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
-  const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+  const closedQty = resolveAssignmentPlanClosedQty(plan);
+  const completedAt = resolveAssignmentPlanClosedAt(plan);
   const isCompleted = Boolean(plan?.isCompleted || completedAt);
+  const closeMode =
+    resolveOptionalString(plan?.closeMode, null) ??
+    resolveAssignmentPlanCloseMode({
+      closedQty,
+      targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+    });
+  const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   return {
     id: plan.externalId,
     lineId: String(plan.lineId),
@@ -9881,7 +9931,12 @@ const toAssignmentPlanResponse = (plan: any) => {
     endDayPercent: plan.endDayPercent ?? null,
     isCompleted,
     finalQuantity,
+    closedQty,
     completedAt,
+    closedAt: completedAt,
+    closedBy: resolveOptionalString(plan?.closedBy, null),
+    closeMode,
+    closeBasis,
     createdAt: plan.createdAt,
     updatedAt: plan.updatedAt,
   };
@@ -14417,8 +14472,16 @@ app.get("/assignment-plans", async (req, res) => {
         null;
       const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
       const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
-      const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+      const closedQty = resolveAssignmentPlanClosedQty(plan);
+      const completedAt = resolveAssignmentPlanClosedAt(plan);
       const isCompleted = Boolean(plan?.isCompleted || completedAt);
+      const closeMode =
+        resolveOptionalString(plan?.closeMode, null) ??
+        resolveAssignmentPlanCloseMode({
+          closedQty,
+          targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+        });
+      const closeBasis = resolveAssignmentPlanCloseBasis(plan);
       return {
         dbId: plan.id,
         id: plan.externalId,
@@ -14446,7 +14509,12 @@ app.get("/assignment-plans", async (req, res) => {
         endIndex: plan.endIndex,
         isCompleted,
         finalQuantity,
+        closedQty,
         completedAt,
+        closedAt: completedAt,
+        closedBy: resolveOptionalString(plan?.closedBy, null),
+        closeMode,
+        closeBasis,
       };
     })
   );
@@ -14484,6 +14552,11 @@ const buildAssignmentPlanProgressRows = async (
       isCompleted: true,
       finalQuantity: true,
       completedAt: true,
+      closedQty: true,
+      closedAt: true,
+      closedBy: true,
+      closeMode: true,
+      closeBasis: true,
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
   });
@@ -14547,6 +14620,7 @@ const buildAssignmentPlanProgressRows = async (
     const planId = Number(plan.id);
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
     const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
+    const closedQty = resolveAssignmentPlanClosedQty(plan);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0
         ? plannedQuantity
@@ -14559,8 +14633,15 @@ const buildAssignmentPlanProgressRows = async (
         ? null
         : (producedQuantity / baselineQuantityRaw) * 100;
 
-    const completedAt = toIsoDateStringOrNull(plan?.completedAt);
+    const completedAt = resolveAssignmentPlanClosedAt(plan);
     const isCompleted = Boolean(plan?.isCompleted || completedAt);
+    const closeMode =
+      resolveOptionalString(plan?.closeMode, null) ??
+      resolveAssignmentPlanCloseMode({
+        closedQty,
+        targetQty: plannedQuantity,
+      });
+    const closeBasis = resolveAssignmentPlanCloseBasis(plan);
     return {
       id: plan.externalId,
       dbId: planId,
@@ -14580,6 +14661,11 @@ const buildAssignmentPlanProgressRows = async (
       progressPercent,
       isCompleted,
       completedAt,
+      closedQty,
+      closedAt: completedAt,
+      closedBy: resolveOptionalString(plan?.closedBy, null),
+      closeMode,
+      closeBasis,
     };
   });
 };
@@ -14615,6 +14701,39 @@ const resolveAssignmentPlanProducedQuantity = async ({
     });
   }
   return 0;
+};
+
+const buildAssignmentPlanCloseResponse = (plan: any) => {
+  const quantity = toOptionalNonNegativeInt(plan?.quantity, null);
+  const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
+  const closedQty = resolveAssignmentPlanClosedQty(plan);
+  const completedAt = resolveAssignmentPlanClosedAt(plan);
+  const isCompleted = Boolean(plan?.isCompleted || completedAt);
+  const closeMode =
+    resolveOptionalString(plan?.closeMode, null) ??
+    resolveAssignmentPlanCloseMode({
+      closedQty,
+      targetQty: quantity,
+    });
+  const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+
+  return {
+    id: plan?.externalId,
+    dbId: plan?.id ?? null,
+    lineId: String(plan?.lineId ?? ""),
+    orderNo: resolveOptionalString(plan?.orderNo, "") ?? "",
+    label: resolveOptionalString(plan?.label, "") ?? "",
+    colorName: resolveAssignmentPlanColorName(plan),
+    quantity,
+    isCompleted,
+    finalQuantity,
+    completedAt,
+    closedQty,
+    closedAt: completedAt,
+    closedBy: resolveOptionalString(plan?.closedBy, null),
+    closeMode,
+    closeBasis,
+  };
 };
 
 app.get("/assignment-plan-progress", async (req, res) => {
@@ -14695,18 +14814,96 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
   return res.json({
     ok: true,
     plan: {
-      id: updatedPlan.externalId,
-      dbId: updatedPlan.id,
-      lineId: String(updatedPlan.lineId),
-      orderNo: updatedPlan.orderNo ?? "",
-      label: updatedPlan.label ?? "",
-      colorName: resolveAssignmentPlanColorName(updatedPlan),
-      quantity: toOptionalNonNegativeInt(updatedPlan.quantity, null),
-      isCompleted: Boolean(updatedPlan.isCompleted),
-      finalQuantity: toOptionalNonNegativeInt(updatedPlan.finalQuantity, null),
-      completedAt: toIsoDateStringOrNull(updatedPlan.completedAt),
+      ...buildAssignmentPlanCloseResponse(updatedPlan),
       producedQuantity,
     },
+  });
+});
+
+app.post("/assignment-plans/:externalId/close", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      isCompleted: true,
+      completedAt: true,
+      closedAt: true,
+      quantity: true,
+      finalQuantity: true,
+      closedQty: true,
+      closeMode: true,
+      closeBasis: true,
+      closedBy: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+    },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  if (plan.isCompleted || resolveAssignmentPlanClosedAtValue(plan)) {
+    return res.status(409).json({
+      ok: false,
+      error: "assignment plan already completed",
+    });
+  }
+
+  const closedQty = toOptionalNonNegativeInt(
+    req.body?.closedQty ?? req.body?.finalQuantity,
+    null
+  );
+  if (closedQty === null) {
+    return res.status(400).json({ ok: false, error: "closedQty is required" });
+  }
+
+  const targetQty = toOptionalNonNegativeInt(plan.quantity, null);
+  const closeMode = resolveAssignmentPlanCloseMode({ closedQty, targetQty });
+  if (!closeMode) {
+    return res.status(400).json({ ok: false, error: "closeMode could not be resolved" });
+  }
+
+  const requestedBasis = resolveOptionalString(req.body?.closeBasis, null);
+  const closeBasis =
+    requestedBasis === "QC_BASED" || requestedBasis === "MANUAL"
+      ? requestedBasis
+      : "MANUAL";
+  const closedAt = toOptionalDateValue(req.body?.closedAt, null) ?? new Date();
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      isCompleted: true,
+      finalQuantity: closedQty,
+      completedAt: closedAt,
+      closedQty,
+      closedAt,
+      closedBy: getCurrentRequestActor(),
+      closeMode,
+      closeBasis,
+      updatedAt: new Date(),
+    },
+  });
+  await syncOrderProgressStatusesForOrg({
+    orgId: organization.id,
+  });
+
+  return res.json({
+    ok: true,
+    plan: buildAssignmentPlanCloseResponse(updatedPlan),
+    reorderedAssignments: 0,
   });
 });
 
@@ -14729,8 +14926,13 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
       lineId: true,
       isCompleted: true,
       completedAt: true,
+      closedAt: true,
       quantity: true,
       finalQuantity: true,
+      closedQty: true,
+      closeMode: true,
+      closeBasis: true,
+      closedBy: true,
       orderNo: true,
       label: true,
       colorName: true,
@@ -14740,7 +14942,7 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
     return res.status(404).json({ ok: false, error: "assignment plan not found" });
   }
 
-  if (plan.isCompleted || toOptionalDateValue(plan.completedAt, null)) {
+  if (plan.isCompleted || resolveAssignmentPlanClosedAtValue(plan)) {
     return res.status(409).json({
       ok: false,
       error: "assignment plan already completed",
@@ -14753,12 +14955,27 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
   }
 
   const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
+  const closeMode =
+    resolveAssignmentPlanCloseMode({
+      closedQty: finalQuantity,
+      targetQty: toOptionalNonNegativeInt(plan.quantity, null),
+    }) ?? "FULL";
+  const requestedBasis = resolveOptionalString(req.body?.closeBasis, null);
+  const closeBasis =
+    requestedBasis === "QC_BASED" || requestedBasis === "MANUAL"
+      ? requestedBasis
+      : "QC_BASED";
   const updatedPlan = await prisma.assignmentPlan.update({
     where: { id: plan.id },
     data: {
       isCompleted: true,
       finalQuantity,
       completedAt,
+      closedQty: finalQuantity,
+      closedAt: completedAt,
+      closedBy: getCurrentRequestActor(),
+      closeMode,
+      closeBasis,
       updatedAt: new Date(),
     },
   });
@@ -14768,18 +14985,7 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
 
   return res.json({
     ok: true,
-    plan: {
-      id: updatedPlan.externalId,
-      dbId: updatedPlan.id,
-      lineId: String(updatedPlan.lineId),
-      orderNo: updatedPlan.orderNo ?? "",
-      label: updatedPlan.label ?? "",
-      colorName: resolveAssignmentPlanColorName(updatedPlan),
-      quantity: toOptionalNonNegativeInt(updatedPlan.quantity, null),
-      isCompleted: Boolean(updatedPlan.isCompleted),
-      finalQuantity: toOptionalNonNegativeInt(updatedPlan.finalQuantity, null),
-      completedAt: toIsoDateStringOrNull(updatedPlan.completedAt),
-    },
+    plan: buildAssignmentPlanCloseResponse(updatedPlan),
     reorderedAssignments: 0,
   });
 });

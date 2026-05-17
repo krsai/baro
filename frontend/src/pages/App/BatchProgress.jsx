@@ -88,7 +88,7 @@ const DUMMY_BATCHES = [
     plannedStart: '2026-04-01',
     plannedEnd: '2026-04-15',
     orderQty: 300,
-    producedQty: 312,
+    producedQty: 305,
     qcPassedTotal: 300,
     processBreakdown: [
       { processName: '봉제', qty: 312 },
@@ -221,6 +221,11 @@ const ClosePanel = ({ batch, onConfirm, onCancel }) => {
         <Typography variant="body2" color="text.secondary">
           작업기록 생산수량을 검토한 뒤, 이 배치의 제작 완료 수량을 확정합니다.
         </Typography>
+        {parsedQty === 0 ? (
+          <Typography variant="caption" color="warning.main">
+            작업기록이 없는 경우 수량을 직접 입력하세요.
+          </Typography>
+        ) : null}
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           spacing={1.5}
