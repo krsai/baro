@@ -78,6 +78,7 @@ const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionPlan'));
 const ProductionResult = lazyImportWithRetry(() => import('./pages/App/ProductionResult'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
+const BatchProgress = lazyImportWithRetry(() => import('./pages/App/BatchProgress'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const WorkspaceDashboard = lazyImportWithRetry(() => import('./pages/App/WorkspaceDashboard'));
 
@@ -296,6 +297,10 @@ const router = createBrowserRouter([
           {
             path: 'qc-review',
             element: <QcReview />,
+          },
+          {
+            path: 'batch-progress',
+            element: <BatchProgress />,
           },
           {
             path: 'assignment',
