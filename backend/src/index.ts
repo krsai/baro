@@ -6437,6 +6437,52 @@ const repairAssignmentScheduleDriftForOrg = async ({
   }
 
   const stateAssignments = normalizeStateAssignments(boardState?.assignments);
+  const repairLineIds = Array.from(
+    new Set(
+      [...stateAssignments, ...plans]
+        .map((item) => toPositiveIntOrNull(item?.lineId))
+        .filter((lineId): lineId is number => lineId !== null)
+    )
+  );
+  const holidayModel = (prisma as any).organizationHoliday;
+  const [activeLineAssignments, holidayRows] = await Promise.all([
+    repairLineIds.length > 0
+      ? prisma.lineAssignment.findMany({
+          where: {
+            lineId: { in: repairLineIds },
+            endAt: null,
+          },
+          select: { lineId: true },
+        })
+      : [],
+    holidayModel && typeof holidayModel.findMany === "function"
+      ? holidayModel
+          .findMany({
+            where: { orgId },
+            select: { holidayDate: true },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const activeHeadcountByLineId = activeLineAssignments.reduce((map, row) => {
+    const lineId = toPositiveIntOrNull(row?.lineId);
+    if (!lineId) return map;
+    map.set(lineId, (map.get(lineId) || 0) + 1);
+    return map;
+  }, new Map<number, number>());
+  const lineCapacityById = repairLineIds.reduce((map, lineId) => {
+    const headcount = activeHeadcountByLineId.get(lineId) || 0;
+    map.set(
+      String(lineId),
+      Math.max(1, headcount) * ASSIGNMENT_SCHEDULE_REPAIR_DAILY_CAPACITY_SECONDS
+    );
+    return map;
+  }, new Map<string, number>());
+  const holidaySet = new Set<string>(
+    ensureArray(holidayRows)
+      .map((row) => normalizeDateKey(row?.holidayDate))
+      .filter((value): value is string => Boolean(value))
+  );
   const stateAssignmentByExternalId = buildAssignmentByExternalId(stateAssignments);
   const planByExternalId = plans.reduce((map, plan) => {
     const externalId = resolveOptionalString(plan?.externalId, null);
@@ -6451,26 +6497,41 @@ const repairAssignmentScheduleDriftForOrg = async ({
   const nextAssignments = stateAssignments.map((assignment) => {
     const externalId = resolveAssignmentExternalId(assignment);
     const linkedPlan = externalId ? planByExternalId.get(externalId) ?? null : null;
-    const snapshotSchedule =
-      normalizeAssignmentCtSnapshot(
-        assignment?.ctSnapshot ?? linkedPlan?.ctSnapshot
-      )?.schedule ?? null;
-    const targetSchedule = normalizeAssignmentScheduleRepairPayload(
-      snapshotSchedule,
-      assignment
-    );
+    const targetSchedule = buildAssignmentScheduleRepairTarget({
+      primary: assignment,
+      secondary: linkedPlan,
+      lineCapacityById,
+      holidaySet,
+    });
     if (!targetSchedule) {
       return normalizeStateAssignmentItem(assignment);
     }
 
     const currentSchedule = extractAssignmentScheduleRepairPayload(assignment);
-    if (isSameAssignmentScheduleRepairPayload(currentSchedule, targetSchedule)) {
+    const nextCtSnapshot = applyAssignmentScheduleToCtSnapshot(
+      assignment,
+      targetSchedule,
+      linkedPlan
+    );
+    const currentCtSnapshot = normalizeAssignmentCtSnapshot(
+      assignment?.ctSnapshot ?? linkedPlan?.ctSnapshot
+    );
+    const scheduleUnchanged = isSameAssignmentScheduleRepairPayload(
+      currentSchedule,
+      targetSchedule
+    );
+    const snapshotUnchanged = isDeepEqualByStableJson(
+      currentCtSnapshot ?? null,
+      nextCtSnapshot ?? null
+    );
+    if (scheduleUnchanged && snapshotUnchanged) {
       return normalizeStateAssignmentItem(assignment);
     }
 
     updatedAssignmentCount += 1;
     return normalizeStateAssignmentItem({
       ...applyAssignmentScheduleRepairPayload(assignment, targetSchedule),
+      ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
       version: toNonNegativeInt(assignment?.version, 0) + 1,
       versionUpdatedAt: nowIso,
     });
@@ -6483,18 +6544,32 @@ const repairAssignmentScheduleDriftForOrg = async ({
         resolveOptionalString(plan?.externalId, null)
           ? stateAssignmentByExternalId.get(String(plan.externalId)) ?? null
           : null;
-      const snapshotSchedule =
-        normalizeAssignmentCtSnapshot(
-          plan?.ctSnapshot ?? stateAssignment?.ctSnapshot
-        )?.schedule ?? null;
-      const targetSchedule = normalizeAssignmentScheduleRepairPayload(
-        snapshotSchedule,
-        plan
-      );
+      const targetSchedule = buildAssignmentScheduleRepairTarget({
+        primary: plan,
+        secondary: stateAssignment,
+        lineCapacityById,
+        holidaySet,
+      });
       if (!targetSchedule) return null;
 
       const currentSchedule = extractAssignmentScheduleRepairPayload(plan);
-      if (isSameAssignmentScheduleRepairPayload(currentSchedule, targetSchedule)) {
+      const nextCtSnapshot = applyAssignmentScheduleToCtSnapshot(
+        plan,
+        targetSchedule,
+        stateAssignment
+      );
+      const currentCtSnapshot = normalizeAssignmentCtSnapshot(
+        plan?.ctSnapshot ?? stateAssignment?.ctSnapshot
+      );
+      const scheduleUnchanged = isSameAssignmentScheduleRepairPayload(
+        currentSchedule,
+        targetSchedule
+      );
+      const snapshotUnchanged = isDeepEqualByStableJson(
+        currentCtSnapshot ?? null,
+        nextCtSnapshot ?? null
+      );
+      if (scheduleUnchanged && snapshotUnchanged) {
         return null;
       }
 
@@ -6503,6 +6578,12 @@ const repairAssignmentScheduleDriftForOrg = async ({
         id: plan.id,
         data: {
           ...targetSchedule,
+          ...(nextCtSnapshot
+            ? {
+                ctSnapshot: (nextCtSnapshot ??
+                  Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+              }
+            : {}),
           updatedAt: nowDate,
         } as Prisma.AssignmentPlanUncheckedUpdateInput,
       };
@@ -14671,23 +14752,6 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
     return res.status(400).json({ ok: false, error: "finalQuantity is required" });
   }
 
-  const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
-  const baselineQuantity =
-    plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
-  const producedQuantity = await resolveAssignmentPlanProducedQuantity({
-    orgId: organization.id,
-    planId: plan.id,
-    baselineQuantity,
-  });
-  if (producedQuantity < finalQuantity) {
-    return res.status(409).json({
-      ok: false,
-      error: `work log not finalized (produced=${producedQuantity}, finalQuantity=${finalQuantity})`,
-      producedQuantity,
-      finalQuantity,
-    });
-  }
-
   const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
   const updatedPlan = await prisma.assignmentPlan.update({
     where: { id: plan.id },
@@ -14723,8 +14787,7 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
 app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
   return res.status(410).json({
     ok: false,
-    error:
-      "manual completion is disabled; assignment completion is derived from work log quantities",
+    error: "assignment plan reopen is not implemented",
   });
 });
 

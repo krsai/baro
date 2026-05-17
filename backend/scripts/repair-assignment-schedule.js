@@ -46,6 +46,315 @@ const normalizeSnapshotSchedule = (value, fallback = null) => {
     endDateKey,
   };
 };
+const DEFAULT_DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
+
+const normalizeCtSnapshot = (value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return {
+    ...value,
+    schedule: normalizeSnapshotSchedule(value?.schedule),
+    totalCtSeconds:
+      Number.isFinite(Number(value?.totalCtSeconds))
+        ? Math.max(0, Math.round(Number(value.totalCtSeconds)))
+        : Number.isFinite(Number(value?.totalAgreedSeconds))
+          ? Math.max(0, Math.round(Number(value.totalAgreedSeconds)))
+          : null,
+  };
+};
+
+const resolveContractedSeconds = (item) => {
+  const snapshot = normalizeCtSnapshot(item?.ctSnapshot ?? item?.ctAgreedSnapshot);
+  if (snapshot?.totalCtSeconds != null) return snapshot.totalCtSeconds;
+  const contractedSeconds = Number(item?.contractedSeconds);
+  if (Number.isFinite(contractedSeconds) && contractedSeconds >= 0) {
+    return Math.round(contractedSeconds);
+  }
+  const totalSeconds = Number(item?.totalSeconds);
+  if (Number.isFinite(totalSeconds) && totalSeconds >= 0) {
+    return Math.round(totalSeconds);
+  }
+  return null;
+};
+
+const parseDateKeyToUtc = (value) => {
+  const dateKey = normalizeDateKey(value);
+  if (!dateKey) return null;
+  const [year, month, day] = dateKey.split("-").map((item) => Number(item));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toDateKeyFromUtc = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+};
+
+const shiftDateKeyByDays = (value, days) => {
+  const date = parseDateKeyToUtc(value);
+  if (!date) return null;
+  date.setUTCDate(date.getUTCDate() + Math.trunc(days));
+  return toDateKeyFromUtc(date);
+};
+
+const diffDateKeysByDays = (fromValue, toValue) => {
+  const fromDate = parseDateKeyToUtc(fromValue);
+  const toDate = parseDateKeyToUtc(toValue);
+  if (!fromDate || !toDate) return null;
+  return Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
+};
+
+const countDateRangeDaysInclusive = (startValue, endValue) => {
+  const diffDays = diffDateKeysByDays(startValue, endValue);
+  if (diffDays == null || diffDays < 0) return 0;
+  return diffDays + 1;
+};
+
+const getLineCapacitySeconds = (lineId, lineCapacityById) => {
+  const key = normalizeText(lineId);
+  if (!key) return DEFAULT_DAILY_CAPACITY_SECONDS;
+  const resolved = Number(lineCapacityById.get(key));
+  if (!Number.isFinite(resolved) || resolved <= 0) {
+    return DEFAULT_DAILY_CAPACITY_SECONDS;
+  }
+  return resolved;
+};
+
+const isNonWorkingDateKey = (dateKey, holidaySet) => {
+  const normalized = normalizeDateKey(dateKey);
+  const date = parseDateKeyToUtc(normalized);
+  if (!date) return false;
+  return date.getUTCDay() === 0 || holidaySet.has(normalized);
+};
+
+const getDayCapacitySeconds = ({ lineId, dateKey, lineCapacityById, holidaySet }) =>
+  isNonWorkingDateKey(dateKey, holidaySet)
+    ? 0
+    : getLineCapacitySeconds(lineId, lineCapacityById);
+
+const calculateScheduledSeconds = ({
+  schedule,
+  lineId,
+  lineCapacityById,
+  holidaySet,
+}) => {
+  const normalized = normalizeSnapshotSchedule(schedule);
+  if (!normalized?.startDateKey) return null;
+  const startPercent = (normalized.startDayPercent ?? 100) / 100;
+  const endPercent = (normalized.endDayPercent ?? 100) / 100;
+  const spanDays = countDateRangeDaysInclusive(
+    normalized.startDateKey,
+    normalized.endDateKey ?? normalized.startDateKey
+  );
+  if (spanDays <= 0) return null;
+
+  let total = 0;
+  for (let offset = 0; offset < spanDays; offset += 1) {
+    const dayKey = shiftDateKeyByDays(normalized.startDateKey, offset);
+    if (!dayKey) continue;
+    const dailyCapacity = getDayCapacitySeconds({
+      lineId,
+      dateKey: dayKey,
+      lineCapacityById,
+      holidaySet,
+    });
+    if (dailyCapacity <= 0) continue;
+
+    if (spanDays === 1) {
+      total += dailyCapacity * startPercent;
+      continue;
+    }
+    if (offset === 0) {
+      total += dailyCapacity * startPercent;
+    } else if (offset === spanDays - 1) {
+      total += dailyCapacity * endPercent;
+    } else {
+      total += dailyCapacity;
+    }
+  }
+
+  return total;
+};
+
+const recomputeScheduleFromCurrentStart = ({
+  schedule,
+  lineId,
+  totalSeconds,
+  lineCapacityById,
+  holidaySet,
+  fallback = null,
+}) => {
+  const normalized = normalizeSnapshotSchedule(schedule, fallback);
+  const plannedSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (!normalized?.startDateKey || plannedSeconds <= 0) return normalized;
+
+  const startIndex = toSignedInt(normalized.startIndex, toSignedInt(fallback?.startIndex, 0));
+  const startDayOffsetPercent = toOptionalFloat(normalized.startDayOffsetPercent, 0);
+  const resolvedStartDayOffsetPercent =
+    startDayOffsetPercent == null
+      ? 0
+      : Math.max(0, Math.min(99.999, startDayOffsetPercent));
+  const startCapacity = getDayCapacitySeconds({
+    lineId,
+    dateKey: normalized.startDateKey,
+    lineCapacityById,
+    holidaySet,
+  });
+  const startOffsetSeconds = (resolvedStartDayOffsetPercent / 100) * startCapacity;
+  const startAvailable = Math.max(startCapacity - startOffsetSeconds, 0);
+  let remaining = plannedSeconds;
+  const startUse = Math.min(startAvailable, remaining);
+  const startDayPercent = startCapacity > 0 ? (startUse / startCapacity) * 100 : 0;
+  remaining -= startUse;
+
+  if (remaining <= 0) {
+    return {
+      startIndex,
+      endIndex: startIndex,
+      startDayOffsetPercent: resolvedStartDayOffsetPercent,
+      startDayPercent,
+      endDayPercent: startDayPercent,
+      startDateKey: normalized.startDateKey,
+      endDateKey: normalized.startDateKey,
+    };
+  }
+
+  const fallbackDailyCapacity = Math.max(
+    1,
+    getLineCapacitySeconds(lineId, lineCapacityById)
+  );
+  const projectedWorkingDays = Math.max(
+    1,
+    Math.ceil(plannedSeconds / fallbackDailyCapacity)
+  );
+  const maxIterations = Math.max(projectedWorkingDays + 60, 120);
+
+  let endDateKey = normalized.startDateKey;
+  let cursorDateKey = normalized.startDateKey;
+  for (let step = 0; step < maxIterations; step += 1) {
+    const nextDateKey = shiftDateKeyByDays(cursorDateKey, 1);
+    if (!nextDateKey) break;
+    cursorDateKey = nextDateKey;
+    endDateKey = nextDateKey;
+
+    const dailyCapacity = getDayCapacitySeconds({
+      lineId,
+      dateKey: nextDateKey,
+      lineCapacityById,
+      holidaySet,
+    });
+    if (dailyCapacity <= 0) continue;
+    if (remaining <= dailyCapacity) {
+      const endDayPercent = (remaining / dailyCapacity) * 100;
+      const dayDelta = diffDateKeysByDays(normalized.startDateKey, nextDateKey) ?? 0;
+      return {
+        startIndex,
+        endIndex: Math.max(startIndex, startIndex + Math.max(0, dayDelta)),
+        startDayOffsetPercent: resolvedStartDayOffsetPercent,
+        startDayPercent,
+        endDayPercent,
+        startDateKey: normalized.startDateKey,
+        endDateKey: nextDateKey,
+      };
+    }
+    remaining -= dailyCapacity;
+  }
+
+  const dayDelta = diffDateKeysByDays(normalized.startDateKey, endDateKey) ?? 0;
+  return {
+    startIndex,
+    endIndex: Math.max(startIndex, startIndex + Math.max(0, dayDelta)),
+    startDayOffsetPercent: resolvedStartDayOffsetPercent,
+    startDayPercent,
+    endDayPercent: 100,
+    startDateKey: normalized.startDateKey,
+    endDateKey,
+  };
+};
+
+const scheduleNeedsRecompute = ({
+  schedule,
+  lineId,
+  totalSeconds,
+  lineCapacityById,
+  holidaySet,
+}) => {
+  const plannedSeconds = Number(totalSeconds);
+  if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
+  const scheduledSeconds = calculateScheduledSeconds({
+    schedule,
+    lineId,
+    lineCapacityById,
+    holidaySet,
+  });
+  if (scheduledSeconds == null) return false;
+  return Math.abs(scheduledSeconds - plannedSeconds) > 1;
+};
+
+const buildTargetSchedule = ({
+  primary,
+  secondary = null,
+  lineCapacityById,
+  holidaySet,
+}) => {
+  const currentSchedule = extractCurrentSchedule(primary);
+  const secondarySchedule = extractCurrentSchedule(secondary);
+  const snapshotSchedule =
+    normalizeCtSnapshot(
+      primary?.ctSnapshot ??
+        primary?.ctAgreedSnapshot ??
+        secondary?.ctSnapshot ??
+        secondary?.ctAgreedSnapshot
+    )?.schedule ?? null;
+  const totalSeconds =
+    resolveContractedSeconds(primary) ?? resolveContractedSeconds(secondary);
+  const repairSourceSchedule =
+    currentSchedule?.startDateKey
+      ? currentSchedule
+      : secondarySchedule?.startDateKey
+        ? secondarySchedule
+        : snapshotSchedule;
+
+  if (
+    repairSourceSchedule &&
+    scheduleNeedsRecompute({
+      schedule: repairSourceSchedule,
+      lineId: primary?.lineId ?? secondary?.lineId,
+      totalSeconds,
+      lineCapacityById,
+      holidaySet,
+    })
+  ) {
+    return recomputeScheduleFromCurrentStart({
+      schedule: repairSourceSchedule,
+      lineId: primary?.lineId ?? secondary?.lineId,
+      totalSeconds,
+      lineCapacityById,
+      holidaySet,
+      fallback: primary ?? secondary,
+    });
+  }
+
+  return (
+    normalizeSnapshotSchedule(snapshotSchedule, primary) ||
+    normalizeSnapshotSchedule(currentSchedule, primary) ||
+    normalizeSnapshotSchedule(secondarySchedule, secondary)
+  );
+};
+
+const applyScheduleToCtSnapshot = (item, schedule, fallbackSnapshotSource = null) => {
+  if (!schedule) return null;
+  const normalizedSnapshot = normalizeCtSnapshot(
+    item?.ctSnapshot ??
+      item?.ctAgreedSnapshot ??
+      fallbackSnapshotSource?.ctSnapshot ??
+      fallbackSnapshotSource?.ctAgreedSnapshot
+  );
+  if (!normalizedSnapshot) return null;
+  return {
+    ...normalizedSnapshot,
+    schedule: normalizeSnapshotSchedule(schedule, item),
+  };
+};
 
 const extractCurrentSchedule = (item) =>
   normalizeSnapshotSchedule(
@@ -62,7 +371,7 @@ const extractCurrentSchedule = (item) =>
   );
 
 const extractSnapshotSchedule = (value, fallback = null) => {
-  const schedule = value?.ctSnapshot?.schedule;
+  const schedule = value?.ctSnapshot?.schedule ?? value?.ctAgreedSnapshot?.schedule;
   return normalizeSnapshotSchedule(schedule, fallback);
 };
 
@@ -110,6 +419,51 @@ const repairOrganization = async (orgId) => {
   const assignments = Array.isArray(boardState?.assignments)
     ? boardState.assignments
     : [];
+  const repairLineIds = Array.from(
+    new Set(
+      [...assignments, ...plans]
+        .map((item) => {
+          const parsed = Number(item?.lineId);
+          return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+        })
+        .filter(Boolean)
+    )
+  );
+  const [activeLineAssignments, holidayRows] = await Promise.all([
+    repairLineIds.length > 0
+      ? prisma.lineAssignment.findMany({
+          where: {
+            lineId: { in: repairLineIds },
+            endAt: null,
+          },
+          select: { lineId: true },
+        })
+      : [],
+    prisma.organizationHoliday
+      ? prisma.organizationHoliday
+          .findMany({
+            where: { orgId },
+            select: { holidayDate: true },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const activeHeadcountByLineId = activeLineAssignments.reduce((map, row) => {
+    const lineId = Number(row?.lineId);
+    if (!Number.isFinite(lineId) || lineId <= 0) return map;
+    map.set(lineId, (map.get(lineId) || 0) + 1);
+    return map;
+  }, new Map());
+  const lineCapacityById = repairLineIds.reduce((map, lineId) => {
+    const headcount = activeHeadcountByLineId.get(lineId) || 0;
+    map.set(String(lineId), Math.max(1, headcount) * DEFAULT_DAILY_CAPACITY_SECONDS);
+    return map;
+  }, new Map());
+  const holidaySet = new Set(
+    (Array.isArray(holidayRows) ? holidayRows : [])
+      .map((row) => normalizeDateKey(row?.holidayDate))
+      .filter(Boolean)
+  );
   const planByExternalId = new Map(
     plans
       .map((plan) => [normalizeText(plan?.externalId), plan])
@@ -128,17 +482,34 @@ const repairOrganization = async (orgId) => {
   const nextAssignments = assignments.map((assignment) => {
     const externalId = normalizeText(assignment?.id || assignment?.externalId);
     const linkedPlan = externalId ? planByExternalId.get(externalId) || null : null;
-    const targetSchedule =
-      extractSnapshotSchedule(assignment, assignment) ||
-      extractSnapshotSchedule(linkedPlan, assignment);
+    const targetSchedule = buildTargetSchedule({
+      primary: assignment,
+      secondary: linkedPlan,
+      lineCapacityById,
+      holidaySet,
+    });
     if (!targetSchedule) return assignment;
 
     const currentSchedule = extractCurrentSchedule(assignment);
-    if (sameSchedule(currentSchedule, targetSchedule)) return assignment;
+    const nextCtSnapshot = applyScheduleToCtSnapshot(
+      assignment,
+      targetSchedule,
+      linkedPlan
+    );
+    const currentCtSnapshot = normalizeCtSnapshot(
+      assignment?.ctSnapshot ?? assignment?.ctAgreedSnapshot ?? linkedPlan?.ctSnapshot
+    );
+    if (
+      sameSchedule(currentSchedule, targetSchedule) &&
+      sameSchedule(currentCtSnapshot?.schedule, nextCtSnapshot?.schedule)
+    ) {
+      return assignment;
+    }
 
     updatedAssignmentCount += 1;
     return {
       ...applySchedule(assignment, targetSchedule),
+      ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
       version: Math.max(0, toSignedInt(assignment?.version, 0)) + 1,
       versionUpdatedAt: nowIso,
     };
@@ -148,19 +519,32 @@ const repairOrganization = async (orgId) => {
   const planUpdates = plans
     .map((plan) => {
       const linkedAssignment = assignmentByExternalId.get(normalizeText(plan?.externalId)) || null;
-      const targetSchedule =
-        extractSnapshotSchedule(plan, plan) ||
-        extractSnapshotSchedule(linkedAssignment, plan);
+      const targetSchedule = buildTargetSchedule({
+        primary: plan,
+        secondary: linkedAssignment,
+        lineCapacityById,
+        holidaySet,
+      });
       if (!targetSchedule) return null;
 
       const currentSchedule = extractCurrentSchedule(plan);
-      if (sameSchedule(currentSchedule, targetSchedule)) return null;
+      const nextCtSnapshot = applyScheduleToCtSnapshot(plan, targetSchedule, linkedAssignment);
+      const currentCtSnapshot = normalizeCtSnapshot(
+        plan?.ctSnapshot ?? linkedAssignment?.ctSnapshot
+      );
+      if (
+        sameSchedule(currentSchedule, targetSchedule) &&
+        sameSchedule(currentCtSnapshot?.schedule, nextCtSnapshot?.schedule)
+      ) {
+        return null;
+      }
 
       updatedPlanCount += 1;
       return {
         id: plan.id,
         data: {
           ...targetSchedule,
+          ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
           updatedAt: nowDate,
         },
       };

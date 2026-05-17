@@ -208,7 +208,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
   let variants = Array.from(variantMap.values()).map((variant) => {
     const orderedBySize = { ...variant.orderedBySize };
     const passBySize = Object.keys(orderedBySize).reduce((acc, sizeKey) => {
-      acc[sizeKey] = String(Math.max(0, Math.round(Number(orderedBySize[sizeKey]) || 0)));
+      acc[sizeKey] = '0';
       return acc;
     }, {});
     return {
@@ -227,7 +227,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
         colorName: '미지정',
         gender: '-',
         orderedBySize: { FREE: fallbackQuantity },
-        passBySize: { FREE: String(fallbackQuantity) },
+        passBySize: { FREE: '0' },
         orderedQuantity: fallbackQuantity,
       },
     ];
@@ -399,7 +399,11 @@ const QcReview = () => {
               finalQuantity,
               isCompleted,
               completedAt,
-              qcPassQuantity: draftById.get(id) ?? String(finalQuantity ?? producedQuantity ?? plannedQuantity ?? 0),
+              qcPassQuantity:
+                draftById.get(id) ??
+                (finalQuantity !== null && finalQuantity !== undefined
+                  ? String(finalQuantity)
+                  : ''),
             };
           });
         });
@@ -478,19 +482,6 @@ const QcReview = () => {
           [planId]: normalizedDetail,
         }));
 
-        if (!row?.isCompleted && normalizedDetail.matched) {
-          const passTotal = resolveDetailPassTotal(normalizedDetail);
-          setRows((prevRows) =>
-            prevRows.map((item) =>
-              item.id === planId
-                ? {
-                    ...item,
-                    qcPassQuantity: String(passTotal),
-                  }
-                : item
-            )
-          );
-        }
       } catch (error) {
         setQcDetailByPlanId((prev) => ({
           ...prev,
@@ -803,7 +794,8 @@ const QcReview = () => {
                     const parsedQcPassQuantity = parsedQcPassQuantityRaw ?? 0;
                     const producedQuantity = toNonNegativeIntOrNull(row.producedQuantity) ?? 0;
                     const missingWorkLogQuantity = Math.max(0, parsedQcPassQuantity - producedQuantity);
-                    const canComplete = hasQcPassQuantity && missingWorkLogQuantity === 0;
+                    const canComplete = hasQcPassQuantity;
+                    const hasWorkLogGapWarning = hasQcPassQuantity && missingWorkLogQuantity > 0;
                     const statusChip = resolveStatusChip(row);
                     const isExpanded = expandedRowId === row.id;
 
@@ -922,7 +914,7 @@ const QcReview = () => {
                                     마감완료
                                   </SaveButton>
                                 </Box>
-                                {!canComplete ? (
+                                {!hasQcPassQuantity || hasWorkLogGapWarning ? (
                                   <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
                                     {hasQcPassQuantity
                                       ? `작업기록 부족 ${formatInt(missingWorkLogQuantity)}`
