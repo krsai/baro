@@ -59,7 +59,8 @@ const DEFAULT_DESKTOP_PAGE_ROW_HEIGHT = 56;
 const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
-  workDate: '작업일자',
+  workDate: '작업 종료일',
+  coverageStartDate: '작업 시작일',
   factory: '공장',
   autoFactory: '공장 (자동선택)',
   line: '라인',
@@ -87,6 +88,14 @@ const LABELS = {
   quantity: '생산량',
   addBelow: '아래 작업자 추가',
   remove: '작업자 삭제',
+  entryMode: '입력 방식',
+  entryModeDaily: '일별 입력',
+  entryModePeriodSummary: '기간 입력',
+  coverageSuggestionPrefix: '직전 작업기록 종료일',
+  coverageSuggestionSuffix: '시작일을 자동 제안했습니다.',
+  firstLineCoverage: '이 라인의 첫 작업기록입니다. 시작 날짜를 직접 입력하세요.',
+  zeroCoverageHint: '직전 작업기록이 없으면 시작일을 직접 입력해 주세요.',
+  coverageValidation: '작업 시작일은 종료일보다 늦을 수 없습니다.',
 };
 
 const toText = (value) => String(value || '').trim();
@@ -334,7 +343,13 @@ const buildLineSelection = (log) => {
   return { id: log?.lineId || '', name: log?.lineName || '' };
 };
 const buildInitialWorkDate = (log) => {
-  const nextDate = dayjs(log?.workDate || log?.createdAt || undefined);
+  const nextDate = dayjs(log?.coverageEndDate || log?.workDate || log?.createdAt || undefined);
+  return nextDate.isValid() ? nextDate : dayjs();
+};
+const buildInitialCoverageStartDate = (log) => {
+  const nextDate = dayjs(
+    log?.coverageStartDate || log?.coverageEndDate || log?.workDate || log?.createdAt || undefined
+  );
   return nextDate.isValid() ? nextDate : dayjs();
 };
 const stripAutoNoteFromText = (value) => {
@@ -871,6 +886,14 @@ const WorkDetail = ({
   const [selectedFactory, setSelectedFactory] = useState(() => buildFactorySelection(initialLog));
   const [selectedLine, setSelectedLine] = useState(() => buildLineSelection(initialLog));
   const [workDate, setWorkDate] = useState(() => buildInitialWorkDate(initialLog));
+  const [coverageStartDate, setCoverageStartDate] = useState(() =>
+    buildInitialCoverageStartDate(initialLog)
+  );
+  const [coverageSuggestion, setCoverageSuggestion] = useState({
+    previousCoverageEndDate: null,
+    suggestedCoverageStartDate: null,
+    isFirstLineWorkLog: false,
+  });
   const [lineWorkers, setLineWorkers] = useState(() =>
     normalizeWorkerOptions(initialContext?.workers)
   );
@@ -927,6 +950,31 @@ const WorkDetail = ({
   const selectedFactoryId = toPositiveIdOrNull(selectedFactory?.id);
   const selectedLineId = toPositiveIdOrNull(selectedLine?.id);
   const workDateKey = useMemo(() => (workDate?.isValid?.() ? workDate.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')), [workDate]);
+  const coverageStartDateKey = useMemo(
+    () =>
+      coverageStartDate?.isValid?.()
+        ? coverageStartDate.format('YYYY-MM-DD')
+        : workDateKey,
+    [coverageStartDate, workDateKey]
+  );
+  const entryMode = useMemo(
+    () => (coverageStartDateKey === workDateKey ? 'daily' : 'period_summary'),
+    [coverageStartDateKey, workDateKey]
+  );
+  const entryModeLabel = useMemo(
+    () =>
+      entryMode === 'period_summary'
+        ? LABELS.entryModePeriodSummary
+        : LABELS.entryModeDaily,
+    [entryMode]
+  );
+  const workDateRangeLabel = useMemo(
+    () =>
+      coverageStartDateKey && coverageStartDateKey !== workDateKey
+        ? `${coverageStartDateKey} ~ ${workDateKey}`
+        : workDateKey,
+    [coverageStartDateKey, workDateKey]
+  );
   const isAggregateLegacyLog = Boolean(initialLog?.id) && !toPositiveIdOrNull(initialLog?.lineId) && !toText(initialLog?.lineName);
   const initialContextKey = useMemo(() => {
     const lineId = toPositiveIdOrNull(initialContext?.line?.id ?? initialLog?.lineId);
@@ -1074,6 +1122,12 @@ const WorkDetail = ({
     setSelectedFactory(initialFactoryOption);
     setSelectedLine(initialLineOption);
     setWorkDate(buildInitialWorkDate(initialLog));
+    setCoverageStartDate(buildInitialCoverageStartDate(initialLog));
+    setCoverageSuggestion({
+      previousCoverageEndDate: null,
+      suggestedCoverageStartDate: null,
+      isFirstLineWorkLog: false,
+    });
     setNote(stripAutoNoteFromText(initialLog?.note || ''));
     setFactories(initialFactoryOption ? [initialFactoryOption] : []);
     setLines(initialLineOption ? [initialLineOption] : []);
@@ -1098,6 +1152,8 @@ const WorkDetail = ({
     initialFactoryOption,
     initialLineOption,
     initialLog?.createdAt,
+    initialLog?.coverageEndDate,
+    initialLog?.coverageStartDate,
     initialLog?.id,
     initialLog?.note,
     initialLog?.records,
@@ -1193,6 +1249,11 @@ const WorkDetail = ({
       setLineWorkers(prefetchedWorkers);
       setAllAssignmentPlans(prefetchedAllAssignments);
       setAssignmentOptions(prefetchedAssignments);
+      setCoverageSuggestion({
+        previousCoverageEndDate: initialContext?.previousCoverageEndDate || null,
+        suggestedCoverageStartDate: initialContext?.suggestedCoverageStartDate || null,
+        isFirstLineWorkLog: Boolean(initialContext?.isFirstLineWorkLog),
+      });
       setLineDataLoading(false);
       return;
     }
@@ -1232,6 +1293,22 @@ const WorkDetail = ({
           normalizedCtAssignments.filter((plan) => !Boolean(plan?.isCompleted))
         );
         setLineWorkers(normalizeWorkerOptions(context?.workers));
+        const nextCoverageSuggestion = {
+          previousCoverageEndDate: context?.previousCoverageEndDate || null,
+          suggestedCoverageStartDate: context?.suggestedCoverageStartDate || null,
+          isFirstLineWorkLog: Boolean(context?.isFirstLineWorkLog),
+        };
+        setCoverageSuggestion(nextCoverageSuggestion);
+        if (!initialLog?.id) {
+          const suggestedStartDate = nextCoverageSuggestion.suggestedCoverageStartDate
+            ? dayjs(nextCoverageSuggestion.suggestedCoverageStartDate)
+            : null;
+          setCoverageStartDate(
+            suggestedStartDate?.isValid?.()
+              ? suggestedStartDate
+              : (workDate?.isValid?.() ? workDate : dayjs())
+          );
+        }
         if (context?.line) {
           setLines((currentLines) =>
             ensureOptionIncluded(currentLines, context.line, (item) => item?.id || item?.name)
@@ -1256,6 +1333,7 @@ const WorkDetail = ({
     prefetchedWorkers,
     selectedFactoryId,
     selectedLineId,
+    workDate,
     workDateKey,
     workerDebugEnabled,
   ]);
@@ -1648,21 +1726,45 @@ const WorkDetail = ({
   );
   const initialComparableSnapshot = useMemo(() => {
     if (!initialLog?.id) return null;
+    const initialCoverageEndDate = toText(initialLog?.coverageEndDate || initialLog?.workDate);
+    const initialCoverageStartDate = toText(
+      initialLog?.coverageStartDate || initialCoverageEndDate
+    );
     return {
-      workDate: toText(initialLog?.workDate),
+      workDate: initialCoverageEndDate,
+      coverageStartDate: initialCoverageStartDate,
+      coverageEndDate: initialCoverageEndDate,
+      entryMode:
+        toText(initialLog?.entryMode) ||
+        (initialCoverageStartDate && initialCoverageStartDate !== initialCoverageEndDate
+          ? 'period_summary'
+          : 'daily'),
       factoryId: toPositiveIdOrNull(initialLog?.factoryId),
       lineId: toPositiveIdOrNull(initialLog?.lineId),
       note: toText(stripAutoNoteFromText(initialLog?.note || '')),
       records: buildComparableWorkRecords(initialLog?.records),
     };
-  }, [initialLog?.factoryId, initialLog?.id, initialLog?.lineId, initialLog?.note, initialLog?.records, initialLog?.workDate]);
+  }, [
+    initialLog?.coverageEndDate,
+    initialLog?.coverageStartDate,
+    initialLog?.entryMode,
+    initialLog?.factoryId,
+    initialLog?.id,
+    initialLog?.lineId,
+    initialLog?.note,
+    initialLog?.records,
+    initialLog?.workDate,
+  ]);
   const currentComparableSnapshot = useMemo(() => ({
     workDate: toText(workDateKey),
+    coverageStartDate: toText(coverageStartDateKey),
+    coverageEndDate: toText(workDateKey),
+    entryMode,
     factoryId: selectedFactoryId,
     lineId: selectedLineId,
     note: toText(note),
     records: buildComparableWorkRecords(summary.records),
-  }), [note, selectedFactoryId, selectedLineId, summary.records, workDateKey]);
+  }), [coverageStartDateKey, entryMode, note, selectedFactoryId, selectedLineId, summary.records, workDateKey]);
   const isDirty = useMemo(() => {
     if (!initialLog?.id) return true;
     return (
@@ -2029,24 +2131,50 @@ const WorkDetail = ({
   const handleFactoryChange = useCallback((nextFactory) => {
     setSelectedFactory(nextFactory || null);
     setSelectedLine(null);
+    setCoverageSuggestion({
+      previousCoverageEndDate: null,
+      suggestedCoverageStartDate: null,
+      isFirstLineWorkLog: false,
+    });
+    if (!initialLog?.id) {
+      setCoverageStartDate(workDate?.isValid?.() ? workDate : dayjs());
+    }
     setRows([]);
     setFormError('');
     setEditingField(null);
     setPage(1);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id]);
+  }, [initialLog?.id, workDate]);
   const handleLineChange = useCallback((nextLine) => {
     setSelectedLine(nextLine || null);
+    setCoverageSuggestion({
+      previousCoverageEndDate: null,
+      suggestedCoverageStartDate: null,
+      isFirstLineWorkLog: false,
+    });
+    if (!initialLog?.id) {
+      setCoverageStartDate(workDate?.isValid?.() ? workDate : dayjs());
+    }
     setRows([]);
     setFormError('');
     setEditingField(null);
     setPage(1);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
-  }, [initialLog?.id]);
+  }, [initialLog?.id, workDate]);
   const handleWorkDateChange = useCallback((nextDate) => {
-    setWorkDate(nextDate || dayjs());
+    const resolvedNextDate = nextDate || dayjs();
+    setWorkDate(resolvedNextDate);
+    setCoverageSuggestion({
+      previousCoverageEndDate: null,
+      suggestedCoverageStartDate: null,
+      isFirstLineWorkLog: false,
+    });
+    setCoverageStartDate((current) => {
+      if (!current?.isValid?.()) return resolvedNextDate;
+      return current.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : current;
+    });
     setRows([]);
     setFormError('');
     setEditingField(null);
@@ -2054,6 +2182,10 @@ const WorkDetail = ({
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id]);
+  const handleCoverageStartDateChange = useCallback((nextDate) => {
+    setCoverageStartDate(nextDate || workDate || dayjs());
+    setFormError('');
+  }, [workDate]);
   const handleWorkerChange = useCallback((rowId, nextWorker) => {
     setRows((currentRows) =>
       currentRows.map((row) =>
@@ -2163,6 +2295,14 @@ const WorkDetail = ({
     if (initialLog?.id && !isDirty) {
       return;
     }
+    if (!coverageStartDateKey) {
+      setFormError('작업 시작일을 입력해 주세요.');
+      return;
+    }
+    if (coverageStartDateKey > workDateKey) {
+      setFormError(LABELS.coverageValidation);
+      return;
+    }
     if (!selectedFactoryId) {
       setFormError('공장을 선택해 주세요.');
       return;
@@ -2197,6 +2337,9 @@ const WorkDetail = ({
     }
     onSave?.({
       workDate: workDateKey,
+      coverageStartDate: coverageStartDateKey,
+      coverageEndDate: workDateKey,
+      entryMode,
       factoryId: selectedFactoryId,
       factoryName: toText(currentFactory?.name),
       lineId: selectedLineId,
@@ -2209,7 +2352,7 @@ const WorkDetail = ({
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, currentFactory?.name, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
   const pagedRowViewModels = useMemo(
     () =>
       pagedRows.map((row) => {
@@ -2494,7 +2637,7 @@ const WorkDetail = ({
   const detailHeader = (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
       <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>{`${LABELS.title}: ${workDateKey}`}</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>{`${LABELS.title}: ${workDateRangeLabel}`}</Typography>
       </Stack>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
@@ -2529,7 +2672,10 @@ const WorkDetail = ({
           sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', lg: 'minmax(220px, 1.1fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
+            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr) minmax(180px, 0.8fr)' }, alignItems: 'start' }}>
+              <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
+                <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
+              </LocalizationProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
@@ -2537,7 +2683,24 @@ const WorkDetail = ({
               <SearchableSelect label={LABELS.line} options={lines} value={selectedLine} onChange={(_event, value) => handleLineChange(value)} disabled={!selectedFactoryId || lines.length === 0} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               <TextField label={LABELS.wagePerSecond} size="small" value={selectedFactoryId ? hasFactoryWage ? `${formatNumberWithCommas(selectedFactoryWagePerSecond, { fallback: '0', maximumFractionDigits: 2 })} ${LABELS.wagePerSecondUnit}` : '-' : '-'} InputProps={{ readOnly: true }} sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }} />
             </Box>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}>
+              <Chip size="small" color={entryMode === 'period_summary' ? 'secondary' : 'default'} label={`${LABELS.entryMode}: ${entryModeLabel}`} />
+              <Typography variant="caption" color="text.secondary">
+                종료일 기준으로 저장하며, 시작일과 종료일이 같으면 일별 입력으로 처리합니다.
+              </Typography>
+            </Stack>
             <TextField label={LABELS.note} value={note} onChange={(event) => setNote(event.target.value)} placeholder={LABELS.notePlaceholder} size="small" fullWidth multiline minRows={2} />
+            {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
+              <Alert severity="info">
+                {`${LABELS.coverageSuggestionPrefix} ${coverageSuggestion.previousCoverageEndDate}입니다. ${coverageSuggestion.suggestedCoverageStartDate}부터 ${LABELS.coverageSuggestionSuffix}`}
+              </Alert>
+            ) : null}
+            {!initialLog?.id && selectedLineId && !lineDataLoading && coverageSuggestion.isFirstLineWorkLog ? (
+              <Alert severity="info">{LABELS.firstLineCoverage}</Alert>
+            ) : null}
+            {!initialLog?.id && selectedLineId && !lineDataLoading && !coverageSuggestion.previousCoverageEndDate && !coverageSuggestion.isFirstLineWorkLog ? (
+              <Alert severity="info">{LABELS.zeroCoverageHint}</Alert>
+            ) : null}
             {autoExceededNote ? <Alert severity="info"><Box><Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>{LABELS.autoNote}</Typography><Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>{autoExceededNote}</Typography></Box></Alert> : null}
             {isAggregateLegacyLog ? <Alert severity="warning">라인 정보가 없는 기존 기록은 이 화면에서 수정할 수 없습니다.</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}

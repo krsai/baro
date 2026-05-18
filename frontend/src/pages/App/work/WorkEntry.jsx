@@ -10,9 +10,9 @@ import { appendWorkLog, findWorkLogById, updateWorkLog } from './workLogStorage'
 
 const TEXT = {
   detailTitle: {
-    ko: '일일 기록 상세',
-    en: 'Daily Record Detail',
-    vi: 'Chi tiet ghi chep ngay',
+    ko: '작업 기록 상세',
+    en: 'Work Log Detail',
+    vi: 'Chi tiet nhat ky cong viec',
   },
   notFound: {
     ko: '기록을 찾을 수 없습니다.',
@@ -58,10 +58,10 @@ const buildWorkListTabLabel = (languageCode) => {
 const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiet ghi chep ngay'
+      ? 'Chi tiet nhat ky cong viec'
       : languageCode === 'en'
-        ? 'Daily Record Detail'
-        : '일일 기록 상세';
+        ? 'Work Log Detail'
+        : '작업 기록 상세';
   return workDateKey ? `${title}: ${workDateKey}` : title;
 };
 

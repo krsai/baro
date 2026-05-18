@@ -735,6 +735,9 @@ model WorkLog {
   id                     Int      @id @default(autoincrement())
   orgId                  Int
   workDate               String
+  coverageStartDate      String?
+  coverageEndDate        String?
+  entryMode              String?
   factoryId              Int?
   factoryName            String?
   factoryWagePerSecond   Float?

@@ -2084,6 +2084,9 @@ const loadAtTrainingSourceWorkLogs = async ({
     select: {
       id: true,
       workDate: true,
+      coverageStartDate: true,
+      coverageEndDate: true,
+      entryMode: true,
       factoryId: true,
       workerCount: true,
       workRecords: {
@@ -2503,14 +2506,16 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
 
   return filteredWorkLogs.reduce((drafts, workLog) => {
     const normalizedWorkDate = normalizeDateKey(workLog.workDate);
-    const monthKey = normalizeMonthKey(normalizedWorkDate.slice(0, 7));
+    const normalizedCoverageEndDate =
+      resolveWorkLogCoverageEndDate(workLog, normalizedWorkDate) || normalizedWorkDate;
+    const monthKey = normalizeMonthKey(normalizedCoverageEndDate.slice(0, 7));
     const resolvedFactoryId = toPositiveIntOrNull((workLog as any).factoryId);
     const workLogId = toPositiveIntOrNull(workLog.id);
-    if (!normalizedWorkDate || !monthKey || workLogId === null) {
+    if (!normalizedWorkDate || !normalizedCoverageEndDate || !monthKey || workLogId === null) {
       return drafts;
     }
 
-    // Use input-date intervals per factory: [previous input date + 1, current workDate].
+    // Prefer explicit coverage dates. Fallback to previous-input-date inference by factory.
     const periodTrackerKey =
       resolvedFactoryId === null ? "__factory_null__" : String(resolvedFactoryId);
     const previousPeriodEndDateKey =
@@ -2520,13 +2525,19 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       ? shiftDateKeyByDays(previousPeriodEndDateKey, 1)
       : null;
     const candidatePeriodStartDateKey = nextDateAfterPrevious || monthStartDateKey;
-    const periodStartDateKey =
-      candidatePeriodStartDateKey <= normalizedWorkDate
+    const explicitCoverageStartDate =
+      resolveWorkLogCoverageStartDate(workLog, normalizedCoverageEndDate) || null;
+    const inferredPeriodStartDateKey =
+      candidatePeriodStartDateKey <= normalizedCoverageEndDate
         ? candidatePeriodStartDateKey
-        : normalizedWorkDate;
+        : normalizedCoverageEndDate;
+    const periodStartDateKey =
+      explicitCoverageStartDate && explicitCoverageStartDate <= normalizedCoverageEndDate
+        ? explicitCoverageStartDate
+        : inferredPeriodStartDateKey;
     const periodDayCount = Math.max(
       1,
-      countDateRangeDaysInclusive(periodStartDateKey, normalizedWorkDate)
+      countDateRangeDaysInclusive(periodStartDateKey, normalizedCoverageEndDate)
     );
 
     const resolvedRows = workLog.workRecords
@@ -2586,7 +2597,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         workerId,
         resolveWorkerSecondsForPeriod({
           periodStartDateKey,
-          periodEndDateKey: normalizedWorkDate,
+          periodEndDateKey: normalizedCoverageEndDate,
           workerId,
           resolvedFactoryId,
         })
@@ -2642,13 +2653,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     drafts.push({
       sourceWorkLogId: workLogId,
       monthKey,
-      workDate: normalizedWorkDate,
+      workDate: normalizedCoverageEndDate,
       factoryId: resolvedFactoryId,
       totalSeconds: Math.max(1, Math.round(totalSeconds)),
       attendanceCoverage,
       processRows,
     });
-    previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedWorkDate);
+    previousPeriodEndDateByFactory.set(periodTrackerKey, normalizedCoverageEndDate);
     return drafts;
   }, [] as AtTrainingBucketDraft[]);
 };
@@ -5169,6 +5180,14 @@ const buildWorkDateRange = (workDate: any) => {
   endAt.setMilliseconds(endAt.getMilliseconds() - 1);
   return { dateKey: normalized, startAt, endAt };
 };
+const shiftDateKeyByDays = (dateKey: string, days: number): string | null => {
+  const parts = parseDateKeyParts(dateKey);
+  if (!parts) return null;
+  const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  if (Number.isNaN(utcDate.getTime())) return null;
+  utcDate.setUTCDate(utcDate.getUTCDate() + Math.trunc(days));
+  return utcDate.toISOString().slice(0, 10);
+};
 const resolveWorkLogLineMeta = (
   value: any
 ): { lineId: number | null; lineName: string | null } => {
@@ -5182,6 +5201,71 @@ const resolveWorkLogLineMeta = (
   const lineId = toPositiveIntOrNull(source?.lineId);
   const lineName = resolveOptionalString(source?.lineName, null);
   return { lineId, lineName };
+};
+const findPreviousWorkLogCoverageForLine = async ({
+  orgId,
+  factoryId = null,
+  lineId,
+  beforeWorkDate,
+}: {
+  orgId: number;
+  factoryId?: number | null;
+  lineId: number;
+  beforeWorkDate: string;
+}) => {
+  const normalizedBeforeWorkDate = normalizeDateKey(beforeWorkDate);
+  const normalizedFactoryId = toPositiveIntOrNull(factoryId);
+  if (!lineId || !normalizedBeforeWorkDate) {
+    return null;
+  }
+
+  const pageSize = 200;
+  for (let skip = 0; skip < 2000; skip += pageSize) {
+    const candidates = await prisma.workLog.findMany({
+      where: {
+        orgId,
+        ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+        workDate: { lt: normalizedBeforeWorkDate },
+      },
+      select: {
+        id: true,
+        workDate: true,
+        coverageStartDate: true,
+        coverageEndDate: true,
+        entryMode: true,
+        records: true,
+      },
+      orderBy: [{ workDate: "desc" }, { id: "desc" }],
+      skip,
+      take: pageSize,
+    });
+    if (candidates.length === 0) break;
+
+    for (const candidate of candidates) {
+      const candidateLineMeta = resolveWorkLogLineMeta(candidate?.records);
+      if (toPositiveIntOrNull(candidateLineMeta.lineId) !== lineId) continue;
+      const coverageEndDate = resolveWorkLogCoverageEndDate(candidate, candidate?.workDate);
+      const coverageStartDate = resolveWorkLogCoverageStartDate(
+        candidate,
+        coverageEndDate
+      );
+      return {
+        workLogId: toPositiveIntOrNull(candidate?.id),
+        workDate: normalizeDateKey(candidate?.workDate),
+        coverageStartDate,
+        coverageEndDate,
+        entryMode: resolveWorkLogEntryMode({
+          coverageStartDate,
+          coverageEndDate,
+          requestedEntryMode: candidate?.entryMode,
+        }),
+      };
+    }
+
+    if (candidates.length < pageSize) break;
+  }
+
+  return null;
 };
 const resolveWorkLogRecordResponses = (workLog: any) => {
   if (Array.isArray(workLog?.workRecords) && workLog.workRecords.length > 0) {
@@ -7633,10 +7717,60 @@ const toWorkRecordResponse = (record: any) => ({
   quantity: toNonNegativeInt(record?.quantity, 0),
   assignmentPlanId: record?.assignmentPlanId ?? null,
 });
+const resolveWorkLogCoverageStartDate = (source: any, fallbackDate: string | null = null) =>
+  normalizeDateKey(source?.coverageStartDate) ||
+  normalizeDateKey(fallbackDate) ||
+  null;
+
+const resolveWorkLogCoverageEndDate = (source: any, fallbackDate: string | null = null) =>
+  normalizeDateKey(source?.coverageEndDate) ||
+  normalizeDateKey(fallbackDate) ||
+  null;
+
+const resolveWorkLogEntryMode = ({
+  coverageStartDate,
+  coverageEndDate,
+  requestedEntryMode = null,
+}: {
+  coverageStartDate: string | null;
+  coverageEndDate: string | null;
+  requestedEntryMode?: any;
+}): "daily" | "period_summary" => {
+  const normalizedRequested = resolveOptionalString(requestedEntryMode, null)?.toLowerCase();
+  if (normalizedRequested === "daily" || normalizedRequested === "period_summary") {
+    return normalizedRequested;
+  }
+  if (!coverageStartDate || !coverageEndDate) return "daily";
+  return coverageStartDate === coverageEndDate ? "daily" : "period_summary";
+};
 const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
-  const workDateInput =
-    payload?.workDate !== undefined ? payload.workDate : fallback?.workDate;
-  const normalizedWorkDate = normalizeDateKey(workDateInput) || todayDateKey();
+  const coverageEndInput =
+    payload?.coverageEndDate !== undefined
+      ? payload.coverageEndDate
+      : payload?.workDate !== undefined
+        ? payload.workDate
+        : fallback?.coverageEndDate !== undefined
+          ? fallback?.coverageEndDate
+          : fallback?.workDate;
+  const normalizedCoverageEndDate = normalizeDateKey(coverageEndInput) || todayDateKey();
+  const coverageStartInput =
+    payload?.coverageStartDate !== undefined
+      ? payload.coverageStartDate
+      : fallback?.coverageStartDate !== undefined
+        ? fallback?.coverageStartDate
+        : normalizedCoverageEndDate;
+  const normalizedCoverageStartDateCandidate =
+    normalizeDateKey(coverageStartInput) || normalizedCoverageEndDate;
+  const normalizedCoverageStartDate =
+    normalizedCoverageStartDateCandidate <= normalizedCoverageEndDate
+      ? normalizedCoverageStartDateCandidate
+      : normalizedCoverageEndDate;
+  const entryMode = resolveWorkLogEntryMode({
+    coverageStartDate: normalizedCoverageStartDate,
+    coverageEndDate: normalizedCoverageEndDate,
+    requestedEntryMode:
+      payload?.entryMode !== undefined ? payload.entryMode : fallback?.entryMode,
+  });
   const fallbackLineMeta = resolveWorkLogLineMeta(fallback?.records);
   const normalizedRecords = normalizeWorkRecordPayloadList(
     payload?.records !== undefined ? payload.records : fallback?.records
@@ -7644,7 +7778,10 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
   const records = normalizedRecords.rows;
 
   return {
-    workDate: normalizedWorkDate,
+    workDate: normalizedCoverageEndDate,
+    coverageStartDate: normalizedCoverageStartDate,
+    coverageEndDate: normalizedCoverageEndDate,
+    entryMode,
     factoryId: toNumberOrNull(
       payload?.factoryId !== undefined ? payload.factoryId : fallback?.factoryId
     ),
@@ -7688,9 +7825,19 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
 };
 const toWorkLogResponse = (workLog: any) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
+  const coverageEndDate = resolveWorkLogCoverageEndDate(workLog, workLog?.workDate);
+  const coverageStartDate = resolveWorkLogCoverageStartDate(workLog, coverageEndDate);
+  const entryMode = resolveWorkLogEntryMode({
+    coverageStartDate,
+    coverageEndDate,
+    requestedEntryMode: workLog?.entryMode,
+  });
   return {
     id: workLog.id,
-    workDate: workLog.workDate,
+    workDate: coverageEndDate || workLog.workDate,
+    coverageStartDate,
+    coverageEndDate,
+    entryMode,
     factoryId: workLog.factoryId ?? null,
     factoryName: workLog.factoryName ?? "",
     lineId: lineMeta.lineId,
@@ -7783,17 +7930,37 @@ const buildWorkLogContextResponse = async ({
   const normalizedLineId = toPositiveIntOrNull(lineId);
   const normalizedFactoryId = toPositiveIntOrNull(factoryId);
   const normalizedWorkDate = normalizeDateKey(workDate);
+  const buildBaseResponse = ({
+    line: currentLine = null,
+    workers = [],
+    assignments = [],
+    previousCoverageEndDate = null,
+    suggestedCoverageStartDate = null,
+    isFirstLineWorkLog = false,
+  }: {
+    line?: { id: number; name: string } | null;
+    workers?: any[];
+    assignments?: any[];
+    previousCoverageEndDate?: string | null;
+    suggestedCoverageStartDate?: string | null;
+    isFirstLineWorkLog?: boolean;
+  }) => ({
+    line: currentLine,
+    workers,
+    assignments,
+    previousCoverageEndDate,
+    suggestedCoverageStartDate,
+    isFirstLineWorkLog,
+  });
   if (!normalizedLineId || !normalizedWorkDate) {
-    const response = {
+    const response = buildBaseResponse({
       line: normalizedLineId
         ? {
             id: normalizedLineId,
             name: resolveOptionalString(lineName, "") ?? "",
           }
         : null,
-      workers: [],
-      assignments: [],
-    };
+    });
     if (debug) {
       return {
         ...response,
@@ -7818,16 +7985,14 @@ const buildWorkLogContextResponse = async ({
     select: { id: true, name: true, factoryId: true },
   });
   if (!line) {
-    const response = {
+    const response = buildBaseResponse({
       line: normalizedLineId
         ? {
             id: normalizedLineId,
             name: resolveOptionalString(lineName, "") ?? "",
           }
         : null,
-      workers: [],
-      assignments: [],
-    };
+    });
     if (debug) {
       return {
         ...response,
@@ -7845,11 +8010,9 @@ const buildWorkLogContextResponse = async ({
 
   const dateRange = buildWorkDateRange(normalizedWorkDate);
   if (!dateRange) {
-    const response = {
+    const response = buildBaseResponse({
       line: { id: line.id, name: line.name ?? "" },
-      workers: [],
-      assignments: [],
-    };
+    });
     if (debug) {
       return {
         ...response,
@@ -7911,6 +8074,17 @@ const buildWorkLogContextResponse = async ({
       },
     },
   } as const;
+  const previousCoverage = await findPreviousWorkLogCoverageForLine({
+    orgId,
+    factoryId: line.factoryId,
+    lineId: line.id,
+    beforeWorkDate: normalizedWorkDate,
+  });
+  const previousCoverageEndDate =
+    resolveWorkLogCoverageEndDate(previousCoverage, previousCoverage?.workDate) || null;
+  const suggestedCoverageStartDate = previousCoverageEndDate
+    ? shiftDateKeyByDays(previousCoverageEndDate, 1)
+    : null;
 
   const [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
     prisma.lineAssignment.findMany({
@@ -8256,7 +8430,7 @@ const buildWorkLogContextResponse = async ({
     });
   }
 
-  const response = {
+  const response = buildBaseResponse({
     line: { id: line.id, name: line.name ?? "" },
     workers: workersForDate.map(toWorkLogContextWorkerResponse),
     assignments: assignmentPlans
@@ -8266,7 +8440,10 @@ const buildWorkLogContextResponse = async ({
           lineName: lineNameById.get(Number(plan?.lineId)) || "",
         })
       ),
-  };
+    previousCoverageEndDate,
+    suggestedCoverageStartDate,
+    isFirstLineWorkLog: !previousCoverageEndDate,
+  });
   if (!debug) return response;
 
   return {
@@ -15813,6 +15990,9 @@ app.get("/work-logs/:id", async (req, res) => {
     select: {
       id: true,
       workDate: true,
+      coverageStartDate: true,
+      coverageEndDate: true,
+      entryMode: true,
       factoryId: true,
       factoryName: true,
       factoryWagePerSecond: true,

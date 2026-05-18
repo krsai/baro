@@ -120,10 +120,10 @@ const buildWorkCreateTabLabel = (languageCode) => {
 const buildWorkDetailTabLabel = (workDateKey, languageCode) => {
   const title =
     languageCode === 'vi'
-      ? 'Chi tiet ghi chep ngay'
+      ? 'Chi tiet nhat ky cong viec'
       : languageCode === 'en'
-        ? 'Daily Record Detail'
-        : '일일 기록 상세';
+        ? 'Work Log Detail'
+        : '작업 기록 상세';
   return workDateKey ? `${title}: ${workDateKey}` : title;
 };
 

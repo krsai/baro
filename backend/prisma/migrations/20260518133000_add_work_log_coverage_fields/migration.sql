@@ -1,0 +1,4 @@
+ALTER TABLE "WorkLog"
+  ADD COLUMN IF NOT EXISTS "coverageStartDate" TEXT,
+  ADD COLUMN IF NOT EXISTS "coverageEndDate" TEXT,
+  ADD COLUMN IF NOT EXISTS "entryMode" TEXT;
