@@ -1495,6 +1495,42 @@ const buildDateKey = (date) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+const clampPercentValue = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(100, parsed));
+};
+const resolveAssignmentVisualStatus = ({
+  isCompleted = false,
+  startDateKey = null,
+  endDateKey = null,
+  todayDateKey,
+}) => {
+  if (isCompleted) return 'completed';
+  const normalizedTodayDateKey = typeof todayDateKey === 'string' ? todayDateKey : '';
+  const normalizedStartDateKey =
+    typeof startDateKey === 'string' && startDateKey.trim() ? startDateKey.trim() : '';
+  const normalizedEndDateKey =
+    typeof endDateKey === 'string' && endDateKey.trim()
+      ? endDateKey.trim()
+      : normalizedStartDateKey;
+
+  if (
+    normalizedStartDateKey &&
+    normalizedTodayDateKey &&
+    normalizedStartDateKey > normalizedTodayDateKey
+  ) {
+    return 'pending';
+  }
+  if (
+    normalizedEndDateKey &&
+    normalizedTodayDateKey &&
+    normalizedEndDateKey < normalizedTodayDateKey
+  ) {
+    return 'overdue';
+  }
+  return 'active';
+};
 
 const getMonthStartDate = (value = new Date()) => {
   const date = new Date(value);
@@ -2345,6 +2381,7 @@ const AssignBoard = () => {
   const [styles, setStyles] = useState([]);
   const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
+  const [assignmentProgressById, setAssignmentProgressById] = useState({});
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -2372,6 +2409,7 @@ const AssignBoard = () => {
   const dayCount = useMemo(() => {
     return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
   }, [viewStart, viewEnd]);
+  const todayDateKey = useMemo(() => buildDateKey(new Date()), []);
   const [days, setDays] = useState(() =>
     buildDays(
       startDateRef.current,
@@ -3541,6 +3579,57 @@ const AssignBoard = () => {
     () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
     [assignments]
   );
+  const assignmentProgressIdsKey = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          assignments
+            .map((assignment) => String(assignment?.id || '').trim())
+            .filter(Boolean)
+        )
+      )
+        .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+        .join(','),
+    [assignments]
+  );
+  useEffect(() => {
+    const normalizedOrgId = Number(activeOrgId);
+    if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0 || !assignmentProgressIdsKey) {
+      setAssignmentProgressById({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    const abortController = new AbortController();
+    requestJSON(
+      '/assignment-plan-progress' +
+        buildQueryString({ orgId: normalizedOrgId, ids: assignmentProgressIdsKey }),
+      {
+        skipGlobalLoading: true,
+        signal: abortController.signal,
+      }
+    )
+      .then((rows) => {
+        if (cancelled) return;
+        const nextMap = {};
+        (Array.isArray(rows) ? rows : []).forEach((row) => {
+          const rowId = String(row?.id || '').trim();
+          if (!rowId) return;
+          nextMap[rowId] = row;
+        });
+        setAssignmentProgressById(nextMap);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAssignmentProgressById({});
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [activeOrgId, assignmentProgressIdsKey]);
   const assignmentCtDisplayStateById = useMemo(() => {
     const map = new Map();
 
@@ -3581,6 +3670,32 @@ const AssignBoard = () => {
     return assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
+        const progressRow = assignmentProgressById[String(item?.id || '').trim()] || null;
+        const plannedQuantity = Number(
+          progressRow?.plannedQuantity ?? item?.quantity ?? item?.plannedQuantity ?? 0
+        );
+        const qcPassedTotalRaw = Number(progressRow?.qcPassedTotal ?? item?.qcPassedTotal ?? 0);
+        const closedQtyRaw = Number(progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? 0);
+        const qcDisplayQuantity = qcPassedTotalRaw > 0 ? qcPassedTotalRaw : closedQtyRaw;
+        const normalizedProgressPercent = clampPercentValue(
+          progressRow?.progressPercent ?? item?.progressPercent ?? 0
+        );
+        const isCompleted = Boolean(
+          progressRow?.isCompleted ??
+            progressRow?.closedAt ??
+            item?.isCompleted ??
+            item?.closedAt ??
+            item?.completedAt
+        );
+        const workProgressPercent = isCompleted ? 100 : normalizedProgressPercent;
+        const qcProgressPercent =
+          plannedQuantity > 0 ? clampPercentValue((qcDisplayQuantity / plannedQuantity) * 100) : 0;
+        const statusType = resolveAssignmentVisualStatus({
+          isCompleted,
+          startDateKey: item?.startDateKey,
+          endDateKey: item?.endDateKey,
+          todayDateKey,
+        });
         if (!item.cardId) return item;
         const card = cardById.get(item.cardId);
         if (!card) return item;
@@ -3588,12 +3703,43 @@ const AssignBoard = () => {
           ...item,
           quantity: item.quantity ?? card.quantity,
           gender: item.gender ?? card.gender,
+          isCompleted,
+          completedAt:
+            progressRow?.completedAt ??
+            progressRow?.closedAt ??
+            item?.completedAt ??
+            item?.closedAt ??
+            null,
+          closedAt:
+            progressRow?.closedAt ?? item?.closedAt ?? item?.completedAt ?? null,
+          closedQty:
+            progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? null,
+          closeMode: progressRow?.closeMode ?? item?.closeMode ?? null,
+          closeBasis: progressRow?.closeBasis ?? item?.closeBasis ?? null,
+          producedQuantity:
+            progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
+          progressPercent: workProgressPercent,
+          workProgressPercent,
+          qcPassedTotal: qcDisplayQuantity || 0,
+          qcProgressPercent,
+          qcDisplaySource:
+            qcPassedTotalRaw > 0 ? 'event' : isCompleted && qcDisplayQuantity > 0 ? 'close' : 'empty',
+          latestQcDate:
+            progressRow?.latestQcDate ?? item?.latestQcDate ?? null,
+          statusType,
           ctDisplayState:
             assignmentCtDisplayStateById.get(String(item.id)) ||
             (hasSavedCtSnapshot(item) ? 'SAVED' : 'UNSAVED'),
         };
       });
-  }, [assignments, assignmentCtDisplayStateById, cardById, dayCount]);
+  }, [
+    assignments,
+    assignmentCtDisplayStateById,
+    assignmentProgressById,
+    cardById,
+    dayCount,
+    todayDateKey,
+  ]);
 
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),

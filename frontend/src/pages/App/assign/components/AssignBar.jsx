@@ -31,6 +31,14 @@ const getClipBorderRadius = (isClippedLeft, isClippedRight) => {
 };
 
 const joinText = (parts) => parts.filter(Boolean).join(' / ');
+const formatProgressPercent = (value, languageCode = 'en') =>
+  getUiMessage('assign.progressCompact', '진행 {percent}%', languageCode, {
+    percent: Math.round(Number(value) || 0),
+  });
+const formatQcCompact = (value, languageCode = 'en') =>
+  getUiMessage('assign.qcCompact', 'QC {quantity}', languageCode, {
+    quantity: value ?? 0,
+  });
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
   const { languageCode } = useLanguage();
@@ -88,19 +96,60 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
   const ctMeta = hasSavedSnapshot
     ? {
         label: getUiMessage('assign.savedCtBadge', 'CT Saved', languageCode),
-        cardBg: '#C8DFF7',
-        progressBg: '#88B8E8',
         labelColor: '#4A88C8',
       }
     : {
         label: getUiMessage('assign.unsavedCtBadge', 'CT Unsaved', languageCode),
-        cardBg: '#EBEBF0',
-        progressBg: '#EBEBF0',
         labelColor: '#888898',
       };
-  const progressPercent = hasSavedSnapshot
-    ? Math.min(100, Math.max(0, Number(assignment.progressPercent) || 0))
-    : 0;
+  const statusType = assignment?.statusType || (isCompleted ? 'completed' : 'active');
+  const statusMeta =
+    statusType === 'completed'
+      ? {
+          label: getUiMessage('assign.statusCompleted', '완료', languageCode),
+          chipBg: 'rgba(255,255,255,0.92)',
+          chipColor: '#334155',
+          cardBg: '#E5E7EB',
+          progressBg: '#B8C0CC',
+          borderColor: 'rgba(100,116,139,0.38)',
+        }
+      : statusType === 'overdue'
+        ? {
+            label: getUiMessage('assign.statusOverdue', '지연', languageCode),
+            chipBg: 'rgba(255,247,237,0.96)',
+            chipColor: '#C2410C',
+            cardBg: '#FFF4E5',
+            progressBg: '#F7B267',
+            borderColor: 'rgba(234,88,12,0.38)',
+          }
+        : statusType === 'pending'
+          ? {
+              label: getUiMessage('assign.statusPending', '대기', languageCode),
+              chipBg: 'rgba(255,255,255,0.92)',
+              chipColor: '#6B7280',
+              cardBg: '#F8FAFC',
+              progressBg: '#D7DEE8',
+              borderColor: 'rgba(148,163,184,0.34)',
+            }
+          : {
+              label: getUiMessage('assign.statusActive', '진행중', languageCode),
+              chipBg: 'rgba(255,255,255,0.92)',
+              chipColor: '#1D4ED8',
+              cardBg: '#E6F3FF',
+              progressBg: '#7CB8F5',
+              borderColor: 'rgba(59,130,246,0.28)',
+            };
+  const progressPercent = Math.min(
+    100,
+    Math.max(0, Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0)
+  );
+  const qcProgressPercent = Math.min(
+    100,
+    Math.max(0, Number(assignment.qcProgressPercent) || 0)
+  );
+  const qcPassedTotal = Math.max(0, Number(assignment.qcPassedTotal) || 0);
+  const progressSummary = formatProgressPercent(progressPercent, languageCode);
+  const qcSummary = qcPassedTotal > 0 ? formatQcCompact(qcPassedTotal, languageCode) : null;
 
   const line1 = assignment.orderNo
     ? joinText([assignment.customer || '', assignment.orderNo])
@@ -110,6 +159,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     assignment.colorName,
     genderDisplay,
     quantityLabel,
+    !isNarrow ? progressSummary : null,
+    !isNarrow && qcSummary ? qcSummary : null,
   ]);
 
   const openContextMenu = (event) => {
@@ -138,21 +189,15 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         pr: isClippedRight ? 2.5 : isNarrow ? 1 : 6,
         display: 'flex',
         alignItems: 'center',
-        backgroundColor: ctMeta.cardBg,
-        ...(isCompleted
-          ? {
-              backgroundColor: '#E6E9EE',
-              borderColor: 'rgba(71,85,105,0.35)',
-            }
-          : {}),
+        backgroundColor: statusMeta.cardBg,
         color: '#1f2a3a',
         minWidth: 0,
         overflow: 'visible',
         cursor: isCompleted ? 'default' : isDragging ? 'grabbing' : 'grab',
         boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
-        border: '1px solid rgba(0,0,0,0.08)',
-        borderLeft: isClippedLeft ? '2px dashed rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
-        borderRight: isClippedRight ? '2px dashed rgba(0,0,0,0.25)' : '1px solid rgba(0,0,0,0.08)',
+        border: `1px solid ${statusMeta.borderColor}`,
+        borderLeft: isClippedLeft ? `2px dashed ${statusMeta.borderColor}` : `1px solid ${statusMeta.borderColor}`,
+        borderRight: isClippedRight ? `2px dashed ${statusMeta.borderColor}` : `1px solid ${statusMeta.borderColor}`,
         outline: 'none',
         '&:focus': { outline: 'none' },
         '&:focus-visible': { boxShadow: '0 2px 6px rgba(0,0,0,0.12)' },
@@ -165,6 +210,8 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         assignment.colorName,
         genderDisplay,
         assignment.quantity != null ? quantityLabel : null,
+        progressSummary,
+        qcSummary,
       ])}
       {...attributes}
       {...listeners}
@@ -183,15 +230,15 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         >
           <Box
             sx={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: `${progressPercent}%`,
-              height: '100%',
-              backgroundColor: ctMeta.progressBg,
-              transition: 'width 0.5s ease',
-            }}
-          />
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: `${progressPercent}%`,
+            height: '100%',
+            backgroundColor: statusMeta.progressBg,
+            transition: 'width 0.5s ease',
+          }}
+        />
         </Box>
       )}
 
@@ -290,23 +337,44 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         </Box>
       )}
 
-      {isCompleted && (
+      <Box
+        sx={{
+          position: 'absolute',
+          left: 8,
+          top: 8,
+          zIndex: 2,
+          px: 0.8,
+          py: 0.2,
+          borderRadius: 1,
+          backgroundColor: statusMeta.chipBg,
+          fontSize: 10,
+          fontWeight: 700,
+          color: statusMeta.chipColor,
+        }}
+      >
+        {statusMeta.label}
+      </Box>
+
+      {!hideMetaBadges && (progressPercent > 0 || qcProgressPercent > 0) && (
         <Box
           sx={{
             position: 'absolute',
             left: 8,
-            top: 8,
+            bottom: 8,
             zIndex: 2,
             px: 0.8,
             py: 0.2,
             borderRadius: 1,
-            backgroundColor: 'rgba(255,255,255,0.9)',
+            backgroundColor: 'rgba(255,255,255,0.78)',
             fontSize: 10,
             fontWeight: 700,
             color: '#334155',
           }}
         >
-          {getUiMessage('assign.statusCompleted', '완료', languageCode)}
+          {joinText([
+            progressPercent > 0 ? `${Math.round(progressPercent)}%` : null,
+            qcProgressPercent > 0 ? `QC ${Math.round(qcProgressPercent)}%` : null,
+          ])}
         </Box>
       )}
 
