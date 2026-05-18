@@ -217,7 +217,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
       {...listeners}
       onContextMenu={openContextMenu}
     >
-      {hasSavedSnapshot && (
+      {progressPercent > 0 && (
         <Box
           sx={{
             position: 'absolute',
