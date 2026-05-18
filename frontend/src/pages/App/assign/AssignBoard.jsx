@@ -76,6 +76,7 @@ import {
   hasWorkspaceDataTopic,
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
+import { todayDateKey as getTodayDateKey } from '../../../utils/dateKey.mjs';
 
 const { useDeferredValue } = React;
 const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
@@ -2409,7 +2410,7 @@ const AssignBoard = () => {
   const dayCount = useMemo(() => {
     return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
   }, [viewStart, viewEnd]);
-  const todayDateKey = useMemo(() => buildDateKey(new Date()), []);
+  const todayDateKey = useMemo(() => getTodayDateKey(), []);
   const [days, setDays] = useState(() =>
     buildDays(
       startDateRef.current,
