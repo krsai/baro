@@ -6613,6 +6613,37 @@ const applyAssignmentScheduleToCtSnapshot = (
     schedule: normalizeAssignmentScheduleRepairPayload(schedule, item),
   };
 };
+const toAssignmentPlanScheduleRepairUpdateData = ({
+  schedule,
+  ctSnapshot,
+  updatedAt,
+}: {
+  schedule: any;
+  ctSnapshot?: any;
+  updatedAt: Date;
+}): Prisma.AssignmentPlanUncheckedUpdateInput => {
+  const normalizedSchedule = normalizeAssignmentScheduleRepairPayload(schedule);
+  return {
+    startIndex: toSignedInt(normalizedSchedule?.startIndex, 0),
+    endIndex: Math.max(
+      toSignedInt(normalizedSchedule?.startIndex, 0),
+      toSignedInt(normalizedSchedule?.endIndex, toSignedInt(normalizedSchedule?.startIndex, 0))
+    ),
+    startDayOffsetPercent: toOptionalFloat(
+      normalizedSchedule?.startDayOffsetPercent,
+      null
+    ),
+    startDayPercent: toOptionalFloat(normalizedSchedule?.startDayPercent, null),
+    endDayPercent: toOptionalFloat(normalizedSchedule?.endDayPercent, null),
+    ...(ctSnapshot
+      ? {
+          ctSnapshot: (ctSnapshot ??
+            Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+        }
+      : {}),
+    updatedAt,
+  };
+};
 const extractAssignmentScheduleRepairPayload = (item: any) =>
   normalizeAssignmentScheduleRepairPayload(
     {
@@ -6654,6 +6685,8 @@ const repairAssignmentScheduleDriftForOrg = async ({
       select: {
         id: true,
         externalId: true,
+        lineId: true,
+        contractedSeconds: true,
         ctSnapshot: true,
         startIndex: true,
         endIndex: true,
@@ -6807,16 +6840,11 @@ const repairAssignmentScheduleDriftForOrg = async ({
       updatedPlanCount += 1;
       return {
         id: plan.id,
-        data: {
-          ...targetSchedule,
-          ...(nextCtSnapshot
-            ? {
-                ctSnapshot: (nextCtSnapshot ??
-                  Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
-              }
-            : {}),
+        data: toAssignmentPlanScheduleRepairUpdateData({
+          schedule: targetSchedule,
+          ctSnapshot: nextCtSnapshot,
           updatedAt: nowDate,
-        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+        }),
       };
     })
     .filter((item): item is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
