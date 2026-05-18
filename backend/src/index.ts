@@ -5494,6 +5494,125 @@ const resolveAssignmentPlanCloseBasis = (plan: any): "QC_BASED" | "MANUAL" | nul
   if (basis === "QC_BASED" || basis === "MANUAL") return basis;
   return null;
 };
+const resolveAssignmentPlanLatestQcDate = (plan: any) =>
+  normalizeDateKey(plan?.latestQcDate) || null;
+
+const resolveAssignmentPlanQcPassedTotal = (plan: any) =>
+  Math.max(0, Math.round(Number(plan?.qcPassedTotal ?? 0) || 0));
+
+const normalizeQcPassEventSizeKey = (value: any) => {
+  const raw = resolveOptionalString(value, null);
+  if (!raw) return null;
+  return raw.toUpperCase().replace(/\s+/g, "") || null;
+};
+
+const buildQcPassEventResponse = (event: any) => ({
+  id: toPositiveIntOrNull(event?.id),
+  assignmentPlanId: toPositiveIntOrNull(event?.assignmentPlanId),
+  inspectedOn: normalizeDateKey(event?.inspectedOn) || null,
+  passedQuantity: Math.max(0, Math.round(Number(event?.passedQuantity ?? 0) || 0)),
+  colorId: toPositiveIntOrNull(event?.colorId),
+  colorName:
+    resolveOptionalString(event?.attrColor?.name, null) ??
+    resolveOptionalString(event?.attrColor?.nameKo, null) ??
+    resolveOptionalString(event?.attrColor?.code, null),
+  sizeKey: normalizeQcPassEventSizeKey(event?.sizeKey),
+  note: resolveOptionalString(event?.note, null),
+  sourceType:
+    resolveOptionalString(event?.sourceType, null) === "MIGRATED_LEGACY"
+      ? "MIGRATED_LEGACY"
+      : "MANUAL",
+  cancelledAt: toIsoDateStringOrNull(toOptionalDateValue(event?.cancelledAt, null)),
+  cancelledBy: resolveOptionalString(event?.cancelledBy, null),
+  createdAt: toIsoDateStringOrNull(toOptionalDateValue(event?.createdAt, null)),
+  createdBy: resolveOptionalString(event?.createdBy, null),
+});
+
+const syncAssignmentPlanQcAggregate = async ({
+  orgId,
+  planId,
+  db = prisma,
+}: {
+  orgId: number;
+  planId: number;
+  db?: any;
+}) => {
+  const normalizedPlanId = toPositiveIntOrNull(planId);
+  if (normalizedPlanId == null) {
+    return { qcPassedTotal: 0, latestQcDate: null };
+  }
+
+  const aggregate = await db.qcPassEvent.aggregate({
+    where: {
+      orgId,
+      assignmentPlanId: normalizedPlanId,
+      cancelledAt: null,
+    },
+    _sum: { passedQuantity: true },
+    _max: { inspectedOn: true },
+  });
+
+  const qcPassedTotal = Math.max(
+    0,
+    Math.round(Number(aggregate?._sum?.passedQuantity ?? 0) || 0)
+  );
+  const latestQcDate = normalizeDateKey(aggregate?._max?.inspectedOn) || null;
+
+  await db.assignmentPlan.update({
+    where: { id: normalizedPlanId },
+    data: {
+      qcPassedTotal,
+      latestQcDate,
+      updatedAt: new Date(),
+    },
+  });
+
+  return { qcPassedTotal, latestQcDate };
+};
+
+const findAssignmentPlanForQcEvent = async ({
+  orgId,
+  assignmentPlanRef,
+  db = prisma,
+}: {
+  orgId: number;
+  assignmentPlanRef: any;
+  db?: any;
+}) => {
+  const externalId = resolveOptionalString(assignmentPlanRef, null);
+  if (externalId) {
+    const byExternalId = await db.assignmentPlan.findFirst({
+      where: { orgId, externalId },
+      select: {
+        id: true,
+        externalId: true,
+        quantity: true,
+        isCompleted: true,
+        finalQuantity: true,
+        completedAt: true,
+        closedQty: true,
+        closedAt: true,
+      },
+    });
+    if (byExternalId) return byExternalId;
+  }
+
+  const numericId = toPositiveIntOrNull(assignmentPlanRef);
+  if (numericId == null) return null;
+  return db.assignmentPlan.findFirst({
+    where: { orgId, id: numericId },
+    select: {
+      id: true,
+      externalId: true,
+      quantity: true,
+      isCompleted: true,
+      finalQuantity: true,
+      completedAt: true,
+      closedQty: true,
+      closedAt: true,
+    },
+  });
+};
 const resolveWorkRecordProcessBucketKeyForAssignmentSchedule = (
   value: any
 ): string => {
@@ -14497,6 +14616,8 @@ app.get("/assignment-plans", async (req, res) => {
       const closedQty = resolveAssignmentPlanClosedQty(plan);
       const completedAt = resolveAssignmentPlanClosedAt(plan);
       const isCompleted = Boolean(plan?.isCompleted || completedAt);
+      const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
+      const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
       const closeMode =
         resolveOptionalString(plan?.closeMode, null) ??
         resolveAssignmentPlanCloseMode({
@@ -14533,6 +14654,8 @@ app.get("/assignment-plans", async (req, res) => {
         endDateKey,
         isCompleted,
         finalQuantity,
+        qcPassedTotal,
+        latestQcDate,
         closedQty,
         completedAt,
         closedAt: completedAt,
@@ -14576,6 +14699,8 @@ const buildAssignmentPlanProgressRows = async (
       isCompleted: true,
       finalQuantity: true,
       completedAt: true,
+      qcPassedTotal: true,
+      latestQcDate: true,
       closedQty: true,
       closedAt: true,
       closedBy: true,
@@ -14645,6 +14770,8 @@ const buildAssignmentPlanProgressRows = async (
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
     const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
     const closedQty = resolveAssignmentPlanClosedQty(plan);
+    const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
+    const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0
         ? plannedQuantity
@@ -14678,6 +14805,8 @@ const buildAssignmentPlanProgressRows = async (
       colorName: resolveAssignmentPlanColorName(plan),
       plannedQuantity,
       finalQuantity,
+      qcPassedTotal,
+      latestQcDate,
       baselineQuantity: baselineQuantityRaw,
       producedQuantity,
       overflowQuantity,
@@ -14730,6 +14859,8 @@ const resolveAssignmentPlanProducedQuantity = async ({
 const buildAssignmentPlanCloseResponse = (plan: any) => {
   const quantity = toOptionalNonNegativeInt(plan?.quantity, null);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
+  const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
+  const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
   const completedAt = resolveAssignmentPlanClosedAt(plan);
   const isCompleted = Boolean(plan?.isCompleted || completedAt);
@@ -14751,6 +14882,8 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     quantity,
     isCompleted,
     finalQuantity,
+    qcPassedTotal,
+    latestQcDate,
     completedAt,
     closedQty,
     closedAt: completedAt,
@@ -14774,6 +14907,217 @@ app.get("/assignment-plan-progress", async (req, res) => {
 
   const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
   res.json(rows);
+});
+
+app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId: organization.id, externalId },
+    select: {
+      id: true,
+      externalId: true,
+      qcPassedTotal: true,
+      latestQcDate: true,
+    },
+  });
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  const history = await prisma.qcPassEvent.findMany({
+    where: {
+      orgId: organization.id,
+      assignmentPlanId: plan.id,
+    },
+    include: {
+      attrColor: {
+        select: { id: true, code: true, name: true, nameKo: true },
+      },
+    },
+    orderBy: [{ inspectedOn: "desc" }, { id: "desc" }],
+  });
+
+  return res.json({
+    ok: true,
+    plan: {
+      id: plan.externalId,
+      qcPassedTotal: resolveAssignmentPlanQcPassedTotal(plan),
+      latestQcDate: resolveAssignmentPlanLatestQcDate(plan),
+    },
+    history: history.map((event) => buildQcPassEventResponse(event)),
+  });
+});
+
+app.post("/qc-pass-events", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const plan =
+    (await findAssignmentPlanForQcEvent({
+      orgId: organization.id,
+      assignmentPlanRef:
+        req.body?.assignmentPlanExternalId ?? req.body?.assignmentPlanId ?? null,
+    })) ?? null;
+  if (!plan) {
+    return res.status(404).json({ ok: false, error: "assignment plan not found" });
+  }
+
+  const inspectedOn = normalizeDateKey(req.body?.inspectedOn);
+  if (!inspectedOn) {
+    return res.status(400).json({ ok: false, error: "inspectedOn is required" });
+  }
+
+  const rawEntries = Array.isArray(req.body?.entries) ? req.body.entries : [];
+  const normalizedEntries = (rawEntries.length > 0
+    ? rawEntries
+    : [
+        {
+          passedQuantity: req.body?.passedQuantity,
+          colorId: req.body?.colorId,
+          sizeKey: req.body?.sizeKey,
+          note: req.body?.note,
+        },
+      ]
+  )
+    .map((entry: any) => ({
+      passedQuantity: toOptionalNonNegativeInt(entry?.passedQuantity, null),
+      colorId: toPositiveIntOrNull(entry?.colorId),
+      sizeKey: normalizeQcPassEventSizeKey(entry?.sizeKey),
+      note: resolveOptionalString(entry?.note, null),
+    }))
+    .filter(
+      (
+        entry: {
+          passedQuantity: number | null;
+          colorId: number | null;
+          sizeKey: string | null;
+          note: string | null;
+        }
+      ): entry is {
+        passedQuantity: number;
+        colorId: number | null;
+        sizeKey: string | null;
+        note: string | null;
+      } => entry.passedQuantity != null && entry.passedQuantity > 0
+    );
+
+  if (normalizedEntries.length === 0) {
+    return res.status(400).json({ ok: false, error: "passedQuantity is required" });
+  }
+
+  const actor = getCurrentRequestActor();
+  const result = await prisma.$transaction(async (tx) => {
+    const createdEvents = [];
+    for (const entry of normalizedEntries) {
+      const createdEvent = await tx.qcPassEvent.create({
+        data: {
+          orgId: organization.id,
+          assignmentPlanId: plan.id,
+          inspectedOn,
+          passedQuantity: entry.passedQuantity!,
+          colorId: entry.colorId,
+          sizeKey: entry.sizeKey,
+          note: entry.note,
+          sourceType: "MANUAL",
+          createdBy: actor,
+        },
+        include: {
+          attrColor: {
+            select: { id: true, code: true, name: true, nameKo: true },
+          },
+        },
+      });
+      createdEvents.push(createdEvent);
+    }
+
+    const aggregate = await syncAssignmentPlanQcAggregate({
+      orgId: organization.id,
+      planId: plan.id,
+      db: tx,
+    });
+
+    return { createdEvents, aggregate };
+  });
+
+  return res.json({
+    ok: true,
+    plan: {
+      id: plan.externalId,
+      qcPassedTotal: result.aggregate.qcPassedTotal,
+      latestQcDate: result.aggregate.latestQcDate,
+    },
+    events: result.createdEvents.map((event) => buildQcPassEventResponse(event)),
+  });
+});
+
+app.patch("/qc-pass-events/:id/cancel", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const eventId = toPositiveIntOrNull(req.params.id);
+  if (eventId == null) {
+    return res.status(400).json({ ok: false, error: "invalid event id" });
+  }
+
+  const existingEvent = await prisma.qcPassEvent.findFirst({
+    where: { id: eventId, orgId: organization.id },
+    include: {
+      attrColor: {
+        select: { id: true, code: true, name: true, nameKo: true },
+      },
+    },
+  });
+  if (!existingEvent) {
+    return res.status(404).json({ ok: false, error: "qc pass event not found" });
+  }
+  if (toOptionalDateValue(existingEvent.cancelledAt, null)) {
+    return res.status(409).json({ ok: false, error: "qc pass event already cancelled" });
+  }
+
+  const actor = getCurrentRequestActor();
+  const result = await prisma.$transaction(async (tx) => {
+    const cancelledEvent = await tx.qcPassEvent.update({
+      where: { id: existingEvent.id },
+      data: {
+        cancelledAt: new Date(),
+        cancelledBy: actor,
+      },
+      include: {
+        attrColor: {
+          select: { id: true, code: true, name: true, nameKo: true },
+        },
+      },
+    });
+    const aggregate = await syncAssignmentPlanQcAggregate({
+      orgId: organization.id,
+      planId: existingEvent.assignmentPlanId,
+      db: tx,
+    });
+    return { cancelledEvent, aggregate };
+  });
+
+  return res.json({
+    ok: true,
+    event: buildQcPassEventResponse(result.cancelledEvent),
+    plan: {
+      assignmentPlanId: existingEvent.assignmentPlanId,
+      qcPassedTotal: result.aggregate.qcPassedTotal,
+      latestQcDate: result.aggregate.latestQcDate,
+    },
+  });
 });
 
 app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {

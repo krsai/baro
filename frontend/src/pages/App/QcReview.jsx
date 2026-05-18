@@ -28,6 +28,7 @@ import {
 } from '../../utils/workspaceDataEvents';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import { SIZE_CODES } from '../../constants/productAttributes';
+import { todayDateKey } from '../../utils/dateKey.mjs';
 
 const toPositiveIntOrNull = (value) => {
   const parsed = Number(value);
@@ -104,9 +105,9 @@ const resolveSortedSizeKeys = (keys = []) => {
 
 const resolveStatusChip = (row) => {
   if (row.isCompleted) {
-    return { label: '마감완료', color: 'success', variant: 'filled' };
+    return { label: '제작 완료', color: 'success', variant: 'filled' };
   }
-  return { label: '검수대기', color: 'warning', variant: 'outlined' };
+  return { label: '검수 진행', color: 'warning', variant: 'outlined' };
 };
 
 const resolveDetailPassTotal = (detail) => {
@@ -171,7 +172,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
   if (matchedItems.length === 0) {
     return {
       matched: false,
-      error: '주문에서 해당 스타일의 사이즈 데이터를 찾지 못했습니다.',
+      error: '주문에서 해당 스타일의 사이즈 정보를 찾지 못했습니다.',
       orderNumber: matchedOrder.orderNumber || targetOrderNo,
       sizeKeys: [],
       variants: [],
@@ -183,7 +184,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
   matchedItems.forEach((item, index) => {
     const colorName = String(item?.colorName || item?.colorCode || '미지정').trim() || '미지정';
     const gender = String(item?.gender || '').trim().toUpperCase();
-    const variantKey = `${normalizeComparableText(colorName)}::${gender || '-'}`;
+    const variantKey = `${normalizeComparableText(colorName)}::${gender || '-'}::${item?.colorId || 0}`;
     const sizeQuantities = normalizeSizeQuantities(item?.sizeQuantities);
     const safeSizeQuantities = { ...sizeQuantities };
     const totalQuantityFromSizes = sumSizeQuantityMap(safeSizeQuantities);
@@ -194,6 +195,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
 
     const current = variantMap.get(variantKey) || {
       key: `${variantKey}::${index}`,
+      colorId: toPositiveIntOrNull(item?.colorId),
       colorName,
       gender: gender || '-',
       orderedBySize: {},
@@ -224,6 +226,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
     variants = [
       {
         key: 'fallback',
+        colorId: null,
         colorName: '미지정',
         gender: '-',
         orderedBySize: { FREE: fallbackQuantity },
@@ -268,6 +271,7 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
 const QcReview = () => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { showNotification } = useAppActions();
+  const todayKey = useMemo(() => todayDateKey(), []);
 
   const [factories, setFactories] = useState([]);
   const [lines, setLines] = useState([]);
@@ -275,12 +279,14 @@ const QcReview = () => {
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [savingDraftPlanId, setSavingDraftPlanId] = useState(null);
-  const [completingPlanId, setCompletingPlanId] = useState(null);
+  const [savingQcPlanId, setSavingQcPlanId] = useState(null);
+  const [cancellingEventId, setCancellingEventId] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('pending');
   const [expandedRowId, setExpandedRowId] = useState(null);
   const [qcDetailByPlanId, setQcDetailByPlanId] = useState({});
+  const [qcHistoryByPlanId, setQcHistoryByPlanId] = useState({});
+  const [qcHistoryLoadingByPlanId, setQcHistoryLoadingByPlanId] = useState({});
   const [ordersCache, setOrdersCache] = useState({ loaded: false, rows: [] });
   const orderLoadPromiseRef = useRef(null);
 
@@ -368,17 +374,30 @@ const QcReview = () => {
         setRows((prevRows) => {
           const draftById = new Map(
             (Array.isArray(prevRows) ? prevRows : [])
-              .map((row) => [String(row?.id || '').trim(), String(row?.qcPassQuantity || '')])
+              .map((row) => [
+                String(row?.id || '').trim(),
+                {
+                  qcPassQuantity: String(row?.qcPassQuantity || ''),
+                  inspectionDate: String(row?.inspectionDate || '').trim() || todayKey,
+                },
+              ])
               .filter((entry) => entry[0])
           );
           return safePlans.map((plan) => {
             const id = String(plan?.id || '').trim();
             const progress = progressById.get(id) || {};
-            const plannedQuantity = toNonNegativeIntOrNull(progress?.plannedQuantity ?? plan?.quantity);
+            const plannedQuantity = toNonNegativeIntOrNull(progress?.plannedQuantity ?? plan?.quantity) ?? 0;
             const producedQuantity = toNonNegativeIntOrNull(progress?.producedQuantity) ?? 0;
             const finalQuantity = toNonNegativeIntOrNull(progress?.finalQuantity ?? plan?.finalQuantity);
             const isCompleted = Boolean(progress?.isCompleted ?? plan?.isCompleted);
             const completedAt = progress?.completedAt || plan?.completedAt || null;
+            const draft = draftById.get(id) || null;
+            const qcPassedTotal =
+              toNonNegativeIntOrNull(progress?.qcPassedTotal ?? plan?.qcPassedTotal) ??
+              (isCompleted ? finalQuantity ?? 0 : 0);
+            const latestQcDate =
+              String(progress?.latestQcDate || plan?.latestQcDate || '').trim() || null;
+
             return {
               id,
               dbId: toPositiveIntOrNull(plan?.dbId),
@@ -394,16 +413,15 @@ const QcReview = () => {
               styleCode: String(plan?.styleCode || plan?.styleId || '').trim(),
               styleLabel: String(plan?.label || progress?.label || '').trim(),
               colorName: String(plan?.colorName || progress?.colorName || '').trim(),
-              plannedQuantity: plannedQuantity ?? 0,
+              plannedQuantity,
               producedQuantity,
               finalQuantity,
+              qcPassedTotal,
+              latestQcDate,
               isCompleted,
               completedAt,
-              qcPassQuantity:
-                draftById.get(id) ??
-                (finalQuantity !== null && finalQuantity !== undefined
-                  ? String(finalQuantity)
-                  : ''),
+              qcPassQuantity: draft?.qcPassQuantity ?? '',
+              inspectionDate: draft?.inspectionDate ?? todayKey,
             };
           });
         });
@@ -413,6 +431,20 @@ const QcReview = () => {
           const next = {};
           Object.entries(prev || {}).forEach(([planId, detail]) => {
             if (idSet.has(planId)) next[planId] = detail;
+          });
+          return next;
+        });
+        setQcHistoryByPlanId((prev) => {
+          const next = {};
+          Object.entries(prev || {}).forEach(([planId, detail]) => {
+            if (idSet.has(planId)) next[planId] = detail;
+          });
+          return next;
+        });
+        setQcHistoryLoadingByPlanId((prev) => {
+          const next = {};
+          Object.entries(prev || {}).forEach(([planId, value]) => {
+            if (idSet.has(planId)) next[planId] = value;
           });
           return next;
         });
@@ -426,7 +458,7 @@ const QcReview = () => {
         setLoading(false);
       }
     },
-    [activeOrgId, expandedRowId, lineNameById, selectedFactoryId, selectedLineId, showNotification]
+    [activeOrgId, expandedRowId, lineNameById, selectedFactoryId, selectedLineId, showNotification, todayKey]
   );
 
   const ensureOrdersLoaded = useCallback(async () => {
@@ -454,12 +486,12 @@ const QcReview = () => {
   }, [activeOrgId, ordersCache.loaded, ordersCache.rows]);
 
   const loadQcDetail = useCallback(
-    async (row) => {
+    async (row, { forceRefresh = false } = {}) => {
       const planId = String(row?.id || '').trim();
       if (!planId) return;
       const existing = qcDetailByPlanId[planId];
       if (existing?.loading) return;
-      if (existing?.matched) return;
+      if (!forceRefresh && existing?.matched) return;
 
       setQcDetailByPlanId((prev) => ({
         ...prev,
@@ -481,7 +513,6 @@ const QcReview = () => {
           ...prev,
           [planId]: normalizedDetail,
         }));
-
       } catch (error) {
         setQcDetailByPlanId((prev) => ({
           ...prev,
@@ -497,6 +528,54 @@ const QcReview = () => {
       }
     },
     [ensureOrdersLoaded, qcDetailByPlanId]
+  );
+
+  const loadQcHistory = useCallback(
+    async (planId, { forceRefresh = false } = {}) => {
+      const normalizedPlanId = String(planId || '').trim();
+      if (!normalizedPlanId) return;
+      if (qcHistoryLoadingByPlanId[normalizedPlanId]) return;
+      if (!forceRefresh && qcHistoryByPlanId[normalizedPlanId]) return;
+
+      setQcHistoryLoadingByPlanId((prev) => ({
+        ...prev,
+        [normalizedPlanId]: true,
+      }));
+
+      try {
+        const response = await requestJSON(
+          `/assignment-plans/${encodeURIComponent(normalizedPlanId)}/qc-history` +
+            buildQueryString({ orgId: activeOrgId }),
+          {
+            skipGlobalLoading: true,
+            forceRefresh,
+          }
+        );
+        const safeHistory = Array.isArray(response?.history) ? response.history : [];
+        setQcHistoryByPlanId((prev) => ({
+          ...prev,
+          [normalizedPlanId]: {
+            history: safeHistory,
+            qcPassedTotal: toNonNegativeIntOrNull(response?.plan?.qcPassedTotal) ?? 0,
+            latestQcDate: String(response?.plan?.latestQcDate || '').trim() || null,
+          },
+        }));
+      } catch (error) {
+        setQcHistoryByPlanId((prev) => ({
+          ...prev,
+          [normalizedPlanId]: {
+            history: [],
+            error: error?.message || '검수 이력을 불러오지 못했습니다.',
+          },
+        }));
+      } finally {
+        setQcHistoryLoadingByPlanId((prev) => ({
+          ...prev,
+          [normalizedPlanId]: false,
+        }));
+      }
+    },
+    [activeOrgId, qcHistoryByPlanId, qcHistoryLoadingByPlanId]
   );
 
   useEffect(() => {
@@ -515,6 +594,8 @@ const QcReview = () => {
     setOrdersCache({ loaded: false, rows: [] });
     orderLoadPromiseRef.current = null;
     setQcDetailByPlanId({});
+    setQcHistoryByPlanId({});
+    setQcHistoryLoadingByPlanId({});
     setExpandedRowId(null);
   }, [activeOrgId]);
 
@@ -524,78 +605,138 @@ const QcReview = () => {
     onRefresh: () => loadRows({ forceRefresh: true }),
   });
 
-  const handleSaveQcQuantity = useCallback(
+  const resetDetailPassInputs = useCallback((planId) => {
+    const normalizedPlanId = String(planId || '').trim();
+    if (!normalizedPlanId) return;
+    setQcDetailByPlanId((prev) => {
+      const current = prev?.[normalizedPlanId];
+      if (!current || !Array.isArray(current.variants)) return prev;
+      return {
+        ...prev,
+        [normalizedPlanId]: {
+          ...current,
+          variants: current.variants.map((variant) => ({
+            ...variant,
+            passBySize: Object.keys(variant?.passBySize || {}).reduce((acc, sizeKey) => {
+              acc[sizeKey] = '0';
+              return acc;
+            }, {}),
+          })),
+        },
+      };
+    });
+  }, []);
+
+  const handleAddQcEvent = useCallback(
     async (row) => {
-      const finalQuantity = toNonNegativeIntOrNull(row?.qcPassQuantity);
-      if (finalQuantity === null) {
-        showNotification('검수 통과 수량을 입력해 주세요.', 'error');
-        return;
-      }
-      if (row?.isCompleted) {
-        showNotification('이미 마감완료된 건입니다.', 'warning');
+      const inspectedOn = String(row?.inspectionDate || '').trim();
+      if (!inspectedOn) {
+        showNotification('검수 날짜를 입력하세요.', 'error');
         return;
       }
 
-      setSavingDraftPlanId(row.id);
+      const detail = qcDetailByPlanId[row.id] || null;
+      const hasMatrix = Boolean(detail?.matched && detail?.sizeKeys?.length && detail?.variants?.length);
+      const entries = hasMatrix
+        ? (detail?.variants || []).flatMap((variant) =>
+            (detail?.sizeKeys || [])
+              .map((sizeKey) => {
+                const passedQuantity = toNonNegativeIntOrNull(variant?.passBySize?.[sizeKey]);
+                if (passedQuantity === null || passedQuantity <= 0) return null;
+                return {
+                  passedQuantity,
+                  colorId: toPositiveIntOrNull(variant?.colorId),
+                  sizeKey,
+                };
+              })
+              .filter(Boolean)
+          )
+        : [];
+      const passedQuantity = toNonNegativeIntOrNull(row?.qcPassQuantity);
+
+      if (!hasMatrix && passedQuantity === null) {
+        showNotification('검수 통과 수량을 입력하세요.', 'error');
+        return;
+      }
+      if (hasMatrix && entries.length === 0) {
+        showNotification('상세 검수 수량을 입력하세요.', 'error');
+        return;
+      }
+
+      setSavingQcPlanId(row.id);
       try {
-        await requestJSON(
-          `/assignment-plans/${encodeURIComponent(String(row.id || ''))}/final-quantity` +
-            buildQueryString({ orgId: activeOrgId }),
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ finalQuantity }),
-          }
-        );
-        showNotification('검수 수량을 저장했습니다.', 'success');
-        await loadRows({ forceRefresh: true });
-      } catch (error) {
-        showNotification(error?.message || '검수 수량 저장에 실패했습니다.', 'error');
-      } finally {
-        setSavingDraftPlanId(null);
-      }
-    },
-    [activeOrgId, loadRows, showNotification]
-  );
-
-  const handleComplete = useCallback(
-    async (row) => {
-      const finalQuantity = toNonNegativeIntOrNull(row?.qcPassQuantity);
-      if (finalQuantity === null) {
-        showNotification('검수 통과 수량을 입력해 주세요.', 'error');
-        return;
-      }
-      if (row?.isCompleted) {
-        showNotification('이미 마감완료된 건입니다.', 'warning');
-        return;
-      }
-
-      setCompletingPlanId(row.id);
-      try {
-        await requestJSON(
-          `/assignment-plans/${encodeURIComponent(String(row.id || ''))}/complete` +
-            buildQueryString({ orgId: activeOrgId }),
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ finalQuantity }),
-          }
-        );
+        await requestJSON(`/qc-pass-events${buildQueryString({ orgId: activeOrgId })}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignmentPlanId: row.id,
+            inspectedOn,
+            ...(hasMatrix ? { entries } : { passedQuantity }),
+          }),
+        });
         emitWorkspaceDataChanged({
           topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
           orgId: activeOrgId,
           assignmentIds: [row.id],
           source: 'qc-review',
         });
-        showNotification('검수 마감을 완료했습니다.', 'success');
-        await loadRows({ forceRefresh: true });
+        setRows((prevRows) =>
+          prevRows.map((item) =>
+            item.id === row.id
+              ? {
+                  ...item,
+                  qcPassQuantity: '',
+                }
+              : item
+          )
+        );
+        resetDetailPassInputs(row.id);
+        await Promise.all([
+          loadRows({ forceRefresh: true }),
+          loadQcHistory(row.id, { forceRefresh: true }),
+        ]);
+        showNotification('검수 이력을 추가했습니다.', 'success');
       } catch (error) {
-        showNotification(error?.message || '검수 마감 처리에 실패했습니다.', 'error');
+        showNotification(error?.message || '검수 이력 저장에 실패했습니다.', 'error');
       } finally {
-        setCompletingPlanId(null);
+        setSavingQcPlanId(null);
       }
     },
-    [activeOrgId, loadRows, showNotification]
+    [activeOrgId, loadQcHistory, loadRows, qcDetailByPlanId, resetDetailPassInputs, showNotification]
+  );
+
+  const handleCancelQcEvent = useCallback(
+    async (planId, eventId) => {
+      const normalizedEventId = toPositiveIntOrNull(eventId);
+      if (normalizedEventId === null) return;
+      setCancellingEventId(normalizedEventId);
+      try {
+        await requestJSON(
+          `/qc-pass-events/${encodeURIComponent(String(normalizedEventId))}/cancel` +
+            buildQueryString({ orgId: activeOrgId }),
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+        emitWorkspaceDataChanged({
+          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+          orgId: activeOrgId,
+          assignmentIds: [planId],
+          source: 'qc-review',
+        });
+        await Promise.all([
+          loadRows({ forceRefresh: true }),
+          loadQcHistory(planId, { forceRefresh: true }),
+        ]);
+        showNotification('검수 이력을 취소했습니다.', 'success');
+      } catch (error) {
+        showNotification(error?.message || '검수 이력 취소에 실패했습니다.', 'error');
+      } finally {
+        setCancellingEventId(null);
+      }
+    },
+    [activeOrgId, loadQcHistory, loadRows, showNotification]
   );
 
   const handleToggleExpand = useCallback(
@@ -607,9 +748,9 @@ const QcReview = () => {
         return;
       }
       setExpandedRowId(rowId);
-      await loadQcDetail(row);
+      await Promise.all([loadQcDetail(row), loadQcHistory(rowId)]);
     },
-    [expandedRowId, loadQcDetail]
+    [expandedRowId, loadQcDetail, loadQcHistory]
   );
 
   const handleVariantPassChange = useCallback((planId, variantKey, sizeKey, rawValue) => {
@@ -673,7 +814,7 @@ const QcReview = () => {
             검수
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            주문/스타일/색상별 검수 통과 수량을 입력하고 마감완료 처리합니다.
+            검수 이력을 날짜별로 추가하고 누적 상태를 확인합니다. 제작 완료 확정은 배치 진행 메뉴에서 처리합니다.
           </Typography>
         </Stack>
       }
@@ -732,8 +873,8 @@ const QcReview = () => {
                 onChange={(event) => setStatusFilter(event.target.value)}
                 sx={{ minWidth: { xs: '100%', sm: 140 } }}
               >
-                <MenuItem value="pending">검수대기</MenuItem>
-                <MenuItem value="completed">마감완료</MenuItem>
+                <MenuItem value="pending">진행 중</MenuItem>
+                <MenuItem value="completed">제작 완료</MenuItem>
                 <MenuItem value="all">전체</MenuItem>
               </TextField>
               <TextField
@@ -749,7 +890,7 @@ const QcReview = () => {
         </Paper>
 
         <Alert severity="info">
-          검수는 먼저 저장하고, 작업기록이 검수수량까지 반영되면 마감완료할 수 있습니다.
+          QC 화면은 검수 통과 이력을 쌓는 용도입니다. 제작 완료 확정은 배치 진행 메뉴에서만 처리합니다.
         </Alert>
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
@@ -762,8 +903,8 @@ const QcReview = () => {
                   <TableCell>주문</TableCell>
                   <TableCell>스타일/색상</TableCell>
                   <TableCell align="right">주문수량</TableCell>
-                  <TableCell align="right">제품생산량(공정최소)</TableCell>
-                  <TableCell align="right">검수통과수량</TableCell>
+                  <TableCell align="right">작업기록 생산수량</TableCell>
+                  <TableCell align="right">검수 누적</TableCell>
                   <TableCell align="right">처리</TableCell>
                 </TableRow>
               </TableHead>
@@ -779,25 +920,28 @@ const QcReview = () => {
                 ) : (
                   visibleRows.map((row) => {
                     const detail = qcDetailByPlanId[row.id] || null;
+                    const historyState = qcHistoryByPlanId[row.id] || null;
+                    const history = Array.isArray(historyState?.history) ? historyState.history : [];
+                    const historyLoading = Boolean(qcHistoryLoadingByPlanId[row.id]);
                     const hasMatrix = Boolean(detail?.matched && detail?.sizeKeys?.length && detail?.variants?.length);
                     const baselineQuantity =
                       hasMatrix && Number(detail?.orderedQuantity) > 0
                         ? Number(detail?.orderedQuantity)
                         : Number(row.plannedQuantity || 0);
-                    const quantityDelta = Number(row.qcPassQuantity || 0) - baselineQuantity;
+                    const parsedQcPassQuantityRaw = toNonNegativeIntOrNull(row.qcPassQuantity);
+                    const parsedQcPassQuantity = parsedQcPassQuantityRaw ?? 0;
+                    const quantityDelta = parsedQcPassQuantity - baselineQuantity;
                     const hasOverflow = quantityDelta > 0;
                     const hasShortage = quantityDelta < 0;
-                    const isSavingDraft = savingDraftPlanId === row.id;
-                    const isCompleting = completingPlanId === row.id;
-                    const parsedQcPassQuantityRaw = toNonNegativeIntOrNull(row.qcPassQuantity);
-                    const hasQcPassQuantity = parsedQcPassQuantityRaw !== null;
-                    const parsedQcPassQuantity = parsedQcPassQuantityRaw ?? 0;
-                    const producedQuantity = toNonNegativeIntOrNull(row.producedQuantity) ?? 0;
-                    const missingWorkLogQuantity = Math.max(0, parsedQcPassQuantity - producedQuantity);
-                    const canComplete = hasQcPassQuantity;
-                    const hasWorkLogGapWarning = hasQcPassQuantity && missingWorkLogQuantity > 0;
+                    const isSavingQc = savingQcPlanId === row.id;
                     const statusChip = resolveStatusChip(row);
                     const isExpanded = expandedRowId === row.id;
+                    const qcPassedTotal =
+                      toNonNegativeIntOrNull(historyState?.qcPassedTotal) ??
+                      toNonNegativeIntOrNull(row.qcPassedTotal) ??
+                      0;
+                    const latestQcDate =
+                      String(historyState?.latestQcDate || row.latestQcDate || '').trim() || null;
 
                     return (
                       <React.Fragment key={row.id}>
@@ -832,187 +976,277 @@ const QcReview = () => {
                             </Typography>
                           </TableCell>
                           <TableCell align="right">{formatInt(baselineQuantity)}</TableCell>
-                          <TableCell align="right">{formatInt(producedQuantity)}</TableCell>
-                          <TableCell align="right" sx={{ minWidth: 150 }}>
-                            <TextField
-                              size="small"
-                              value={row.qcPassQuantity}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={(event) => {
-                                if (hasMatrix) return;
-                                const nextValue = String(event.target.value || '').replace(/[^\d]/g, '');
-                                setRows((prevRows) =>
-                                  prevRows.map((item) =>
-                                    item.id === row.id
-                                      ? {
-                                          ...item,
-                                          qcPassQuantity: nextValue,
-                                        }
-                                      : item
-                                  )
-                                );
-                              }}
-                              disabled={row.isCompleted || hasMatrix}
-                              inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
-                              helperText={
-                                hasMatrix
-                                  ? '상세입력합 자동'
-                                  : hasOverflow
-                                    ? `초과 +${formatInt(quantityDelta)}`
-                                    : hasShortage
-                                      ? `부족 ${formatInt(quantityDelta)}`
-                                      : ' '
-                              }
-                              FormHelperTextProps={{
-                                sx: {
-                                  color: hasOverflow
-                                    ? 'warning.main'
-                                    : hasShortage
-                                      ? 'error.main'
-                                      : 'text.secondary',
-                                },
-                              }}
-                            />
+                          <TableCell align="right">{formatInt(row.producedQuantity)}</TableCell>
+                          <TableCell align="right" sx={{ minWidth: 140 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              {formatInt(qcPassedTotal)}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {latestQcDate ? `최근 ${latestQcDate}` : '이력 없음'}
+                            </Typography>
                           </TableCell>
-                          <TableCell align="right" sx={{ minWidth: 220 }}>
-                            {row.isCompleted ? (
-                              <Typography variant="caption" color="text.secondary">
-                                {row.completedAt ? new Date(row.completedAt).toLocaleString() : '-'}
-                              </Typography>
-                            ) : (
-                              <Stack
-                                direction="column"
-                                spacing={0.75}
-                                alignItems="flex-end"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <Box sx={{ display: 'flex', gap: 0.75, justifyContent: 'flex-end' }}>
-                                  <SaveButton
-                                    onClick={() => handleSaveQcQuantity(row)}
-                                    disabled={isSavingDraft || isCompleting}
-                                    loading={isSavingDraft}
-                                    sx={{
-                                      minWidth: 92,
-                                      height: 32,
-                                      bgcolor: 'grey.700',
-                                      '&:hover': { bgcolor: 'grey.800' },
-                                    }}
-                                  >
-                                    검수저장
-                                  </SaveButton>
-                                  <SaveButton
-                                    onClick={() => handleComplete(row)}
-                                    disabled={isSavingDraft || isCompleting || !canComplete}
-                                    loading={isCompleting}
-                                    sx={{
-                                      minWidth: 92,
-                                      height: 32,
-                                      bgcolor: '#0d6efd',
-                                      '&:hover': { bgcolor: '#0a58ca' },
-                                    }}
-                                  >
-                                    마감완료
-                                  </SaveButton>
-                                </Box>
-                                {!hasQcPassQuantity || hasWorkLogGapWarning ? (
-                                  <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
-                                    {hasQcPassQuantity
-                                      ? `작업기록 부족 ${formatInt(missingWorkLogQuantity)}`
-                                      : '검수수량 입력 필요'}
-                                  </Typography>
-                                ) : null}
+                          <TableCell align="right" sx={{ minWidth: 320 }}>
+                            <Stack
+                              direction="column"
+                              spacing={0.75}
+                              alignItems="flex-end"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.75}>
+                                <TextField
+                                  size="small"
+                                  type="date"
+                                  label="검수일"
+                                  value={row.inspectionDate}
+                                  onChange={(event) => {
+                                    const nextValue = String(event.target.value || '').trim() || todayKey;
+                                    setRows((prevRows) =>
+                                      prevRows.map((item) =>
+                                        item.id === row.id
+                                          ? {
+                                              ...item,
+                                              inspectionDate: nextValue,
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  InputLabelProps={{ shrink: true }}
+                                  sx={{ minWidth: 148 }}
+                                />
+                                <TextField
+                                  size="small"
+                                  label="검수 통과 수량"
+                                  value={row.qcPassQuantity}
+                                  onChange={(event) => {
+                                    if (hasMatrix) return;
+                                    const nextValue = String(event.target.value || '').replace(/[^\d]/g, '');
+                                    setRows((prevRows) =>
+                                      prevRows.map((item) =>
+                                        item.id === row.id
+                                          ? {
+                                              ...item,
+                                              qcPassQuantity: nextValue,
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  disabled={hasMatrix}
+                                  inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }}
+                                  helperText={
+                                    hasMatrix
+                                      ? '상세 입력 자동합계'
+                                      : hasOverflow
+                                        ? `초과 +${formatInt(quantityDelta)}`
+                                        : hasShortage
+                                          ? `부족 ${formatInt(quantityDelta)}`
+                                          : ' '
+                                  }
+                                  FormHelperTextProps={{
+                                    sx: {
+                                      color: hasOverflow
+                                        ? 'warning.main'
+                                        : hasShortage
+                                          ? 'error.main'
+                                          : 'text.secondary',
+                                    },
+                                  }}
+                                  sx={{ minWidth: 148 }}
+                                />
+                                <SaveButton
+                                  onClick={() => handleAddQcEvent(row)}
+                                  disabled={isSavingQc}
+                                  loading={isSavingQc}
+                                  sx={{
+                                    minWidth: 92,
+                                    height: 40,
+                                    bgcolor: '#0d6efd',
+                                    '&:hover': { bgcolor: '#0a58ca' },
+                                  }}
+                                >
+                                  검수 추가
+                                </SaveButton>
                               </Stack>
-                            )}
+                              {row.isCompleted ? (
+                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
+                                  제작 완료된 배치에 검수를 추가합니다.
+                                </Typography>
+                              ) : null}
+                            </Stack>
                           </TableCell>
                         </TableRow>
                         {isExpanded ? (
                           <TableRow>
                             <TableCell colSpan={8} sx={{ bgcolor: 'grey.50', py: 1.5 }}>
-                              {detail?.loading ? (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1 }}>
-                                  <CircularProgress size={18} />
-                                  <Typography variant="body2" color="text.secondary">
-                                    주문 색상/사이즈 상세를 불러오는 중입니다.
-                                  </Typography>
-                                </Box>
-                              ) : detail?.matched ? (
-                                <Stack spacing={1.25}>
-                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                    주문 {detail.orderNumber || row.orderNo || '-'} · 스타일 {row.styleCode || row.styleId || '-'}
-                                  </Typography>
-                                  <Table size="small" sx={{ bgcolor: 'white' }}>
-                                    <TableHead>
-                                      <TableRow>
-                                        <TableCell sx={{ minWidth: 160 }}>색상/성별</TableCell>
-                                        {(detail.sizeKeys || []).map((sizeKey) => (
-                                          <TableCell key={`${row.id}:${sizeKey}`} align="right" sx={{ minWidth: 78 }}>
-                                            {sizeKey === 'FREE' ? 'F' : sizeKey}
+                              <Stack spacing={1.5}>
+                                {detail?.loading ? (
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, px: 1 }}>
+                                    <CircularProgress size={18} />
+                                    <Typography variant="body2" color="text.secondary">
+                                      주문 색상/사이즈 정보를 불러오는 중입니다.
+                                    </Typography>
+                                  </Box>
+                                ) : detail?.matched ? (
+                                  <Stack spacing={1.25}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      주문 {detail.orderNumber || row.orderNo || '-'} · 스타일 {row.styleCode || row.styleId || '-'}
+                                    </Typography>
+                                    <Table size="small" sx={{ bgcolor: 'white' }}>
+                                      <TableHead>
+                                        <TableRow>
+                                          <TableCell sx={{ minWidth: 160 }}>색상/성별</TableCell>
+                                          {(detail.sizeKeys || []).map((sizeKey) => (
+                                            <TableCell key={`${row.id}:${sizeKey}`} align="right" sx={{ minWidth: 78 }}>
+                                              {sizeKey === 'FREE' ? 'F' : sizeKey}
+                                            </TableCell>
+                                          ))}
+                                          <TableCell align="right" sx={{ minWidth: 92 }}>
+                                            합계
                                           </TableCell>
-                                        ))}
-                                        <TableCell align="right" sx={{ minWidth: 92 }}>
-                                          합계
-                                        </TableCell>
-                                      </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                      {(detail.variants || []).map((variant) => {
-                                        const variantPassTotal = (detail.sizeKeys || []).reduce((sum, sizeKey) => {
-                                          const value = toNonNegativeIntOrNull(variant?.passBySize?.[sizeKey]);
-                                          return sum + (value || 0);
-                                        }, 0);
-                                        const variantOrderTotal = sumSizeQuantityMap(variant?.orderedBySize || {});
-                                        return (
-                                          <TableRow key={`${row.id}:${variant.key}`}>
-                                            <TableCell>
-                                              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                                {variant.colorName || '미지정'}
-                                              </Typography>
-                                              <Typography variant="caption" color="text.secondary">
-                                                {variant.gender && variant.gender !== '-'
-                                                  ? `성별 ${variant.gender}`
-                                                  : '성별 미지정'}{' '}
-                                                · 주문 {formatInt(variantOrderTotal)}
-                                              </Typography>
-                                            </TableCell>
-                                            {(detail.sizeKeys || []).map((sizeKey) => (
-                                              <TableCell key={`${row.id}:${variant.key}:${sizeKey}`} align="right">
-                                                <TextField
-                                                  size="small"
-                                                  value={variant?.passBySize?.[sizeKey] ?? ''}
-                                                  onClick={(event) => event.stopPropagation()}
-                                                  onChange={(event) =>
-                                                    handleVariantPassChange(row.id, variant.key, sizeKey, event.target.value)
-                                                  }
-                                                  disabled={row.isCompleted}
-                                                  inputProps={{
-                                                    inputMode: 'numeric',
-                                                    style: { textAlign: 'right', padding: '6px 8px', width: 54 },
-                                                  }}
-                                                />
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {(detail.variants || []).map((variant) => {
+                                          const variantPassTotal = (detail.sizeKeys || []).reduce((sum, sizeKey) => {
+                                            const value = toNonNegativeIntOrNull(variant?.passBySize?.[sizeKey]);
+                                            return sum + (value || 0);
+                                          }, 0);
+                                          const variantOrderTotal = sumSizeQuantityMap(variant?.orderedBySize || {});
+                                          return (
+                                            <TableRow key={`${row.id}:${variant.key}`}>
+                                              <TableCell>
+                                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                  {variant.colorName || '미지정'}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                  {variant.gender && variant.gender !== '-'
+                                                    ? `성별 ${variant.gender}`
+                                                    : '성별 미지정'}{' '}
+                                                  · 주문 {formatInt(variantOrderTotal)}
+                                                </Typography>
                                               </TableCell>
-                                            ))}
-                                            <TableCell align="right" sx={{ fontWeight: 700 }}>
-                                              {formatInt(variantPassTotal)}
-                                            </TableCell>
+                                              {(detail.sizeKeys || []).map((sizeKey) => (
+                                                <TableCell key={`${row.id}:${variant.key}:${sizeKey}`} align="right">
+                                                  <TextField
+                                                    size="small"
+                                                    value={variant?.passBySize?.[sizeKey] ?? ''}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    onChange={(event) =>
+                                                      handleVariantPassChange(row.id, variant.key, sizeKey, event.target.value)
+                                                    }
+                                                    inputProps={{
+                                                      inputMode: 'numeric',
+                                                      style: { textAlign: 'right', padding: '6px 8px', width: 54 },
+                                                    }}
+                                                  />
+                                                </TableCell>
+                                              ))}
+                                              <TableCell align="right" sx={{ fontWeight: 700 }}>
+                                                {formatInt(variantPassTotal)}
+                                              </TableCell>
+                                            </TableRow>
+                                          );
+                                        })}
+                                      </TableBody>
+                                    </Table>
+                                    <Typography
+                                      variant="caption"
+                                      color={quantityDelta === 0 ? 'text.secondary' : quantityDelta > 0 ? 'warning.main' : 'error.main'}
+                                      sx={{ px: 0.5 }}
+                                    >
+                                      주문수량 {formatInt(baselineQuantity)} / 현재 입력합 {formatInt(parsedQcPassQuantity)} / 차이{' '}
+                                      {quantityDelta > 0 ? `+${formatInt(quantityDelta)}` : formatInt(quantityDelta)}
+                                    </Typography>
+                                  </Stack>
+                                ) : (
+                                  <Alert severity="warning" sx={{ mx: 1 }}>
+                                    {detail?.error || '상세 데이터를 찾지 못했습니다. 기본 검수 수량 입력으로 처리하세요.'}
+                                  </Alert>
+                                )}
+
+                                <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'white' }}>
+                                  <Stack spacing={1}>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                      검수 이력
+                                    </Typography>
+                                    {historyLoading ? (
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                                        <CircularProgress size={18} />
+                                        <Typography variant="body2" color="text.secondary">
+                                          검수 이력을 불러오는 중입니다.
+                                        </Typography>
+                                      </Box>
+                                    ) : historyState?.error ? (
+                                      <Alert severity="warning">{historyState.error}</Alert>
+                                    ) : history.length === 0 ? (
+                                      <Typography variant="body2" color="text.secondary">
+                                        등록된 검수 이력이 없습니다.
+                                      </Typography>
+                                    ) : (
+                                      <Table size="small">
+                                        <TableHead>
+                                          <TableRow>
+                                            <TableCell>검수일</TableCell>
+                                            <TableCell>상세</TableCell>
+                                            <TableCell align="right">수량</TableCell>
+                                            <TableCell>비고</TableCell>
+                                            <TableCell>상태</TableCell>
+                                            <TableCell align="right">처리</TableCell>
                                           </TableRow>
-                                        );
-                                      })}
-                                    </TableBody>
-                                  </Table>
-                                  <Typography
-                                    variant="caption"
-                                    color={quantityDelta === 0 ? 'text.secondary' : quantityDelta > 0 ? 'warning.main' : 'error.main'}
-                                    sx={{ px: 0.5 }}
-                                  >
-                                    주문수량 {formatInt(baselineQuantity)} / 검수입력합 {formatInt(row.qcPassQuantity)} / 차이{' '}
-                                    {quantityDelta > 0 ? `+${formatInt(quantityDelta)}` : formatInt(quantityDelta)}
-                                  </Typography>
-                                </Stack>
-                              ) : (
-                                <Alert severity="warning" sx={{ mx: 1 }}>
-                                  {detail?.error || '상세 데이터를 찾지 못했습니다. 기본 검수 수량 입력으로 처리해 주세요.'}
-                                </Alert>
-                              )}
+                                        </TableHead>
+                                        <TableBody>
+                                          {history.map((eventRow) => {
+                                            const isCancelled = Boolean(eventRow?.cancelledAt);
+                                            return (
+                                              <TableRow key={`${row.id}:history:${eventRow.id}`}>
+                                                <TableCell>{eventRow.inspectedOn || '-'}</TableCell>
+                                                <TableCell>
+                                                  {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || '총량 입력'}
+                                                </TableCell>
+                                                <TableCell align="right">{formatInt(eventRow.passedQuantity)}</TableCell>
+                                                <TableCell>{eventRow.note || '-'}</TableCell>
+                                                <TableCell>
+                                                  <Chip
+                                                    size="small"
+                                                    label={isCancelled ? '취소됨' : '적용 중'}
+                                                    color={isCancelled ? 'default' : 'success'}
+                                                    variant={isCancelled ? 'outlined' : 'filled'}
+                                                  />
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                  {!isCancelled ? (
+                                                    <SaveButton
+                                                      onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        handleCancelQcEvent(row.id, eventRow.id);
+                                                      }}
+                                                      disabled={cancellingEventId === eventRow.id}
+                                                      loading={cancellingEventId === eventRow.id}
+                                                      sx={{
+                                                        minWidth: 84,
+                                                        height: 30,
+                                                        bgcolor: 'grey.700',
+                                                        '&:hover': { bgcolor: 'grey.800' },
+                                                      }}
+                                                    >
+                                                      이력 취소
+                                                    </SaveButton>
+                                                  ) : (
+                                                    <Typography variant="caption" color="text.secondary">
+                                                      {eventRow.cancelledAt ? eventRow.cancelledAt.slice(0, 10) : '-'}
+                                                    </Typography>
+                                                  )}
+                                                </TableCell>
+                                              </TableRow>
+                                            );
+                                          })}
+                                        </TableBody>
+                                      </Table>
+                                    )}
+                                  </Stack>
+                                </Paper>
+                              </Stack>
                             </TableCell>
                           </TableRow>
                         ) : null}

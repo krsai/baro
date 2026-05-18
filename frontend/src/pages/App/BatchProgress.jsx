@@ -351,8 +351,12 @@ const BatchProgress = () => {
             orderQty,
             producedQty,
             progressPercent,
-            qcPassedTotal: null,
-            qcReady: false,
+            qcPassedTotal:
+              toNonNegativeIntOrNull(progress?.qcPassedTotal ?? plan?.qcPassedTotal) ??
+              (isCompleted ? closedQty ?? toNonNegativeIntOrNull(plan?.finalQuantity) ?? 0 : 0),
+            qcReady:
+              toNonNegativeIntOrNull(progress?.qcPassedTotal ?? plan?.qcPassedTotal) !== null ||
+              (isCompleted && (closedQty !== null || toNonNegativeIntOrNull(plan?.finalQuantity) !== null)),
             isCompleted,
             completedAt,
             closedQty,

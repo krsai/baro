@@ -95,6 +95,11 @@ enum AssignmentCloseBasis {
   MANUAL
 }
 
+enum QcPassEventSourceType {
+  MANUAL
+  MIGRATED_LEGACY
+}
+
 model SystemUser {
   id         Int        @id @default(autoincrement())
   email      String     @unique
@@ -174,6 +179,7 @@ model Organization {
   assignmentBoardState      AssignmentBoardState?
   assignmentCards           AssignmentCard[]
   assignmentPlans           AssignmentPlan[]
+  qcPassEvents             QcPassEvent[]
   payrollSnapshots          PayrollSnapshot[]
   quantitySettlementSnapshots QuantitySettlementSnapshot[]
   attendanceEntries         AttendanceEntry[]
@@ -423,6 +429,7 @@ model AttrColor {
   workOrderItems  WorkOrderItem[]
   workRecords     WorkRecord[]
   assignmentPlans AssignmentPlan[]
+  qcPassEvents   QcPassEvent[]
 }
 
 model AttrCategory {
@@ -676,6 +683,8 @@ model AssignmentPlan {
   isCompleted           Boolean   @default(false)
   finalQuantity         Int?
   completedAt           DateTime?
+  qcPassedTotal         Int       @default(0)
+  latestQcDate          String?
   closedQty             Int?
   closedAt              DateTime?
   closedBy              String?
@@ -689,9 +698,36 @@ model AssignmentPlan {
   organization Organization @relation(fields: [orgId], references: [id])
   attrColor    AttrColor?   @relation(fields: [colorId], references: [id], onDelete: SetNull)
   workRecords  WorkRecord[]
+  qcPassEvents QcPassEvent[]
 
   @@unique([orgId, externalId])
   @@index([orgId, lineId])
+  @@index([colorId])
+}
+
+model QcPassEvent {
+  id               Int                   @id @default(autoincrement())
+  orgId            Int
+  assignmentPlanId Int
+  inspectedOn      String
+  passedQuantity   Int                   @default(0)
+  colorId          Int?
+  sizeKey          String?
+  note             String?
+  sourceType       QcPassEventSourceType @default(MANUAL)
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  createdAt        DateTime              @default(now())
+  createdBy        String                @default("system@baro.local")
+  updatedAt        DateTime              @updatedAt
+
+  organization   Organization   @relation(fields: [orgId], references: [id])
+  assignmentPlan AssignmentPlan @relation(fields: [assignmentPlanId], references: [id], onDelete: Cascade)
+  attrColor      AttrColor?     @relation(fields: [colorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, assignmentPlanId, inspectedOn])
+  @@index([orgId, inspectedOn])
+  @@index([assignmentPlanId])
   @@index([colorId])
 }
 
