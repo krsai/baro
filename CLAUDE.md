@@ -37,8 +37,14 @@ AT(q) = a*q + b
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
 - `ctSnapshot`: 프론트에서 계산한 CT 스냅샷 JSON 저장 (백엔드 검증 없음)
 - `isCompleted / finalQuantity / completedAt`: QC 완료 처리 결과
+- `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정(`POST /assignment-plans/:id/close`) 결과
 
----
+### ⚠️ DB 적용 메모
+- `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 현재 **additive SQL**로 실DB에 반영됨.
+- 이유: Prisma migration history drift로 `prisma db push` / `migrate deploy`가 바로 통과하지 않음.
+- 새 환경 반영 시에는 해당 컬럼과 enum 2개(`AssignmentCloseMode`, `AssignmentCloseBasis`)를 먼저 생성해야 함.
+
+--- 
 
 ## AT 학습 파이프라인
 

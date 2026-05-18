@@ -14463,6 +14463,15 @@ app.get("/assignment-plans", async (req, res) => {
     map.set(key, card);
     return map;
   }, new Map<string, any>());
+  const stateByExternalId = normalizeStateAssignments(boardState?.assignments).reduce(
+    (map, assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId || map.has(externalId)) return map;
+      map.set(externalId, assignment);
+      return map;
+    },
+    new Map<string, any>()
+  );
 
   res.json(
     plans.map((plan) => {
@@ -14470,7 +14479,20 @@ app.get("/assignment-plans", async (req, res) => {
         resolveOptionalString(plan.cardId, null) ??
         resolveOptionalString(plan.originOrderId, null) ??
         null;
+      const stateAssignment =
+        stateByExternalId.get(resolveOptionalString(plan.externalId, null) || "") || null;
       const matchedCard = cardId ? cardById.get(cardId) ?? null : null;
+      const startDateKey =
+        normalizeDateKey(stateAssignment?.startDateKey) ||
+        normalizeDateKey(resolveAssignmentStartDateKey(stateAssignment));
+      const endDateKey =
+        normalizeDateKey(stateAssignment?.endDateKey) ||
+        (startDateKey
+          ? shiftDateKeyByDaysForAssignmentSchedule(
+              startDateKey,
+              Math.max(0, toSignedInt(plan.endIndex, plan.startIndex) - toSignedInt(plan.startIndex, 0))
+            )
+          : null);
       const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
       const closedQty = resolveAssignmentPlanClosedQty(plan);
       const completedAt = resolveAssignmentPlanClosedAt(plan);
@@ -14507,6 +14529,8 @@ app.get("/assignment-plans", async (req, res) => {
           normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedAt ?? null,
         startIndex: plan.startIndex,
         endIndex: plan.endIndex,
+        startDateKey,
+        endDateKey,
         isCompleted,
         finalQuantity,
         closedQty,

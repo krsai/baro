@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
   Chip,
+  CircularProgress,
   MenuItem,
   Paper,
   Stack,
@@ -15,90 +16,15 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
 import AppPageContainer from '../../components/AppPageContainer';
-
-const TODAY = '2026-04-30';
-
-const DUMMY_LINES = [
-  { id: 1, name: 'L15-1' },
-  { id: 2, name: 'L15-2' },
-  { id: 3, name: 'L16-1' },
-];
-
-const DUMMY_BATCHES = [
-  {
-    id: 'A1',
-    lineId: 1,
-    lineName: 'L15-1',
-    orderNo: 'AM01160',
-    styleName: '셔츠 A',
-    plannedStart: '2026-04-01',
-    plannedEnd: '2026-04-09',
-    orderQty: 140,
-    producedQty: 128,
-    qcPassedTotal: 116,
-    processBreakdown: [
-      { processName: '봉제', qty: 128 },
-      { processName: '마감', qty: 128 },
-    ],
-    isCompleted: false,
-    completedAt: null,
-    closedQty: null,
-  },
-  {
-    id: 'A2',
-    lineId: 1,
-    lineName: 'L15-1',
-    orderNo: 'AM01161',
-    styleName: '블라우스 B',
-    plannedStart: '2026-04-10',
-    plannedEnd: '2026-04-19',
-    orderQty: 200,
-    producedQty: 200,
-    qcPassedTotal: 182,
-    processBreakdown: [
-      { processName: '봉제', qty: 200 },
-      { processName: '마감', qty: 200 },
-    ],
-    isCompleted: false,
-    completedAt: null,
-    closedQty: null,
-  },
-  {
-    id: 'A3',
-    lineId: 1,
-    lineName: 'L15-1',
-    orderNo: 'AM01162',
-    styleName: '바지 C',
-    plannedStart: '2026-05-02',
-    plannedEnd: '2026-05-08',
-    orderQty: 80,
-    producedQty: 0,
-    qcPassedTotal: 0,
-    processBreakdown: [],
-    isCompleted: false,
-    completedAt: null,
-    closedQty: null,
-  },
-  {
-    id: 'B1',
-    lineId: 2,
-    lineName: 'L15-2',
-    orderNo: 'AM01170',
-    styleName: '원피스 D',
-    plannedStart: '2026-04-01',
-    plannedEnd: '2026-04-15',
-    orderQty: 300,
-    producedQty: 305,
-    qcPassedTotal: 300,
-    processBreakdown: [
-      { processName: '봉제', qty: 312 },
-      { processName: '마감', qty: 305 },
-    ],
-    isCompleted: true,
-    completedAt: '2026-04-30',
-    closedQty: 300,
-  },
-];
+import { useAppActions } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { buildQueryString, requestJSON } from '../../utils/apiClient';
+import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from '../../utils/workspaceDataEvents';
+import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
+import { todayDateKey } from '../../utils/dateKey.mjs';
 
 const STATUS_META = {
   overdue: {
@@ -142,6 +68,19 @@ const STATUS_ORDER = {
   completed: 3,
 };
 
+const toPositiveIntOrNull = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.trunc(parsed);
+};
+
+const toNonNegativeIntOrNull = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ''));
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.round(parsed));
+};
+
 const formatInt = (value) => {
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
@@ -163,13 +102,6 @@ const getCloseMode = (closedQty, orderQty) => {
   return 'OVER';
 };
 
-const getStatus = (batch) => {
-  if (batch.isCompleted) return 'completed';
-  if (batch.plannedStart > TODAY) return 'pending';
-  if (batch.plannedEnd < TODAY) return 'overdue';
-  return 'active';
-};
-
 const getCloseModeLabel = (closeMode) => {
   switch (closeMode) {
     case 'FULL':
@@ -183,8 +115,15 @@ const getCloseModeLabel = (closeMode) => {
   }
 };
 
+const getStatus = (batch, todayKey) => {
+  if (batch.isCompleted) return 'completed';
+  if (batch.plannedStart && batch.plannedStart > todayKey) return 'pending';
+  if (batch.plannedEnd && batch.plannedEnd < todayKey) return 'overdue';
+  return 'active';
+};
+
 const MetricBlock = ({ label, value, helper, align = 'left' }) => (
-  <Stack spacing={0.35} sx={{ minWidth: 120, textAlign: align }}>
+  <Stack spacing={0.35} sx={{ minWidth: 132, textAlign: align }}>
     <Typography variant="caption" color="text.secondary">
       {label}
     </Typography>
@@ -199,8 +138,8 @@ const MetricBlock = ({ label, value, helper, align = 'left' }) => (
   </Stack>
 );
 
-const ClosePanel = ({ batch, onConfirm, onCancel }) => {
-  const [qty, setQty] = useState(String(batch.producedQty || 0));
+const ClosePanel = ({ batch, submitting, onConfirm, onCancel }) => {
+  const [qty, setQty] = useState(String(batch.closedQty ?? batch.producedQty ?? 0));
   const parsedQty = Math.max(0, Number(qty) || 0);
   const closeMode = getCloseMode(parsedQty, batch.orderQty);
 
@@ -252,12 +191,13 @@ const ClosePanel = ({ batch, onConfirm, onCancel }) => {
           <Button
             variant="contained"
             color="success"
+            disabled={submitting}
             startIcon={<CheckCircleOutlineIcon />}
             onClick={() => onConfirm(parsedQty)}
           >
             제작 완료 확정
           </Button>
-          <Button variant="outlined" onClick={onCancel}>
+          <Button variant="outlined" disabled={submitting} onClick={onCancel}>
             닫기
           </Button>
         </Stack>
@@ -267,58 +207,265 @@ const ClosePanel = ({ batch, onConfirm, onCancel }) => {
 };
 
 const BatchProgress = () => {
-  const [selectedLineId, setSelectedLineId] = useState('all');
+  const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
+  const { showNotification } = useAppActions();
+  const todayKey = useMemo(() => todayDateKey(), []);
+
+  const [factories, setFactories] = useState([]);
+  const [lines, setLines] = useState([]);
+  const [selectedFactoryId, setSelectedFactoryId] = useState(toPositiveIntOrNull(activeFactoryId));
+  const [selectedLineId, setSelectedLineId] = useState(null);
+  const [batches, setBatches] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [closingId, setClosingId] = useState(null);
-  const [batches, setBatches] = useState(DUMMY_BATCHES);
+  const [submittingCloseId, setSubmittingCloseId] = useState(null);
+
+  const lineNameById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(lines) ? lines : []).forEach((line) => {
+      const id = toPositiveIntOrNull(line?.id);
+      if (!id) return;
+      map.set(id, String(line?.name || '').trim());
+    });
+    return map;
+  }, [lines]);
+
+  const loadFactories = useCallback(async () => {
+    if (!toPositiveIntOrNull(activeOrgId)) {
+      setFactories([]);
+      return;
+    }
+    const query = buildQueryString({ orgId: activeOrgId });
+    const response = await requestJSON(`/factories${query}`, { skipGlobalLoading: true }).catch(() => []);
+    const safeRows = Array.isArray(response) ? response : [];
+    const visibleRows =
+      activeOrgRole === 'ADMIN' || !activeFactoryId
+        ? safeRows
+        : safeRows.filter((factory) => Number(factory?.id) === Number(activeFactoryId));
+    setFactories(visibleRows);
+    if (!toPositiveIntOrNull(selectedFactoryId) && visibleRows.length > 0) {
+      setSelectedFactoryId(toPositiveIntOrNull(visibleRows[0]?.id));
+    }
+  }, [activeFactoryId, activeOrgId, activeOrgRole, selectedFactoryId]);
+
+  const loadLines = useCallback(async () => {
+    const factoryId = toPositiveIntOrNull(selectedFactoryId);
+    if (!factoryId || !toPositiveIntOrNull(activeOrgId)) {
+      setLines([]);
+      setSelectedLineId(null);
+      return;
+    }
+    const query = buildQueryString({ orgId: activeOrgId, factoryId });
+    const response = await requestJSON(`/lines${query}`, { skipGlobalLoading: true }).catch(() => []);
+    const safeRows = Array.isArray(response) ? response : [];
+    setLines(safeRows);
+    setSelectedLineId((current) => {
+      const currentId = toPositiveIntOrNull(current);
+      if (!currentId) return null;
+      const exists = safeRows.some((line) => Number(line?.id) === currentId);
+      return exists ? currentId : null;
+    });
+  }, [activeOrgId, selectedFactoryId]);
+
+  const loadBatches = useCallback(
+    async ({ forceRefresh = false } = {}) => {
+      const factoryId = toPositiveIntOrNull(selectedFactoryId);
+      if (!factoryId || !toPositiveIntOrNull(activeOrgId)) {
+        setBatches([]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const plans = await requestJSON(
+          '/assignment-plans' +
+            buildQueryString({
+              orgId: activeOrgId,
+              factoryId,
+              lineId: toPositiveIntOrNull(selectedLineId),
+            }),
+          { skipGlobalLoading: true, forceRefresh }
+        );
+        const safePlans = Array.isArray(plans) ? plans : [];
+        const ids = safePlans.map((plan) => String(plan?.id || '').trim()).filter(Boolean);
+        const progressRows =
+          ids.length > 0
+            ? await requestJSON(
+                '/assignment-plan-progress' +
+                  buildQueryString({
+                    orgId: activeOrgId,
+                    ids: ids.join(','),
+                  }),
+                { skipGlobalLoading: true, forceRefresh }
+              ).catch(() => [])
+            : [];
+        const progressById = new Map(
+          (Array.isArray(progressRows) ? progressRows : [])
+            .map((row) => [String(row?.id || '').trim(), row])
+            .filter((entry) => entry[0])
+        );
+
+        const nextRows = safePlans.map((plan) => {
+          const id = String(plan?.id || '').trim();
+          const progress = progressById.get(id) || {};
+          const orderQty =
+            toNonNegativeIntOrNull(progress?.plannedQuantity ?? plan?.quantity) ?? 0;
+          const producedQty = toNonNegativeIntOrNull(progress?.producedQuantity) ?? 0;
+          const progressPercentRaw = Number(progress?.progressPercent);
+          const progressPercent = Number.isFinite(progressPercentRaw)
+            ? Math.max(0, Math.min(100, Math.round(progressPercentRaw)))
+            : getProgressPercent(producedQty, orderQty);
+          const lineId = toPositiveIntOrNull(progress?.lineId ?? plan?.lineId);
+          const closedQty =
+            toNonNegativeIntOrNull(
+              progress?.closedQty ??
+                plan?.closedQty ??
+                progress?.finalQuantity ??
+                plan?.finalQuantity
+            ) ?? null;
+          const completedAt =
+            String(
+              progress?.closedAt ||
+                progress?.completedAt ||
+                plan?.closedAt ||
+                plan?.completedAt ||
+                ''
+            ).trim() || null;
+          const isCompleted = Boolean(progress?.isCompleted ?? plan?.isCompleted ?? completedAt);
+          const closeMode =
+            String(progress?.closeMode || plan?.closeMode || '').trim() ||
+            (closedQty !== null ? getCloseMode(closedQty, orderQty) : null);
+
+          return {
+            id,
+            dbId: toPositiveIntOrNull(plan?.dbId),
+            lineId,
+            lineName:
+              String(progress?.lineName || '').trim() ||
+              lineNameById.get(lineId) ||
+              '-',
+            orderNo: String(plan?.orderNo || progress?.orderNo || '').trim(),
+            styleName: String(plan?.label || progress?.label || '').trim(),
+            plannedStart: String(plan?.startDateKey || '').trim() || null,
+            plannedEnd: String(plan?.endDateKey || '').trim() || null,
+            orderQty,
+            producedQty,
+            progressPercent,
+            qcPassedTotal: null,
+            qcReady: false,
+            isCompleted,
+            completedAt,
+            closedQty,
+            closeMode,
+            closeBasis: String(progress?.closeBasis || plan?.closeBasis || '').trim() || null,
+          };
+        });
+
+        setBatches(nextRows);
+      } catch (error) {
+        setBatches([]);
+        showNotification(error?.message || '배치 진행 데이터를 불러오지 못했습니다.', 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeOrgId, lineNameById, selectedFactoryId, selectedLineId, showNotification]
+  );
+
+  useEffect(() => {
+    loadFactories();
+  }, [loadFactories]);
+
+  useEffect(() => {
+    loadLines();
+  }, [loadLines]);
+
+  useEffect(() => {
+    loadBatches();
+  }, [loadBatches]);
+
+  useEffect(() => {
+    setClosingId(null);
+    setSubmittingCloseId(null);
+  }, [selectedFactoryId, selectedLineId, activeOrgId]);
+
+  useWorkspaceRefreshOnEvent({
+    orgId: activeOrgId,
+    topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    onRefresh: () => loadBatches({ forceRefresh: true }),
+  });
 
   const filteredBatches = useMemo(() => {
     const next = batches.filter(
-      (batch) => selectedLineId === 'all' || String(batch.lineId) === String(selectedLineId)
+      (batch) =>
+        !toPositiveIntOrNull(selectedLineId) ||
+        String(batch.lineId || '') === String(selectedLineId)
     );
 
     next.sort((left, right) => {
-      const leftStatus = getStatus(left);
-      const rightStatus = getStatus(right);
+      const leftStatus = getStatus(left, todayKey);
+      const rightStatus = getStatus(right, todayKey);
       const statusDiff = STATUS_ORDER[leftStatus] - STATUS_ORDER[rightStatus];
       if (statusDiff !== 0) return statusDiff;
-      if (left.lineId !== right.lineId) return left.lineId - right.lineId;
-      if (left.plannedStart !== right.plannedStart) {
-        return left.plannedStart.localeCompare(right.plannedStart);
+      if ((left.lineId || 0) !== (right.lineId || 0)) {
+        return (left.lineId || 0) - (right.lineId || 0);
       }
+      const leftStart = String(left.plannedStart || '');
+      const rightStart = String(right.plannedStart || '');
+      if (leftStart !== rightStart) return leftStart.localeCompare(rightStart);
       return String(left.orderNo || '').localeCompare(String(right.orderNo || ''));
     });
 
     return next;
-  }, [batches, selectedLineId]);
+  }, [batches, selectedLineId, todayKey]);
 
   const summary = useMemo(
     () =>
       filteredBatches.reduce(
         (acc, batch) => {
-          const status = getStatus(batch);
+          const status = getStatus(batch, todayKey);
           acc[status] += 1;
           return acc;
         },
         { overdue: 0, active: 0, pending: 0, completed: 0 }
       ),
-    [filteredBatches]
+    [filteredBatches, todayKey]
   );
 
-  const handleConfirmClose = (batchId, closedQty) => {
-    setBatches((current) =>
-      current.map((batch) =>
-        batch.id === batchId
-          ? {
-              ...batch,
-              isCompleted: true,
-              completedAt: TODAY,
+  const handleConfirmClose = useCallback(
+    async (batch, closedQty) => {
+      if (!batch?.id) return;
+      setSubmittingCloseId(batch.id);
+      try {
+        await requestJSON(
+          `/assignment-plans/${encodeURIComponent(String(batch.id))}/close` +
+            buildQueryString({ orgId: activeOrgId }),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               closedQty,
-            }
-          : batch
-      )
-    );
-    setClosingId(null);
-  };
+              closeBasis: 'MANUAL',
+            }),
+          }
+        );
+        emitWorkspaceDataChanged({
+          topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+          orgId: activeOrgId,
+          assignmentIds: [batch.id],
+          source: 'batch-progress',
+        });
+        showNotification('제작 완료를 확정했습니다.', 'success');
+        setClosingId(null);
+        await loadBatches({ forceRefresh: true });
+      } catch (error) {
+        showNotification(error?.message || '제작 완료 확정에 실패했습니다.', 'error');
+      } finally {
+        setSubmittingCloseId(null);
+      }
+    },
+    [activeOrgId, loadBatches, showNotification]
+  );
 
   return (
     <AppPageContainer
@@ -328,30 +475,49 @@ const BatchProgress = () => {
             배치 진행 / 제작 완료
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            배정 카드별 작업기록 생산수량과 검수 누적을 검토하고, 제작 완료 수량을 최종 확정하는 화면입니다.
+            배정 카드별 작업기록 생산수량을 검토하고, 제작 완료 수량을 최종 확정하는 화면입니다.
           </Typography>
         </Stack>
       }
     >
       <Stack spacing={2}>
         <Alert severity="info">
-          이 화면의 계획 기간은 배정 시점의 계획을 그대로 보여줍니다. 작업기록과 검수 누적은 참고 정보이며, 제작 완료는
-          사람이 별도로 확정합니다.
+          이 화면의 계획 기간은 배정 시점의 계획을 그대로 보여줍니다. 작업기록은 참고 정보이며, 제작 완료는 사람이 별도로
+          확정합니다.
+        </Alert>
+        <Alert severity="warning">
+          검수 누적은 QC 이력 기능 연결 전까지 이 화면에서 집계하지 않습니다.
         </Alert>
 
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
           <TextField
             select
             size="small"
-            label="라인"
-            value={selectedLineId}
-            onChange={(event) => setSelectedLineId(event.target.value)}
+            label="공장"
+            value={selectedFactoryId || ''}
+            onChange={(event) => setSelectedFactoryId(toPositiveIntOrNull(event.target.value))}
             sx={{ minWidth: 180 }}
           >
-            <MenuItem value="all">전체 라인</MenuItem>
-            {DUMMY_LINES.map((line) => (
+            {factories.map((factory) => (
+              <MenuItem key={factory.id} value={String(factory.id)}>
+                {String(factory.name || '').trim() || `공장 ${factory.id}`}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            select
+            size="small"
+            label="라인"
+            value={selectedLineId || ''}
+            onChange={(event) => setSelectedLineId(toPositiveIntOrNull(event.target.value))}
+            sx={{ minWidth: 180 }}
+            disabled={!selectedFactoryId}
+          >
+            <MenuItem value="">전체 라인</MenuItem>
+            {lines.map((line) => (
               <MenuItem key={line.id} value={String(line.id)}>
-                {line.name}
+                {String(line.name || '').trim() || `라인 ${line.id}`}
               </MenuItem>
             ))}
           </TextField>
@@ -364,168 +530,166 @@ const BatchProgress = () => {
           </Stack>
         </Stack>
 
-        <Stack spacing={1.5}>
-          {filteredBatches.map((batch) => {
-            const status = getStatus(batch);
-            const statusMeta = STATUS_META[status];
-            const progressPercent = getProgressPercent(batch.producedQty, batch.orderQty);
-            const closeMode = batch.isCompleted ? getCloseMode(batch.closedQty, batch.orderQty) : null;
-            const StatusIcon = statusMeta.icon;
-            const canClose = status !== 'pending' && !batch.isCompleted;
-            const isClosing = closingId === batch.id;
+        {loading ? (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+            <Stack spacing={1.5} alignItems="center">
+              <CircularProgress size={28} />
+              <Typography color="text.secondary">배치 진행 데이터를 불러오는 중입니다.</Typography>
+            </Stack>
+          </Paper>
+        ) : !selectedFactoryId ? (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+            <Typography color="text.secondary">표시할 공장을 선택하세요.</Typography>
+          </Paper>
+        ) : (
+          <Stack spacing={1.5}>
+            {filteredBatches.map((batch) => {
+              const status = getStatus(batch, todayKey);
+              const statusMeta = STATUS_META[status];
+              const closeMode = batch.isCompleted
+                ? String(batch.closeMode || '').trim() || getCloseMode(batch.closedQty, batch.orderQty)
+                : null;
+              const StatusIcon = statusMeta.icon;
+              const canClose = status !== 'pending' && !batch.isCompleted;
+              const isClosing = closingId === batch.id;
 
-            return (
-              <Paper
-                key={batch.id}
-                variant="outlined"
-                sx={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  borderRadius: 2,
-                  borderColor: statusMeta.border,
-                  bgcolor: statusMeta.background,
-                }}
-              >
-                {status !== 'pending' ? (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      width: `${batch.isCompleted ? 100 : progressPercent}%`,
-                      bgcolor: statusMeta.overlay,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                ) : null}
-
-                <Stack spacing={1.5} sx={{ position: 'relative', zIndex: 1, p: 2 }}>
-                  <Stack
-                    direction={{ xs: 'column', md: 'row' }}
-                    spacing={1}
-                    alignItems={{ md: 'center' }}
-                  >
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                      <Chip
-                        icon={<StatusIcon />}
-                        size="small"
-                        color={statusMeta.color}
-                        label={statusMeta.label}
-                        variant={batch.isCompleted ? 'filled' : 'outlined'}
-                      />
-                      <Typography variant="body2" color="text.secondary">
-                        {batch.lineName}
-                      </Typography>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {batch.orderNo}
-                      </Typography>
-                      <Typography variant="body2">{batch.styleName}</Typography>
-                      {closeMode ? (
-                        <Chip
-                          size="small"
-                          color={closeMode === 'FULL' ? 'success' : closeMode === 'OVER' ? 'info' : 'warning'}
-                          label={getCloseModeLabel(closeMode)}
-                        />
-                      ) : null}
-                    </Stack>
-                    <Box sx={{ flex: 1 }} />
-                    <Typography variant="body2" color="text.secondary">
-                      배정 기간: {batch.plannedStart} ~ {batch.plannedEnd}
-                    </Typography>
-                  </Stack>
-
-                  <Stack
-                    direction={{ xs: 'column', lg: 'row' }}
-                    spacing={2}
-                    alignItems={{ lg: 'center' }}
-                  >
-                    <Stack
-                      direction={{ xs: 'column', sm: 'row' }}
-                      spacing={2}
-                      flexWrap="wrap"
-                      useFlexGap
-                      sx={{ flex: 1 }}
-                    >
-                      <MetricBlock label="주문수량" value={`${formatInt(batch.orderQty)}장`} />
-                      <MetricBlock
-                        label="작업기록 생산수량"
-                        value={`${formatInt(batch.producedQty)}장`}
-                        helper="작업기록 기준"
-                      />
-                      <MetricBlock
-                        label="검수 누적"
-                        value={`${formatInt(batch.qcPassedTotal)}장`}
-                        helper="QC 누적 기준"
-                      />
-                      <MetricBlock
-                        label="진행도"
-                        value={`${progressPercent}%`}
-                        helper="작업기록 기준"
-                      />
-                    </Stack>
-
-                    <Stack alignItems={{ xs: 'flex-start', lg: 'flex-end' }} spacing={0.75}>
-                      {batch.isCompleted ? (
-                        <>
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                            완료일 {batch.completedAt || '-'}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            확정수량 {formatInt(batch.closedQty)}장
-                          </Typography>
-                        </>
-                      ) : canClose ? (
-                        <Button
-                          variant={status === 'overdue' ? 'contained' : 'outlined'}
-                          color={status === 'overdue' ? 'warning' : 'primary'}
-                          startIcon={status === 'overdue' ? <WarningAmberIcon /> : <CheckCircleOutlineIcon />}
-                          onClick={() => setClosingId((current) => (current === batch.id ? null : batch.id))}
-                        >
-                          제작 완료 확정
-                        </Button>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          시작 전 배치입니다
-                        </Typography>
-                      )}
-                    </Stack>
-                  </Stack>
-
-                  {batch.processBreakdown.length > 0 ? (
-                    <Stack spacing={0.75}>
-                      <Typography variant="caption" color="text.secondary">
-                        공정별 참고수량
-                      </Typography>
-                      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-                        {batch.processBreakdown.map((process) => (
-                          <Chip
-                            key={`${batch.id}:${process.processName}`}
-                            size="small"
-                            variant="outlined"
-                            label={`${process.processName} ${formatInt(process.qty)}장`}
-                          />
-                        ))}
-                      </Stack>
-                    </Stack>
-                  ) : null}
-
-                  {isClosing ? (
-                    <ClosePanel
-                      batch={batch}
-                      onConfirm={(qty) => handleConfirmClose(batch.id, qty)}
-                      onCancel={() => setClosingId(null)}
+              return (
+                <Paper
+                  key={batch.id}
+                  variant="outlined"
+                  sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: 2,
+                    borderColor: statusMeta.border,
+                    bgcolor: statusMeta.background,
+                  }}
+                >
+                  {status !== 'pending' ? (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: `${batch.isCompleted ? 100 : batch.progressPercent}%`,
+                        bgcolor: statusMeta.overlay,
+                        pointerEvents: 'none',
+                      }}
                     />
                   ) : null}
-                </Stack>
-              </Paper>
-            );
-          })}
 
-          {filteredBatches.length === 0 ? (
-            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
-              <Typography color="text.secondary">표시할 배치가 없습니다.</Typography>
-            </Paper>
-          ) : null}
-        </Stack>
+                  <Stack spacing={1.5} sx={{ position: 'relative', zIndex: 1, p: 2 }}>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={1}
+                      alignItems={{ md: 'center' }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Chip
+                          icon={<StatusIcon />}
+                          size="small"
+                          color={statusMeta.color}
+                          label={statusMeta.label}
+                          variant={batch.isCompleted ? 'filled' : 'outlined'}
+                        />
+                        <Typography variant="body2" color="text.secondary">
+                          {batch.lineName}
+                        </Typography>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {batch.orderNo || '-'}
+                        </Typography>
+                        <Typography variant="body2">{batch.styleName || '-'}</Typography>
+                        {closeMode ? (
+                          <Chip
+                            size="small"
+                            color={closeMode === 'FULL' ? 'success' : closeMode === 'OVER' ? 'info' : 'warning'}
+                            label={getCloseModeLabel(closeMode)}
+                          />
+                        ) : null}
+                      </Stack>
+                      <Box sx={{ flex: 1 }} />
+                      <Typography variant="body2" color="text.secondary">
+                        배정 기간: {batch.plannedStart || '-'} ~ {batch.plannedEnd || '-'}
+                      </Typography>
+                    </Stack>
+
+                    <Stack
+                      direction={{ xs: 'column', lg: 'row' }}
+                      spacing={2}
+                      alignItems={{ lg: 'center' }}
+                    >
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={2}
+                        flexWrap="wrap"
+                        useFlexGap
+                        sx={{ flex: 1 }}
+                      >
+                        <MetricBlock label="주문수량" value={`${formatInt(batch.orderQty)}장`} />
+                        <MetricBlock
+                          label="작업기록 생산수량"
+                          value={`${formatInt(batch.producedQty)}장`}
+                          helper="작업기록 기준"
+                        />
+                        <MetricBlock
+                          label="검수 누적"
+                          value={batch.qcReady ? `${formatInt(batch.qcPassedTotal)}장` : '집계 준비 중'}
+                          helper={batch.qcReady ? 'QC 누적 기준' : 'QC 이력 연결 예정'}
+                        />
+                        <MetricBlock
+                          label="진행도"
+                          value={`${formatInt(batch.progressPercent)}%`}
+                          helper="작업기록 기준"
+                        />
+                      </Stack>
+
+                      <Stack alignItems={{ xs: 'flex-start', lg: 'flex-end' }} spacing={0.75}>
+                        {batch.isCompleted ? (
+                          <>
+                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                              완료일 {batch.completedAt || '-'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              확정수량 {formatInt(batch.closedQty)}장
+                            </Typography>
+                          </>
+                        ) : canClose ? (
+                          <Button
+                            variant={status === 'overdue' ? 'contained' : 'outlined'}
+                            color={status === 'overdue' ? 'warning' : 'primary'}
+                            disabled={submittingCloseId === batch.id}
+                            startIcon={status === 'overdue' ? <WarningAmberIcon /> : <CheckCircleOutlineIcon />}
+                            onClick={() => setClosingId((current) => (current === batch.id ? null : batch.id))}
+                          >
+                            제작 완료 확정
+                          </Button>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary">
+                            시작 전 배치입니다
+                          </Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+
+                    {isClosing ? (
+                      <ClosePanel
+                        batch={batch}
+                        submitting={submittingCloseId === batch.id}
+                        onConfirm={(qty) => handleConfirmClose(batch, qty)}
+                        onCancel={() => setClosingId(null)}
+                      />
+                    ) : null}
+                  </Stack>
+                </Paper>
+              );
+            })}
+
+            {filteredBatches.length === 0 ? (
+              <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+                <Typography color="text.secondary">표시할 배치가 없습니다.</Typography>
+              </Paper>
+            ) : null}
+          </Stack>
+        )}
       </Stack>
     </AppPageContainer>
   );
