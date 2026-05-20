@@ -3049,9 +3049,11 @@ const AssignBoard = () => {
       }
       setLines(nextLines);
       setCards(restoredCards);
+      // Keep absolute date keys loaded from server state.
+      // Recomputing them from current view base date causes cross-month schedules to shift visually.
       setAssignments(
         normalizedRestoredAssignments.map((assignment) =>
-          syncAssignmentDateKeys(assignment, startDateRef.current)
+          normalizeAssignmentLayout(assignment)
         )
       );
       setDetailDraftsByTarget({});
