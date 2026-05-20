@@ -18809,6 +18809,60 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     });
   }
 
+  const normalizedRequestPath = String(
+    String(req.originalUrl || "").split("?")[0] || ""
+  ).trim();
+  if (
+    normalizedRequestPath === "/assignment-plans" ||
+    normalizedRequestPath === "/assignment-plan-progress"
+  ) {
+    if (/WorkRecord|work record|work log/i.test(rawErrorMessage)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "production batch data is missing linked work log rows. Check work log and assignment connections first",
+      });
+    }
+    if (/WorkOrder|order|Style|style/i.test(rawErrorMessage)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "production batch data is missing linked order or style rows. Check order and style setup first",
+      });
+    }
+    if (/Line|Factory|lineId|factoryId/i.test(rawErrorMessage)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "production batch data is missing linked line or factory rows. Check organization setup first",
+      });
+    }
+    if (/AssignmentPlan|AssignmentBoardState|assignment plan|assignment board|cardId|externalId/i.test(rawErrorMessage)) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "production batch data is incomplete. Check assignment plan and board source data first",
+      });
+    }
+  }
+  if (/^\/assignment-plans\/[^/]+\/qc-history$/i.test(normalizedRequestPath)) {
+    return res.status(409).json({
+      ok: false,
+      error:
+        "qc history data is incomplete. Check batch, color, and qc event references first",
+    });
+  }
+  if (
+    normalizedRequestPath === "/qc-pass-events" ||
+    /^\/qc-pass-events\/[^/]+\/cancel$/i.test(normalizedRequestPath)
+  ) {
+    return res.status(409).json({
+      ok: false,
+      error:
+        "qc event could not be processed because linked batch or reference data is missing",
+    });
+  }
+
   const status = getErrorStatus(error);
   if (status !== null) {
     return res.status(status).json({

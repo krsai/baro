@@ -268,6 +268,146 @@ const buildQcDetailFromOrders = ({ row, orders }) => {
   };
 };
 
+const normalizeApiErrorMessage = (error) => {
+  if (typeof error === 'string') return error.trim();
+  if (typeof error?.message === 'string' && error.message.trim()) {
+    return error.message.trim();
+  }
+  if (typeof error?.details?.error === 'string' && error.details.error.trim()) {
+    return error.details.error.trim();
+  }
+  return '';
+};
+
+const isGenericServerErrorMessage = (message) =>
+  !message ||
+  /internal server error/i.test(message) ||
+  /request failed\s*\(500\)/i.test(message);
+
+const resolveQcReviewApiErrorMessage = ({
+  error,
+  stage,
+  selectedFactoryId = null,
+  selectedLineId = null,
+  lineCount = null,
+  row = null,
+}) => {
+  const rawMessage = normalizeApiErrorMessage(error);
+
+  if (/organization not found/i.test(rawMessage)) {
+    return '조직 정보를 찾을 수 없습니다. 다시 로그인한 뒤 시도해 주세요.';
+  }
+  if (/factory not found/i.test(rawMessage)) {
+    return '선택한 공장을 찾을 수 없습니다. 공장 설정을 확인해 주세요.';
+  }
+  if (/line not found/i.test(rawMessage)) {
+    return '선택한 라인을 찾을 수 없습니다. 라인 설정을 확인해 주세요.';
+  }
+  if (/lineId or factoryId is required/i.test(rawMessage)) {
+    return '검수 대상을 불러오려면 공장 또는 라인 선택이 필요합니다.';
+  }
+  if (/assignment plan not found/i.test(rawMessage)) {
+    return '해당 배치 계획을 찾을 수 없습니다. 배정 데이터를 새로고침해 주세요.';
+  }
+  if (/qc pass event not found/i.test(rawMessage)) {
+    return '취소할 검수 이력을 찾을 수 없습니다. 화면을 새로고침해 주세요.';
+  }
+  if (/qc pass event already cancelled/i.test(rawMessage)) {
+    return '이미 취소된 검수 이력입니다.';
+  }
+  if (/inspectedOn is required/i.test(rawMessage)) {
+    return '검수 날짜를 입력해 주세요.';
+  }
+  if (/passedQuantity is required/i.test(rawMessage)) {
+    if (stage === 'save') return '검수 통과 수량을 입력해 주세요.';
+    return '검수 수량 정보가 필요합니다.';
+  }
+  if (/production batch data is missing linked work log rows/i.test(rawMessage)) {
+    return '생산 배치 데이터를 읽지 못했습니다. 작업 기록 또는 배정 연결 데이터가 누락되었는지 확인해 주세요.';
+  }
+  if (/production batch data is missing linked order or style rows/i.test(rawMessage)) {
+    return '생산 배치 데이터를 읽지 못했습니다. 주문 또는 스타일 데이터가 누락되었는지 확인해 주세요.';
+  }
+  if (/production batch data is missing linked line or factory rows/i.test(rawMessage)) {
+    return '생산 배치 데이터를 읽지 못했습니다. 공장 또는 라인 데이터가 누락되었는지 확인해 주세요.';
+  }
+  if (/production batch data is incomplete/i.test(rawMessage)) {
+    return '생산 배치 원본 데이터가 불완전합니다. 배정 카드와 배치 계획 데이터를 확인해 주세요.';
+  }
+  if (/qc history data is incomplete/i.test(rawMessage)) {
+    return '검수 이력 데이터가 불완전합니다. 배치 계획, 색상, 검수 이력 연결 상태를 확인해 주세요.';
+  }
+  if (/qc event could not be processed because linked batch or reference data is missing/i.test(rawMessage)) {
+    return '검수 이력을 처리하지 못했습니다. 배치 계획 또는 참조 데이터가 누락되었는지 확인해 주세요.';
+  }
+  if (/linked data is out of date|referenced data is missing|stored data is invalid or incomplete/i.test(rawMessage)) {
+    return '연결된 원본 데이터가 없거나 오래되었습니다. 배정, 주문, 스타일, 색상 데이터를 새로 확인해 주세요.';
+  }
+  if (rawMessage && !isGenericServerErrorMessage(rawMessage)) {
+    return rawMessage;
+  }
+
+  if (stage === 'rows') {
+    if (!selectedFactoryId) {
+      return '검수 대상을 불러오려면 공장을 먼저 선택해 주세요.';
+    }
+    if (lineCount === 0) {
+      return '선택한 공장에 등록된 라인이 없습니다. 조직 관리에서 라인을 먼저 등록해 주세요.';
+    }
+    if (selectedLineId) {
+      return '선택한 라인의 검수 대상 조회에 필요한 앞단 데이터가 부족합니다. 라인, 배정, 주문, 스타일, 작업 기록 연결 상태를 확인해 주세요.';
+    }
+    return '검수 대상 조회에 필요한 앞단 데이터가 부족합니다. 공장의 라인, 배정, 주문, 스타일, 작업 기록 연결 상태를 확인해 주세요.';
+  }
+  if (stage === 'detail') {
+    return '상세 검수 데이터를 만들 수 없습니다. 주문서의 스타일, 색상, 사이즈 정보가 준비됐는지 확인해 주세요.';
+  }
+  if (stage === 'history') {
+    return '검수 이력을 불러오지 못했습니다. 배치 계획과 검수 이력 연결 상태를 확인해 주세요.';
+  }
+  if (stage === 'save') {
+    const batchLabel = String(row?.orderNo || row?.styleCode || '').trim() || '선택한 배치';
+    return `${batchLabel} 검수 이력을 저장하지 못했습니다. 배치 계획 또는 참조 데이터 상태를 확인해 주세요.`;
+  }
+  if (stage === 'cancel') {
+    return '검수 이력을 취소하지 못했습니다. 이미 취소됐거나 참조 데이터가 변경되었는지 확인해 주세요.';
+  }
+  return '검수 화면 데이터를 처리하지 못했습니다. 앞단 데이터를 확인해 주세요.';
+};
+
+const resolveQcReviewEmptyMessage = ({
+  loadError,
+  selectedFactoryId,
+  selectedLineId,
+  lineCount,
+  rowCount,
+  visibleRowCount,
+  statusFilter,
+  searchText,
+}) => {
+  if (loadError) return loadError;
+  if (!selectedFactoryId) return '공장을 먼저 선택해 주세요.';
+  if (lineCount === 0) {
+    return '선택한 공장에 등록된 라인이 없습니다. 조직 관리 > 라인에서 먼저 등록해 주세요.';
+  }
+  if (rowCount === 0) {
+    if (selectedLineId) {
+      return '선택한 라인에 배정된 생산 배치가 없습니다. 먼저 배정 진행에서 배치를 만들고 작업 기록을 입력해 주세요.';
+    }
+    return '선택한 공장에 배정된 생산 배치가 없습니다. 먼저 배정 진행에서 배치를 만들고 작업 기록을 입력해 주세요.';
+  }
+  if (String(searchText || '').trim()) {
+    return '검색 조건에 맞는 검수 대상이 없습니다.';
+  }
+  if (visibleRowCount === 0 && statusFilter === 'pending') {
+    return '진행 중 상태에 맞는 검수 대상이 없습니다. 제작 완료 배치를 보려면 상태를 "제작 완료" 또는 "전체"로 바꿔 주세요.';
+  }
+  if (visibleRowCount === 0 && statusFilter === 'completed') {
+    return '제작 완료 상태의 검수 대상이 없습니다. 먼저 배치 진행에서 제작 완료를 확정해 주세요.';
+  }
+  return '표시할 검수 대상이 없습니다.';
+};
+
 const QcReview = () => {
   const { activeOrgId, activeFactoryId, activeOrgRole } = useAuth();
   const { showNotification } = useAppActions();
@@ -278,6 +418,7 @@ const QcReview = () => {
   const [selectedFactoryId, setSelectedFactoryId] = useState(toPositiveIntOrNull(activeFactoryId));
   const [selectedLineId, setSelectedLineId] = useState(null);
   const [rows, setRows] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
   const [savingQcPlanId, setSavingQcPlanId] = useState(null);
   const [cancellingEventId, setCancellingEventId] = useState(null);
@@ -338,10 +479,12 @@ const QcReview = () => {
       const factoryId = toPositiveIntOrNull(selectedFactoryId);
       if (!factoryId) {
         setRows([]);
+        setLoadError('');
         return;
       }
 
       setLoading(true);
+      setLoadError('');
       try {
         const plans = await requestJSON(
           '/assignment-plans' +
@@ -451,14 +594,23 @@ const QcReview = () => {
         if (expandedRowId && !idSet.has(expandedRowId)) {
           setExpandedRowId(null);
         }
+        setLoadError('');
       } catch (error) {
         setRows([]);
-        showNotification(error?.message || '검수 데이터를 불러오지 못했습니다.', 'error');
+        setLoadError(
+          resolveQcReviewApiErrorMessage({
+            error,
+            stage: 'rows',
+            selectedFactoryId: factoryId,
+            selectedLineId,
+            lineCount: Array.isArray(lines) ? lines.length : 0,
+          })
+        );
       } finally {
         setLoading(false);
       }
     },
-    [activeOrgId, expandedRowId, lineNameById, selectedFactoryId, selectedLineId, showNotification, todayKey]
+    [activeOrgId, expandedRowId, lineNameById, lines, selectedFactoryId, selectedLineId, todayKey]
   );
 
   const ensureOrdersLoaded = useCallback(async () => {
@@ -519,7 +671,11 @@ const QcReview = () => {
           [planId]: {
             loading: false,
             matched: false,
-            error: error?.message || '주문 데이터를 불러오지 못했습니다.',
+            error: resolveQcReviewApiErrorMessage({
+              error,
+              stage: 'detail',
+              row,
+            }),
             sizeKeys: [],
             variants: [],
             orderedQuantity: 0,
@@ -565,7 +721,10 @@ const QcReview = () => {
           ...prev,
           [normalizedPlanId]: {
             history: [],
-            error: error?.message || '검수 이력을 불러오지 못했습니다.',
+            error: resolveQcReviewApiErrorMessage({
+              error,
+              stage: 'history',
+            }),
           },
         }));
       } finally {
@@ -597,6 +756,7 @@ const QcReview = () => {
     setQcHistoryByPlanId({});
     setQcHistoryLoadingByPlanId({});
     setExpandedRowId(null);
+    setLoadError('');
   }, [activeOrgId]);
 
   useWorkspaceRefreshOnEvent({
@@ -697,7 +857,14 @@ const QcReview = () => {
         ]);
         showNotification('검수 이력을 추가했습니다.', 'success');
       } catch (error) {
-        showNotification(error?.message || '검수 이력 저장에 실패했습니다.', 'error');
+        showNotification(
+          resolveQcReviewApiErrorMessage({
+            error,
+            stage: 'save',
+            row,
+          }),
+          'error'
+        );
       } finally {
         setSavingQcPlanId(null);
       }
@@ -731,7 +898,13 @@ const QcReview = () => {
         ]);
         showNotification('검수 이력을 취소했습니다.', 'success');
       } catch (error) {
-        showNotification(error?.message || '검수 이력 취소에 실패했습니다.', 'error');
+        showNotification(
+          resolveQcReviewApiErrorMessage({
+            error,
+            stage: 'cancel',
+          }),
+          'error'
+        );
       } finally {
         setCancellingEventId(null);
       }
@@ -805,6 +978,21 @@ const QcReview = () => {
       return haystack.includes(keyword);
     });
   }, [rows, searchText, statusFilter]);
+
+  const emptyStateMessage = useMemo(
+    () =>
+      resolveQcReviewEmptyMessage({
+        loadError,
+        selectedFactoryId,
+        selectedLineId,
+        lineCount: Array.isArray(lines) ? lines.length : 0,
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+        visibleRowCount: Array.isArray(visibleRows) ? visibleRows.length : 0,
+        statusFilter,
+        searchText,
+      }),
+    [lines, loadError, rows, searchText, selectedFactoryId, selectedLineId, statusFilter, visibleRows]
+  );
 
   return (
     <AppPageContainer
@@ -892,6 +1080,10 @@ const QcReview = () => {
         <Alert severity="info">
           QC 화면은 검수 통과 이력을 쌓는 용도입니다. 제작 완료 확정은 배치 진행 메뉴에서만 처리합니다.
         </Alert>
+        {!loading && loadError ? <Alert severity="error">{loadError}</Alert> : null}
+        {!loading && !loadError && visibleRows.length === 0 ? (
+          <Alert severity="info">{emptyStateMessage}</Alert>
+        ) : null}
 
         <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
           <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)' }}>
@@ -913,7 +1105,7 @@ const QcReview = () => {
                   <TableRow>
                     <TableCell colSpan={8} align="center" sx={{ py: 5 }}>
                       <Typography variant="body2" color="text.secondary">
-                        표시할 검수 대상이 없습니다.
+                        {emptyStateMessage}
                       </Typography>
                     </TableCell>
                   </TableRow>
