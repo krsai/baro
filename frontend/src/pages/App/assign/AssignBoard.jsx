@@ -3090,39 +3090,14 @@ const AssignBoard = () => {
     startDateRef.current = newStart;
     const newDays = buildDays(newStart, dayCount, holidaySet, languageCode);
     setDays(newDays);
-    setAssignments((prev) => {
-      const currentCards = Array.isArray(cardsRef.current) ? cardsRef.current : [];
-      const cardById = new Map(
-        currentCards
-          .filter((card) => card?.id)
-          .map((card) => [String(card.id), card])
-      );
-      const remappedAssignments = prev.map((assignment) =>
+    // View range changes should only remap indices for rendering.
+    // Reflow/recompute here mutates schedule unintentionally and can trigger false save conflicts.
+    setAssignments((prev) =>
+      (Array.isArray(prev) ? prev : []).map((assignment) =>
         remapAssignmentToDayWindow(assignment, newDays, oldBase)
-      );
-      const syncedAssignments = remappedAssignments.map((assignment) => {
-        const normalized = normalizeAssignmentLayout(assignment);
-        if (!normalized || typeof normalized !== 'object') return assignment;
-        const linkedCard = cardById.get(String(normalized.cardId || ''));
-        if (!linkedCard) return normalized;
-        return normalizeAssignmentLayout(
-          syncAssignmentFromCard(normalized, linkedCard, newDays, lineCapacityById)
-        );
-      });
-      const reflowResult = reflowAssignmentsByLineCapacity({
-        assignments: syncedAssignments,
-        totalDays: newDays.length,
-        days: newDays,
-        lineCapacityById,
-        sourceLineCapacityById: lineCapacityById,
-        reflowStartIndex: getTodayDayIndex(newDays),
-      });
-      if (Array.isArray(reflowResult?.assignments)) {
-        return reflowResult.assignments.map((item) => normalizeAssignmentLayout(item));
-      }
-      return syncedAssignments;
-    });
-  }, [viewStart, dayCount, holidaySet, languageCode, lineCapacityById]);
+      )
+    );
+  }, [viewStart, dayCount, holidaySet, languageCode]);
 
   useEffect(() => {
     if (!isAssignmentRouteActive) return undefined;
