@@ -25,6 +25,12 @@ const FIXED_COL_WIDTH = 190;
 const EMPTY_HOVERED_TARGET = { lineId: null, dayIndex: null };
 const EMPTY_DRAG_STATE = { hoveredTarget: EMPTY_HOVERED_TARGET, dragPreview: null };
 const EMPTY_LAYOUT = { placed: [], laneCount: 1, linkableIds: new Set() };
+const shouldUseRenderDateRange = (assignment) =>
+  assignment?.useRenderDateRange === true &&
+  typeof assignment?.renderStartDate === 'string' &&
+  assignment.renderStartDate.trim() &&
+  typeof assignment?.renderEndDate === 'string' &&
+  assignment.renderEndDate.trim();
 
 const getRenderStartIndex = (assignment) => {
   const parsed = Number(assignment?.renderStartIndex);
@@ -63,11 +69,7 @@ const DropCell = memo(({ id, isHoliday, isHighlighted }) => {
 const buildRange = (assignment) => {
   const startIndex = getRenderStartIndex(assignment);
   const endIndex = getRenderEndIndex(assignment);
-  const hasRenderDateRange =
-    typeof assignment?.renderStartDate === 'string' &&
-    assignment.renderStartDate.trim() &&
-    typeof assignment?.renderEndDate === 'string' &&
-    assignment.renderEndDate.trim();
+  const hasRenderDateRange = shouldUseRenderDateRange(assignment);
   if (hasRenderDateRange) {
     return {
       start: startIndex,
@@ -117,8 +119,7 @@ const assignLanes = (items) => {
 };
 
 const getOrderKey = (assignment) => {
-  const hasRenderDateRange =
-    typeof assignment?.renderStartDate === 'string' && assignment.renderStartDate.trim();
+  const hasRenderDateRange = shouldUseRenderDateRange(assignment);
   if (hasRenderDateRange) {
     return getRenderStartIndex(assignment);
   }
@@ -130,11 +131,7 @@ const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
 
 const getNextStartIndex = (assignment, days) => {
   const endIndex = getRenderEndIndex(assignment);
-  const hasRenderDateRange =
-    typeof assignment?.renderStartDate === 'string' &&
-    assignment.renderStartDate.trim() &&
-    typeof assignment?.renderEndDate === 'string' &&
-    assignment.renderEndDate.trim();
+  const hasRenderDateRange = shouldUseRenderDateRange(assignment);
   if (hasRenderDateRange) {
     let nextIndex = endIndex + 1;
     if (!Array.isArray(days)) return nextIndex;
@@ -160,11 +157,7 @@ const getNextStartIndex = (assignment, days) => {
 const getWorkingDuration = (assignment, days) => {
   const startIndex = getRenderStartIndex(assignment);
   const endIndex = getRenderEndIndex(assignment);
-  const hasRenderDateRange =
-    typeof assignment?.renderStartDate === 'string' &&
-    assignment.renderStartDate.trim() &&
-    typeof assignment?.renderEndDate === 'string' &&
-    assignment.renderEndDate.trim();
+  const hasRenderDateRange = shouldUseRenderDateRange(assignment);
   if (hasRenderDateRange) {
     return Math.max(1, endIndex - startIndex + 1);
   }

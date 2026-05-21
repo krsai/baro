@@ -3771,6 +3771,7 @@ const AssignBoard = () => {
           productionCompletedAt:
             progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
           scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
+          useRenderDateRange: scheduleStatus === 'PRODUCTION_COMPLETED',
           candidateEndDate:
             progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
           renderStartDate:
