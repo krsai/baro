@@ -10682,6 +10682,102 @@ const toAssignmentBoardStateResponse = (
     serverNow: new Date().toISOString(),
   };
 };
+const ASSIGNMENT_PLAN_SELECT_CORE = {
+  id: true,
+  externalId: true,
+  lineId: true,
+  cardId: true,
+  orderNo: true,
+  customer: true,
+  label: true,
+  colorId: true,
+  colorName: true,
+  previewUrl: true,
+  imageUrl: true,
+  thumbnailUrl: true,
+  quantity: true,
+  originOrderId: true,
+  basis: true,
+  contractedSeconds: true,
+  ctSnapshot: true,
+  color: true,
+  stripeColor: true,
+  totalSeconds: true,
+  startIndex: true,
+  endIndex: true,
+  startDayOffsetPercent: true,
+  startDayPercent: true,
+  endDayPercent: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
+  ...ASSIGNMENT_PLAN_SELECT_CORE,
+  isCompleted: true,
+  finalQuantity: true,
+  completedAt: true,
+  closedQty: true,
+  closedAt: true,
+  closedBy: true,
+  closeMode: true,
+  closeBasis: true,
+} as const;
+const ASSIGNMENT_PLAN_SELECT_WITH_QC = {
+  ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+  qcPassedTotal: true,
+  latestQcDate: true,
+} as const;
+const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
+  ...ASSIGNMENT_PLAN_SELECT_WITH_QC,
+  productionCompletedAt: true,
+  actualProducedCompletedAt: true,
+  candidateEndDate: true,
+  renderEndDate: true,
+  forecastCompletedAt: true,
+  forecastBasis: true,
+  confidence: true,
+  scheduleStatus: true,
+} as const;
+const isAssignmentPlanMissingColumnError = (error: any): boolean => {
+  const code = resolveOptionalString(error?.code, null);
+  if (code === "P2022") return true;
+  const message = resolveOptionalString(error?.message, String(error || "")) || "";
+  return /column/i.test(message) && /does not exist/i.test(message);
+};
+const findAssignmentPlansWithSelectFallback = async ({
+  where,
+  orderBy,
+  selectAttempts,
+  context,
+}: {
+  where: Prisma.AssignmentPlanWhereInput;
+  orderBy: Prisma.AssignmentPlanOrderByWithRelationInput[];
+  selectAttempts: ReadonlyArray<Record<string, true>>;
+  context: string;
+}): Promise<any[]> => {
+  let lastError: any = null;
+  for (let index = 0; index < selectAttempts.length; index += 1) {
+    const select = selectAttempts[index]!;
+    try {
+      return await prisma.assignmentPlan.findMany({
+        where,
+        orderBy,
+        select: select as any,
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isAssignmentPlanMissingColumnError(error) || index >= selectAttempts.length - 1) {
+        throw error;
+      }
+      const missingColumn =
+        resolveOptionalString((error as any)?.meta?.column, null) || "unknown";
+      console.warn(
+        `[assignment-plan] ${context}: missing column '${missingColumn}', retrying with legacy select`
+      );
+    }
+  }
+  throw lastError;
+};
 const loadAssignmentPlansForBoardState = async (
   orgId: number,
   rawAssignments: any
@@ -10691,49 +10787,14 @@ const loadAssignmentPlansForBoardState = async (
   if (hasBoardAssignments && activeExternalIds.length === 0) {
     return [];
   }
-  return prisma.assignmentPlan.findMany({
+  return findAssignmentPlansWithSelectFallback({
     where: {
       orgId,
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      cardId: true,
-      orderNo: true,
-      customer: true,
-      label: true,
-      colorId: true,
-      colorName: true,
-      previewUrl: true,
-      imageUrl: true,
-      thumbnailUrl: true,
-      quantity: true,
-      originOrderId: true,
-      basis: true,
-      contractedSeconds: true,
-      ctSnapshot: true,
-      color: true,
-      stripeColor: true,
-      totalSeconds: true,
-      startIndex: true,
-      endIndex: true,
-      startDayOffsetPercent: true,
-      startDayPercent: true,
-      endDayPercent: true,
-      isCompleted: true,
-      finalQuantity: true,
-      completedAt: true,
-      closedQty: true,
-      closedAt: true,
-      closedBy: true,
-      closeMode: true,
-      closeBasis: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+    context: "loadAssignmentPlansForBoardState",
   });
 };
 const buildReadOnlyAssignmentBoardStateResponse = async (
@@ -14825,13 +14886,15 @@ app.get("/assignment-plans", async (req, res) => {
 
   const assignmentPlanLineFilter: Prisma.AssignmentPlanWhereInput["lineId"] =
     lineIds.length === 1 ? lineIds[0]! : { in: lineIds };
-  let plans = await prisma.assignmentPlan.findMany({
+  let plans = await findAssignmentPlansWithSelectFallback({
     where: {
       orgId: organization.id,
       lineId: assignmentPlanLineFilter,
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_QC, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+    context: "GET /assignment-plans",
   });
   if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
@@ -15091,46 +15154,21 @@ const buildAssignmentPlanProgressRows = async (
   );
 
   const [plans, boardState] = await Promise.all([
-    prisma.assignmentPlan.findMany({
+    findAssignmentPlansWithSelectFallback({
       where: {
         orgId,
         ...(normalizedExternalIds.length > 0
           ? { externalId: { in: normalizedExternalIds } }
           : {}),
       },
-      select: {
-        id: true,
-        externalId: true,
-        lineId: true,
-        orderNo: true,
-        customer: true,
-        label: true,
-        colorId: true,
-        colorName: true,
-        quantity: true,
-        isCompleted: true,
-        finalQuantity: true,
-        completedAt: true,
-        closedAt: true,
-        closedQty: true,
-        closedBy: true,
-        closeMode: true,
-        closeBasis: true,
-        qcPassedTotal: true,
-        latestQcDate: true,
-        startIndex: true,
-        endIndex: true,
-        ctSnapshot: true,
-        productionCompletedAt: true,
-        actualProducedCompletedAt: true,
-        candidateEndDate: true,
-        renderEndDate: true,
-        forecastCompletedAt: true,
-        forecastBasis: true,
-        confidence: true,
-        scheduleStatus: true,
-      },
       orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+      selectAttempts: [
+        ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
+        ASSIGNMENT_PLAN_SELECT_WITH_QC,
+        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+        ASSIGNMENT_PLAN_SELECT_CORE,
+      ],
+      context: "buildAssignmentPlanProgressRows",
     }),
     prisma.assignmentBoardState.findUnique({
       where: { orgId },
@@ -17425,12 +17463,14 @@ app.get("/assignment-board-state", async (req, res) => {
   let assignmentPlans =
     hasBoardAssignments && activeExternalIds.length === 0
       ? []
-      : await prisma.assignmentPlan.findMany({
+      : await findAssignmentPlansWithSelectFallback({
           where: {
             orgId: organization.id,
             ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
           },
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+          selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+          context: "GET /assignment-board-state",
         });
   if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
@@ -19598,6 +19638,16 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     });
   }
   const rawErrorMessage = getErrorMessage(error, String(error));
+  if (prismaErrorCode === "P2022") {
+    const missingColumn = resolveOptionalString((error as any)?.meta?.column, null);
+    const suffix = missingColumn ? ` (missing column: ${missingColumn})` : "";
+    return res.status(503).json({
+      ok: false,
+      error:
+        `server database schema is out of sync with backend code${suffix}. ` +
+        `Apply migration_fix.sql and redeploy backend, then retry`,
+    });
+  }
   if (prismaErrorCode === "P2021") {
     const missingTableMessage =
       /QuantitySettlementSnapshot/i.test(rawErrorMessage)
