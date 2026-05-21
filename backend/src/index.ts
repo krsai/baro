@@ -8861,17 +8861,7 @@ const resolveAssignmentPlanExternalIds = (items: any) =>
     .map((item) => resolveAssignmentExternalId(item))
     .filter((value): value is string => Boolean(value));
 const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: any[]) => {
-  const stateByExternalId = normalizeStateAssignments(stateAssignments).reduce((map, item) => {
-    if (!item || typeof item !== "object") return map;
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId || map.has(externalId)) return map;
-    map.set(externalId, item);
-    return map;
-  }, new Map<string, any>());
-
-  return ensureArray(plans).map((plan) => {
-    const base = toAssignmentPlanResponse(plan);
-    const stateItem = stateByExternalId.get(base.id);
+  const applyPlanStateMerge = (base: any, stateItem: any) => {
     if (!stateItem || typeof stateItem !== "object") return base;
     const merged = {
       ...stateItem,
@@ -8913,7 +8903,42 @@ const mergeAssignmentPlanResponsesWithState = (plans: any[], stateAssignments: a
       merged.endDayPercent = stateEndDayPercent;
     }
     return merged;
+  };
+
+  const normalizedStateAssignments = normalizeStateAssignments(stateAssignments);
+  const planByExternalId = ensureArray(plans).reduce((map, plan) => {
+    const base = toAssignmentPlanResponse(plan);
+    const externalId = resolveAssignmentExternalId(base);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, base);
+    return map;
+  }, new Map<string, any>());
+
+  const mergedAssignments: any[] = [];
+  normalizedStateAssignments.forEach((stateItem) => {
+    const externalId = resolveAssignmentExternalId(stateItem);
+    if (!externalId) {
+      mergedAssignments.push(normalizeStateAssignmentItem(stateItem));
+      return;
+    }
+    const planBase = planByExternalId.get(externalId);
+    if (!planBase) {
+      // Keep board-state rows even when assignmentPlan sync is temporarily unavailable.
+      // Without this fallback, reload can hide recently saved assignments.
+      mergedAssignments.push(normalizeStateAssignmentItem(stateItem));
+      return;
+    }
+    mergedAssignments.push(applyPlanStateMerge(planBase, stateItem));
+    planByExternalId.delete(externalId);
   });
+
+  if (planByExternalId.size > 0) {
+    planByExternalId.forEach((planBase: any) => {
+      mergedAssignments.push(planBase);
+    });
+  }
+
+  return mergedAssignments;
 };
 const ASSIGNMENT_TEXT_CORRUPTION_REGEX = /\?{2,}|\uFFFD/u;
 type AssignmentDisplayReferenceMaps = {
