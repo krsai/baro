@@ -2759,18 +2759,22 @@ const AssignBoard = () => {
       return [];
     }
   }, []);
+  const resolveAssignmentVersionKey = useCallback((item) => {
+    if (!item || typeof item !== 'object') return '';
+    return String(item?.id ?? item?.externalId ?? '').trim();
+  }, []);
   const mergeServerAssignmentVersions = useCallback(
     (nextAssignments, serverAssignments, _savedAssignments) => {
       const serverById = new Map(
         (Array.isArray(serverAssignments) ? serverAssignments : [])
           .map((item) => normalizeAssignmentLayout(item))
-          .filter((item) => item?.id)
-          .map((item) => [String(item.id), item])
+          .map((item) => [resolveAssignmentVersionKey(item), item])
+          .filter((row) => row[0])
       );
 
       return (Array.isArray(nextAssignments) ? nextAssignments : []).map((item) => {
         const normalized = normalizeAssignmentLayout(item);
-        const assignmentId = String(normalized?.id || '').trim();
+        const assignmentId = resolveAssignmentVersionKey(normalized);
         if (!assignmentId) return normalized;
 
         const serverItem = serverById.get(assignmentId);
@@ -2783,6 +2787,7 @@ const AssignBoard = () => {
         // isSameAssignmentStateContent is the real conflict guard.
         return normalizeAssignmentLayout({
           ...normalized,
+          id: normalized?.id ?? serverItem?.id ?? assignmentId,
           version: toNonNegativeInt(serverItem?.version, normalized?.version ?? 0),
           versionUpdatedAt:
             typeof serverItem?.versionUpdatedAt === 'string' && serverItem.versionUpdatedAt.trim()
@@ -2791,7 +2796,7 @@ const AssignBoard = () => {
         });
       });
     },
-    []
+    [resolveAssignmentVersionKey]
   );
   const alignAssignmentsForBoardPut = useCallback(
     async (nextAssignments) => {
@@ -3372,16 +3377,28 @@ const AssignBoard = () => {
       )
     );
     try {
-      const assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-      const response = await requestJSON(
-        '/assignment-board-state' + buildQueryString({ orgId: activeOrgId }),
-        {
+      const persistBoardState = async (assignmentPayload) =>
+        requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: currentCards, assignments: assignmentsForPut }),
+          body: JSON.stringify({ cards: currentCards, assignments: assignmentPayload }),
           skipGlobalLoading: true,
+        });
+
+      let assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
+      let response = null;
+      try {
+        response = await persistBoardState(assignmentsForPut);
+      } catch (error) {
+        const rawMessage = String(error?.message || '').toLowerCase();
+        if (!rawMessage.includes('assignment version conflict')) {
+          throw error;
         }
-      );
+        // One retry with a fresh server-version merge narrows the race window
+        // when board state updates between preflight and PUT.
+        assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
+        response = await persistBoardState(assignmentsForPut);
+      }
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         currentCards,
