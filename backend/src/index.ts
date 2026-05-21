@@ -17564,19 +17564,11 @@ app.put("/assignment-board-state", async (req, res) => {
       changedIncomingAssignments,
       currentVersionByExternalId
     );
-    if (versionConflicts.length > 0) {
-      const summary = versionConflicts
-        .slice(0, 5)
-        .map(
-          (row) =>
-            `${row.id} (expected=${row.expectedVersion}, current=${row.currentVersion})`
-        )
-        .join(", ");
-      throw createHttpError(
-        409,
-        `assignment version conflict: ${summary}`
-      );
-    }
+    // Last-write-wins for assignment board saves:
+    // when versions diverge (often due background/system sync), accept the user's
+    // incoming board payload and rebase version counters from current server values.
+    // We still increment from currentVersion below, so version history remains monotonic.
+    void versionConflicts;
 
     const nowIso = new Date().toISOString();
     const versionedAssignments = nextAssignmentsNormalized.map((item) => {
