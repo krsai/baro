@@ -24,7 +24,15 @@
       "Bash(awk 'NR>=5900 && NR<=5920' backend/src/index.ts)",
       "Bash(awk -F: '$2 <= 6239 {last=$0} END {print last}')",
       "Bash(awk -F: '{if \\($1 <= 6239\\) last=$0} END {print last}')",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',''\\), indent=2\\)\\)\")"
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',''\\), indent=2\\)\\)\")",
+      "Bash(awk 'NR>=10690 && NR<=10745')",
+      "Bash(awk 'NR>=17808 && NR<=17825')",
+      "Bash(awk -F: '{if \\($1+0 <= 15094\\) print}')",
+      "Bash(awk 'NR>=17223 && NR<=17250')",
+      "Bash(railway --version)",
+      "PowerShell(railway --version 2>&1)",
+      "PowerShell(psql --version 2>&1)",
+      "Bash(npx prisma *)"
     ]
   }
 }
