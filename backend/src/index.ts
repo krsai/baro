@@ -6883,6 +6883,22 @@ const repairAssignmentScheduleDriftForOrg = async ({
 
   return { updatedAssignmentCount, updatedPlanCount };
 };
+const safelyRepairAssignmentScheduleDriftForOrg = async ({
+  orgId,
+  context,
+}: {
+  orgId: number;
+  context: string;
+}): Promise<void> => {
+  try {
+    await repairAssignmentScheduleDriftForOrg({ orgId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[assignment-board] schedule drift repair skipped (${context}, org=${orgId}): ${message}`
+    );
+  }
+};
 const reorderAssignmentSchedulesByManualCompletion = async ({
   orgId,
   lineId,
@@ -10123,6 +10139,44 @@ const repairAssignmentBoardDisplayState = async ({
     changed: repairedCards.changed || repairedAssignments.changed,
     refs: resolvedRefs,
   };
+};
+const safelyRepairAssignmentBoardDisplayState = async ({
+  orgId,
+  cards,
+  assignments,
+  refs = null,
+  context,
+}: {
+  orgId: number;
+  cards: any;
+  assignments: any;
+  refs?: AssignmentDisplayReferenceMaps | null;
+  context: string;
+}): Promise<{
+  cards: any[];
+  assignments: any[];
+  changed: boolean;
+  refs: AssignmentDisplayReferenceMaps | null;
+}> => {
+  try {
+    return await repairAssignmentBoardDisplayState({
+      orgId,
+      cards,
+      assignments,
+      refs,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[assignment-board] display repair skipped (${context}, org=${orgId}): ${message}`
+    );
+    return {
+      cards: ensureArray(cards),
+      assignments: normalizeStateAssignments(assignments),
+      changed: false,
+      refs,
+    };
+  }
 };
 const toNullableAssignmentText = (value: any): string | null => {
   const text = resolveOptionalString(value, null);
@@ -14635,7 +14689,10 @@ app.get("/assignment-plans", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
+  await safelyRepairAssignmentScheduleDriftForOrg({
+    orgId: organization.id,
+    context: "GET /assignment-plans",
+  });
 
   const lineId = Number(req.query.lineId);
   const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
@@ -14689,10 +14746,11 @@ app.get("/assignment-plans", async (req, res) => {
   let boardCards = await loadAssignmentCardsForOrg({ orgId: organization.id });
   let assignmentDisplayRefs: AssignmentDisplayReferenceMaps | null = null;
   if (boardState) {
-    const repairedBoardState = await repairAssignmentBoardDisplayState({
+    const repairedBoardState = await safelyRepairAssignmentBoardDisplayState({
       orgId: organization.id,
       cards: boardCards,
       assignments: boardState.assignments,
+      context: "GET /assignment-plans",
     });
     assignmentDisplayRefs = repairedBoardState.refs;
     if (repairedBoardState.changed) {
@@ -17134,7 +17192,10 @@ app.get("/assignment-board-view", async (req, res) => {
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
 
-  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
+  await safelyRepairAssignmentScheduleDriftForOrg({
+    orgId: organization.id,
+    context: "GET /assignment-board-view",
+  });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
@@ -17152,7 +17213,10 @@ app.get("/assignment-board-versions", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
+  await safelyRepairAssignmentScheduleDriftForOrg({
+    orgId: organization.id,
+    context: "GET /assignment-board-versions",
+  });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
     select: {
@@ -17267,7 +17331,10 @@ app.get("/assignment-board-state", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  await repairAssignmentScheduleDriftForOrg({ orgId: organization.id });
+  await safelyRepairAssignmentScheduleDriftForOrg({
+    orgId: organization.id,
+    context: "GET /assignment-board-state",
+  });
   let state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
@@ -17283,10 +17350,11 @@ app.get("/assignment-board-state", async (req, res) => {
         data: { assignments: escalatedAssignments },
       });
     }
-    const repairedState = await repairAssignmentBoardDisplayState({
+    const repairedState = await safelyRepairAssignmentBoardDisplayState({
       orgId: organization.id,
       cards,
       assignments: state.assignments,
+      context: "GET /assignment-board-state",
     });
     if (repairedState.changed) {
       const nextCards = repairedState.cards;
@@ -17478,10 +17546,11 @@ app.put("/assignment-board-state", async (req, res) => {
       assignments: incomingAssignmentsForSave,
     })
   ) {
-    const repairedIncomingPayload = await repairAssignmentBoardDisplayState({
+    const repairedIncomingPayload = await safelyRepairAssignmentBoardDisplayState({
       orgId: organization.id,
       cards: cardsForSave,
       assignments: incomingAssignmentsForSave,
+      context: "PUT /assignment-board-state",
     });
     cardsForSave = repairedIncomingPayload.cards;
     incomingAssignmentsForSave = repairedIncomingPayload.assignments;
