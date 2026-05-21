@@ -2760,15 +2760,9 @@ const AssignBoard = () => {
     }
   }, []);
   const mergeServerAssignmentVersions = useCallback(
-    (nextAssignments, serverAssignments, savedAssignments) => {
+    (nextAssignments, serverAssignments, _savedAssignments) => {
       const serverById = new Map(
         (Array.isArray(serverAssignments) ? serverAssignments : [])
-          .map((item) => normalizeAssignmentLayout(item))
-          .filter((item) => item?.id)
-          .map((item) => [String(item.id), item])
-      );
-      const savedById = new Map(
-        (Array.isArray(savedAssignments) ? savedAssignments : [])
           .map((item) => normalizeAssignmentLayout(item))
           .filter((item) => item?.id)
           .map((item) => [String(item.id), item])
@@ -2780,12 +2774,13 @@ const AssignBoard = () => {
         if (!assignmentId) return normalized;
 
         const serverItem = serverById.get(assignmentId);
-        const savedItem = savedById.get(assignmentId);
-        if (!serverItem || !savedItem) return normalized;
-        if (!isSameComparableAssignmentState(savedItem, serverItem)) {
-          return normalized;
-        }
+        if (!serverItem) return normalized;
 
+        // Always take the server version. repairAssignmentScheduleDriftForOrg
+        // (called inside GET /assignment-board-versions) bumps versions AND changes
+        // startDateKey/endDateKey — the old saved-vs-server comparison failed on those
+        // fields and sent a stale version, causing phantom 409s. The backend's
+        // isSameAssignmentStateContent is the real conflict guard.
         return normalizeAssignmentLayout({
           ...normalized,
           version: toNonNegativeInt(serverItem?.version, normalized?.version ?? 0),
