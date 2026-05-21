@@ -6754,8 +6754,7 @@ const repairAssignmentScheduleDriftForOrg = async ({
     map.set(externalId, plan);
     return map;
   }, new Map<string, any>());
-  const nowIso = new Date().toISOString();
-  const nowDate = new Date(nowIso);
+  const nowDate = new Date();
 
   let updatedAssignmentCount = 0;
   const nextAssignments = stateAssignments.map((assignment) => {
@@ -6796,8 +6795,6 @@ const repairAssignmentScheduleDriftForOrg = async ({
     return normalizeStateAssignmentItem({
       ...applyAssignmentScheduleRepairPayload(assignment, targetSchedule),
       ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
-      version: toNonNegativeInt(assignment?.version, 0) + 1,
-      versionUpdatedAt: nowIso,
     });
   });
 
@@ -7070,18 +7067,14 @@ const reorderAssignmentSchedulesByManualCompletion = async ({
     stateAssignments[entry.stateIndex] = normalizeStateAssignmentItem(entry.assignment);
   });
 
-  const nowIso = new Date().toISOString();
   const nextAssignments = stateAssignments.map((assignment) => {
     const externalId = resolveAssignmentExternalId(assignment);
     if (!externalId || !changedExternalIds.has(externalId)) {
       return normalizeStateAssignmentItem(assignment);
     }
-    const currentVersion = toNonNegativeInt(assignment?.version, 0);
     return normalizeStateAssignmentItem({
       ...assignment,
       id: externalId,
-      version: currentVersion + 1,
-      versionUpdatedAt: nowIso,
     });
   });
 
