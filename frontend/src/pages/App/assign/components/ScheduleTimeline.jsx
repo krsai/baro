@@ -26,6 +26,19 @@ const EMPTY_HOVERED_TARGET = { lineId: null, dayIndex: null };
 const EMPTY_DRAG_STATE = { hoveredTarget: EMPTY_HOVERED_TARGET, dragPreview: null };
 const EMPTY_LAYOUT = { placed: [], laneCount: 1, linkableIds: new Set() };
 
+const getRenderStartIndex = (assignment) => {
+  const parsed = Number(assignment?.renderStartIndex);
+  if (Number.isFinite(parsed)) return Math.trunc(parsed);
+  return Number(assignment?.startIndex) || 0;
+};
+
+const getRenderEndIndex = (assignment) => {
+  const startIndex = getRenderStartIndex(assignment);
+  const parsed = Number(assignment?.renderEndIndex);
+  if (!Number.isFinite(parsed)) return Math.max(startIndex, Number(assignment?.endIndex) || startIndex);
+  return Math.max(startIndex, Math.trunc(parsed));
+};
+
 const DropCell = memo(({ id, isHoliday, isHighlighted }) => {
   const { setNodeRef, isOver } = useDroppable({ id, data: { dropId: id } });
   const baseColor = isHoliday ? '#FCECEF' : 'transparent';
@@ -48,22 +61,36 @@ const DropCell = memo(({ id, isHoliday, isHighlighted }) => {
 });
 
 const buildRange = (assignment) => {
+  const startIndex = getRenderStartIndex(assignment);
+  const endIndex = getRenderEndIndex(assignment);
+  const hasRenderDateRange =
+    typeof assignment?.renderStartDate === 'string' &&
+    assignment.renderStartDate.trim() &&
+    typeof assignment?.renderEndDate === 'string' &&
+    assignment.renderEndDate.trim();
+  if (hasRenderDateRange) {
+    return {
+      start: startIndex,
+      end: endIndex + 1,
+    };
+  }
+
   const startOffset = (assignment.startDayOffsetPercent ?? 0) / 100;
   const startPercent = (assignment.startDayPercent ?? 100) / 100;
   const endPercent = (assignment.endDayPercent ?? 100) / 100;
 
-  if (assignment.startIndex === assignment.endIndex) {
+  if (startIndex === endIndex) {
     return {
-      start: assignment.startIndex + startOffset,
-      end: assignment.startIndex + startOffset + startPercent,
+      start: startIndex + startOffset,
+      end: startIndex + startOffset + startPercent,
     };
   }
 
-  const fullDays = Math.max(assignment.endIndex - assignment.startIndex - 1, 0);
+  const fullDays = Math.max(endIndex - startIndex - 1, 0);
   const widthCells = startPercent + fullDays + endPercent;
   return {
-    start: assignment.startIndex + startOffset,
-    end: assignment.startIndex + startOffset + widthCells,
+    start: startIndex + startOffset,
+    end: startIndex + startOffset + widthCells,
   };
 };
 
@@ -90,17 +117,37 @@ const assignLanes = (items) => {
 };
 
 const getOrderKey = (assignment) => {
+  const hasRenderDateRange =
+    typeof assignment?.renderStartDate === 'string' && assignment.renderStartDate.trim();
+  if (hasRenderDateRange) {
+    return getRenderStartIndex(assignment);
+  }
   const offset = (assignment.startDayOffsetPercent ?? 0) / 100;
-  return assignment.startIndex + offset;
+  return getRenderStartIndex(assignment) + offset;
 };
 
 const isNonWorkingDay = (day) => Boolean(day?.isSunday || day?.isHoliday);
 
 const getNextStartIndex = (assignment, days) => {
-  const endPercent = assignment.endDayPercent ?? 100;
-  if (endPercent < 100) return assignment.endIndex;
+  const endIndex = getRenderEndIndex(assignment);
+  const hasRenderDateRange =
+    typeof assignment?.renderStartDate === 'string' &&
+    assignment.renderStartDate.trim() &&
+    typeof assignment?.renderEndDate === 'string' &&
+    assignment.renderEndDate.trim();
+  if (hasRenderDateRange) {
+    let nextIndex = endIndex + 1;
+    if (!Array.isArray(days)) return nextIndex;
+    while (nextIndex < days.length && isNonWorkingDay(days[nextIndex])) {
+      nextIndex += 1;
+    }
+    return nextIndex;
+  }
 
-  let nextIndex = assignment.endIndex + 1;
+  const endPercent = assignment.endDayPercent ?? 100;
+  if (endPercent < 100) return endIndex;
+
+  let nextIndex = endIndex + 1;
   if (!Array.isArray(days)) return nextIndex;
 
   while (nextIndex < days.length && isNonWorkingDay(days[nextIndex])) {
@@ -111,22 +158,33 @@ const getNextStartIndex = (assignment, days) => {
 };
 
 const getWorkingDuration = (assignment, days) => {
+  const startIndex = getRenderStartIndex(assignment);
+  const endIndex = getRenderEndIndex(assignment);
+  const hasRenderDateRange =
+    typeof assignment?.renderStartDate === 'string' &&
+    assignment.renderStartDate.trim() &&
+    typeof assignment?.renderEndDate === 'string' &&
+    assignment.renderEndDate.trim();
+  if (hasRenderDateRange) {
+    return Math.max(1, endIndex - startIndex + 1);
+  }
+
   const startPercent = (assignment.startDayPercent ?? 100) / 100;
   const endPercent = (assignment.endDayPercent ?? 100) / 100;
   let total = 0;
 
-  for (let i = assignment.startIndex; i <= assignment.endIndex; i += 1) {
+  for (let i = startIndex; i <= endIndex; i += 1) {
     const day = days?.[i];
     if (isNonWorkingDay(day)) continue;
 
-    if (assignment.startIndex === assignment.endIndex) {
+    if (startIndex === endIndex) {
       total += startPercent;
       continue;
     }
 
-    if (i === assignment.startIndex) {
+    if (i === startIndex) {
       total += startPercent;
-    } else if (i === assignment.endIndex) {
+    } else if (i === endIndex) {
       total += endPercent;
     } else {
       total += 1;
@@ -389,7 +447,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
         if (index === 0) return;
         const prev = lineAssignments[index - 1];
         const expected = getNextStartIndex(prev, days);
-        if (item.startIndex > expected) {
+        if (getRenderStartIndex(item) > expected) {
           linkableIds.add(item.id);
         }
       });
@@ -525,8 +583,8 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
 
       const targetAtDay = placed.find(
         (assignment) =>
-          assignment.startIndex <= overDayIndex &&
-          overDayIndex <= assignment.endIndex &&
+          getRenderStartIndex(assignment) <= overDayIndex &&
+          overDayIndex <= getRenderEndIndex(assignment) &&
           String(assignment.id) !== draggedAssignmentId
       );
 

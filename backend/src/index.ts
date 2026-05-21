@@ -15458,6 +15458,18 @@ const buildAssignmentPlanProgressRows = async (
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
     const snapshotSchedule = normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.schedule || null;
+    const factualStartDateKey =
+      normalizeDateKey(stateAssignment?.startDateKey) ||
+      normalizeDateKey(snapshotSchedule?.startDateKey) ||
+      null;
+    const durationDays = Math.max(
+      1,
+      Math.max(
+        0,
+        toSignedInt(plan?.endIndex, toSignedInt(plan?.startIndex, 0)) -
+          toSignedInt(plan?.startIndex, 0)
+      ) + 1
+    );
     const originalEndDateKey =
       normalizeDateKey(stateAssignment?.endDateKey) ||
       normalizeDateKey(snapshotSchedule?.endDateKey) ||
@@ -15529,10 +15541,13 @@ const buildAssignmentPlanProgressRows = async (
       forecastCompletedAt: forecastCompletedDateKey,
       forecastBasis,
       confidence,
+      renderStartDate: factualStartDateKey,
       candidateEndDate: candidateEndDateKey,
       renderEndDate: candidateEndDateKey,
       scheduleStatus,
       isQcDone: Boolean(latestQcDate),
+      _factualStartDateKey: factualStartDateKey,
+      _durationDays: durationDays,
       _sortStartIndex: toSignedInt(plan?.startIndex, 0),
       _sortEndIndex: Math.max(
         toSignedInt(plan?.startIndex, 0),
@@ -15571,27 +15586,50 @@ const buildAssignmentPlanProgressRows = async (
 
     let cursorEndDateKey: string | null = null;
     lineRows.forEach((row) => {
+      const isCompleted =
+        String(row?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
+      const durationDays = Math.max(1, toSignedInt(row?._durationDays, 1));
       const candidate =
         normalizeDateKey(row?.candidateEndDate) ||
         normalizeDateKey(row?._originalEndDateKey) ||
         normalizeDateKey(row?.lastWorkDate) ||
         normalizeDateKey(row?.firstWorkDate) ||
         null;
-      if (!candidate) return;
-      let renderDateKey = candidate;
-      if (cursorEndDateKey && renderDateKey <= cursorEndDateKey) {
-        renderDateKey = resolveNextWorkingDateKeyForAssignmentSchedule({
+
+      let renderStartDateKey: string | null = null;
+      if (isCompleted) {
+        renderStartDateKey = normalizeDateKey(row?._factualStartDateKey);
+        if (!renderStartDateKey && candidate) {
+          renderStartDateKey =
+            shiftDateKeyByDaysForAssignmentSchedule(candidate, -(durationDays - 1)) || candidate;
+        }
+      } else if (cursorEndDateKey) {
+        renderStartDateKey = resolveNextWorkingDateKeyForAssignmentSchedule({
           fromDateKey: cursorEndDateKey,
           holidaySet,
         });
+      } else {
+        renderStartDateKey =
+          normalizeDateKey(row?._factualStartDateKey) || normalizeDateKey(row?.candidateEndDate);
       }
-      row.renderEndDate = renderDateKey;
-      cursorEndDateKey = renderDateKey;
+
+      if (!renderStartDateKey) return;
+
+      const renderEndDateKey = isCompleted
+        ? normalizeDateKey(row?.candidateEndDate) || renderStartDateKey
+        : shiftDateKeyByDaysForAssignmentSchedule(renderStartDateKey, durationDays - 1) ||
+          renderStartDateKey;
+
+      row.renderStartDate = renderStartDateKey;
+      row.renderEndDate = renderEndDateKey;
+      cursorEndDateKey = renderEndDateKey;
     });
   });
 
   return rows.map((row) => {
     const {
+      _factualStartDateKey: _factualStartDateKey,
+      _durationDays: _durationDays,
       _sortStartIndex: _sortStartIndex,
       _sortEndIndex: _sortEndIndex,
       _originalEndDateKey: _originalEndDateKey,

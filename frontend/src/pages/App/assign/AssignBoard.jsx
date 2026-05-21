@@ -3673,6 +3673,34 @@ const AssignBoard = () => {
   ]);
 
   const assignmentsForRender = useMemo(() => {
+    const dayIndexByDateKey = new Map(
+      (Array.isArray(days) ? days : [])
+        .map((day, index) => {
+          const key = typeof day?.key === 'string' ? day.key.trim() : '';
+          return key ? [key, index] : null;
+        })
+        .filter(Boolean)
+    );
+    const firstDayDate =
+      Array.isArray(days) && days.length > 0 ? parseDateKey(days[0]?.key) : null;
+    const resolveDateKey = (value) => {
+      if (typeof value === 'string' && value.trim()) {
+        const trimmed = value.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+        const parsed = new Date(trimmed);
+        if (!Number.isNaN(parsed.getTime())) return buildDateKey(parsed);
+      }
+      return null;
+    };
+    const resolveIndexFromDateKey = (dateKey, fallbackIndex) => {
+      const normalized = resolveDateKey(dateKey);
+      if (!normalized) return fallbackIndex;
+      if (dayIndexByDateKey.has(normalized)) return dayIndexByDateKey.get(normalized);
+      const targetDate = parseDateKey(normalized);
+      if (!targetDate || !firstDayDate) return fallbackIndex;
+      return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
+    };
+
     const mappedAssignments = assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
@@ -3701,17 +3729,27 @@ const AssignBoard = () => {
         );
         const workProgressPercent = rawProgressPercent;
         const qcProgressPercent = 0;
+        const renderStartDateKey =
+          resolveDateKey(progressRow?.renderStartDate) ||
+          (typeof item?.startDateKey === 'string' && item.startDateKey.trim()
+            ? item.startDateKey.trim()
+            : null);
         const renderEndDateKey =
-          (typeof progressRow?.renderEndDate === 'string' && progressRow.renderEndDate.trim()
-            ? progressRow.renderEndDate.trim()
-            : null) ||
-          (typeof progressRow?.candidateEndDate === 'string' && progressRow.candidateEndDate.trim()
-            ? progressRow.candidateEndDate.trim()
-            : null) ||
-          (typeof item?.endDateKey === 'string' && item.endDateKey.trim() ? item.endDateKey.trim() : null);
+          resolveDateKey(progressRow?.renderEndDate) ||
+          resolveDateKey(progressRow?.candidateEndDate) ||
+          (typeof item?.endDateKey === 'string' && item.endDateKey.trim()
+            ? item.endDateKey.trim()
+            : null);
+        const defaultStartIndex = toSignedInt(item?.startIndex, 0);
+        const defaultEndIndex = Math.max(defaultStartIndex, toSignedInt(item?.endIndex, defaultStartIndex));
+        const renderStartIndex = resolveIndexFromDateKey(renderStartDateKey, defaultStartIndex);
+        const renderEndIndex = Math.max(
+          renderStartIndex,
+          resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
+        );
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
-          startDateKey: item?.startDateKey,
+          startDateKey: renderStartDateKey || item?.startDateKey,
           endDateKey: renderEndDateKey || item?.endDateKey,
           todayDateKey,
         });
@@ -3735,10 +3773,16 @@ const AssignBoard = () => {
           scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
           candidateEndDate:
             progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
+          renderStartDate:
+            progressRow?.renderStartDate ?? item?.renderStartDate ?? item?.startDateKey ?? null,
           renderEndDate:
             progressRow?.renderEndDate ?? progressRow?.candidateEndDate ?? item?.renderEndDate ?? null,
+          startDateKey: item?.startDateKey,
           endDateKey: item?.endDateKey,
-          endIndex: toSignedInt(item?.endIndex, 0),
+          startIndex: defaultStartIndex,
+          endIndex: defaultEndIndex,
+          renderStartIndex,
+          renderEndIndex,
           closedAt:
             progressRow?.closedAt ?? item?.closedAt ?? item?.completedAt ?? null,
           closedQty:
@@ -3747,6 +3791,12 @@ const AssignBoard = () => {
           closeBasis: progressRow?.closeBasis ?? item?.closeBasis ?? null,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
+          producedQty:
+            progressRow?.producedQty ??
+            progressRow?.producedQuantity ??
+            item?.producedQty ??
+            item?.producedQuantity ??
+            0,
           progressPercent: workProgressPercent,
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
@@ -4398,7 +4448,22 @@ const AssignBoard = () => {
     if (activeId.startsWith('assign-')) {
       const movingAssignmentId = activeId.replace('assign-', '');
       const movingAssignment = assignmentById.get(movingAssignmentId);
-      if (movingAssignment?.isCompleted) {
+      const progressRow =
+        assignmentProgressById[String(movingAssignmentId || '').trim()] || null;
+      const scheduleStatus = String(
+        progressRow?.scheduleStatus || movingAssignment?.scheduleStatus || ''
+      ).trim();
+      const isCompleted =
+        scheduleStatus === 'PRODUCTION_COMPLETED' || Boolean(movingAssignment?.isCompleted);
+      if (isCompleted) {
+        showNotification(
+          getUiMessage(
+            'assign.cannotMoveCompletedCard',
+            '완료된 카드는 이동할 수 없습니다.',
+            languageCode
+          ),
+          'warning'
+        );
         setActiveDrag(null);
         return;
       }
@@ -4626,6 +4691,35 @@ const AssignBoard = () => {
 
     if (activeId.startsWith('assign-')) {
       const assignmentId = activeId.replace('assign-', '');
+      const movingAssignment = assignmentById.get(assignmentId);
+      const progressRow =
+        assignmentProgressById[String(assignmentId || '').trim()] || null;
+      const producedQty = Math.max(
+        0,
+        Number(
+          progressRow?.producedQty ??
+            progressRow?.producedQuantity ??
+            movingAssignment?.producedQty ??
+            movingAssignment?.producedQuantity ??
+            0
+        ) || 0
+      );
+      const sameStartAnchor =
+        String(lineId) === String(movingAssignment?.lineId) &&
+        dayIndex === toSignedInt(movingAssignment?.startIndex, 0) &&
+        (!targetOnDay || targetOnDay.id === assignmentId);
+      if (producedQty > 0 && !sameStartAnchor) {
+        showNotification(
+          getUiMessage(
+            'assign.startedCardStartLocked',
+            '작업기록이 있는 카드의 시작일은 변경할 수 없습니다.',
+            languageCode
+          ),
+          'warning'
+        );
+        setActiveDrag(null);
+        return;
+      }
       setAssignments((prev) => {
         const target = prev.find((item) => item.id === assignmentId);
         if (!target) return prev;
