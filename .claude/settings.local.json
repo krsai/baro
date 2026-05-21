@@ -23,7 +23,8 @@
       "Bash(awk 'NR>=5990 && NR<=6010' backend/src/index.ts)",
       "Bash(awk 'NR>=5900 && NR<=5920' backend/src/index.ts)",
       "Bash(awk -F: '$2 <= 6239 {last=$0} END {print last}')",
-      "Bash(awk -F: '{if \\($1 <= 6239\\) last=$0} END {print last}')"
+      "Bash(awk -F: '{if \\($1 <= 6239\\) last=$0} END {print last}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',''\\), indent=2\\)\\)\")"
     ]
   }
 }

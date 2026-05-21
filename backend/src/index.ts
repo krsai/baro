@@ -10697,6 +10697,43 @@ const loadAssignmentPlansForBoardState = async (
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      cardId: true,
+      orderNo: true,
+      customer: true,
+      label: true,
+      colorId: true,
+      colorName: true,
+      previewUrl: true,
+      imageUrl: true,
+      thumbnailUrl: true,
+      quantity: true,
+      originOrderId: true,
+      basis: true,
+      contractedSeconds: true,
+      ctSnapshot: true,
+      color: true,
+      stripeColor: true,
+      totalSeconds: true,
+      startIndex: true,
+      endIndex: true,
+      startDayOffsetPercent: true,
+      startDayPercent: true,
+      endDayPercent: true,
+      isCompleted: true,
+      finalQuantity: true,
+      completedAt: true,
+      closedQty: true,
+      closedAt: true,
+      closedBy: true,
+      closeMode: true,
+      closeBasis: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 };
 const buildReadOnlyAssignmentBoardStateResponse = async (
@@ -17775,6 +17812,7 @@ app.put("/assignment-board-state", async (req, res) => {
           prisma.assignmentPlan.update({
             where: { id: row.id },
             data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
+            select: { id: true },
           })
         )
       );
