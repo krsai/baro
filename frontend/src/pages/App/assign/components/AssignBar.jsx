@@ -39,6 +39,15 @@ const formatQcCompact = (value, languageCode = 'en') =>
   getUiMessage('assign.qcCompact', 'QC {quantity}', languageCode, {
     quantity: value ?? 0,
   });
+const formatDateOnly = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 10);
+};
 
 const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, shiftPx = 0 }) => {
   const { languageCode } = useLanguage();
@@ -139,17 +148,25 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
               progressBg: '#7CB8F5',
               borderColor: 'rgba(59,130,246,0.28)',
             };
-  const progressPercent = Math.min(
-    100,
-    Math.max(0, Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0)
+  const rawProgressPercent = Math.max(
+    0,
+    Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0
   );
+  const progressPercent = Math.min(100, rawProgressPercent);
   const qcProgressPercent = Math.min(
     100,
     Math.max(0, Number(assignment.qcProgressPercent) || 0)
   );
   const qcPassedTotal = Math.max(0, Number(assignment.qcPassedTotal) || 0);
-  const progressSummary = formatProgressPercent(progressPercent, languageCode);
+  const progressSummary = formatProgressPercent(rawProgressPercent, languageCode);
   const qcSummary = qcPassedTotal > 0 ? formatQcCompact(qcPassedTotal, languageCode) : null;
+  const shiftedCompletedLabel =
+    String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' &&
+    assignment?.renderEndDate &&
+    assignment?.candidateEndDate &&
+    String(assignment.renderEndDate) !== String(assignment.candidateEndDate)
+      ? formatDateOnly(assignment?.productionCompletedAt)
+      : '';
 
   const line1 = assignment.orderNo
     ? joinText([assignment.customer || '', assignment.orderNo])
@@ -212,6 +229,13 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         assignment.quantity != null ? quantityLabel : null,
         progressSummary,
         qcSummary,
+        shiftedCompletedLabel
+          ? getUiMessage(
+              'assign.actualCompletionTooltip',
+              `실제 완료: ${shiftedCompletedLabel}`,
+              languageCode
+            )
+          : null,
       ])}
       {...attributes}
       {...listeners}
@@ -372,7 +396,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           }}
         >
           {joinText([
-            progressPercent > 0 ? `${Math.round(progressPercent)}%` : null,
+            rawProgressPercent > 0 ? `${Math.round(rawProgressPercent)}%` : null,
             qcProgressPercent > 0 ? `QC ${Math.round(qcProgressPercent)}%` : null,
           ])}
         </Box>

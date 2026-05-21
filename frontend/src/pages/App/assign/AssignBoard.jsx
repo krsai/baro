@@ -1501,6 +1501,11 @@ const clampPercentValue = (value) => {
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(0, Math.min(100, parsed));
 };
+const toRawPercentValue = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, parsed);
+};
 const resolveAssignmentVisualStatus = ({
   isCompleted = false,
   startDateKey = null,
@@ -3645,6 +3650,29 @@ const AssignBoard = () => {
   ]);
 
   const assignmentsForRender = useMemo(() => {
+    const dayIndexByDateKey = new Map(
+      (Array.isArray(days) ? days : [])
+        .map((day, index) => {
+          const key = typeof day?.key === 'string' ? day.key.trim() : '';
+          return key ? [key, index] : null;
+        })
+        .filter(Boolean)
+    );
+    const firstDayDate =
+      Array.isArray(days) && days.length > 0 ? parseDateKey(days[0]?.key) : null;
+
+    const resolveEndIndexFromDateKey = (dateKey, fallbackIndex) => {
+      const normalizedDateKey =
+        typeof dateKey === 'string' && dateKey.trim() ? dateKey.trim() : '';
+      if (!normalizedDateKey) return fallbackIndex;
+      if (dayIndexByDateKey.has(normalizedDateKey)) {
+        return dayIndexByDateKey.get(normalizedDateKey);
+      }
+      const targetDate = parseDateKey(normalizedDateKey);
+      if (!targetDate || !firstDayDate) return fallbackIndex;
+      return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
+    };
+
     return assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
@@ -3655,23 +3683,46 @@ const AssignBoard = () => {
         const qcPassedTotalRaw = Number(progressRow?.qcPassedTotal ?? item?.qcPassedTotal ?? 0);
         const closedQtyRaw = Number(progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? 0);
         const qcDisplayQuantity = qcPassedTotalRaw > 0 ? qcPassedTotalRaw : closedQtyRaw;
-        const normalizedProgressPercent = clampPercentValue(
-          progressRow?.progressPercent ?? item?.progressPercent ?? 0
+        const rawProgressPercent = toRawPercentValue(
+          progressRow?.operationalProgressPercent ??
+            progressRow?.progressPercent ??
+            item?.workProgressPercent ??
+            item?.progressPercent ??
+            0
         );
+        const scheduleStatus = String(progressRow?.scheduleStatus || '').trim();
         const isCompleted = Boolean(
-          progressRow?.isCompleted ??
+          (scheduleStatus === 'PRODUCTION_COMPLETED'
+            ? true
+            : null) ??
+            progressRow?.isCompleted ??
             progressRow?.closedAt ??
             item?.isCompleted ??
             item?.closedAt ??
             item?.completedAt
         );
-        const workProgressPercent = isCompleted ? 100 : normalizedProgressPercent;
+        const workProgressPercent = rawProgressPercent;
         const qcProgressPercent =
           plannedQuantity > 0 ? clampPercentValue((qcDisplayQuantity / plannedQuantity) * 100) : 0;
+        const renderEndDateKey =
+          (typeof progressRow?.renderEndDate === 'string' && progressRow.renderEndDate.trim()
+            ? progressRow.renderEndDate.trim()
+            : null) ||
+          (typeof progressRow?.candidateEndDate === 'string' && progressRow.candidateEndDate.trim()
+            ? progressRow.candidateEndDate.trim()
+            : null) ||
+          (typeof item?.endDateKey === 'string' && item.endDateKey.trim() ? item.endDateKey.trim() : null);
+        const resolvedEndIndex = Math.max(
+          toSignedInt(item?.startIndex, 0),
+          toSignedInt(
+            resolveEndIndexFromDateKey(renderEndDateKey, toSignedInt(item?.endIndex, 0)),
+            toSignedInt(item?.endIndex, 0)
+          )
+        );
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
           startDateKey: item?.startDateKey,
-          endDateKey: item?.endDateKey,
+          endDateKey: renderEndDateKey || item?.endDateKey,
           todayDateKey,
         });
         if (!item.cardId) return item;
@@ -3683,11 +3734,21 @@ const AssignBoard = () => {
           gender: item.gender ?? card.gender,
           isCompleted,
           completedAt:
+            progressRow?.productionCompletedAt ??
             progressRow?.completedAt ??
             progressRow?.closedAt ??
             item?.completedAt ??
             item?.closedAt ??
             null,
+          productionCompletedAt:
+            progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
+          scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
+          candidateEndDate:
+            progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
+          renderEndDate:
+            progressRow?.renderEndDate ?? progressRow?.candidateEndDate ?? item?.renderEndDate ?? null,
+          endDateKey: renderEndDateKey || item?.endDateKey,
+          endIndex: resolvedEndIndex,
           closedAt:
             progressRow?.closedAt ?? item?.closedAt ?? item?.completedAt ?? null,
           closedQty:
@@ -3715,6 +3776,7 @@ const AssignBoard = () => {
     assignmentCtDisplayStateById,
     assignmentProgressById,
     cardById,
+    days,
     dayCount,
     todayDateKey,
   ]);

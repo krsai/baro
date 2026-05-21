@@ -442,14 +442,13 @@ const BatchProgress = () => {
       setSubmittingCloseId(batch.id);
       try {
         await requestJSON(
-          `/assignment-plans/${encodeURIComponent(String(batch.id))}/close` +
+          `/assignment-plans/${encodeURIComponent(String(batch.id))}/production-complete` +
             buildQueryString({ orgId: activeOrgId }),
           {
-            method: 'POST',
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              closedQty,
-              closeBasis: 'MANUAL',
+              confirmedQty: closedQty,
             }),
           }
         );

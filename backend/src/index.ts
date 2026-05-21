@@ -14872,6 +14872,151 @@ app.get("/assignment-plans", async (req, res) => {
   );
 });
 
+const ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE = "UNAVAILABLE";
+const ASSIGNMENT_FORECAST_BASIS_WORKLOG_RATIO = "WORKLOG_RATIO";
+const ASSIGNMENT_CONFIDENCE_UNAVAILABLE = "UNAVAILABLE";
+const ASSIGNMENT_CONFIDENCE_LOW = "LOW";
+const ASSIGNMENT_CONFIDENCE_MEDIUM = "MEDIUM";
+const ASSIGNMENT_CONFIDENCE_HIGH = "HIGH";
+const ASSIGNMENT_STATUS_IN_PROGRESS = "IN_PROGRESS";
+const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
+const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
+
+type AssignmentPlanWorkStats = {
+  processTotalsByKey: Map<string, number>;
+  dailyProcessTotalsByDate: Map<string, Map<string, number>>;
+  firstWorkDate: string | null;
+  lastWorkDate: string | null;
+  hasRangeCoverage: boolean;
+};
+
+const toDateValueFromDateKeyForAssignmentSchedule = (
+  dateKeyInput: any
+): Date | null => {
+  const utcDate = toUtcDateFromDateKeyForAssignmentSchedule(dateKeyInput);
+  if (!utcDate) return null;
+  return new Date(utcDate.getTime());
+};
+
+const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
+  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const processRows = ensureArray(snapshot?.processes);
+  if (processRows.length === 0) return [];
+
+  const groups = processRows
+    .map((process) => {
+      const candidates: string[] = [];
+      const processId = toPositiveIntOrNull(process?.processId ?? process?.id);
+      if (processId) candidates.push(`id:${processId}`);
+      const processCode = normalizeProcessCodeKey(process?.processCode ?? process?.code);
+      if (processCode) candidates.push(`code:${processCode}`);
+      return Array.from(new Set(candidates));
+    })
+    .filter((group) => group.length > 0);
+
+  return groups;
+};
+
+const resolveProducedQtyFromProcessKeyTotals = ({
+  processTotalsByKey,
+  processKeyGroups = [],
+}: {
+  processTotalsByKey: Map<string, number>;
+  processKeyGroups?: string[][];
+}): number => {
+  const normalizedGroups = ensureArray(processKeyGroups).filter(
+    (group): group is string[] => Array.isArray(group) && group.length > 0
+  );
+  const processTotals =
+    normalizedGroups.length > 0
+      ? normalizedGroups.map((group) =>
+          group.reduce(
+            (max, key) => Math.max(max, Math.max(0, Math.round(Number(processTotalsByKey.get(key) || 0)))),
+            0
+          )
+        )
+      : Array.from(processTotalsByKey.values()).map((value) =>
+          Math.max(0, Math.round(Number(value) || 0))
+        );
+
+  return resolveAssignmentProducedQuantityFromProcessTotals({
+    processTotals,
+    baselineQuantity: null,
+  });
+};
+
+const resolveWorklogRatioConfidence = ({
+  producedQty,
+  planQty,
+  elapsedDays,
+  isProxy = false,
+}: {
+  producedQty: number;
+  planQty: number | null;
+  elapsedDays: number | null;
+  isProxy?: boolean;
+}): "HIGH" | "MEDIUM" | "LOW" | "UNAVAILABLE" => {
+  const normalizedProducedQty = Math.max(0, Math.round(Number(producedQty) || 0));
+  if (normalizedProducedQty <= 0) return ASSIGNMENT_CONFIDENCE_UNAVAILABLE;
+
+  const normalizedPlanQty =
+    planQty != null && Number.isFinite(planQty) && planQty > 0
+      ? Math.round(planQty)
+      : null;
+  const normalizedElapsedDays =
+    elapsedDays != null && Number.isFinite(elapsedDays) && elapsedDays > 0
+      ? Math.round(elapsedDays)
+      : 1;
+
+  let confidence: "HIGH" | "MEDIUM" | "LOW" | "UNAVAILABLE" =
+    ASSIGNMENT_CONFIDENCE_LOW;
+  const producedRatio =
+    normalizedPlanQty && normalizedPlanQty > 0
+      ? normalizedProducedQty / normalizedPlanQty
+      : null;
+
+  if (producedRatio != null && producedRatio < 0.1) {
+    confidence = ASSIGNMENT_CONFIDENCE_LOW;
+  } else if (normalizedElapsedDays >= 7) {
+    confidence =
+      producedRatio != null && producedRatio >= 0.3
+        ? ASSIGNMENT_CONFIDENCE_HIGH
+        : ASSIGNMENT_CONFIDENCE_MEDIUM;
+  } else if (normalizedElapsedDays >= 3) {
+    confidence = ASSIGNMENT_CONFIDENCE_MEDIUM;
+  } else {
+    confidence = ASSIGNMENT_CONFIDENCE_LOW;
+  }
+
+  if (isProxy) {
+    return ASSIGNMENT_CONFIDENCE_LOW;
+  }
+  return confidence;
+};
+
+const resolveNextWorkingDateKeyForAssignmentSchedule = ({
+  fromDateKey,
+  holidaySet,
+}: {
+  fromDateKey: string;
+  holidaySet: Set<string>;
+}): string => {
+  let cursor = normalizeDateKey(fromDateKey) || fromDateKey;
+  for (let i = 0; i < 366 * 3; i += 1) {
+    const shifted = shiftDateKeyByDaysForAssignmentSchedule(cursor, 1);
+    if (!shifted) return cursor;
+    const date = toUtcDateFromDateKeyForAssignmentSchedule(shifted);
+    if (!date) {
+      cursor = shifted;
+      continue;
+    }
+    const isSunday = date.getUTCDay() === 0;
+    if (!isSunday && !holidaySet.has(shifted)) return shifted;
+    cursor = shifted;
+  }
+  return cursor;
+};
+
 const buildAssignmentPlanProgressRows = async (
   orgId: number,
   externalIds: string[] = []
@@ -14884,37 +15029,63 @@ const buildAssignmentPlanProgressRows = async (
     )
   );
 
-  const plans = await prisma.assignmentPlan.findMany({
-    where: {
-      orgId,
-      ...(normalizedExternalIds.length > 0
-        ? { externalId: { in: normalizedExternalIds } }
-        : {}),
-    },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      orderNo: true,
-      customer: true,
-      label: true,
-      colorId: true,
-      colorName: true,
-      quantity: true,
-      isCompleted: true,
-      finalQuantity: true,
-      completedAt: true,
-      qcPassedTotal: true,
-      latestQcDate: true,
-      closedQty: true,
-      closedAt: true,
-      closedBy: true,
-      closeMode: true,
-      closeBasis: true,
-    },
-    orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-  });
+  const [plans, boardState] = await Promise.all([
+    prisma.assignmentPlan.findMany({
+      where: {
+        orgId,
+        ...(normalizedExternalIds.length > 0
+          ? { externalId: { in: normalizedExternalIds } }
+          : {}),
+      },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        orderNo: true,
+        customer: true,
+        label: true,
+        colorId: true,
+        colorName: true,
+        quantity: true,
+        isCompleted: true,
+        finalQuantity: true,
+        completedAt: true,
+        closedAt: true,
+        closedQty: true,
+        closedBy: true,
+        closeMode: true,
+        closeBasis: true,
+        qcPassedTotal: true,
+        latestQcDate: true,
+        startIndex: true,
+        endIndex: true,
+        ctSnapshot: true,
+        productionCompletedAt: true,
+        actualProducedCompletedAt: true,
+        candidateEndDate: true,
+        renderEndDate: true,
+        forecastCompletedAt: true,
+        forecastBasis: true,
+        confidence: true,
+        scheduleStatus: true,
+      },
+      orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+    }),
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { assignments: true },
+    }),
+  ]);
   if (plans.length === 0) return [];
+
+  const stateAssignmentsByExternalId = normalizeStateAssignments(
+    boardState?.assignments
+  ).reduce((map, row) => {
+    const externalId = resolveAssignmentExternalId(row);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, row);
+    return map;
+  }, new Map<string, any>());
 
   const lineIds = Array.from(
     new Set(
@@ -14934,54 +15105,134 @@ const buildAssignmentPlanProgressRows = async (
     lineRows.map((line) => [Number(line.id), resolveOptionalString(line.name, "") || ""])
   );
 
-  const planIds = plans.map((plan) => Number(plan.id)).filter((id) => Number.isFinite(id));
-  const processAggregates =
+  const holidayModel = (prisma as any).organizationHoliday;
+  const holidayRows =
+    holidayModel && typeof holidayModel.findMany === "function"
+      ? await holidayModel
+          .findMany({
+            where: { orgId },
+            select: { holidayDate: true },
+          })
+          .catch(() => [])
+      : [];
+  const holidaySet = new Set<string>(
+    ensureArray(holidayRows)
+      .map((row) => normalizeDateKey(row?.holidayDate))
+      .filter((value): value is string => Boolean(value))
+  );
+
+  const planIds = plans
+    .map((plan) => Number(plan.id))
+    .filter((id) => Number.isFinite(id));
+
+  const workRows =
     planIds.length > 0
-      ? await prisma.workRecord.groupBy({
-          by: ["assignmentPlanId", "processId", "processCode"],
+      ? await prisma.workRecord.findMany({
           where: {
             orgId,
             assignmentPlanId: { in: planIds },
           },
-          _sum: { quantity: true },
+          select: {
+            assignmentPlanId: true,
+            processId: true,
+            processCode: true,
+            quantity: true,
+            workLog: {
+              select: {
+                workDate: true,
+                coverageStartDate: true,
+                coverageEndDate: true,
+                entryMode: true,
+              },
+            },
+          },
         })
       : [];
-  const processTotalsByPlanId = new Map<number, number[]>();
-  const sumByPlanId = new Map<number, number>();
-  processAggregates.forEach((row) => {
-    const planId = Number(row.assignmentPlanId);
-    if (!Number.isFinite(planId)) return;
-    const quantity = Math.max(0, Math.round(Number(row._sum.quantity ?? 0)));
-    sumByPlanId.set(planId, (sumByPlanId.get(planId) || 0) + quantity);
-    if (quantity <= 0) return;
-    const current = processTotalsByPlanId.get(planId) || [];
-    current.push(quantity);
-    processTotalsByPlanId.set(planId, current);
-  });
 
-  const resolveProducedQuantity = (planId: number, baselineQuantity: number | null) => {
-    const processTotals = processTotalsByPlanId.get(planId) || [];
-    if (processTotals.length > 0) {
-      return resolveAssignmentProducedQuantityFromProcessTotals({
-        processTotals,
-        baselineQuantity,
-      });
-    }
-    return Math.max(0, Math.round(Number(sumByPlanId.get(planId) || 0)));
+  const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
+  const getStats = (planId: number): AssignmentPlanWorkStats => {
+    const existing = statsByPlanId.get(planId);
+    if (existing) return existing;
+    const next: AssignmentPlanWorkStats = {
+      processTotalsByKey: new Map<string, number>(),
+      dailyProcessTotalsByDate: new Map<string, Map<string, number>>(),
+      firstWorkDate: null,
+      lastWorkDate: null,
+      hasRangeCoverage: false,
+    };
+    statsByPlanId.set(planId, next);
+    return next;
   };
 
-  return plans.map((plan) => {
+  workRows.forEach((record) => {
+    const planId = toPositiveIntOrNull(record?.assignmentPlanId);
+    if (!planId) return;
+    const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
+    if (quantity <= 0) return;
+
+    const stats = getStats(planId);
+    const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    stats.processTotalsByKey.set(
+      processKey,
+      (stats.processTotalsByKey.get(processKey) || 0) + quantity
+    );
+
+    const coverageStartDate = resolveWorkLogCoverageStartDate(
+      record?.workLog,
+      record?.workLog?.workDate
+    );
+    const coverageEndDate = resolveWorkLogCoverageEndDate(
+      record?.workLog,
+      record?.workLog?.workDate
+    );
+    if (coverageStartDate && (!stats.firstWorkDate || coverageStartDate < stats.firstWorkDate)) {
+      stats.firstWorkDate = coverageStartDate;
+    }
+    if (coverageEndDate && (!stats.lastWorkDate || coverageEndDate > stats.lastWorkDate)) {
+      stats.lastWorkDate = coverageEndDate;
+    }
+    if (
+      coverageStartDate &&
+      coverageEndDate &&
+      coverageStartDate !== coverageEndDate
+    ) {
+      stats.hasRangeCoverage = true;
+    }
+    const entryMode =
+      resolveOptionalString(record?.workLog?.entryMode, "")?.toLowerCase?.() || "";
+    if (entryMode === "period_summary") {
+      stats.hasRangeCoverage = true;
+    }
+
+    const workDateKey = normalizeDateKey(record?.workLog?.workDate) || coverageEndDate;
+    if (!workDateKey) return;
+    const byDate =
+      stats.dailyProcessTotalsByDate.get(workDateKey) || new Map<string, number>();
+    byDate.set(processKey, (byDate.get(processKey) || 0) + quantity);
+    stats.dailyProcessTotalsByDate.set(workDateKey, byDate);
+  });
+
+  const rows = plans.map((plan) => {
     const planId = Number(plan.id);
+    const stats = statsByPlanId.get(planId) || {
+      processTotalsByKey: new Map<string, number>(),
+      dailyProcessTotalsByDate: new Map<string, Map<string, number>>(),
+      firstWorkDate: null,
+      lastWorkDate: null,
+      hasRangeCoverage: false,
+    };
+    const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
-    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
-    const closedQty = resolveAssignmentPlanClosedQty(plan);
-    const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
-    const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
     const baselineQuantityRaw =
-      plannedQuantity != null && plannedQuantity > 0
-        ? plannedQuantity
-        : null;
-    const producedQuantity = resolveProducedQuantity(planId, baselineQuantityRaw);
+      plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
+    const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
+      processTotalsByKey: stats.processTotalsByKey,
+      processKeyGroups: requiredProcessGroups,
+    });
+    const remainingQty =
+      baselineQuantityRaw == null
+        ? null
+        : Math.max(0, baselineQuantityRaw - producedQuantity);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
     const progressPercent =
@@ -14989,8 +15240,119 @@ const buildAssignmentPlanProgressRows = async (
         ? null
         : (producedQuantity / baselineQuantityRaw) * 100;
 
-    const completedAt = resolveAssignmentPlanClosedAt(plan);
-    const isCompleted = Boolean(plan?.isCompleted || completedAt);
+    const firstWorkDate = stats.firstWorkDate;
+    const lastWorkDate = stats.lastWorkDate;
+    const elapsedDays =
+      firstWorkDate && lastWorkDate
+        ? countDateRangeDaysInclusiveForAssignmentSchedule(firstWorkDate, lastWorkDate)
+        : null;
+
+    const canForecast =
+      producedQuantity > 0 &&
+      remainingQty != null &&
+      firstWorkDate != null &&
+      lastWorkDate != null &&
+      elapsedDays != null &&
+      elapsedDays > 0;
+    const forecastDays =
+      canForecast && remainingQty != null
+        ? Math.max(
+            0,
+            Math.ceil((elapsedDays! * Math.max(0, remainingQty)) / Math.max(1, producedQuantity))
+          )
+        : null;
+    const forecastCompletedDateKey =
+      canForecast && forecastDays != null
+        ? shiftDateKeyByDaysForAssignmentSchedule(lastWorkDate, forecastDays)
+        : null;
+    const forecastBasis = canForecast
+      ? ASSIGNMENT_FORECAST_BASIS_WORKLOG_RATIO
+      : ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE;
+
+    let actualProducedCompletedDateKey: string | null = null;
+    let actualProducedCompletedIsProxy = false;
+    if (
+      baselineQuantityRaw != null &&
+      baselineQuantityRaw > 0 &&
+      producedQuantity >= baselineQuantityRaw
+    ) {
+      if (stats.hasRangeCoverage) {
+        actualProducedCompletedDateKey = lastWorkDate;
+        actualProducedCompletedIsProxy = Boolean(actualProducedCompletedDateKey);
+      } else {
+        const cumulativeProcessTotalsByKey = new Map<string, number>();
+        const sortedDateKeys = Array.from(stats.dailyProcessTotalsByDate.keys()).sort((a, b) =>
+          a.localeCompare(b)
+        );
+        for (const dateKey of sortedDateKeys) {
+          const dailyTotals = stats.dailyProcessTotalsByDate.get(dateKey);
+          if (!dailyTotals) continue;
+          dailyTotals.forEach((value, processKey) => {
+            cumulativeProcessTotalsByKey.set(
+              processKey,
+              (cumulativeProcessTotalsByKey.get(processKey) || 0) +
+                Math.max(0, Math.round(Number(value) || 0))
+            );
+          });
+          const producedAtDate = resolveProducedQtyFromProcessKeyTotals({
+            processTotalsByKey: cumulativeProcessTotalsByKey,
+            processKeyGroups: requiredProcessGroups,
+          });
+          if (producedAtDate >= baselineQuantityRaw) {
+            actualProducedCompletedDateKey = dateKey;
+            break;
+          }
+        }
+        if (!actualProducedCompletedDateKey) {
+          actualProducedCompletedDateKey = lastWorkDate;
+          actualProducedCompletedIsProxy = Boolean(actualProducedCompletedDateKey);
+        }
+      }
+    }
+
+    const persistedProductionCompletedAt =
+      toOptionalDateValue(plan?.productionCompletedAt, null) ??
+      resolveAssignmentPlanClosedAtValue(plan);
+    const productionCompletedAtIso =
+      toIsoDateStringOrNull(persistedProductionCompletedAt?.toISOString?.() || null) ||
+      null;
+    const productionCompletedDateKey = persistedProductionCompletedAt
+      ? toDateKeyInTimeZone(persistedProductionCompletedAt, BUSINESS_TIME_ZONE)
+      : null;
+
+    const scheduleStatus: "IN_PROGRESS" | "READY_TO_COMPLETE" | "PRODUCTION_COMPLETED" =
+      productionCompletedDateKey
+        ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
+        : baselineQuantityRaw != null &&
+            baselineQuantityRaw > 0 &&
+            producedQuantity >= baselineQuantityRaw
+          ? ASSIGNMENT_STATUS_READY_TO_COMPLETE
+          : ASSIGNMENT_STATUS_IN_PROGRESS;
+
+    const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
+    const snapshotSchedule = normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.schedule || null;
+    const originalEndDateKey =
+      normalizeDateKey(stateAssignment?.endDateKey) ||
+      normalizeDateKey(snapshotSchedule?.endDateKey) ||
+      null;
+
+    const candidateEndDateKey =
+      productionCompletedDateKey ||
+      actualProducedCompletedDateKey ||
+      forecastCompletedDateKey ||
+      originalEndDateKey;
+
+    const confidence = resolveWorklogRatioConfidence({
+      producedQty: producedQuantity,
+      planQty: baselineQuantityRaw,
+      elapsedDays,
+      isProxy: actualProducedCompletedIsProxy,
+    });
+
+    const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
+    const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
+    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
+    const closedQty = resolveAssignmentPlanClosedQty(plan);
     const closeMode =
       resolveOptionalString(plan?.closeMode, null) ??
       resolveAssignmentPlanCloseMode({
@@ -14998,6 +15360,7 @@ const buildAssignmentPlanProgressRows = async (
         targetQty: plannedQuantity,
       });
     const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+
     return {
       id: plan.externalId,
       dbId: planId,
@@ -15014,18 +15377,214 @@ const buildAssignmentPlanProgressRows = async (
       latestQcDate,
       baselineQuantity: baselineQuantityRaw,
       producedQuantity,
+      producedQty: producedQuantity,
+      remainingQty,
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
       progressPercent,
-      isCompleted,
-      completedAt,
+      operationalProgressPercent: progressPercent,
+      officialProgressPercent:
+        scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 100 : null,
+      isCompleted: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+      completedAt: productionCompletedAtIso,
+      productionCompletedAt: productionCompletedAtIso,
+      actualProducedCompletedAt: actualProducedCompletedDateKey,
+      qcCompletedAt: null,
       closedQty,
-      closedAt: completedAt,
+      productionConfirmedQty: closedQty,
+      closedAt: productionCompletedAtIso,
       closedBy: resolveOptionalString(plan?.closedBy, null),
       closeMode,
       closeBasis,
+      firstWorkDate,
+      lastWorkDate,
+      elapsedDays,
+      forecastCompletedAt: forecastCompletedDateKey,
+      forecastBasis,
+      confidence,
+      candidateEndDate: candidateEndDateKey,
+      renderEndDate: candidateEndDateKey,
+      scheduleStatus,
+      isQcDone: Boolean(latestQcDate),
+      _sortStartIndex: toSignedInt(plan?.startIndex, 0),
+      _sortEndIndex: Math.max(
+        toSignedInt(plan?.startIndex, 0),
+        toSignedInt(plan?.endIndex, toSignedInt(plan?.startIndex, 0))
+      ),
+      _originalEndDateKey: originalEndDateKey,
     };
   });
+
+  const rowsByLine = rows.reduce((map, row) => {
+    const lineId = String(row.lineId || "");
+    if (!lineId) return map;
+    const bucket = map.get(lineId) || [];
+    bucket.push(row);
+    map.set(lineId, bucket);
+    return map;
+  }, new Map<string, any[]>());
+
+  rowsByLine.forEach((lineRows) => {
+    lineRows.sort((left, right) => {
+      const leftCompleted =
+        String(left?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 0 : 1;
+      const rightCompleted =
+        String(right?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 0 : 1;
+      if (leftCompleted !== rightCompleted) {
+        return leftCompleted - rightCompleted;
+      }
+      if (left._sortStartIndex !== right._sortStartIndex) {
+        return left._sortStartIndex - right._sortStartIndex;
+      }
+      if (left._sortEndIndex !== right._sortEndIndex) {
+        return left._sortEndIndex - right._sortEndIndex;
+      }
+      return String(left.id).localeCompare(String(right.id), undefined, { numeric: true });
+    });
+
+    let cursorEndDateKey: string | null = null;
+    lineRows.forEach((row) => {
+      const candidate =
+        normalizeDateKey(row?.candidateEndDate) ||
+        normalizeDateKey(row?._originalEndDateKey) ||
+        normalizeDateKey(row?.lastWorkDate) ||
+        normalizeDateKey(row?.firstWorkDate) ||
+        null;
+      if (!candidate) return;
+      let renderDateKey = candidate;
+      if (cursorEndDateKey && renderDateKey <= cursorEndDateKey) {
+        renderDateKey = resolveNextWorkingDateKeyForAssignmentSchedule({
+          fromDateKey: cursorEndDateKey,
+          holidaySet,
+        });
+      }
+      row.renderEndDate = renderDateKey;
+      cursorEndDateKey = renderDateKey;
+    });
+  });
+
+  return rows.map((row) => {
+    const {
+      _sortStartIndex: _sortStartIndex,
+      _sortEndIndex: _sortEndIndex,
+      _originalEndDateKey: _originalEndDateKey,
+      ...rest
+    } = row;
+    return rest;
+  });
+};
+
+const persistAssignmentPlanProgressSnapshot = async ({
+  orgId,
+  assignmentPlanIds = [],
+  externalIds = [],
+}: {
+  orgId: number;
+  assignmentPlanIds?: any;
+  externalIds?: any;
+}): Promise<{ updatedPlanCount: number }> => {
+  const normalizedPlanIds = normalizePlanIdList(assignmentPlanIds);
+  const normalizedExternalIds = Array.from(
+    new Set(
+      ensureArray(externalIds)
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  if (normalizedPlanIds.length === 0 && normalizedExternalIds.length === 0) {
+    return { updatedPlanCount: 0 };
+  }
+
+  const targetPlans = await prisma.assignmentPlan.findMany({
+    where: {
+      orgId,
+      OR: [
+        ...(normalizedPlanIds.length > 0 ? [{ id: { in: normalizedPlanIds } }] : []),
+        ...(normalizedExternalIds.length > 0
+          ? [{ externalId: { in: normalizedExternalIds } }]
+          : []),
+      ],
+    },
+    select: { id: true, externalId: true },
+  });
+  if (targetPlans.length === 0) {
+    return { updatedPlanCount: 0 };
+  }
+
+  const targetExternalIds = Array.from(
+    new Set(
+      targetPlans
+        .map((plan) => resolveOptionalString(plan?.externalId, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (targetExternalIds.length === 0) {
+    return { updatedPlanCount: 0 };
+  }
+
+  const progressRows = await buildAssignmentPlanProgressRows(orgId, targetExternalIds);
+  const rowByExternalId = progressRows.reduce((map, row) => {
+    const externalId = resolveOptionalString(row?.id, null);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, row);
+    return map;
+  }, new Map<string, any>());
+
+  const updates = targetPlans
+    .map((plan) => {
+      const row = rowByExternalId.get(plan.externalId);
+      if (!row) return null;
+      const productionCompletedAt = toOptionalDateValue(
+        row?.productionCompletedAt,
+        null
+      );
+      const actualProducedCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
+        row?.actualProducedCompletedAt
+      );
+      const candidateEndDate = toDateValueFromDateKeyForAssignmentSchedule(
+        row?.candidateEndDate
+      );
+      const renderEndDate = toDateValueFromDateKeyForAssignmentSchedule(
+        row?.renderEndDate
+      );
+      const forecastCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
+        row?.forecastCompletedAt
+      );
+
+      return {
+        id: plan.id,
+        data: {
+          productionCompletedAt,
+          actualProducedCompletedAt,
+          candidateEndDate,
+          renderEndDate,
+          forecastCompletedAt,
+          forecastBasis: resolveOptionalString(row?.forecastBasis, null),
+          confidence: resolveOptionalString(row?.confidence, null),
+          scheduleStatus: resolveOptionalString(row?.scheduleStatus, null),
+          updatedAt: new Date(),
+        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+      };
+    })
+    .filter((row): row is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
+      Boolean(row)
+    );
+
+  if (updates.length === 0) {
+    return { updatedPlanCount: 0 };
+  }
+
+  await prisma.$transaction(
+    updates.map((update) =>
+      prisma.assignmentPlan.update({
+        where: { id: update.id },
+        data: update.data,
+      })
+    )
+  );
+
+  return { updatedPlanCount: updates.length };
 };
 
 const resolveAssignmentPlanProducedQuantity = async ({
@@ -15068,7 +15627,14 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
   const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
   const completedAt = resolveAssignmentPlanClosedAt(plan);
-  const isCompleted = Boolean(plan?.isCompleted || completedAt);
+  const productionCompletedAtDate = toOptionalDateValue(
+    plan?.productionCompletedAt,
+    null
+  );
+  const productionCompletedAt =
+    toIsoDateStringOrNull(productionCompletedAtDate?.toISOString?.() || null) ||
+    completedAt;
+  const isCompleted = Boolean(plan?.isCompleted || completedAt || productionCompletedAt);
   const closeMode =
     resolveOptionalString(plan?.closeMode, null) ??
     resolveAssignmentPlanCloseMode({
@@ -15090,11 +15656,147 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
     qcPassedTotal,
     latestQcDate,
     completedAt,
+    productionCompletedAt,
+    scheduleStatus: isCompleted
+      ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
+      : ASSIGNMENT_STATUS_IN_PROGRESS,
     closedQty,
+    productionConfirmedQty: closedQty,
     closedAt: completedAt,
     closedBy: resolveOptionalString(plan?.closedBy, null),
     closeMode,
     closeBasis,
+  };
+};
+
+const resolveLegacyCompletionQtyInput = ({
+  body,
+  keys,
+}: {
+  body: any;
+  keys: string[];
+}): { provided: boolean; value: number | null } => {
+  const payload = body && typeof body === "object" ? body : {};
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
+    return {
+      provided: true,
+      value: toOptionalNonNegativeInt(payload[key], null),
+    };
+  }
+  return { provided: false, value: null };
+};
+
+const completeAssignmentPlanProduction = async ({
+  orgId,
+  externalId,
+  confirmedQty,
+  completedAt,
+  closeBasis = "MANUAL",
+}: {
+  orgId: number;
+  externalId: string;
+  confirmedQty: number | null;
+  completedAt: Date;
+  closeBasis?: "QC_BASED" | "MANUAL";
+}) => {
+  const plan = await prisma.assignmentPlan.findFirst({
+    where: { orgId, externalId },
+    select: {
+      id: true,
+      externalId: true,
+      lineId: true,
+      quantity: true,
+      finalQuantity: true,
+      isCompleted: true,
+      completedAt: true,
+      closedAt: true,
+      closedQty: true,
+      closeMode: true,
+      closeBasis: true,
+      closedBy: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+      productionCompletedAt: true,
+    },
+  });
+  if (!plan) {
+    return { ok: false as const, status: 404, error: "assignment plan not found" };
+  }
+  if (
+    toOptionalDateValue(plan.productionCompletedAt, null) ||
+    plan.isCompleted ||
+    resolveAssignmentPlanClosedAtValue(plan)
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "assignment plan already production-completed",
+    };
+  }
+
+  const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
+  const baselineQuantity =
+    plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
+  const producedQuantity = await resolveAssignmentPlanProducedQuantity({
+    orgId,
+    planId: plan.id,
+    baselineQuantity,
+  });
+  const resolvedClosedQtyRaw =
+    confirmedQty ??
+    toOptionalNonNegativeInt(plan.closedQty, null) ??
+    toOptionalNonNegativeInt(plan.finalQuantity, null) ??
+    producedQuantity;
+  const resolvedClosedQty = Math.max(0, Math.round(Number(resolvedClosedQtyRaw) || 0));
+  const closeMode =
+    resolveAssignmentPlanCloseMode({
+      closedQty: resolvedClosedQty,
+      targetQty: plannedQuantity,
+    }) ?? "FULL";
+  const completionDateKey = toDateKeyInTimeZone(completedAt, BUSINESS_TIME_ZONE);
+  const completionDate =
+    toDateValueFromDateKeyForAssignmentSchedule(completionDateKey) || completedAt;
+  const actor = getCurrentRequestActor();
+
+  const updatedPlan = await prisma.assignmentPlan.update({
+    where: { id: plan.id },
+    data: {
+      productionCompletedAt: completedAt,
+      isCompleted: true,
+      completedAt,
+      finalQuantity: resolvedClosedQty,
+      closedQty: resolvedClosedQty,
+      closedAt: completedAt,
+      closedBy: actor,
+      closeMode,
+      closeBasis,
+      candidateEndDate: completionDate,
+      renderEndDate: completionDate,
+      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+      forecastCompletedAt: null,
+      forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
+      updatedAt: new Date(),
+    },
+  });
+
+  await syncAssignmentSchedulesFromWorkRecordPlans({
+    orgId,
+    assignmentPlanIds: [updatedPlan.id],
+  });
+  await persistAssignmentPlanProgressSnapshot({
+    orgId,
+    assignmentPlanIds: [updatedPlan.id],
+  });
+  await syncOrderProgressStatusesForOrg({ orgId });
+
+  return {
+    ok: true as const,
+    status: 200,
+    updatedPlan,
+    producedQuantity,
+    resolvedClosedQty,
   };
 };
 
@@ -15404,49 +16106,12 @@ app.post("/assignment-plans/:externalId/close", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
   }
 
-  const plan = await prisma.assignmentPlan.findFirst({
-    where: { orgId: organization.id, externalId },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      isCompleted: true,
-      completedAt: true,
-      closedAt: true,
-      quantity: true,
-      finalQuantity: true,
-      closedQty: true,
-      closeMode: true,
-      closeBasis: true,
-      closedBy: true,
-      orderNo: true,
-      label: true,
-      colorName: true,
-    },
+  const qtyInput = resolveLegacyCompletionQtyInput({
+    body: req.body,
+    keys: ["closedQty", "finalQuantity", "confirmedQty"],
   });
-  if (!plan) {
-    return res.status(404).json({ ok: false, error: "assignment plan not found" });
-  }
-
-  if (plan.isCompleted || resolveAssignmentPlanClosedAtValue(plan)) {
-    return res.status(409).json({
-      ok: false,
-      error: "assignment plan already completed",
-    });
-  }
-
-  const closedQty = toOptionalNonNegativeInt(
-    req.body?.closedQty ?? req.body?.finalQuantity,
-    null
-  );
-  if (closedQty === null) {
+  if (!qtyInput.provided || qtyInput.value === null) {
     return res.status(400).json({ ok: false, error: "closedQty is required" });
-  }
-
-  const targetQty = toOptionalNonNegativeInt(plan.quantity, null);
-  const closeMode = resolveAssignmentPlanCloseMode({ closedQty, targetQty });
-  if (!closeMode) {
-    return res.status(400).json({ ok: false, error: "closeMode could not be resolved" });
   }
 
   const requestedBasis = resolveOptionalString(req.body?.closeBasis, null);
@@ -15455,27 +16120,79 @@ app.post("/assignment-plans/:externalId/close", async (req, res) => {
       ? requestedBasis
       : "MANUAL";
   const closedAt = toOptionalDateValue(req.body?.closedAt, null) ?? new Date();
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: {
-      isCompleted: true,
-      finalQuantity: closedQty,
-      completedAt: closedAt,
-      closedQty,
-      closedAt,
-      closedBy: getCurrentRequestActor(),
-      closeMode,
-      closeBasis,
-      updatedAt: new Date(),
-    },
-  });
-  await syncOrderProgressStatusesForOrg({
+  const completion = await completeAssignmentPlanProduction({
     orgId: organization.id,
+    externalId,
+    confirmedQty: qtyInput.value,
+    completedAt: closedAt,
+    closeBasis,
   });
+  if (!completion.ok) {
+    return res.status(completion.status).json({ ok: false, error: completion.error });
+  }
+
+  console.warn(
+    `[deprecated-endpoint] POST /assignment-plans/:externalId/close used (orgId=${organization.id}, externalId=${externalId})`
+  );
+  res.set("Deprecation", "true");
+  res.set("Link", '</assignment-plans/{externalId}/production-complete>; rel="successor-version"');
 
   return res.json({
     ok: true,
-    plan: buildAssignmentPlanCloseResponse(updatedPlan),
+    plan: {
+      ...buildAssignmentPlanCloseResponse(completion.updatedPlan),
+      producedQuantity: completion.producedQuantity,
+      productionConfirmedQty: completion.resolvedClosedQty,
+    },
+    reorderedAssignments: 0,
+    deprecated: true,
+  });
+});
+
+app.patch("/assignment-plans/:externalId/production-complete", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const externalId = resolveOptionalString(req.params.externalId, null);
+  if (!externalId) {
+    return res.status(400).json({ ok: false, error: "invalid externalId" });
+  }
+
+  const qtyInput = resolveLegacyCompletionQtyInput({
+    body: req.body,
+    keys: ["confirmedQty", "closedQty", "finalQuantity"],
+  });
+  if (qtyInput.provided && qtyInput.value === null) {
+    return res.status(400).json({
+      ok: false,
+      error: "confirmedQty must be a non-negative integer",
+    });
+  }
+  const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
+  const completion = await completeAssignmentPlanProduction({
+    orgId: organization.id,
+    externalId,
+    confirmedQty: qtyInput.value,
+    completedAt,
+    closeBasis: "MANUAL",
+  });
+  if (!completion.ok) {
+    return res.status(completion.status).json({ ok: false, error: completion.error });
+  }
+
+  return res.json({
+    ok: true,
+    plan: {
+      ...buildAssignmentPlanCloseResponse(completion.updatedPlan),
+      producedQuantity: completion.producedQuantity,
+      productionConfirmedQty: completion.resolvedClosedQty,
+      productionCompletedAt: toIsoDateStringOrNull(
+        completion.updatedPlan.productionCompletedAt
+      ),
+      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+    },
     reorderedAssignments: 0,
   });
 });
@@ -15491,75 +16208,46 @@ app.patch("/assignment-plans/:externalId/complete", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid externalId" });
   }
 
-  const plan = await prisma.assignmentPlan.findFirst({
-    where: { orgId: organization.id, externalId },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      isCompleted: true,
-      completedAt: true,
-      closedAt: true,
-      quantity: true,
-      finalQuantity: true,
-      closedQty: true,
-      closeMode: true,
-      closeBasis: true,
-      closedBy: true,
-      orderNo: true,
-      label: true,
-      colorName: true,
-    },
+  const qtyInput = resolveLegacyCompletionQtyInput({
+    body: req.body,
+    keys: ["finalQuantity", "closedQty", "confirmedQty"],
   });
-  if (!plan) {
-    return res.status(404).json({ ok: false, error: "assignment plan not found" });
-  }
-
-  if (plan.isCompleted || resolveAssignmentPlanClosedAtValue(plan)) {
-    return res.status(409).json({
-      ok: false,
-      error: "assignment plan already completed",
-    });
-  }
-
-  const finalQuantity = toOptionalNonNegativeInt(req.body?.finalQuantity, null);
-  if (finalQuantity === null) {
+  if (!qtyInput.provided || qtyInput.value === null) {
     return res.status(400).json({ ok: false, error: "finalQuantity is required" });
   }
 
   const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
-  const closeMode =
-    resolveAssignmentPlanCloseMode({
-      closedQty: finalQuantity,
-      targetQty: toOptionalNonNegativeInt(plan.quantity, null),
-    }) ?? "FULL";
   const requestedBasis = resolveOptionalString(req.body?.closeBasis, null);
   const closeBasis =
     requestedBasis === "QC_BASED" || requestedBasis === "MANUAL"
       ? requestedBasis
       : "QC_BASED";
-  const updatedPlan = await prisma.assignmentPlan.update({
-    where: { id: plan.id },
-    data: {
-      isCompleted: true,
-      finalQuantity,
-      completedAt,
-      closedQty: finalQuantity,
-      closedAt: completedAt,
-      closedBy: getCurrentRequestActor(),
-      closeMode,
-      closeBasis,
-      updatedAt: new Date(),
-    },
-  });
-  await syncOrderProgressStatusesForOrg({
+  const completion = await completeAssignmentPlanProduction({
     orgId: organization.id,
+    externalId,
+    confirmedQty: qtyInput.value,
+    completedAt,
+    closeBasis,
   });
+  if (!completion.ok) {
+    return res.status(completion.status).json({ ok: false, error: completion.error });
+  }
+
+  console.warn(
+    `[deprecated-endpoint] PATCH /assignment-plans/:externalId/complete used (orgId=${organization.id}, externalId=${externalId})`
+  );
+  res.set("Deprecation", "true");
+  res.set("Link", '</assignment-plans/{externalId}/production-complete>; rel="successor-version"');
 
   return res.json({
     ok: true,
-    plan: buildAssignmentPlanCloseResponse(updatedPlan),
+    plan: {
+      ...buildAssignmentPlanCloseResponse(completion.updatedPlan),
+      producedQuantity: completion.producedQuantity,
+      productionConfirmedQty: completion.resolvedClosedQty,
+    },
     reorderedAssignments: 0,
+    deprecated: true,
   });
 });
 
@@ -16210,6 +16898,17 @@ app.post("/work-logs", async (req, res) => {
     records: normalized.records,
     mode: "create",
   });
+  const createdPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
+  if (createdPlanIds.length > 0) {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId: organization.id,
+      assignmentPlanIds: createdPlanIds,
+    });
+    await persistAssignmentPlanProgressSnapshot({
+      orgId: organization.id,
+      assignmentPlanIds: createdPlanIds,
+    });
+  }
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
 
@@ -16230,6 +16929,15 @@ app.put("/work-logs/:id", async (req, res) => {
 
   const existing = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
+    select: {
+      id: true,
+      workDate: true,
+      workRecords: {
+        select: {
+          assignmentPlanId: true,
+        },
+      },
+    },
   });
   if (!existing) {
     return res
@@ -16381,6 +17089,21 @@ app.put("/work-logs/:id", async (req, res) => {
     records: normalized.records,
     mode: "update",
   });
+  const previousPlanIds = normalizePlanIdList(
+    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+  );
+  const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
+  const touchedPlanIds = normalizePlanIdList([...previousPlanIds, ...nextPlanIds]);
+  if (touchedPlanIds.length > 0) {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId: organization.id,
+      assignmentPlanIds: touchedPlanIds,
+    });
+    await persistAssignmentPlanProgressSnapshot({
+      orgId: organization.id,
+      assignmentPlanIds: touchedPlanIds,
+    });
+  }
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });
 
@@ -16397,7 +17120,15 @@ app.delete("/work-logs/:id", async (req, res) => {
 
   const existing = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
-    select: { id: true, workDate: true },
+    select: {
+      id: true,
+      workDate: true,
+      workRecords: {
+        select: {
+          assignmentPlanId: true,
+        },
+      },
+    },
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
@@ -16405,6 +17136,19 @@ app.delete("/work-logs/:id", async (req, res) => {
   await prisma.workLog.delete({
     where: { id: existing.id },
   });
+  const deletedPlanIds = normalizePlanIdList(
+    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+  );
+  if (deletedPlanIds.length > 0) {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId: organization.id,
+      assignmentPlanIds: deletedPlanIds,
+    });
+    await persistAssignmentPlanProgressSnapshot({
+      orgId: organization.id,
+      assignmentPlanIds: deletedPlanIds,
+    });
+  }
   res.status(204).send();
 });
 

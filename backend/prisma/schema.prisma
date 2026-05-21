@@ -683,6 +683,14 @@ model AssignmentPlan {
   isCompleted           Boolean   @default(false)
   finalQuantity         Int?
   completedAt           DateTime?
+  productionCompletedAt DateTime?
+  actualProducedCompletedAt DateTime?
+  candidateEndDate      DateTime?
+  renderEndDate         DateTime?
+  forecastCompletedAt   DateTime?
+  forecastBasis         String?
+  confidence            String?
+  scheduleStatus        String?
   qcPassedTotal         Int       @default(0)
   latestQcDate          String?
   closedQty             Int?
