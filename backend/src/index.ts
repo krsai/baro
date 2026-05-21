@@ -5642,14 +5642,23 @@ const syncAssignmentPlanQcAggregate = async ({
   );
   const latestQcDate = normalizeDateKey(aggregate?._max?.inspectedOn) || null;
 
-  await db.assignmentPlan.update({
-    where: { id: normalizedPlanId },
-    data: {
-      qcPassedTotal,
-      latestQcDate,
-      updatedAt: new Date(),
-    },
-  });
+  try {
+    await db.assignmentPlan.update({
+      where: { id: normalizedPlanId },
+      data: {
+        qcPassedTotal,
+        latestQcDate,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    if (!isAssignmentPlanMissingColumnError(error)) {
+      throw error;
+    }
+    console.warn(
+      "[assignment-plan][qc-aggregate] skip legacy qc summary column update (schema out of sync)"
+    );
+  }
 
   return { qcPassedTotal, latestQcDate };
 };
@@ -10722,13 +10731,8 @@ const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE = {
   closeMode: true,
   closeBasis: true,
 } as const;
-const ASSIGNMENT_PLAN_SELECT_WITH_QC = {
-  ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
-  qcPassedTotal: true,
-  latestQcDate: true,
-} as const;
 const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
-  ...ASSIGNMENT_PLAN_SELECT_WITH_QC,
+  ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
   productionCompletedAt: true,
   actualProducedCompletedAt: true,
   candidateEndDate: true,
@@ -14893,7 +14897,7 @@ app.get("/assignment-plans", async (req, res) => {
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_QC, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
     context: "GET /assignment-plans",
   });
   if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
@@ -15164,7 +15168,6 @@ const buildAssignmentPlanProgressRows = async (
       orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
       selectAttempts: [
         ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
-        ASSIGNMENT_PLAN_SELECT_WITH_QC,
         ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
         ASSIGNMENT_PLAN_SELECT_CORE,
       ],
@@ -15931,8 +15934,6 @@ app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
     select: {
       id: true,
       externalId: true,
-      qcPassedTotal: true,
-      latestQcDate: true,
     },
   });
   if (!plan) {
@@ -15956,8 +15957,16 @@ app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {
     ok: true,
     plan: {
       id: plan.externalId,
-      qcPassedTotal: resolveAssignmentPlanQcPassedTotal(plan),
-      latestQcDate: resolveAssignmentPlanLatestQcDate(plan),
+      qcPassedTotal: Math.max(
+        0,
+        history.reduce(
+          (sum, event) => sum + Math.max(0, Math.round(Number(event?.passedQuantity ?? 0) || 0)),
+          0
+        )
+      ),
+      latestQcDate:
+        normalizeDateKey(history[0]?.inspectedOn) ||
+        null,
     },
     history: history.map((event) => buildQcPassEventResponse(event)),
   });
