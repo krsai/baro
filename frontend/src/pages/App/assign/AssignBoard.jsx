@@ -1817,6 +1817,17 @@ const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
   return nextIndex;
 };
 
+const isAssignmentBeforeInsertIndex = (
+  assignment,
+  insertIndex,
+  days,
+  lineCapacityById = null
+) => {
+  const nextStart = getNextStartIndex(assignment, days, lineCapacityById);
+  if (nextStart == null) return false;
+  return nextStart <= insertIndex;
+};
+
 const reflowSingleLineAssignmentsByCapacity = ({
   lineId,
   lineItems,
@@ -2018,7 +2029,7 @@ const rebuildLineWithInsert = ({
     after = lineItems.slice(targetIndex);
   } else {
     lineItems.forEach((item) => {
-      if (item.endIndex < insertIndex) {
+      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, lineCapacityById)) {
         before.push(item);
       } else {
         after.push(item);
@@ -2176,7 +2187,7 @@ const rebuildLineWithChain = ({
     if (insertIndex == null || insertIndex >= totalDays) return null;
   } else {
     lineItems.forEach((item) => {
-      if (item.endIndex < insertIndex) {
+      if (isAssignmentBeforeInsertIndex(item, insertIndex, days, lineCapacityById)) {
         before.push(item);
       } else {
         after.push(item);
@@ -3662,29 +3673,6 @@ const AssignBoard = () => {
   ]);
 
   const assignmentsForRender = useMemo(() => {
-    const dayIndexByDateKey = new Map(
-      (Array.isArray(days) ? days : [])
-        .map((day, index) => {
-          const key = typeof day?.key === 'string' ? day.key.trim() : '';
-          return key ? [key, index] : null;
-        })
-        .filter(Boolean)
-    );
-    const firstDayDate =
-      Array.isArray(days) && days.length > 0 ? parseDateKey(days[0]?.key) : null;
-
-    const resolveEndIndexFromDateKey = (dateKey, fallbackIndex) => {
-      const normalizedDateKey =
-        typeof dateKey === 'string' && dateKey.trim() ? dateKey.trim() : '';
-      if (!normalizedDateKey) return fallbackIndex;
-      if (dayIndexByDateKey.has(normalizedDateKey)) {
-        return dayIndexByDateKey.get(normalizedDateKey);
-      }
-      const targetDate = parseDateKey(normalizedDateKey);
-      if (!targetDate || !firstDayDate) return fallbackIndex;
-      return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
-    };
-
     const mappedAssignments = assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
@@ -3721,13 +3709,6 @@ const AssignBoard = () => {
             ? progressRow.candidateEndDate.trim()
             : null) ||
           (typeof item?.endDateKey === 'string' && item.endDateKey.trim() ? item.endDateKey.trim() : null);
-        const resolvedEndIndex = Math.max(
-          toSignedInt(item?.startIndex, 0),
-          toSignedInt(
-            resolveEndIndexFromDateKey(renderEndDateKey, toSignedInt(item?.endIndex, 0)),
-            toSignedInt(item?.endIndex, 0)
-          )
-        );
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
           startDateKey: item?.startDateKey,
@@ -3756,8 +3737,8 @@ const AssignBoard = () => {
             progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
           renderEndDate:
             progressRow?.renderEndDate ?? progressRow?.candidateEndDate ?? item?.renderEndDate ?? null,
-          endDateKey: renderEndDateKey || item?.endDateKey,
-          endIndex: resolvedEndIndex,
+          endDateKey: item?.endDateKey,
+          endIndex: toSignedInt(item?.endIndex, 0),
           closedAt:
             progressRow?.closedAt ?? item?.closedAt ?? item?.completedAt ?? null,
           closedQty:
@@ -3783,14 +3764,6 @@ const AssignBoard = () => {
       const rightLineId = String(right?.lineId ?? '');
       const lineCompare = leftLineId.localeCompare(rightLineId, undefined, { numeric: true });
       if (lineCompare !== 0) return lineCompare;
-
-      const leftCompletedRank =
-        String(left?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
-      const rightCompletedRank =
-        String(right?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
-      if (leftCompletedRank !== rightCompletedRank) {
-        return leftCompletedRank - rightCompletedRank;
-      }
 
       const leftStartIndex = toSignedInt(left?.startIndex, 0);
       const rightStartIndex = toSignedInt(right?.startIndex, 0);

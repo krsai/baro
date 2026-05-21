@@ -357,14 +357,6 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
 
     map.forEach((items) => {
       items.sort((left, right) => {
-        const leftCompletedRank =
-          String(left?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
-        const rightCompletedRank =
-          String(right?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
-        if (leftCompletedRank !== rightCompletedRank) {
-          return leftCompletedRank - rightCompletedRank;
-        }
-
         const orderDiff = getOrderKey(left) - getOrderKey(right);
         if (orderDiff !== 0) return orderDiff;
 
@@ -422,6 +414,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
         const range = rangeById.get(assignment.id) || buildRange(assignment);
         const rawStart = range.start;
         const rawEnd = range.start + Math.max(range.end - range.start, 0);
+        const rawDurationCells = Math.max(rawEnd - rawStart, 0);
         const isClippedLeft = rawStart < 0;
         const isClippedRight = rawEnd > viewEnd;
         const clampedStart = Math.max(rawStart, 0);
@@ -437,7 +430,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
           ),
           topPx: verticalOffset + BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
-          workDays: getAssignmentDisplayDuration(assignment, lineCapacityById, days),
+          workDays: rawDurationCells > 0 ? rawDurationCells : getAssignmentDisplayDuration(assignment, lineCapacityById, days),
           isClippedLeft,
           isClippedRight,
         };
