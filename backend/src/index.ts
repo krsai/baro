@@ -10288,16 +10288,6 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       });
       const totalSeconds =
         toOptionalNonNegativeInt(item.totalSeconds, null) ?? contractedSeconds;
-      const hasIsCompleted = Object.prototype.hasOwnProperty.call(item, "isCompleted");
-      const hasFinalQuantity = Object.prototype.hasOwnProperty.call(item, "finalQuantity");
-      const hasCompletedAt = Object.prototype.hasOwnProperty.call(item, "completedAt");
-      const isCompleted = hasIsCompleted ? Boolean(item?.isCompleted) : undefined;
-      const finalQuantity = hasFinalQuantity
-        ? toOptionalNonNegativeInt(item?.finalQuantity, null)
-        : undefined;
-      const completedAt = hasCompletedAt
-        ? toOptionalDateValue(item?.completedAt, null)
-        : undefined;
       return {
         lineId: lineIdNum,
         externalId,
@@ -10323,9 +10313,6 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
         startDayPercent: toOptionalFloat(item.startDayPercent, null),
         endDayPercent: toOptionalFloat(item.endDayPercent, null),
-        ...(hasIsCompleted ? { isCompleted } : {}),
-        ...(hasFinalQuantity ? { finalQuantity } : {}),
-        ...(hasCompletedAt ? { completedAt } : {}),
         updatedAt: new Date(),
       };
     })
@@ -10605,13 +10592,8 @@ const toAssignmentPlanWriteData = (item: any) => {
     ...item,
     ctSnapshot,
   });
-  const hasIsCompleted = Object.prototype.hasOwnProperty.call(item, "isCompleted");
-  const hasFinalQuantity = Object.prototype.hasOwnProperty.call(item, "finalQuantity");
-  const hasCompletedAt = Object.prototype.hasOwnProperty.call(item, "completedAt");
-  const completedAt =
-    hasCompletedAt && item?.completedAt !== undefined
-      ? toOptionalDateValue(item?.completedAt, null)
-      : undefined;
+  // Completion state is owned by dedicated completion endpoints.
+  // Assignment board save must not overwrite completion-related fields.
   return {
     lineId: item.lineId,
     cardId: item.cardId ?? null,
@@ -10636,11 +10618,6 @@ const toAssignmentPlanWriteData = (item: any) => {
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
     startDayPercent: item.startDayPercent ?? null,
     endDayPercent: item.endDayPercent ?? null,
-    ...(hasIsCompleted ? { isCompleted: Boolean(item?.isCompleted) } : {}),
-    ...(hasFinalQuantity
-      ? { finalQuantity: toOptionalNonNegativeInt(item?.finalQuantity, null) }
-      : {}),
-    ...(hasCompletedAt ? { completedAt } : {}),
     updatedAt: item.updatedAt ?? new Date(),
   };
 };
