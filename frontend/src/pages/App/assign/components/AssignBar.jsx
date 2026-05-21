@@ -35,10 +35,6 @@ const formatProgressPercent = (value, languageCode = 'en') =>
   getUiMessage('assign.progressCompact', '진행 {percent}%', languageCode, {
     percent: Math.round(Number(value) || 0),
   });
-const formatQcCompact = (value, languageCode = 'en') =>
-  getUiMessage('assign.qcCompact', 'QC {quantity}', languageCode, {
-    quantity: value ?? 0,
-  });
 const formatDateOnly = (value) => {
   if (!value) return '';
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
@@ -153,13 +149,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0
   );
   const progressPercent = Math.min(100, rawProgressPercent);
-  const qcProgressPercent = Math.min(
-    100,
-    Math.max(0, Number(assignment.qcProgressPercent) || 0)
-  );
-  const qcPassedTotal = Math.max(0, Number(assignment.qcPassedTotal) || 0);
   const progressSummary = formatProgressPercent(rawProgressPercent, languageCode);
-  const qcSummary = qcPassedTotal > 0 ? formatQcCompact(qcPassedTotal, languageCode) : null;
   const shiftedCompletedLabel =
     String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' &&
     assignment?.renderEndDate &&
@@ -177,7 +167,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
     genderDisplay,
     quantityLabel,
     !isNarrow ? progressSummary : null,
-    !isNarrow && qcSummary ? qcSummary : null,
   ]);
 
   const openContextMenu = (event) => {
@@ -228,7 +217,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         genderDisplay,
         assignment.quantity != null ? quantityLabel : null,
         progressSummary,
-        qcSummary,
         shiftedCompletedLabel
           ? getUiMessage(
               'assign.actualCompletionTooltip',
@@ -379,7 +367,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         {statusMeta.label}
       </Box>
 
-      {!hideMetaBadges && (progressPercent > 0 || qcProgressPercent > 0) && (
+      {!hideMetaBadges && progressPercent > 0 && (
         <Box
           sx={{
             position: 'absolute',
@@ -397,7 +385,6 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         >
           {joinText([
             rawProgressPercent > 0 ? `${Math.round(rawProgressPercent)}%` : null,
-            qcProgressPercent > 0 ? `QC ${Math.round(qcProgressPercent)}%` : null,
           ])}
         </Box>
       )}

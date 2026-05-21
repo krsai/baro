@@ -17795,86 +17795,95 @@ app.put("/assignment-board-state", async (req, res) => {
   const shouldSyncPlans =
     changedPlanTargetAssignments.length > 0 || removedExternalIdList.length > 0;
   if (shouldSyncPlans) {
-    const lineIdSet =
-      changedPlanTargetAssignments.length > 0
-        ? new Set(
-            (
-              await prisma.line.findMany({
-                where: { orgId: organization.id },
-                select: { id: true },
-              })
-            ).map((line) => line.id)
-          )
-        : null;
-    const normalizedPlanChanges =
-      changedPlanTargetAssignments.length > 0
-        ? await syncAssignmentPlanColorRefs(
-            organization.id,
-            normalizeAssignmentPlanPayload(changedPlanTargetAssignments, lineIdSet)
-          )
-        : [];
-    const planSyncExternalIds = Array.from(
-      new Set([
-        ...normalizedPlanChanges.map((item: any) => item.externalId),
-        ...removedExternalIdList,
-      ])
-    );
-
-    const existingPlanRows =
-      planSyncExternalIds.length > 0
-        ? await prisma.assignmentPlan.findMany({
-            where: {
-              orgId: organization.id,
-              externalId: { in: planSyncExternalIds },
-            },
-            select: { id: true, externalId: true },
-          })
-        : [];
-    const existingPlanByExternalId = new Map(
-      existingPlanRows.map((plan) => [plan.externalId, plan])
-    );
-
-    const createPlanRows: any[] = [];
-    const updatePlanRows: Array<{ id: number; item: any }> = [];
-    normalizedPlanChanges.forEach((item: any) => {
-      const existingPlan = existingPlanByExternalId.get(item.externalId);
-      if (existingPlan) {
-        updatePlanRows.push({ id: existingPlan.id, item });
-        return;
-      }
-      createPlanRows.push(item);
-    });
-
-    if (createPlanRows.length > 0) {
-      await prisma.assignmentPlan.createMany({
-        data: createPlanRows.map((item: any) => ({
-          orgId: organization.id,
-          externalId: item.externalId,
-          ...toAssignmentPlanWriteData(item),
-        })) as Prisma.AssignmentPlanCreateManyInput[],
-      });
-    }
-
-    if (updatePlanRows.length > 0) {
-      await Promise.all(
-        updatePlanRows.map((row) =>
-          prisma.assignmentPlan.update({
-            where: { id: row.id },
-            data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
-            select: { id: true },
-          })
-        )
+    try {
+      const lineIdSet =
+        changedPlanTargetAssignments.length > 0
+          ? new Set(
+              (
+                await prisma.line.findMany({
+                  where: { orgId: organization.id },
+                  select: { id: true },
+                })
+              ).map((line) => line.id)
+            )
+          : null;
+      const normalizedPlanChanges =
+        changedPlanTargetAssignments.length > 0
+          ? await syncAssignmentPlanColorRefs(
+              organization.id,
+              normalizeAssignmentPlanPayload(changedPlanTargetAssignments, lineIdSet)
+            )
+          : [];
+      const planSyncExternalIds = Array.from(
+        new Set([
+          ...normalizedPlanChanges.map((item: any) => item.externalId),
+          ...removedExternalIdList,
+        ])
       );
-    }
 
-    const removedExternalIdSet = new Set(removedExternalIdList);
-    const removedPlanRows = existingPlanRows.filter((plan) =>
-      removedExternalIdSet.has(plan.externalId)
-    );
-    if (removedPlanRows.length > 0) {
-      await detachWorkRecordsAndDeleteAssignmentPlans({
-        planIds: removedPlanRows.map((plan) => plan.id),
+      const existingPlanRows =
+        planSyncExternalIds.length > 0
+          ? await prisma.assignmentPlan.findMany({
+              where: {
+                orgId: organization.id,
+                externalId: { in: planSyncExternalIds },
+              },
+              select: { id: true, externalId: true },
+            })
+          : [];
+      const existingPlanByExternalId = new Map(
+        existingPlanRows.map((plan) => [plan.externalId, plan])
+      );
+
+      const createPlanRows: any[] = [];
+      const updatePlanRows: Array<{ id: number; item: any }> = [];
+      normalizedPlanChanges.forEach((item: any) => {
+        const existingPlan = existingPlanByExternalId.get(item.externalId);
+        if (existingPlan) {
+          updatePlanRows.push({ id: existingPlan.id, item });
+          return;
+        }
+        createPlanRows.push(item);
       });
+
+      if (createPlanRows.length > 0) {
+        await prisma.assignmentPlan.createMany({
+          data: createPlanRows.map((item: any) => ({
+            orgId: organization.id,
+            externalId: item.externalId,
+            ...toAssignmentPlanWriteData(item),
+          })) as Prisma.AssignmentPlanCreateManyInput[],
+        });
+      }
+
+      if (updatePlanRows.length > 0) {
+        await Promise.all(
+          updatePlanRows.map((row) =>
+            prisma.assignmentPlan.update({
+              where: { id: row.id },
+              data: toAssignmentPlanWriteData(row.item) as Prisma.AssignmentPlanUncheckedUpdateInput,
+              select: { id: true },
+            })
+          )
+        );
+      }
+
+      const removedExternalIdSet = new Set(removedExternalIdList);
+      const removedPlanRows = existingPlanRows.filter((plan) =>
+        removedExternalIdSet.has(plan.externalId)
+      );
+      if (removedPlanRows.length > 0) {
+        await detachWorkRecordsAndDeleteAssignmentPlans({
+          planIds: removedPlanRows.map((plan) => plan.id),
+        });
+      }
+    } catch (error) {
+      if (!isAssignmentPlanMissingColumnError(error)) {
+        throw error;
+      }
+      console.warn(
+        `[assignment-board] skip assignmentPlan sync after board save due schema drift (org=${organization.id})`
+      );
     }
   }
   if (changedPlanTargetAssignments.length > 0) {

@@ -3692,9 +3692,7 @@ const AssignBoard = () => {
         const plannedQuantity = Number(
           progressRow?.plannedQuantity ?? item?.quantity ?? item?.plannedQuantity ?? 0
         );
-        const qcPassedTotalRaw = Number(progressRow?.qcPassedTotal ?? item?.qcPassedTotal ?? 0);
-        const closedQtyRaw = Number(progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? 0);
-        const qcDisplayQuantity = qcPassedTotalRaw > 0 ? qcPassedTotalRaw : closedQtyRaw;
+        const qcDisplayQuantity = 0;
         const rawProgressPercent = toRawPercentValue(
           progressRow?.operationalProgressPercent ??
             progressRow?.progressPercent ??
@@ -3714,8 +3712,7 @@ const AssignBoard = () => {
             item?.completedAt
         );
         const workProgressPercent = rawProgressPercent;
-        const qcProgressPercent =
-          plannedQuantity > 0 ? clampPercentValue((qcDisplayQuantity / plannedQuantity) * 100) : 0;
+        const qcProgressPercent = 0;
         const renderEndDateKey =
           (typeof progressRow?.renderEndDate === 'string' && progressRow.renderEndDate.trim()
             ? progressRow.renderEndDate.trim()
@@ -3773,10 +3770,8 @@ const AssignBoard = () => {
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
           qcProgressPercent,
-          qcDisplaySource:
-            qcPassedTotalRaw > 0 ? 'event' : isCompleted && qcDisplayQuantity > 0 ? 'close' : 'empty',
-          latestQcDate:
-            progressRow?.latestQcDate ?? item?.latestQcDate ?? null,
+          qcDisplaySource: 'none',
+          latestQcDate: null,
           statusType,
           ctDisplayState:
             assignmentCtDisplayStateById.get(String(item.id)) ||
