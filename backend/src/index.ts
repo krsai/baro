@@ -6179,18 +6179,14 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     return { updatedAssignmentCount: 0 };
   }
 
-  const nowIso = new Date().toISOString();
   const nextAssignments = stateAssignments.map((assignment) => {
     const externalId = resolveAssignmentExternalId(assignment);
     if (!externalId || !changedExternalIds.has(externalId)) {
       return normalizeStateAssignmentItem(assignment);
     }
-    const currentVersion = toNonNegativeInt(assignment?.version, 0);
     return normalizeStateAssignmentItem({
       ...assignment,
       id: externalId,
-      version: currentVersion + 1,
-      versionUpdatedAt: nowIso,
     });
   });
 
