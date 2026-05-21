@@ -356,7 +356,30 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
     });
 
     map.forEach((items) => {
-      items.sort((left, right) => getOrderKey(left) - getOrderKey(right));
+      items.sort((left, right) => {
+        const leftCompletedRank =
+          String(left?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
+        const rightCompletedRank =
+          String(right?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
+        if (leftCompletedRank !== rightCompletedRank) {
+          return leftCompletedRank - rightCompletedRank;
+        }
+
+        const orderDiff = getOrderKey(left) - getOrderKey(right);
+        if (orderDiff !== 0) return orderDiff;
+
+        const leftStartDateKey =
+          typeof left?.startDateKey === 'string' ? left.startDateKey.trim() : '';
+        const rightStartDateKey =
+          typeof right?.startDateKey === 'string' ? right.startDateKey.trim() : '';
+        if (leftStartDateKey !== rightStartDateKey) {
+          return leftStartDateKey.localeCompare(rightStartDateKey);
+        }
+
+        return String(left?.id || '').localeCompare(String(right?.id || ''), undefined, {
+          numeric: true,
+        });
+      });
     });
 
     return map;

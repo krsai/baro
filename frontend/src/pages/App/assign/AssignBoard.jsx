@@ -3673,7 +3673,7 @@ const AssignBoard = () => {
       return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
     };
 
-    return assignments
+    const mappedAssignments = assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
         const progressRow = assignmentProgressById[String(item?.id || '').trim()] || null;
@@ -3771,6 +3771,40 @@ const AssignBoard = () => {
             (hasSavedCtSnapshot(item) ? 'SAVED' : 'UNSAVED'),
         };
       });
+    const compareDisplayOrder = (left, right) => {
+      const leftLineId = String(left?.lineId ?? '');
+      const rightLineId = String(right?.lineId ?? '');
+      const lineCompare = leftLineId.localeCompare(rightLineId, undefined, { numeric: true });
+      if (lineCompare !== 0) return lineCompare;
+
+      const leftCompletedRank =
+        String(left?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
+      const rightCompletedRank =
+        String(right?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' ? 0 : 1;
+      if (leftCompletedRank !== rightCompletedRank) {
+        return leftCompletedRank - rightCompletedRank;
+      }
+
+      const leftStartIndex = toSignedInt(left?.startIndex, 0);
+      const rightStartIndex = toSignedInt(right?.startIndex, 0);
+      if (leftStartIndex !== rightStartIndex) {
+        return leftStartIndex - rightStartIndex;
+      }
+
+      const leftStartDateKey =
+        typeof left?.startDateKey === 'string' ? left.startDateKey.trim() : '';
+      const rightStartDateKey =
+        typeof right?.startDateKey === 'string' ? right.startDateKey.trim() : '';
+      if (leftStartDateKey !== rightStartDateKey) {
+        return leftStartDateKey.localeCompare(rightStartDateKey);
+      }
+
+      return String(left?.id || '').localeCompare(String(right?.id || ''), undefined, {
+        numeric: true,
+      });
+    };
+
+    return [...mappedAssignments].sort(compareDisplayOrder);
   }, [
     assignments,
     assignmentCtDisplayStateById,

@@ -16150,6 +16150,7 @@ app.post("/assignment-plans/:externalId/close", async (req, res) => {
 });
 
 app.patch("/assignment-plans/:externalId/production-complete", async (req, res) => {
+  const MAX_CONFIRMED_QTY = 100_000;
   const organization = await getOrganizationByQuery(req);
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
@@ -16168,6 +16169,12 @@ app.patch("/assignment-plans/:externalId/production-complete", async (req, res) 
     return res.status(400).json({
       ok: false,
       error: "confirmedQty must be a non-negative integer",
+    });
+  }
+  if (qtyInput.provided && qtyInput.value !== null && qtyInput.value > MAX_CONFIRMED_QTY) {
+    return res.status(400).json({
+      ok: false,
+      error: `confirmedQty exceeds maximum allowed value (${MAX_CONFIRMED_QTY})`,
     });
   }
   const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
