@@ -14816,11 +14816,6 @@ app.get("/assignment-plans", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  await safelyRepairAssignmentScheduleDriftForOrg({
-    orgId: organization.id,
-    context: "GET /assignment-plans",
-  });
-
   const lineId = Number(req.query.lineId);
   const hasLineFilter = Number.isFinite(lineId) && lineId > 0;
   const factoryId = Number(req.query.factoryId);
@@ -17338,11 +17333,6 @@ app.get("/assignment-board-view", async (req, res) => {
   const includeCards = !(
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
-
-  await safelyRepairAssignmentScheduleDriftForOrg({
-    orgId: organization.id,
-    context: "GET /assignment-board-view",
-  });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });
@@ -17359,11 +17349,6 @@ app.get("/assignment-board-versions", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-
-  await safelyRepairAssignmentScheduleDriftForOrg({
-    orgId: organization.id,
-    context: "GET /assignment-board-versions",
-  });
   const state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
     select: {
@@ -17477,11 +17462,6 @@ app.get("/assignment-board-state", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-
-  await safelyRepairAssignmentScheduleDriftForOrg({
-    orgId: organization.id,
-    context: "GET /assignment-board-state",
-  });
   let state = await prisma.assignmentBoardState.findUnique({
     where: { orgId: organization.id },
   });

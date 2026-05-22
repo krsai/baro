@@ -1469,18 +1469,9 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
         contractedSeconds: assignment.contractedSeconds ?? null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
-  const currentTotalSeconds = toNonNegativeInt(assignment?.totalSeconds, 0);
-  const hasScheduleDrift = doesAssignmentScheduleNeedRecompute(
-    next,
-    nextTotalSeconds,
-    days,
-    lineCapacityById
-  );
-  if (
-    hasAbsoluteScheduleKeys &&
-    currentTotalSeconds === Math.round(nextTotalSeconds) &&
-    !hasScheduleDrift
-  ) {
+  // Keep persisted schedule anchors intact on board reload.
+  // Recomputing ranges during read causes "save looked connected, reopen became broken" drift.
+  if (hasAbsoluteScheduleKeys) {
     return next;
   }
   const range = recomputeAssignmentRange(next, nextTotalSeconds, days, lineCapacityById);
