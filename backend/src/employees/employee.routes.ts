@@ -377,6 +377,17 @@ export const createEmployeeRouter = ({
       ? fixedSalaryParseResult.value
       : existingEmployee?.fixedSalary ?? null;
 
+    if (
+      isManufacturerOrg(membership.organization) &&
+      membership.role === "WORKER" &&
+      (resolvedFactoryId === null || resolvedFactoryId === undefined)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        error: "factoryId is required for worker employees",
+      });
+    }
+
     const data: any = {
       orgId: membership.orgId,
       orgMembershipId: membership.id,

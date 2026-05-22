@@ -7613,7 +7613,11 @@ const validateWorkLogLineWorkers = async ({
       where: {
         orgId,
         id: { in: missingWorkerIds },
-        ...(factoryId !== null ? { factoryId } : {}),
+        ...(factoryId !== null
+          ? {
+              OR: [{ factoryId }, { factoryId: null }],
+            }
+          : {}),
         lineName: {
           equals: line.name,
           mode: "insensitive",
@@ -7705,7 +7709,6 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     where: {
       orgId,
       id: { in: workerIds },
-      ...(factoryId !== null ? { factoryId } : {}),
     },
     select: {
       id: true,
@@ -8115,6 +8118,55 @@ const buildWorkLogContextResponse = async ({
     return response;
   }
 
+  // Keep employee.factoryId aligned with active line assignments so
+  // line-based work-log worker queries stay consistent.
+  try {
+    const activeLineAssignments = await prisma.lineAssignment.findMany({
+      where: {
+        lineId: line.id,
+        endAt: null,
+      },
+      select: {
+        employeeId: true,
+        employee: {
+          select: {
+            factoryId: true,
+          },
+        },
+      },
+    });
+    const workerIdsToSync = activeLineAssignments
+      .filter((assignment) => {
+        const workerId = toPositiveIntOrNull(assignment?.employeeId);
+        if (workerId === null) return false;
+        const workerFactoryId = toPositiveIntOrNull(assignment?.employee?.factoryId);
+        return workerFactoryId !== line.factoryId;
+      })
+      .map((assignment) => toPositiveIntOrNull(assignment?.employeeId))
+      .filter((workerId): workerId is number => workerId !== null);
+
+    if (workerIdsToSync.length > 0) {
+      await prisma.employee.updateMany({
+        where: {
+          orgId,
+          id: { in: workerIdsToSync },
+        },
+        data: {
+          factoryId: line.factoryId,
+        },
+      });
+      console.warn(
+        `[work-log-context] orgId=${orgId} lineId=${line.id} synced employee.factoryId for ${workerIdsToSync.length} active line workers`
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[work-log-context] orgId=${orgId} lineId=${line.id} failed to sync line worker factory links: ${
+        resolveOptionalString((error as any)?.message, String(error || ""))
+      }`
+    );
+  }
+
   const dateRange = buildWorkDateRange(normalizedWorkDate);
   if (!dateRange) {
     const response = buildBaseResponse({
@@ -8206,7 +8258,6 @@ const buildWorkLogContextResponse = async ({
         employee: {
           is: {
             orgId,
-            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
           },
         },
       },
@@ -8364,7 +8415,6 @@ const buildWorkLogContextResponse = async ({
         employee: {
           is: {
             orgId,
-            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
           },
         },
       },
@@ -8389,7 +8439,11 @@ const buildWorkLogContextResponse = async ({
     const legacyWorkers = await prisma.employee.findMany({
       where: {
         orgId,
-        ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+        ...(normalizedFactoryId
+          ? {
+              OR: [{ factoryId: normalizedFactoryId }, { factoryId: null }],
+            }
+          : {}),
         lineName: {
           equals: line.name,
           mode: "insensitive",
@@ -8432,7 +8486,6 @@ const buildWorkLogContextResponse = async ({
         employee: {
           is: {
             orgId,
-            ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
           },
         },
       },
@@ -8457,7 +8510,6 @@ const buildWorkLogContextResponse = async ({
           employee: {
             is: {
               orgId,
-              ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
             },
           },
         },

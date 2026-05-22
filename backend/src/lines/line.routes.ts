@@ -94,6 +94,53 @@ const updateLineHeadcounts = async (lineIds: number[]): Promise<Record<number, n
   return result;
 };
 
+const syncEmployeeFactoryForLine = async ({
+  orgId,
+  lineId,
+  lineFactoryId,
+}: {
+  orgId: number;
+  lineId: number;
+  lineFactoryId: number;
+}) => {
+  const activeAssignments = await prisma.lineAssignment.findMany({
+    where: {
+      lineId,
+      endAt: null,
+    },
+    select: {
+      employeeId: true,
+      employee: {
+        select: {
+          factoryId: true,
+        },
+      },
+    },
+  });
+  const workerIdsToSync = activeAssignments
+    .filter((assignment) => {
+      const employeeId = Number(assignment?.employeeId);
+      if (!Number.isFinite(employeeId) || employeeId <= 0) return false;
+      const workerFactoryId =
+        assignment?.employee?.factoryId == null ? null : Number(assignment.employee.factoryId);
+      return workerFactoryId !== lineFactoryId;
+    })
+    .map((assignment) => Number(assignment.employeeId))
+    .filter((employeeId) => Number.isFinite(employeeId) && employeeId > 0);
+
+  if (workerIdsToSync.length === 0) return 0;
+  const updated = await prisma.employee.updateMany({
+    where: {
+      orgId,
+      id: { in: workerIdsToSync },
+    },
+    data: {
+      factoryId: lineFactoryId,
+    },
+  });
+  return updated.count;
+};
+
 const buildFactoryLineBoardSnapshot = async (orgId: number, factoryId: number) => {
   const todayRange = buildEffectiveDateRange(null);
   const [lines, workers, assignments] = await Promise.all([
@@ -557,6 +604,15 @@ export const createLineRouter = ({
           where: {
             orgId: organization.id,
             id: { in: eligibleWorkerIds },
+            OR: [{ factoryId: null }, { factoryId: { not: factoryIdNum } }],
+          },
+          data: { factoryId: factoryIdNum },
+        });
+
+        await tx.employee.updateMany({
+          where: {
+            orgId: organization.id,
+            id: { in: eligibleWorkerIds },
           },
           data: { lineName: null },
         });
@@ -821,6 +877,20 @@ export const createLineRouter = ({
         return res.status(404).json({ ok: false, error: "line not found" });
       }
 
+      try {
+        await syncEmployeeFactoryForLine({
+          orgId: organization.id,
+          lineId: line.id,
+          lineFactoryId: line.factoryId,
+        });
+      } catch (error) {
+        console.warn(
+          `[line-workers] orgId=${organization.id} lineId=${line.id} failed to sync employee.factoryId: ${
+            resolveOptionalString((error as any)?.message, String(error || ""))
+          }`
+        );
+      }
+
       const dateRange = normalizedWorkDate ? effectiveDateRange : null;
 
       const assignments = await prisma.lineAssignment.findMany({
@@ -1028,7 +1098,7 @@ export const createLineRouter = ({
 
     await prisma.employee.update({
       where: { id: employee.id },
-      data: { lineName: line.name },
+      data: { lineName: line.name, factoryId: line.factoryId },
     });
 
     const affectedLineIds = [...new Set([...previousLineIds, line.id])];
