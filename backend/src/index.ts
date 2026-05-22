@@ -8407,21 +8407,21 @@ const buildWorkLogContextResponse = async ({
     normalizeDateKey(suggestedCoverageStartDate) ||
     normalizedWorkDate;
 
-  const [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
-    prisma.lineAssignment.findMany({
-      where: {
-        lineId: line.id,
-        startAt: { lte: dateRange.endAt },
-        OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
-        employee: {
-          is: {
-            orgId,
-          },
+  const lineAssignmentsOnWorkDatePromise = prisma.lineAssignment.findMany({
+    where: {
+      lineId: line.id,
+      startAt: { lte: dateRange.endAt },
+      OR: [{ endAt: null }, { endAt: { gte: dateRange.startAt } }],
+      employee: {
+        is: {
+          orgId,
         },
       },
-      select: lineAssignmentSelect,
-      orderBy: [{ employeeId: "asc" }],
-    }),
+    },
+    select: lineAssignmentSelect,
+    orderBy: [{ employeeId: "asc" }],
+  });
+  const loadAssignmentPlansForWorkLogContext = () =>
     factoryLineIds.length > 0
       ? prisma.assignmentPlan.findMany({
           where: {
@@ -8450,8 +8450,69 @@ const buildWorkLogContextResponse = async ({
           },
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
         })
-      : [],
+      : Promise.resolve([] as any[]);
+
+  let [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
+    lineAssignmentsOnWorkDatePromise,
+    loadAssignmentPlansForWorkLogContext(),
   ]);
+
+  // Keep work-log style options consistent with scheduler cards.
+  // If board-state has assignments that are missing from AssignmentPlan,
+  // backfill minimal plan rows so work-log context can surface them.
+  if (factoryLineIds.length > 0) {
+    const lineIdSet = new Set(factoryLineIds);
+    const boardState = await prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { assignments: true },
+    });
+    const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
+    if (activeExternalIds.length > 0) {
+      const existingExternalIdSet = new Set(
+        ensureArray(assignmentPlans)
+          .map((plan) => resolveOptionalString(plan?.externalId, null))
+          .filter((value): value is string => Boolean(value))
+      );
+      const missingPlanSeedAssignments = normalizeStateAssignments(
+        boardState?.assignments
+      ).filter((assignment) => {
+        const externalId = resolveAssignmentExternalId(assignment);
+        if (!externalId || existingExternalIdSet.has(externalId)) return false;
+        if (Boolean(assignment?.isCompleted)) return false;
+        const lineIdNum = toPositiveIntOrNull(assignment?.lineId);
+        if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
+        return true;
+      });
+
+      if (missingPlanSeedAssignments.length > 0) {
+        try {
+          const normalizedMissingRows = await syncAssignmentPlanColorRefs(
+            orgId,
+            normalizeAssignmentPlanPayload(missingPlanSeedAssignments, lineIdSet)
+          );
+          if (normalizedMissingRows.length > 0) {
+            await prisma.assignmentPlan.createMany({
+              data: normalizedMissingRows.map((item: any) => ({
+                orgId,
+                externalId: item.externalId,
+                ...toAssignmentPlanWriteData(item),
+              })) as Prisma.AssignmentPlanCreateManyInput[],
+              skipDuplicates: true,
+            });
+            assignmentPlans = await loadAssignmentPlansForWorkLogContext();
+            console.warn(
+              `[work-log-context] orgId=${orgId} lineId=${line.id} backfilled ${normalizedMissingRows.length} assignmentPlan rows from board-state`
+            );
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(
+            `[work-log-context] orgId=${orgId} lineId=${line.id} assignmentPlan backfill skipped: ${message}`
+          );
+        }
+      }
+    }
+  }
 
   const filterDebugStages: Array<{
     stage: string;
