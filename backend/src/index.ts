@@ -14920,6 +14920,56 @@ app.get("/assignment-plans", async (req, res) => {
     selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
     context: "GET /assignment-plans",
   });
+  if (hasBoardAssignments && activeExternalIds.length > 0) {
+    const existingExternalIdSet = new Set(
+      ensureArray(plans)
+        .map((plan) => resolveOptionalString(plan?.externalId, null))
+        .filter((value): value is string => Boolean(value))
+    );
+    const lineIdSet = new Set(lineIds);
+    const missingPlanSeedAssignments = normalizeStateAssignments(
+      boardState?.assignments
+    ).filter((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      if (!externalId || existingExternalIdSet.has(externalId)) return false;
+      const lineIdNum = toPositiveIntOrNull(assignment?.lineId);
+      if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
+      return true;
+    });
+    if (missingPlanSeedAssignments.length > 0) {
+      try {
+        const normalizedMissingRows = await syncAssignmentPlanColorRefs(
+          organization.id,
+          normalizeAssignmentPlanPayload(missingPlanSeedAssignments, lineIdSet)
+        );
+        if (normalizedMissingRows.length > 0) {
+          await prisma.assignmentPlan.createMany({
+            data: normalizedMissingRows.map((item: any) => ({
+              orgId: organization.id,
+              externalId: item.externalId,
+              ...toAssignmentPlanWriteData(item),
+            })) as Prisma.AssignmentPlanCreateManyInput[],
+            skipDuplicates: true,
+          });
+          plans = await findAssignmentPlansWithSelectFallback({
+            where: {
+              orgId: organization.id,
+              lineId: assignmentPlanLineFilter,
+              ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
+            },
+            orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
+            selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+            context: "GET /assignment-plans",
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[assignment-plans] missing assignmentPlan backfill skipped (org=${organization.id}): ${message}`
+        );
+      }
+    }
+  }
   if (plans.length > 0 && plans.some(assignmentPlanNeedsDisplayRepair)) {
     const repairedPlans = await repairAssignmentPlanDisplayRows({
       orgId: organization.id,

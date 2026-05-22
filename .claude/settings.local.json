@@ -32,7 +32,8 @@
       "Bash(railway --version)",
       "PowerShell(railway --version 2>&1)",
       "PowerShell(psql --version 2>&1)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(awk 'NR>=75 && NR<=560' \"c:/Users/krsai/OneDrive/바탕 화면/baro/backend/src/index.ts\")"
     ]
   }
 }

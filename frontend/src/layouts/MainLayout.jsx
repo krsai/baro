@@ -526,7 +526,7 @@ const MainLayout = () => {
             path: '/assignment',
           },
           {
-            label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0\uD604\uD669', languageCode),
+            label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0 \uD604\uD669', languageCode),
             icon: <DashboardIcon />,
             path: '/batch-progress',
           },
