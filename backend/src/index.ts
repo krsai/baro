@@ -8483,8 +8483,19 @@ const buildWorkLogContextResponse = async ({
         if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
         return true;
       });
+      console.log(
+        `[work-log-context] plan sync check: org=${orgId} lineId=${line.id} boardIds=${activeExternalIds.length} dbIds=${existingExternalIdSet.size} missing=${missingPlanSeedAssignments.length} missingIds=${missingPlanSeedAssignments
+          .map((assignment) => resolveAssignmentExternalId(assignment))
+          .filter((value): value is string => Boolean(value))
+          .slice(0, 10)
+          .join(",")}`
+      );
 
       if (missingPlanSeedAssignments.length > 0) {
+        const normalizedMissingRowsFallback = normalizeAssignmentPlanPayload(
+          missingPlanSeedAssignments,
+          lineIdSet
+        );
         try {
           const normalizedMissingRows = await syncAssignmentPlanColorRefs(
             orgId,
@@ -8505,10 +8516,47 @@ const buildWorkLogContextResponse = async ({
             );
           }
         } catch (error) {
+          const errCode = (error as any)?.code || "unknown";
           const message = error instanceof Error ? error.message : String(error);
           console.warn(
-            `[work-log-context] orgId=${orgId} lineId=${line.id} assignmentPlan backfill skipped: ${message}`
+            `[work-log-context] orgId=${orgId} lineId=${line.id} assignmentPlan backfill FAILED code=${errCode}: ${String(
+              message
+            ).slice(0, 200)}`
           );
+          if (normalizedMissingRowsFallback.length > 0) {
+            const existingAfterFailure = new Set(
+              ensureArray(assignmentPlans)
+                .map((plan) => resolveOptionalString(plan?.externalId, null))
+                .filter((value): value is string => Boolean(value))
+            );
+            const syntheticRows = normalizedMissingRowsFallback
+              .filter((item: any) => !existingAfterFailure.has(item.externalId))
+              .map((item: any) => ({
+                id: null,
+                externalId: item.externalId,
+                lineId: item.lineId,
+                orderNo: item.orderNo ?? null,
+                customer: item.customer ?? null,
+                label: item.label ?? null,
+                colorId: item.colorId ?? null,
+                colorName: item.colorName ?? null,
+                quantity: item.quantity ?? null,
+                contractedSeconds: item.contractedSeconds ?? null,
+                ctSnapshot: item.ctSnapshot ?? null,
+                color: item.color ?? null,
+                startIndex: item.startIndex ?? 0,
+                endIndex: item.endIndex ?? 0,
+                isCompleted: false,
+                finalQuantity: null,
+                completedAt: null,
+              }));
+            if (syntheticRows.length > 0) {
+              assignmentPlans = [...assignmentPlans, ...syntheticRows];
+              console.warn(
+                `[work-log-context] orgId=${orgId} lineId=${line.id} using synthetic assignment fallback rows count=${syntheticRows.length}`
+              );
+            }
+          }
         }
       }
     }
@@ -15276,7 +15324,18 @@ app.get("/assignment-plans", async (req, res) => {
       if (!lineIdNum || !lineIdSet.has(lineIdNum)) return false;
       return true;
     });
+    console.log(
+      `[assignment-plans] board/db sync check: org=${organization.id} boardIds=${activeExternalIds.length} dbIds=${existingExternalIdSet.size} missing=${missingPlanSeedAssignments.length} missingIds=${missingPlanSeedAssignments
+        .map((assignment) => resolveAssignmentExternalId(assignment))
+        .filter((value): value is string => Boolean(value))
+        .slice(0, 10)
+        .join(",")}`
+    );
     if (missingPlanSeedAssignments.length > 0) {
+      const normalizedMissingRowsFallback = normalizeAssignmentPlanPayload(
+        missingPlanSeedAssignments,
+        lineIdSet
+      );
       try {
         const normalizedMissingRows = await syncAssignmentPlanColorRefs(
           organization.id,
@@ -15303,10 +15362,65 @@ app.get("/assignment-plans", async (req, res) => {
           });
         }
       } catch (error) {
+        const errCode = (error as any)?.code || "unknown";
         const message = error instanceof Error ? error.message : String(error);
         console.warn(
-          `[assignment-plans] missing assignmentPlan backfill skipped (org=${organization.id}): ${message}`
+          `[assignment-plans] backfill FAILED: org=${organization.id} code=${errCode} message=${String(
+            message
+          ).slice(0, 200)}`
         );
+        if (normalizedMissingRowsFallback.length > 0) {
+          const existingAfterFailure = new Set(
+            ensureArray(plans)
+              .map((plan) => resolveOptionalString(plan?.externalId, null))
+              .filter((value): value is string => Boolean(value))
+          );
+          const syntheticRows = normalizedMissingRowsFallback
+            .filter((item: any) => !existingAfterFailure.has(item.externalId))
+            .map((item: any) => ({
+              id: null,
+              externalId: item.externalId,
+              lineId: item.lineId,
+              cardId: item.cardId ?? null,
+              orderNo: item.orderNo ?? null,
+              customer: item.customer ?? null,
+              label: item.label ?? null,
+              colorId: item.colorId ?? null,
+              colorName: item.colorName ?? null,
+              previewUrl: item.previewUrl ?? null,
+              imageUrl: item.imageUrl ?? null,
+              thumbnailUrl: item.thumbnailUrl ?? null,
+              quantity: item.quantity ?? null,
+              originOrderId: item.originOrderId ?? null,
+              basis: item.basis ?? null,
+              contractedSeconds: item.contractedSeconds ?? null,
+              ctSnapshot: item.ctSnapshot ?? null,
+              color: item.color ?? null,
+              stripeColor: item.stripeColor ?? null,
+              totalSeconds: item.totalSeconds ?? item.contractedSeconds ?? null,
+              startIndex: item.startIndex ?? 0,
+              endIndex: item.endIndex ?? 0,
+              startDayOffsetPercent: item.startDayOffsetPercent ?? null,
+              startDayPercent: item.startDayPercent ?? null,
+              endDayPercent: item.endDayPercent ?? null,
+              isCompleted: false,
+              finalQuantity: null,
+              completedAt: null,
+              closedQty: null,
+              closedAt: null,
+              closedBy: null,
+              closeMode: null,
+              closeBasis: null,
+              createdAt: null,
+              updatedAt: new Date(),
+            }));
+          if (syntheticRows.length > 0) {
+            plans = [...plans, ...syntheticRows];
+            console.warn(
+              `[assignment-plans] using synthetic fallback rows from board-state: org=${organization.id} count=${syntheticRows.length}`
+            );
+          }
+        }
       }
     }
   }
@@ -18317,12 +18431,75 @@ app.put("/assignment-board-state", async (req, res) => {
   const removedExternalIdList = ensureArray(updated?.removedExternalIdList).map((value) =>
     String(value)
   );
+  const removedExternalIdSet = new Set(removedExternalIdList);
+  const changedPlanTargetExternalIds = new Set(
+    changedPlanTargetAssignments
+      .map((item) => resolveAssignmentExternalId(item))
+      .filter((value): value is string => Boolean(value))
+  );
+  const stateAssignmentsForPlanSync = normalizeStateAssignments(updatedState?.assignments).filter(
+    (item) => {
+      const externalId = resolveAssignmentExternalId(item);
+      if (!externalId) return false;
+      if (removedExternalIdSet.has(externalId)) return false;
+      return true;
+    }
+  );
+  const stateAssignmentByExternalId = buildAssignmentByExternalId(stateAssignmentsForPlanSync);
+  const stateAssignmentExternalIds: string[] = Array.from(
+    stateAssignmentByExternalId.keys()
+  ).map((externalId) => String(externalId));
+  const existingStatePlanRows =
+    stateAssignmentExternalIds.length > 0
+      ? await prisma.assignmentPlan.findMany({
+          where: {
+            orgId: organization.id,
+            externalId: { in: stateAssignmentExternalIds },
+          },
+          select: { externalId: true },
+        })
+      : [];
+  const existingStatePlanExternalIdSet = new Set(
+    existingStatePlanRows
+      .map((row) => resolveOptionalString(row?.externalId, null))
+      .filter((value): value is string => Boolean(value))
+  );
+  const missingStateAssignmentsForPlanSync = stateAssignmentExternalIds
+    .filter((externalId) => !existingStatePlanExternalIdSet.has(externalId))
+    .map((externalId) => stateAssignmentByExternalId.get(externalId))
+    .filter((item): item is any => Boolean(item));
+  const planSyncTargetAssignments = normalizeStateAssignments([
+    ...changedPlanTargetAssignments,
+    ...missingStateAssignmentsForPlanSync,
+  ]).filter((item, index, self) => {
+    const externalId = resolveAssignmentExternalId(item);
+    if (!externalId) return false;
+    return (
+      index ===
+      self.findIndex((candidate) => resolveAssignmentExternalId(candidate) === externalId)
+    );
+  });
+  console.log(
+    `[assignment-board] changedPlanTargetAssignments: org=${organization.id} count=${changedPlanTargetAssignments.length} sample=${JSON.stringify(
+      changedPlanTargetAssignments.slice(0, 2).map((item) => ({
+        id: resolveAssignmentExternalId(item),
+        lineId: item?.lineId,
+        startIndex: item?.startIndex,
+        endIndex: item?.endIndex,
+      }))
+    )}`
+  );
   const shouldSyncPlans =
-    changedPlanTargetAssignments.length > 0 || removedExternalIdList.length > 0;
+    planSyncTargetAssignments.length > 0 || removedExternalIdList.length > 0;
+  console.log(
+    `[assignment-board] plan sync check: org=${organization.id} shouldSync=${shouldSyncPlans} changed=${changedPlanTargetAssignments.length} missingRecovered=${missingStateAssignmentsForPlanSync.length} removed=${removedExternalIdList.length} totalIncoming=${stateAssignmentsForPlanSync.length} changedIds=${JSON.stringify(
+      Array.from(changedPlanTargetExternalIds).slice(0, 10)
+    )}`
+  );
   if (shouldSyncPlans) {
     try {
       const lineIdSet =
-        changedPlanTargetAssignments.length > 0
+        planSyncTargetAssignments.length > 0
           ? new Set(
               (
                 await prisma.line.findMany({
@@ -18333,10 +18510,10 @@ app.put("/assignment-board-state", async (req, res) => {
             )
           : null;
       const normalizedPlanChanges =
-        changedPlanTargetAssignments.length > 0
+        planSyncTargetAssignments.length > 0
           ? await syncAssignmentPlanColorRefs(
               organization.id,
-              normalizeAssignmentPlanPayload(changedPlanTargetAssignments, lineIdSet)
+              normalizeAssignmentPlanPayload(planSyncTargetAssignments, lineIdSet)
             )
           : [];
       const planSyncExternalIds = Array.from(
@@ -18372,6 +18549,13 @@ app.put("/assignment-board-state", async (req, res) => {
       });
 
       if (createPlanRows.length > 0) {
+        console.log(
+          `[assignment-board] plan createMany: org=${organization.id} count=${createPlanRows.length} externalIds=${createPlanRows
+            .map((item: any) => resolveOptionalString(item?.externalId, ""))
+            .filter(Boolean)
+            .slice(0, 10)
+            .join(",")}`
+        );
         await prisma.assignmentPlan.createMany({
           data: createPlanRows.map((item: any) => ({
             orgId: organization.id,
@@ -18382,6 +18566,9 @@ app.put("/assignment-board-state", async (req, res) => {
       }
 
       if (updatePlanRows.length > 0) {
+        console.log(
+          `[assignment-board] plan updateMany: org=${organization.id} count=${updatePlanRows.length}`
+        );
         await Promise.all(
           updatePlanRows.map((row) =>
             prisma.assignmentPlan.update({
@@ -18403,19 +18590,27 @@ app.put("/assignment-board-state", async (req, res) => {
         });
       }
     } catch (error) {
-      if (!isAssignmentPlanMissingColumnError(error)) {
+      const errCode = (error as any)?.code || "unknown";
+      const errMsg = (error as any)?.message || String(error || "");
+      const isMissingCol = isAssignmentPlanMissingColumnError(error);
+      console.warn(
+        `[assignment-board] plan sync error: org=${organization.id} code=${errCode} isMissingColumn=${isMissingCol} message=${String(
+          errMsg
+        ).slice(0, 200)}`
+      );
+      if (!isMissingCol) {
         throw error;
       }
       console.warn(
-        `[assignment-board] skip assignmentPlan sync after board save due schema drift (org=${organization.id})`
+        `[assignment-board] SKIPPED plan sync due to schema drift: org=${organization.id} — run additive SQL to add missing columns`
       );
     }
   }
-  if (changedPlanTargetAssignments.length > 0) {
+  if (planSyncTargetAssignments.length > 0) {
     await syncStyleProcessStandardsFromAssignmentSnapshots({
       organization,
       cards: cardsForSave,
-      assignments: changedPlanTargetAssignments,
+      assignments: planSyncTargetAssignments,
     });
   }
   await syncOrderProgressStatusesForOrg({
