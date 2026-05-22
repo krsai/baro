@@ -2079,41 +2079,77 @@ const loadAtTrainingSourceWorkLogs = async ({
     }
   }
 
-  return db.workLog.findMany({
-    where,
-    select: {
-      id: true,
-      workDate: true,
-      coverageStartDate: true,
-      coverageEndDate: true,
-      entryMode: true,
-      factoryId: true,
-      workerCount: true,
-      workRecords: {
-        where: {
-          quantity: { gt: 0 },
-          OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
-        },
-        select: {
-          workerId: true,
-          styleUid: true,
-          styleId: true,
-          styleName: true,
-          customerName: true,
-          processCode: true,
-          process: {
-            select: {
-              id: true,
-              code: true,
-              name: true,
-            },
+  try {
+    return await db.workLog.findMany({
+      where,
+      select: {
+        id: true,
+        workDate: true,
+        coverageStartDate: true,
+        coverageEndDate: true,
+        entryMode: true,
+        factoryId: true,
+        workerCount: true,
+        workRecords: {
+          where: {
+            quantity: { gt: 0 },
+            OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
           },
-          quantity: true,
+          select: {
+            workerId: true,
+            styleUid: true,
+            styleId: true,
+            styleName: true,
+            customerName: true,
+            processCode: true,
+            process: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            quantity: true,
+          },
         },
       },
-    },
-    orderBy: [{ workDate: "asc" }, { id: "asc" }],
-  });
+      orderBy: [{ workDate: "asc" }, { id: "asc" }],
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    return db.workLog.findMany({
+      where,
+      select: {
+        id: true,
+        workDate: true,
+        factoryId: true,
+        workerCount: true,
+        workRecords: {
+          where: {
+            quantity: { gt: 0 },
+            OR: [{ styleId: { not: null } }, { styleUid: { not: null } }],
+          },
+          select: {
+            workerId: true,
+            styleUid: true,
+            styleId: true,
+            styleName: true,
+            customerName: true,
+            processCode: true,
+            process: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            quantity: true,
+          },
+        },
+      },
+      orderBy: [{ workDate: "asc" }, { id: "asc" }],
+    });
+  }
 };
 
 const buildAtTrainingBucketDraftsFromRawSource = async ({
@@ -5247,6 +5283,92 @@ const resolveWorkLogLineMeta = (
   const lineName = resolveOptionalString(source?.lineName, null);
   return { lineId, lineName };
 };
+const isWorkLogCoverageMissingColumnError = (error: any) => {
+  const code = resolveOptionalString((error as any)?.code, "") || "";
+  if (code !== "P2022") return false;
+  const missingColumn =
+    resolveOptionalString((error as any)?.meta?.column, null) ||
+    resolveOptionalString((error as any)?.message, "");
+  if (!missingColumn) return false;
+  return /(WorkLog\.)?(coverageStartDate|coverageEndDate|entryMode)/i.test(
+    missingColumn
+  );
+};
+
+const buildWorkLogSelectWithOptionalCoverage = ({
+  includeCoverage,
+  includeRecords,
+}: {
+  includeCoverage: boolean;
+  includeRecords: boolean;
+}) => {
+  const select: Record<string, any> = {
+    id: true,
+    workDate: true,
+    factoryId: true,
+    factoryName: true,
+    factoryWagePerSecond: true,
+    ctBasis: true,
+    workerCount: true,
+    itemCount: true,
+    totalContractedSeconds: true,
+    note: true,
+    records: true,
+    createdAt: true,
+    updatedAt: true,
+    updatedBy: true,
+  };
+  if (includeCoverage) {
+    select.coverageStartDate = true;
+    select.coverageEndDate = true;
+    select.entryMode = true;
+  }
+  if (includeRecords) {
+    select.workRecords = WORK_LOG_RECORD_INCLUDE;
+  }
+  return select;
+};
+
+const fetchWorkLogByIdWithRecordsSafe = async ({
+  orgId,
+  workLogId,
+  recordSelect,
+  warnLabel,
+}: {
+  orgId: number;
+  workLogId: number;
+  recordSelect: any;
+  warnLabel: string;
+}) => {
+  try {
+    return await prisma.workLog.findFirst({
+      where: { id: workLogId, orgId },
+      select: {
+        ...buildWorkLogSelectWithOptionalCoverage({
+          includeCoverage: true,
+          includeRecords: false,
+        }),
+        workRecords: recordSelect,
+      },
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    const fallbackRow = await prisma.workLog.findFirst({
+      where: { id: workLogId, orgId },
+      select: {
+        ...buildWorkLogSelectWithOptionalCoverage({
+          includeCoverage: false,
+          includeRecords: false,
+        }),
+        workRecords: recordSelect,
+      },
+    });
+    console.warn(
+      `[${warnLabel}] orgId=${orgId} workLogId=${workLogId} missing work-log coverage columns; fallback record projection activated`
+    );
+    return fallbackRow;
+  }
+};
 const findPreviousWorkLogCoverageForLine = async ({
   orgId,
   factoryId = null,
@@ -5266,24 +5388,49 @@ const findPreviousWorkLogCoverageForLine = async ({
 
   const pageSize = 200;
   for (let skip = 0; skip < 2000; skip += pageSize) {
-    const candidates = await prisma.workLog.findMany({
-      where: {
-        orgId,
-        ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
-        workDate: { lt: normalizedBeforeWorkDate },
-      },
-      select: {
-        id: true,
-        workDate: true,
-        coverageStartDate: true,
-        coverageEndDate: true,
-        entryMode: true,
-        records: true,
-      },
-      orderBy: [{ workDate: "desc" }, { id: "desc" }],
-      skip,
-      take: pageSize,
-    });
+    let candidates: any[] = [];
+    try {
+      candidates = await prisma.workLog.findMany({
+        where: {
+          orgId,
+          ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+          workDate: { lt: normalizedBeforeWorkDate },
+        },
+        select: {
+          id: true,
+          workDate: true,
+          coverageStartDate: true,
+          coverageEndDate: true,
+          entryMode: true,
+          records: true,
+        },
+        orderBy: [{ workDate: "desc" }, { id: "desc" }],
+        skip,
+        take: pageSize,
+      });
+    } catch (error) {
+      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+      candidates = await prisma.workLog.findMany({
+        where: {
+          orgId,
+          ...(normalizedFactoryId ? { factoryId: normalizedFactoryId } : {}),
+          workDate: { lt: normalizedBeforeWorkDate },
+        },
+        select: {
+          id: true,
+          workDate: true,
+          records: true,
+        },
+        orderBy: [{ workDate: "desc" }, { id: "desc" }],
+        skip,
+        take: pageSize,
+      });
+      if (skip === 0) {
+        console.warn(
+          `[work-log-context] orgId=${orgId} lineId=${lineId} missing work-log coverage columns; fallback previous-coverage query activated`
+        );
+      }
+    }
     if (candidates.length === 0) break;
 
     for (const candidate of candidates) {
@@ -7929,6 +8076,17 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     records,
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
+};
+const stripCoverageFieldsFromWorkLogData = <T extends Record<string, any>>(
+  workLogData: T
+): Omit<T, "coverageStartDate" | "coverageEndDate" | "entryMode"> => {
+  const {
+    coverageStartDate: _coverageStartDate,
+    coverageEndDate: _coverageEndDate,
+    entryMode: _entryMode,
+    ...rest
+  } = workLogData || {};
+  return rest as Omit<T, "coverageStartDate" | "coverageEndDate" | "entryMode">;
 };
 const toWorkLogResponse = (workLog: any) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
@@ -15418,29 +15576,53 @@ const buildAssignmentPlanProgressRows = async (
     .map((plan) => Number(plan.id))
     .filter((id) => Number.isFinite(id));
 
-  const workRows =
-    planIds.length > 0
-      ? await prisma.workRecord.findMany({
-          where: {
-            orgId,
-            assignmentPlanId: { in: planIds },
-          },
-          select: {
-            assignmentPlanId: true,
-            processId: true,
-            processCode: true,
-            quantity: true,
-            workLog: {
-              select: {
-                workDate: true,
-                coverageStartDate: true,
-                coverageEndDate: true,
-                entryMode: true,
-              },
+  let workRows: any[] = [];
+  if (planIds.length > 0) {
+    try {
+      workRows = await prisma.workRecord.findMany({
+        where: {
+          orgId,
+          assignmentPlanId: { in: planIds },
+        },
+        select: {
+          assignmentPlanId: true,
+          processId: true,
+          processCode: true,
+          quantity: true,
+          workLog: {
+            select: {
+              workDate: true,
+              coverageStartDate: true,
+              coverageEndDate: true,
+              entryMode: true,
             },
           },
-        })
-      : [];
+        },
+      });
+    } catch (error) {
+      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+      workRows = await prisma.workRecord.findMany({
+        where: {
+          orgId,
+          assignmentPlanId: { in: planIds },
+        },
+        select: {
+          assignmentPlanId: true,
+          processId: true,
+          processCode: true,
+          quantity: true,
+          workLog: {
+            select: {
+              workDate: true,
+            },
+          },
+        },
+      });
+      console.warn(
+        `[assignment-plan-progress] orgId=${orgId} missing work-log coverage columns; fallback work-record projection activated`
+      );
+    }
+  }
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
   const getStats = (planId: number): AssignmentPlanWorkStats => {
@@ -16982,21 +17164,38 @@ app.get("/work-logs", async (req, res) => {
       ? { workDate: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } }
       : {};
 
-  const workLogs = await prisma.workLog.findMany({
-    where: {
-      orgId: organization.id,
-      ...(hasFactoryFilter ? { factoryId } : {}),
-      ...workDateFilter,
-    },
-    ...(includeRecords
-      ? {
-          include: {
-            workRecords: WORK_LOG_RECORD_INCLUDE,
-          },
-        }
-      : {}),
-    orderBy: [{ workDate: "desc" }, { id: "desc" }],
-  });
+  let workLogs: any[] = [];
+  try {
+    workLogs = await prisma.workLog.findMany({
+      where: {
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+        ...workDateFilter,
+      },
+      select: buildWorkLogSelectWithOptionalCoverage({
+        includeCoverage: true,
+        includeRecords,
+      }),
+      orderBy: [{ workDate: "desc" }, { id: "desc" }],
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    workLogs = await prisma.workLog.findMany({
+      where: {
+        orgId: organization.id,
+        ...(hasFactoryFilter ? { factoryId } : {}),
+        ...workDateFilter,
+      },
+      select: buildWorkLogSelectWithOptionalCoverage({
+        includeCoverage: false,
+        includeRecords,
+      }),
+      orderBy: [{ workDate: "desc" }, { id: "desc" }],
+    });
+    console.warn(
+      `[work-logs] orgId=${organization.id} missing work-log coverage columns; fallback list query activated`
+    );
+  }
 
   res.json(workLogs.map(toWorkLogResponse));
 });
@@ -17047,29 +17246,34 @@ app.get("/work-logs/:id", async (req, res) => {
   const includeContext =
     req.query.includeContext === "1" || req.query.includeContext === "true";
 
-  const baseWorkLog = await prisma.workLog.findFirst({
-    where: { id, orgId: organization.id },
-    select: {
-      id: true,
-      workDate: true,
-      coverageStartDate: true,
-      coverageEndDate: true,
-      entryMode: true,
-      factoryId: true,
-      factoryName: true,
-      factoryWagePerSecond: true,
-      ctBasis: true,
-      workerCount: true,
-      itemCount: true,
-      totalContractedSeconds: true,
-      note: true,
-      records: true,
-      createdAt: true,
-      updatedAt: true,
-      updatedBy: true,
-      workRecords: WORK_LOG_DETAIL_RECORD_SELECT,
-    },
-  });
+  let baseWorkLog: any = null;
+  try {
+    baseWorkLog = await prisma.workLog.findFirst({
+      where: { id, orgId: organization.id },
+      select: {
+        ...buildWorkLogSelectWithOptionalCoverage({
+          includeCoverage: true,
+          includeRecords: false,
+        }),
+        workRecords: WORK_LOG_DETAIL_RECORD_SELECT,
+      },
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    baseWorkLog = await prisma.workLog.findFirst({
+      where: { id, orgId: organization.id },
+      select: {
+        ...buildWorkLogSelectWithOptionalCoverage({
+          includeCoverage: false,
+          includeRecords: false,
+        }),
+        workRecords: WORK_LOG_DETAIL_RECORD_SELECT,
+      },
+    });
+    console.warn(
+      `[work-logs/:id] orgId=${organization.id} workLogId=${id} missing work-log coverage columns; fallback detail query activated`
+    );
+  }
   if (!baseWorkLog) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
@@ -17202,17 +17406,36 @@ app.post("/work-logs", async (req, res) => {
       lineName: _lineName,
       ...workLogData
     } = normalized;
-    const next = await tx.workLog.create({
-      data: {
-        orgId: organization.id,
-        ...workLogData,
-        updatedBy,
-        records: {
-          lineId: lineValidation.line?.id ?? null,
-          lineName: lineValidation.line?.name ?? null,
+    let next: any;
+    try {
+      next = await tx.workLog.create({
+        data: {
+          orgId: organization.id,
+          ...workLogData,
+          updatedBy,
+          records: {
+            lineId: lineValidation.line?.id ?? null,
+            lineName: lineValidation.line?.name ?? null,
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+      next = await tx.workLog.create({
+        data: {
+          orgId: organization.id,
+          ...stripCoverageFieldsFromWorkLogData(workLogData),
+          updatedBy,
+          records: {
+            lineId: lineValidation.line?.id ?? null,
+            lineName: lineValidation.line?.name ?? null,
+          },
+        },
+      });
+      console.warn(
+        `[work-logs:create] orgId=${organization.id} missing work-log coverage columns; fallback create payload activated`
+      );
+    }
 
     if (records.length > 0) {
       await tx.workRecord.createMany({
@@ -17238,11 +17461,11 @@ app.post("/work-logs", async (req, res) => {
 
     return next;
   }, { timeout: 30000 });
-  const createdWithRecords = await prisma.workLog.findUnique({
-    where: { id: created.id },
-    include: {
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
-    },
+  const createdWithRecords = await fetchWorkLogByIdWithRecordsSafe({
+    orgId: organization.id,
+    workLogId: created.id,
+    recordSelect: WORK_RECORD_WITH_REFS_INCLUDE,
+    warnLabel: "work-logs:create:readback",
   });
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
@@ -17390,17 +17613,36 @@ app.put("/work-logs/:id", async (req, res) => {
       lineName: _lineName,
       ...workLogData
     } = normalized;
-    const next = await tx.workLog.update({
-      where: { id: existing.id },
-      data: {
-        ...workLogData,
-        updatedBy,
-        records: {
-          lineId: lineValidation.line?.id ?? null,
-          lineName: lineValidation.line?.name ?? null,
+    let next: any;
+    try {
+      next = await tx.workLog.update({
+        where: { id: existing.id },
+        data: {
+          ...workLogData,
+          updatedBy,
+          records: {
+            lineId: lineValidation.line?.id ?? null,
+            lineName: lineValidation.line?.name ?? null,
+          },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+      next = await tx.workLog.update({
+        where: { id: existing.id },
+        data: {
+          ...stripCoverageFieldsFromWorkLogData(workLogData),
+          updatedBy,
+          records: {
+            lineId: lineValidation.line?.id ?? null,
+            lineName: lineValidation.line?.name ?? null,
+          },
+        },
+      });
+      console.warn(
+        `[work-logs:update] orgId=${organization.id} workLogId=${existing.id} missing work-log coverage columns; fallback update payload activated`
+      );
+    }
 
     await tx.workRecord.deleteMany({
       where: { orgId: organization.id, workLogId: existing.id },
@@ -17430,11 +17672,11 @@ app.put("/work-logs/:id", async (req, res) => {
 
     return next;
   }, { timeout: 30000 });
-  const updatedWithRecords = await prisma.workLog.findUnique({
-    where: { id: updated.id },
-    include: {
-      workRecords: WORK_RECORD_WITH_REFS_INCLUDE,
-    },
+  const updatedWithRecords = await fetchWorkLogByIdWithRecordsSafe({
+    orgId: organization.id,
+    workLogId: updated.id,
+    recordSelect: WORK_RECORD_WITH_REFS_INCLUDE,
+    warnLabel: "work-logs:update:readback",
   });
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,

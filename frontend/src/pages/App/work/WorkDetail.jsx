@@ -992,7 +992,7 @@ const WorkDetail = ({
     if (!selectedLineId || !workDateKey) return '';
     return `${selectedLineId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
   }, [selectedLineId, workDateKey, coverageStartDateKey]);
-  const workerDebugEnabled = false;
+  const workerDebugEnabled = true;
 
   useEffect(() => {
     if (isMobile) {
