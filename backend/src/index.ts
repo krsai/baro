@@ -4759,6 +4759,51 @@ const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   }
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
+const evaluateWorkerEmploymentOnDateKey = ({
+  joinedAt,
+  leftAt,
+  targetDateKey,
+}: {
+  joinedAt?: unknown;
+  leftAt?: unknown;
+  targetDateKey?: string | null;
+}) => {
+  const normalizedTargetDateKey = normalizeDateKey(targetDateKey);
+  const joinedDateKey = toDateKeyInTimeZone(joinedAt, BUSINESS_TIME_ZONE);
+  const leftDateKey = toDateKeyInTimeZone(leftAt, BUSINESS_TIME_ZONE);
+
+  if (!normalizedTargetDateKey) {
+    return {
+      passed: false,
+      reason: "invalid_workDate",
+      joinedDateKey,
+      leftDateKey,
+    } as const;
+  }
+  if (joinedDateKey && normalizedTargetDateKey < joinedDateKey) {
+    return {
+      passed: false,
+      reason: "workDate_before_joinedAt",
+      joinedDateKey,
+      leftDateKey,
+    } as const;
+  }
+  // leftAt is inclusive: worker is treated as employed on leftAt date.
+  if (leftDateKey && normalizedTargetDateKey > leftDateKey) {
+    return {
+      passed: false,
+      reason: "workDate_after_leftAt",
+      joinedDateKey,
+      leftDateKey,
+    } as const;
+  }
+  return {
+    passed: true,
+    reason: "pass",
+    joinedDateKey,
+    leftDateKey,
+  } as const;
+};
 const normalizeTimeText = (value: any): string | null => {
   if (value === null || value === undefined) return null;
   const trimmed = String(value).trim();
@@ -7466,6 +7511,16 @@ const validateWorkLogLineWorkers = async ({
   workDate: string;
   workerIds: number[];
 }) => {
+  const normalizedWorkDate = normalizeDateKey(workDate);
+  if (!normalizedWorkDate) {
+    return {
+      status: 400,
+      error: "invalid workDate",
+      line: null as { id: number; factoryId: number; name: string } | null,
+      missingWorkerIds: [] as number[],
+    };
+  }
+
   if (!lineId) {
     return {
       status: 400,
@@ -7497,7 +7552,7 @@ const validateWorkLogLineWorkers = async ({
     };
   }
 
-  const dateRange = buildWorkDateRange(workDate);
+  const dateRange = buildWorkDateRange(normalizedWorkDate);
   if (!dateRange) {
     return {
       status: 400,
@@ -7581,10 +7636,12 @@ const validateWorkLogLineWorkers = async ({
     fallbackLegacyWorkers.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
-      const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
-      if (joinedDateKey && workDate < joinedDateKey) return;
-      const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
-      if (leftDateKey) return;
+      const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+        joinedAt: worker.joinedAt,
+        leftAt: worker.leftAt,
+        targetDateKey: normalizedWorkDate,
+      });
+      if (!employmentCheck.passed) return;
       matchedWorkerIdSet.add(workerId);
     });
     missingWorkerIds = workerIds.filter(
@@ -7610,6 +7667,15 @@ const validateWorkLogWorkerEmploymentWindow = async ({
   workDate: string;
   workerIds: number[];
 }) => {
+  const normalizedWorkDate = normalizeDateKey(workDate);
+  if (!normalizedWorkDate) {
+    return {
+      status: 400,
+      error: "invalid workDate",
+      invalidWorkerIds: [] as number[],
+    };
+  }
+
   const isWorkerAvailableOnWorkDate = (
     worker: {
       joinedAt?: unknown;
@@ -7619,16 +7685,12 @@ const validateWorkLogWorkerEmploymentWindow = async ({
     targetWorkDate: string
   ) => {
     if (!worker) return false;
-    const joinedDateKey = toDateKeyInTimeZone(worker.joinedAt, BUSINESS_TIME_ZONE);
-    const leftDateKey = toDateKeyInTimeZone(worker.leftAt, BUSINESS_TIME_ZONE);
-    const isLeftAtMissing = !leftDateKey;
-    if (joinedDateKey && targetWorkDate < joinedDateKey) {
-      return false;
-    }
-    if (!isLeftAtMissing) {
-      return false;
-    }
-    return true;
+    const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+      joinedAt: worker.joinedAt,
+      leftAt: worker.leftAt,
+      targetDateKey: targetWorkDate,
+    });
+    return employmentCheck.passed;
   };
 
   if (workerIds.length === 0) {
@@ -7674,7 +7736,7 @@ const validateWorkLogWorkerEmploymentWindow = async ({
   workerIds.forEach((workerId) => {
     const worker = workerById.get(workerId);
     if (!worker) return;
-    if (!isWorkerAvailableOnWorkDate(worker, workDate)) {
+    if (!isWorkerAvailableOnWorkDate(worker, normalizedWorkDate)) {
       invalidWorkerIds.push(workerId);
     }
   });
@@ -7960,6 +8022,7 @@ const buildWorkLogContextResponse = async ({
   lineId = null,
   lineName = null,
   workDate = null,
+  coverageStartDate = null,
   debug = false,
 }: {
   orgId: number;
@@ -7967,11 +8030,13 @@ const buildWorkLogContextResponse = async ({
   lineId?: number | null;
   lineName?: string | null;
   workDate?: string | null;
+  coverageStartDate?: string | null;
   debug?: boolean;
 }) => {
   const normalizedLineId = toPositiveIntOrNull(lineId);
   const normalizedFactoryId = toPositiveIntOrNull(factoryId);
   const normalizedWorkDate = normalizeDateKey(workDate);
+  const normalizedCoverageStartDate = normalizeDateKey(coverageStartDate);
   const buildBaseResponse = ({
     line: currentLine = null,
     workers = [],
@@ -8127,6 +8192,10 @@ const buildWorkLogContextResponse = async ({
   const suggestedCoverageStartDate = previousCoverageEndDate
     ? shiftDateKeyByDays(previousCoverageEndDate, 1)
     : null;
+  const employmentFilterDateKey =
+    normalizeDateKey(normalizedCoverageStartDate) ||
+    normalizeDateKey(suggestedCoverageStartDate) ||
+    normalizedWorkDate;
 
   const [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
     prisma.lineAssignment.findMany({
@@ -8248,20 +8317,15 @@ const buildWorkLogContextResponse = async ({
         });
         return;
       }
-      const isLeftAtMissing = !leftDateKey;
-
-      if (joinedDateKey && normalizedWorkDate < joinedDateKey) {
+      const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+        joinedAt: employee?.joinedAt,
+        leftAt: employee?.leftAt,
+        targetDateKey: employmentFilterDateKey,
+      });
+      if (!employmentCheck.passed) {
         droppedWorkers.push({
           ...baseInfo,
-          reason: "workDate_before_joinedAt",
-        });
-        return;
-      }
-      // If leftAt exists, treat worker as resigned and exclude regardless of date.
-      if (!isLeftAtMissing) {
-        droppedWorkers.push({
-          ...baseInfo,
-          reason: "leftAt_exists",
+          reason: employmentCheck.reason,
         });
         return;
       }
@@ -8314,7 +8378,7 @@ const buildWorkLogContextResponse = async ({
     if (fallbackWorkers.length > 0) {
       workersForDate = fallbackWorkers;
       console.log(
-        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_active_assignments`
+        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_active_assignments`
       );
     }
   }
@@ -8352,7 +8416,7 @@ const buildWorkLogContextResponse = async ({
     if (legacyWorkersForDate.length > 0) {
       workersForDate = legacyWorkersForDate;
       console.log(
-        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_employee_line_name`
+        `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_employee_line_name`
       );
     }
   }
@@ -8424,7 +8488,7 @@ const buildWorkLogContextResponse = async ({
       if (fallbackWorkers.length > 0) {
         workersForDate = fallbackWorkers;
         console.log(
-          `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} workers=fallback_historical_line_assignments`
+          `[work-log-context] orgId=${orgId} lineId=${line.id} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} workers=fallback_historical_line_assignments`
         );
       }
     }
@@ -8453,7 +8517,7 @@ const buildWorkLogContextResponse = async ({
     );
 
     console.log(
-      `[work-log-context][debug] orgId=${orgId} lineId=${line.id} lineName=${line.name ?? ""} factoryId=${normalizedFactoryId ?? "null"} workDate=${normalizedWorkDate} finalWorkers=0`
+      `[work-log-context][debug] orgId=${orgId} lineId=${line.id} lineName=${line.name ?? ""} factoryId=${normalizedFactoryId ?? "null"} workDate=${normalizedWorkDate} filterDate=${employmentFilterDateKey} finalWorkers=0`
     );
     console.log(
       `[work-log-context][debug] baseCounts onWorkDate=${lineAssignmentsOnWorkDate.length} activeAnyFactory=${activeAssignmentsAllFactories.length} activeSelectedFactory=${activeAssignmentsOnSelectedFactory.length} assignmentPlans=${assignmentPlans.length}`
@@ -8496,6 +8560,7 @@ const buildWorkLogContextResponse = async ({
       lineId: line.id,
       lineName: line.name ?? "",
       workDate: normalizedWorkDate,
+      filterWorkDate: employmentFilterDateKey,
       baseCounts: {
         lineAssignmentsOnWorkDate: lineAssignmentsOnWorkDate.length,
         assignmentPlansInFactory: assignmentPlans.length,
@@ -8507,10 +8572,14 @@ const buildWorkLogContextResponse = async ({
           .toUpperCase();
         const joinedDateKey = toDateKeyInTimeZone(employee?.joinedAt, BUSINESS_TIME_ZONE);
         const leftDateKey = toDateKeyInTimeZone(employee?.leftAt, BUSINESS_TIME_ZONE);
-        const joinedPass = !(joinedDateKey && normalizedWorkDate < joinedDateKey);
-        const isLeftAtMissing = !leftDateKey;
+        const employmentCheck = evaluateWorkerEmploymentOnDateKey({
+          joinedAt: employee?.joinedAt,
+          leftAt: employee?.leftAt,
+          targetDateKey: employmentFilterDateKey,
+        });
+        const joinedPass = employmentCheck.reason !== "workDate_before_joinedAt";
+        const leftPass = employmentCheck.reason !== "workDate_after_leftAt";
         const membershipPass = true;
-        const leftPass = isLeftAtMissing;
         return {
           workerId: toPositiveIntOrNull(employee?.id ?? assignment?.employeeId),
           workerName: resolveOptionalString(employee?.name, "") ?? "",
@@ -8522,11 +8591,11 @@ const buildWorkLogContextResponse = async ({
           leftAtRaw: employee?.leftAt ?? null,
           joinedDateKey,
           leftDateKey,
-          isLeftAtMissing,
           joinedPass,
           membershipPass,
           leftPass,
-          finalPass: joinedPass && membershipPass && leftPass,
+          finalPass: employmentCheck.passed && membershipPass,
+          employmentReason: employmentCheck.reason,
         };
       }),
       stageSummaries: filterDebugStages,
@@ -16889,6 +16958,7 @@ app.get("/work-log-context", async (req, res) => {
   const lineId = toPositiveIntOrNull(req.query.lineId);
   const factoryId = toPositiveIntOrNull(req.query.factoryId);
   const workDate = normalizeDateKey(req.query.workDate);
+  const coverageStartDate = normalizeDateKey(req.query.coverageStartDate);
   const debug =
     String(req.query.debug || "").trim() === "1" ||
     String(req.query.debug || "").trim().toLowerCase() === "true";
@@ -16904,6 +16974,7 @@ app.get("/work-log-context", async (req, res) => {
     factoryId,
     lineId,
     workDate,
+    coverageStartDate: coverageStartDate || null,
     debug,
   });
 
@@ -16959,6 +17030,10 @@ app.get("/work-logs/:id", async (req, res) => {
         lineId: toPositiveIntOrNull(lineMeta.lineId),
         lineName: resolveOptionalString(lineMeta.lineName, null),
         workDate: baseWorkLog.workDate,
+        coverageStartDate: resolveWorkLogCoverageStartDate(
+          baseWorkLog,
+          resolveWorkLogCoverageEndDate(baseWorkLog, baseWorkLog.workDate)
+        ),
       })
     : null;
 
@@ -17001,10 +17076,11 @@ app.post("/work-logs", async (req, res) => {
     }
   }
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.workDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
     factoryId: normalized.factoryId,
-    workDate: normalized.workDate,
+    workDate: workerFilterDateKey,
     workerIds,
   });
   if (employmentValidation.error) {
@@ -17024,7 +17100,7 @@ app.post("/work-logs", async (req, res) => {
     orgId: organization.id,
     lineId: normalized.lineId,
     factoryId: normalized.factoryId,
-    workDate: normalized.workDate,
+    workDate: workerFilterDateKey,
     workerIds,
   });
   if (lineValidation.error) {
@@ -17187,10 +17263,11 @@ app.put("/work-logs/:id", async (req, res) => {
     }
   }
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
+  const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.workDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
     orgId: organization.id,
     factoryId: normalized.factoryId,
-    workDate: normalized.workDate,
+    workDate: workerFilterDateKey,
     workerIds,
   });
   if (employmentValidation.error) {
@@ -17210,7 +17287,7 @@ app.put("/work-logs/:id", async (req, res) => {
     orgId: organization.id,
     lineId: normalized.lineId,
     factoryId: normalized.factoryId,
-    workDate: normalized.workDate,
+    workDate: workerFilterDateKey,
     workerIds,
   });
   if (lineValidation.error) {

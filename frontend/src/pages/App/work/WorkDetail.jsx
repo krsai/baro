@@ -979,13 +979,19 @@ const WorkDetail = ({
   const initialContextKey = useMemo(() => {
     const lineId = toPositiveIdOrNull(initialContext?.line?.id ?? initialLog?.lineId);
     const dateKey = toText(initialLog?.workDate);
+    const startDateKey = toText(initialLog?.coverageStartDate || initialLog?.workDate);
     if (!lineId || !dateKey) return '';
-    return `${lineId}:${dateKey}`;
-  }, [initialContext?.line?.id, initialLog?.lineId, initialLog?.workDate]);
+    return `${lineId}:${dateKey}:${startDateKey}`;
+  }, [
+    initialContext?.line?.id,
+    initialLog?.lineId,
+    initialLog?.workDate,
+    initialLog?.coverageStartDate,
+  ]);
   const currentContextKey = useMemo(() => {
     if (!selectedLineId || !workDateKey) return '';
-    return `${selectedLineId}:${workDateKey}`;
-  }, [selectedLineId, workDateKey]);
+    return `${selectedLineId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
+  }, [selectedLineId, workDateKey, coverageStartDateKey]);
   const workerDebugEnabled = false;
 
   useEffect(() => {
@@ -1265,6 +1271,7 @@ const WorkDetail = ({
       factoryId: selectedFactoryId,
       lineId: selectedLineId,
       workDate: workDateKey,
+      coverageStartDate: coverageStartDateKey || workDateKey,
       debug: workerDebugEnabled,
       skipGlobalLoading: true,
       signal: abortController.signal,
@@ -1333,6 +1340,7 @@ const WorkDetail = ({
     prefetchedWorkers,
     selectedFactoryId,
     selectedLineId,
+    coverageStartDateKey,
     workDate,
     workDateKey,
     workerDebugEnabled,
