@@ -654,10 +654,33 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
 };
 const normalizeWorkerOptions = (workers = []) =>
   sortByLabel(Array.isArray(workers) ? workers : [], (worker) => worker?.name || worker?.email || '');
+const dedupeAssignmentPlans = (plans = []) => {
+  const seen = new Set();
+  return (Array.isArray(plans) ? plans : []).filter((plan) => {
+    const primaryKey = toText(plan?.dbId || plan?.id || plan?.externalId);
+    const fallbackKey = [
+      toText(plan?.lineId),
+      toText(plan?.orderNo),
+      toText(plan?.label || plan?.styleId),
+      toText(plan?.colorId || plan?.colorName || plan?.color),
+      toText(plan?.quantity),
+      toText(plan?.startIndex),
+      toText(plan?.endIndex),
+    ].join('|');
+    const key = primaryKey || fallbackKey;
+    if (!key) return false;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 const normalizeAssignmentPlans = (plans = []) =>
   sortByLabel(
-    (Array.isArray(plans) ? plans : [])
-      .map((plan) => enrichAssignmentPlan(plan)),
+    dedupeAssignmentPlans(
+      (Array.isArray(plans) ? plans : [])
+        .map((plan) => enrichAssignmentPlan(plan))
+    )
+    ,
     (plan) => formatAssignmentLabel(plan)
   );
 const filterAssignmentsWithCt = (plans = []) =>
