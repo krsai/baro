@@ -5,7 +5,6 @@ import {
   Chip,
   CircularProgress,
   IconButton,
-  Pagination,
   Paper,
   Stack,
   Table,
@@ -22,6 +21,8 @@ import {
 import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
@@ -54,8 +55,6 @@ const { useDeferredValue } = React;
 const COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const AUTO_NOTE_PREFIX = '[자동 메모]';
 const AUTO_NOTE_MARKER = `\n\n${AUTO_NOTE_PREFIX}\n`;
-const MOBILE_ROWS_PER_PAGE = 30;
-const DEFAULT_DESKTOP_PAGE_ROW_HEIGHT = 56;
 const DESKTOP_PANEL_BOTTOM_GAP = 16;
 const LABELS = {
   title: '기록 상세',
@@ -70,6 +69,7 @@ const LABELS = {
   notePlaceholder: '메모를 입력하세요.',
   autoNote: '자동 메모',
   searchPlaceholder: '작업자/스타일/공정 검색',
+  rowNumber: '행',
   worker: '작업자',
   workerPlaceholder: '작업자를 선택하세요.',
   style: '스타일',
@@ -86,6 +86,8 @@ const LABELS = {
   processPlaceholder: '공정을 선택하세요.',
   noProcessesAvailable: '선택 가능한 공정이 없습니다.',
   quantity: '생산량',
+  moveUp: '위로 이동',
+  moveDown: '아래로 이동',
   addBelow: '아래 작업자 추가',
   remove: '작업자 삭제',
   entryMode: '입력 방식',
@@ -930,22 +932,14 @@ const WorkDetail = ({
   const [rows, setRows] = useState([]);
   const [editingRowId, setEditingRowId] = useState('');
   const [editingField, setEditingField] = useState(null);
-  const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [note, setNote] = useState('');
   const [formError, setFormError] = useState('');
   const [recordsPanelHeight, setRecordsPanelHeight] = useState(null);
-  const [desktopTableAreaHeight, setDesktopTableAreaHeight] = useState(0);
-  const [desktopTableHeadHeight, setDesktopTableHeadHeight] = useState(0);
-  const [desktopTableRowHeight, setDesktopTableRowHeight] = useState(
-    DEFAULT_DESKTOP_PAGE_ROW_HEIGHT
-  );
   const initialRowsHydratedRef = useRef(false);
   const detailMetaPanelRef = useRef(null);
   const recordsPanelRef = useRef(null);
-  const desktopTableAreaRef = useRef(null);
-  const desktopTableHeadRef = useRef(null);
   const hasInitialRecords = Array.isArray(initialLog?.records) && initialLog.records.length > 0;
   const initialFactoryOption = useMemo(() => buildFactorySelection(initialLog), [initialLog]);
   const initialLineOption = useMemo(() => buildLineSelection(initialLog), [initialLog]);
@@ -1067,58 +1061,6 @@ const WorkDetail = ({
   }, [isMobile]);
 
   useEffect(() => {
-    if (isMobile) {
-      setDesktopTableAreaHeight(0);
-      setDesktopTableHeadHeight(0);
-      setDesktopTableRowHeight(DEFAULT_DESKTOP_PAGE_ROW_HEIGHT);
-      return undefined;
-    }
-
-    let frameId = 0;
-    let resizeObserver = null;
-    const updateDesktopTableMeasurements = () => {
-      const areaHeight =
-        desktopTableAreaRef.current instanceof HTMLElement
-          ? Math.floor(desktopTableAreaRef.current.getBoundingClientRect().height)
-          : 0;
-      const headHeight =
-        desktopTableHeadRef.current instanceof HTMLElement
-          ? Math.floor(desktopTableHeadRef.current.getBoundingClientRect().height)
-          : 0;
-      setDesktopTableAreaHeight((current) =>
-        current === areaHeight ? current : areaHeight
-      );
-      setDesktopTableHeadHeight((current) =>
-        current === headHeight ? current : headHeight
-      );
-    };
-
-    const scheduleUpdate = () => {
-      window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(updateDesktopTableMeasurements);
-    };
-
-    scheduleUpdate();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        scheduleUpdate();
-      });
-      if (desktopTableAreaRef.current instanceof HTMLElement) {
-        resizeObserver.observe(desktopTableAreaRef.current);
-      }
-      if (desktopTableHeadRef.current instanceof HTMLElement) {
-        resizeObserver.observe(desktopTableHeadRef.current);
-      }
-    }
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      resizeObserver?.disconnect();
-    };
-  }, [isMobile, recordsPanelHeight]);
-
-  useEffect(() => {
     const abortController = new AbortController();
     let cancelled = false;
     const loadFactories = async () => {
@@ -1172,7 +1114,6 @@ const WorkDetail = ({
           })
         : []
     );
-    setPage(1);
     setSearchTerm('');
     setFormError('');
     setBaseLoading(!initialLog?.id);
@@ -1535,49 +1476,6 @@ const WorkDetail = ({
       return searchText.includes(keyword);
     });
   }, [deferredSearchTerm, resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows, selectedLineId]);
-  const rowsPerPage = useMemo(() => {
-    if (isMobile) return MOBILE_ROWS_PER_PAGE;
-    const usableHeight = Math.max(0, desktopTableAreaHeight - desktopTableHeadHeight);
-    if (usableHeight <= 0) return 1;
-    const effectiveRowHeight = Math.max(
-      1,
-      Math.floor(desktopTableRowHeight || DEFAULT_DESKTOP_PAGE_ROW_HEIGHT)
-    );
-    return Math.max(1, Math.floor(usableHeight / effectiveRowHeight));
-  }, [desktopTableAreaHeight, desktopTableHeadHeight, desktopTableRowHeight, isMobile]);
-  const totalRowPages = useMemo(
-    () => Math.max(1, Math.ceil((Array.isArray(filteredRows) ? filteredRows.length : 0) / rowsPerPage)),
-    [filteredRows, rowsPerPage]
-  );
-  const currentPage = Math.min(Math.max(1, page), totalRowPages);
-  const pageStartIndex = (currentPage - 1) * rowsPerPage;
-  const pageEndIndex = Math.min(pageStartIndex + rowsPerPage, filteredRows.length);
-  const pagedRows = useMemo(
-    () => filteredRows.slice(pageStartIndex, pageEndIndex),
-    [filteredRows, pageEndIndex, pageStartIndex]
-  );
-  useEffect(() => {
-    if (isMobile) {
-      setDesktopTableRowHeight(DEFAULT_DESKTOP_PAGE_ROW_HEIGHT);
-      return undefined;
-    }
-
-    let frameId = window.requestAnimationFrame(() => {
-      const tableArea = desktopTableAreaRef.current;
-      if (!(tableArea instanceof HTMLElement)) return;
-      const rowElement = tableArea.querySelector('[data-work-desktop-row]');
-      if (!(rowElement instanceof HTMLElement)) return;
-      const nextHeight = Math.floor(rowElement.getBoundingClientRect().height);
-      if (nextHeight <= 0) return;
-      setDesktopTableRowHeight((current) =>
-        current === nextHeight ? current : nextHeight
-      );
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [currentPage, editingRowId, isMobile, pagedRows.length, recordsPanelHeight]);
   const workerGroupMetaByRowId = useMemo(() => {
     let previousWorkerKey = '';
     let groupId = -1;
@@ -1595,13 +1493,6 @@ const WorkDetail = ({
 
     return map;
   }, [filteredRows]);
-  useEffect(() => {
-    setPage((currentValue) => {
-      const normalizedPage = Number.isFinite(currentValue) ? Math.trunc(currentValue) : 1;
-      return Math.min(Math.max(1, normalizedPage), totalRowPages);
-    });
-  }, [totalRowPages]);
-
   const summary = useMemo(() => {
     const records = rows
       .map((row) => {
@@ -2173,7 +2064,6 @@ const WorkDetail = ({
     setRows([]);
     setFormError('');
     setEditingField(null);
-    setPage(1);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workDate]);
@@ -2190,7 +2080,6 @@ const WorkDetail = ({
     setRows([]);
     setFormError('');
     setEditingField(null);
-    setPage(1);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id, workDate]);
@@ -2209,7 +2098,6 @@ const WorkDetail = ({
     setRows([]);
     setFormError('');
     setEditingField(null);
-    setPage(1);
     setSearchTerm('');
     initialRowsHydratedRef.current = Boolean(initialLog?.id);
   }, [initialLog?.id]);
@@ -2320,6 +2208,22 @@ const WorkDetail = ({
     });
     setEditingField(null);
   }, [lineWorkers.length, selectedLineId]);
+  const handleMoveRow = useCallback((rowId, direction) => {
+    setRows((currentRows) => {
+      const safeRows = Array.isArray(currentRows) ? currentRows : [];
+      const currentIndex = safeRows.findIndex((row) => row.id === rowId);
+      if (currentIndex < 0) return safeRows;
+
+      const targetIndex =
+        direction === 'up' ? currentIndex - 1 : direction === 'down' ? currentIndex + 1 : -1;
+      if (targetIndex < 0 || targetIndex >= safeRows.length) return safeRows;
+
+      const nextRows = [...safeRows];
+      const [movedRow] = nextRows.splice(currentIndex, 1);
+      nextRows.splice(targetIndex, 0, movedRow);
+      return nextRows;
+    });
+  }, []);
 
   const handleSave = useCallback(() => {
     setFormError('');
@@ -2384,10 +2288,18 @@ const WorkDetail = ({
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
   }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
-  const pagedRowViewModels = useMemo(
+  const rowOrderIndexById = useMemo(() => {
+    const map = new Map();
+    rows.forEach((row, index) => {
+      map.set(toText(row?.id), index);
+    });
+    return map;
+  }, [rows]);
+  const visibleRowViewModels = useMemo(
     () =>
-      pagedRows.map((row) => {
+      filteredRows.map((row) => {
         const rowId = toText(row?.id);
+        const rowOrderIndex = Number(rowOrderIndexById.get(rowId) ?? -1);
         const rowExceededMeta = exceededRowMetaByRowId.get(rowId) || null;
         const isRowExceeded = Boolean(rowExceededMeta);
         const isEditingRow = isMobile || editingRowId === row.id;
@@ -2483,6 +2395,9 @@ const WorkDetail = ({
             : '-';
         return {
           row,
+          rowNumber: rowOrderIndex >= 0 ? rowOrderIndex + 1 : null,
+          canMoveUp: rowOrderIndex > 0,
+          canMoveDown: rowOrderIndex >= 0 && rowOrderIndex < rows.length - 1,
           isEditingRow,
           rowExceededMeta,
           isRowExceeded,
@@ -2511,7 +2426,7 @@ const WorkDetail = ({
         };
       }),
     [
-      pagedRows,
+      filteredRows,
       exceededRowMetaByRowId,
       rowResolvedMetaById,
       resolveAssignmentForRow,
@@ -2532,9 +2447,11 @@ const WorkDetail = ({
       editingField,
       workerGroupMetaByRowId,
       languageCode,
+      rowOrderIndexById,
+      rows.length,
     ]
   );
-  const desktopVisibleRowViewModels = pagedRowViewModels;
+  const desktopVisibleRowViewModels = visibleRowViewModels;
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
 
@@ -2570,7 +2487,10 @@ const WorkDetail = ({
       );
 
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        target.scrollIntoView({
+          block: isMobile ? 'center' : 'nearest',
+          inline: 'nearest',
+        });
         target.focus();
         const activeElement = target.ownerDocument?.activeElement;
         const hasFocusedTarget =
@@ -2596,16 +2516,6 @@ const WorkDetail = ({
         return;
       }
 
-      const targetRowIndex = filteredRows.findIndex(
-        (row) => String(row?.id || '') === String(requestedField.rowId)
-      );
-      if (targetRowIndex >= 0) {
-        const targetPage = Math.floor(targetRowIndex / rowsPerPage) + 1;
-        if (targetPage !== currentPage) {
-          setPage((current) => (current === targetPage ? current : targetPage));
-        }
-      }
-
       attempts += 1;
       if (attempts >= 20) {
         clearRequestedField();
@@ -2625,12 +2535,10 @@ const WorkDetail = ({
       window.clearTimeout(timeoutId);
     };
   }, [
-    currentPage,
     editingField,
     filteredRows,
     isMobile,
     rows.length,
-    rowsPerPage,
   ]);
   useEffect(() => {
     if (isMobile || !editingRowId) return;
@@ -2753,7 +2661,7 @@ const WorkDetail = ({
               : { height: `${recordsPanelHeight}px` }),
           }}
         >
-          <PageToolbar left={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); setPage(1); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
+          <PageToolbar left={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
 
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (
@@ -2776,9 +2684,12 @@ const WorkDetail = ({
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
               {isMobile ? (
                 <Stack spacing={1}>
-                  {pagedRowViewModels.map((rowViewModel) => {
+                  {visibleRowViewModels.map((rowViewModel) => {
                     const {
                       row,
+                      rowNumber,
+                      canMoveUp,
+                      canMoveDown,
                       rowExceededMeta,
                       isRowExceeded,
                       rowWorkerOptions,
@@ -2819,6 +2730,16 @@ const WorkDetail = ({
                         }}
                       >
                         <Stack spacing={1}>
+                          <Stack
+                            direction="row"
+                            justifyContent="space-between"
+                            alignItems="center"
+                            spacing={1}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                              {`${LABELS.rowNumber} ${rowNumber ?? '-'}`}
+                            </Typography>
+                          </Stack>
                           <SearchableSelect
                             label={LABELS.worker}
                             options={rowWorkerOptions}
@@ -3000,6 +2921,36 @@ const WorkDetail = ({
                                 </IconButton>
                               </span>
                             </Tooltip>
+                            <Tooltip title={LABELS.moveUp}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleMoveRow(row.id, 'up');
+                                  }}
+                                  disabled={isAggregateLegacyLog || !canMoveUp}
+                                  aria-label={LABELS.moveUp}
+                                >
+                                  <KeyboardArrowUpIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title={LABELS.moveDown}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleMoveRow(row.id, 'down');
+                                  }}
+                                  disabled={isAggregateLegacyLog || !canMoveDown}
+                                  aria-label={LABELS.moveDown}
+                                >
+                                  <KeyboardArrowDownIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
                             <Tooltip title={LABELS.remove}>
                               <span>
                                 <IconButton
@@ -3023,35 +2974,36 @@ const WorkDetail = ({
                   })}
                 </Stack>
               ) : (
-                <Box
-                  ref={desktopTableAreaRef}
-                  sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
-                >
+                <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                   <TableContainer
                     component={Paper}
                     variant="outlined"
                     sx={{
                       borderRadius: 2,
                       overflowX: 'auto',
-                      overflowY: 'hidden',
+                      overflowY: 'auto',
                       flex: 1,
                       minHeight: 0,
                     }}
                   >
                   <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
-                    <TableHead ref={desktopTableHeadRef}>
+                    <TableHead>
                       <TableRow>
-                        <TableCell sx={{ width: '18%' }}>{LABELS.worker}</TableCell>
-                        <TableCell sx={{ width: '31%' }}>{LABELS.style}</TableCell>
-                        <TableCell sx={{ width: '28%' }}>{LABELS.process}</TableCell>
-                        <TableCell sx={{ width: '13%' }} align="right">{LABELS.quantity}</TableCell>
-                        <TableCell sx={{ width: 88 }} align="right">&nbsp;</TableCell>
+                        <TableCell sx={{ width: 56 }} align="center">{LABELS.rowNumber}</TableCell>
+                        <TableCell sx={{ width: '16%' }}>{LABELS.worker}</TableCell>
+                        <TableCell sx={{ width: '28%' }}>{LABELS.style}</TableCell>
+                        <TableCell sx={{ width: '25%' }}>{LABELS.process}</TableCell>
+                        <TableCell sx={{ width: '11%' }} align="right">{LABELS.quantity}</TableCell>
+                        <TableCell sx={{ width: 148 }} align="right">&nbsp;</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                     {desktopVisibleRowViewModels.map((rowViewModel) => {
                       const {
                         row,
+                        rowNumber,
+                        canMoveUp,
+                        canMoveDown,
                         rowExceededMeta,
                         isRowExceeded,
                         rowWorkerOptions,
@@ -3100,6 +3052,11 @@ const WorkDetail = ({
                               : {}),
                           }}
                         >
+                          <TableCell align="center" sx={{ py: 0.75, verticalAlign: 'middle' }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                              {rowNumber ?? '-'}
+                            </Typography>
+                          </TableCell>
                           <TableCell sx={{ py: 0.75, verticalAlign: 'middle' }}>
                             {isEditingRow ? (
                               <SearchableSelect
@@ -3385,6 +3342,36 @@ const WorkDetail = ({
                                   </IconButton>
                                 </span>
                               </Tooltip>
+                              <Tooltip title={LABELS.moveUp}>
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleMoveRow(row.id, 'up');
+                                    }}
+                                    disabled={isAggregateLegacyLog || !canMoveUp}
+                                    aria-label={LABELS.moveUp}
+                                  >
+                                    <KeyboardArrowUpIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title={LABELS.moveDown}>
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleMoveRow(row.id, 'down');
+                                    }}
+                                    disabled={isAggregateLegacyLog || !canMoveDown}
+                                    aria-label={LABELS.moveDown}
+                                  >
+                                    <KeyboardArrowDownIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
                               <Tooltip title={LABELS.remove}>
                                 <span>
                                   <IconButton
@@ -3421,19 +3408,8 @@ const WorkDetail = ({
                 }}
               >
                 <Typography variant="body2" color="text.secondary">
-                  {`${filteredRows.length === 0 ? 0 : pageStartIndex + 1}-${pageEndIndex} / ${filteredRows.length}${toText(searchTerm) ? ` (전체 ${rows.length})` : ''}`}
+                  {`${filteredRows.length}개${toText(searchTerm) ? ` (전체 ${rows.length}개)` : ''}`}
                 </Typography>
-                <Pagination
-                  count={totalRowPages}
-                  page={currentPage}
-                  onChange={(_event, nextPage) => setPage(nextPage)}
-                  color="primary"
-                  shape="rounded"
-                  showFirstButton
-                  showLastButton
-                  siblingCount={1}
-                  boundaryCount={1}
-                />
               </Box>
             </Stack>
           )}
