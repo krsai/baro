@@ -511,6 +511,11 @@ const MainLayout = () => {
             icon: <StyleIcon />,
             path: '/style',
           },
+          {
+            label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0 \uD604\uD669', languageCode),
+            icon: <DashboardIcon />,
+            path: '/batch-progress',
+          },
         ],
       },
       {
@@ -524,11 +529,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.assignment', '\uBC30\uC815', languageCode),
             icon: <ContentCut />,
             path: '/assignment',
-          },
-          {
-            label: getUiMessage('menu.batchProgress', '\uC0DD\uC0B0 \uD604\uD669', languageCode),
-            icon: <DashboardIcon />,
-            path: '/batch-progress',
           },
           {
             label: getUiMessage('menu.workHistory', '\uC791\uC5C5 \uAE30\uB85D', languageCode),
@@ -802,12 +802,14 @@ const MainLayout = () => {
         const childPaths = new Set(item.children.map((child) => child.path));
 
         if (childPaths.has('/order') && childPaths.has('/style')) {
+          const preferredSalesPaths = ['/style', '/order', '/batch-progress'];
           visibleChildren = [
             hasPathAccess(customerMenuItem.path) ? customerMenuItem : null,
-            visibleChildren.find((child) => child.path === '/style') || null,
-            visibleChildren.find((child) => child.path === '/order') || null,
+            ...preferredSalesPaths.map(
+              (path) => visibleChildren.find((child) => child.path === path) || null
+            ),
             ...visibleChildren.filter(
-              (child) => !['/customer', '/style', '/order'].includes(child.path)
+              (child) => !['/customer', ...preferredSalesPaths].includes(child.path)
             ),
           ].filter(Boolean);
         }
@@ -819,7 +821,6 @@ const MainLayout = () => {
         if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
           const preferredRecordPaths = [
             '/assignment',
-            '/batch-progress',
             '/work-history',
             '/qc-review',
             '/attendance',
