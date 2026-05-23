@@ -8,6 +8,37 @@ const buildReadRequestOptions = (options = {}) => ({
   ...(options?.cacheTtlMs ? { cacheTtlMs: options.cacheTtlMs } : {}),
   ...(options?.requestTimeoutMs ? { requestTimeoutMs: options.requestTimeoutMs } : {}),
 });
+const toText = (value) => String(value || '').trim();
+const buildAssignmentDisplayKey = (assignment) => {
+  const orderNo = toText(assignment?.orderNo);
+  const label = toText(assignment?.label || assignment?.styleId);
+  const quantity = toText(assignment?.finalQuantity ?? assignment?.quantity);
+  if (!orderNo && !label && !quantity) return '';
+  return [orderNo, label, quantity].join('|');
+};
+const summarizeDuplicateAssignments = (assignments = []) => {
+  const buckets = (Array.isArray(assignments) ? assignments : []).reduce((map, assignment) => {
+    const displayKey = buildAssignmentDisplayKey(assignment);
+    if (!displayKey) return map;
+    const current = map.get(displayKey) || {
+      displayKey,
+      count: 0,
+      assignmentIds: [],
+      lineIds: [],
+    };
+    current.count += 1;
+    const assignmentId = toText(assignment?.id || assignment?.externalId || assignment?.dbId);
+    if (assignmentId) current.assignmentIds.push(assignmentId);
+    const lineId = toText(assignment?.lineId);
+    if (lineId) current.lineIds.push(lineId);
+    map.set(displayKey, current);
+    return map;
+  }, new Map());
+
+  return Array.from(buckets.values())
+    .filter((entry) => entry.count > 1)
+    .slice(0, 10);
+};
 
 export const loadWorkLogs = async (options = {}) => {
   const query = buildQueryString({
@@ -51,6 +82,14 @@ export const findWorkLogById = async (workLogId, options = {}) => {
 };
 
 export const loadWorkLogContext = async (options = {}) => {
+  console.log('[loadWorkLogContext] called', {
+    orgId: options?.orgId ?? null,
+    factoryId: options?.factoryId ?? null,
+    lineId: options?.lineId ?? null,
+    workDate: options?.workDate ?? '',
+    coverageStartDate: options?.coverageStartDate ?? '',
+    debug: Boolean(options?.debug),
+  });
   const query = buildQueryString({
     orgId: options?.orgId,
     factoryId: options?.factoryId,
@@ -59,7 +98,21 @@ export const loadWorkLogContext = async (options = {}) => {
     coverageStartDate: options?.coverageStartDate,
     debug: options?.debug ? 1 : undefined,
   });
-  return requestJSON(`/work-log-context${query}`, buildReadRequestOptions(options));
+  const result = await requestJSON(
+    `/work-log-context${query}`,
+    buildReadRequestOptions(options)
+  );
+  const workers = Array.isArray(result?.workers) ? result.workers : [];
+  const assignments = Array.isArray(result?.assignments) ? result.assignments : [];
+  console.log('[loadWorkLogContext] result', {
+    workerCount: workers.length,
+    assignmentCount: assignments.length,
+    duplicateAssignments: summarizeDuplicateAssignments(assignments),
+    previousCoverageEndDate: result?.previousCoverageEndDate ?? null,
+    suggestedCoverageStartDate: result?.suggestedCoverageStartDate ?? null,
+    isFirstLineWorkLog: Boolean(result?.isFirstLineWorkLog),
+  });
+  return result;
 };
 
 export const updateWorkLog = async (workLogId, payload, options = {}) => {

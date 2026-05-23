@@ -8127,6 +8127,55 @@ const toWorkLogContextWorkerResponse = (row: any) => ({
   factoryId: row?.employee?.factoryId ?? null,
   currentLineId: row?.lineId ?? null,
 });
+const buildWorkLogContextAssignmentDisplayKey = (plan: any) => {
+  const orderNo = resolveOptionalString(plan?.orderNo, "") ?? "";
+  const label =
+    resolveOptionalString(plan?.label, null) ??
+    resolveOptionalString(plan?.styleId, null) ??
+    "";
+  const quantity = toOptionalNonNegativeInt(
+    plan?.finalQuantity ?? plan?.quantity,
+    null
+  );
+  if (!orderNo && !label && quantity == null) return "";
+  return [orderNo, label, quantity ?? ""].join("|");
+};
+const summarizeWorkLogContextDuplicateAssignments = (plans: any[] = []) => {
+  const duplicateBuckets = ensureArray(plans).reduce((map, plan) => {
+    const displayKey = buildWorkLogContextAssignmentDisplayKey(plan);
+    if (!displayKey) return map;
+    const current = map.get(displayKey) || {
+      displayKey,
+      count: 0,
+      externalIds: [] as string[],
+      lineIds: [] as string[],
+    };
+    current.count += 1;
+    const externalId = resolveOptionalString(plan?.externalId ?? plan?.id, null);
+    if (externalId) {
+      current.externalIds.push(externalId);
+    }
+    const lineId =
+      resolveOptionalString(plan?.lineId, null) ??
+      (toPositiveIntOrNull(plan?.lineId) !== null
+        ? String(toPositiveIntOrNull(plan?.lineId))
+        : null);
+    if (lineId) {
+      current.lineIds.push(lineId);
+    }
+    map.set(displayKey, current);
+    return map;
+  }, new Map<
+    string,
+    { displayKey: string; count: number; externalIds: string[]; lineIds: string[] }
+  >());
+
+  return Array.from<
+    { displayKey: string; count: number; externalIds: string[]; lineIds: string[] }
+  >(duplicateBuckets.values())
+    .filter((entry) => entry.count > 1)
+    .slice(0, 10);
+};
 const toWorkLogContextAssignmentResponse = (plan: any) => {
   const normalizedSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
@@ -8198,6 +8247,9 @@ const buildWorkLogContextResponse = async ({
   const normalizedFactoryId = toPositiveIntOrNull(factoryId);
   const normalizedWorkDate = normalizeDateKey(workDate);
   const normalizedCoverageStartDate = normalizeDateKey(coverageStartDate);
+  console.log(
+    `[buildWorkLogContextResponse] called orgId=${orgId} factoryId=${normalizedFactoryId ?? "null"} lineId=${normalizedLineId ?? "null"} workDate=${normalizedWorkDate || "-"} coverageStartDate=${normalizedCoverageStartDate || "-"}`
+  );
   const buildBaseResponse = ({
     line: currentLine = null,
     workers = [],
@@ -8467,6 +8519,7 @@ const buildWorkLogContextResponse = async ({
       select: { assignments: true },
     });
     const activeExternalIds = resolveAssignmentPlanExternalIds(boardState?.assignments);
+    const hasBoardAssignments = Array.isArray(boardState?.assignments);
     if (activeExternalIds.length > 0) {
       const existingExternalIdSet = new Set(
         ensureArray(assignmentPlans)
@@ -8559,6 +8612,59 @@ const buildWorkLogContextResponse = async ({
           }
         }
       }
+    }
+
+    // Exclude stale DB rows that are no longer present in the current board state.
+    // Mirrors the externalId filter already applied in GET /assignment-plans.
+    const assignmentPlansBeforeBoardFilter = [...assignmentPlans];
+    if (hasBoardAssignments) {
+      if (activeExternalIds.length === 0) {
+        assignmentPlans = [];
+      } else {
+        const activeExternalIdSet = new Set(activeExternalIds);
+        assignmentPlans = assignmentPlans.filter((plan) => {
+          const externalId = resolveOptionalString(plan?.externalId, null);
+          if (!externalId) return false;
+          return activeExternalIdSet.has(externalId);
+        });
+      }
+    }
+
+    const removedStaleCount =
+      assignmentPlansBeforeBoardFilter.length - assignmentPlans.length;
+    const duplicateDisplayAssignments =
+      summarizeWorkLogContextDuplicateAssignments(assignmentPlans);
+    console.log(
+      `[buildWorkLogContextResponse] board-sync orgId=${orgId} lineId=${line.id} hasBoardAssignments=${hasBoardAssignments} activeExternalIds=${activeExternalIds.length} assignmentPlansBefore=${assignmentPlansBeforeBoardFilter.length} assignmentPlansAfter=${assignmentPlans.length} removedStale=${removedStaleCount}`
+    );
+    if (removedStaleCount > 0) {
+      const activeExternalIdSet = new Set(activeExternalIds);
+      const removedPlanSummaries = assignmentPlansBeforeBoardFilter
+        .filter((plan) => {
+          const externalId = resolveOptionalString(plan?.externalId, null);
+          if (!externalId) return false;
+          return !activeExternalIdSet.has(externalId);
+        })
+        .slice(0, 10)
+        .map((plan) => ({
+          externalId: resolveOptionalString(plan?.externalId, null),
+          orderNo: resolveOptionalString(plan?.orderNo, null),
+          label: resolveOptionalString(plan?.label, null),
+          quantity: toOptionalNonNegativeInt(plan?.quantity, null),
+          lineId: toPositiveIntOrNull(plan?.lineId),
+        }));
+      console.log(
+        `[buildWorkLogContextResponse] removed-stale-plans orgId=${orgId} lineId=${line.id} sample=${JSON.stringify(
+          removedPlanSummaries
+        )}`
+      );
+    }
+    if (duplicateDisplayAssignments.length > 0) {
+      console.log(
+        `[buildWorkLogContextResponse] duplicate-display-assignments orgId=${orgId} lineId=${line.id} sample=${JSON.stringify(
+          duplicateDisplayAssignments
+        )}`
+      );
     }
   }
 
@@ -8869,6 +8975,9 @@ const buildWorkLogContextResponse = async ({
     suggestedCoverageStartDate,
     isFirstLineWorkLog: !previousCoverageEndDate,
   });
+  console.log(
+    `[buildWorkLogContextResponse] result orgId=${orgId} lineId=${line.id} workers=${response.workers.length} assignments=${response.assignments.length} previousCoverageEndDate=${response.previousCoverageEndDate ?? "-"} suggestedCoverageStartDate=${response.suggestedCoverageStartDate ?? "-"}`
+  );
   if (!debug) return response;
 
   return {
