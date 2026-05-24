@@ -5679,6 +5679,54 @@ const trySyncConfirmedOrdersToInProgressFromWorkRecords = async ({
     );
   }
 };
+const trySyncAssignmentPlanSideEffectsAfterWorkLogMutation = async ({
+  orgId,
+  assignmentPlanIds,
+  mode,
+}: {
+  orgId: number;
+  assignmentPlanIds: any;
+  mode: "create" | "update" | "delete";
+}) => {
+  const normalizedPlanIds = Array.from(
+    new Set(
+      ensureArray(assignmentPlanIds)
+        .map((value) => toPositiveIntOrNull(value))
+        .filter((value): value is number => value !== null)
+    )
+  );
+  if (normalizedPlanIds.length === 0) return;
+
+  // Work-log mutation is already committed at this point.
+  // Downstream assignment sync should not flip the API response to a failure.
+  try {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId,
+      assignmentPlanIds: normalizedPlanIds,
+    });
+  } catch (error) {
+    console.warn(
+      `[work-logs:${mode}] orgId=${orgId} assignment schedule sync failed: ${getErrorMessage(
+        error,
+        "failed to sync assignment schedules after work-log mutation"
+      )}`
+    );
+  }
+
+  try {
+    await persistAssignmentPlanProgressSnapshot({
+      orgId,
+      assignmentPlanIds: normalizedPlanIds,
+    });
+  } catch (error) {
+    console.warn(
+      `[work-logs:${mode}] orgId=${orgId} assignment progress snapshot sync failed: ${getErrorMessage(
+        error,
+        "failed to persist assignment progress snapshot after work-log mutation"
+      )}`
+    );
+  }
+};
 const toUtcDateFromDateKeyForAssignmentSchedule = (
   dateKeyInput: any
 ): Date | null => {
@@ -17757,16 +17805,11 @@ app.post("/work-logs", async (req, res) => {
     mode: "create",
   });
   const createdPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
-  if (createdPlanIds.length > 0) {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId: organization.id,
-      assignmentPlanIds: createdPlanIds,
-    });
-    await persistAssignmentPlanProgressSnapshot({
-      orgId: organization.id,
-      assignmentPlanIds: createdPlanIds,
-    });
-  }
+  await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
+    orgId: organization.id,
+    assignmentPlanIds: createdPlanIds,
+    mode: "create",
+  });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
 
@@ -17972,16 +18015,11 @@ app.put("/work-logs/:id", async (req, res) => {
   );
   const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   const touchedPlanIds = normalizePlanIdList([...previousPlanIds, ...nextPlanIds]);
-  if (touchedPlanIds.length > 0) {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId: organization.id,
-      assignmentPlanIds: touchedPlanIds,
-    });
-    await persistAssignmentPlanProgressSnapshot({
-      orgId: organization.id,
-      assignmentPlanIds: touchedPlanIds,
-    });
-  }
+  await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
+    orgId: organization.id,
+    assignmentPlanIds: touchedPlanIds,
+    mode: "update",
+  });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });
 
@@ -18017,16 +18055,11 @@ app.delete("/work-logs/:id", async (req, res) => {
   const deletedPlanIds = normalizePlanIdList(
     ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
   );
-  if (deletedPlanIds.length > 0) {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId: organization.id,
-      assignmentPlanIds: deletedPlanIds,
-    });
-    await persistAssignmentPlanProgressSnapshot({
-      orgId: organization.id,
-      assignmentPlanIds: deletedPlanIds,
-    });
-  }
+  await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
+    orgId: organization.id,
+    assignmentPlanIds: deletedPlanIds,
+    mode: "delete",
+  });
   res.status(204).send();
 });
 
