@@ -20701,6 +20701,22 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   }
   const rawErrorMessage = getErrorMessage(error, String(error));
   const workLogTrace = (req as any)?.__workLogTrace;
+  const workLogRequestId = resolveOptionalString(workLogTrace?.requestId, null);
+  if (workLogRequestId) {
+    res.setHeader("X-WorkLog-Request-Id", workLogRequestId);
+  }
+  const respondWithTrackedError = (
+    statusCode: number,
+    body: Record<string, unknown>
+  ) => {
+    if (workLogRequestId && body.requestId === undefined) {
+      return res.status(statusCode).json({
+        ...body,
+        requestId: workLogRequestId,
+      });
+    }
+    return res.status(statusCode).json(body);
+  };
   if (workLogTrace && typeof workLogTrace === "object") {
     console.error(
       `[work-logs:${String(workLogTrace.mode || "unknown")}] req=${String(
@@ -20810,13 +20826,16 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
 
   const status = getErrorStatus(error);
   if (status !== null) {
-    return res.status(status).json({
+    return respondWithTrackedError(status, {
       ok: false,
       error: getErrorMessage(error, "request failed"),
     });
   }
   console.error(`[api] ${req.method} ${req.originalUrl}`, error);
-  return res.status(500).json({ ok: false, error: "internal server error" });
+  return respondWithTrackedError(500, {
+    ok: false,
+    error: "internal server error",
+  });
 });
 
 const port = Number(process.env.PORT) || 4000;
