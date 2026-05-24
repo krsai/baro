@@ -527,6 +527,15 @@ const resolveHydratedAssignmentMatch = (record, assignments = []) => {
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
+  const recordOrderNo = toText(record?.orderNo);
+  if (recordOrderNo) {
+    const exactOrderMatches = candidates.filter((assignment) =>
+      equalsText(assignment?.orderNo, recordOrderNo)
+    );
+    if (exactOrderMatches.length === 1) return exactOrderMatches[0];
+    if (exactOrderMatches.length > 0) candidates = exactOrderMatches;
+  }
+
   const processHint = buildRecordProcessHint(record);
   const candidatesWithProcess = candidates.filter((assignment) =>
     (Array.isArray(assignment?.processes) ? assignment.processes : []).some(
@@ -549,6 +558,15 @@ const resolveHydratedAssignmentMatch = (record, assignments = []) => {
   if (exactLabelMatches.length === 1) return exactLabelMatches[0];
   if (exactLabelMatches.length > 0) candidates = exactLabelMatches;
 
+  const recordQuantity = Math.max(0, Math.round(Number(record?.quantity) || 0));
+  if (recordQuantity > 0) {
+    const quantityMatches = candidates.filter(
+      (assignment) => resolveBaselineQuantity(assignment) === recordQuantity
+    );
+    if (quantityMatches.length === 1) return quantityMatches[0];
+    if (quantityMatches.length > 0) candidates = quantityMatches;
+  }
+
   const displayMetaKeys = new Set(
     candidates.map((assignment) =>
       [
@@ -563,6 +581,40 @@ const resolveHydratedAssignmentMatch = (record, assignments = []) => {
   }
 
   return null;
+};
+const buildAssignmentMatchSourceFromRow = (row = {}) => {
+  const rowAssignment = row?.assignment || null;
+  const rowProcess = row?.process || null;
+  return {
+    assignmentPlanId:
+      toPositiveIdOrNull(rowAssignment?.dbId) ??
+      toPositiveIdOrNull(rowAssignment?.id) ??
+      toPositiveIdOrNull(row?.assignmentPlanId),
+    styleId:
+      toText(rowAssignment?.styleId) ||
+      toText(row?.styleId),
+    styleName:
+      toText(rowAssignment?.label) ||
+      toText(rowAssignment?.styleName) ||
+      toText(row?.styleName),
+    processCode:
+      toText(rowProcess?.processCode) ||
+      toText(rowProcess?.code) ||
+      toText(row?.processCode),
+    processName:
+      toText(rowProcess?.name) ||
+      toText(rowProcess?.processName) ||
+      toText(row?.processName),
+    processNameKo:
+      toText(rowProcess?.nameKo) ||
+      toText(row?.processNameKo),
+    processNameEn:
+      toText(rowProcess?.nameEn) ||
+      toText(row?.processNameEn),
+    processNameVi:
+      toText(rowProcess?.nameVi) ||
+      toText(row?.processNameVi),
+  };
 };
 const buildProcessMetric = (process) => {
   const processId = toPositiveIdOrNull(process?.processId);
@@ -1133,6 +1185,13 @@ const WorkDetail = ({
     return `${selectedLineId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
   }, [selectedLineId, workDateKey, coverageStartDateKey]);
   const workerDebugEnabled = false;
+  const isCancelledRequestError = useCallback(
+    (error) =>
+      Number(error?.status) === 499 ||
+      error?.name === 'AbortError' ||
+      toText(error?.message).toLowerCase() === 'request cancelled',
+    []
+  );
 
   useEffect(() => {
     if (isMobile) {
@@ -1409,6 +1468,22 @@ const WorkDetail = ({
           );
         }
       })
+      .catch((error) => {
+        if (cancelled || isCancelledRequestError(error)) return;
+        console.error('[WorkDetail.loadWorkLogContext] error', {
+          orgId: activeOrgId,
+          factoryId: selectedFactoryId,
+          lineId: selectedLineId,
+          workDate: workDateKey,
+          coverageStartDate: coverageStartDateKey || workDateKey,
+          status: error?.status ?? null,
+          message: error?.message || String(error || ''),
+          details: error?.details ?? null,
+        });
+        setAllAssignmentPlans([]);
+        setAssignmentOptions([]);
+        setLineWorkers([]);
+      })
       .finally(() => {
         if (!cancelled) setLineDataLoading(false);
       });
@@ -1428,6 +1503,7 @@ const WorkDetail = ({
     selectedFactoryId,
     selectedLineId,
     coverageStartDateKey,
+    isCancelledRequestError,
     workDate,
     workDateKey,
     workerDebugEnabled,
@@ -1530,8 +1606,46 @@ const WorkDetail = ({
     [ctAssignmentPool]
   );
   const resolveAssignmentForRow = useCallback(
-    (row) => resolveAssignmentOption(row?.assignment, assignmentOptionMap),
-    [assignmentOptionMap]
+    (row) => {
+      const directAssignment = resolveAssignmentOption(row?.assignment, assignmentOptionMap);
+      if (directAssignment && !Boolean(directAssignment?.isLegacy)) {
+        return directAssignment;
+      }
+      const matchedAssignment = resolveHydratedAssignmentMatch(
+        buildAssignmentMatchSourceFromRow(row),
+        ctAssignmentPool
+      );
+      if (!matchedAssignment) return directAssignment;
+      return {
+        ...matchedAssignment,
+        ...row?.assignment,
+        dbId: matchedAssignment?.dbId ?? row?.assignment?.dbId ?? row?.assignment?.id ?? null,
+        id: matchedAssignment?.id ?? row?.assignment?.id ?? '',
+        orderNo: toText(matchedAssignment?.orderNo || row?.assignment?.orderNo),
+        label: toText(
+          row?.assignment?.label ||
+            matchedAssignment?.label ||
+            row?.assignment?.styleId ||
+            matchedAssignment?.styleId
+        ),
+        styleId: toText(row?.assignment?.styleId || matchedAssignment?.styleId),
+        quantity:
+          resolveBaselineQuantity(matchedAssignment) ??
+          resolveBaselineQuantity(row?.assignment) ??
+          null,
+        finalQuantity:
+          toPositiveIdOrNull(matchedAssignment?.finalQuantity) ??
+          toPositiveIdOrNull(row?.assignment?.finalQuantity) ??
+          null,
+        processes: Array.isArray(matchedAssignment?.processes)
+          ? matchedAssignment.processes
+          : Array.isArray(row?.assignment?.processes)
+            ? row.assignment.processes
+            : [],
+        isLegacy: false,
+      };
+    },
+    [assignmentOptionMap, ctAssignmentPool]
   );
   const resolveProcessForRow = useCallback((row, assignmentOverride = null) => {
     const assignment = assignmentOverride || resolveAssignmentForRow(row);
@@ -1887,7 +2001,7 @@ const WorkDetail = ({
       const rowId = toText(row?.id);
       const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
       const currentAssignment =
-        row?.assignment || resolvedMeta?.assignment || resolveAssignmentForRow(row) || null;
+        resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
       if (!currentAssignment) return null;
       const assignmentId = resolveStyleOptionId(currentAssignment);
       if (assignmentId) {
@@ -2110,9 +2224,9 @@ const WorkDetail = ({
       const rowId = toText(row?.id);
       const resolvedMeta = rowResolvedMetaById.get(rowId) || null;
       const currentAssignment =
-        row?.assignment || resolvedMeta?.assignment || resolveAssignmentForRow(row) || null;
+        resolvedMeta?.assignment || resolveAssignmentForRow(row) || row?.assignment || null;
       const currentProcess =
-        row?.process || resolveProcessForRow(row, currentAssignment) || resolvedMeta?.process || null;
+        resolvedMeta?.process || resolveProcessForRow(row, currentAssignment) || row?.process || null;
       if (!currentProcess) return null;
       const targetOptionId = buildProcessIdentityKey(currentProcess);
       if (targetOptionId) {
@@ -2518,6 +2632,8 @@ const WorkDetail = ({
             : '-';
         return {
           row,
+          rowAssignment,
+          rowProcess,
           rowNumber: rowOrderIndex >= 0 ? rowOrderIndex + 1 : null,
           canMoveUp: rowOrderIndex > 0,
           canMoveDown: rowOrderIndex >= 0 && rowOrderIndex < rows.length - 1,
@@ -2576,36 +2692,44 @@ const WorkDetail = ({
   );
   const desktopVisibleRowViewModels = visibleRowViewModels;
   useEffect(() => {
-    console.log(
-      '[WorkDetail.visibleRowMetaLabels]',
-      desktopVisibleRowViewModels.map((rowViewModel) => {
-        const rowAssignment =
-          rowViewModel.selectedStyleOption ||
-          rowViewModel.row?.assignment ||
-          null;
-        const rowProcess =
-          rowViewModel.selectedProcessOption?.process ||
-          rowViewModel.row?.process ||
-          null;
-        return {
-          rowId: toText(rowViewModel.row?.id),
-          styleLabel: rowViewModel.selectedStyleDisplayLabel,
-          styleMetaLabel: rowViewModel.selectedStyleOrderLabel,
-          assignmentOrderNo: toText(rowAssignment?.orderNo),
-          assignmentStyleId: toText(rowAssignment?.styleId),
-          assignmentLabel: toText(rowAssignment?.label),
-          assignmentQuantity: resolveBaselineQuantity(rowAssignment),
-          assignmentDbId: toPositiveIdOrNull(rowAssignment?.dbId),
-          processLabel: rowViewModel.selectedProcessDisplayLabel,
-          processMetaLabel: rowViewModel.selectedProcessMetaLabel,
-          processCode: toText(
-            rowProcess?.processCode || rowProcess?.code || rowProcess?.processKey
-          ),
-          processName: toText(rowProcess?.name || rowProcess?.processName),
-          processId: toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id),
-        };
-      })
-    );
+    const labelRows = desktopVisibleRowViewModels.map((rowViewModel) => {
+      const rowAssignment =
+        rowViewModel.selectedStyleOption ||
+        rowViewModel.rowAssignment ||
+        rowViewModel.row?.assignment ||
+        null;
+      const rowProcess =
+        rowViewModel.selectedProcessOption?.process ||
+        rowViewModel.rowProcess ||
+        rowViewModel.row?.process ||
+        null;
+      return {
+        rowId: toText(rowViewModel.row?.id),
+        styleLabel: rowViewModel.selectedStyleDisplayLabel,
+        styleMetaLabel: rowViewModel.selectedStyleOrderLabel,
+        assignmentOrderNo: toText(rowAssignment?.orderNo),
+        assignmentStyleId: toText(rowAssignment?.styleId),
+        assignmentLabel: toText(rowAssignment?.label),
+        assignmentQuantity: resolveBaselineQuantity(rowAssignment),
+        assignmentDbId: toPositiveIdOrNull(rowAssignment?.dbId),
+        assignmentIsLegacy: Boolean(rowAssignment?.isLegacy),
+        processLabel: rowViewModel.selectedProcessDisplayLabel,
+        processMetaLabel: rowViewModel.selectedProcessMetaLabel,
+        processCode: toText(
+          rowProcess?.processCode || rowProcess?.code || rowProcess?.processKey
+        ),
+        processName: toText(
+          rowProcess?.name ||
+            rowProcess?.processName ||
+            rowProcess?.nameKo ||
+            rowProcess?.nameEn ||
+            rowProcess?.nameVi
+        ),
+        processId: toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id),
+      };
+    });
+    console.log('[WorkDetail.visibleRowMetaLabels]', labelRows);
+    console.table(labelRows);
   }, [desktopVisibleRowViewModels]);
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
