@@ -5679,6 +5679,86 @@ const trySyncConfirmedOrdersToInProgressFromWorkRecords = async ({
     );
   }
 };
+const summarizeWorkLogRecordsForDebug = (records: any) =>
+  ensureArray(records).slice(0, 5).map((record, index) => ({
+    index,
+    workerId: toPositiveIntOrNull(record?.workerId),
+    workerName: resolveOptionalString(record?.workerName, null),
+    styleUid: toPositiveIntOrNull(record?.styleUid),
+    styleId: resolveOptionalString(record?.styleId, null),
+    processId: toPositiveIntOrNull(record?.processId),
+    processCode: resolveOptionalString(record?.processCode, null),
+    quantity: toNonNegativeInt(record?.quantity, 0),
+    assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
+  }));
+const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
+  const records = ensureArray(payload?.records);
+  return {
+    workDate: normalizeDateKey(payload?.workDate),
+    coverageStartDate: normalizeDateKey(payload?.coverageStartDate),
+    coverageEndDate: normalizeDateKey(payload?.coverageEndDate),
+    entryMode: resolveOptionalString(payload?.entryMode, null),
+    factoryId: toPositiveIntOrNull(payload?.factoryId),
+    lineId: toPositiveIntOrNull(payload?.lineId),
+    workerCount: toNonNegativeInt(payload?.workerCount, 0),
+    itemCount: toNonNegativeInt(payload?.itemCount, records.length),
+    totalContractedSeconds: toNonNegativeInt(payload?.totalContractedSeconds, 0),
+    noteLength: resolveOptionalString(payload?.note, "")?.length ?? 0,
+    recordCount: records.length,
+    assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records).slice(0, 10),
+    recordsPreview: summarizeWorkLogRecordsForDebug(records),
+  };
+};
+const createWorkLogMutationTrace = ({
+  req,
+  mode,
+  payload,
+  workLogId = null,
+}: {
+  req: any;
+  mode: "create" | "update" | "delete";
+  payload?: any;
+  workLogId?: number | null;
+}) => {
+  const requestId = `wl-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  const trace = {
+    requestId,
+    mode,
+    step: "start",
+    workLogId,
+    payloadSummary: summarizeWorkLogPayloadForDebug(payload),
+  };
+  req.__workLogTrace = trace;
+  console.log(
+    `[work-logs:${mode}] req=${requestId} step=start`,
+    trace.payloadSummary
+  );
+  return trace;
+};
+const updateWorkLogMutationTrace = (
+  trace: {
+    requestId: string;
+    mode: "create" | "update" | "delete";
+    step: string;
+    workLogId?: number | null;
+    payloadSummary?: any;
+  } | null,
+  step: string,
+  details: Record<string, unknown> | null = null
+) => {
+  if (!trace) return;
+  trace.step = step;
+  if (details && Object.keys(details).length > 0) {
+    console.log(
+      `[work-logs:${trace.mode}] req=${trace.requestId} step=${step}`,
+      details
+    );
+    return;
+  }
+  console.log(`[work-logs:${trace.mode}] req=${trace.requestId} step=${step}`);
+};
 const trySyncAssignmentPlanSideEffectsAfterWorkLogMutation = async ({
   orgId,
   assignmentPlanIds,
@@ -17644,7 +17724,13 @@ app.post("/work-logs", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
+  const trace = createWorkLogMutationTrace({
+    req,
+    mode: "create",
+    payload: req.body ?? {},
+  });
   const normalized = normalizeWorkLogPayload(req.body ?? {});
+  updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -17663,6 +17749,9 @@ app.post("/work-logs", async (req, res) => {
         .json({ ok: false, error: translateWorkLogErrorMessage("factory not found") });
     }
   }
+  updateWorkLogMutationTrace(trace, "factory-validated", {
+    factoryId: normalized.factoryId,
+  });
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.workDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
@@ -17684,6 +17773,10 @@ app.post("/work-logs", async (req, res) => {
       ),
     });
   }
+  updateWorkLogMutationTrace(trace, "employment-validated", {
+    workerIds,
+    workerFilterDateKey,
+  });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
@@ -17704,9 +17797,16 @@ app.post("/work-logs", async (req, res) => {
       ),
     });
   }
+  updateWorkLogMutationTrace(trace, "line-validated", {
+    lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
+    lineName: lineValidation.line?.name ?? null,
+  });
   normalized.records = await syncWorkRecordRefs({
     orgId: organization.id,
     records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "refs-synced", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
     orgId: organization.id,
@@ -17718,6 +17818,7 @@ app.post("/work-logs", async (req, res) => {
       .status(duplicateValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(duplicateValidation.error) });
   }
+  updateWorkLogMutationTrace(trace, "duplicates-validated");
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -17728,7 +17829,11 @@ app.post("/work-logs", async (req, res) => {
       .status(ctSnapshotValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
+  updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
+  updateWorkLogMutationTrace(trace, "updated-by-resolved", {
+    updatedBy,
+  });
 
   const created = await prisma.$transaction(async (tx) => {
     const {
@@ -17793,22 +17898,37 @@ app.post("/work-logs", async (req, res) => {
 
     return next;
   }, { timeout: 30000 });
+  trace.workLogId = created.id;
+  updateWorkLogMutationTrace(trace, "transaction-committed", {
+    workLogId: created.id,
+  });
   const createdWithRecords = await fetchWorkLogByIdWithRecordsSafe({
     orgId: organization.id,
     workLogId: created.id,
     recordSelect: WORK_RECORD_WITH_REFS_INCLUDE,
     warnLabel: "work-logs:create:readback",
   });
+  updateWorkLogMutationTrace(trace, "readback-loaded", {
+    workLogId: created.id,
+    hasReadback: Boolean(createdWithRecords),
+  });
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
     mode: "create",
   });
+  updateWorkLogMutationTrace(trace, "order-sync-finished");
   const createdPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
     orgId: organization.id,
     assignmentPlanIds: createdPlanIds,
     mode: "create",
+  });
+  updateWorkLogMutationTrace(trace, "assignment-side-effects-finished", {
+    assignmentPlanIds: createdPlanIds,
+  });
+  updateWorkLogMutationTrace(trace, "response-ready", {
+    workLogId: created.id,
   });
   res.status(201).json(toWorkLogResponse(createdWithRecords ?? created));
 });
@@ -17828,6 +17948,12 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage("invalid id") });
   }
 
+  const trace = createWorkLogMutationTrace({
+    req,
+    mode: "update",
+    payload: req.body ?? {},
+    workLogId: id,
+  });
   const existing = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
     select: {
@@ -17846,6 +17972,7 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage("work log not found") });
   }
   const normalized = normalizeWorkLogPayload(req.body ?? {}, existing);
+  updateWorkLogMutationTrace(trace, "normalized", summarizeWorkLogPayloadForDebug(normalized));
   if (normalized.invalidWorkerRecordIndex >= 0) {
     return res.status(400).json({
       ok: false,
@@ -17864,6 +17991,9 @@ app.put("/work-logs/:id", async (req, res) => {
         .json({ ok: false, error: translateWorkLogErrorMessage("factory not found") });
     }
   }
+  updateWorkLogMutationTrace(trace, "factory-validated", {
+    factoryId: normalized.factoryId,
+  });
   const workerIds = collectWorkRecordWorkerIds(normalized.records);
   const workerFilterDateKey = normalizeDateKey(normalized.coverageStartDate) || normalized.workDate;
   const employmentValidation = await validateWorkLogWorkerEmploymentWindow({
@@ -17885,6 +18015,10 @@ app.put("/work-logs/:id", async (req, res) => {
       ),
     });
   }
+  updateWorkLogMutationTrace(trace, "employment-validated", {
+    workerIds,
+    workerFilterDateKey,
+  });
   const lineValidation = await validateWorkLogLineWorkers({
     orgId: organization.id,
     lineId: normalized.lineId,
@@ -17905,9 +18039,16 @@ app.put("/work-logs/:id", async (req, res) => {
       ),
     });
   }
+  updateWorkLogMutationTrace(trace, "line-validated", {
+    lineId: lineValidation.line?.id ?? normalized.lineId ?? null,
+    lineName: lineValidation.line?.name ?? null,
+  });
   normalized.records = await syncWorkRecordRefs({
     orgId: organization.id,
     records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "refs-synced", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
   });
   const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
     orgId: organization.id,
@@ -17920,6 +18061,7 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(duplicateValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(duplicateValidation.error) });
   }
+  updateWorkLogMutationTrace(trace, "duplicates-validated");
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -17930,7 +18072,11 @@ app.put("/work-logs/:id", async (req, res) => {
       .status(ctSnapshotValidation.status)
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
+  updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
+  updateWorkLogMutationTrace(trace, "updated-by-resolved", {
+    updatedBy,
+  });
 
   const updated = await prisma.$transaction(async (tx) => {
     const {
@@ -17999,17 +18145,26 @@ app.put("/work-logs/:id", async (req, res) => {
 
     return next;
   }, { timeout: 30000 });
+  trace.workLogId = updated.id;
+  updateWorkLogMutationTrace(trace, "transaction-committed", {
+    workLogId: updated.id,
+  });
   const updatedWithRecords = await fetchWorkLogByIdWithRecordsSafe({
     orgId: organization.id,
     workLogId: updated.id,
     recordSelect: WORK_RECORD_WITH_REFS_INCLUDE,
     warnLabel: "work-logs:update:readback",
   });
+  updateWorkLogMutationTrace(trace, "readback-loaded", {
+    workLogId: updated.id,
+    hasReadback: Boolean(updatedWithRecords),
+  });
   await trySyncConfirmedOrdersToInProgressFromWorkRecords({
     orgId: organization.id,
     records: normalized.records,
     mode: "update",
   });
+  updateWorkLogMutationTrace(trace, "order-sync-finished");
   const previousPlanIds = normalizePlanIdList(
     ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
   );
@@ -18019,6 +18174,12 @@ app.put("/work-logs/:id", async (req, res) => {
     orgId: organization.id,
     assignmentPlanIds: touchedPlanIds,
     mode: "update",
+  });
+  updateWorkLogMutationTrace(trace, "assignment-side-effects-finished", {
+    assignmentPlanIds: touchedPlanIds,
+  });
+  updateWorkLogMutationTrace(trace, "response-ready", {
+    workLogId: updated.id,
   });
   res.json(toWorkLogResponse(updatedWithRecords ?? updated));
 });
@@ -18034,6 +18195,12 @@ app.delete("/work-logs/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid id" });
   }
 
+  const trace = createWorkLogMutationTrace({
+    req,
+    mode: "delete",
+    payload: { workLogId: id },
+    workLogId: id,
+  });
   const existing = await prisma.workLog.findFirst({
     where: { id, orgId: organization.id },
     select: {
@@ -18049,8 +18216,17 @@ app.delete("/work-logs/:id", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
+  updateWorkLogMutationTrace(trace, "work-log-found", {
+    workLogId: existing.id,
+    assignmentPlanIds: normalizePlanIdList(
+      ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+    ),
+  });
   await prisma.workLog.delete({
     where: { id: existing.id },
+  });
+  updateWorkLogMutationTrace(trace, "deleted", {
+    workLogId: existing.id,
   });
   const deletedPlanIds = normalizePlanIdList(
     ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
@@ -18059,6 +18235,12 @@ app.delete("/work-logs/:id", async (req, res) => {
     orgId: organization.id,
     assignmentPlanIds: deletedPlanIds,
     mode: "delete",
+  });
+  updateWorkLogMutationTrace(trace, "assignment-side-effects-finished", {
+    assignmentPlanIds: deletedPlanIds,
+  });
+  updateWorkLogMutationTrace(trace, "response-ready", {
+    workLogId: existing.id,
   });
   res.status(204).send();
 });
@@ -20518,6 +20700,23 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     });
   }
   const rawErrorMessage = getErrorMessage(error, String(error));
+  const workLogTrace = (req as any)?.__workLogTrace;
+  if (workLogTrace && typeof workLogTrace === "object") {
+    console.error(
+      `[work-logs:${String(workLogTrace.mode || "unknown")}] req=${String(
+        workLogTrace.requestId || "unknown"
+      )} failed at step=${String(workLogTrace.step || "unknown")}`,
+      {
+        method: req.method,
+        path: req.originalUrl,
+        workLogId: workLogTrace.workLogId ?? null,
+        status: getErrorStatus(error),
+        code: getErrorCode(error),
+        message: rawErrorMessage,
+        payloadSummary: workLogTrace.payloadSummary ?? null,
+      }
+    );
+  }
   if (prismaErrorCode === "P2022") {
     const missingColumn = resolveOptionalString((error as any)?.meta?.column, null);
     const suffix = missingColumn ? ` (missing column: ${missingColumn})` : "";

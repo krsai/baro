@@ -137,6 +137,15 @@ const WorkEntry = () => {
 
   const handleSave = useCallback(
     async (payload) => {
+      console.log('[WorkEntry.handleSave] called', {
+        mode: isEditMode ? 'update' : 'create',
+        workLogId: routeWorkLogId ?? null,
+        orgId: activeOrgId ?? null,
+        workDate: payload?.workDate ?? '',
+        coverageStartDate: payload?.coverageStartDate ?? '',
+        lineId: payload?.lineId ?? null,
+        recordCount: Array.isArray(payload?.records) ? payload.records.length : 0,
+      });
       setSaving(true);
       try {
         if (isEditMode && routeWorkLogId) {
@@ -161,6 +170,14 @@ const WorkEntry = () => {
           label: buildWorkDetailTabLabel(payload?.workDate, languageCode),
         });
       } catch (error) {
+        console.error('[WorkEntry.handleSave] error', {
+          mode: isEditMode ? 'update' : 'create',
+          workLogId: routeWorkLogId ?? null,
+          orgId: activeOrgId ?? null,
+          status: error?.status ?? null,
+          message: error?.message || String(error || ''),
+          details: error?.details ?? null,
+        });
         showNotification(
           error?.message || resolveText(TEXT.saveError, languageCode, '기록 저장에 실패했습니다.'),
           'error'

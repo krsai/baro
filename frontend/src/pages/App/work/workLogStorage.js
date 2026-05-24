@@ -39,6 +39,36 @@ const summarizeDuplicateAssignments = (assignments = []) => {
     .filter((entry) => entry.count > 1)
     .slice(0, 10);
 };
+const summarizeWorkLogRecords = (records = []) =>
+  (Array.isArray(records) ? records : []).slice(0, 5).map((record, index) => ({
+    index,
+    workerId: record?.workerId ?? null,
+    workerName: toText(record?.workerName),
+    styleUid: record?.styleUid ?? null,
+    styleId: toText(record?.styleId),
+    styleName: toText(record?.styleName),
+    processId: record?.processId ?? null,
+    processCode: toText(record?.processCode),
+    quantity: Number(record?.quantity ?? 0) || 0,
+    assignmentPlanId: record?.assignmentPlanId ?? null,
+  }));
+const summarizeWorkLogPayload = (payload = {}) => {
+  const records = Array.isArray(payload?.records) ? payload.records : [];
+  return {
+    workDate: payload?.workDate ?? '',
+    coverageStartDate: payload?.coverageStartDate ?? '',
+    coverageEndDate: payload?.coverageEndDate ?? '',
+    entryMode: payload?.entryMode ?? '',
+    factoryId: payload?.factoryId ?? null,
+    lineId: payload?.lineId ?? null,
+    workerCount: payload?.workerCount ?? null,
+    itemCount: payload?.itemCount ?? null,
+    totalContractedSeconds: payload?.totalContractedSeconds ?? null,
+    noteLength: toText(payload?.note).length,
+    recordCount: records.length,
+    recordsPreview: summarizeWorkLogRecords(records),
+  };
+};
 
 export const loadWorkLogs = async (options = {}) => {
   const query = buildQueryString({
@@ -56,11 +86,33 @@ export const loadWorkLogs = async (options = {}) => {
 
 export const appendWorkLog = async (payload, options = {}) => {
   const query = buildQueryString({ orgId: options?.orgId });
-  return requestJSON('/work-logs' + query, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload ?? {}),
+  const payloadSummary = summarizeWorkLogPayload(payload);
+  console.log('[appendWorkLog] called', {
+    orgId: options?.orgId ?? null,
+    payload: payloadSummary,
   });
+  try {
+    const result = await requestJSON('/work-logs' + query, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload ?? {}),
+    });
+    console.log('[appendWorkLog] success', {
+      orgId: options?.orgId ?? null,
+      workLogId: result?.id ?? null,
+      recordCount: Array.isArray(result?.records) ? result.records.length : null,
+    });
+    return result;
+  } catch (error) {
+    console.error('[appendWorkLog] error', {
+      orgId: options?.orgId ?? null,
+      status: error?.status ?? null,
+      message: error?.message || String(error || ''),
+      details: error?.details ?? null,
+      payload: payloadSummary,
+    });
+    throw error;
+  }
 };
 
 export const findWorkLogById = async (workLogId, options = {}) => {
@@ -117,29 +169,64 @@ export const loadWorkLogContext = async (options = {}) => {
 
 export const updateWorkLog = async (workLogId, payload, options = {}) => {
   if (!workLogId) return null;
+  const payloadSummary = summarizeWorkLogPayload(payload);
+  console.log('[updateWorkLog] called', {
+    orgId: options?.orgId ?? null,
+    workLogId,
+    payload: payloadSummary,
+  });
   try {
     const query = buildQueryString({ orgId: options?.orgId });
-    return await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
+    const result = await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload ?? {}),
     });
+    console.log('[updateWorkLog] success', {
+      orgId: options?.orgId ?? null,
+      workLogId: result?.id ?? workLogId,
+      recordCount: Array.isArray(result?.records) ? result.records.length : null,
+    });
+    return result;
   } catch (error) {
     if (error?.status === 404) return null;
+    console.error('[updateWorkLog] error', {
+      orgId: options?.orgId ?? null,
+      workLogId,
+      status: error?.status ?? null,
+      message: error?.message || String(error || ''),
+      details: error?.details ?? null,
+      payload: payloadSummary,
+    });
     throw error;
   }
 };
 
 export const deleteWorkLog = async (workLogId, options = {}) => {
   if (!workLogId) return false;
+  console.log('[deleteWorkLog] called', {
+    orgId: options?.orgId ?? null,
+    workLogId,
+  });
   try {
     const query = buildQueryString({ orgId: options?.orgId });
     await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {
       method: 'DELETE',
     });
+    console.log('[deleteWorkLog] success', {
+      orgId: options?.orgId ?? null,
+      workLogId,
+    });
     return true;
   } catch (error) {
     if (error?.status === 404) return false;
+    console.error('[deleteWorkLog] error', {
+      orgId: options?.orgId ?? null,
+      workLogId,
+      status: error?.status ?? null,
+      message: error?.message || String(error || ''),
+      details: error?.details ?? null,
+    });
     throw error;
   }
 };
