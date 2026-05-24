@@ -110,6 +110,8 @@ const WORK_LOG_DETAIL_RECORD_SELECT = {
     workerId: true,
     workerName: true,
     customerName: true,
+    orderNo: true,
+    lineId: true,
     styleUid: true,
     styleId: true,
     styleName: true,
@@ -5038,6 +5040,8 @@ const normalizeWorkRecordPayloadList = (records: any) => {
       workerId,
       workerName: resolveOptionalString(record.workerName, null),
       customerName: resolveOptionalString(record.customerName, null),
+      orderNo: resolveOptionalString(record.orderNo, null),
+      lineId: toPositiveIntOrNull(record.lineId),
       styleId: resolveOptionalString(record.styleId, null),
       styleUid: toPositiveIntOrNull(record.styleUid),
       styleName: resolveOptionalString(record.styleName, null),
@@ -5233,6 +5237,8 @@ const syncWorkRecordRefs = async ({
 
     return {
       ...record,
+      orderNo: resolveOptionalString(record?.orderNo, null),
+      lineId: toPositiveIntOrNull(record?.lineId),
       styleUid: linkedStyle?.uid ?? toPositiveIntOrNull(record?.styleUid),
       styleId: resolveOptionalString(linkedStyle?.styleId ?? record?.styleId, null),
       styleName: resolveOptionalString(linkedStyle?.name ?? record?.styleName, null),
@@ -5248,6 +5254,49 @@ const syncWorkRecordRefs = async ({
       colorId: linkedColor?.id ?? toPositiveIntOrNull(record?.colorId),
       colorCode: resolveOptionalString(linkedColor?.code ?? record?.colorCode, null),
       colorName: resolveOptionalString(linkedColor?.name ?? record?.colorName, null),
+    };
+  });
+};
+const attachCanonicalFieldsToWorkRecords = async ({
+  orgId,
+  lineId,
+  records,
+  db = prisma,
+}: {
+  orgId: number;
+  lineId: number | null;
+  records: any[];
+  db?: any;
+}) => {
+  const normalizedRecords = ensureArray(records).filter(
+    (record) => record && typeof record === "object"
+  );
+  if (normalizedRecords.length === 0) return [];
+
+  const normalizedLineId = toPositiveIntOrNull(lineId);
+  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(normalizedRecords);
+  const planRows =
+    assignmentPlanIds.length > 0
+      ? await db.assignmentPlan.findMany({
+          where: { orgId, id: { in: assignmentPlanIds } },
+          select: { id: true, orderNo: true },
+        })
+      : [];
+  const orderNoByPlanId = new Map(
+    ensureArray(planRows).map((plan) => [
+      toPositiveIntOrNull(plan?.id),
+      resolveOptionalString(plan?.orderNo, null),
+    ])
+  );
+
+  return normalizedRecords.map((record) => {
+    const assignmentPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+    const planOrderNo =
+      assignmentPlanId != null ? orderNoByPlanId.get(assignmentPlanId) ?? null : null;
+    return {
+      ...record,
+      orderNo: resolveOptionalString(planOrderNo ?? record?.orderNo, null),
+      lineId: normalizedLineId ?? toPositiveIntOrNull(record?.lineId),
     };
   });
 };
@@ -5684,6 +5733,8 @@ const summarizeWorkLogRecordsForDebug = (records: any) =>
     index,
     workerId: toPositiveIntOrNull(record?.workerId),
     workerName: resolveOptionalString(record?.workerName, null),
+    orderNo: resolveOptionalString(record?.orderNo, null),
+    lineId: toPositiveIntOrNull(record?.lineId),
     styleUid: toPositiveIntOrNull(record?.styleUid),
     styleId: resolveOptionalString(record?.styleId, null),
     processId: toPositiveIntOrNull(record?.processId),
@@ -7221,6 +7272,8 @@ const toWorkRecordResponse = (record: any) => ({
   workerId: record?.workerId ?? null,
   workerName: record?.workerName ?? "",
   customerName: record?.customerName ?? "",
+  orderNo: resolveOptionalString(record?.orderNo, "") ?? "",
+  lineId: toPositiveIntOrNull(record?.lineId),
   styleUid: resolveWorkRecordStyleUid(record),
   styleId: resolveWorkRecordStyleId(record) ?? "",
   styleName: resolveWorkRecordStyleName(record) ?? "",
@@ -14954,6 +15007,396 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
   return groups;
 };
 
+const resolveAssignmentPlanStyleMatchKeys = (plan: any): string[] => {
+  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const candidates = [
+    parseAssignmentCardIdentity(plan?.cardId)?.styleId,
+    parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
+    (snapshot as any)?.styleId,
+    plan?.label,
+  ];
+  return Array.from(
+    new Set(
+      candidates
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => normalizeComparableText(value))
+        .filter(Boolean)
+    )
+  );
+};
+
+const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
+  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  return Array.from(
+    new Set(
+      [
+        parseAssignmentCardIdentity(plan?.cardId)?.styleId,
+        parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
+        (snapshot as any)?.styleId,
+        plan?.label,
+      ]
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+};
+
+const resolveWorkRecordStyleMatchKeysForAssignmentSchedule = (record: any): string[] =>
+  Array.from(
+    new Set(
+      [record?.styleId, record?.styleName]
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => normalizeComparableText(value))
+        .filter(Boolean)
+    )
+  );
+
+const resolveWorkRecordOrderNoMatchKey = (record: any): string | null => {
+  const orderNo = resolveOptionalString(record?.orderNo, null);
+  return orderNo ? normalizeComparableText(orderNo) : null;
+};
+
+const resolveOrphanWorkRecordLineId = (record: any): number | null =>
+  toPositiveIntOrNull(record?.lineId) ??
+  resolveWorkLogLineMeta(record?.workLog?.records).lineId;
+
+const doesAssignmentScheduleContainWorkDate = ({
+  startDateKey,
+  endDateKey,
+  workDateKey,
+}: {
+  startDateKey: string | null;
+  endDateKey: string | null;
+  workDateKey: string | null;
+}): boolean => {
+  const normalizedWorkDateKey = normalizeDateKey(workDateKey);
+  if (!normalizedWorkDateKey) return false;
+  const normalizedStartDateKey = normalizeDateKey(startDateKey);
+  const normalizedEndDateKey = normalizeDateKey(endDateKey);
+  if (normalizedStartDateKey && normalizedWorkDateKey < normalizedStartDateKey) return false;
+  if (normalizedEndDateKey && normalizedWorkDateKey > normalizedEndDateKey) return false;
+  return Boolean(normalizedStartDateKey || normalizedEndDateKey);
+};
+
+const buildAssignmentPlanProgressMatchCandidates = ({
+  plans,
+  stateAssignmentsByExternalId,
+}: {
+  plans: any[];
+  stateAssignmentsByExternalId: Map<string, any>;
+}) =>
+  ensureArray(plans)
+    .map((plan) => {
+      const planId = toPositiveIntOrNull(plan?.id);
+      if (!planId) return null;
+      const externalId = resolveOptionalString(plan?.externalId, null);
+      const stateAssignment = externalId
+        ? stateAssignmentsByExternalId.get(externalId) || null
+        : null;
+      const snapshotSchedule = normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.schedule || null;
+      const startDateKey =
+        normalizeDateKey(stateAssignment?.startDateKey) ||
+        normalizeDateKey(snapshotSchedule?.startDateKey) ||
+        null;
+      const endDateKey =
+        normalizeDateKey(stateAssignment?.endDateKey) ||
+        normalizeDateKey(snapshotSchedule?.endDateKey) ||
+        null;
+      return {
+        planId,
+        lineId: toPositiveIntOrNull(plan?.lineId),
+        orderNoKey: resolveOptionalString(plan?.orderNo, null)
+          ? normalizeComparableText(plan.orderNo)
+          : null,
+        styleKeys: resolveAssignmentPlanStyleMatchKeys(plan),
+        processKeys: new Set(resolveAssignmentPlanRequiredProcessGroups(plan).flat()),
+        startDateKey,
+        endDateKey,
+      };
+    })
+    .filter(
+      (
+        candidate
+      ): candidate is {
+        planId: number;
+        lineId: number | null;
+        orderNoKey: string | null;
+        styleKeys: string[];
+        processKeys: Set<string>;
+        startDateKey: string | null;
+        endDateKey: string | null;
+      } => Boolean(candidate && candidate.styleKeys.length > 0)
+    );
+
+const resolveOrphanWorkRecordAssignmentPlanMatch = ({
+  record,
+  candidates,
+}: {
+  record: any;
+  candidates: Array<{
+    planId: number;
+    lineId: number | null;
+    orderNoKey: string | null;
+    styleKeys: string[];
+    processKeys: Set<string>;
+    startDateKey: string | null;
+    endDateKey: string | null;
+  }>;
+}) => {
+  const styleKeys = resolveWorkRecordStyleMatchKeysForAssignmentSchedule(record);
+  if (styleKeys.length === 0) return null;
+
+  let narrowed = candidates.filter((candidate) =>
+    candidate.styleKeys.some((styleKey) => styleKeys.includes(styleKey))
+  );
+  if (narrowed.length === 0) return null;
+
+  const orderNoKey = resolveWorkRecordOrderNoMatchKey(record);
+  if (orderNoKey) {
+    const orderMatched = narrowed.filter((candidate) => candidate.orderNoKey === orderNoKey);
+    if (orderMatched.length > 0) narrowed = orderMatched;
+  }
+
+  const lineId = resolveOrphanWorkRecordLineId(record);
+  if (lineId) {
+    const lineMatched = narrowed.filter((candidate) => candidate.lineId === lineId);
+    if (lineMatched.length > 0) narrowed = lineMatched;
+  }
+
+  const workDateKey =
+    resolveWorkLogCoverageEndDate(record?.workLog, record?.workLog?.workDate) ||
+    normalizeDateKey(record?.workLog?.workDate);
+  if (workDateKey) {
+    const dateMatched = narrowed.filter((candidate) =>
+      doesAssignmentScheduleContainWorkDate({
+        startDateKey: candidate.startDateKey,
+        endDateKey: candidate.endDateKey,
+        workDateKey,
+      })
+    );
+    if (dateMatched.length > 0) narrowed = dateMatched;
+  }
+
+  const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+  if (processKey && processKey !== "unknown") {
+    const processMatched = narrowed.filter(
+      (candidate) =>
+        candidate.processKeys.size === 0 || candidate.processKeys.has(processKey)
+    );
+    if (processMatched.length > 0) narrowed = processMatched;
+  }
+
+  return narrowed.length === 1 ? narrowed[0]! : null;
+};
+
+const loadAssignmentPlanProgressWorkRows = async ({
+  orgId,
+  plans,
+  stateAssignmentsByExternalId,
+  context,
+}: {
+  orgId: number;
+  plans: any[];
+  stateAssignmentsByExternalId: Map<string, any>;
+  context: string;
+}) => {
+  const normalizedPlans = ensureArray(plans).filter(Boolean);
+  const planIds = normalizedPlans
+    .map((plan) => toPositiveIntOrNull(plan?.id))
+    .filter((planId): planId is number => planId !== null);
+  if (planIds.length === 0) return [];
+
+  const selectWorkRows = async ({
+    where,
+    includeCoverage,
+  }: {
+    where: Prisma.WorkRecordWhereInput;
+    includeCoverage: boolean;
+  }) =>
+    prisma.workRecord.findMany({
+      where,
+      select: {
+        assignmentPlanId: true,
+        orderNo: true,
+        lineId: true,
+        styleId: true,
+        styleName: true,
+        processId: true,
+        processCode: true,
+        quantity: true,
+        workLog: {
+          select: {
+            workDate: true,
+            records: true,
+            ...(includeCoverage
+              ? {
+                  coverageStartDate: true,
+                  coverageEndDate: true,
+                  entryMode: true,
+                }
+              : {}),
+          },
+        },
+      },
+    });
+
+  let directRows: any[] = [];
+  try {
+    directRows = await selectWorkRows({
+      where: {
+        orgId,
+        assignmentPlanId: { in: planIds },
+      },
+      includeCoverage: true,
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    directRows = await selectWorkRows({
+      where: {
+        orgId,
+        assignmentPlanId: { in: planIds },
+      },
+      includeCoverage: false,
+    });
+    console.warn(
+      `[assignment-plan-progress] orgId=${orgId} ${context}: missing work-log coverage columns; fallback work-record projection activated`
+    );
+  }
+
+  const candidates = buildAssignmentPlanProgressMatchCandidates({
+    plans: normalizedPlans,
+    stateAssignmentsByExternalId,
+  });
+  if (candidates.length === 0) return directRows;
+
+  const styleLabels = Array.from(
+    new Set(
+      normalizedPlans
+        .flatMap((plan) => resolveAssignmentPlanStyleQueryValues(plan))
+        .map((value) => resolveOptionalString(value, null))
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  if (styleLabels.length === 0) return directRows;
+
+  const datedCandidates = candidates.filter(
+    (candidate) => candidate.startDateKey || candidate.endDateKey
+  );
+  const dateBounds =
+    datedCandidates.length > 0
+      ? datedCandidates.reduce(
+          (range, candidate) => {
+            const startDateKey = normalizeDateKey(candidate.startDateKey);
+            const endDateKey = normalizeDateKey(candidate.endDateKey);
+            return {
+              minDateKey:
+                startDateKey &&
+                (!range.minDateKey || startDateKey < range.minDateKey)
+                  ? startDateKey
+                  : range.minDateKey,
+              maxDateKey:
+                endDateKey && (!range.maxDateKey || endDateKey > range.maxDateKey)
+                  ? endDateKey
+                  : range.maxDateKey,
+            };
+          },
+          { minDateKey: null as string | null, maxDateKey: null as string | null }
+        )
+      : { minDateKey: null as string | null, maxDateKey: null as string | null };
+
+  let orphanRows: any[] = [];
+  try {
+    orphanRows = await selectWorkRows({
+      where: {
+        orgId,
+        assignmentPlanId: null,
+        quantity: { gt: 0 },
+        OR: [
+          { styleId: { in: styleLabels } },
+          { styleName: { in: styleLabels } },
+        ],
+        workLog: {
+          ...(dateBounds.minDateKey && !dateBounds.maxDateKey
+            ? { workDate: { gte: dateBounds.minDateKey } }
+            : {}),
+          ...(!dateBounds.minDateKey && dateBounds.maxDateKey
+            ? { workDate: { lte: dateBounds.maxDateKey } }
+            : {}),
+          ...(dateBounds.minDateKey && dateBounds.maxDateKey
+            ? {
+                workDate: {
+                  gte: dateBounds.minDateKey,
+                  lte: dateBounds.maxDateKey,
+                },
+              }
+            : {}),
+        },
+      },
+      includeCoverage: true,
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    orphanRows = await selectWorkRows({
+      where: {
+        orgId,
+        assignmentPlanId: null,
+        quantity: { gt: 0 },
+        OR: [
+          { styleId: { in: styleLabels } },
+          { styleName: { in: styleLabels } },
+        ],
+        workLog: {
+          ...(dateBounds.minDateKey && !dateBounds.maxDateKey
+            ? { workDate: { gte: dateBounds.minDateKey } }
+            : {}),
+          ...(!dateBounds.minDateKey && dateBounds.maxDateKey
+            ? { workDate: { lte: dateBounds.maxDateKey } }
+            : {}),
+          ...(dateBounds.minDateKey && dateBounds.maxDateKey
+            ? {
+                workDate: {
+                  gte: dateBounds.minDateKey,
+                  lte: dateBounds.maxDateKey,
+                },
+              }
+            : {}),
+        },
+      },
+      includeCoverage: false,
+    });
+  }
+
+  let inferredCount = 0;
+  let unmatchedCount = 0;
+  const inferredRows = orphanRows.reduce((rows, record) => {
+    const matchedCandidate = resolveOrphanWorkRecordAssignmentPlanMatch({
+      record,
+      candidates,
+    });
+    if (!matchedCandidate) {
+      unmatchedCount += 1;
+      return rows;
+    }
+    inferredCount += 1;
+    rows.push({
+      ...record,
+      assignmentPlanId: matchedCandidate.planId,
+      _inferredAssignmentPlanId: matchedCandidate.planId,
+    });
+    return rows;
+  }, [] as any[]);
+
+  if (inferredCount > 0 || unmatchedCount > 0) {
+    console.info(
+      `[assignment-plan-progress] orgId=${orgId} ${context}: directRows=${directRows.length} inferredRows=${inferredCount} unmatchedOrphans=${unmatchedCount}`
+    );
+  }
+
+  return [...directRows, ...inferredRows];
+};
+
 const resolveProducedQtyFromProcessKeyTotals = ({
   processTotalsByKey,
   processKeyGroups = [],
@@ -15132,57 +15575,12 @@ const buildAssignmentPlanProgressRows = async (
       .filter((value): value is string => Boolean(value))
   );
 
-  const planIds = plans
-    .map((plan) => Number(plan.id))
-    .filter((id) => Number.isFinite(id));
-
-  let workRows: any[] = [];
-  if (planIds.length > 0) {
-    try {
-      workRows = await prisma.workRecord.findMany({
-        where: {
-          orgId,
-          assignmentPlanId: { in: planIds },
-        },
-        select: {
-          assignmentPlanId: true,
-          processId: true,
-          processCode: true,
-          quantity: true,
-          workLog: {
-            select: {
-              workDate: true,
-              coverageStartDate: true,
-              coverageEndDate: true,
-              entryMode: true,
-            },
-          },
-        },
-      });
-    } catch (error) {
-      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-      workRows = await prisma.workRecord.findMany({
-        where: {
-          orgId,
-          assignmentPlanId: { in: planIds },
-        },
-        select: {
-          assignmentPlanId: true,
-          processId: true,
-          processCode: true,
-          quantity: true,
-          workLog: {
-            select: {
-              workDate: true,
-            },
-          },
-        },
-      });
-      console.warn(
-        `[assignment-plan-progress] orgId=${orgId} missing work-log coverage columns; fallback work-record projection activated`
-      );
-    }
-  }
+  const workRows = await loadAssignmentPlanProgressWorkRows({
+    orgId,
+    plans,
+    stateAssignmentsByExternalId,
+    context: "buildAssignmentPlanProgressRows",
+  });
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
   const getStats = (planId: number): AssignmentPlanWorkStats => {
@@ -15672,25 +16070,58 @@ const resolveAssignmentPlanProducedQuantity = async ({
   const normalizedPlanId = toPositiveIntOrNull(planId);
   if (normalizedPlanId === null) return 0;
 
-  const processAggregates = await prisma.workRecord.groupBy({
-    by: ["processId", "processCode"],
-    where: {
-      orgId,
-      assignmentPlanId: normalizedPlanId,
-    },
-    _sum: { quantity: true },
-  });
-  const processTotals = ensureArray(processAggregates)
-    .map((row) => Math.max(0, Math.round(Number(row?._sum?.quantity ?? 0))))
-    .filter((quantity) => quantity > 0);
+  const [plans, boardState] = await Promise.all([
+    findAssignmentPlansWithSelectFallback({
+      where: { orgId, id: normalizedPlanId },
+      orderBy: [{ id: "asc" }],
+      selectAttempts: [
+        ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
+        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+        ASSIGNMENT_PLAN_SELECT_CORE,
+      ],
+      context: "resolveAssignmentPlanProducedQuantity",
+    }),
+    prisma.assignmentBoardState.findUnique({
+      where: { orgId },
+      select: { assignments: true },
+    }),
+  ]);
+  const plan = ensureArray(plans)[0];
+  if (!plan) return 0;
 
-  if (processTotals.length > 0) {
-    return resolveAssignmentProducedQuantityFromProcessTotals({
-      processTotals,
-      baselineQuantity,
-    });
-  }
-  return 0;
+  const stateAssignmentsByExternalId = normalizeStateAssignments(
+    boardState?.assignments
+  ).reduce((map, row) => {
+    const externalId = resolveAssignmentExternalId(row);
+    if (!externalId || map.has(externalId)) return map;
+    map.set(externalId, row);
+    return map;
+  }, new Map<string, any>());
+
+  const workRows = await loadAssignmentPlanProgressWorkRows({
+    orgId,
+    plans: [plan],
+    stateAssignmentsByExternalId,
+    context: "resolveAssignmentPlanProducedQuantity",
+  });
+  const processTotalsByKey = new Map<string, number>();
+  workRows.forEach((record) => {
+    const matchedPlanId = toPositiveIntOrNull(record?.assignmentPlanId);
+    if (matchedPlanId !== normalizedPlanId) return;
+    const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
+    if (quantity <= 0) return;
+    const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
+    processTotalsByKey.set(
+      processKey,
+      (processTotalsByKey.get(processKey) || 0) + quantity
+    );
+  });
+
+  const processKeyGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
+  return resolveProducedQtyFromProcessKeyTotals({
+    processTotalsByKey,
+    processKeyGroups,
+  });
 };
 
 const buildAssignmentPlanCloseResponse = (plan: any) => {
@@ -16917,6 +17348,14 @@ app.post("/work-logs", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
+  normalized.records = await attachCanonicalFieldsToWorkRecords({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
+  });
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   updateWorkLogMutationTrace(trace, "updated-by-resolved", {
     updatedBy,
@@ -16952,6 +17391,8 @@ app.post("/work-logs", async (req, res) => {
             workerId: record.workerId,
             workerName: record.workerName ?? null,
             customerName: record.customerName ?? null,
+            orderNo: record.orderNo ?? null,
+            lineId: record.lineId ?? null,
             styleId: record.styleId ?? null,
             styleUid: record.styleUid ?? null,
             styleName: record.styleName ?? null,
@@ -17153,6 +17594,14 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
+  normalized.records = await attachCanonicalFieldsToWorkRecords({
+    orgId: organization.id,
+    lineId: lineValidation.line?.id ?? normalized.lineId,
+    records: normalized.records,
+  });
+  updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
+    payload: summarizeWorkLogPayloadForDebug(normalized),
+  });
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   updateWorkLogMutationTrace(trace, "updated-by-resolved", {
     updatedBy,
@@ -17192,6 +17641,8 @@ app.put("/work-logs/:id", async (req, res) => {
             workerId: record.workerId,
             workerName: record.workerName ?? null,
             customerName: record.customerName ?? null,
+            orderNo: record.orderNo ?? null,
+            lineId: record.lineId ?? null,
             styleId: record.styleId ?? null,
             styleUid: record.styleUid ?? null,
             styleName: record.styleName ?? null,

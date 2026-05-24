@@ -774,6 +774,8 @@ model WorkRecord {
   workerId         Int?
   workerName       String?
   customerName     String?
+  orderNo          String?
+  lineId           Int?
   styleId          String?
   styleUid         Int?
   styleName        String?
@@ -798,6 +800,8 @@ model WorkRecord {
   @@index([orgId, workLogId])
   @@index([orgId, workerId])
   @@index([orgId, styleId])
+  @@index([orgId, orderNo])
+  @@index([orgId, lineId])
   @@index([styleUid])
   @@index([assignmentPlanId])
   @@index([workLogId])
