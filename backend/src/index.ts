@@ -17861,10 +17861,7 @@ app.post("/work-logs", async (req, res) => {
             lineName: lineValidation.line?.name ?? null,
           },
         },
-        select: buildWorkLogSelectWithOptionalCoverage({
-          includeCoverage,
-          includeRecords: false,
-        }),
+        select: { id: true },
       });
 
       if (records.length > 0) {
@@ -18100,10 +18097,7 @@ app.put("/work-logs/:id", async (req, res) => {
             lineName: lineValidation.line?.name ?? null,
           },
         },
-        select: buildWorkLogSelectWithOptionalCoverage({
-          includeCoverage,
-          includeRecords: false,
-        }),
+        select: { id: true },
       });
 
       await tx.workRecord.deleteMany({
