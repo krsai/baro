@@ -8216,6 +8216,13 @@ const stripCoverageFieldsFromWorkLogData = <T extends Record<string, any>>(
   } = workLogData || {};
   return rest as Omit<T, "coverageStartDate" | "coverageEndDate" | "entryMode">;
 };
+const buildWorkLogWriteDataWithOptionalCoverage = <T extends Record<string, any>>(
+  workLogData: T,
+  options: { includeCoverage: boolean }
+) =>
+  options.includeCoverage
+    ? workLogData
+    : stripCoverageFieldsFromWorkLogData(workLogData);
 const toWorkLogResponse = (workLog: any) => {
   const lineMeta = resolveWorkLogLineMeta(workLog?.records);
   const coverageEndDate = resolveWorkLogCoverageEndDate(workLog, workLog?.workDate);
@@ -17835,20 +17842,19 @@ app.post("/work-logs", async (req, res) => {
     updatedBy,
   });
 
-  const created = await prisma.$transaction(async (tx) => {
-    const {
-      records,
-      invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-      lineId: _lineId,
-      lineName: _lineName,
-      ...workLogData
-    } = normalized;
-    let next: any;
-    try {
-      next = await tx.workLog.create({
+  const {
+    records,
+    invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
+    lineId: _lineId,
+    lineName: _lineName,
+    ...workLogData
+  } = normalized;
+  const createWorkLogTransaction = async (includeCoverage: boolean) =>
+    prisma.$transaction(async (tx) => {
+      const next = await tx.workLog.create({
         data: {
           orgId: organization.id,
-          ...workLogData,
+          ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
           records: {
             lineId: lineValidation.line?.id ?? null,
@@ -17856,48 +17862,41 @@ app.post("/work-logs", async (req, res) => {
           },
         },
       });
-    } catch (error) {
-      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-      next = await tx.workLog.create({
-        data: {
-          orgId: organization.id,
-          ...stripCoverageFieldsFromWorkLogData(workLogData),
-          updatedBy,
-          records: {
-            lineId: lineValidation.line?.id ?? null,
-            lineName: lineValidation.line?.name ?? null,
-          },
-        },
-      });
-      console.warn(
-        `[work-logs:create] orgId=${organization.id} missing work-log coverage columns; fallback create payload activated`
-      );
-    }
 
-    if (records.length > 0) {
-      await tx.workRecord.createMany({
-        data: records.map((record: any) => ({
-          orgId: organization.id,
-          workLogId: next.id,
-          workerId: record.workerId,
-          workerName: record.workerName ?? null,
-          customerName: record.customerName ?? null,
-          styleId: record.styleId ?? null,
-          styleUid: record.styleUid ?? null,
-          styleName: record.styleName ?? null,
-          processId: record.processId ?? null,
-          processCode: record.processCode ?? null,
-          colorId: record.colorId ?? null,
-          colorCode: record.colorCode ?? null,
-          ctSeconds: record.ctSeconds ?? 0,
-          quantity: record.quantity ?? 0,
-          assignmentPlanId: record.assignmentPlanId ?? null,
-        })),
-      });
-    }
+      if (records.length > 0) {
+        await tx.workRecord.createMany({
+          data: records.map((record: any) => ({
+            orgId: organization.id,
+            workLogId: next.id,
+            workerId: record.workerId,
+            workerName: record.workerName ?? null,
+            customerName: record.customerName ?? null,
+            styleId: record.styleId ?? null,
+            styleUid: record.styleUid ?? null,
+            styleName: record.styleName ?? null,
+            processId: record.processId ?? null,
+            processCode: record.processCode ?? null,
+            colorId: record.colorId ?? null,
+            colorCode: record.colorCode ?? null,
+            ctSeconds: record.ctSeconds ?? 0,
+            quantity: record.quantity ?? 0,
+            assignmentPlanId: record.assignmentPlanId ?? null,
+          })),
+        });
+      }
 
-    return next;
-  }, { timeout: 30000 });
+      return next;
+    }, { timeout: 30000 });
+  let created: any;
+  try {
+    created = await createWorkLogTransaction(true);
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    console.warn(
+      `[work-logs:create] orgId=${organization.id} missing work-log coverage columns; retrying create without coverage fields`
+    );
+    created = await createWorkLogTransaction(false);
+  }
   trace.workLogId = created.id;
   updateWorkLogMutationTrace(trace, "transaction-committed", {
     workLogId: created.id,
@@ -18078,20 +18077,19 @@ app.put("/work-logs/:id", async (req, res) => {
     updatedBy,
   });
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const {
-      records,
-      invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
-      lineId: _lineId,
-      lineName: _lineName,
-      ...workLogData
-    } = normalized;
-    let next: any;
-    try {
-      next = await tx.workLog.update({
+  const {
+    records,
+    invalidWorkerRecordIndex: _invalidWorkerRecordIndex,
+    lineId: _lineId,
+    lineName: _lineName,
+    ...workLogData
+  } = normalized;
+  const updateWorkLogTransaction = async (includeCoverage: boolean) =>
+    prisma.$transaction(async (tx) => {
+      const next = await tx.workLog.update({
         where: { id: existing.id },
         data: {
-          ...workLogData,
+          ...buildWorkLogWriteDataWithOptionalCoverage(workLogData, { includeCoverage }),
           updatedBy,
           records: {
             lineId: lineValidation.line?.id ?? null,
@@ -18099,52 +18097,45 @@ app.put("/work-logs/:id", async (req, res) => {
           },
         },
       });
-    } catch (error) {
-      if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-      next = await tx.workLog.update({
-        where: { id: existing.id },
-        data: {
-          ...stripCoverageFieldsFromWorkLogData(workLogData),
-          updatedBy,
-          records: {
-            lineId: lineValidation.line?.id ?? null,
-            lineName: lineValidation.line?.name ?? null,
-          },
-        },
+
+      await tx.workRecord.deleteMany({
+        where: { orgId: organization.id, workLogId: existing.id },
       });
-      console.warn(
-        `[work-logs:update] orgId=${organization.id} workLogId=${existing.id} missing work-log coverage columns; fallback update payload activated`
-      );
-    }
 
-    await tx.workRecord.deleteMany({
-      where: { orgId: organization.id, workLogId: existing.id },
-    });
+      if (records.length > 0) {
+        await tx.workRecord.createMany({
+          data: records.map((record: any) => ({
+            orgId: organization.id,
+            workLogId: existing.id,
+            workerId: record.workerId,
+            workerName: record.workerName ?? null,
+            customerName: record.customerName ?? null,
+            styleId: record.styleId ?? null,
+            styleUid: record.styleUid ?? null,
+            styleName: record.styleName ?? null,
+            processId: record.processId ?? null,
+            processCode: record.processCode ?? null,
+            colorId: record.colorId ?? null,
+            colorCode: record.colorCode ?? null,
+            ctSeconds: record.ctSeconds ?? 0,
+            quantity: record.quantity ?? 0,
+            assignmentPlanId: record.assignmentPlanId ?? null,
+          })),
+        });
+      }
 
-    if (records.length > 0) {
-      await tx.workRecord.createMany({
-        data: records.map((record: any) => ({
-          orgId: organization.id,
-          workLogId: existing.id,
-          workerId: record.workerId,
-          workerName: record.workerName ?? null,
-          customerName: record.customerName ?? null,
-          styleId: record.styleId ?? null,
-          styleUid: record.styleUid ?? null,
-          styleName: record.styleName ?? null,
-          processId: record.processId ?? null,
-          processCode: record.processCode ?? null,
-          colorId: record.colorId ?? null,
-          colorCode: record.colorCode ?? null,
-          ctSeconds: record.ctSeconds ?? 0,
-          quantity: record.quantity ?? 0,
-          assignmentPlanId: record.assignmentPlanId ?? null,
-        })),
-      });
-    }
-
-    return next;
-  }, { timeout: 30000 });
+      return next;
+    }, { timeout: 30000 });
+  let updated: any;
+  try {
+    updated = await updateWorkLogTransaction(true);
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    console.warn(
+      `[work-logs:update] orgId=${organization.id} workLogId=${existing.id} missing work-log coverage columns; retrying update without coverage fields`
+    );
+    updated = await updateWorkLogTransaction(false);
+  }
   trace.workLogId = updated.id;
   updateWorkLogMutationTrace(trace, "transaction-committed", {
     workLogId: updated.id,
