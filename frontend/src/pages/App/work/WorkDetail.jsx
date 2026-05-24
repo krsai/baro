@@ -719,6 +719,55 @@ const buildHydratedRows = ({ records, workers, assignments }) => {
         }
       : legacyProcess;
 
+    console.log('[WorkDetail.buildHydratedRows]', {
+      index,
+      record: {
+        workerId: record?.workerId ?? null,
+        workerName: toText(record?.workerName),
+        orderNo: toText(record?.orderNo),
+        styleId: toText(record?.styleId),
+        styleName: toText(record?.styleName),
+        processId: record?.processId ?? null,
+        processCode: toText(record?.processCode),
+        processName: toText(record?.processName),
+        assignmentPlanId: record?.assignmentPlanId ?? null,
+        quantity: Number(record?.quantity ?? 0) || 0,
+      },
+      matchedAssignment: matchedAssignment
+        ? {
+            dbId: matchedAssignment?.dbId ?? null,
+            id: toText(matchedAssignment?.id),
+            orderNo: toText(matchedAssignment?.orderNo),
+            label: toText(matchedAssignment?.label),
+            styleId: toText(matchedAssignment?.styleId),
+            quantity: resolveBaselineQuantity(matchedAssignment),
+          }
+        : null,
+      assignment: assignment
+        ? {
+            dbId: assignment?.dbId ?? null,
+            id: toText(assignment?.id),
+            orderNo: toText(assignment?.orderNo),
+            label: toText(assignment?.label),
+            styleId: toText(assignment?.styleId),
+            quantity: resolveBaselineQuantity(assignment),
+            processCount: Array.isArray(assignment?.processes) ? assignment.processes.length : 0,
+            isLegacy: Boolean(assignment?.isLegacy),
+          }
+        : null,
+      process: process
+        ? {
+            id: toText(process?.id),
+            processId: process?.processId ?? null,
+            code: toText(process?.code || process?.processCode),
+            name: toText(process?.name),
+            nameKo: toText(process?.nameKo),
+            nameEn: toText(process?.nameEn),
+            nameVi: toText(process?.nameVi),
+          }
+        : null,
+    });
+
     return createBlankRow({
       worker: matchedWorker,
       styleOptionId: resolveStyleOptionId(assignment),
@@ -2526,6 +2575,38 @@ const WorkDetail = ({
     ]
   );
   const desktopVisibleRowViewModels = visibleRowViewModels;
+  useEffect(() => {
+    console.log(
+      '[WorkDetail.visibleRowMetaLabels]',
+      desktopVisibleRowViewModels.map((rowViewModel) => {
+        const rowAssignment =
+          rowViewModel.selectedStyleOption ||
+          rowViewModel.row?.assignment ||
+          null;
+        const rowProcess =
+          rowViewModel.selectedProcessOption?.process ||
+          rowViewModel.row?.process ||
+          null;
+        return {
+          rowId: toText(rowViewModel.row?.id),
+          styleLabel: rowViewModel.selectedStyleDisplayLabel,
+          styleMetaLabel: rowViewModel.selectedStyleOrderLabel,
+          assignmentOrderNo: toText(rowAssignment?.orderNo),
+          assignmentStyleId: toText(rowAssignment?.styleId),
+          assignmentLabel: toText(rowAssignment?.label),
+          assignmentQuantity: resolveBaselineQuantity(rowAssignment),
+          assignmentDbId: toPositiveIdOrNull(rowAssignment?.dbId),
+          processLabel: rowViewModel.selectedProcessDisplayLabel,
+          processMetaLabel: rowViewModel.selectedProcessMetaLabel,
+          processCode: toText(
+            rowProcess?.processCode || rowProcess?.code || rowProcess?.processKey
+          ),
+          processName: toText(rowProcess?.name || rowProcess?.processName),
+          processId: toPositiveIdOrNull(rowProcess?.processId ?? rowProcess?.id),
+        };
+      })
+    );
+  }, [desktopVisibleRowViewModels]);
   useEffect(() => {
     if (!editingField?.rowId || !editingField?.field) return;
 
