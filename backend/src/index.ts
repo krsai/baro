@@ -18215,11 +18215,15 @@ app.delete("/work-logs/:id", async (req, res) => {
       ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
     ),
   });
-  await prisma.workLog.delete({
-    where: { id: existing.id },
+  const deleteResult = await prisma.workLog.deleteMany({
+    where: { id: existing.id, orgId: organization.id },
   });
+  if (deleteResult.count < 1) {
+    return res.status(404).json({ ok: false, error: "work log not found" });
+  }
   updateWorkLogMutationTrace(trace, "deleted", {
     workLogId: existing.id,
+    deletedCount: deleteResult.count,
   });
   const deletedPlanIds = normalizePlanIdList(
     ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
