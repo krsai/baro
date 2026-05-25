@@ -69,14 +69,21 @@ AT(q) = a*q + b
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 
 ### ⚠️ DB 적용 메모
-- `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 현재 **additive SQL**로 실DB에 반영됨.
-- 시간 컬럼 리네임:
-  - `AssignmentPlan.totalSeconds` 또는 카드 총합용 `AssignmentPlan.stSeconds` → `AssignmentPlan.stTotalSeconds`
-  - `AssignmentPlan.contractedSeconds` → `AssignmentPlan.ctTotalSeconds`
-  - `AtTrainingBucket.totalSeconds` → `AtTrainingBucket.laborInputSeconds`
-  - `WorkLog.totalContractedSeconds` → `WorkLog.totalCtSeconds`
-- 새 환경/운영 DB 반영 시 컬럼 rename SQL과 보드 JSON 키 이관(`totalSeconds`/`stSeconds` → `stTotalSeconds`, `contractedSeconds` → `ctTotalSeconds`)이 같이 적용되어야 함.
-- 이유: Prisma migration history drift로 `prisma db push` / `migrate deploy`가 바로 통과하지 않음.
+- 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. 배포 시 자동 실행됨 (`railway:predeploy` → `prisma:apply:migration-fix`).
+- Prisma migration history drift로 `prisma migrate deploy`는 사용하지 않음. `prisma db push` 사용.
+- `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 additive SQL로 실DB에 반영됨.
+- 시간 컬럼 리네임 (완료):
+  - `AssignmentPlan.totalSeconds`/`stSeconds` → `stTotalSeconds`
+  - `AssignmentPlan.contractedSeconds` → `ctTotalSeconds`
+  - `AtTrainingBucket.totalSeconds` → `laborInputSeconds`
+  - `WorkLog.totalContractedSeconds` → `totalCtSeconds`
+- ctSnapshot JSON 내부 구 키명 정리 (2026-05-25 완료):
+  - `totalAgreedSeconds` → `totalCtSeconds`
+  - `totalAgreedPerPieceSeconds` → `totalCtPerPieceSeconds`
+  - `agreedAt` / `agreedBy` → `updatedAt` / `updatedBy`
+  - `agreedSeconds` / `agreedPerPieceSeconds` → `ctSeconds` / `ctPerPieceSeconds` (공정 행)
+  - `ctAgreedSnapshot` → `ctSnapshot` (AssignmentBoardState.assignments 내부)
+  - 코드의 구 이름 fallback도 모두 제거됨. 신규 코드에 구 이름 쓰지 않는다.
 - 새 환경 반영 시에는 해당 컬럼과 enum 2개(`AssignmentCloseMode`, `AssignmentCloseBasis`)를 먼저 생성해야 함.
 
 ---
