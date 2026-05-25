@@ -166,6 +166,12 @@ function assertGeneratedPrismaClientShape() {
   if (!hasField("WorkRecord", "styleUid")) {
     staleSignals.push("WorkRecord.styleUid missing");
   }
+  if (!hasField("WorkRecord", "orderNo")) {
+    staleSignals.push("WorkRecord.orderNo missing");
+  }
+  if (!hasField("WorkRecord", "lineId")) {
+    staleSignals.push("WorkRecord.lineId missing");
+  }
   if (!hasField("Organization", "assignmentCards")) {
     staleSignals.push("Organization.assignmentCards missing");
   }
@@ -20377,6 +20383,7 @@ let atAutoSyncInProgress = false;
 let atAutoSyncLastTrainingMonthKey: string | null = null;
 let atAutoSyncRunHistoryTableReady = false;
 let atAutoSyncRunHistoryTableUnsupported = false;
+let workRecordCanonicalSchemaReady = false;
 
 type AutoAtSyncSummary = {
   manufacturerCount: number;
@@ -20388,6 +20395,22 @@ type AutoAtSyncExecutionResult = {
   executed: boolean;
   reason: "done" | "already_completed" | "locked_by_other_instance";
   summary: AutoAtSyncSummary;
+};
+
+const ensureWorkRecordCanonicalSchemaReady = async () => {
+  if (workRecordCanonicalSchemaReady) return;
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "WorkRecord"
+      ADD COLUMN IF NOT EXISTS "orderNo" TEXT,
+      ADD COLUMN IF NOT EXISTS "lineId" INTEGER;
+
+    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
+      ON "WorkRecord"("orgId", "orderNo");
+
+    CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
+      ON "WorkRecord"("orgId", "lineId");
+  `);
+  workRecordCanonicalSchemaReady = true;
 };
 
 const ensureAtAutoSyncRunHistoryTable = async () => {
@@ -20756,6 +20779,7 @@ const bootstrapApplicationServices = async () => {
 
   try {
     await ensureDatabaseReady();
+    await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();

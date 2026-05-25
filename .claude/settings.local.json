@@ -33,7 +33,11 @@
       "PowerShell(railway --version 2>&1)",
       "PowerShell(psql --version 2>&1)",
       "Bash(npx prisma *)",
-      "Bash(awk 'NR>=75 && NR<=560' \"c:/Users/krsai/OneDrive/바탕 화면/baro/backend/src/index.ts\")"
+      "Bash(awk 'NR>=75 && NR<=560' \"c:/Users/krsai/OneDrive/바탕 화면/baro/backend/src/index.ts\")",
+      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\agent.md\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\\\\test-initial-state.md\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\\\\deploy-railway.md\" -Force)",
+      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\" -Force)"
     ]
   }
 }
