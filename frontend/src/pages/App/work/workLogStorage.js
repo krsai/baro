@@ -52,6 +52,30 @@ const summarizeWorkLogRecords = (records = []) =>
     quantity: Number(record?.quantity ?? 0) || 0,
     assignmentPlanId: record?.assignmentPlanId ?? null,
   }));
+const buildWorkLogRecordDebugRows = (records = []) =>
+  (Array.isArray(records) ? records : []).map((record, index) => ({
+    index: index + 1,
+    workerId: record?.workerId ?? null,
+    workerName: toText(record?.workerName),
+    assignmentPlanId: record?.assignmentPlanId ?? null,
+    orderNo: toText(record?.orderNo),
+    lineId: record?.lineId ?? null,
+    styleUid: record?.styleUid ?? null,
+    styleId: toText(record?.styleId),
+    styleName: toText(record?.styleName),
+    processId: record?.processId ?? null,
+    processCode: toText(record?.processCode),
+    quantity: Number(record?.quantity ?? 0) || 0,
+    ctSeconds: Number(record?.ctSeconds ?? 0) || 0,
+  }));
+const logWorkLogPayloadDebug = (label, payloadSummary, payload = {}) => {
+  const rows = buildWorkLogRecordDebugRows(payload?.records);
+  console.log(`[${label}] payload-summary`, payloadSummary);
+  if (rows.length === 0) return;
+  console.groupCollapsed(`[${label}] records (${rows.length})`);
+  console.table(rows);
+  console.groupEnd();
+};
 const summarizeWorkLogPayload = (payload = {}) => {
   const records = Array.isArray(payload?.records) ? payload.records : [];
   return {
@@ -91,6 +115,7 @@ export const appendWorkLog = async (payload, options = {}) => {
     orgId: options?.orgId ?? null,
     payload: payloadSummary,
   });
+  logWorkLogPayloadDebug('appendWorkLog', payloadSummary, payload);
   try {
     const result = await requestJSON('/work-logs' + query, {
       method: 'POST',
@@ -175,6 +200,7 @@ export const updateWorkLog = async (workLogId, payload, options = {}) => {
     workLogId,
     payload: payloadSummary,
   });
+  logWorkLogPayloadDebug('updateWorkLog', payloadSummary, payload);
   try {
     const query = buildQueryString({ orgId: options?.orgId });
     const result = await requestJSON(`/work-logs/${encodeURIComponent(workLogId)}` + query, {

@@ -5748,6 +5748,30 @@ const summarizeWorkLogRecordsForDebug = (records: any) =>
     quantity: toNonNegativeInt(record?.quantity, 0),
     assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
   }));
+const buildWorkLogRecordTraceRows = (records: any, limit = 40) =>
+  ensureArray(records)
+    .slice(0, limit)
+    .map((record, index) => ({
+      index: index + 1,
+      workerId: toPositiveIntOrNull(record?.workerId),
+      workerName: resolveOptionalString(record?.workerName, null),
+      assignmentPlanId: toPositiveIntOrNull(record?.assignmentPlanId),
+      orderNo: resolveOptionalString(record?.orderNo, null),
+      lineId: toPositiveIntOrNull(record?.lineId),
+      styleUid: toPositiveIntOrNull(record?.styleUid),
+      styleId: resolveOptionalString(record?.styleId, null),
+      styleName: resolveOptionalString(record?.styleName, null),
+      processId: toPositiveIntOrNull(record?.processId),
+      processCode: resolveOptionalString(record?.processCode, null),
+      quantity: toNonNegativeInt(record?.quantity, 0),
+      ctSeconds: toNonNegativeInt(record?.ctSeconds, 0),
+    }));
+const logWorkLogRecordTrace = (label: string, records: any) => {
+  const rows = buildWorkLogRecordTraceRows(records);
+  if (rows.length === 0) return;
+  console.log(`${label} recordRows=${rows.length}`);
+  console.table(rows);
+};
 const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
   const records = ensureArray(payload?.records);
   return {
@@ -5791,6 +5815,10 @@ const createWorkLogMutationTrace = ({
   console.log(
     `[work-logs:${mode}] req=${requestId} step=start`,
     trace.payloadSummary
+  );
+  logWorkLogRecordTrace(
+    `[work-logs:${mode}] req=${requestId} step=start`,
+    payload?.records
   );
   return trace;
 };
@@ -17362,6 +17390,10 @@ app.post("/work-logs", async (req, res) => {
   updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });
+  logWorkLogRecordTrace(
+    `[work-logs:create] req=${trace.requestId} step=canonical-fields-attached`,
+    normalized.records
+  );
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   updateWorkLogMutationTrace(trace, "updated-by-resolved", {
     updatedBy,
@@ -17608,6 +17640,10 @@ app.put("/work-logs/:id", async (req, res) => {
   updateWorkLogMutationTrace(trace, "canonical-fields-attached", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });
+  logWorkLogRecordTrace(
+    `[work-logs:update] req=${trace.requestId} step=canonical-fields-attached`,
+    normalized.records
+  );
   const updatedBy = await resolveWorkLogUpdatedBy(organization.id, req);
   updateWorkLogMutationTrace(trace, "updated-by-resolved", {
     updatedBy,
