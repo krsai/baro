@@ -8,7 +8,6 @@ const CANDIDATE_FIELD_KEYS = [
   'savedBy',
   'modifiedBy',
   'lastUpdatedBy',
-  'agreedBy',
 ];
 
 export const normalizeUpdaterPath = (path) => {

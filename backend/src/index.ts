@@ -8491,17 +8491,11 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   const quantity = Math.max(1, toOptionalNonNegativeInt(value?.quantity, 1) ?? 1);
   const stSeconds = toOptionalProcessSeconds(value?.stSeconds);
   const ctSeconds = toOptionalProcessSeconds(
-    value?.ctSeconds ??
-      value?.agreedSeconds ??
-      value?.requestedSeconds ??
-      value?.proposedSeconds ??
-      value?.stSeconds
+    value?.ctSeconds ?? value?.stSeconds
   );
   if (ctSeconds == null || ctSeconds <= 0) return null;
   const ctPerPieceSeconds = toOptionalFloat(
-    value?.ctPerPieceSeconds ??
-      value?.agreedPerPieceSeconds ??
-      ctSeconds * quantity,
+    value?.ctPerPieceSeconds ?? ctSeconds * quantity,
     quantity * ctSeconds
   );
   const processCode = resolveOptionalString(
@@ -8543,10 +8537,7 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     .filter((item): item is any => Boolean(item));
   const quantity = toOptionalNonNegativeInt(value?.quantity, null);
   const totalCtPerPieceSeconds =
-    toOptionalFloat(
-      value?.totalCtPerPieceSeconds ?? value?.totalAgreedPerPieceSeconds,
-      null
-    ) ??
+    toOptionalFloat(value?.totalCtPerPieceSeconds, null) ??
     (processes.length > 0
       ? processes.reduce(
           (sum, item) => sum + (Number(item?.ctPerPieceSeconds) || 0),
@@ -8554,17 +8545,14 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
         )
       : null);
   const totalCtSeconds =
-    toOptionalNonNegativeInt(
-      value?.totalCtSeconds ?? value?.totalAgreedSeconds,
-      null
-    ) ??
+    toOptionalNonNegativeInt(value?.totalCtSeconds, null) ??
     (quantity != null && totalCtPerPieceSeconds != null
       ? Math.max(0, Math.round(totalCtPerPieceSeconds * quantity))
       : null);
 
   return {
-    updatedAt: toIsoDateStringOrNull(value?.updatedAt ?? value?.agreedAt),
-    updatedBy: resolveOptionalString(value?.updatedBy ?? value?.agreedBy, null),
+    updatedAt: toIsoDateStringOrNull(value?.updatedAt),
+    updatedBy: resolveOptionalString(value?.updatedBy, null),
     quantity,
     schedule: normalizeAssignmentCtSnapshotSchedule(value?.schedule),
     totalStPerPieceSeconds: toOptionalFloat(value?.totalStPerPieceSeconds, null),
@@ -8592,9 +8580,7 @@ const normalizeStateAssignmentItem = (item: any): any => {
     toOptionalNonNegativeInt(item?.stTotalSeconds, null);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
-  const ctSnapshot = normalizeAssignmentCtSnapshot(
-    item?.ctSnapshot ?? item?.ctAgreedSnapshot
-  );
+  const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
   const {
     proposalSeconds: _proposalSeconds,
     ctStatus: _ctStatus,

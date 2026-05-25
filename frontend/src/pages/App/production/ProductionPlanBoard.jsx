@@ -1279,18 +1279,8 @@ const ProductionPlanBoard = () => {
       ).reduce((map, item) => {
         const processKey = String(item?.processKey || '').trim();
         if (!processKey) return map;
-        const assignedSeconds = toOptionalPositiveNumber(
-          item?.ctSeconds ??
-            item?.agreedSeconds ??
-            item?.requestedSeconds ??
-            item?.proposedSeconds
-        );
-        const savedSeconds = toOptionalPositiveNumber(
-          item?.ctSeconds ??
-            item?.agreedSeconds ??
-            item?.requestedSeconds ??
-            item?.proposedSeconds
-        );
+        const assignedSeconds = toOptionalPositiveNumber(item?.ctSeconds);
+        const savedSeconds = toOptionalPositiveNumber(item?.ctSeconds);
         map.set(processKey, {
           assignedSeconds,
           savedSeconds,

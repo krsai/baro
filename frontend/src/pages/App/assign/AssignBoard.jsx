@@ -1242,12 +1242,7 @@ const buildAssignmentCtSnapshotForSave = ({
               source: seed.process?.basis || snapshotProcess?.basis || 'CT',
             };
       const snapshotStSeconds = toOptionalPositiveNumber(snapshotProcess?.stSeconds);
-      const snapshotCtSeconds = toOptionalPositiveNumber(
-        snapshotProcess?.ctSeconds ??
-          snapshotProcess?.agreedSeconds ??
-          snapshotProcess?.requestedSeconds ??
-          snapshotProcess?.proposedSeconds
-      );
+      const snapshotCtSeconds = toOptionalPositiveNumber(snapshotProcess?.ctSeconds);
       const stSeconds =
         stDraftSeconds ??
         snapshotStSeconds ??
@@ -4169,12 +4164,7 @@ const AssignBoard = () => {
       if (!processKey) return map;
       map.set(processKey, {
         stSeconds: toOptionalPositiveNumber(item?.stSeconds),
-        ctSeconds: toOptionalPositiveNumber(
-          item?.ctSeconds ??
-            item?.agreedSeconds ??
-            item?.requestedSeconds ??
-            item?.proposedSeconds
-        ),
+        ctSeconds: toOptionalPositiveNumber(item?.ctSeconds),
       });
       return map;
     }, new Map());

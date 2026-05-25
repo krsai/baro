@@ -39,11 +39,7 @@ const normalizeSnapshotProcess = (process, index = 0) => {
 
   const quantity = Math.max(1, Math.round(toOptionalNumber(process.quantity, 1) || 1));
   const ctSeconds = toOptionalProcessSeconds(
-    process.ctSeconds ??
-      process.agreedSeconds ??
-      process.requestedSeconds ??
-      process.proposedSeconds ??
-      process.stSeconds
+    process.ctSeconds ?? process.stSeconds
   );
   if (ctSeconds == null) return null;
 
@@ -60,7 +56,7 @@ const normalizeSnapshotProcess = (process, index = 0) => {
     stSeconds: toOptionalProcessSeconds(process.stSeconds),
     ctSeconds,
     ctPerPieceSeconds:
-      toOptionalPositiveNumber(process.ctPerPieceSeconds ?? process.agreedPerPieceSeconds) ??
+      toOptionalPositiveNumber(process.ctPerPieceSeconds) ??
       ctSeconds * quantity,
   };
 };
@@ -86,17 +82,17 @@ export const normalizeAssignmentCtSnapshot = (value) => {
         )
       : null;
   const totalCtPerPieceSeconds =
-    toOptionalNonNegativeNumber(value.totalCtPerPieceSeconds ?? value.totalAgreedPerPieceSeconds) ??
+    toOptionalNonNegativeNumber(value.totalCtPerPieceSeconds) ??
     (processes.length > 0
       ? processes.reduce((sum, process) => sum + (Number(process.ctPerPieceSeconds) || 0), 0)
       : null);
   const totalCtSeconds =
-    toOptionalNonNegativeNumber(value.totalCtSeconds ?? value.totalAgreedSeconds) ??
+    toOptionalNonNegativeNumber(value.totalCtSeconds) ??
     (totalCtPerPieceSeconds != null && quantity != null ? totalCtPerPieceSeconds * quantity : null);
 
   return {
-    updatedAt: toOptionalDateString(value.updatedAt ?? value.agreedAt),
-    updatedBy: String((value.updatedBy ?? value.agreedBy) || '').trim() || null,
+    updatedAt: toOptionalDateString(value.updatedAt),
+    updatedBy: String(value.updatedBy || '').trim() || null,
     quantity,
     schedule:
       value.schedule && typeof value.schedule === 'object' && !Array.isArray(value.schedule)
