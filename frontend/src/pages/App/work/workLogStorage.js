@@ -1,4 +1,8 @@
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
+import {
+  emitWorkspaceDataChanged,
+  WORKSPACE_DATA_TOPICS,
+} from '../../../utils/workspaceDataEvents';
 
 const buildReadRequestOptions = (options = {}) => ({
   skipGlobalLoading: Boolean(options?.skipGlobalLoading),
@@ -94,6 +98,24 @@ const summarizeWorkLogPayload = (payload = {}) => {
   };
 };
 
+const collectAssignmentIdsFromRecords = (records = []) =>
+  Array.from(
+    new Set(
+      (Array.isArray(records) ? records : [])
+        .map((record) => String(record?.assignmentPlanId || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+const emitWorkLogWorkspaceDataChanged = ({ orgId, records = [], source = '' } = {}) => {
+  emitWorkspaceDataChanged({
+    orgId,
+    topics: [WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ORDERS],
+    assignmentIds: collectAssignmentIdsFromRecords(records),
+    source: source || 'work-log',
+  });
+};
+
 export const loadWorkLogs = async (options = {}) => {
   const query = buildQueryString({
     orgId: options?.orgId,
@@ -126,6 +148,11 @@ export const appendWorkLog = async (payload, options = {}) => {
       orgId: options?.orgId ?? null,
       workLogId: result?.id ?? null,
       recordCount: Array.isArray(result?.records) ? result.records.length : null,
+    });
+    emitWorkLogWorkspaceDataChanged({
+      orgId: options?.orgId,
+      records: result?.records,
+      source: 'work-log:create',
     });
     return result;
   } catch (error) {
@@ -213,6 +240,11 @@ export const updateWorkLog = async (workLogId, payload, options = {}) => {
       workLogId: result?.id ?? workLogId,
       recordCount: Array.isArray(result?.records) ? result.records.length : null,
     });
+    emitWorkLogWorkspaceDataChanged({
+      orgId: options?.orgId,
+      records: result?.records,
+      source: 'work-log:update',
+    });
     return result;
   } catch (error) {
     if (error?.status === 404) return null;
@@ -230,6 +262,13 @@ export const updateWorkLog = async (workLogId, payload, options = {}) => {
 
 export const deleteWorkLog = async (workLogId, options = {}) => {
   if (!workLogId) return false;
+  const existingBeforeDelete = await findWorkLogById(workLogId, {
+    orgId: options?.orgId,
+    includeContext: false,
+    skipGlobalLoading: true,
+    skipCache: true,
+    forceRefresh: true,
+  });
   console.log('[deleteWorkLog] called', {
     orgId: options?.orgId ?? null,
     workLogId,
@@ -242,6 +281,11 @@ export const deleteWorkLog = async (workLogId, options = {}) => {
     console.log('[deleteWorkLog] success', {
       orgId: options?.orgId ?? null,
       workLogId,
+    });
+    emitWorkLogWorkspaceDataChanged({
+      orgId: options?.orgId,
+      records: existingBeforeDelete?.records,
+      source: 'work-log:delete',
     });
     return true;
   } catch (error) {

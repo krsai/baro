@@ -1502,8 +1502,10 @@ const resolveAssignmentVisualStatus = ({
   startDateKey = null,
   endDateKey = null,
   todayDateKey,
+  workProgressPercent = null,
 }) => {
   if (isCompleted) return 'completed';
+  const normalizedProgressPercent = clampPercentValue(workProgressPercent);
   const normalizedTodayDateKey = typeof todayDateKey === 'string' ? todayDateKey : '';
   const normalizedStartDateKey =
     typeof startDateKey === 'string' && startDateKey.trim() ? startDateKey.trim() : '';
@@ -1525,6 +1527,9 @@ const resolveAssignmentVisualStatus = ({
     normalizedEndDateKey < normalizedTodayDateKey
   ) {
     return 'overdue';
+  }
+  if (normalizedProgressPercent <= 0) {
+    return 'pending';
   }
   return 'active';
 };
@@ -3745,6 +3750,7 @@ const AssignBoard = () => {
           startDateKey: renderStartDateKey || item?.startDateKey,
           endDateKey: renderEndDateKey || item?.endDateKey,
           todayDateKey,
+          workProgressPercent,
         });
         if (!item.cardId) return item;
         const card = cardById.get(item.cardId);
