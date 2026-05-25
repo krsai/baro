@@ -15861,6 +15861,10 @@ const buildAssignmentPlanProgressRows = async (
       actualProducedCompletedDateKey ||
       forecastCompletedDateKey ||
       originalEndDateKey;
+    const renderEndDateKey =
+      scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
+        ? candidateEndDateKey
+        : originalEndDateKey;
 
     const confidence = resolveWorklogRatioConfidence({
       producedQty: producedQuantity,
@@ -15924,7 +15928,7 @@ const buildAssignmentPlanProgressRows = async (
       confidence,
       renderStartDate: factualStartDateKey,
       candidateEndDate: candidateEndDateKey,
-      renderEndDate: candidateEndDateKey,
+      renderEndDate: renderEndDateKey,
       scheduleStatus,
       isQcDone: Boolean(latestQcDate),
       _factualStartDateKey: factualStartDateKey,
@@ -16388,10 +16392,15 @@ const completeAssignmentPlanProduction = async ({
     },
   });
 
-  await syncAssignmentSchedulesFromWorkRecordPlans({
-    orgId,
-    assignmentPlanIds: [updatedPlan.id],
-  });
+  const shouldMutateScheduleFromProductionComplete =
+    resolveOptionalString(process.env.ENABLE_PRODUCTION_COMPLETE_SCHEDULE_SYNC, "")?.toLowerCase?.() ===
+    "true";
+  if (shouldMutateScheduleFromProductionComplete) {
+    await syncAssignmentSchedulesFromWorkRecordPlans({
+      orgId,
+      assignmentPlanIds: [updatedPlan.id],
+    });
+  }
   await persistAssignmentPlanProgressSnapshot({
     orgId,
     assignmentPlanIds: [updatedPlan.id],

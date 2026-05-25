@@ -3739,12 +3739,16 @@ const AssignBoard = () => {
             : null);
         const defaultStartIndex = toSignedInt(item?.startIndex, 0);
         const defaultEndIndex = Math.max(defaultStartIndex, toSignedInt(item?.endIndex, defaultStartIndex));
-        const renderStartIndex = resolveIndexFromDateKey(renderStartDateKey, defaultStartIndex);
-        const renderEndIndex = Math.max(
-          renderStartIndex,
-          resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
-        );
         const useRenderDateRange = isCompleted && Boolean(renderStartDateKey && renderEndDateKey);
+        const renderStartIndex = useRenderDateRange
+          ? resolveIndexFromDateKey(renderStartDateKey, defaultStartIndex)
+          : defaultStartIndex;
+        const renderEndIndex = useRenderDateRange
+          ? Math.max(
+              renderStartIndex,
+              resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
+            )
+          : defaultEndIndex;
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
           startDateKey: renderStartDateKey || item?.startDateKey,

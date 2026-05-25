@@ -33,6 +33,9 @@ const shouldUseRenderDateRange = (assignment) =>
   assignment.renderEndDate.trim();
 
 const getRenderStartIndex = (assignment) => {
+  if (!shouldUseRenderDateRange(assignment)) {
+    return Number(assignment?.startIndex) || 0;
+  }
   const parsed = Number(assignment?.renderStartIndex);
   if (Number.isFinite(parsed)) return Math.trunc(parsed);
   return Number(assignment?.startIndex) || 0;
@@ -40,6 +43,9 @@ const getRenderStartIndex = (assignment) => {
 
 const getRenderEndIndex = (assignment) => {
   const startIndex = getRenderStartIndex(assignment);
+  if (!shouldUseRenderDateRange(assignment)) {
+    return Math.max(startIndex, Number(assignment?.endIndex) || startIndex);
+  }
   const parsed = Number(assignment?.renderEndIndex);
   if (!Number.isFinite(parsed)) return Math.max(startIndex, Number(assignment?.endIndex) || startIndex);
   return Math.max(startIndex, Math.trunc(parsed));
