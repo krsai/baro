@@ -1,4 +1,4 @@
-﻿const toOptionalNumber = (value, fallback = null) => {
+const toOptionalNumber = (value, fallback = null) => {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -120,24 +120,22 @@ export const normalizeAssignmentCtSnapshot = (value) => {
 export const resolveAssignmentCtSnapshot = (item) =>
   normalizeAssignmentCtSnapshot(item?.ctSnapshot ?? null);
 
-export const resolveAssignmentCtContractedSeconds = (item) => {
+const resolveAssignmentCtTotalSecondsOrNull = (item) => {
   const snapshot = resolveAssignmentCtSnapshot(item);
   if (snapshot?.totalCtSeconds != null) {
     return Math.round(Number(snapshot.totalCtSeconds) || 0);
   }
-  const contracted = toOptionalNonNegativeNumber(item?.contractedSeconds);
-  if (contracted != null) return Math.round(contracted);
-  const total = toOptionalNonNegativeNumber(item?.totalSeconds);
-  if (total != null) return Math.round(total);
+  const ctTotalSeconds = toOptionalNonNegativeNumber(item?.ctTotalSeconds);
+  if (ctTotalSeconds != null) return Math.round(ctTotalSeconds);
   return null;
 };
 export const hasAssignmentCtSnapshot = (item) => {
   const snapshot = resolveAssignmentCtSnapshot(item);
-  return Boolean(snapshot) && resolveAssignmentCtContractedSeconds(item) !== null;
+  return Boolean(snapshot) && resolveAssignmentCtTotalSecondsOrNull(item) !== null;
 };
 
 export const resolveAssignmentCtTotalSeconds = (item) => {
-  return resolveAssignmentCtContractedSeconds(item) ?? 0;
+  return resolveAssignmentCtTotalSecondsOrNull(item) ?? 0;
 };
 
 export const resolveAssignmentCtUpdatedBy = (item) =>

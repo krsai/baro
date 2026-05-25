@@ -545,8 +545,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
       lineId: true,
       startIndex: true,
       endIndex: true,
-      totalSeconds: true,
-      contractedSeconds: true,
+      stTotalSeconds: true,
+      ctTotalSeconds: true,
       ctSnapshot: true,
     },
     orderBy: [{ orgId: 'asc' }, { id: 'asc' }],
@@ -571,15 +571,19 @@ async function runTimeModelRealignment(prisma, options = {}) {
     });
     if (!nextSnapshot) continue;
 
-    const nextTotalSeconds = nextSnapshot.totalCtSeconds;
+    const nextStTotalSeconds = Math.max(
+      0,
+      Math.round(Number(nextSnapshot.totalStPerPieceSeconds || 0) * Number(nextSnapshot.quantity || 0))
+    );
+    const nextCtTotalSeconds = nextSnapshot.totalCtSeconds;
     const comparableCurrent = {
-      contractedSeconds: Number(plan?.contractedSeconds) || 0,
-      totalSeconds: Number(plan?.totalSeconds) || 0,
+      ctTotalSeconds: Number(plan?.ctTotalSeconds) || 0,
+      stTotalSeconds: Number(plan?.stTotalSeconds) || 0,
       ctSnapshot: normalizeAssignmentSnapshotForComparison(plan?.ctSnapshot),
     };
     const comparableNext = {
-      contractedSeconds: nextTotalSeconds,
-      totalSeconds: nextTotalSeconds,
+      ctTotalSeconds: nextCtTotalSeconds,
+      stTotalSeconds: nextStTotalSeconds,
       ctSnapshot: normalizeAssignmentSnapshotForComparison(nextSnapshot),
     };
     if (normalizeJson(comparableCurrent) === normalizeJson(comparableNext)) {
@@ -595,8 +599,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
     await prisma.assignmentPlan.update({
       where: { id: plan.id },
       data: {
-        contractedSeconds: nextTotalSeconds,
-        totalSeconds: nextTotalSeconds,
+        ctTotalSeconds: nextCtTotalSeconds,
+        stTotalSeconds: nextStTotalSeconds,
         ctSnapshot: nextSnapshot,
       },
     });
@@ -629,11 +633,15 @@ async function runTimeModelRealignment(prisma, options = {}) {
       const externalId = String(assignment?.id || assignment?.externalId || '').trim();
       if (!externalId || !nextSnapshotByExternalId.has(externalId)) return assignment;
       const nextSnapshot = nextSnapshotByExternalId.get(externalId);
-      const nextTotalSeconds = nextSnapshot.totalCtSeconds;
+      const nextStTotalSeconds = Math.max(
+        0,
+        Math.round(Number(nextSnapshot.totalStPerPieceSeconds || 0) * Number(nextSnapshot.quantity || 0))
+      );
+      const nextCtTotalSeconds = nextSnapshot.totalCtSeconds;
       const nextAssignment = {
         ...assignment,
-        contractedSeconds: nextTotalSeconds,
-        totalSeconds: nextTotalSeconds,
+        ctTotalSeconds: nextCtTotalSeconds,
+        stTotalSeconds: nextStTotalSeconds,
         basis: 'ST',
         ctSnapshot: nextSnapshot,
         version: toPositiveInt(assignment?.version ?? 1, 1) + 1,
@@ -2572,11 +2580,11 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       startIndex: 0,
       stripeColor: '#9FB9F2',
       startDateKey: '2026-02-28',
-      totalSeconds: 2934000,
+      stTotalSeconds: 2934000,
       endDayPercent: 18.75,
       originOrderId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
       startDayPercent: 100,
-      contractedSeconds: 2934000,
+      ctTotalSeconds: 2934000,
       startDayOffsetPercent: 0,
     },
     {
@@ -2616,11 +2624,11 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       startIndex: 12,
       stripeColor: '#9FB9F2',
       startDateKey: '2026-03-12',
-      totalSeconds: 4085950,
+      stTotalSeconds: 4085950,
       endDayPercent: 37.48263888888889,
       originOrderId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
       startDayPercent: 81.25,
-      contractedSeconds: 4085950,
+      ctTotalSeconds: 4085950,
       startDayOffsetPercent: 18.75,
     },
     {
@@ -2660,11 +2668,11 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       startIndex: 30,
       stripeColor: '#9FB9F2',
       startDateKey: '2026-03-30',
-      totalSeconds: 2515050,
+      stTotalSeconds: 2515050,
       endDayPercent: 10.76388888888889,
       originOrderId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
       startDayPercent: 62.51736111111111,
-      contractedSeconds: 2515050,
+      ctTotalSeconds: 2515050,
       startDayOffsetPercent: 37.48263888888889,
     },
     {
@@ -2704,11 +2712,11 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
       startIndex: 40,
       stripeColor: '#9FB9F2',
       startDateKey: '2026-04-09',
-      totalSeconds: 3707550,
+      stTotalSeconds: 3707550,
       endDayPercent: 98.10763888888889,
       originOrderId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
       startDayPercent: 89.23611111111111,
-      contractedSeconds: 3707550,
+      ctTotalSeconds: 3707550,
       startDayOffsetPercent: 10.76388888888889,
     },
   ],
@@ -2735,7 +2743,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
         styleName: 'BL20',
         previewUrl: '',
         processCount: 21,
-        totalSeconds: 2934000,
+        stTotalSeconds: 2934000,
         originOrderId: 'order-tsbr-po-260322-01::BL20::BLACK::U',
       },
     },
@@ -2760,7 +2768,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
         styleName: 'AM01160',
         previewUrl: '',
         processCount: 39,
-        totalSeconds: 4085950,
+        stTotalSeconds: 4085950,
         originOrderId: 'order-tsbr-po-260322-01::AM01160::NAVY::M',
       },
     },
@@ -2785,7 +2793,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
         styleName: 'AM01622',
         previewUrl: '',
         processCount: 19,
-        totalSeconds: 2515050,
+        stTotalSeconds: 2515050,
         originOrderId: 'order-tsbr-po-260322-01::AM01622::WHITE::U',
       },
     },
@@ -2810,7 +2818,7 @@ const BASELINE_ASSIGNMENT_SNAPSHOT = {
         styleName: 'AM02053',
         previewUrl: '',
         processCount: 23,
-        totalSeconds: 3707550,
+        stTotalSeconds: 3707550,
         originOrderId: 'order-tsbr-po-260322-01::AM02053::INDIGO::U',
       },
     },
@@ -3898,16 +3906,14 @@ function buildAssignmentPlanWriteDataFromSnapshot(orgId, assignment, timestamp =
     quantity: sampleToPositiveIntOrNull(assignment?.quantity),
     originOrderId: assignment?.originOrderId ? String(assignment.originOrderId) : null,
     basis: assignment?.basis ? String(assignment.basis) : null,
-    contractedSeconds: sampleToPositiveIntOrNull(
-      assignment?.contractedSeconds ?? assignment?.totalSeconds
-    ),
+    ctTotalSeconds: sampleToPositiveIntOrNull(assignment?.ctTotalSeconds),
     ctSnapshot:
       assignment?.ctSnapshot && typeof assignment.ctSnapshot === 'object'
         ? cloneJsonValue(assignment.ctSnapshot)
         : null,
     color: assignment?.color ? String(assignment.color) : null,
     stripeColor: assignment?.stripeColor ? String(assignment.stripeColor) : null,
-    totalSeconds: sampleToPositiveIntOrNull(assignment?.totalSeconds),
+    stTotalSeconds: sampleToPositiveIntOrNull(assignment?.stTotalSeconds),
     startIndex,
     endIndex,
     startDayOffsetPercent: sampleToFiniteNumber(assignment?.startDayOffsetPercent, null),
@@ -4662,7 +4668,7 @@ async function runSampleWorkLogs(options = {}) {
   ]);
 
   const plans = (Array.isArray(rawPlans) ? rawPlans : [])
-    .filter((plan) => Number(plan?.contractedSeconds) > 0)
+    .filter((plan) => Number(plan?.ctTotalSeconds) > 0)
     .map((plan) => sampleNormalizePlan(plan, random, processMirrorByStyleId))
     .filter(Boolean);
 
@@ -4779,7 +4785,7 @@ async function runSampleWorkLogs(options = {}) {
       };
     });
 
-    const totalContractedSeconds = sampleSumBy(
+    const totalCtSeconds = sampleSumBy(
       requestRecords,
       (record) => record.ctSeconds * record.quantity
     );
@@ -4792,7 +4798,7 @@ async function runSampleWorkLogs(options = {}) {
       ctBasis: 'CT',
       workerCount: workers.length,
       itemCount: requestRecords.length,
-      totalContractedSeconds,
+      totalCtSeconds,
       records: requestRecords,
       note:
         `${SAMPLE_WORK_LOG_NOTE_PREFIX} shift=${SAMPLE_WORK_LOG_CLOCK_IN}-${SAMPLE_WORK_LOG_CLOCK_OUT} ` +

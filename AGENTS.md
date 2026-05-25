@@ -19,6 +19,18 @@
 | **CT** | Contract Time. ST 기반 계약 시간(초/공정). **급여 기준**: `CT × 수량 × 초당공임 = 급여` |
 | **AT** | Actual Time. 작업기록으로 학습한 실제 시간. 모델: `AT(q) = a*q + b` |
 
+### 시간 필드 규칙 (강제)
+- **ST (`stSeconds`)**: 공정 1개를 1장 만들 때의 표준 제작 시간. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이다.
+- **CT (`ctSeconds`)**: 공정 1개를 1장 만들 때의 계약/급여 기준 시간. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 된다.
+- **AT**: WorkLog/WorkRecord와 출퇴근 데이터로 학습한 실제 시간 추정값이다. 스케줄 보정/예측 참고값이지 CT가 아니다.
+- `AssignmentPlan.stTotalSeconds`: 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체한다.
+- `AssignmentPlan.ctTotalSeconds`: 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지.
+- `WorkRecord.ctSeconds`: 작업기록 상세 행의 급여 계산용 CT. 진행률/스케줄 실제 기간 계산에서 ST처럼 쓰면 안 된다.
+- `WorkLog.totalCtSeconds`: 작업기록 헤더의 CT 합계. 작업기록 목록/요약과 급여 참고용이며 스케줄러 길이 계산에 사용 금지.
+- `AtTrainingBucket.laborInputSeconds`: AT 학습용 실제/대체 투입 노동 시간 합이다. 스케줄러 계획 시간이나 계약 시간과 섞으면 안 된다.
+- 같은 의미는 같은 단어를 쓴다. 공정 단위는 `stSeconds`/`ctSeconds`, 배정카드 총합은 `stTotalSeconds`/`ctTotalSeconds`, AT 투입 노동 시간은 `laborInputSeconds`.
+- 신규 코드에서 `contractedSeconds`나 도메인 필드명 `totalSeconds`를 추가하지 않는다. `totalSeconds`는 화면 포맷팅 같은 일반 지역 변수에만 허용한다.
+
 ### AT 모델
 ```
 AT(q) = a*q + b
@@ -36,6 +48,7 @@ AT(q) = a*q + b
   - `displayDate` (DB 컬럼명 `workDate`, Prisma `@map("workDate")`): 목록 표시/정렬 전용 대표 날짜. 항상 `coverageEndDate`와 동일. **계산 로직 사용 금지.**
   - `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
 - **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(작업자, 스타일, 공정, 색상, 수량, ctSeconds)`.
+  - `ctSeconds`는 해당 작업 상세의 급여/계약 기준 시간이다. 스케줄러 계획 길이의 기준은 아니다.
   - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
   - 스케줄러 연결의 핵심 키는 `WorkRecord.assignmentPlanId`.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
@@ -49,12 +62,20 @@ AT(q) = a*q + b
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
-- `ctSnapshot`: 프론트에서 계산한 CT 스냅샷 JSON 저장 (백엔드 검증 없음)
+- `stTotalSeconds`: 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체.
+- `ctTotalSeconds`: 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 과거 `contractedSeconds` 명칭을 대체하며 스케줄러 길이 계산에 사용 금지.
+- `ctSnapshot`: 프론트에서 계산한 CT/ST 스냅샷 JSON 저장. `processes[].stSeconds`는 계획 ST, `processes[].ctSeconds`는 계약 CT.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 
 ### ⚠️ DB 적용 메모
 - `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 현재 **additive SQL**로 실DB에 반영됨.
+- 시간 컬럼 리네임:
+  - `AssignmentPlan.totalSeconds` 또는 카드 총합용 `AssignmentPlan.stSeconds` → `AssignmentPlan.stTotalSeconds`
+  - `AssignmentPlan.contractedSeconds` → `AssignmentPlan.ctTotalSeconds`
+  - `AtTrainingBucket.totalSeconds` → `AtTrainingBucket.laborInputSeconds`
+  - `WorkLog.totalContractedSeconds` → `WorkLog.totalCtSeconds`
+- 새 환경/운영 DB 반영 시 컬럼 rename SQL과 보드 JSON 키 이관(`totalSeconds`/`stSeconds` → `stTotalSeconds`, `contractedSeconds` → `ctTotalSeconds`)이 같이 적용되어야 함.
 - 이유: Prisma migration history drift로 `prisma db push` / `migrate deploy`가 바로 통과하지 않음.
 - 새 환경 반영 시에는 해당 컬럼과 enum 2개(`AssignmentCloseMode`, `AssignmentCloseBasis`)를 먼저 생성해야 함.
 
@@ -66,8 +87,8 @@ AT(q) = a*q + b
 1. WorkLog 기간을 기준으로 버킷화하되, 월 집계 앵커는 종료일(`coverageEndDate` = `displayDate`) 사용
 2. **Period Spreading**: 드문드문 입력해도 날짜 간격만큼 시간 자동 분산
    - 예) coverageEndDate: 4/1, 4/15, 4/30 → 각각 1일, 14일, 15일 기간으로 처리
-3. `totalSeconds` = 해당 기간 작업자 출퇴근 실측 합 (없으면 `workerCount × 기본8h × 일수`)
-4. 회귀 분석: `totalSeconds ≈ Σ(a_i × q_i + b_i)` → 공정별 `a`, `b` 학습
+3. `laborInputSeconds` = 해당 기간 작업자 출퇴근 실측 합 (없으면 `workerCount × 기본8h × 일수`)
+4. 회귀 분석: `laborInputSeconds ≈ Σ(a_i × q_i + b_i)` → 공정별 `a`, `b` 학습
 
 ### 출퇴근 필터 (중요)
 출퇴근 데이터가 없으면 **작업기록이 있어도 AT 학습 안 됨**.
@@ -200,7 +221,8 @@ AT(q) = a*q + b
 - 대형 `index.ts` + 일부 도메인 라우터 모듈 분리 구조
 
 ### 인증/인프라
-- Supabase Auth (Google OAuth), Railway 배포 (프론트/백 분리 서비스)
+- Supabase Auth (Google OAuth), Railway 배포 (프론트/백/DB 분리 서비스)
+- 운영 데이터베이스는 Railway Postgres 서비스다. Supabase Table Editor에서 데이터가 비어 보여도 운영 DB 기준이 아니다.
 
 ---
 
@@ -339,10 +361,11 @@ npm run test:regression
 ### 구조
 - `backend` 서비스: Root Directory `/backend`, Config `/backend/railway.json`, Healthcheck `/health`
 - `frontend` 서비스: Root Directory `/frontend`, Config `/frontend/railway.json`, Healthcheck `/health`
-- DB/Auth: Supabase
+- DB: Railway Postgres
+- Auth: Supabase Auth
 
 ### 주의사항
-- `DATABASE_URL`과 `DIRECT_URL`은 Supabase Postgres 연결 문자열로 설정
+- `DATABASE_URL`과 `DIRECT_URL`은 Railway Postgres 연결 문자열 또는 Railway variable reference로 설정
 - Prisma 스키마는 `DIRECT_URL` 기준 동작
 - Railway 도메인 Target Port는 수동 고정하지 말고 기본 감지값 사용
 - `VITE_*` 값은 빌드 시점에 포함 → 변경 시 프론트 재배포 필요

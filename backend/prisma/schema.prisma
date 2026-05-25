@@ -560,7 +560,7 @@ model AtTrainingBucket {
   sourceWorkLogId    Int
   workDate           String
   factoryId          Int?
-  totalSeconds       Int
+  laborInputSeconds  Int
   attendanceCoverage Float?
   createdAt          DateTime @default(now())
   createdBy String   @default("system@baro.local")
@@ -670,11 +670,11 @@ model AssignmentPlan {
   quantity              Int?
   originOrderId         String?
   basis                 String?
-  contractedSeconds     Int?
+  ctTotalSeconds       Int?
   ctSnapshot            Json?
   color                 String?
   stripeColor           String?
-  totalSeconds          Int?
+  stTotalSeconds        Int?
   startIndex            Int
   endIndex              Int
   startDayOffsetPercent Float?
@@ -752,7 +752,7 @@ model WorkLog {
   ctBasis                String   @default("CT")
   workerCount            Int      @default(0)
   itemCount              Int      @default(0)
-  totalContractedSeconds Int      @default(0)
+  totalCtSeconds         Int      @default(0)
   note                   String?
   records                Json?
   updatedBy              String?

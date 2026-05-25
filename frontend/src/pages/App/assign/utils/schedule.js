@@ -1,5 +1,5 @@
-export const calculateCardLoad = ({ totalSeconds }) => {
-  const resolvedSeconds = Number(totalSeconds);
+export const calculateCardLoad = ({ stTotalSeconds }) => {
+  const resolvedSeconds = Number(stTotalSeconds);
   if (!Number.isFinite(resolvedSeconds) || resolvedSeconds <= 0) return 0;
   return resolvedSeconds;
 };

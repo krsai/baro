@@ -213,7 +213,7 @@ const resolveAverageCtSecondsPerWorker = (log) => {
   if (workerCount <= 0) return null;
   const totalCtSeconds = Math.max(
     0,
-    Math.round(Number(log?.totalContractedSeconds) || 0)
+    Math.round(Number(log?.totalCtSeconds) || 0)
   );
   return Math.round(totalCtSeconds / workerCount);
 };

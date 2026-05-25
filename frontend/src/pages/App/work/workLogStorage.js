@@ -91,7 +91,7 @@ const summarizeWorkLogPayload = (payload = {}) => {
     lineId: payload?.lineId ?? null,
     workerCount: payload?.workerCount ?? null,
     itemCount: payload?.itemCount ?? null,
-    totalContractedSeconds: payload?.totalContractedSeconds ?? null,
+    totalCtSeconds: payload?.totalCtSeconds ?? null,
     noteLength: toText(payload?.note).length,
     recordCount: records.length,
     recordsPreview: summarizeWorkLogRecords(records),

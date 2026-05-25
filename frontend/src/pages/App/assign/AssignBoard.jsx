@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -556,6 +556,7 @@ const normalizeAssignmentLayout = (assignment) => {
   return {
     ...assignment,
     lineId: String(assignment.lineId ?? ''),
+    stTotalSeconds: toNonNegativeInt(assignment.stTotalSeconds, 0),
     startIndex,
     endIndex,
     startDayOffsetPercent,
@@ -910,7 +911,7 @@ const buildCardsFromOrders = ({ orders, styles }) => {
       const hasSt = totalSt > 0;
       const hasPt = totalPt > 0;
       const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-      const totalSeconds = hasSt ? totalSt : totalPt;
+      const stTotalSeconds = hasSt ? totalSt : totalPt;
       const cardId = createCardId(
         order?.id ?? order?.orderNumber ?? `order-${orderIndex}`,
         styleId
@@ -931,7 +932,7 @@ const buildCardsFromOrders = ({ orders, styles }) => {
         quantity: group.quantity,
         processCount,
         status,
-        totalSeconds,
+        stTotalSeconds,
         totalPt,
         totalAt,
         totalSt,
@@ -1016,14 +1017,14 @@ const mergeTimeLists = (first = [], second = []) => {
 
 const mergeCardData = (target, source) => {
   const mergedQuantity = (target.quantity ?? 0) + (source.quantity ?? 0);
-  const mergedTotalSeconds = (target.totalSeconds ?? 0) + (source.totalSeconds ?? 0);
+  const mergedStTotalSeconds = (target.stTotalSeconds ?? 0) + (source.stTotalSeconds ?? 0);
   const mergedTotalPt = (target.totalPt ?? 0) + (source.totalPt ?? 0);
   const mergedTotalAt = (target.totalAt ?? 0) + (source.totalAt ?? 0);
   const mergedTotalSt = (target.totalSt ?? 0) + (source.totalSt ?? 0);
   return {
     ...target,
     quantity: mergedQuantity,
-    totalSeconds: mergedTotalSeconds,
+    stTotalSeconds: mergedStTotalSeconds,
     totalPt: mergedTotalPt,
     totalAt: mergedTotalAt,
     totalSt: mergedTotalSt,
@@ -1032,7 +1033,7 @@ const mergeCardData = (target, source) => {
   };
 };
 
-const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityById = null) => {
+const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacityById = null) => {
   const startDayOffsetPercent = assignment.startDayOffsetPercent ?? 0;
   const startIndex = toNonNegativeInt(assignment?.startIndex, 0);
   const startCapacity = getDayCapacitySeconds(
@@ -1043,7 +1044,7 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
   );
   const startOffsetSeconds = (startDayOffsetPercent / 100) * startCapacity;
   const startAvailable = Math.max(startCapacity - startOffsetSeconds, 0);
-  let remaining = totalSeconds;
+  let remaining = stTotalSeconds;
   const startUse = Math.min(startAvailable, remaining);
   const startDayPercent = startCapacity > 0 ? (startUse / startCapacity) * 100 : 0;
   remaining -= startUse;
@@ -1066,7 +1067,7 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
   );
   const projectedWorkingDays = Math.max(
     1,
-    Math.ceil(Math.max(toNonNegativeNumber(totalSeconds, 0), 0) / fallbackDailyCapacity)
+    Math.ceil(Math.max(toNonNegativeNumber(stTotalSeconds, 0), 0) / fallbackDailyCapacity)
   );
   const knownLastIndex = Array.isArray(days) && days.length > 0 ? days.length - 1 : startIndex;
   const maxCursor =
@@ -1119,12 +1120,13 @@ const recomputeAssignmentRange = (assignment, totalSeconds, days, lineCapacityBy
   };
 };
 
-const resolveCardTotalSeconds = (card) => {
+const resolveCardStTotalSeconds = (card) => {
   // Always prefer ST when available
   if (Number(card?.totalSt) > 0) return card.totalSt;
+  if (Number(card?.stTotalSeconds) > 0) return card.stTotalSeconds;
   const basis = getCardBasis(card);
   if (basis === 'NONE') return 0;
-  return card.totalPt ?? card.totalSeconds ?? 0;
+  return card.totalPt ?? 0;
 };
 
 const toComparableCtSnapshot = (snapshot) => {
@@ -1291,15 +1293,20 @@ const buildAssignmentCtSnapshotForSave = ({
     })
     .filter(Boolean);
 
-  const fallbackTotalSeconds = Math.max(
+  const fallbackStSeconds = Math.max(
     0,
     Math.round(
       Number(
-        resolveAssignmentCtTotalSeconds(assignment) ||
-          resolveCardTotalSeconds(card) ||
-          assignment?.totalSeconds ||
+        resolveCardStTotalSeconds(card) ||
+          assignment?.stTotalSeconds ||
           0
       ) || 0
+    )
+  );
+  const fallbackCtSeconds = Math.max(
+    0,
+    Math.round(
+      Number(resolveAssignmentCtTotalSeconds(assignment) || fallbackStSeconds || 0) || 0
     )
   );
   const totalStPerPieceSeconds =
@@ -1309,20 +1316,20 @@ const buildAssignmentCtSnapshotForSave = ({
             sum + ((Number(process?.stSeconds) || 0) * (Number(process?.quantity) || 1)),
           0
         )
-      : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackTotalSeconds / orderQuantity;
+      : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackStSeconds / orderQuantity;
   const totalCtPerPieceSeconds =
     processes.length > 0
       ? processes.reduce(
           (sum, process) => sum + (Number(process?.ctPerPieceSeconds) || 0),
           0
         )
-      : Number(existingSnapshot?.totalCtPerPieceSeconds) || fallbackTotalSeconds / orderQuantity;
+      : Number(existingSnapshot?.totalCtPerPieceSeconds) || fallbackCtSeconds / orderQuantity;
   const totalCtSeconds = Math.max(
     0,
     Math.round(
       totalCtPerPieceSeconds > 0
         ? totalCtPerPieceSeconds * orderQuantity
-        : fallbackTotalSeconds
+        : fallbackCtSeconds
     )
   );
   const snapshotCore = {
@@ -1370,22 +1377,36 @@ const applyAssignmentCtSnapshotForSave = ({
     updatedAt,
     updatedBy,
   });
-  const nextTotalSeconds = Math.max(
+  const snapshotStTotalSeconds =
+    ctSnapshot?.totalStPerPieceSeconds != null
+      ? Math.max(
+          0,
+          Math.round(
+            Number(ctSnapshot.totalStPerPieceSeconds || 0) *
+              Math.max(1, toPositiveInt(ctSnapshot.quantity ?? assignment?.quantity ?? card?.quantity ?? 1, 1))
+          )
+        )
+      : null;
+  const nextStTotalSeconds = Math.max(
     0,
     Math.round(
       Number(
-        ctSnapshot?.totalCtSeconds ??
-          resolveCardTotalSeconds(card) ??
-          assignment?.totalSeconds ??
+        snapshotStTotalSeconds ??
+          resolveCardStTotalSeconds(card) ??
+          assignment?.stTotalSeconds ??
           0
       ) || 0
     )
   );
+  const nextCtTotalSeconds =
+    ctSnapshot?.totalCtSeconds != null
+      ? Math.max(0, Math.round(Number(ctSnapshot.totalCtSeconds) || 0))
+      : assignment.ctTotalSeconds ?? null;
 
   return normalizeAssignmentLayout({
     ...assignment,
-    totalSeconds: nextTotalSeconds,
-    contractedSeconds: nextTotalSeconds > 0 ? nextTotalSeconds : null,
+    stTotalSeconds: nextStTotalSeconds,
+    ctTotalSeconds: nextCtTotalSeconds,
     ctSnapshot,
   });
 };
@@ -1427,15 +1448,15 @@ const hasAssignmentCtDraftChange = ({
 
 function doesAssignmentScheduleNeedRecompute(
   assignment,
-  targetTotalSeconds,
+  targetStSeconds,
   days,
   lineCapacityById = null
 ) {
-  const plannedSeconds = Number(targetTotalSeconds);
+  const plannedSeconds = Number(targetStSeconds);
   if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
 
   const scheduledSeconds = Number(
-    getAssignmentTotalSeconds(assignment, days, lineCapacityById)
+    getAssignmentScheduledStTotalSeconds(assignment, days, lineCapacityById)
   );
   if (!Number.isFinite(scheduledSeconds) || scheduledSeconds < 0) return true;
 
@@ -1445,14 +1466,22 @@ function doesAssignmentScheduleNeedRecompute(
 const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null) => {
   if (!assignment || !card) return assignment;
 
-  const totalSeconds = resolveCardTotalSeconds(card);
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return assignment;
+  const stTotalSeconds = resolveCardStTotalSeconds(card);
+  if (!Number.isFinite(stTotalSeconds) || stTotalSeconds <= 0) return assignment;
 
   const basis = getCardBasis(card);
-  const nextTotalSeconds =
-    hasSavedCtSnapshot(assignment)
-      ? resolveAssignmentCtTotalSeconds(assignment)
-      : totalSeconds;
+  const ctSnapshot = resolveAssignmentCtSnapshot(assignment);
+  const snapshotStTotalSeconds =
+    ctSnapshot?.totalStPerPieceSeconds != null
+      ? Math.max(
+          0,
+          Math.round(
+            Number(ctSnapshot.totalStPerPieceSeconds || 0) *
+              Math.max(1, toPositiveInt(ctSnapshot.quantity ?? assignment?.quantity ?? card?.quantity ?? 1, 1))
+          )
+        )
+      : null;
+  const nextStTotalSeconds = snapshotStTotalSeconds ?? stTotalSeconds;
   const next = {
     ...assignment,
     orderNo: card.orderNo ?? assignment.orderNo,
@@ -1465,8 +1494,8 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
         thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
         quantity: card.quantity ?? assignment.quantity,
         basis,
-        totalSeconds: nextTotalSeconds,
-        contractedSeconds: assignment.contractedSeconds ?? null,
+        stTotalSeconds: nextStTotalSeconds,
+        ctTotalSeconds: assignment.ctTotalSeconds ?? null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
   // Keep persisted schedule anchors intact on board reload.
@@ -1474,7 +1503,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (hasAbsoluteScheduleKeys) {
     return next;
   }
-  const range = recomputeAssignmentRange(next, nextTotalSeconds, days, lineCapacityById);
+  const range = recomputeAssignmentRange(next, nextStTotalSeconds, days, lineCapacityById);
   return {
     ...next,
     ...range,
@@ -1650,7 +1679,7 @@ const buildUsageMap = (assignments, lineId, totalDays, days, lineCapacityById = 
 
 const planAssignmentDetailed = ({
   startIndex,
-  totalSeconds,
+  stTotalSeconds,
   lineId,
   assignments,
   totalDays,
@@ -1658,7 +1687,7 @@ const planAssignmentDetailed = ({
   lineCapacityById,
 }) => {
   const usage = buildUsageMap(assignments, lineId, totalDays, days, lineCapacityById);
-  let remaining = totalSeconds;
+  let remaining = stTotalSeconds;
   let dayIndex = startIndex;
   while (dayIndex < totalDays && isNonWorkingDay(dayIndex, days)) {
     dayIndex += 1;
@@ -1760,7 +1789,7 @@ const getTargetOnDay = (assignments, lineId, dayIndex) => {
   );
 };
 
-const getAssignmentTotalSeconds = (assignment, days, lineCapacityById = null) => {
+const getAssignmentScheduledStTotalSeconds = (assignment, days, lineCapacityById = null) => {
   return getUsageSeconds(assignment, days, lineCapacityById).reduce(
     (sum, item) => sum + item.seconds,
     0
@@ -1781,14 +1810,11 @@ const getUsageSecondsBeforeIndex = (
   }, 0);
 };
 
-const resolveAssignmentPlannedSeconds = (assignment, days, lineCapacityById = null) => {
-  const explicitTotal = Number(assignment?.totalSeconds);
-  if (Number.isFinite(explicitTotal) && explicitTotal > 0) return explicitTotal;
+const resolveAssignmentPlannedStTotalSeconds = (assignment, days, lineCapacityById = null) => {
+  const explicitStTotalSeconds = Number(assignment?.stTotalSeconds);
+  if (Number.isFinite(explicitStTotalSeconds) && explicitStTotalSeconds > 0) return explicitStTotalSeconds;
 
-  const contractedTotal = Number(assignment?.contractedSeconds);
-  if (Number.isFinite(contractedTotal) && contractedTotal > 0) return contractedTotal;
-
-  return getAssignmentTotalSeconds(assignment, days, lineCapacityById);
+  return getAssignmentScheduledStTotalSeconds(assignment, days, lineCapacityById);
 };
 
 const getNextStartIndex = (assignment, days, lineCapacityById = null) => {
@@ -1882,12 +1908,12 @@ const reflowSingleLineAssignmentsByCapacity = ({
       };
     }
 
-    const totalSeconds = resolveAssignmentPlannedSeconds(
+    const stTotalSeconds = resolveAssignmentPlannedStTotalSeconds(
       item,
       days,
       capacityForSource
     );
-    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    if (!Number.isFinite(stTotalSeconds) || stTotalSeconds <= 0) {
       return {
         assignments: fallbackAssignments,
         failed: true,
@@ -1900,12 +1926,12 @@ const reflowSingleLineAssignmentsByCapacity = ({
       days,
       capacityForSource
     );
-    const remainingSeconds = Math.max(0, totalSeconds - usedBeforeReflow);
+    const remainingSeconds = Math.max(0, stTotalSeconds - usedBeforeReflow);
     if (remainingSeconds <= 0) continue;
 
     const planResult = planAssignmentDetailed({
       startIndex,
-      totalSeconds: remainingSeconds,
+      stTotalSeconds: remainingSeconds,
       lineId,
       assignments: placed,
       totalDays,
@@ -1924,7 +1950,7 @@ const reflowSingleLineAssignmentsByCapacity = ({
     const nextItem = {
       ...item,
       lineId,
-      totalSeconds,
+      stTotalSeconds,
       ...planned,
       startDateKey: days[planned.startIndex]?.key ?? item.startDateKey,
       endDateKey: days[planned.endIndex]?.key ?? item.endDateKey,
@@ -2036,9 +2062,9 @@ const rebuildLineWithInsert = ({
   const placed = before.map((item) => ({ ...item }));
   let planned = planAssignment({
     startIndex: insertIndex,
-    totalSeconds:
-      insertItem.totalSeconds ??
-      getAssignmentTotalSeconds(insertItem, days, lineCapacityById),
+    stTotalSeconds:
+      insertItem.stTotalSeconds ??
+      getAssignmentScheduledStTotalSeconds(insertItem, days, lineCapacityById),
     lineId,
     assignments: placed,
     totalDays,
@@ -2086,11 +2112,11 @@ const rebuildLineWithInsert = ({
       );
       continue;
     }
-    const totalSeconds =
-      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
+    const stTotalSeconds =
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
     planned = planAssignment({
       startIndex: cursorStart,
-      totalSeconds,
+      stTotalSeconds,
       lineId,
       assignments: placed,
       totalDays,
@@ -2195,11 +2221,11 @@ const rebuildLineWithChain = ({
   let cursorStart = insertIndex;
 
   for (const item of chainItems) {
-    const totalSeconds =
-      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
+    const stTotalSeconds =
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
     const planned = planAssignment({
       startIndex: cursorStart,
-      totalSeconds,
+      stTotalSeconds,
       lineId,
       assignments: placed,
       totalDays,
@@ -2247,11 +2273,11 @@ const rebuildLineWithChain = ({
       continue;
     }
 
-    const totalSeconds =
-      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
+    const stTotalSeconds =
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
     const planned = planAssignment({
       startIndex: cursorStart,
-      totalSeconds,
+      stTotalSeconds,
       lineId,
       assignments: placed,
       totalDays,
@@ -2305,8 +2331,8 @@ const rebuildLineWithReplace = ({
   const placed = before.map((item) => ({ ...item }));
   const planned = planAssignment({
     startIndex: insertIndex,
-    totalSeconds:
-      newItem.totalSeconds ?? getAssignmentTotalSeconds(newItem, days, lineCapacityById),
+    stTotalSeconds:
+      newItem.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(newItem, days, lineCapacityById),
     lineId,
     assignments: placed,
     totalDays,
@@ -2350,11 +2376,11 @@ const rebuildLineWithReplace = ({
       );
       continue;
     }
-    const totalSeconds =
-      item.totalSeconds ?? getAssignmentTotalSeconds(item, days, lineCapacityById);
+    const stTotalSeconds =
+      item.stTotalSeconds ?? getAssignmentScheduledStTotalSeconds(item, days, lineCapacityById);
     const nextPlanned = planAssignment({
       startIndex: cursorStart,
-      totalSeconds,
+      stTotalSeconds,
       lineId,
       assignments: placed,
       totalDays,
@@ -2789,7 +2815,7 @@ const AssignBoard = () => {
 
         // Always take the server version. repairAssignmentScheduleDriftForOrg
         // (called inside GET /assignment-board-versions) bumps versions AND changes
-        // startDateKey/endDateKey — the old saved-vs-server comparison failed on those
+        // startDateKey/endDateKey ? the old saved-vs-server comparison failed on those
         // fields and sent a stale version, causing phantom 409s. The backend's
         // isSameAssignmentStateContent is the real conflict guard.
         return normalizeAssignmentLayout({
@@ -2940,14 +2966,14 @@ const AssignBoard = () => {
         : [];
       const projectedMaxEndIndex = normalizedSavedAssignments.reduce((max, item) => {
         const linkedCard = restoredCardById.get(item.cardId);
-        const totalSeconds = linkedCard
-          ? resolveCardTotalSeconds(linkedCard)
-          : toNonNegativeInt(item.totalSeconds, 0);
+        const stTotalSeconds = linkedCard
+          ? resolveCardStTotalSeconds(linkedCard)
+          : toNonNegativeInt(item.stTotalSeconds, 0);
         const lineCapacity = Math.max(
           1,
           getLineCapacitySeconds(item.lineId, nextLineCapacityById)
         );
-        const estimatedDays = Math.max(1, Math.ceil(totalSeconds / lineCapacity));
+        const estimatedDays = Math.max(1, Math.ceil(stTotalSeconds / lineCapacity));
         return Math.max(max, item.endIndex, item.startIndex + estimatedDays + 14);
       }, days.length - 1);
       const restoreDayCount = Math.max(days.length, projectedMaxEndIndex + 1);
@@ -4246,11 +4272,11 @@ const AssignBoard = () => {
     const totalBasePerPieceSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.basePerPieceSeconds, 0)
-        : Number(detailCard?.totalSeconds || 0) / orderQuantity;
+        : Number(detailCard?.stTotalSeconds || 0) / orderQuantity;
     const totalRequestedPerPieceSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.requestedPerPieceSeconds, 0)
-        : Number(detailAssignment?.totalSeconds || detailCard?.totalSeconds || 0) / orderQuantity;
+        : Number(detailAssignment?.stTotalSeconds || detailCard?.stTotalSeconds || 0) / orderQuantity;
     const totalSavedPerPieceSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce(
@@ -4261,11 +4287,11 @@ const AssignBoard = () => {
     const totalRequestedSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.totalRequestedSeconds, 0)
-        : Number(detailAssignment?.totalSeconds || detailCard?.totalSeconds || 0);
+        : Number(detailAssignment?.stTotalSeconds || detailCard?.stTotalSeconds || 0);
     const totalBaseSeconds =
       detailProcessRows.length > 0
         ? detailProcessRows.reduce((sum, row) => sum + row.totalBaseSeconds, 0)
-        : Number(detailCard?.totalSeconds || 0);
+        : Number(detailCard?.stTotalSeconds || 0);
     const headcount = Math.max(1, Number(detailLine?.headcount || 1));
     const wagePerSecond = toOptionalPositiveNumber(
       detailLine?.factoryWagePerSecond ??
@@ -4606,8 +4632,8 @@ const AssignBoard = () => {
         setActiveDrag(null);
         return;
       }
-      const totalSeconds = resolveCardTotalSeconds(card);
-      if (!totalSeconds) {
+      const stTotalSeconds = resolveCardStTotalSeconds(card);
+      if (!stTotalSeconds) {
         setActiveDrag(null);
         return;
       }
@@ -4628,11 +4654,11 @@ const AssignBoard = () => {
         quantity: card.quantity,
         originOrderId: getCardOriginId(card) ?? cardId,
         basis,
-        contractedSeconds: null,
+        ctTotalSeconds: null,
         ctSnapshot: null,
         color: colors.color,
         stripeColor: colors.stripe,
-        totalSeconds,
+        stTotalSeconds,
         startDateKey: days[dayIndex]?.key,
         endDateKey: days[dayIndex]?.key,
       };
@@ -4640,7 +4666,7 @@ const AssignBoard = () => {
       if (!targetOnDay) {
         const planned = tryPlanAssignment({
           startIndex: dayIndex,
-          totalSeconds,
+          stTotalSeconds,
           lineId,
           assignments,
         });
@@ -4731,10 +4757,10 @@ const AssignBoard = () => {
 
         const filtered = prev.filter((item) => item.id !== assignmentId);
 
-        const totalSeconds = getAssignmentTotalSeconds(target, days, lineCapacityById);
+        const stTotalSeconds = getAssignmentScheduledStTotalSeconds(target, days, lineCapacityById);
 
         if (!targetOnDay || targetOnDay.id === assignmentId) {
-          // Dropped on same day & same line — nothing to change
+          // Dropped on same day & same line ? nothing to change
           if (dayIndex === target.startIndex && String(lineId) === String(target.lineId)) {
             return prev;
           }
@@ -4743,7 +4769,7 @@ const AssignBoard = () => {
           // (빈칸이 충분하면 간격 보존, 부족하면 아래 insertBeforeId 로직으로 밀어냄)
           const planned = tryPlanAssignment({
             startIndex: dayIndex,
-            totalSeconds,
+            stTotalSeconds,
             lineId,
             assignments: filtered,
           });
@@ -4782,7 +4808,7 @@ const AssignBoard = () => {
             insertIndex: dayIndex,
             insertAfterId,
             insertBeforeId,
-            insertItem: { ...target, totalSeconds },
+            insertItem: { ...target, stTotalSeconds },
             assignments: filtered,
           });
 
@@ -4841,7 +4867,7 @@ const AssignBoard = () => {
   }, [languageCode]);
 
   const buildSplitCard = useCallback((card, quantity, ratio, newId) => {
-    const totalSeconds = scaleValue(card.totalSeconds, ratio);
+    const stTotalSeconds = scaleValue(card.stTotalSeconds, ratio);
     const totalPt = scaleValue(card.totalPt, ratio);
     const totalAt = scaleValue(card.totalAt, ratio);
     const totalSt = scaleValue(card.totalSt, ratio);
@@ -4851,7 +4877,7 @@ const AssignBoard = () => {
       id: newId,
       originOrderId,
       quantity,
-      totalSeconds,
+      stTotalSeconds,
       totalPt,
       totalAt,
       totalSt,
@@ -4892,14 +4918,14 @@ const AssignBoard = () => {
 
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
 
-    const scaledSeconds = scaleValue(target.totalSeconds, remainRatio) || 1;
-    const scaledContracted =
-      target.contractedSeconds == null
-        ? target.contractedSeconds
-        : scaleValue(target.contractedSeconds, remainRatio) || 1;
+    const scaledStTotalSeconds = scaleValue(target.stTotalSeconds, remainRatio) || 1;
+    const scaledCtTotal =
+      target.ctTotalSeconds == null
+        ? target.ctTotalSeconds
+        : scaleValue(target.ctTotalSeconds, remainRatio) || 1;
     const range = recomputeAssignmentRange(
       target,
-      scaledSeconds,
+      scaledStTotalSeconds,
       days,
       lineCapacityById
     );
@@ -4909,8 +4935,8 @@ const AssignBoard = () => {
           ? {
               ...item,
               quantity: remainQty,
-              totalSeconds: scaledSeconds,
-              contractedSeconds: scaledContracted,
+              stTotalSeconds: scaledStTotalSeconds,
+              ctTotalSeconds: scaledCtTotal,
               ...range,
             }
           : item
@@ -4953,10 +4979,10 @@ const AssignBoard = () => {
       colorName: assignment.colorName || '',
       gender: normalizeGenderKey(assignment.gender),
       quantity: assignment.quantity ?? 0,
-      totalSeconds: assignment.totalSeconds ?? 0,
-      totalPt: basis === 'PT' ? assignment.totalSeconds ?? 0 : 0,
-      totalAt: basis === 'AT' ? assignment.totalSeconds ?? 0 : 0,
-      totalSt: basis === 'ST' ? assignment.totalSeconds ?? 0 : 0,
+      stTotalSeconds: assignment.stTotalSeconds ?? 0,
+      totalPt: basis === 'PT' ? assignment.stTotalSeconds ?? 0 : 0,
+      totalAt: basis === 'AT' ? assignment.stTotalSeconds ?? 0 : 0,
+      totalSt: basis === 'ST' ? assignment.stTotalSeconds ?? 0 : 0,
       status: basis === 'ST' ? 'ST' : basis === 'PT' || basis === 'CT' ? 'PT' : 'NONE',
       isManualOrderLocked: true,
     };
@@ -4983,10 +5009,9 @@ const AssignBoard = () => {
     if (!target || !sourceCard) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
-    const addedSeconds = resolveCardTotalSeconds(sourceCard);
-    const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
-    const mergedContractedSeconds =
-      target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
+    const addedSeconds = resolveCardStTotalSeconds(sourceCard);
+    const mergedSeconds = (target.stTotalSeconds ?? 0) + addedSeconds;
+    const mergedCtTotalSeconds = null;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
 
     setCards((prev) => {
@@ -5001,8 +5026,8 @@ const AssignBoard = () => {
       const updated = {
         ...target,
         quantity: mergedQuantity,
-        totalSeconds: mergedSeconds,
-        contractedSeconds: mergedContractedSeconds,
+        stTotalSeconds: mergedSeconds,
+        ctTotalSeconds: mergedCtTotalSeconds,
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -5042,10 +5067,12 @@ const AssignBoard = () => {
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
     const sourceCard = buildCardFromAssignment(source);
-    const addedSeconds = resolveCardTotalSeconds(sourceCard);
-    const mergedSeconds = (target.totalSeconds ?? 0) + addedSeconds;
-    const mergedContractedSeconds =
-      target.contractedSeconds == null ? null : (target.contractedSeconds ?? 0) + addedSeconds;
+    const addedSeconds = resolveCardStTotalSeconds(sourceCard);
+    const mergedSeconds = (target.stTotalSeconds ?? 0) + addedSeconds;
+    const mergedCtTotalSeconds =
+      target.ctTotalSeconds != null && source.ctTotalSeconds != null
+        ? target.ctTotalSeconds + source.ctTotalSeconds
+        : null;
     const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
 
     setCards((prev) => {
@@ -5060,8 +5087,8 @@ const AssignBoard = () => {
       const updated = {
         ...target,
         quantity: mergedQuantity,
-        totalSeconds: mergedSeconds,
-        contractedSeconds: mergedContractedSeconds,
+        stTotalSeconds: mergedSeconds,
+        ctTotalSeconds: mergedCtTotalSeconds,
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -5182,12 +5209,12 @@ const AssignBoard = () => {
     if (range > MAX_RANGE_DAYS) return;
     applyViewRange(s, e);
   };
-  // ◄ : FROM → 전달 1일
+  // ? : FROM → 전달 1일
   const handlePrevMonthFrom = () => {
     const prev = toMonthStart(viewStart); prev.setMonth(prev.getMonth() - 1);
     handleViewStartChange(prev);
   };
-  // ► : TO → 다음달 말일
+  // ? : TO → 다음달 말일
   const handleNextMonthTo = () => {
     const nextMonthFirst = new Date(viewEnd.getFullYear(), viewEnd.getMonth() + 1, 1);
     const nextEnd = toMonthEnd(nextMonthFirst);

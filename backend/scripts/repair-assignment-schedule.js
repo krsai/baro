@@ -50,9 +50,19 @@ const DEFAULT_DAILY_CAPACITY_SECONDS = 8 * 60 * 60;
 
 const normalizeCtSnapshot = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const quantity = Number(value?.quantity);
+  const totalStPerPieceSeconds = Number(value?.totalStPerPieceSeconds);
+  const totalStSeconds =
+    Number.isFinite(quantity) &&
+    quantity > 0 &&
+    Number.isFinite(totalStPerPieceSeconds) &&
+    totalStPerPieceSeconds > 0
+      ? Math.max(0, Math.round(quantity * totalStPerPieceSeconds))
+      : null;
   return {
     ...value,
     schedule: normalizeSnapshotSchedule(value?.schedule),
+    totalStSeconds,
     totalCtSeconds:
       Number.isFinite(Number(value?.totalCtSeconds))
         ? Math.max(0, Math.round(Number(value.totalCtSeconds)))
@@ -62,16 +72,12 @@ const normalizeCtSnapshot = (value) => {
   };
 };
 
-const resolveContractedSeconds = (item) => {
+const resolveStTotalSeconds = (item) => {
   const snapshot = normalizeCtSnapshot(item?.ctSnapshot ?? item?.ctAgreedSnapshot);
-  if (snapshot?.totalCtSeconds != null) return snapshot.totalCtSeconds;
-  const contractedSeconds = Number(item?.contractedSeconds);
-  if (Number.isFinite(contractedSeconds) && contractedSeconds >= 0) {
-    return Math.round(contractedSeconds);
-  }
-  const totalSeconds = Number(item?.totalSeconds);
-  if (Number.isFinite(totalSeconds) && totalSeconds >= 0) {
-    return Math.round(totalSeconds);
+  if (snapshot?.totalStSeconds != null) return snapshot.totalStSeconds;
+  const stTotalSeconds = Number(item?.stTotalSeconds);
+  if (Number.isFinite(stTotalSeconds) && stTotalSeconds >= 0) {
+    return Math.round(stTotalSeconds);
   }
   return null;
 };
@@ -178,13 +184,13 @@ const calculateScheduledSeconds = ({
 const recomputeScheduleFromCurrentStart = ({
   schedule,
   lineId,
-  totalSeconds,
+  stTotalSeconds,
   lineCapacityById,
   holidaySet,
   fallback = null,
 }) => {
   const normalized = normalizeSnapshotSchedule(schedule, fallback);
-  const plannedSeconds = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const plannedSeconds = Math.max(0, Math.round(Number(stTotalSeconds) || 0));
   if (!normalized?.startDateKey || plannedSeconds <= 0) return normalized;
 
   const startIndex = toSignedInt(normalized.startIndex, toSignedInt(fallback?.startIndex, 0));
@@ -274,11 +280,11 @@ const recomputeScheduleFromCurrentStart = ({
 const scheduleNeedsRecompute = ({
   schedule,
   lineId,
-  totalSeconds,
+  stTotalSeconds,
   lineCapacityById,
   holidaySet,
 }) => {
-  const plannedSeconds = Number(totalSeconds);
+  const plannedSeconds = Number(stTotalSeconds);
   if (!Number.isFinite(plannedSeconds) || plannedSeconds <= 0) return false;
   const scheduledSeconds = calculateScheduledSeconds({
     schedule,
@@ -305,8 +311,8 @@ const buildTargetSchedule = ({
         secondary?.ctSnapshot ??
         secondary?.ctAgreedSnapshot
     )?.schedule ?? null;
-  const totalSeconds =
-    resolveContractedSeconds(primary) ?? resolveContractedSeconds(secondary);
+  const stTotalSeconds =
+    resolveStTotalSeconds(primary) ?? resolveStTotalSeconds(secondary);
   const repairSourceSchedule =
     currentSchedule?.startDateKey
       ? currentSchedule
@@ -319,7 +325,7 @@ const buildTargetSchedule = ({
     scheduleNeedsRecompute({
       schedule: repairSourceSchedule,
       lineId: primary?.lineId ?? secondary?.lineId,
-      totalSeconds,
+      stTotalSeconds,
       lineCapacityById,
       holidaySet,
     })
@@ -327,7 +333,7 @@ const buildTargetSchedule = ({
     return recomputeScheduleFromCurrentStart({
       schedule: repairSourceSchedule,
       lineId: primary?.lineId ?? secondary?.lineId,
-      totalSeconds,
+      stTotalSeconds,
       lineCapacityById,
       holidaySet,
       fallback: primary ?? secondary,

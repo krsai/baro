@@ -159,7 +159,7 @@ export const reconcileBoardStateForQuantityChanges = ({
       const hasSt = totalSt > 0;
       const hasPt = totalPt > 0;
       const status = hasSt ? 'ST' : hasPt ? 'PT' : 'NONE';
-      const totalSeconds = hasSt ? totalSt : totalPt;
+      const stTotalSeconds = hasSt ? totalSt : totalPt;
 
       return {
         ...previousCardBase,
@@ -183,7 +183,7 @@ export const reconcileBoardStateForQuantityChanges = ({
           ? toNumber(processSummary.processCount, 0)
           : toNumber(previousCardBase.processCount, 0),
         status,
-        totalSeconds,
+        stTotalSeconds,
         totalPt,
         totalAt,
         totalSt,

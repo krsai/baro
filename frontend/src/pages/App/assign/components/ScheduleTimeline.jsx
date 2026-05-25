@@ -194,19 +194,19 @@ const getWorkingDuration = (assignment, days) => {
 };
 
 const getAssignmentDisplayDuration = (assignment, lineCapacityById, days) => {
-  const totalSeconds = Number(assignment?.totalSeconds);
+  const stTotalSeconds = Number(assignment?.stTotalSeconds);
   const lineCapacity = Number(
     lineCapacityById.get(String(assignment?.lineId))
     ?? lineCapacityById.get(Number(assignment?.lineId))
   );
 
   if (
-    Number.isFinite(totalSeconds) &&
-    totalSeconds > 0 &&
+    Number.isFinite(stTotalSeconds) &&
+    stTotalSeconds > 0 &&
     Number.isFinite(lineCapacity) &&
     lineCapacity > 0
   ) {
-    return totalSeconds / lineCapacity;
+    return stTotalSeconds / lineCapacity;
   }
 
   return getWorkingDuration(assignment, days);

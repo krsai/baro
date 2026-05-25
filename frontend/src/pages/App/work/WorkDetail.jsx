@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -1763,8 +1763,8 @@ const WorkDetail = ({
         assignmentPlanId: toPositiveIdOrNull(assignment?.dbId),
       }));
     const workerCount = new Set(records.map((record) => record.workerId).filter((workerId) => workerId !== null)).size;
-    const totalContractedSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
-    return { records, workerCount, totalContractedSeconds };
+    const totalCtSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
+    return { records, workerCount, totalCtSeconds };
   }, [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows]);
   const assignmentLimitGroupMeta = useMemo(() => {
     const planMetaById = new Map();
@@ -2520,11 +2520,11 @@ const WorkDetail = ({
       ctBasis: 'CT',
       workerCount: summary.workerCount,
       itemCount: summary.records.length,
-      totalContractedSeconds: summary.totalContractedSeconds,
+      totalCtSeconds: summary.totalCtSeconds,
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalContractedSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalCtSeconds, summary.workerCount, workDateKey]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {

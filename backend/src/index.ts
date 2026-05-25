@@ -1,4 +1,4 @@
-﻿import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import "./config/env";
 import { Prisma, type OrgUserRole } from "@prisma/client";
@@ -2027,7 +2027,7 @@ type AtTrainingBucketDraft = {
   monthKey: string;
   workDate: string;
   factoryId: number | null;
-  totalSeconds: number;
+  laborInputSeconds: number;
   attendanceCoverage: number | null;
   processRows: AtTrainingBucketProcessDraft[];
 };
@@ -2673,13 +2673,13 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       );
     }
 
-    const totalSeconds =
+    const laborInputSeconds =
       workerIdsForDay.size > 0
         ? Array.from(workerSecondsById.values()).reduce((sum, seconds) => sum + seconds, 0)
         : Math.max(1, toPositiveIntOrNull((workLog as any).workerCount) ?? 1) *
           ATTENDANCE_DEFAULT_WORK_SECONDS *
           periodDayCount;
-    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    if (!Number.isFinite(laborInputSeconds) || laborInputSeconds <= 0) {
       return drafts;
     }
 
@@ -2699,7 +2699,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
       monthKey,
       workDate: normalizedCoverageEndDate,
       factoryId: resolvedFactoryId,
-      totalSeconds: Math.max(1, Math.round(totalSeconds)),
+      laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
       attendanceCoverage,
       processRows,
     });
@@ -2732,7 +2732,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         "sourceWorkLogId",
         "workDate",
         "factoryId",
-        "totalSeconds",
+        "laborInputSeconds",
         "attendanceCoverage",
         "createdBy",
         "createdAt",
@@ -2744,7 +2744,7 @@ const replaceAtTrainingBucketsForMonth = async ({
         ${draft.sourceWorkLogId},
         ${draft.workDate},
         ${draft.factoryId},
-        ${draft.totalSeconds},
+        ${draft.laborInputSeconds},
         ${draft.attendanceCoverage},
         ${actor},
         NOW(),
@@ -2908,7 +2908,7 @@ const loadAtTrainingDataFromBuckets = async ({
   type StoredAtTrainingBucketRow = {
     id: number;
     workDate: string;
-    totalSeconds: number;
+    laborInputSeconds: number;
     attendanceCoverage: number | null;
   };
   type StoredAtTrainingBucketProcessRow = {
@@ -2921,7 +2921,7 @@ const loadAtTrainingDataFromBuckets = async ({
     SELECT
       "id",
       "workDate",
-      "totalSeconds",
+      "laborInputSeconds",
       "attendanceCoverage"
     FROM "AtTrainingBucket"
     WHERE "orgId" = ${orgId} AND "monthKey" <= ${normalizedUpToMonthKey}
@@ -2997,8 +2997,8 @@ const loadAtTrainingDataFromBuckets = async ({
   >();
 
   bucketRows.forEach((bucketRow: StoredAtTrainingBucketRow, bucketOrder: number) => {
-    const totalSeconds = toNumberOrNull(bucketRow.totalSeconds);
-    if (totalSeconds === null || totalSeconds <= 0) return;
+    const laborInputSeconds = toNumberOrNull(bucketRow.laborInputSeconds);
+    if (laborInputSeconds === null || laborInputSeconds <= 0) return;
     const attendanceCoverage = toNumberOrNull(bucketRow.attendanceCoverage);
     const dayProcessRows: AtTrainingDayProcessRow[] = [];
 
@@ -3046,7 +3046,7 @@ const loadAtTrainingDataFromBuckets = async ({
     trainingDayBuckets.push({
       dayKey: `${bucketRow.workDate}#${bucketRow.id}`,
       order: bucketOrder,
-      totalSeconds: Math.max(1, Math.round(totalSeconds)),
+      laborInputSeconds: Math.max(1, Math.round(laborInputSeconds)),
       processRows: dayProcessRows,
     });
   });
@@ -5366,7 +5366,7 @@ const buildWorkLogSelectWithOptionalCoverage = ({
     ctBasis: true,
     workerCount: true,
     itemCount: true,
-    totalContractedSeconds: true,
+    totalCtSeconds: true,
     note: true,
     records: true,
     createdAt: true,
@@ -5783,7 +5783,7 @@ const summarizeWorkLogPayloadForDebug = (payload: any = {}) => {
     lineId: toPositiveIntOrNull(payload?.lineId),
     workerCount: toNonNegativeInt(payload?.workerCount, 0),
     itemCount: toNonNegativeInt(payload?.itemCount, records.length),
-    totalContractedSeconds: toNonNegativeInt(payload?.totalContractedSeconds, 0),
+    totalCtSeconds: toNonNegativeInt(payload?.totalCtSeconds, 0),
     noteLength: resolveOptionalString(payload?.note, "")?.length ?? 0,
     recordCount: records.length,
     assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records).slice(0, 10),
@@ -6834,7 +6834,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
       externalId: true,
       lineId: true,
       ctSnapshot: true,
-      contractedSeconds: true,
+      ctTotalSeconds: true,
       orderNo: true,
       label: true,
       colorName: true,
@@ -6874,7 +6874,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
 
   const missingSnapshotPlans = plans.filter((plan) => {
     const ctSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
-    return !ctSnapshot || resolveAssignmentContractedSeconds(plan) == null;
+    return !ctSnapshot || resolveAssignmentCtTotalSeconds(plan) == null;
   });
   if (missingSnapshotPlans.length > 0) {
     const preview = missingSnapshotPlans
@@ -7432,10 +7432,10 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
       payload?.itemCount !== undefined ? payload.itemCount : fallback?.itemCount,
       0
     ),
-    totalContractedSeconds: toNonNegativeInt(
-      payload?.totalContractedSeconds !== undefined
-        ? payload.totalContractedSeconds
-        : fallback?.totalContractedSeconds,
+    totalCtSeconds: toNonNegativeInt(
+      payload?.totalCtSeconds !== undefined
+        ? payload.totalCtSeconds
+        : fallback?.totalCtSeconds,
       0
     ),
     note: resolveOptionalString(payload?.note, fallback?.note ?? null),
@@ -7484,7 +7484,7 @@ const toWorkLogResponse = (workLog: any) => {
     ctBasis: workLog.ctBasis ?? "CT",
     workerCount: workLog.workerCount ?? 0,
     itemCount: workLog.itemCount ?? 0,
-    totalContractedSeconds: workLog.totalContractedSeconds ?? 0,
+    totalCtSeconds: workLog.totalCtSeconds ?? 0,
     note: workLog.note ?? "",
     records: resolveWorkLogRecordResponses(workLog),
     createdAt: workLog.createdAt,
@@ -7583,7 +7583,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     colorName: resolveAssignmentPlanColorName(plan),
     color: resolveOptionalString(plan?.color, "") ?? "",
     quantity: plan?.quantity ?? null,
-    contractedSeconds: resolveAssignmentContractedSeconds(plan),
+    ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
     ctSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
@@ -7864,7 +7864,7 @@ const buildWorkLogContextResponse = async ({
             colorId: true,
             colorName: true,
             quantity: true,
-            contractedSeconds: true,
+            ctTotalSeconds: true,
             ctSnapshot: true,
             color: true,
             startIndex: true,
@@ -7967,7 +7967,7 @@ const buildWorkLogContextResponse = async ({
                 colorId: item.colorId ?? null,
                 colorName: item.colorName ?? null,
                 quantity: item.quantity ?? null,
-                contractedSeconds: item.contractedSeconds ?? null,
+                ctTotalSeconds: item.ctTotalSeconds ?? null,
                 ctSnapshot: item.ctSnapshot ?? null,
                 color: item.color ?? null,
                 startIndex: item.startIndex ?? 0,
@@ -8574,22 +8574,22 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
   };
 };
 
-const resolveAssignmentContractedSeconds = (item: any) => {
+const resolveAssignmentCtTotalSeconds = (item: any) => {
   const snapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
   if (snapshot?.totalCtSeconds != null) {
     return Math.max(0, Math.round(Number(snapshot.totalCtSeconds) || 0));
   }
-  const contractedSeconds = toOptionalNonNegativeInt(item?.contractedSeconds, null);
-  if (contractedSeconds != null) return contractedSeconds;
-  return toOptionalNonNegativeInt(item?.totalSeconds, null);
+  const ctTotalSeconds = toOptionalNonNegativeInt(item?.ctTotalSeconds, null);
+  if (ctTotalSeconds != null) return ctTotalSeconds;
+  return null;
 };
 
 const normalizeStateAssignmentItem = (item: any): any => {
   if (!item || typeof item !== "object") return item;
   const externalId = resolveAssignmentExternalId(item);
-  const contractedSeconds = resolveAssignmentContractedSeconds(item);
-  const totalSeconds =
-    toOptionalNonNegativeInt(item?.totalSeconds, null) ?? contractedSeconds;
+  const ctTotalSeconds = resolveAssignmentCtTotalSeconds(item);
+  const stTotalSeconds =
+    toOptionalNonNegativeInt(item?.stTotalSeconds, null);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
   const ctSnapshot = normalizeAssignmentCtSnapshot(
@@ -8615,9 +8615,9 @@ const normalizeStateAssignmentItem = (item: any): any => {
   return {
     ...rest,
     ...(externalId ? { id: externalId } : {}),
-    contractedSeconds,
+    ctTotalSeconds,
     ctSnapshot,
-    totalSeconds,
+    stTotalSeconds,
     version,
     versionUpdatedAt,
   };
@@ -9091,7 +9091,7 @@ const buildAssignmentCardsFromOrders = ({
         group.quantity
       );
       const status = resolveAssignmentCardStatus({ totalPt, totalSt });
-      const totalSeconds = status === "ST" ? totalSt : totalPt;
+      const stTotalSeconds = status === "ST" ? totalSt : totalPt;
       const resolvedOrderId =
         resolveOptionalString(order?.orderId ?? order?.id, null) ??
         `order-${orderIndex}`;
@@ -9119,7 +9119,7 @@ const buildAssignmentCardsFromOrders = ({
         quantity: group.quantity,
         processCount,
         status,
-        totalSeconds,
+        stTotalSeconds,
         totalPt,
         totalAt,
         totalSt,
@@ -9787,7 +9787,7 @@ const loadOrderAssignmentModificationLockMap = async (
   const lockedPlans = await prisma.assignmentPlan.findMany({
     where: {
       orgId: { in: orgIds },
-      contractedSeconds: { not: null },
+      ctTotalSeconds: { not: null },
     },
     select: {
       originOrderId: true,
@@ -9813,7 +9813,7 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
   const lockedPlan = await prisma.assignmentPlan.findFirst({
     where: {
       orgId: { in: orgIds },
-      contractedSeconds: { not: null },
+      ctTotalSeconds: { not: null },
       OR: [
         { originOrderId: { startsWith: prefix } },
         { cardId: { startsWith: prefix } },
@@ -10158,7 +10158,7 @@ const repairAssignmentPlanDisplayRows = async ({
 };
 const toAssignmentPlanResponse = (plan: any) => {
   const ctSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
-  const contractedSeconds = resolveAssignmentContractedSeconds({
+  const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...plan,
     ctSnapshot,
   });
@@ -10188,13 +10188,13 @@ const toAssignmentPlanResponse = (plan: any) => {
     quantity: plan.quantity ?? null,
     originOrderId: plan.originOrderId ?? "",
     basis: plan.basis ?? "",
-    contractedSeconds,
+    ctTotalSeconds,
     ctSnapshot,
     ctUpdatedBy: ctSnapshot?.updatedBy ?? "",
     ctUpdatedAt: ctSnapshot?.updatedAt ?? null,
     color: plan.color ?? "",
     stripeColor: plan.stripeColor ?? "",
-    totalSeconds: contractedSeconds ?? plan.totalSeconds ?? null,
+    stTotalSeconds: plan.stTotalSeconds ?? null,
     startIndex: plan.startIndex,
     endIndex: plan.endIndex,
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
@@ -10229,12 +10229,12 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
       const startIndex = toSignedInt(item.startIndex, 0);
       const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
       const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
-      const contractedSeconds = resolveAssignmentContractedSeconds({
+      const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
         ...item,
         ctSnapshot,
       });
-      const totalSeconds =
-        toOptionalNonNegativeInt(item.totalSeconds, null) ?? contractedSeconds;
+      const stTotalSeconds =
+        toOptionalNonNegativeInt(item.stTotalSeconds, null);
       return {
         lineId: lineIdNum,
         externalId,
@@ -10250,11 +10250,11 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         quantity: toOptionalNonNegativeInt(item.quantity, null),
         originOrderId: resolveOptionalString(item.originOrderId, null),
         basis: resolveOptionalString(item.basis, null),
-        contractedSeconds,
+        ctTotalSeconds,
         ctSnapshot,
         color: resolveOptionalString(item.color, null),
         stripeColor: resolveOptionalString(item.stripeColor, null),
-        totalSeconds,
+        stTotalSeconds,
         startIndex,
         endIndex,
         startDayOffsetPercent: toOptionalFloat(item.startDayOffsetPercent, null),
@@ -10535,7 +10535,7 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
 };
 const toAssignmentPlanWriteData = (item: any) => {
   const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
-  const contractedSeconds = resolveAssignmentContractedSeconds({
+  const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...item,
     ctSnapshot,
   });
@@ -10555,11 +10555,11 @@ const toAssignmentPlanWriteData = (item: any) => {
     quantity: item.quantity ?? null,
     originOrderId: item.originOrderId ?? null,
     basis: item.basis ?? null,
-    contractedSeconds,
+    ctTotalSeconds,
     ctSnapshot: (ctSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
     color: item.color ?? null,
     stripeColor: item.stripeColor ?? null,
-    totalSeconds: item.totalSeconds ?? contractedSeconds ?? null,
+    stTotalSeconds: item.stTotalSeconds ?? null,
     startIndex: item.startIndex,
     endIndex: item.endIndex,
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
@@ -10602,11 +10602,11 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   quantity: true,
   originOrderId: true,
   basis: true,
-  contractedSeconds: true,
+  ctTotalSeconds: true,
   ctSnapshot: true,
   color: true,
   stripeColor: true,
-  totalSeconds: true,
+  stTotalSeconds: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -14875,11 +14875,11 @@ app.get("/assignment-plans", async (req, res) => {
               quantity: item.quantity ?? null,
               originOrderId: item.originOrderId ?? null,
               basis: item.basis ?? null,
-              contractedSeconds: item.contractedSeconds ?? null,
+              ctTotalSeconds: item.ctTotalSeconds ?? null,
               ctSnapshot: item.ctSnapshot ?? null,
               color: item.color ?? null,
               stripeColor: item.stripeColor ?? null,
-              totalSeconds: item.totalSeconds ?? item.contractedSeconds ?? null,
+              stTotalSeconds: item.stTotalSeconds ?? null,
               startIndex: item.startIndex ?? 0,
               endIndex: item.endIndex ?? 0,
               startDayOffsetPercent: item.startDayOffsetPercent ?? null,
@@ -14981,7 +14981,7 @@ app.get("/assignment-plans", async (req, res) => {
         colorName: resolveAssignmentPlanColorName(plan),
         color: plan.color ?? "",
         quantity: plan.quantity ?? null,
-        contractedSeconds: resolveAssignmentContractedSeconds(plan),
+        ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
         ctSnapshot: normalizeAssignmentCtSnapshot(plan?.ctSnapshot),
         ctUpdatedBy:
           normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedBy ?? "",

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -189,9 +189,9 @@ const formatScheduleRange = (baseDate, assignment) => {
   return `${formatScheduleDateValue(bounds.startDate)} ~ ${formatScheduleDateValue(bounds.endDate)}`;
 };
 
-const resolveCurrentCtSeconds = (assignment) => {
-  const totalSeconds = Number(assignment?.totalSeconds);
-  if (Number.isFinite(totalSeconds) && totalSeconds > 0) return totalSeconds;
+const resolveCurrentStTotalSeconds = (assignment) => {
+  const stTotalSeconds = Number(assignment?.stTotalSeconds);
+  if (Number.isFinite(stTotalSeconds) && stTotalSeconds > 0) return stTotalSeconds;
   return 0;
 };
 
@@ -206,9 +206,9 @@ const resolveCardCtBasis = (card) => {
   return 'NONE';
 };
 
-const resolveCardCurrentCtSeconds = (card) => {
-  const totalSeconds = Number(card?.totalSeconds);
-  if (Number.isFinite(totalSeconds) && totalSeconds > 0) return totalSeconds;
+const resolveCardCurrentStTotalSeconds = (card) => {
+  const stTotalSeconds = Number(card?.stTotalSeconds);
+  if (Number.isFinite(stTotalSeconds) && stTotalSeconds > 0) return stTotalSeconds;
   const totalSt = Number(card?.totalSt);
   if (Number.isFinite(totalSt) && totalSt > 0) return totalSt;
   const totalPt = Number(card?.totalPt);
@@ -967,7 +967,7 @@ const ProductionPlanBoard = () => {
         const headcount = Math.max(1, currentHeadcount > 0 ? currentHeadcount : fallbackHeadcount);
         const lineDailyCapacitySeconds = resolveLineDailyCapacitySeconds(line, headcount);
         const status = resolveAssignmentSnapshotState(assignment);
-        const assignedSeconds = resolveCurrentCtSeconds(assignment);
+        const assignedSeconds = resolveCurrentStTotalSeconds(assignment);
         const perPieceSeconds =
           assignedSeconds > 0
             ? assignedSeconds / Math.max(1, toPositiveInt(assignment?.quantity, 1))
@@ -1346,7 +1346,7 @@ const ProductionPlanBoard = () => {
         (sum, row) => sum + row.basePerPieceSeconds,
         0
       );
-      const totalAssignedPerPieceSeconds = resolveCurrentCtSeconds(assignmentView) / orderQuantity;
+      const totalAssignedPerPieceSeconds = resolveCurrentStTotalSeconds(assignmentView) / orderQuantity;
       const totalSavedPerPieceSeconds = hasSavedSnapshot
         ? resolveSavedSeconds(assignmentView) / orderQuantity
         : null;
@@ -1410,7 +1410,7 @@ const ProductionPlanBoard = () => {
     const lineDailyCapacitySeconds = Number(selectedAssignment.lineDailyCapacitySeconds);
 
     if (selectedProcessRows.length === 0) {
-      const fallbackAssignedSeconds = resolveCurrentCtSeconds(selectedAssignment);
+      const fallbackAssignedSeconds = resolveCurrentStTotalSeconds(selectedAssignment);
       const fallbackSavedSeconds = hasSavedSnapshot
         ? resolveSavedSeconds(selectedAssignment)
         : null;
@@ -1743,7 +1743,7 @@ const ProductionPlanBoard = () => {
 
         return {
           ...syncedAssignment,
-          contractedSeconds: currentCtSeconds > 0 ? currentCtSeconds : null,
+          ctTotalSeconds: currentCtSeconds > 0 ? currentCtSeconds : null,
           ctSnapshot: {
             sourceAssignmentId: String(syncedAssignment?.id || '').trim() || null,
             lineId: syncedAssignment?.lineId ?? null,
@@ -1864,8 +1864,8 @@ const ProductionPlanBoard = () => {
     }
     const startIndex = toNonNegativeInt(Number(startOffset), 0);
     const endIndex = Math.max(startIndex, toNonNegativeInt(Number(endOffset), startIndex));
-    const currentCtSeconds = resolveCardCurrentCtSeconds(deltaCard);
-    if (!Number.isFinite(currentCtSeconds) || currentCtSeconds <= 0) {
+    const currentStTotalSeconds = resolveCardCurrentStTotalSeconds(deltaCard);
+    if (!Number.isFinite(currentStTotalSeconds) || currentStTotalSeconds <= 0) {
       showNotification('차이 카드에 사용할 CT 기준값이 없습니다.', 'error');
       return;
     }
@@ -1882,7 +1882,7 @@ const ProductionPlanBoard = () => {
       id: deltaCard.id,
       styleId: deltaCard.styleId,
       quantity: deltaCard.quantity,
-      totalSeconds: currentCtSeconds,
+      stTotalSeconds: currentStTotalSeconds,
       status: basis === 'ST' ? 'ST' : basis === 'PT' ? 'PT' : 'NONE',
     };
     const newAssignment = {
@@ -1894,8 +1894,8 @@ const ProductionPlanBoard = () => {
       quantity: deltaCard.quantity,
       originOrderId: deltaCard.originOrderId ?? deltaCard.id,
       basis,
-      totalSeconds: currentCtSeconds,
-      contractedSeconds: null,
+      stTotalSeconds: currentStTotalSeconds,
+      ctTotalSeconds: null,
       ctSnapshot: null,
       label: deltaCard.label,
       customer: deltaCard.customer,
@@ -1926,7 +1926,7 @@ const ProductionPlanBoard = () => {
     const oldQty = Math.max(1, toPositiveInt(targetAssignment.quantity, 1));
     const newQty = oldQty + deltaCard.quantity;
 
-    const plannedSeconds = resolveCurrentCtSeconds(targetAssignment);
+    const plannedSeconds = resolveCurrentStTotalSeconds(targetAssignment);
     const lineDailyCapacitySeconds = Number(targetView.lineDailyCapacitySeconds || 0);
     const startIndex = toNonNegativeInt(targetAssignment.startIndex, 0);
     let newEndIndex = startIndex;
@@ -1978,7 +1978,7 @@ const ProductionPlanBoard = () => {
       return;
     }
 
-    const plannedSeconds = resolveCurrentCtSeconds(targetAssignment);
+    const plannedSeconds = resolveCurrentStTotalSeconds(targetAssignment);
     const lineDailyCapacitySeconds = Number(targetView.lineDailyCapacitySeconds || 0);
     const startIndex = toNonNegativeInt(targetAssignment.startIndex, 0);
     let newEndIndex = startIndex;

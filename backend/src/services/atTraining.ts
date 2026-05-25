@@ -1,6 +1,6 @@
 export type AtMetricObservation = {
   quantity: number;
-  totalSeconds: number;
+  laborInputSeconds: number;
 };
 
 export type AtTrainingDayProcessRow = {
@@ -12,7 +12,7 @@ export type AtTrainingDayProcessRow = {
 export type AtTrainingDayBucket = {
   dayKey: string;
   order: number;
-  totalSeconds: number;
+  laborInputSeconds: number;
   processRows: AtTrainingDayProcessRow[];
 };
 
@@ -21,7 +21,7 @@ type AtAllocatedObservation = {
   order: number;
   metricKey: string;
   quantity: number;
-  totalSeconds: number;
+  laborInputSeconds: number;
 };
 
 type WeightedRegressionPoint = {
@@ -96,18 +96,18 @@ const toAtRegressionPoints = (
   observations
     .map((observation) => {
       const quantity = Number(observation?.quantity);
-      const totalSeconds = Number(observation?.totalSeconds);
+      const laborInputSeconds = Number(observation?.laborInputSeconds);
       if (
         !Number.isFinite(quantity) ||
-        !Number.isFinite(totalSeconds) ||
+        !Number.isFinite(laborInputSeconds) ||
         quantity <= 0 ||
-        totalSeconds <= 0
+        laborInputSeconds <= 0
       ) {
         return null;
       }
       return {
         x: quantity,
-        y: totalSeconds,
+        y: laborInputSeconds,
         // Large quantity rows are usually less noisy, but use sqrt to avoid domination.
         weight: Math.max(1, Math.sqrt(quantity)),
       };
@@ -291,7 +291,7 @@ const allocateDaySecondsAcrossProcesses = (
       order: day.order,
       metricKey: row.metricKey,
       quantity: row.quantity,
-      totalSeconds: day.totalSeconds * (row.quantity / totalWork),
+      laborInputSeconds: day.laborInputSeconds * (row.quantity / totalWork),
     }));
   }
 
@@ -300,7 +300,7 @@ const allocateDaySecondsAcrossProcesses = (
     order: day.order,
     metricKey: row.metricKey,
     quantity: row.quantity,
-    totalSeconds: day.totalSeconds * (row.work / totalWork),
+    laborInputSeconds: day.laborInputSeconds * (row.work / totalWork),
   }));
 };
 
@@ -321,7 +321,7 @@ const buildAllocatedObservations = (
       const current = observationsByMetric.get(row.metricKey) || [];
       current.push({
         quantity: row.quantity,
-        totalSeconds: row.totalSeconds,
+        laborInputSeconds: row.laborInputSeconds,
       });
       observationsByMetric.set(row.metricKey, current);
     });
@@ -344,8 +344,8 @@ const buildDayTrendWeights = (
   let currentStreak = 0;
 
   sortedDays.forEach((day) => {
-    const totalSeconds = Math.max(1, Number(day?.totalSeconds) || 0);
-    const predictedTotal = ensureArray<AtTrainingDayProcessRow>(day?.processRows).reduce(
+    const laborInputSeconds = Math.max(1, Number(day?.laborInputSeconds) || 0);
+    const predictedLaborInputSeconds = ensureArray<AtTrainingDayProcessRow>(day?.processRows).reduce(
       (sum, row) => {
         const quantity = Number(row?.quantity);
         if (!Number.isFinite(quantity) || quantity <= 0) return sum;
@@ -361,7 +361,7 @@ const buildDayTrendWeights = (
       0
     );
 
-    const residualRatio = (totalSeconds - predictedTotal) / totalSeconds;
+    const residualRatio = (laborInputSeconds - predictedLaborInputSeconds) / laborInputSeconds;
     const magnitudeScaled =
       Math.abs(residualRatio) / Math.max(AT_WLS_RESIDUAL_SCALE, 1e-6);
     const magnitudeWeight = 1 / (1 + magnitudeScaled * magnitudeScaled);
@@ -494,14 +494,14 @@ export const fitAtParamsWithProportionalAllocation = (
   observations.forEach((observation) => {
     const dayWeight = dayWeightByKey.get(observation.dayKey) ?? 1;
     const quantity = Number(observation.quantity);
-    const totalSeconds = Number(observation.totalSeconds);
+    const laborInputSeconds = Number(observation.laborInputSeconds);
     if (
       !Number.isFinite(dayWeight) ||
       dayWeight <= 0 ||
       !Number.isFinite(quantity) ||
       quantity <= 0 ||
-      !Number.isFinite(totalSeconds) ||
-      totalSeconds <= 0
+      !Number.isFinite(laborInputSeconds) ||
+      laborInputSeconds <= 0
     ) {
       return;
     }
@@ -511,7 +511,7 @@ export const fitAtParamsWithProportionalAllocation = (
     const current = weightedPointsByMetric.get(observation.metricKey) || [];
     current.push({
       x: quantity,
-      y: totalSeconds,
+      y: laborInputSeconds,
       weight,
     });
     weightedPointsByMetric.set(observation.metricKey, current);
