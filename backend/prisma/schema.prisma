@@ -742,7 +742,7 @@ model QcPassEvent {
 model WorkLog {
   id                     Int      @id @default(autoincrement())
   orgId                  Int
-  workDate               String
+  displayDate            String   @map("workDate")
   coverageStartDate      String?
   coverageEndDate        String?
   entryMode              String?
@@ -763,7 +763,7 @@ model WorkLog {
   organization Organization @relation(fields: [orgId], references: [id])
   workRecords  WorkRecord[]
 
-  @@index([orgId, workDate])
+  @@index([orgId, displayDate])
   @@index([orgId, createdAt])
 }
 

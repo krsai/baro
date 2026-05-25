@@ -280,7 +280,7 @@ export const getPayrollByMonth = async (orgId: number, monthInput: string) => {
   const workLogs = await prisma.workLog.findMany({
     where: {
       orgId,
-      workDate: { startsWith: month },
+      displayDate: { startsWith: month },
     },
     include: {
       workRecords: WORK_RECORD_WITH_REFS_INCLUDE,

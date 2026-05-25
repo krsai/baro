@@ -37,7 +37,9 @@
       "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\agent.md\" -Force)",
       "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\\\\test-initial-state.md\" -Force)",
       "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\\\\deploy-railway.md\" -Force)",
-      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\" -Force)"
+      "Bash(Remove-Item \"c:\\\\Users\\\\krsai\\\\OneDrive\\\\바탕 화면\\\\baro\\\\docs\" -Force)",
+      "Bash(grep -v \"//.*coverageStartDate\\\\|//.*coverageEndDate\")",
+      "Bash(grep -v \"//.*workDate\")"
     ]
   }
 }

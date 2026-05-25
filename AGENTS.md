@@ -32,9 +32,20 @@ AT(q) = a*q + b
 ## 데이터 구조 핵심
 
 ### WorkLog / WorkRecord
-- **WorkLog**: `(factoryId, workDate)` 기준 하루 1개. `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
-- **WorkRecord**: WorkLog 하위. 한 행 = `(작업자, 스타일, 공정, 색상, 수량, ctSeconds)`. 같은 작업자가 같은 날 여러 공정 가능.
+- **WorkLog**: 기간 헤더. `coverageStartDate`(시작), `coverageEndDate`(종료)가 소스오브트루스.
+  - `displayDate` (DB 컬럼명 `workDate`, Prisma `@map("workDate")`): 목록 표시/정렬 전용 대표 날짜. 항상 `coverageEndDate`와 동일. **계산 로직 사용 금지.**
+  - `lineId`가 스키마 FK 없이 `records` JSON 안에 비정규화 저장됨 (DB 조인 불가 — 구조적 한계).
+- **WorkRecord**: WorkLog 하위 상세 행. 한 행 = `(작업자, 스타일, 공정, 색상, 수량, ctSeconds)`.
+  - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
+  - 스케줄러 연결의 핵심 키는 `WorkRecord.assignmentPlanId`.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
+
+### WorkLog 날짜 규칙 (강제)
+- 계산/판정 로직(스케줄러, 진행도, 완료일 추정)에서는 항상 기간 `[coverageStartDate, coverageEndDate]`를 기준으로 해석한다.
+- `displayDate`는 UI 목록 표시/정렬 용도로만 사용한다. 계산 로직의 기준 날짜로 절대 사용하지 않는다.
+- `coverageEndDate || displayDate` 형태의 fallback 브릿지 로직은 신규 코드에 추가하지 않는다.
+- 기간 입력(`coverageStartDate !== coverageEndDate`)은 절대 하루치로 뭉개지면 안 된다.
+- WorkRecord가 AssignmentPlan과 연결되지 않으면(`assignmentPlanId` 없음) 기간이 정확해도 스케줄러/진행도 반영이 불가능하다.
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
@@ -52,9 +63,9 @@ AT(q) = a*q + b
 ## AT 학습 파이프라인
 
 ### 작동 방식
-1. WorkLog를 `workDate` 기준으로 버킷화 (AtTrainingBucket)
+1. WorkLog 기간을 기준으로 버킷화하되, 월 집계 앵커는 종료일(`coverageEndDate` = `displayDate`) 사용
 2. **Period Spreading**: 드문드문 입력해도 날짜 간격만큼 시간 자동 분산
-   - 예) workDate: 4/1, 4/15, 4/30 → 각각 1일, 14일, 15일 기간으로 처리
+   - 예) coverageEndDate: 4/1, 4/15, 4/30 → 각각 1일, 14일, 15일 기간으로 처리
 3. `totalSeconds` = 해당 기간 작업자 출퇴근 실측 합 (없으면 `workerCount × 기본8h × 일수`)
 4. 회귀 분석: `totalSeconds ≈ Σ(a_i × q_i + b_i)` → 공정별 `a`, `b` 학습
 
@@ -91,8 +102,16 @@ AT(q) = a*q + b
 - **미배정 카드 표시**: `buildCardsFromOrders`가 주문의 모든 카드를 생성. 미배정 카드는 보드 풀(pool)에 남아 있어 눈으로 확인 가능.
 - **생산 완료 반영**: `completeAssignmentPlanProduction`이 `syncAssignmentSchedulesFromWorkRecordPlans` 및 `persistAssignmentPlanProgressSnapshot`을 호출해 완료 상태와 일정 정보를 갱신.
 - **라인 균형**: 시각적으로 보드에서 확인 가능 (별도 지표 불필요).
-- **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 이미 있음. 단 계산 공식이 잘못됨 (Math.min 기반).
+- **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 포함되며, 현재는 `sum(WorkRecord.quantity) / (planQuantity × processCount)` 공식으로 계산.
 - **작업기록 총량 집계**: 진행도 계산 함수(`buildAssignmentPlanProgressRows`)에서 plan별 총 작업량 집계가 가능.
+
+### 현재 이슈 분류 가드레일 (중요)
+- WorkLog 기간 입력이 존재하는데도 카드가 밀리거나 길이가 비정상 변경되면, 1차 의심 지점은 날짜 저장이 아니라 **렌더/재배치 로직(C+D)** 이다.
+- WorkLog/WorkRecord 날짜 해석 이슈와 프론트 reflow/render-range 이슈를 분리해서 진단한다.
+- 디버깅 순서:
+  1. `WorkRecord.assignmentPlanId` 연결 유효성 확인
+  2. progress API의 `renderStartDate/renderEndDate`가 미완료 카드에 과적용되는지 확인
+  3. AssignBoard reflow에서 완료 카드가 queue로 재배치되는지 확인
 
 ---
 

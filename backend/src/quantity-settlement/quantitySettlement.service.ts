@@ -526,7 +526,7 @@ export const getQuantitySettlementByMonth = async (orgId: number, monthInput: st
     prisma.workLog.findMany({
       where: {
         orgId,
-        workDate: { startsWith: month },
+        displayDate: { startsWith: month },
       },
       select: {
         id: true,
