@@ -468,17 +468,21 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
         const rawDurationCells = Math.max(rawEnd - rawStart, 0);
         const isClippedLeft = rawStart < 0;
         const isClippedRight = rawEnd > viewEnd;
-        const clampedStart = Math.max(rawStart, 0);
-        const clampedEnd = Math.min(rawEnd, viewEnd);
+        const clampedStart = Math.min(Math.max(rawStart, 0), viewEnd);
+        const clampedEnd = Math.min(Math.max(rawEnd, 0), viewEnd);
         const clampedWidthCells = Math.max(clampedEnd - clampedStart, 0);
+        const markerWidthPx = isClippedLeft || isClippedRight ? 20 : 0;
+        const widthPx = Math.max(clampedWidthCells * CELL_WIDTH, markerWidthPx);
+        const timelineWidthPx = viewEnd * CELL_WIDTH;
+        let leftPx = clampedStart * CELL_WIDTH;
+        if (widthPx > 0 && leftPx + widthPx > timelineWidthPx) {
+          leftPx = Math.max(0, timelineWidthPx - widthPx);
+        }
 
         return {
           ...assignment,
-          leftPx: clampedStart * CELL_WIDTH,
-          widthPx: Math.max(
-            clampedWidthCells * CELL_WIDTH,
-            isClippedLeft || isClippedRight ? 20 : 0
-          ),
+          leftPx,
+          widthPx,
           topPx: verticalOffset + BAR_GAP + assignment.laneIndex * (BAR_HEIGHT + BAR_GAP),
           heightPx: BAR_HEIGHT,
           workDays: rawDurationCells > 0 ? rawDurationCells : getAssignmentDisplayDuration(assignment, lineCapacityById, days),

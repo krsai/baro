@@ -3695,7 +3695,8 @@ const AssignBoard = () => {
     const mappedAssignments = assignments
       .filter((item) => item.endIndex >= 0 && item.startIndex < dayCount)
       .map((item) => {
-        const progressRow = assignmentProgressById[String(item?.id || '').trim()] || null;
+        const assignmentId = String(item?.id || '').trim();
+        const progressRow = assignmentProgressById[assignmentId] || null;
         const plannedQuantity = Number(
           progressRow?.plannedQuantity ?? item?.quantity ?? item?.plannedQuantity ?? 0
         );
@@ -3738,6 +3739,7 @@ const AssignBoard = () => {
           renderStartIndex,
           resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
         );
+        const useRenderDateRange = Boolean(renderStartDateKey && renderEndDateKey);
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
           startDateKey: renderStartDateKey || item?.startDateKey,
@@ -3762,7 +3764,7 @@ const AssignBoard = () => {
           productionCompletedAt:
             progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
           scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
-          useRenderDateRange: scheduleStatus === 'PRODUCTION_COMPLETED',
+          useRenderDateRange,
           candidateEndDate:
             progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
           renderStartDate:
@@ -3789,7 +3791,7 @@ const AssignBoard = () => {
             item?.producedQty ??
             item?.producedQuantity ??
             0,
-          progressPercent: workProgressPercent,
+          progressPercent: clampPercentValue(workProgressPercent),
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
           qcProgressPercent,

@@ -5862,20 +5862,30 @@ const trySyncAssignmentPlanSideEffectsAfterWorkLogMutation = async ({
   );
   if (normalizedPlanIds.length === 0) return;
 
-  // Work-log mutation is already committed at this point.
-  // Downstream assignment sync should not flip the API response to a failure.
-  try {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId,
-      assignmentPlanIds: normalizedPlanIds,
-    });
-  } catch (error) {
-    console.warn(
-      `[work-logs:${mode}] orgId=${orgId} assignment schedule sync failed: ${getErrorMessage(
-        error,
-        "failed to sync assignment schedules after work-log mutation"
-      )}`
-    );
+  // Important:
+  // Mutating persisted board/plan schedule from work-log deltas can accumulate drift
+  // when users edit or delete logs repeatedly across environments.
+  // Keep schedule mutation disabled by default and rely on deterministic
+  // progress snapshot recomputation for rendering.
+  const shouldMutateScheduleFromWorkLogs =
+    resolveOptionalString(process.env.ENABLE_WORKLOG_SCHEDULE_SYNC, "")?.toLowerCase?.() ===
+    "true";
+  if (shouldMutateScheduleFromWorkLogs) {
+    // Work-log mutation is already committed at this point.
+    // Downstream assignment sync should not flip the API response to a failure.
+    try {
+      await syncAssignmentSchedulesFromWorkRecordPlans({
+        orgId,
+        assignmentPlanIds: normalizedPlanIds,
+      });
+    } catch (error) {
+      console.warn(
+        `[work-logs:${mode}] orgId=${orgId} assignment schedule sync failed: ${getErrorMessage(
+          error,
+          "failed to sync assignment schedules after work-log mutation"
+        )}`
+      );
+    }
   }
 
   try {
@@ -15617,6 +15627,7 @@ const buildAssignmentPlanProgressRows = async (
   });
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
+  const sumByPlanId = new Map<number, number>();
   const getStats = (planId: number): AssignmentPlanWorkStats => {
     const existing = statsByPlanId.get(planId);
     if (existing) return existing;
@@ -15636,6 +15647,7 @@ const buildAssignmentPlanProgressRows = async (
     if (!planId) return;
     const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
     if (quantity <= 0) return;
+    sumByPlanId.set(planId, (sumByPlanId.get(planId) || 0) + quantity);
 
     const stats = getStats(planId);
     const processKey = resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record);
@@ -15692,6 +15704,34 @@ const buildAssignmentPlanProgressRows = async (
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
+    const ctSnapshotRaw = plan?.ctSnapshot;
+    const ctSnapshot = (() => {
+      if (!ctSnapshotRaw) return null;
+      if (typeof ctSnapshotRaw === "string") {
+        try {
+          const parsed = JSON.parse(ctSnapshotRaw);
+          return normalizeAssignmentCtSnapshot(parsed);
+        } catch {
+          return null;
+        }
+      }
+      return normalizeAssignmentCtSnapshot(ctSnapshotRaw);
+    })();
+    const processCountFromSnapshot =
+      Array.isArray(ctSnapshot?.processes) && ctSnapshot.processes.length > 0
+        ? ctSnapshot.processes.length
+        : null;
+    const processCountFromRecords =
+      stats.processTotalsByKey.size > 0 ? stats.processTotalsByKey.size : null;
+    const processCount = processCountFromSnapshot ?? processCountFromRecords;
+    const totalExpected =
+      baselineQuantityRaw != null && processCount != null && processCount > 0
+        ? baselineQuantityRaw * processCount
+        : null;
+    const totalDone = sumByPlanId.get(planId) || 0;
+    const isMarkedCompleted = Boolean(
+      plan?.isCompleted || toOptionalDateValue(plan?.completedAt, null)
+    );
     const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
       processTotalsByKey: stats.processTotalsByKey,
       processKeyGroups: requiredProcessGroups,
@@ -15702,10 +15742,11 @@ const buildAssignmentPlanProgressRows = async (
         : Math.max(0, baselineQuantityRaw - producedQuantity);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
-    const progressPercent =
-      baselineQuantityRaw == null || baselineQuantityRaw <= 0
-        ? null
-        : (producedQuantity / baselineQuantityRaw) * 100;
+    const progressPercent = isMarkedCompleted
+      ? 100
+      : totalExpected != null && totalExpected > 0
+        ? Math.min(100, Math.round((totalDone / totalExpected) * 100))
+        : null;
 
     const firstWorkDate = stats.firstWorkDate;
     const lastWorkDate = stats.lastWorkDate;
@@ -15928,7 +15969,28 @@ const buildAssignmentPlanProgressRows = async (
     lineRows.forEach((row) => {
       const isCompleted =
         String(row?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
-      const durationDays = Math.max(1, toSignedInt(row?._durationDays, 1));
+      const plannedDurationDays = Math.max(1, toSignedInt(row?._durationDays, 1));
+      const baselineQuantity = toOptionalNonNegativeInt(row?.baselineQuantity, null);
+      const producedQuantity = Math.max(0, Math.round(Number(row?.producedQuantity ?? 0) || 0));
+      const elapsedDays = Math.max(0, toSignedInt(row?.elapsedDays, 0));
+      let durationDays = plannedDurationDays;
+      if (!isCompleted) {
+        // For in-progress cards, derive a deterministic forecast duration from
+        // current work-log velocity. This re-computes from full history each time,
+        // so add/delete edits do not leave cumulative schedule drift behind.
+        if (
+          baselineQuantity != null &&
+          baselineQuantity > 0 &&
+          producedQuantity > 0 &&
+          elapsedDays > 0
+        ) {
+          const forecastTotalDays = Math.max(
+            1,
+            Math.ceil((elapsedDays * baselineQuantity) / Math.max(1, producedQuantity))
+          );
+          durationDays = Math.max(plannedDurationDays, forecastTotalDays);
+        }
+      }
       const candidate =
         normalizeDateKey(row?.candidateEndDate) ||
         normalizeDateKey(row?._originalEndDateKey) ||
@@ -15955,10 +16017,13 @@ const buildAssignmentPlanProgressRows = async (
 
       if (!renderStartDateKey) return;
 
-      const renderEndDateKey = isCompleted
+      let renderEndDateKey = isCompleted
         ? normalizeDateKey(row?.candidateEndDate) || renderStartDateKey
         : shiftDateKeyByDaysForAssignmentSchedule(renderStartDateKey, durationDays - 1) ||
           renderStartDateKey;
+      if (!isCompleted && candidate && candidate > renderEndDateKey) {
+        renderEndDateKey = candidate;
+      }
 
       row.renderStartDate = renderStartDateKey;
       row.renderEndDate = renderEndDateKey;

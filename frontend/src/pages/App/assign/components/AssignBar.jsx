@@ -229,29 +229,19 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
       {...listeners}
       onContextMenu={openContextMenu}
     >
-      {progressPercent > 0 && (
+      {typeof progressPercent === 'number' && progressPercent > 0 && !isCompleted && (
         <Box
           sx={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: 2,
-            overflow: 'hidden',
-            zIndex: 0,
-            pointerEvents: 'none',
-          }}
-        >
-          <Box
-            sx={{
             position: 'absolute',
             top: 0,
             left: 0,
             width: `${progressPercent}%`,
             height: '100%',
-            backgroundColor: statusMeta.progressBg,
-            transition: 'width 0.5s ease',
+            backgroundColor: 'rgba(255, 255, 255, 0.25)',
+            pointerEvents: 'none',
+            zIndex: 0,
           }}
         />
-        </Box>
       )}
 
       {isClippedRight && (
