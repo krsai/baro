@@ -6827,22 +6827,41 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   }
   void lineId;
 
-  const plans = await prisma.assignmentPlan.findMany({
-    where: { orgId, id: { in: assignmentPlanIds } },
-    select: {
-      id: true,
-      externalId: true,
-      lineId: true,
-      ctSnapshot: true,
-      ctTotalSeconds: true,
-      orderNo: true,
-      label: true,
-      colorName: true,
-      isCompleted: true,
-      completedAt: true,
-    },
-  });
-  const planById = new Map(plans.map((plan) => [plan.id, plan]));
+  let plans: any[] = [];
+  try {
+    plans = await prisma.assignmentPlan.findMany({
+      where: { orgId, id: { in: assignmentPlanIds } },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        ctSnapshot: true,
+        ctTotalSeconds: true,
+        orderNo: true,
+        label: true,
+        colorName: true,
+        isCompleted: true,
+        completedAt: true,
+      },
+    });
+  } catch (error) {
+    if (!isAssignmentPlanMissingColumnError(error)) throw error;
+    plans = await prisma.assignmentPlan.findMany({
+      where: { orgId, id: { in: assignmentPlanIds } },
+      select: {
+        id: true,
+        externalId: true,
+        lineId: true,
+        ctSnapshot: true,
+        orderNo: true,
+        label: true,
+        colorName: true,
+        isCompleted: true,
+        completedAt: true,
+      },
+    });
+  }
+  const planById = new Map(plans.map((plan: any) => [plan.id, plan]));
 
   const missingPlanIds = assignmentPlanIds.filter(
     (planId) => !planById.has(planId)
@@ -7846,36 +7865,60 @@ const buildWorkLogContextResponse = async ({
     select: lineAssignmentSelect,
     orderBy: [{ employeeId: "asc" }],
   });
-  const loadAssignmentPlansForWorkLogContext = () =>
-    factoryLineIds.length > 0
-      ? prisma.assignmentPlan.findMany({
-          where: {
-            orgId,
-            lineId: { in: factoryLineIds },
-            isCompleted: false,
-          },
-          select: {
-            id: true,
-            externalId: true,
-            lineId: true,
-            orderNo: true,
-            customer: true,
-            label: true,
-            colorId: true,
-            colorName: true,
-            quantity: true,
-            ctTotalSeconds: true,
-            ctSnapshot: true,
-            color: true,
-            startIndex: true,
-            endIndex: true,
-            isCompleted: true,
-            finalQuantity: true,
-            completedAt: true,
-          },
-          orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-        })
-      : Promise.resolve([] as any[]);
+  const loadAssignmentPlansForWorkLogContext = async () => {
+    if (factoryLineIds.length === 0) return [] as any[];
+    const where = { orgId, lineId: { in: factoryLineIds }, isCompleted: false };
+    const orderBy: any[] = [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }];
+    try {
+      return await prisma.assignmentPlan.findMany({
+        where,
+        select: {
+          id: true,
+          externalId: true,
+          lineId: true,
+          orderNo: true,
+          customer: true,
+          label: true,
+          colorId: true,
+          colorName: true,
+          quantity: true,
+          ctTotalSeconds: true,
+          ctSnapshot: true,
+          color: true,
+          startIndex: true,
+          endIndex: true,
+          isCompleted: true,
+          finalQuantity: true,
+          completedAt: true,
+        },
+        orderBy,
+      });
+    } catch (error) {
+      if (!isAssignmentPlanMissingColumnError(error)) throw error;
+      return prisma.assignmentPlan.findMany({
+        where,
+        select: {
+          id: true,
+          externalId: true,
+          lineId: true,
+          orderNo: true,
+          customer: true,
+          label: true,
+          colorId: true,
+          colorName: true,
+          quantity: true,
+          ctSnapshot: true,
+          color: true,
+          startIndex: true,
+          endIndex: true,
+          isCompleted: true,
+          finalQuantity: true,
+          completedAt: true,
+        },
+        orderBy,
+      });
+    }
+  };
 
   let [lineAssignmentsOnWorkDate, assignmentPlans] = await Promise.all([
     lineAssignmentsOnWorkDatePromise,
@@ -9770,16 +9813,31 @@ const loadOrderAssignmentModificationLockMap = async (
   );
   if (orgIds.length === 0) return lockMap;
 
-  const lockedPlans = await prisma.assignmentPlan.findMany({
-    where: {
-      orgId: { in: orgIds },
-      ctTotalSeconds: { not: null },
-    },
-    select: {
-      originOrderId: true,
-      cardId: true,
-    },
-  });
+  let lockedPlans: Array<{ originOrderId: string | null; cardId: string | null }> = [];
+  try {
+    lockedPlans = await prisma.assignmentPlan.findMany({
+      where: {
+        orgId: { in: orgIds },
+        ctTotalSeconds: { not: null },
+      },
+      select: {
+        originOrderId: true,
+        cardId: true,
+      },
+    });
+  } catch (error) {
+    if (!isAssignmentPlanMissingColumnError(error)) throw error;
+    lockedPlans = await prisma.assignmentPlan.findMany({
+      where: {
+        orgId: { in: orgIds },
+        ctSnapshot: { not: Prisma.JsonNull },
+      },
+      select: {
+        originOrderId: true,
+        cardId: true,
+      },
+    });
+  }
   lockedPlans.forEach((plan) => {
     const orderId =
       extractOrderIdFromAssignmentCardText(plan?.originOrderId) ??
@@ -9796,17 +9854,33 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
   if (orgIds.length === 0) return false;
 
   const prefix = `${orderId}::`;
-  const lockedPlan = await prisma.assignmentPlan.findFirst({
-    where: {
-      orgId: { in: orgIds },
-      ctTotalSeconds: { not: null },
-      OR: [
-        { originOrderId: { startsWith: prefix } },
-        { cardId: { startsWith: prefix } },
-      ],
-    },
-    select: { id: true },
-  });
+  let lockedPlan: { id: number } | null = null;
+  try {
+    lockedPlan = await prisma.assignmentPlan.findFirst({
+      where: {
+        orgId: { in: orgIds },
+        ctTotalSeconds: { not: null },
+        OR: [
+          { originOrderId: { startsWith: prefix } },
+          { cardId: { startsWith: prefix } },
+        ],
+      },
+      select: { id: true },
+    });
+  } catch (error) {
+    if (!isAssignmentPlanMissingColumnError(error)) throw error;
+    lockedPlan = await prisma.assignmentPlan.findFirst({
+      where: {
+        orgId: { in: orgIds },
+        ctSnapshot: { not: Prisma.JsonNull },
+        OR: [
+          { originOrderId: { startsWith: prefix } },
+          { cardId: { startsWith: prefix } },
+        ],
+      },
+      select: { id: true },
+    });
+  }
   return Boolean(lockedPlan);
 };
 const getOrderModificationLockState = async (order: any) =>
@@ -10623,6 +10697,45 @@ const ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION = {
   confidence: true,
   scheduleStatus: true,
 } as const;
+// Legacy fallback: excludes stTotalSeconds/ctTotalSeconds for DB schema drift tolerance
+const ASSIGNMENT_PLAN_SELECT_LEGACY = {
+  id: true,
+  externalId: true,
+  lineId: true,
+  cardId: true,
+  orderNo: true,
+  customer: true,
+  label: true,
+  colorId: true,
+  colorName: true,
+  previewUrl: true,
+  imageUrl: true,
+  thumbnailUrl: true,
+  quantity: true,
+  originOrderId: true,
+  basis: true,
+  ctSnapshot: true,
+  color: true,
+  stripeColor: true,
+  startIndex: true,
+  endIndex: true,
+  startDayOffsetPercent: true,
+  startDayPercent: true,
+  endDayPercent: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+const ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY = {
+  ...ASSIGNMENT_PLAN_SELECT_LEGACY,
+  isCompleted: true,
+  finalQuantity: true,
+  completedAt: true,
+  closedQty: true,
+  closedAt: true,
+  closedBy: true,
+  closeMode: true,
+  closeBasis: true,
+} as const;
 const isAssignmentPlanMissingColumnError = (error: any): boolean => {
   const code = resolveOptionalString(error?.code, null);
   if (code === "P2022") return true;
@@ -10678,7 +10791,7 @@ const loadAssignmentPlansForBoardState = async (
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "loadAssignmentPlansForBoardState",
   });
 };
@@ -14773,7 +14886,7 @@ app.get("/assignment-plans", async (req, res) => {
       ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
     },
     orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+    selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
     context: "GET /assignment-plans",
   });
   if (hasBoardAssignments && activeExternalIds.length > 0) {
@@ -14825,7 +14938,7 @@ app.get("/assignment-plans", async (req, res) => {
               ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
             },
             orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-            selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+            selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
             context: "GET /assignment-plans",
           });
         }
@@ -15552,6 +15665,8 @@ const buildAssignmentPlanProgressRows = async (
         ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
         ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
         ASSIGNMENT_PLAN_SELECT_CORE,
+        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+        ASSIGNMENT_PLAN_SELECT_LEGACY,
       ],
       context: "buildAssignmentPlanProgressRows",
     }),
@@ -16171,6 +16286,8 @@ const resolveAssignmentPlanProducedQuantity = async ({
         ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
         ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
         ASSIGNMENT_PLAN_SELECT_CORE,
+        ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+        ASSIGNMENT_PLAN_SELECT_LEGACY,
       ],
       context: "resolveAssignmentPlanProducedQuantity",
     }),
@@ -18075,7 +18192,7 @@ app.get("/assignment-board-state", async (req, res) => {
             ...(hasBoardAssignments ? { externalId: { in: activeExternalIds } } : {}),
           },
           orderBy: [{ lineId: "asc" }, { startIndex: "asc" }, { id: "asc" }],
-          selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE],
+          selectAttempts: [ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, ASSIGNMENT_PLAN_SELECT_CORE, ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY, ASSIGNMENT_PLAN_SELECT_LEGACY],
           context: "GET /assignment-board-state",
         });
   if (assignmentPlans.length > 0 && assignmentPlans.some(assignmentPlanNeedsDisplayRepair)) {

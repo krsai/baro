@@ -151,6 +151,12 @@ BEGIN
   END IF;
 END $$;
 
+-- Step 4b-safety: ensure new column names exist even when neither old nor new name existed
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "stTotalSeconds" DOUBLE PRECISION;
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "ctTotalSeconds" DOUBLE PRECISION;
+ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
+ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
+
 UPDATE "AssignmentBoardState"
 SET "cards" = (
   SELECT COALESCE(jsonb_agg(
