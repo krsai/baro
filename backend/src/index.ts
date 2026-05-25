@@ -15969,6 +15969,10 @@ const buildAssignmentPlanProgressRows = async (
     lineRows.forEach((row) => {
       const isCompleted =
         String(row?.scheduleStatus || "") === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
+      // Only compute render coords for completed cards.
+      // Incomplete cards already have renderStartDate/renderEndDate set from planned positions
+      // in the main loop above; overwriting them here causes plan drift on every fetch.
+      if (!isCompleted) return;
       const plannedDurationDays = Math.max(1, toSignedInt(row?._durationDays, 1));
       const baselineQuantity = toOptionalNonNegativeInt(row?.baselineQuantity, null);
       const producedQuantity = Math.max(0, Math.round(Number(row?.producedQuantity ?? 0) || 0));

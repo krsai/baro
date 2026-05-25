@@ -3744,7 +3744,7 @@ const AssignBoard = () => {
           renderStartIndex,
           resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
         );
-        const useRenderDateRange = Boolean(renderStartDateKey && renderEndDateKey);
+        const useRenderDateRange = isCompleted && Boolean(renderStartDateKey && renderEndDateKey);
         const statusType = resolveAssignmentVisualStatus({
           isCompleted,
           startDateKey: renderStartDateKey || item?.startDateKey,
