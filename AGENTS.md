@@ -937,3 +937,19 @@ runtime 조회값:
   - `AssignmentPlan.quantity/stTotalSeconds/ctTotalSeconds` column rename.
   - `AssignmentCard.payload` JSON key rename.
   - Removal of snapshot ST fields.
+
+### 16. 2026-05-27 Phase 6B implementation status
+
+- Scope:
+  - This phase covers only `StyleProcess.processQuantity -> timesPerPiece` physical column naming.
+  - AssignmentPlan/AssignmentBoardState/AssignmentCard rename remains pending.
+- Implemented in code:
+  - Prisma schema uses `StyleProcess.timesPerPiece`.
+  - Backend StyleProcess storage writes `timesPerPiece`.
+  - Backend StyleProcess reads and ST recalculation use `timesPerPiece`.
+  - `backend/migration_fix.sql` includes idempotent physical rename SQL:
+    `processQuantity -> timesPerPiece`.
+- Boundary:
+  - Frontend local variables named `processQuantity` are not DB columns and may remain local calculation variables.
+  - Assignment CT snapshot `processes[].quantity` remains pending until snapshot JSON rename.
+  - Legacy input fallback still accepts `processQuantity` from old JSON/API payloads.

@@ -853,6 +853,16 @@ ST 표준값:
   - `pieceStTotal`보다 `pieceStTotalSeconds`가 의미와 단위를 동시에 보여준다
   - DB/API/JSON grep 기준으로도 유리하다
 
+### Phase 6B Status Addendum
+
+- 2026-05-27 Phase 6B implemented `StyleProcess.processQuantity -> timesPerPiece`.
+- Prisma schema uses final physical name `timesPerPiece`.
+- Backend StyleProcess storage/read/recalculation paths use `timesPerPiece`.
+- `migration_fix.sql` physically renames `processQuantity -> timesPerPiece`.
+- Frontend local `processQuantity` variables and assignment snapshot `processes[].quantity`
+  are not part of this DB-column slice.
+- AssignmentPlan DB column rename remains pending.
+
 ### F. Recommended Lock Before Coding
 
 - 완료 판정 단일 소스:

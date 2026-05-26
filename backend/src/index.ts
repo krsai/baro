@@ -2054,13 +2054,13 @@ const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
 const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) => {
-  const processQuantity = toPositiveInt(processRow?.processQuantity, 1);
+  const timesPerPiece = toPositiveInt(processRow?.timesPerPiece, 1);
   const ptSeconds = toOptionalSeconds(processRow?.ptSeconds);
   if (ptSeconds != null) {
-    return roundToScale(ptSeconds * processQuantity, 4);
+    return roundToScale(ptSeconds * timesPerPiece, 4);
   }
   return resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
-    quantity: processRow?.processQuantity,
+    timesPerPiece: processRow?.timesPerPiece,
     atParams: processRow?.atParams,
     timeRefQuantity: DEFAULT_TIME_REF_QUANTITY,
   });
@@ -2997,7 +2997,7 @@ const loadAtTrainingDataFromBuckets = async ({
           select: {
             id: true,
             styleUid: true,
-            processQuantity: true,
+            timesPerPiece: true,
             ptSeconds: true,
             atParams: true,
           },
@@ -3578,7 +3578,7 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
         resolveStyleProcessStorageCode(process, index),
       processComposition: normalizedComposition,
       processDescription: resolveOptionalString((process as any)?.description, null),
-      processQuantity: toPositiveInt(
+      timesPerPiece: toPositiveInt(
         (process as any)?.timesPerPiece ?? (process as any)?.quantity ?? (process as any)?.processQuantity,
         1
       ),
@@ -3716,7 +3716,7 @@ const buildStyleProcessMirrorFromRows = (
           nameVi: manualName || localizedNames.nameVi || masterNames?.nameVi,
           processComposition: normalizedComposition,
           description: row.processDescription ?? null,
-          timesPerPiece: row.processQuantity ?? 1,
+          timesPerPiece: row.timesPerPiece ?? 1,
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
           stBuckets: ensureArray(row.standards).map((standard) => ({
@@ -3829,7 +3829,7 @@ const syncStyleProcessStorageForStyle = async ({
             processName: draft.processName,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
-            processQuantity: draft.processQuantity,
+            timesPerPiece: draft.timesPerPiece,
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
@@ -3847,7 +3847,7 @@ const syncStyleProcessStorageForStyle = async ({
             processName: draft.processName,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
-            processQuantity: draft.processQuantity,
+            timesPerPiece: draft.timesPerPiece,
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
@@ -3859,7 +3859,7 @@ const syncStyleProcessStorageForStyle = async ({
             processName: draft.processName,
             processComposition: draft.processComposition ?? Prisma.JsonNull,
             processDescription: draft.processDescription,
-            processQuantity: draft.processQuantity,
+            timesPerPiece: draft.timesPerPiece,
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
@@ -10882,7 +10882,7 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
   ensureArray(styleProcessRows).forEach((row) => {
     const bucketStSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
     if (bucketStSeconds === null) return;
-    const timesPerPiece = toPositiveInt(row?.processQuantity, 1);
+    const timesPerPiece = toPositiveInt(row?.timesPerPiece, 1);
     pieceStTotalSeconds += bucketStSeconds * timesPerPiece;
     hasAnyProcessSt = true;
   });

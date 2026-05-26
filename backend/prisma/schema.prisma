@@ -517,7 +517,7 @@ model StyleProcess {
   processName        String
   processComposition Json?
   processDescription String?
-  processQuantity    Int      @default(1)
+  timesPerPiece      Int      @default(1)
   sortOrder          Int      @default(0)
   ptSeconds          Float?
   atParams           Json?

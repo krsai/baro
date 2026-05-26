@@ -477,3 +477,35 @@ BEGIN
   END IF;
 END $$;
 
+-- 9. StyleProcess physical column rename for per-piece process repetition.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'processQuantity'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'timesPerPiece'
+  ) THEN
+    ALTER TABLE "StyleProcess" RENAME COLUMN "processQuantity" TO "timesPerPiece";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'processQuantity'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'timesPerPiece'
+  ) THEN
+    UPDATE "StyleProcess"
+    SET "timesPerPiece" = COALESCE("timesPerPiece", "processQuantity");
+    ALTER TABLE "StyleProcess" DROP COLUMN "processQuantity";
+  END IF;
+END $$;
+
