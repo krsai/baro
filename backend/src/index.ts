@@ -3532,7 +3532,7 @@ type StyleStorageClient = Prisma.TransactionClient | typeof prisma;
 
 const STYLE_PROCESS_STANDARD_INCLUDE: Prisma.StyleProcessInclude = {
   standards: {
-    orderBy: [{ quantity: "asc" }, { id: "asc" }],
+    orderBy: [{ bucketQuantity: "asc" }, { id: "asc" }],
   },
 };
 
@@ -3721,9 +3721,9 @@ const buildStyleProcessMirrorFromRows = (
           atParams: toStyleAtParams(row.atParams),
           stBuckets: ensureArray(row.standards).map((standard) => ({
             bucketQuantity: resolveStBucketQuantity(
-              (standard as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY
+              (standard as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY
             ),
-            bucketStSeconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
+            bucketStSeconds: toOptionalProcessSeconds((standard as any)?.bucketStSeconds),
             setBy: resolveOptionalString((standard as any)?.setBy, null),
             setAt:
               (standard as any)?.setAt instanceof Date
@@ -3735,7 +3735,7 @@ const buildStyleProcessMirrorFromRows = (
                 : resolveOptionalString((standard as any)?.updatedAt, null),
           })),
           timeRefQuantity:
-            ensureArray(row.standards)[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
+            ensureArray(row.standards)[0]?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY,
           instanceId: `${row.processCode || "PROC"}-${row.id || index}-${index}`,
         });
       });
@@ -3875,8 +3875,8 @@ const syncStyleProcessStorageForStyle = async ({
         data: draft.stBuckets.map((stValue: StyleStBucket) => ({
           orgId: processOrgId,
           styleProcessId: row.id,
-          quantity: stValue.bucketQuantity,
-          stSeconds: stValue.bucketStSeconds,
+          bucketQuantity: stValue.bucketQuantity,
+          bucketStSeconds: stValue.bucketStSeconds,
           setBy: stValue.setBy,
           setAt: stValue.setAt ? new Date(stValue.setAt) : undefined,
         })),
@@ -4043,7 +4043,7 @@ const ensureStyleStandardsForQuantities = async ({
     for (const processRow of processRows) {
       const existingQuantities = new Set(
         ensureArray(processRow.standards).map((standard) =>
-          resolveStBucketQuantity((standard as any)?.quantity ?? 1)
+          resolveStBucketQuantity((standard as any)?.bucketQuantity ?? 1)
         )
       );
       const ptSeconds = toOptionalProcessSeconds(processRow.ptSeconds);
@@ -4056,8 +4056,8 @@ const ensureStyleStandardsForQuantities = async ({
         data: missingQuantities.map((quantity) => ({
           orgId: processRow.orgId,
           styleProcessId: processRow.id,
-          quantity,
-          stSeconds: ptSeconds,
+          bucketQuantity: quantity,
+          bucketStSeconds: ptSeconds,
           setBy: "PT_DERIVED",
         })),
         skipDuplicates: true,
@@ -10500,7 +10500,7 @@ const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
 
   const standardUpsertByIdentity = new Map<
     string,
-    { styleProcessId: number; quantity: number; stSeconds: number }
+    { styleProcessId: number; bucketQuantity: number; bucketStSeconds: number }
   >();
   snapshotTargets.forEach((target) => {
     const styleUid = styleUidByStyleId.get(target.styleId);
@@ -10533,8 +10533,8 @@ const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
         `${styleProcessId}::${target.quantityBucket}`,
         {
           styleProcessId,
-          quantity: target.quantityBucket,
-          stSeconds,
+          bucketQuantity: target.quantityBucket,
+          bucketStSeconds: stSeconds,
         }
       );
     });
@@ -10546,21 +10546,21 @@ const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
     Array.from(standardUpsertByIdentity.values()).map((item) =>
       prisma.styleProcessStandard.upsert({
         where: {
-          styleProcessId_quantity: {
+          styleProcessId_bucketQuantity: {
             styleProcessId: item.styleProcessId,
-            quantity: item.quantity,
+            bucketQuantity: item.bucketQuantity,
           },
         },
         create: {
           orgId: organization.id,
           styleProcessId: item.styleProcessId,
-          quantity: item.quantity,
-          stSeconds: item.stSeconds,
+          bucketQuantity: item.bucketQuantity,
+          bucketStSeconds: item.bucketStSeconds,
           setBy: "ASSIGNMENT_DETAIL",
           setAt: now,
         },
         update: {
-          stSeconds: item.stSeconds,
+          bucketStSeconds: item.bucketStSeconds,
           setBy: "ASSIGNMENT_DETAIL",
           setAt: now,
         },
@@ -10860,10 +10860,10 @@ const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
 const resolveStyleProcessBucketStSeconds = (row: any, bucketQuantity: number) => {
   const standard = ensureArray(row?.standards).find(
     (item) =>
-      resolveStBucketQuantity((item as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY) ===
+      resolveStBucketQuantity((item as any)?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY) ===
       bucketQuantity
   );
-  const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.stSeconds);
+  const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.bucketStSeconds);
   if (bucketStSeconds !== null) return bucketStSeconds;
   return toOptionalProcessSeconds(row?.ptSeconds);
 };
@@ -11174,21 +11174,21 @@ const prepareAssignmentBoardStTotalsForSave = async ({
       Array.from(standardUpserts.values()).map((item) =>
         db.styleProcessStandard.upsert({
           where: {
-            styleProcessId_quantity: {
+            styleProcessId_bucketQuantity: {
               styleProcessId: item.styleProcessId,
-              quantity: item.bucketQuantity,
+              bucketQuantity: item.bucketQuantity,
             },
           },
           create: {
             orgId: organization.id,
             styleProcessId: item.styleProcessId,
-            quantity: item.bucketQuantity,
-            stSeconds: item.bucketStSeconds,
+            bucketQuantity: item.bucketQuantity,
+            bucketStSeconds: item.bucketStSeconds,
             setBy: "ASSIGNMENT_DETAIL",
             setAt: now,
           },
           update: {
-            stSeconds: item.bucketStSeconds,
+            bucketStSeconds: item.bucketStSeconds,
             setBy: "ASSIGNMENT_DETAIL",
             setAt: now,
           },

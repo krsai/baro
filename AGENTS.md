@@ -915,3 +915,25 @@ runtime 조회값:
   - `StyleProcessStandard.quantity/stSeconds` DB column rename.
   - `AssignmentPlan.quantity/stTotalSeconds/ctTotalSeconds` DB column rename.
   - Removal of Style JSON dual-read fallback.
+
+### 15. 2026-05-27 Phase 6A implementation status
+
+- Scope:
+  - This phase covers only `StyleProcessStandard` physical column naming.
+  - AssignmentPlan/AssignmentBoardState/AssignmentCard rename remains pending.
+- Implemented in code:
+  - Prisma schema uses `StyleProcessStandard.bucketQuantity`.
+  - Prisma schema uses `StyleProcessStandard.bucketStSeconds`.
+  - The unique input is now `styleProcessId_bucketQuantity`.
+  - Backend reads/writes StyleProcessStandard through `bucketQuantity` and `bucketStSeconds`.
+  - `backend/migration_fix.sql` includes idempotent physical rename SQL:
+    `quantity -> bucketQuantity`, `stSeconds -> bucketStSeconds`.
+- Deployment note:
+  - `railway:predeploy` runs `prisma generate`, then `migration_fix.sql`, then `db push`.
+  - Therefore Prisma schema must match the final physical DB column names for this phase.
+  - Do not use `@map("quantity")` or `@map("stSeconds")` after the migration SQL renames the columns.
+- Still not implemented in this phase:
+  - `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`.
+  - `AssignmentPlan.quantity/stTotalSeconds/ctTotalSeconds` column rename.
+  - `AssignmentCard.payload` JSON key rename.
+  - Removal of snapshot ST fields.

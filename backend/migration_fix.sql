@@ -417,3 +417,63 @@ WHERE "processes" IS NOT NULL
     OR "processes"::text LIKE '%"timesPerPiece"%'
   );
 
+-- 8. StyleProcessStandard physical column rename for ST bucket naming.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'quantity'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) THEN
+    ALTER TABLE "StyleProcessStandard" RENAME COLUMN "quantity" TO "bucketQuantity";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'quantity'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) THEN
+    UPDATE "StyleProcessStandard"
+    SET "bucketQuantity" = COALESCE("bucketQuantity", "quantity");
+    ALTER TABLE "StyleProcessStandard" DROP COLUMN "quantity";
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'stSeconds'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketStSeconds'
+  ) THEN
+    ALTER TABLE "StyleProcessStandard" RENAME COLUMN "stSeconds" TO "bucketStSeconds";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'stSeconds'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketStSeconds'
+  ) THEN
+    UPDATE "StyleProcessStandard"
+    SET "bucketStSeconds" = COALESCE("bucketStSeconds", "stSeconds");
+    ALTER TABLE "StyleProcessStandard" DROP COLUMN "stSeconds";
+  END IF;
+END $$;
+

@@ -827,6 +827,15 @@ ST 표준값:
 - `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`
 - `StyleProcessStandard.quantity -> bucketQuantity`
 - `StyleProcessStandard.stSeconds -> bucketStSeconds`
+- 2026-05-27 Phase 6A status:
+  - Implemented first DB rename slice: `StyleProcessStandard` only.
+  - Prisma schema uses final physical names:
+    `bucketQuantity` and `bucketStSeconds`.
+  - `migration_fix.sql` physically renames
+    `quantity -> bucketQuantity` and `stSeconds -> bucketStSeconds`.
+  - Because `railway:predeploy` runs `prisma generate` before SQL execution,
+    this phase intentionally does not use `@map("quantity")` or `@map("stSeconds")`.
+  - AssignmentPlan DB column rename remains pending.
 
 7. 마지막에 snapshot ST 제거
 - write-only `stDrafts` 경로와 백엔드 재계산이 완성된 뒤에만 수행

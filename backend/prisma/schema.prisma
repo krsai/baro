@@ -539,8 +539,8 @@ model StyleProcessStandard {
   id             Int      @id @default(autoincrement())
   orgId          Int
   styleProcessId Int
-  quantity       Int
-  stSeconds      Float
+  bucketQuantity Int
+  bucketStSeconds Float
   setBy          String?
   setAt          DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -548,7 +548,7 @@ model StyleProcessStandard {
   organization Organization @relation(fields: [orgId], references: [id])
   styleProcess StyleProcess @relation(fields: [styleProcessId], references: [id], onDelete: Cascade)
 
-  @@unique([styleProcessId, quantity])
+  @@unique([styleProcessId, bucketQuantity])
   @@index([orgId])
   @@index([styleProcessId])
 }
