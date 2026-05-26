@@ -6856,7 +6856,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         id: true,
         externalId: true,
         lineId: true,
-        ctSnapshot: true,
+        assignmentCtSnapshot: true,
         ctTotalSeconds: true,
         orderNo: true,
         label: true,
@@ -6873,7 +6873,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         id: true,
         externalId: true,
         lineId: true,
-        ctSnapshot: true,
+        assignmentCtSnapshot: true,
         orderNo: true,
         label: true,
         colorName: true,
@@ -6913,7 +6913,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   }
 
   const missingSnapshotPlans = plans.filter((plan) => {
-    const ctSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+    const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
     return !ctSnapshot || resolveAssignmentCtTotalSeconds(plan) == null;
   });
   if (missingSnapshotPlans.length > 0) {
@@ -7590,7 +7590,7 @@ const summarizeWorkLogContextDuplicateAssignments = (plans: any[] = []) => {
     .slice(0, 10);
 };
 const toWorkLogContextAssignmentResponse = (plan: any) => {
-  const normalizedSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const normalizedSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
   const closedAt = resolveAssignmentPlanClosedAt(plan);
@@ -7624,7 +7624,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     color: resolveOptionalString(plan?.color, "") ?? "",
     quantity: plan?.quantity ?? null,
     ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
-    ctSnapshot: normalizedSnapshot,
+    assignmentCtSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
     startIndex: plan?.startIndex ?? 0,
@@ -7904,7 +7904,7 @@ const buildWorkLogContextResponse = async ({
           colorName: true,
           quantity: true,
           ctTotalSeconds: true,
-          ctSnapshot: true,
+          assignmentCtSnapshot: true,
           color: true,
           startIndex: true,
           endIndex: true,
@@ -7928,7 +7928,7 @@ const buildWorkLogContextResponse = async ({
           colorId: true,
           colorName: true,
           quantity: true,
-          ctSnapshot: true,
+          assignmentCtSnapshot: true,
           color: true,
           startIndex: true,
           endIndex: true,
@@ -8032,7 +8032,7 @@ const buildWorkLogContextResponse = async ({
                 colorName: item.colorName ?? null,
                 quantity: item.quantity ?? null,
                 ctTotalSeconds: item.ctTotalSeconds ?? null,
-                ctSnapshot: item.ctSnapshot ?? null,
+                assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
                 color: item.color ?? null,
                 startIndex: item.startIndex ?? 0,
                 endIndex: item.endIndex ?? 0,
@@ -8625,9 +8625,13 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     processes,
   };
 };
+const resolveAssignmentCtSnapshotInput = (item: any) =>
+  item?.assignmentCtSnapshot ?? item?.ctSnapshot ?? null;
+const resolveNormalizedAssignmentCtSnapshot = (item: any) =>
+  normalizeAssignmentCtSnapshot(resolveAssignmentCtSnapshotInput(item));
 
 const resolveAssignmentCtTotalSeconds = (item: any) => {
-  const snapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(item);
   if (snapshot?.totalCtSeconds != null) {
     return Math.max(0, Math.round(Number(snapshot.totalCtSeconds) || 0));
   }
@@ -8644,8 +8648,10 @@ const normalizeStateAssignmentItem = (item: any): any => {
     toOptionalNonNegativeInt(item?.stTotalSeconds, null);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
-  const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
+  const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
   const {
+    ctSnapshot: _ctSnapshot,
+    assignmentCtSnapshot: _assignmentCtSnapshot,
     proposalSeconds: _proposalSeconds,
     ctStatus: _ctStatus,
     ctSource: _ctSource,
@@ -8666,7 +8672,7 @@ const normalizeStateAssignmentItem = (item: any): any => {
     ...rest,
     ...(externalId ? { id: externalId } : {}),
     ctTotalSeconds,
-    ctSnapshot,
+    assignmentCtSnapshot,
     stTotalSeconds,
     version,
     versionUpdatedAt,
@@ -9562,7 +9568,7 @@ const buildAssignmentPlanOrderMatchWhereOr = (
 const resolveAssignmentStartDateKey = (assignment: any): string | null => {
   const direct = normalizeDateKey(assignment?.startDateKey);
   if (direct) return direct;
-  const snapshot = normalizeAssignmentCtSnapshot(assignment?.ctSnapshot);
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
   return normalizeDateKey(snapshot?.schedule?.startDateKey);
 };
 const normalizePlanIdList = (planIds: any): number[] =>
@@ -9857,7 +9863,7 @@ const loadOrderAssignmentModificationLockMap = async (
     lockedPlans = await prisma.assignmentPlan.findMany({
       where: {
         orgId: { in: orgIds },
-        ctSnapshot: { not: Prisma.JsonNull },
+        assignmentCtSnapshot: { not: Prisma.JsonNull },
       },
       select: {
         originOrderId: true,
@@ -9899,7 +9905,7 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
     lockedPlan = await prisma.assignmentPlan.findFirst({
       where: {
         orgId: { in: orgIds },
-        ctSnapshot: { not: Prisma.JsonNull },
+        assignmentCtSnapshot: { not: Prisma.JsonNull },
         OR: [
           { originOrderId: { startsWith: prefix } },
           { cardId: { startsWith: prefix } },
@@ -10244,10 +10250,10 @@ const repairAssignmentPlanDisplayRows = async ({
   };
 };
 const toAssignmentPlanResponse = (plan: any) => {
-  const ctSnapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...plan,
-    ctSnapshot,
+    assignmentCtSnapshot,
   });
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
@@ -10276,9 +10282,9 @@ const toAssignmentPlanResponse = (plan: any) => {
     originOrderId: plan.originOrderId ?? "",
     basis: plan.basis ?? "",
     ctTotalSeconds,
-    ctSnapshot,
-    ctUpdatedBy: ctSnapshot?.updatedBy ?? "",
-    ctUpdatedAt: ctSnapshot?.updatedAt ?? null,
+    assignmentCtSnapshot,
+    ctUpdatedBy: assignmentCtSnapshot?.updatedBy ?? "",
+    ctUpdatedAt: assignmentCtSnapshot?.updatedAt ?? null,
     color: plan.color ?? "",
     stripeColor: plan.stripeColor ?? "",
     stTotalSeconds: plan.stTotalSeconds ?? null,
@@ -10315,10 +10321,10 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
 
       const startIndex = toSignedInt(item.startIndex, 0);
       const endIndex = Math.max(startIndex, toSignedInt(item.endIndex, startIndex));
-      const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
+      const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
       const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
         ...item,
-        ctSnapshot,
+        assignmentCtSnapshot,
       });
       const stTotalSeconds =
         toOptionalNonNegativeInt(item.stTotalSeconds, null);
@@ -10338,7 +10344,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         originOrderId: resolveOptionalString(item.originOrderId, null),
         basis: resolveOptionalString(item.basis, null),
         ctTotalSeconds,
-        ctSnapshot,
+        assignmentCtSnapshot,
         color: resolveOptionalString(item.color, null),
         stripeColor: resolveOptionalString(item.stripeColor, null),
         stTotalSeconds,
@@ -10399,7 +10405,7 @@ const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
 
   const snapshotTargets = normalizedAssignments
     .map((assignment) => {
-      const ctSnapshot = normalizeAssignmentCtSnapshot(assignment?.ctSnapshot);
+      const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
       if (!ctSnapshot || !Array.isArray(ctSnapshot?.processes) || ctSnapshot.processes.length === 0) {
         return null;
       }
@@ -10621,10 +10627,10 @@ const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
   });
 };
 const toAssignmentPlanWriteData = (item: any) => {
-  const ctSnapshot = normalizeAssignmentCtSnapshot(item?.ctSnapshot);
+  const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...item,
-    ctSnapshot,
+    assignmentCtSnapshot,
   });
   // Completion state is owned by dedicated completion endpoints.
   // Assignment board save must not overwrite completion-related fields.
@@ -10643,7 +10649,7 @@ const toAssignmentPlanWriteData = (item: any) => {
     originOrderId: item.originOrderId ?? null,
     basis: item.basis ?? null,
     ctTotalSeconds,
-    ctSnapshot: (ctSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+    assignmentCtSnapshot: (assignmentCtSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
     color: item.color ?? null,
     stripeColor: item.stripeColor ?? null,
     stTotalSeconds: item.stTotalSeconds ?? null,
@@ -10672,7 +10678,7 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   originOrderId: true,
   basis: true,
   ctTotalSeconds: true,
-  ctSnapshot: true,
+  assignmentCtSnapshot: true,
   color: true,
   stripeColor: true,
   stTotalSeconds: true,
@@ -10695,7 +10701,7 @@ const buildCompletedAssignmentWriteComparable = (item: any) => {
   );
   const assignmentCtTotalSeconds = resolveAssignmentCtTotalSeconds({
     ...item,
-    ctSnapshot: assignmentCtSnapshot,
+    assignmentCtSnapshot,
   });
   return {
     lineId: normalizeAssignmentLineIdForWriteCompare(item?.lineId),
@@ -11115,7 +11121,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const styleUid = toPositiveIntOrNull(style?.uid);
     const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
     const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
-    const ctSnapshot = normalizeAssignmentCtSnapshot(target.assignment?.ctSnapshot);
+    const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
     const snapshotProcessByKey = ensureArray(ctSnapshot?.processes).reduce(
       (map, process) => {
         const processKey = resolveOptionalString(process?.processKey, null);
@@ -11239,7 +11245,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
         assignmentStTotalSeconds = fallbackTotal > 0 ? fallbackTotal : null;
       }
     } else {
-      const ctSnapshot = normalizeAssignmentCtSnapshot(target.assignment?.ctSnapshot);
+      const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(target.assignment);
       assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromSnapshotProcesses({
         snapshotProcesses: ensureArray(ctSnapshot?.processes),
         assignmentQuantity,
@@ -11315,7 +11321,7 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   originOrderId: true,
   basis: true,
   ctTotalSeconds: true,
-  ctSnapshot: true,
+  assignmentCtSnapshot: true,
   color: true,
   stripeColor: true,
   stTotalSeconds: true,
@@ -11366,7 +11372,7 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   quantity: true,
   originOrderId: true,
   basis: true,
-  ctSnapshot: true,
+  assignmentCtSnapshot: true,
   color: true,
   stripeColor: true,
   startIndex: true,
@@ -15627,7 +15633,7 @@ app.get("/assignment-plans", async (req, res) => {
               originOrderId: item.originOrderId ?? null,
               basis: item.basis ?? null,
               ctTotalSeconds: item.ctTotalSeconds ?? null,
-              ctSnapshot: item.ctSnapshot ?? null,
+              assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
               color: item.color ?? null,
               stripeColor: item.stripeColor ?? null,
               stTotalSeconds: item.stTotalSeconds ?? null,
@@ -15733,11 +15739,11 @@ app.get("/assignment-plans", async (req, res) => {
         color: plan.color ?? "",
         quantity: plan.quantity ?? null,
         ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
-        ctSnapshot: normalizeAssignmentCtSnapshot(plan?.ctSnapshot),
+        assignmentCtSnapshot: resolveNormalizedAssignmentCtSnapshot(plan),
         ctUpdatedBy:
-          normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedBy ?? "",
+          resolveNormalizedAssignmentCtSnapshot(plan)?.updatedBy ?? "",
         ctUpdatedAt:
-          normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.updatedAt ?? null,
+          resolveNormalizedAssignmentCtSnapshot(plan)?.updatedAt ?? null,
         startIndex: plan.startIndex,
         endIndex: plan.endIndex,
         startDateKey,
@@ -15784,7 +15790,7 @@ const toDateValueFromDateKeyForAssignmentSchedule = (
 };
 
 const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
-  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const processRows = ensureArray(snapshot?.processes);
   if (processRows.length === 0) return [];
 
@@ -15803,7 +15809,7 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan: any): string[][] => {
 };
 
 const resolveAssignmentPlanStyleMatchKeys = (plan: any): string[] => {
-  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   const candidates = [
     parseAssignmentCardIdentity(plan?.cardId)?.styleId,
     parseAssignmentCardIdentity(plan?.originOrderId)?.styleId,
@@ -15822,7 +15828,7 @@ const resolveAssignmentPlanStyleMatchKeys = (plan: any): string[] => {
 };
 
 const resolveAssignmentPlanStyleQueryValues = (plan: any): string[] => {
-  const snapshot = normalizeAssignmentCtSnapshot(plan?.ctSnapshot);
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
   return Array.from(
     new Set(
       [
@@ -15890,7 +15896,7 @@ const buildAssignmentPlanProgressMatchCandidates = ({
       const stateAssignment = externalId
         ? stateAssignmentsByExternalId.get(externalId) || null
         : null;
-      const snapshotSchedule = normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.schedule || null;
+      const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
       const startDateKey =
         normalizeDateKey(stateAssignment?.startDateKey) ||
         normalizeDateKey(snapshotSchedule?.startDateKey) ||
@@ -16457,7 +16463,7 @@ const buildAssignmentPlanProgressRows = async (
     const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
-    const ctSnapshotRaw = plan?.ctSnapshot;
+    const ctSnapshotRaw = resolveAssignmentCtSnapshotInput(plan);
     const ctSnapshot = (() => {
       if (!ctSnapshotRaw) return null;
       if (typeof ctSnapshotRaw === "string") {
@@ -16591,7 +16597,7 @@ const buildAssignmentPlanProgressRows = async (
           : ASSIGNMENT_STATUS_IN_PROGRESS;
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
-    const snapshotSchedule = normalizeAssignmentCtSnapshot(plan?.ctSnapshot)?.schedule || null;
+    const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
     const factualStartDateKey =
       normalizeDateKey(stateAssignment?.startDateKey) ||
       normalizeDateKey(snapshotSchedule?.startDateKey) ||

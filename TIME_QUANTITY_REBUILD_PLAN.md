@@ -863,6 +863,20 @@ ST 표준값:
   are not part of this DB-column slice.
 - AssignmentPlan DB column rename remains pending.
 
+### Phase 6C Status Addendum
+
+- 2026-05-27 Phase 6C implemented top-level assignment CT snapshot rename.
+- Prisma schema uses final physical name `AssignmentPlan.assignmentCtSnapshot`.
+- Backend and frontend write board/plan snapshot data as `assignmentCtSnapshot`.
+- Read paths keep dual-read fallback for old state/API objects:
+  `assignmentCtSnapshot ?? ctSnapshot`.
+- `migration_fix.sql` physically renames `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`
+  and migrates `AssignmentBoardState.assignments[].ctSnapshot -> assignmentCtSnapshot`.
+- Nested snapshot JSON keys are still pending:
+  `totalCtSeconds`, `totalCtPerPieceSeconds`, `processes[].quantity`,
+  `processes[].ctSeconds`, and `processes[].ctPerPieceSeconds`.
+- Snapshot ST removal is still blocked until StyleProcessStandard backfill is verified.
+
 ### F. Recommended Lock Before Coding
 
 - 완료 판정 단일 소스:

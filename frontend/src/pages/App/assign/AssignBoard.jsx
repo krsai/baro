@@ -1408,7 +1408,7 @@ const applyAssignmentCtSnapshotForSave = ({
     ...assignment,
     stTotalSeconds: nextStTotalSeconds,
     ctTotalSeconds: nextCtTotalSeconds,
-    ctSnapshot,
+    assignmentCtSnapshot: ctSnapshot,
   });
 };
 
@@ -4366,6 +4366,7 @@ const AssignBoard = () => {
     detailStyle?.processes,
     detailDraftByProcess,
     detailStDraftByProcess,
+    detailAssignment?.assignmentCtSnapshot,
     detailAssignment?.ctSnapshot,
     detailLine?.factoryWagePerSecond,
     detailLine?.wagePerSecond,
@@ -4771,7 +4772,7 @@ const AssignBoard = () => {
         originOrderId: getCardOriginId(card) ?? cardId,
         basis,
         ctTotalSeconds: null,
-        ctSnapshot: null,
+        assignmentCtSnapshot: null,
         color: colors.color,
         stripeColor: colors.stripe,
         stTotalSeconds,
@@ -5053,7 +5054,7 @@ const AssignBoard = () => {
                 basis: getCardBasis(updatedCard),
                 stTotalSeconds: recalculatedStTotalSeconds,
                 ctTotalSeconds: null,
-                ctSnapshot: null,
+                assignmentCtSnapshot: null,
                 ...range,
               },
               startDateRef.current
@@ -5156,7 +5157,7 @@ const AssignBoard = () => {
         quantity: mergedQuantity,
         stTotalSeconds: mergedSeconds,
         ctTotalSeconds: null,
-        ctSnapshot: null,
+        assignmentCtSnapshot: null,
         basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
@@ -5215,7 +5216,7 @@ const AssignBoard = () => {
         quantity: mergedQuantity,
         stTotalSeconds: mergedSeconds,
         ctTotalSeconds: null,
-        ctSnapshot: null,
+        assignmentCtSnapshot: null,
         basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);

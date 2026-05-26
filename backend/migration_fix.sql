@@ -224,40 +224,75 @@ CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_orderNo_idx"
 CREATE INDEX IF NOT EXISTS "WorkRecord_orgId_lineId_idx"
   ON "WorkRecord"("orgId", "lineId");
 
+-- 6-0. AssignmentPlan physical snapshot column rename.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'AssignmentPlan'
+      AND column_name = 'ctSnapshot'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'AssignmentPlan'
+      AND column_name = 'assignmentCtSnapshot'
+  ) THEN
+    ALTER TABLE "AssignmentPlan" RENAME COLUMN "ctSnapshot" TO "assignmentCtSnapshot";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'AssignmentPlan'
+      AND column_name = 'ctSnapshot'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'AssignmentPlan'
+      AND column_name = 'assignmentCtSnapshot'
+  ) THEN
+    UPDATE "AssignmentPlan"
+    SET "assignmentCtSnapshot" = COALESCE("assignmentCtSnapshot", "ctSnapshot");
+    ALTER TABLE "AssignmentPlan" DROP COLUMN "ctSnapshot";
+  END IF;
+END $$;
+
+ALTER TABLE "AssignmentPlan"
+  ADD COLUMN IF NOT EXISTS "assignmentCtSnapshot" JSONB;
+
 -- Step 6: ctSnapshot JSON 내부 구 키명 정리 (20260525)
 -- 구 이름: totalAgreedSeconds/totalAgreedPerPieceSeconds/agreedAt/agreedBy/agreedSeconds/agreedPerPieceSeconds/requestedSeconds/proposedSeconds/ctAgreedSnapshot
 -- 신 이름: totalCtSeconds/totalCtPerPieceSeconds/updatedAt/updatedBy/ctSeconds/ctPerPieceSeconds/ctSnapshot
 
 -- 6-1. AssignmentPlan.ctSnapshot 최상위 키 rename
 UPDATE "AssignmentPlan"
-SET "ctSnapshot" = (
-  "ctSnapshot"::jsonb
+SET "assignmentCtSnapshot" = (
+  "assignmentCtSnapshot"::jsonb
   - 'totalAgreedSeconds' - 'totalAgreedPerPieceSeconds' - 'agreedAt' - 'agreedBy'
-  || CASE WHEN "ctSnapshot"::jsonb ? 'totalAgreedSeconds' AND NOT "ctSnapshot"::jsonb ? 'totalCtSeconds'
-          THEN jsonb_build_object('totalCtSeconds', "ctSnapshot"::jsonb -> 'totalAgreedSeconds')
+  || CASE WHEN "assignmentCtSnapshot"::jsonb ? 'totalAgreedSeconds' AND NOT "assignmentCtSnapshot"::jsonb ? 'totalCtSeconds'
+          THEN jsonb_build_object('totalCtSeconds', "assignmentCtSnapshot"::jsonb -> 'totalAgreedSeconds')
           ELSE '{}'::jsonb END
-  || CASE WHEN "ctSnapshot"::jsonb ? 'totalAgreedPerPieceSeconds' AND NOT "ctSnapshot"::jsonb ? 'totalCtPerPieceSeconds'
-          THEN jsonb_build_object('totalCtPerPieceSeconds', "ctSnapshot"::jsonb -> 'totalAgreedPerPieceSeconds')
+  || CASE WHEN "assignmentCtSnapshot"::jsonb ? 'totalAgreedPerPieceSeconds' AND NOT "assignmentCtSnapshot"::jsonb ? 'totalCtPerPieceSeconds'
+          THEN jsonb_build_object('totalCtPerPieceSeconds', "assignmentCtSnapshot"::jsonb -> 'totalAgreedPerPieceSeconds')
           ELSE '{}'::jsonb END
-  || CASE WHEN "ctSnapshot"::jsonb ? 'agreedAt' AND NOT "ctSnapshot"::jsonb ? 'updatedAt'
-          THEN jsonb_build_object('updatedAt', "ctSnapshot"::jsonb -> 'agreedAt')
+  || CASE WHEN "assignmentCtSnapshot"::jsonb ? 'agreedAt' AND NOT "assignmentCtSnapshot"::jsonb ? 'updatedAt'
+          THEN jsonb_build_object('updatedAt', "assignmentCtSnapshot"::jsonb -> 'agreedAt')
           ELSE '{}'::jsonb END
-  || CASE WHEN "ctSnapshot"::jsonb ? 'agreedBy' AND NOT "ctSnapshot"::jsonb ? 'updatedBy'
-          THEN jsonb_build_object('updatedBy', "ctSnapshot"::jsonb -> 'agreedBy')
+  || CASE WHEN "assignmentCtSnapshot"::jsonb ? 'agreedBy' AND NOT "assignmentCtSnapshot"::jsonb ? 'updatedBy'
+          THEN jsonb_build_object('updatedBy', "assignmentCtSnapshot"::jsonb -> 'agreedBy')
           ELSE '{}'::jsonb END
 )
-WHERE "ctSnapshot" IS NOT NULL
+WHERE "assignmentCtSnapshot" IS NOT NULL
   AND (
-    "ctSnapshot"::jsonb ? 'totalAgreedSeconds'
-    OR "ctSnapshot"::jsonb ? 'totalAgreedPerPieceSeconds'
-    OR "ctSnapshot"::jsonb ? 'agreedAt'
-    OR "ctSnapshot"::jsonb ? 'agreedBy'
+    "assignmentCtSnapshot"::jsonb ? 'totalAgreedSeconds'
+    OR "assignmentCtSnapshot"::jsonb ? 'totalAgreedPerPieceSeconds'
+    OR "assignmentCtSnapshot"::jsonb ? 'agreedAt'
+    OR "assignmentCtSnapshot"::jsonb ? 'agreedBy'
   );
 
 -- 6-2. AssignmentPlan.ctSnapshot.processes[] 공정 키 rename
 UPDATE "AssignmentPlan"
-SET "ctSnapshot" = jsonb_set(
-  "ctSnapshot"::jsonb,
+SET "assignmentCtSnapshot" = jsonb_set(
+  "assignmentCtSnapshot"::jsonb,
   '{processes}',
   (
     SELECT jsonb_agg(
@@ -272,13 +307,13 @@ SET "ctSnapshot" = jsonb_set(
               THEN jsonb_build_object('ctPerPieceSeconds', elem -> 'agreedPerPieceSeconds')
               ELSE '{}'::jsonb END
     )
-    FROM jsonb_array_elements("ctSnapshot"::jsonb -> 'processes') elem
+    FROM jsonb_array_elements("assignmentCtSnapshot"::jsonb -> 'processes') elem
   )
 )
-WHERE "ctSnapshot" IS NOT NULL
-  AND jsonb_typeof("ctSnapshot"::jsonb -> 'processes') = 'array'
+WHERE "assignmentCtSnapshot" IS NOT NULL
+  AND jsonb_typeof("assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
   AND EXISTS (
-    SELECT 1 FROM jsonb_array_elements("ctSnapshot"::jsonb -> 'processes') elem
+    SELECT 1 FROM jsonb_array_elements("assignmentCtSnapshot"::jsonb -> 'processes') elem
     WHERE elem ? 'agreedSeconds' OR elem ? 'agreedPerPieceSeconds'
        OR elem ? 'requestedSeconds' OR elem ? 'proposedSeconds'
   );
@@ -350,6 +385,31 @@ WHERE "assignments" IS NOT NULL
   );
 
 -- 6-5. AssignmentCard.payload ctAgreedSnapshot 제거
+-- 6-4b. AssignmentBoardState.assignments[].ctSnapshot -> assignmentCtSnapshot
+UPDATE "AssignmentBoardState"
+SET "assignments" = (
+  SELECT jsonb_agg(
+    CASE
+      WHEN elem ? 'assignmentCtSnapshot' THEN elem - 'ctSnapshot' - 'ctAgreedSnapshot'
+      WHEN elem ? 'ctSnapshot' THEN
+        elem - 'ctSnapshot' - 'ctAgreedSnapshot'
+        || jsonb_build_object('assignmentCtSnapshot', elem -> 'ctSnapshot')
+      WHEN elem ? 'ctAgreedSnapshot' THEN
+        elem - 'ctAgreedSnapshot'
+        || jsonb_build_object('assignmentCtSnapshot', elem -> 'ctAgreedSnapshot')
+      ELSE elem
+    END
+  )
+  FROM jsonb_array_elements("assignments"::jsonb) elem
+)
+WHERE "assignments" IS NOT NULL
+  AND jsonb_typeof("assignments"::jsonb) = 'array'
+  AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements("assignments"::jsonb) elem
+    WHERE elem ? 'ctSnapshot' OR elem ? 'ctAgreedSnapshot'
+  );
+
+-- 6-5. AssignmentCard.payload ctAgreedSnapshot cleanup
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'
 WHERE "payload" IS NOT NULL

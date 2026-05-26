@@ -671,7 +671,7 @@ model AssignmentPlan {
   originOrderId         String?
   basis                 String?
   ctTotalSeconds       Int?
-  ctSnapshot            Json?
+  assignmentCtSnapshot  Json?
   color                 String?
   stripeColor           String?
   stTotalSeconds        Int?

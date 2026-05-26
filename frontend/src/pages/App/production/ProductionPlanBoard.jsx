@@ -1740,7 +1740,7 @@ const ProductionPlanBoard = () => {
         return {
           ...syncedAssignment,
           ctTotalSeconds: currentCtSeconds > 0 ? currentCtSeconds : null,
-          ctSnapshot: {
+          assignmentCtSnapshot: {
             sourceAssignmentId: String(syncedAssignment?.id || '').trim() || null,
             lineId: syncedAssignment?.lineId ?? null,
             quantity: orderQuantity,
@@ -1892,7 +1892,7 @@ const ProductionPlanBoard = () => {
       basis,
       stTotalSeconds: currentStTotalSeconds,
       ctTotalSeconds: null,
-      ctSnapshot: null,
+      assignmentCtSnapshot: null,
       label: deltaCard.label,
       customer: deltaCard.customer,
       colorName: deltaCard.colorName,

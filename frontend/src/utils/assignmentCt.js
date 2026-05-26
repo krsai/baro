@@ -117,7 +117,7 @@ export const normalizeAssignmentCtSnapshot = (value) => {
 };
 
 export const resolveAssignmentCtSnapshot = (item) =>
-  normalizeAssignmentCtSnapshot(item?.ctSnapshot ?? null);
+  normalizeAssignmentCtSnapshot(item?.assignmentCtSnapshot ?? item?.ctSnapshot ?? null);
 
 const resolveAssignmentCtTotalSecondsOrNull = (item) => {
   const snapshot = resolveAssignmentCtSnapshot(item);

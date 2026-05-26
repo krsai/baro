@@ -953,3 +953,22 @@ runtime 조회값:
   - Frontend local variables named `processQuantity` are not DB columns and may remain local calculation variables.
   - Assignment CT snapshot `processes[].quantity` remains pending until snapshot JSON rename.
   - Legacy input fallback still accepts `processQuantity` from old JSON/API payloads.
+
+### 17. 2026-05-27 Phase 6C implementation status
+
+- Scope:
+  - This phase covers top-level assignment CT snapshot naming:
+    `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`.
+  - `AssignmentBoardState.assignments[].ctSnapshot -> assignmentCtSnapshot` is migrated and new writes use `assignmentCtSnapshot`.
+- Implemented in code:
+  - Prisma schema uses `AssignmentPlan.assignmentCtSnapshot`.
+  - Backend reads assignment snapshots with dual-read fallback:
+    `assignmentCtSnapshot ?? ctSnapshot`.
+  - Backend writes AssignmentPlan and AssignmentBoardState with `assignmentCtSnapshot`.
+  - Frontend writes assignment board state with `assignmentCtSnapshot`.
+  - `backend/migration_fix.sql` physically renames the DB column and migrates board-state JSON keys.
+- Boundary:
+  - Snapshot nested keys are not renamed in this phase:
+    `totalCtSeconds`, `totalCtPerPieceSeconds`, `processes[].quantity`,
+    `processes[].ctSeconds`, and `processes[].ctPerPieceSeconds` remain pending.
+  - Snapshot ST fields are still present until the final backfill/removal phase.

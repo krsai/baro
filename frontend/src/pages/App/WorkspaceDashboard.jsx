@@ -161,7 +161,7 @@ const getCurrentMonthRange = (baseDate = new Date()) => {
 };
 
 const resolveAssignmentRangeKeys = (assignment) => {
-  const schedule = assignment?.ctSnapshot?.schedule;
+  const schedule = (assignment?.assignmentCtSnapshot ?? assignment?.ctSnapshot)?.schedule;
   const startKey =
     normalizeDateKey(assignment?.startDateKey) ||
     normalizeDateKey(schedule?.startDateKey);
