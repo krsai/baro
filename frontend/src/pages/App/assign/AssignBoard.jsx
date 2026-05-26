@@ -845,6 +845,10 @@ const getTotalStForOrderQuantity = (processes, orderQuantity) =>
 
 const createCardId = (orderId, styleId) =>
   `${normalizeKey(orderId)}::${normalizeKey(styleId)}`;
+const resolveStyleIdFromCardIdentity = (value) => {
+  const parts = normalizeKey(value).split('::');
+  return normalizeKey(parts[1] || '');
+};
 const isCardManualOrderLocked = (card) => card?.isManualOrderLocked !== false;
 
 const buildCardsFromOrders = ({ orders, styles }) => {
@@ -3342,6 +3346,7 @@ const AssignBoard = () => {
           ''
       ).trim() || 'OPERATOR';
     const applyCtSnapshotForPersistence = (assignment, baseDate = startDateRef.current) => {
+      if (assignment?.isCompleted) return assignment;
       const card = currentCardById.get(String(assignment?.cardId || '')) || null;
       const styleId = String(card?.styleId || '').trim();
       const style = styleId ? currentStyleById.get(styleId) || null : null;
@@ -3405,18 +3410,51 @@ const AssignBoard = () => {
       )
     );
     try {
-      const persistBoardState = async (assignmentPayload) =>
+      const buildStDraftPayload = (assignmentPayload) => {
+        const assignmentByIdForSave = new Map(
+          (Array.isArray(assignmentPayload) ? assignmentPayload : [])
+            .filter((assignment) => assignment?.id)
+            .map((assignment) => [String(assignment.id), assignment])
+        );
+        const stDrafts = {};
+        Object.entries(currentDetailStDraftsByTarget || {}).forEach(([targetKey, draftMap]) => {
+          const match = String(targetKey || '').match(/^assignment:(.+)$/);
+          const assignmentId = match?.[1] ? String(match[1]) : '';
+          if (!assignmentId) return;
+          const assignment = assignmentByIdForSave.get(assignmentId);
+          if (!assignment || assignment?.isCompleted) return;
+          if (!draftMap || typeof draftMap !== 'object' || Array.isArray(draftMap)) return;
+
+          const processDrafts = {};
+          Object.entries(draftMap).forEach(([processKey, rawSeconds]) => {
+            const normalizedProcessKey = String(processKey || '').trim();
+            const seconds = toOptionalPositiveNumber(rawSeconds);
+            if (!normalizedProcessKey || seconds == null) return;
+            processDrafts[normalizedProcessKey] = seconds;
+          });
+          if (Object.keys(processDrafts).length > 0) {
+            stDrafts[assignmentId] = processDrafts;
+          }
+        });
+        return stDrafts;
+      };
+      const persistBoardState = async (assignmentPayload, stDrafts = {}) =>
         requestJSON('/assignment-board-state' + buildQueryString({ orgId: activeOrgId }), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: currentCards, assignments: assignmentPayload }),
+          body: JSON.stringify({
+            cards: currentCards,
+            assignments: assignmentPayload,
+            stDrafts,
+          }),
           skipGlobalLoading: true,
         });
 
       let assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
+      let stDraftsForPut = buildStDraftPayload(assignmentsForPut);
       let response = null;
       try {
-        response = await persistBoardState(assignmentsForPut);
+        response = await persistBoardState(assignmentsForPut, stDraftsForPut);
       } catch (error) {
         const rawMessage = String(error?.message || '').toLowerCase();
         if (!rawMessage.includes('assignment version conflict')) {
@@ -3425,13 +3463,17 @@ const AssignBoard = () => {
         // One retry with a fresh server-version merge narrows the race window
         // when board state updates between preflight and PUT.
         assignmentsForPut = await alignAssignmentsForBoardPut(normalizedAssignments);
-        response = await persistBoardState(assignmentsForPut);
+        stDraftsForPut = buildStDraftPayload(assignmentsForPut);
+        response = await persistBoardState(assignmentsForPut, stDraftsForPut);
       }
       const { persistedCards, persistedAssignments } = resolvePersistedBoardState(
         response,
         currentCards,
         assignmentsForPut
       );
+      const ignoredStDraftWarnings = Array.isArray(response?.warnings)
+        ? response.warnings.filter((item) => item?.type === 'ST_DRAFT_PROCESS_IGNORED')
+        : [];
       // 저장 후 서버 응답(version 등 메타데이터 갱신)을 히스토리에 기록하지 않음
       historyApplyingRef.current = true;
       setCards(persistedCards);
@@ -3451,6 +3493,28 @@ const AssignBoard = () => {
         assignmentIds: persistedAssignments.map((item) => item?.id),
         source: ASSIGN_BOARD_SYNC_SOURCE,
       });
+      if (ignoredStDraftWarnings.length > 0) {
+        const ignoredProcessSummary = ignoredStDraftWarnings
+          .map((item) => String(item?.processKey || '').trim())
+          .filter(Boolean)
+          .slice(0, 5)
+          .join(', ');
+        showNotification(
+          ignoredProcessSummary
+            ? getUiMessage(
+                'assign.stDraftProcessIgnoredWithKeys',
+                'Some ST changes were ignored because these process keys could not be matched: {keys}',
+                languageCode,
+                { keys: ignoredProcessSummary }
+              )
+            : getUiMessage(
+                'assign.stDraftProcessIgnored',
+                'Some ST changes were ignored because the process could not be matched. Review the affected assignment processes.',
+                languageCode
+              ),
+          'warning'
+        );
+      }
       showNotification(
         getUiMessage('assign.saveSuccess', 'Assignment saved.', languageCode),
         'success'
@@ -3602,6 +3666,63 @@ const AssignBoard = () => {
     () => new Map(assignments.map((assignment) => [assignment.id, assignment])),
     [assignments]
   );
+  const resolveCardStyle = useCallback((card) => {
+    if (!card) return null;
+    const styleId = normalizeKey(
+      card.styleId ||
+        resolveStyleIdFromCardIdentity(card.originOrderId) ||
+        resolveStyleIdFromCardIdentity(card.id)
+    );
+    if (!styleId) return null;
+    return styleById.get(styleId) || null;
+  }, [styleById]);
+  const rebuildCardTimeTotalsForQuantity = useCallback((card, quantity, fallbackRatio = null) => {
+    const assignmentQuantity = Math.max(0, toNonNegativeInt(quantity, 0));
+    const style = resolveCardStyle(card);
+    const styleProcesses = normalizeProcesses(style?.processes);
+    if (assignmentQuantity > 0 && styleProcesses.length > 0) {
+      const totalPt = getTotalForOrderQuantity(styleProcesses, 'pt', assignmentQuantity);
+      const totalAt = getTotalForOrderQuantity(styleProcesses, 'at', assignmentQuantity);
+      const totalSt = getTotalStForOrderQuantity(styleProcesses, assignmentQuantity);
+      const stTotalSeconds = Math.max(0, Math.round(Number(totalSt > 0 ? totalSt : totalPt) || 0));
+      return {
+        ...card,
+        styleId: card?.styleId || style?.id,
+        quantity: assignmentQuantity,
+        processCount: styleProcesses.length,
+        stTotalSeconds,
+        totalPt,
+        totalAt,
+        totalSt,
+        status: resolveCardStatus(card, totalPt, totalAt, totalSt),
+      };
+    }
+
+    const totalPt =
+      fallbackRatio == null ? card?.totalPt : scaleValue(card?.totalPt, fallbackRatio);
+    const totalAt =
+      fallbackRatio == null ? card?.totalAt : scaleValue(card?.totalAt, fallbackRatio);
+    const totalSt =
+      fallbackRatio == null ? card?.totalSt : scaleValue(card?.totalSt, fallbackRatio);
+    const fallbackStTotalSeconds =
+      fallbackRatio == null
+        ? resolveCardStTotalSeconds(card)
+        : scaleValue(card?.stTotalSeconds, fallbackRatio);
+    const stTotalSeconds = Math.max(0, Math.round(Number(fallbackStTotalSeconds) || 0));
+    const fallbackStatus =
+      getCardBasis(card) === 'ST' && stTotalSeconds > 0
+        ? 'ST'
+        : resolveCardStatus(card, totalPt, totalAt, totalSt);
+    return {
+      ...card,
+      quantity: assignmentQuantity,
+      stTotalSeconds,
+      totalPt,
+      totalAt,
+      totalSt,
+      status: fallbackStatus,
+    };
+  }, [resolveCardStyle]);
   const assignmentProgressIdsKey = useMemo(
     () =>
       Array.from(
@@ -4040,6 +4161,7 @@ const AssignBoard = () => {
     if (!detailState || detailState.targetType !== 'assignment') return null;
     return assignmentById.get(String(detailState.assignmentId)) || null;
   }, [detailState, assignmentById]);
+  const detailAssignmentIsCompleted = Boolean(detailAssignment?.isCompleted);
   const detailCard = useMemo(() => {
     if (!detailState) return null;
     if (detailState.targetType === 'card') {
@@ -4398,6 +4520,7 @@ const AssignBoard = () => {
   }, [blurActiveElement]);
   const handleDetailDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
+    if (detailAssignmentIsCompleted) return;
     if (!CT_INPUT_REGEX.test(value)) return;
     setDetailDraftsByTarget((prev) => {
       const currentForTarget = prev[detailTargetKey] || {};
@@ -4419,9 +4542,10 @@ const AssignBoard = () => {
         },
       };
     });
-  }, [detailTargetKey]);
+  }, [detailAssignmentIsCompleted, detailTargetKey]);
   const handleDetailStDraftInput = useCallback((processKey, value) => {
     if (!detailTargetKey || !processKey) return;
+    if (detailAssignmentIsCompleted) return;
     if (!CT_INPUT_REGEX.test(value)) return;
     setDetailStDraftsByTarget((prev) => {
       const currentForTarget = prev[detailTargetKey] || {};
@@ -4443,7 +4567,7 @@ const AssignBoard = () => {
         },
       };
     });
-  }, [detailTargetKey]);
+  }, [detailAssignmentIsCompleted, detailTargetKey]);
 
   const handleDragEnd = (event) => {
     if (!persistReady || loading) {
@@ -4857,23 +4981,13 @@ const AssignBoard = () => {
   }, [languageCode]);
 
   const buildSplitCard = useCallback((card, quantity, ratio, newId) => {
-    const stTotalSeconds = scaleValue(card.stTotalSeconds, ratio);
-    const totalPt = scaleValue(card.totalPt, ratio);
-    const totalAt = scaleValue(card.totalAt, ratio);
-    const totalSt = scaleValue(card.totalSt, ratio);
     const originOrderId = getCardOriginId(card) ?? card.id;
-    return {
+    return rebuildCardTimeTotalsForQuantity({
       ...card,
       id: newId,
       originOrderId,
-      quantity,
-      stTotalSeconds,
-      totalPt,
-      totalAt,
-      totalSt,
-      status: resolveCardStatus(card, totalPt, totalAt, totalSt),
-    };
-  }, []);
+    }, quantity, ratio);
+  }, [rebuildCardTimeTotalsForQuantity]);
 
   const handleSplitCard = useCallback((cardId) => {
     const card = cardById.get(cardId);
@@ -4894,6 +5008,17 @@ const AssignBoard = () => {
   const handleSplitAssignment = useCallback((assignmentId) => {
     const target = assignmentById.get(assignmentId);
     if (!target?.cardId) return;
+    if (target?.isCompleted) {
+      showNotification(
+        getUiMessage(
+          'assign.completedReadOnlyAction',
+          'Completed assignments cannot be modified.',
+          languageCode
+        ),
+        'warning'
+      );
+      return;
+    }
     const card = cardById.get(target.cardId);
     if (!card) return;
     const quantity = Number(card.quantity ?? target.quantity);
@@ -4908,27 +5033,29 @@ const AssignBoard = () => {
 
     setCards((prev) => prev.map((item) => (item.id === card.id ? updatedCard : item)).concat(splitCard));
 
-    const scaledStTotalSeconds = scaleValue(target.stTotalSeconds, remainRatio) || 1;
-    const scaledCtTotal =
-      target.ctTotalSeconds == null
-        ? target.ctTotalSeconds
-        : scaleValue(target.ctTotalSeconds, remainRatio) || 1;
+    const recalculatedStTotalSeconds =
+      resolveCardStTotalSeconds(updatedCard) || scaleValue(target.stTotalSeconds, remainRatio) || 1;
     const range = recomputeAssignmentRange(
       target,
-      scaledStTotalSeconds,
+      recalculatedStTotalSeconds,
       days,
       lineCapacityById
     );
     setAssignments((prev) =>
       prev.map((item) =>
         item.id === assignmentId
-          ? {
-              ...item,
-              quantity: remainQty,
-              stTotalSeconds: scaledStTotalSeconds,
-              ctTotalSeconds: scaledCtTotal,
-              ...range,
-            }
+          ? syncAssignmentDateKeys(
+              {
+                ...item,
+                quantity: remainQty,
+                basis: getCardBasis(updatedCard),
+                stTotalSeconds: recalculatedStTotalSeconds,
+                ctTotalSeconds: null,
+                ctSnapshot: null,
+                ...range,
+              },
+              startDateRef.current
+            )
           : item
       )
     );
@@ -4940,6 +5067,7 @@ const AssignBoard = () => {
     days,
     lineCapacityById,
     showNotification,
+    languageCode,
   ]);
   const handleContextSplit = useCallback(() => {
     if (!contextMenuState) return;
@@ -4962,9 +5090,13 @@ const AssignBoard = () => {
     const card = cardById.get(assignment.cardId);
     if (card) return card;
     const basis = assignment.basis || 'PT';
+    const styleId = resolveStyleIdFromCardIdentity(
+      assignment.originOrderId || assignment.cardId || assignment.id
+    );
     return {
       id: assignment.cardId ?? assignment.id,
       originOrderId: assignment.originOrderId ?? assignment.cardId ?? assignment.id,
+      styleId,
       styleName: assignment.label || getUiMessage('assign.styleLabel', 'Style', languageCode),
       colorName: assignment.colorName || '',
       gender: normalizeGenderKey(assignment.gender),
@@ -4978,6 +5110,11 @@ const AssignBoard = () => {
     };
   };
 
+  const buildMergedCardData = (target, source) => {
+    const mergedCard = mergeCardData(target, source);
+    return rebuildCardTimeTotalsForQuantity(mergedCard, mergedCard.quantity, null);
+  };
+
   const mergeUnassignedCards = (targetId, sourceId) => {
     if (!targetId || !sourceId || targetId === sourceId) return false;
     let merged = false;
@@ -4987,7 +5124,7 @@ const AssignBoard = () => {
       if (!target || !source) return prev;
       if (getCardOriginId(target) !== getCardOriginId(source)) return prev;
       merged = true;
-      const next = mergeCardData(target, source);
+      const next = buildMergedCardData(target, source);
       return prev.filter((item) => item.id !== sourceId).map((item) => (item.id === targetId ? next : item));
     });
     return merged;
@@ -4999,17 +5136,16 @@ const AssignBoard = () => {
     if (!target || !sourceCard) return false;
     if (getAssignmentOriginId(target) !== getCardOriginId(sourceCard)) return false;
 
-    const addedSeconds = resolveCardStTotalSeconds(sourceCard);
-    const mergedSeconds = (target.stTotalSeconds ?? 0) + addedSeconds;
-    const mergedCtTotalSeconds = null;
-    const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
+    const targetCard = cardById.get(target.cardId) ?? buildCardFromAssignment(target);
+    const mergedCard = buildMergedCardData(targetCard, sourceCard);
+    const mergedSeconds = resolveCardStTotalSeconds(mergedCard);
+    const mergedQuantity = mergedCard.quantity ?? ((target.quantity ?? 0) + (sourceCard.quantity ?? 0));
 
     setCards((prev) => {
-      const targetCard = prev.find((item) => item.id === target.cardId) ?? sourceCard;
-      const mergedCard = mergeCardData(targetCard, sourceCard);
-      return prev
-        .filter((item) => item.id !== sourceCardId)
-        .map((item) => (item.id === target.cardId ? mergedCard : item));
+      const withoutSource = prev.filter((item) => item.id !== sourceCardId);
+      const hasTargetCard = withoutSource.some((item) => item.id === targetCard.id);
+      if (!hasTargetCard) return withoutSource.concat(mergedCard);
+      return withoutSource.map((item) => (item.id === targetCard.id ? mergedCard : item));
     });
 
     setAssignments((prev) => {
@@ -5017,7 +5153,9 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         stTotalSeconds: mergedSeconds,
-        ctTotalSeconds: mergedCtTotalSeconds,
+        ctTotalSeconds: null,
+        ctSnapshot: null,
+        basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== targetAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -5039,7 +5177,7 @@ const AssignBoard = () => {
     if (getCardOriginId(targetCard) !== getAssignmentOriginId(sourceAssignment)) return false;
 
     const sourceCard = buildCardFromAssignment(sourceAssignment);
-    const mergedCard = mergeCardData(targetCard, sourceCard);
+    const mergedCard = buildMergedCardData(targetCard, sourceCard);
     setCards((prev) =>
       prev
         .filter((item) => item.id !== sourceCard.id)
@@ -5057,20 +5195,16 @@ const AssignBoard = () => {
     if (getAssignmentOriginId(target) !== getAssignmentOriginId(source)) return false;
 
     const sourceCard = buildCardFromAssignment(source);
-    const addedSeconds = resolveCardStTotalSeconds(sourceCard);
-    const mergedSeconds = (target.stTotalSeconds ?? 0) + addedSeconds;
-    const mergedCtTotalSeconds =
-      target.ctTotalSeconds != null && source.ctTotalSeconds != null
-        ? target.ctTotalSeconds + source.ctTotalSeconds
-        : null;
-    const mergedQuantity = (target.quantity ?? 0) + (sourceCard.quantity ?? 0);
+    const targetCard = cardById.get(target.cardId) ?? buildCardFromAssignment(target);
+    const mergedCard = buildMergedCardData(targetCard, sourceCard);
+    const mergedSeconds = resolveCardStTotalSeconds(mergedCard);
+    const mergedQuantity = mergedCard.quantity ?? ((target.quantity ?? 0) + (sourceCard.quantity ?? 0));
 
     setCards((prev) => {
-      const targetCard = prev.find((item) => item.id === target.cardId) ?? buildCardFromAssignment(target);
-      const mergedCard = mergeCardData(targetCard, sourceCard);
-      return prev
-        .filter((item) => item.id !== sourceCard.id || sourceCard.id === targetCard.id)
-        .map((item) => (item.id === targetCard.id ? mergedCard : item));
+      const withoutSource = prev.filter((item) => item.id !== sourceCard.id || sourceCard.id === targetCard.id);
+      const hasTargetCard = withoutSource.some((item) => item.id === targetCard.id);
+      if (!hasTargetCard) return withoutSource.concat(mergedCard);
+      return withoutSource.map((item) => (item.id === targetCard.id ? mergedCard : item));
     });
 
     setAssignments((prev) => {
@@ -5078,7 +5212,9 @@ const AssignBoard = () => {
         ...target,
         quantity: mergedQuantity,
         stTotalSeconds: mergedSeconds,
-        ctTotalSeconds: mergedCtTotalSeconds,
+        ctTotalSeconds: null,
+        ctSnapshot: null,
+        basis: getCardBasis(mergedCard),
       };
       const rest = prev.filter((item) => item.id !== sourceAssignmentId);
       const replaced = tryRebuildLineWithReplace({
@@ -5519,6 +5655,15 @@ const AssignBoard = () => {
                         { fallback: '-', maximumFractionDigits: 0 }
                       )}
                     </Typography>
+                    {detailAssignmentIsCompleted ? (
+                      <Typography variant="body2" color="text.secondary">
+                        {getUiMessage(
+                          'assign.completedReadOnlyDetail',
+                          'This assignment is completed and can only be viewed.',
+                          languageCode
+                        )}
+                      </Typography>
+                    ) : null}
                     <Typography variant="body2">
                       <strong>{getUiMessage('assign.lineLabel', 'Line', languageCode)}:</strong>{' '}
                       {detailLine?.name || '-'}
@@ -5699,6 +5844,7 @@ const AssignBoard = () => {
                                   onChange={(event) =>
                                     handleDetailStDraftInput(row.processKey, event.target.value)
                                   }
+                                  disabled={detailAssignmentIsCompleted}
                                   size="small"
                                   placeholder="-"
                                   inputProps={{ inputMode: 'decimal' }}
@@ -5725,6 +5871,7 @@ const AssignBoard = () => {
                                   onChange={(event) =>
                                     handleDetailDraftInput(row.processKey, event.target.value)
                                   }
+                                  disabled={detailAssignmentIsCompleted}
                                   size="small"
                                   placeholder="-"
                                   inputProps={{ inputMode: 'decimal' }}
@@ -5793,11 +5940,17 @@ const AssignBoard = () => {
                     </TableContainer>
                   )}
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {languageCode === 'ko'
-                      ? '저장하면 현재 입력한 ST/CT 값으로 snapshot이 저장됩니다.'
-                      : languageCode === 'vi'
-                        ? 'Khi luu, ST/CT vua nhap se duoc luu vao snapshot.'
-                        : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
+                    {detailAssignmentIsCompleted
+                      ? getUiMessage(
+                          'assign.completedReadOnlySnapshotNote',
+                          'Completed assignments are read-only; ST/CT inputs are not saved.',
+                          languageCode
+                        )
+                      : languageCode === 'ko'
+                        ? '저장하면 현재 입력한 ST/CT 값으로 snapshot이 저장됩니다.'
+                        : languageCode === 'vi'
+                          ? 'Khi luu, ST/CT vua nhap se duoc luu vao snapshot.'
+                          : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
                   </Typography>
                 </Paper>
               </>

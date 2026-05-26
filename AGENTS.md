@@ -867,3 +867,29 @@ runtime 조회값:
     - `completedAt IS NOT NULL`
     레코드는 `isCompleted = true`로 올려서 완료 상태로 맞춘다
     - `completedAt`을 지우지 않는다
+
+### 12. 2026-05-26 Phase 2 implementation status
+
+- Implemented in code:
+  - Frontend board save sends write-only `stDrafts` in `PUT /assignment-board-state`.
+  - Backend rejects invalid `stDrafts` payloads, including `stDrafts: null`.
+  - Backend ignores `stDrafts` process keys that are not present in the assignment snapshot and returns `ST_DRAFT_PROCESS_IGNORED` warnings for frontend toast display.
+  - Backend updates `StyleProcessStandard` only from explicit `stDrafts`; board save no longer reverse-syncs every `snapshot.processes[].stSeconds`.
+  - Backend recalculates `stTotalSeconds` before saving `AssignmentBoardState`, so board state JSON, `AssignmentPlan`, and the PUT response share the same recalculated value.
+  - Backend treats `quantity`, `lineId`, `startIndex`, `endIndex`, or missing DB plan row as structural ST recalculation triggers.
+- Still not implemented in this phase:
+  - Physical rename of DB columns or JSON keys.
+  - Removal of `snapshot.processes[].stSeconds` or `snapshot.totalStPerPieceSeconds`.
+  - Frontend split/merge visual calculation cleanup; backend save now protects persisted values, but UI-side ratio/sum cleanup remains a later phase.
+
+### 13. 2026-05-26 Phase 3 implementation status
+
+- Implemented in code:
+  - Frontend split/merge card state now recalculates `stTotalSeconds`, `totalPt`, `totalAt`, and `totalSt` from current style processes when the style is available.
+  - Split assignment state resets CT (`ctTotalSeconds`, `ctSnapshot`) and recomputes schedule range from the recalculated remaining `stTotalSeconds`.
+  - Merge assignment state resets CT (`ctTotalSeconds`, `ctSnapshot`) and recomputes schedule range from the merged quantity's recalculated `stTotalSeconds`.
+  - If the style/process source is unavailable, split/merge keeps a fallback path using the previous scaled or summed values. Backend Phase 2 recalculation remains the persisted source of truth.
+- Still not implemented in this phase:
+  - Backend/API endpoint dedicated to previewing split/merge recalculated totals before save.
+  - Physical rename of DB columns or JSON keys.
+  - Removal of `snapshot.processes[].stSeconds` or `snapshot.totalStPerPieceSeconds`.

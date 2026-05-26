@@ -9,7 +9,8 @@
       "Bash(npx prisma db push:*)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\krsai\\\\Desktop\\\\baro\\\\frontend\\\\src\\\\pages\\\\App\" -Directory)",
       "Bash(Select-Object -ExpandProperty Name)",
-      "Bash(mkdir -p \"c:/Users/krsai/Desktop/baro/backend/prisma/migrations/20260525180000_cleanup_legacy_ct_snapshot_fields\")"
+      "Bash(mkdir -p \"c:/Users/krsai/Desktop/baro/backend/prisma/migrations/20260525180000_cleanup_legacy_ct_snapshot_fields\")",
+      "Bash(grep -v \"//.*isCompleted\\\\|console\\\\|log\\\\|comment\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\krsai\\Desktop\\baro",

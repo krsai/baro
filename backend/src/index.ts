@@ -10628,6 +10628,631 @@ const toAssignmentPlanWriteData = (item: any) => {
     updatedAt: item.updatedAt ?? new Date(),
   };
 };
+const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
+  id: true,
+  externalId: true,
+  lineId: true,
+  cardId: true,
+  orderNo: true,
+  customer: true,
+  label: true,
+  colorId: true,
+  colorName: true,
+  previewUrl: true,
+  imageUrl: true,
+  thumbnailUrl: true,
+  quantity: true,
+  originOrderId: true,
+  basis: true,
+  ctTotalSeconds: true,
+  ctSnapshot: true,
+  color: true,
+  stripeColor: true,
+  stTotalSeconds: true,
+  startIndex: true,
+  endIndex: true,
+  startDayOffsetPercent: true,
+  startDayPercent: true,
+  endDayPercent: true,
+  isCompleted: true,
+};
+const normalizeAssignmentLineIdForWriteCompare = (value: any): number | null => {
+  const lineId = toNumberOrNull(value);
+  return typeof lineId === "number" && Number.isFinite(lineId)
+    ? Math.round(lineId)
+    : null;
+};
+const buildCompletedAssignmentWriteComparable = (item: any) => {
+  const assignmentCtSnapshot = normalizeAssignmentCtSnapshot(
+    item?.assignmentCtSnapshot ?? item?.ctSnapshot
+  );
+  const assignmentCtTotalSeconds = resolveAssignmentCtTotalSeconds({
+    ...item,
+    ctSnapshot: assignmentCtSnapshot,
+  });
+  return {
+    lineId: normalizeAssignmentLineIdForWriteCompare(item?.lineId),
+    cardId: resolveOptionalString(item?.cardId, null),
+    orderNo: resolveOptionalString(item?.orderNo, null),
+    customer: resolveOptionalString(item?.customer, null),
+    label: resolveOptionalString(item?.label, null),
+    colorId: toPositiveIntOrNull(item?.colorId),
+    colorName: resolveOptionalString(item?.colorName, null),
+    previewUrl: resolveOptionalString(item?.previewUrl, null),
+    imageUrl: resolveOptionalString(item?.imageUrl, null),
+    thumbnailUrl: resolveOptionalString(item?.thumbnailUrl, null),
+    assignmentQuantity: toOptionalNonNegativeInt(
+      item?.assignmentQuantity ?? item?.quantity,
+      null
+    ),
+    originOrderId: resolveOptionalString(item?.originOrderId, null),
+    basis: resolveOptionalString(item?.basis, null),
+    assignmentCtTotalSeconds,
+    assignmentCtSnapshot,
+    color: resolveOptionalString(item?.color, null),
+    stripeColor: resolveOptionalString(item?.stripeColor, null),
+    assignmentStTotalSeconds: toOptionalNonNegativeInt(
+      item?.assignmentStTotalSeconds ?? item?.stTotalSeconds,
+      null
+    ),
+    startIndex: toSignedInt(item?.startIndex, 0),
+    endIndex: Math.max(
+      toSignedInt(item?.startIndex, 0),
+      toSignedInt(item?.endIndex, toSignedInt(item?.startIndex, 0))
+    ),
+    startDayOffsetPercent: toOptionalFloat(item?.startDayOffsetPercent, null),
+    startDayPercent: toOptionalFloat(item?.startDayPercent, null),
+    endDayPercent: toOptionalFloat(item?.endDayPercent, null),
+  };
+};
+const listCompletedAssignmentWriteDiffFields = (current: any, incoming: any): string[] => {
+  const currentComparable = buildCompletedAssignmentWriteComparable(current);
+  const incomingComparable = buildCompletedAssignmentWriteComparable(incoming);
+  return Object.keys(currentComparable).filter(
+    (key) =>
+      toStableJsonText((currentComparable as any)[key]) !==
+      toStableJsonText((incomingComparable as any)[key])
+  );
+};
+const normalizeAssignmentStDraftsPayload = (value: any) => {
+  if (value === undefined) return new Map<string, Map<string, number>>();
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw createHttpError(400, "invalid stDrafts payload");
+  }
+
+  const result = new Map<string, Map<string, number>>();
+  Object.entries(value).forEach(([rawExternalId, rawDraft]) => {
+    const externalId = resolveOptionalString(rawExternalId, null);
+    if (!externalId) return;
+    if (rawDraft === undefined) return;
+    if (rawDraft === null || typeof rawDraft !== "object" || Array.isArray(rawDraft)) {
+      throw createHttpError(400, "invalid stDrafts assignment entry");
+    }
+
+    const processDrafts = new Map<string, number>();
+    Object.entries(rawDraft).forEach(([rawProcessKey, rawSeconds]) => {
+      const processKey = resolveOptionalString(rawProcessKey, null);
+      if (!processKey) return;
+      const seconds = toOptionalProcessSeconds(rawSeconds);
+      if (seconds === null || seconds <= 0) {
+        throw createHttpError(400, "invalid stDrafts seconds");
+      }
+      processDrafts.set(processKey, seconds);
+    });
+
+    if (processDrafts.size > 0) {
+      result.set(externalId, processDrafts);
+    }
+  });
+  return result;
+};
+
+const buildAssignmentStDraftWarnings = ({
+  assignmentExternalId,
+  processKeys,
+  reason,
+}: {
+  assignmentExternalId: string;
+  processKeys: string[];
+  reason: string;
+}) =>
+  processKeys.map((processKey) => ({
+    type: "ST_DRAFT_PROCESS_IGNORED",
+    assignmentId: assignmentExternalId,
+    processKey,
+    reason,
+  }));
+
+const resolveAssignmentStyleIdForStCalculation = ({
+  assignment,
+  cardById,
+}: {
+  assignment: any;
+  cardById: Map<string, any>;
+}) => {
+  const cardId = resolveOptionalString(
+    assignment?.cardId ?? assignment?.originOrderId,
+    null
+  );
+  const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
+  const parsedCardIdentity = cardId ? parseAssignmentCardIdentity(cardId) : null;
+  return resolveOptionalString(
+    linkedCard?.styleId ?? parsedCardIdentity?.styleId ?? assignment?.styleId,
+    null
+  );
+};
+
+const buildStyleProcessLookupForStCalculation = (styleProcessRows: any[]) => {
+  const byStyleUidAndId = new Map<string, any>();
+  const byStyleUidAndCode = new Map<string, any>();
+  const byStyleUidAndName = new Map<string, any>();
+
+  ensureArray(styleProcessRows).forEach((row) => {
+    const styleUid = toPositiveIntOrNull(row?.styleUid);
+    const rowId = toPositiveIntOrNull(row?.id);
+    if (styleUid === null || rowId === null) return;
+    byStyleUidAndId.set(`${styleUid}::${rowId}`, row);
+
+    const codeKey = normalizeProcessCodeKey(row?.processCode);
+    if (codeKey) {
+      byStyleUidAndCode.set(`${styleUid}::${codeKey}`, row);
+    }
+
+    const nameKey = normalizeProcessNameKey(row?.processName);
+    if (nameKey) {
+      byStyleUidAndName.set(`${styleUid}::${nameKey}`, row);
+    }
+  });
+
+  const resolveRowForSnapshotProcess = (styleUid: number, process: any) => {
+    const processId = toPositiveIntOrNull(process?.processId ?? process?.id);
+    if (processId !== null) {
+      const byId = byStyleUidAndId.get(`${styleUid}::${processId}`);
+      if (byId) return byId;
+    }
+
+    for (const codeKey of resolveAssignmentSnapshotProcessCodeCandidates(process)) {
+      const byCode = byStyleUidAndCode.get(`${styleUid}::${codeKey}`);
+      if (byCode) return byCode;
+    }
+
+    const nameKey = normalizeProcessNameKey(
+      process?.name ?? process?.processName ?? process?.label
+    );
+    if (nameKey) {
+      return byStyleUidAndName.get(`${styleUid}::${nameKey}`) ?? null;
+    }
+    return null;
+  };
+
+  return {
+    resolveRowForSnapshotProcess,
+  };
+};
+
+const resolveStyleProcessBucketStSeconds = (row: any, bucketQuantity: number) => {
+  const standard = ensureArray(row?.standards).find(
+    (item) =>
+      resolveStBucketQuantity((item as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY) ===
+      bucketQuantity
+  );
+  const bucketStSeconds = toOptionalProcessSeconds((standard as any)?.stSeconds);
+  if (bucketStSeconds !== null) return bucketStSeconds;
+  return toOptionalProcessSeconds(row?.ptSeconds);
+};
+
+const calculateAssignmentStTotalSecondsFromStyleRows = ({
+  styleProcessRows,
+  assignmentQuantity,
+  bucketQuantity,
+}: {
+  styleProcessRows: any[];
+  assignmentQuantity: number;
+  bucketQuantity: number;
+}) => {
+  let pieceStTotalSeconds = 0;
+  let hasAnyProcessSt = false;
+  ensureArray(styleProcessRows).forEach((row) => {
+    const bucketStSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
+    if (bucketStSeconds === null) return;
+    const timesPerPiece = toPositiveInt(row?.processQuantity, 1);
+    pieceStTotalSeconds += bucketStSeconds * timesPerPiece;
+    hasAnyProcessSt = true;
+  });
+  if (!hasAnyProcessSt) return null;
+  return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
+};
+
+const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
+  snapshotProcesses,
+  assignmentQuantity,
+  bucketQuantity,
+  styleUid,
+  styleProcessLookup,
+}: {
+  snapshotProcesses: any[];
+  assignmentQuantity: number;
+  bucketQuantity: number;
+  styleUid: number | null;
+  styleProcessLookup: ReturnType<typeof buildStyleProcessLookupForStCalculation>;
+}) => {
+  let pieceStTotalSeconds = 0;
+  let hasAnyProcessSt = false;
+  ensureArray(snapshotProcesses).forEach((process) => {
+    const matchedRow =
+      styleUid === null
+        ? null
+        : styleProcessLookup.resolveRowForSnapshotProcess(styleUid, process);
+    const bucketStSeconds =
+      matchedRow !== null
+        ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
+        : null;
+    const snapshotStSeconds = toOptionalProcessSeconds(process?.stSeconds);
+    const stSeconds = bucketStSeconds ?? snapshotStSeconds;
+    if (stSeconds === null) return;
+    const timesPerPiece = toPositiveInt(process?.quantity, 1);
+    pieceStTotalSeconds += stSeconds * timesPerPiece;
+    hasAnyProcessSt = true;
+  });
+  if (!hasAnyProcessSt) return null;
+  return Math.max(0, Math.round(pieceStTotalSeconds * assignmentQuantity));
+};
+
+const hasAssignmentStructuralStChange = (assignment: any, existingPlan: any) => {
+  if (!existingPlan) return true;
+  const assignmentQuantity = toOptionalNonNegativeInt(assignment?.quantity, null);
+  const existingQuantity = toOptionalNonNegativeInt(existingPlan?.quantity, null);
+  if (assignmentQuantity !== existingQuantity) return true;
+
+  const lineId = normalizeAssignmentLineIdForWriteCompare(assignment?.lineId);
+  const existingLineId = normalizeAssignmentLineIdForWriteCompare(existingPlan?.lineId);
+  if (lineId !== existingLineId) return true;
+
+  const startIndex = toSignedInt(assignment?.startIndex, 0);
+  const existingStartIndex = toSignedInt(existingPlan?.startIndex, 0);
+  if (startIndex !== existingStartIndex) return true;
+
+  const endIndex = Math.max(startIndex, toSignedInt(assignment?.endIndex, startIndex));
+  const existingEndIndex = Math.max(
+    existingStartIndex,
+    toSignedInt(existingPlan?.endIndex, existingStartIndex)
+  );
+  return endIndex !== existingEndIndex;
+};
+const prepareAssignmentBoardStTotalsForSave = async ({
+  organization,
+  accessibleStyleOwnerOrgIds,
+  cards,
+  assignments,
+  existingPlanByExternalId,
+  stDraftsByExternalId,
+  db,
+}: {
+  organization: any;
+  accessibleStyleOwnerOrgIds: number[];
+  cards: any[];
+  assignments: any[];
+  existingPlanByExternalId: Map<string, any>;
+  stDraftsByExternalId: Map<string, Map<string, number>>;
+  db: any;
+}) => {
+  const normalizedAssignments = ensureArray(assignments).filter(
+    (item) => item && typeof item === "object"
+  );
+  const warnings: any[] = [];
+  const changedExternalIds = new Set<string>();
+  if (normalizedAssignments.length === 0) {
+    return { assignments: normalizedAssignments, warnings, changedExternalIds };
+  }
+
+  const cardById = ensureArray(cards).reduce((map, card) => {
+    const cardId = resolveOptionalString(card?.id, null);
+    if (!cardId || map.has(cardId)) return map;
+    map.set(cardId, card);
+    return map;
+  }, new Map<string, any>());
+
+  const targetByExternalId = new Map<string, any>();
+  const assignmentStyleIds = new Set<string>();
+  normalizedAssignments.forEach((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (!externalId || Boolean(assignment?.isCompleted)) return;
+
+    const existingPlan = existingPlanByExternalId.get(externalId) ?? null;
+    const stDrafts = stDraftsByExternalId.get(externalId) ?? new Map<string, number>();
+    const hasStDrafts = stDrafts.size > 0;
+    const hasStructuralChange = hasAssignmentStructuralStChange(assignment, existingPlan);
+    const existingAssignmentStTotalSeconds = toOptionalNonNegativeInt(
+      existingPlan?.stTotalSeconds,
+      null
+    );
+
+    const styleId = resolveAssignmentStyleIdForStCalculation({
+      assignment,
+      cardById,
+    });
+    const shouldRecalculate = hasStDrafts || hasStructuralChange;
+    if (shouldRecalculate && styleId) assignmentStyleIds.add(styleId);
+
+    targetByExternalId.set(externalId, {
+      assignment,
+      existingPlan,
+      existingAssignmentStTotalSeconds,
+      stDrafts,
+      hasStDrafts,
+      hasStructuralChange,
+      styleId,
+      shouldRecalculate,
+    });
+  });
+
+  const recalcTargets = Array.from(targetByExternalId.values()).filter(
+    (target) => target.shouldRecalculate
+  );
+  if (assignmentStyleIds.size === 0 && recalcTargets.length === 0) {
+    const assignmentsWithExistingTotals = normalizedAssignments.map((assignment) => {
+      const externalId = resolveAssignmentExternalId(assignment);
+      const target = externalId ? targetByExternalId.get(externalId) : null;
+      const existingAssignmentStTotalSeconds =
+        target?.existingAssignmentStTotalSeconds ?? null;
+      if (existingAssignmentStTotalSeconds === null) return assignment;
+      if (
+        externalId &&
+        toOptionalNonNegativeInt(assignment?.stTotalSeconds, null) !==
+        existingAssignmentStTotalSeconds
+      ) {
+        changedExternalIds.add(externalId);
+      }
+      return {
+        ...assignment,
+        stTotalSeconds: existingAssignmentStTotalSeconds,
+      };
+    });
+    return { assignments: assignmentsWithExistingTotals, warnings, changedExternalIds };
+  }
+
+  const styles =
+    assignmentStyleIds.size > 0
+      ? await db.style.findMany({
+          where: {
+            orgId: { in: accessibleStyleOwnerOrgIds },
+            styleId: { in: Array.from(assignmentStyleIds.values()) },
+          },
+          orderBy: { uid: "asc" },
+          select: {
+            uid: true,
+            orgId: true,
+            styleId: true,
+            processes: true,
+          },
+        })
+      : [];
+  const styleByStyleId = ensureArray(styles).reduce((map, style) => {
+    const styleId = resolveOptionalString(style?.styleId, null);
+    const styleUid = toPositiveIntOrNull(style?.uid);
+    if (!styleId || styleUid === null || map.has(styleId)) return map;
+    map.set(styleId, style);
+    return map;
+  }, new Map<string, any>());
+
+  const quantityByStyleUid = new Map<number, Set<number>>();
+  recalcTargets.forEach((target) => {
+    const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
+    const styleUid = toPositiveIntOrNull(style?.uid);
+    if (styleUid === null) return;
+    const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
+    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    const current = quantityByStyleUid.get(styleUid) ?? new Set<number>();
+    current.add(bucketQuantity);
+    quantityByStyleUid.set(styleUid, current);
+  });
+
+  const styleRowsForStCalculation = Array.from(styleByStyleId.values()) as any[];
+  const styleUids = Array.from(
+    new Set(
+      styleRowsForStCalculation
+        .map((style) => toPositiveIntOrNull(style?.uid))
+        .filter((styleUid): styleUid is number => styleUid !== null)
+    )
+  );
+  if (styleUids.length > 0) {
+    await ensureStyleStandardsForQuantities({
+      styles: styleRowsForStCalculation,
+      quantityByStyleUid,
+      processOrgId: organization.id,
+      db,
+    });
+  }
+
+  let styleProcessRowsByStyleUid =
+    styleUids.length > 0
+      ? await loadStyleProcessRowsByStyleUid(styleUids, {
+          processOrgId: organization.id,
+          db,
+        })
+      : new Map<number, any[]>();
+  let styleProcessLookup = buildStyleProcessLookupForStCalculation(
+    Array.from(styleProcessRowsByStyleUid.values()).flat()
+  );
+
+  const standardUpserts = new Map<
+    string,
+    { styleProcessId: number; bucketQuantity: number; bucketStSeconds: number }
+  >();
+  recalcTargets.forEach((target) => {
+    if (!target.hasStDrafts) return;
+    const externalId = resolveAssignmentExternalId(target.assignment);
+    if (!externalId) return;
+
+    const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
+    const styleUid = toPositiveIntOrNull(style?.uid);
+    const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
+    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    const ctSnapshot = normalizeAssignmentCtSnapshot(target.assignment?.ctSnapshot);
+    const snapshotProcessByKey = ensureArray(ctSnapshot?.processes).reduce(
+      (map, process) => {
+        const processKey = resolveOptionalString(process?.processKey, null);
+        if (!processKey || map.has(processKey)) return map;
+        map.set(processKey, process);
+        return map;
+      },
+      new Map<string, any>()
+    );
+
+    const missingProcessKeys: string[] = [];
+    const unmatchedProcessKeys: string[] = [];
+    target.stDrafts.forEach((bucketStSeconds: number, processKey: string) => {
+      const snapshotProcess = snapshotProcessByKey.get(processKey) ?? null;
+      if (!snapshotProcess) {
+        missingProcessKeys.push(processKey);
+        return;
+      }
+      if (styleUid === null) {
+        unmatchedProcessKeys.push(processKey);
+        return;
+      }
+      const styleProcessRow = styleProcessLookup.resolveRowForSnapshotProcess(
+        styleUid,
+        snapshotProcess
+      );
+      const styleProcessId = toPositiveIntOrNull(styleProcessRow?.id);
+      if (styleProcessId === null) {
+        unmatchedProcessKeys.push(processKey);
+        return;
+      }
+      standardUpserts.set(`${styleProcessId}::${bucketQuantity}`, {
+        styleProcessId,
+        bucketQuantity,
+        bucketStSeconds,
+      });
+    });
+
+    warnings.push(
+      ...buildAssignmentStDraftWarnings({
+        assignmentExternalId: externalId,
+        processKeys: missingProcessKeys,
+        reason: "processKey not found in assignment snapshot",
+      }),
+      ...buildAssignmentStDraftWarnings({
+        assignmentExternalId: externalId,
+        processKeys: unmatchedProcessKeys,
+        reason: "processKey not matched to style process standard",
+      })
+    );
+  });
+
+  if (standardUpserts.size > 0) {
+    const now = new Date();
+    await Promise.all(
+      Array.from(standardUpserts.values()).map((item) =>
+        db.styleProcessStandard.upsert({
+          where: {
+            styleProcessId_quantity: {
+              styleProcessId: item.styleProcessId,
+              quantity: item.bucketQuantity,
+            },
+          },
+          create: {
+            orgId: organization.id,
+            styleProcessId: item.styleProcessId,
+            quantity: item.bucketQuantity,
+            stSeconds: item.bucketStSeconds,
+            setBy: "ASSIGNMENT_DETAIL",
+            setAt: now,
+          },
+          update: {
+            stSeconds: item.bucketStSeconds,
+            setBy: "ASSIGNMENT_DETAIL",
+            setAt: now,
+          },
+        })
+      )
+    );
+
+    styleProcessRowsByStyleUid = await loadStyleProcessRowsByStyleUid(styleUids, {
+      processOrgId: organization.id,
+      db,
+    });
+    styleProcessLookup = buildStyleProcessLookupForStCalculation(
+      Array.from(styleProcessRowsByStyleUid.values()).flat()
+    );
+  }
+
+  const assignmentStTotalSecondsByExternalId = new Map<string, number>();
+  targetByExternalId.forEach((target, externalId) => {
+    if (!target.shouldRecalculate) {
+      if (target.existingAssignmentStTotalSeconds !== null) {
+        assignmentStTotalSecondsByExternalId.set(
+          externalId,
+          target.existingAssignmentStTotalSeconds
+        );
+      }
+      return;
+    }
+
+    const style = target.styleId ? styleByStyleId.get(target.styleId) ?? null : null;
+    const styleUid = toPositiveIntOrNull(style?.uid);
+    const assignmentQuantity = toPositiveInt(target.assignment?.quantity, 1);
+    const bucketQuantity = resolveStBucketQuantity(assignmentQuantity);
+    let assignmentStTotalSeconds: number | null = null;
+
+    if (target.hasStructuralChange) {
+      const styleProcessRows =
+        styleUid === null ? [] : styleProcessRowsByStyleUid.get(styleUid) ?? [];
+      assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
+        styleProcessRows,
+        assignmentQuantity,
+        bucketQuantity,
+      });
+      if (assignmentStTotalSeconds === null && style) {
+        const fallbackTotal = calculateAssignmentCardStTotalForOrderQuantity(
+          style.processes,
+          assignmentQuantity
+        );
+        assignmentStTotalSeconds = fallbackTotal > 0 ? fallbackTotal : null;
+      }
+    } else {
+      const ctSnapshot = normalizeAssignmentCtSnapshot(target.assignment?.ctSnapshot);
+      assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromSnapshotProcesses({
+        snapshotProcesses: ensureArray(ctSnapshot?.processes),
+        assignmentQuantity,
+        bucketQuantity,
+        styleUid,
+        styleProcessLookup,
+      });
+    }
+
+    if (assignmentStTotalSeconds === null) {
+      throw createHttpError(
+        409,
+        `assignment ST total cannot be recalculated: ${externalId}`
+      );
+    }
+    assignmentStTotalSecondsByExternalId.set(externalId, assignmentStTotalSeconds);
+  });
+
+  const nextAssignments = normalizedAssignments.map((assignment) => {
+    const externalId = resolveAssignmentExternalId(assignment);
+    if (!externalId || !assignmentStTotalSecondsByExternalId.has(externalId)) {
+      return assignment;
+    }
+    const assignmentStTotalSeconds =
+      assignmentStTotalSecondsByExternalId.get(externalId) ?? null;
+    if (
+      assignmentStTotalSeconds !== null &&
+      toOptionalNonNegativeInt(assignment?.stTotalSeconds, null) !==
+        assignmentStTotalSeconds
+    ) {
+      changedExternalIds.add(externalId);
+    }
+    return {
+      ...assignment,
+      stTotalSeconds: assignmentStTotalSeconds,
+    };
+  });
+
+  return { assignments: nextAssignments, warnings, changedExternalIds };
+};
 const toAssignmentBoardStateResponse = (
   state: any,
   assignmentPlans: any[] | null = null,
@@ -18242,6 +18867,24 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
     return res.status(404).json({ ok: false, error: "assignment not found" });
   }
 
+  const targetExternalId = resolveAssignmentExternalId(targetAssignment);
+  const completedPlan = targetExternalId
+    ? await prisma.assignmentPlan.findFirst({
+        where: {
+          orgId: organization.id,
+          externalId: targetExternalId,
+          isCompleted: true,
+        },
+        select: { id: true },
+      })
+    : null;
+  if (Boolean(targetAssignment?.isCompleted) || completedPlan) {
+    return res.status(409).json({
+      ok: false,
+      error: "completed assignment cannot be cancelled",
+    });
+  }
+
   const nextAssignments = currentAssignments.filter(
     (a: any) => String(a?.id) !== assignmentId
   );
@@ -18270,7 +18913,7 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
   });
 
   // 해당 assignment의 plan 레코드 제거
-  const externalId = resolveAssignmentExternalId(targetAssignment);
+  const externalId = targetExternalId;
   if (externalId) {
     const planRows = await prisma.assignmentPlan.findMany({
       where: { orgId: organization.id, externalId },
@@ -18338,6 +18981,8 @@ app.put("/assignment-board-state", async (req, res) => {
 
   const cards = ensureArray(req.body?.cards);
   const incomingAssignments = ensureArray(req.body?.assignments);
+  const stDraftsByExternalId = normalizeAssignmentStDraftsPayload(req.body?.stDrafts);
+  const accessibleStyleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
   let cardsForSave = cards;
   let incomingAssignmentsForSave = incomingAssignments;
   if (
@@ -18366,7 +19011,7 @@ app.put("/assignment-board-state", async (req, res) => {
     const currentAssignmentsNormalized = normalizeStateAssignments(currentAssignments);
     const currentAssignmentsByExternalId =
       buildAssignmentByExternalId(currentAssignmentsNormalized);
-    const nextAssignmentsNormalized = normalizeStateAssignments(
+    let nextAssignmentsNormalized = normalizeStateAssignments(
       incomingAssignmentsForSave
     );
     const nextAssignmentsByExternalId =
@@ -18387,6 +19032,90 @@ app.put("/assignment-board-state", async (req, res) => {
         }
       }
     );
+
+    const completedGuardExternalIds = Array.from(
+      new Set(
+        [
+          ...Array.from(nextAssignmentsByExternalId.keys()),
+          ...Array.from(removedExternalIds.values()),
+        ]
+          .map((value) => resolveOptionalString(value, null))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    const completedPlanRows =
+      completedGuardExternalIds.length > 0
+        ? await tx.assignmentPlan.findMany({
+            where: {
+              orgId: organization.id,
+              externalId: { in: completedGuardExternalIds },
+              isCompleted: true,
+            },
+            select: COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT,
+          })
+        : [];
+    const completedPlanByExternalId = new Map(
+      completedPlanRows
+        .map((plan: any) => [resolveOptionalString(plan?.externalId, null), plan])
+        .filter((entry): entry is [string, any] => Boolean(entry[0]))
+    );
+    for (const plan of completedPlanRows) {
+      const externalId = resolveOptionalString(plan?.externalId, null);
+      if (!externalId) continue;
+      const nextItem = nextAssignmentsByExternalId.get(externalId);
+      if (!nextItem) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be removed: ${externalId}`
+        );
+      }
+      if (stDraftsByExternalId.has(externalId)) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be modified: ${externalId} (stDrafts)`
+        );
+      }
+      const changedFields = listCompletedAssignmentWriteDiffFields(plan, nextItem);
+      if (changedFields.length > 0) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be modified: ${externalId} (${changedFields
+            .slice(0, 6)
+            .join(", ")})`
+        );
+      }
+    }
+    for (const [externalId, currentItem] of currentAssignmentsByExternalId.entries()) {
+      if (!Boolean(currentItem?.isCompleted)) continue;
+      if (completedPlanByExternalId.has(externalId)) continue;
+      const nextItem = nextAssignmentsByExternalId.get(externalId);
+      if (!nextItem) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be removed: ${externalId}`
+        );
+      }
+      if (stDraftsByExternalId.has(externalId)) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be modified: ${externalId} (stDrafts)`
+        );
+      }
+      const changedFields = listCompletedAssignmentWriteDiffFields(currentItem, nextItem);
+      if (changedFields.length > 0) {
+        throw createHttpError(
+          409,
+          `completed assignment cannot be modified: ${externalId} (${changedFields
+            .slice(0, 6)
+            .join(", ")})`
+        );
+      }
+    }
+    stDraftsByExternalId.forEach((_drafts, externalId) => {
+      if (nextAssignmentsByExternalId.has(externalId)) {
+        changedIncomingExternalIds.add(externalId);
+      }
+    });
 
     const currentVersionByExternalId =
       buildAssignmentVersionMap(currentAssignmentsNormalized);
@@ -18438,6 +19167,49 @@ app.put("/assignment-board-state", async (req, res) => {
     // incoming board payload and rebase version counters from current server values.
     // We still increment from currentVersion below, so version history remains monotonic.
     void versionConflicts;
+
+    const nextAssignmentExternalIds = Array.from(nextAssignmentsByExternalId.keys()).map(
+      (externalId) => String(externalId)
+    );
+    const existingPlanRowsForStTotals =
+      nextAssignmentExternalIds.length > 0
+        ? await tx.assignmentPlan.findMany({
+            where: {
+              orgId: organization.id,
+              externalId: { in: nextAssignmentExternalIds },
+            },
+            select: {
+              id: true,
+              externalId: true,
+              lineId: true,
+              quantity: true,
+              startIndex: true,
+              endIndex: true,
+              stTotalSeconds: true,
+              cardId: true,
+              originOrderId: true,
+              isCompleted: true,
+            } as any,
+          })
+        : [];
+    const existingPlanByExternalIdForStTotals = new Map(
+      existingPlanRowsForStTotals
+        .map((plan: any) => [resolveOptionalString(plan?.externalId, null), plan])
+        .filter((entry): entry is [string, any] => Boolean(entry[0]))
+    );
+    const stTotalPreparation = await prepareAssignmentBoardStTotalsForSave({
+      organization,
+      accessibleStyleOwnerOrgIds,
+      cards: cardsForSave,
+      assignments: nextAssignmentsNormalized,
+      existingPlanByExternalId: existingPlanByExternalIdForStTotals,
+      stDraftsByExternalId,
+      db: tx,
+    });
+    nextAssignmentsNormalized = stTotalPreparation.assignments;
+    stTotalPreparation.changedExternalIds.forEach((externalId) => {
+      changedIncomingExternalIds.add(externalId);
+    });
 
     const nowIso = new Date().toISOString();
     const versionedAssignments = nextAssignmentsNormalized.map((item) => {
@@ -18496,6 +19268,7 @@ app.put("/assignment-board-state", async (req, res) => {
       savedCards,
       changedPlanTargetAssignments,
       removedExternalIdList,
+      stDraftWarnings: stTotalPreparation.warnings,
     };
   }, { timeout: 90000 });
   const updatedState = updated?.state ?? null;
@@ -18506,6 +19279,7 @@ app.put("/assignment-board-state", async (req, res) => {
   const removedExternalIdList = ensureArray(updated?.removedExternalIdList).map((value) =>
     String(value)
   );
+  const stDraftWarnings = ensureArray(updated?.stDraftWarnings);
   const removedExternalIdSet = new Set(removedExternalIdList);
   const changedPlanTargetExternalIds = new Set(
     changedPlanTargetAssignments
@@ -18681,19 +19455,17 @@ app.put("/assignment-board-state", async (req, res) => {
       );
     }
   }
-  if (planSyncTargetAssignments.length > 0) {
-    await syncStyleProcessStandardsFromAssignmentSnapshots({
-      organization,
-      cards: cardsForSave,
-      assignments: planSyncTargetAssignments,
-    });
-  }
+  // Phase 2: board save ST reverse propagation is now driven only by
+  // explicit write-only stDrafts. Do not sync every snapshot.stSeconds here.
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     cards: updatedCards,
     assignments: updatedState?.assignments,
   });
-  res.json(toAssignmentBoardStateResponse(updatedState, null, updatedCards));
+  res.json({
+    ...toAssignmentBoardStateResponse(updatedState, null, updatedCards),
+    warnings: stDraftWarnings,
+  });
 });
 
 app.get("/customers", async (req, res) => {
