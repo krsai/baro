@@ -933,9 +933,9 @@ type StyleAtParams = {
   observationCount: number | null;
 };
 
-type StyleStValue = {
-  quantity: number;
-  seconds: number;
+type StyleStBucket = {
+  bucketQuantity: number;
+  bucketStSeconds: number;
   setBy: string | null;
   setAt: string | null;
   updatedAt: string | null;
@@ -998,18 +998,22 @@ const toStyleAtParams = (value: any): StyleAtParams | null => {
   };
 };
 
-const toStyleStValue = (value: any): StyleStValue | null => {
+const toStyleStBucket = (value: any): StyleStBucket | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const quantity = resolveStBucketQuantity((value as any).quantity);
-  const seconds = toOptionalProcessSeconds((value as any).seconds);
-  if (quantity === null || seconds === null) return null;
+  const bucketQuantity = resolveStBucketQuantity(
+    (value as any).bucketQuantity ?? (value as any).quantity
+  );
+  const bucketStSeconds = toOptionalProcessSeconds(
+    (value as any).bucketStSeconds ?? (value as any).seconds
+  );
+  if (bucketQuantity === null || bucketStSeconds === null) return null;
   const setAtRaw = resolveOptionalString((value as any).setAt, null);
   const setAtDate = setAtRaw ? new Date(setAtRaw) : null;
   const updatedAtRaw = resolveOptionalString((value as any).updatedAt, null);
   const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
   return {
-    quantity,
-    seconds,
+    bucketQuantity,
+    bucketStSeconds,
     setBy: resolveOptionalString((value as any).setBy, null),
     setAt:
       setAtDate && !Number.isNaN(setAtDate.getTime())
@@ -1022,15 +1026,15 @@ const toStyleStValue = (value: any): StyleStValue | null => {
   };
 };
 
-const normalizeStyleProcessStValues = (
+const normalizeStyleProcessStBuckets = (
   values: any,
   legacyProcess: any = null
-): StyleStValue[] => {
-  const byQuantity = new Map<number, StyleStValue>();
+): StyleStBucket[] => {
+  const byQuantity = new Map<number, StyleStBucket>();
   ensureArray(values).forEach((value) => {
-    const normalized = toStyleStValue(value);
+    const normalized = toStyleStBucket(value);
     if (!normalized) return;
-    byQuantity.set(normalized.quantity, normalized);
+    byQuantity.set(normalized.bucketQuantity, normalized);
   });
 
   const legacyCt = toOptionalProcessSeconds((legacyProcess as any)?.ct);
@@ -1045,8 +1049,8 @@ const normalizeStyleProcessStValues = (
     legacyCt !== null
   ) {
     byQuantity.set(legacyQuantity, {
-      quantity: legacyQuantity,
-      seconds: legacyCt,
+      bucketQuantity: legacyQuantity,
+      bucketStSeconds: legacyCt,
       setBy: "LEGACY",
       setAt: null,
       updatedAt: null,
@@ -1054,17 +1058,17 @@ const normalizeStyleProcessStValues = (
   }
 
   return Array.from(byQuantity.values()).sort(
-    (left, right) => left.quantity - right.quantity
+    (left, right) => left.bucketQuantity - right.bucketQuantity
   );
 };
 
-const findStyleProcessExactStValue = (
-  values: StyleStValue[] = [],
+const findStyleProcessExactStBucket = (
+  values: StyleStBucket[] = [],
   orderQuantity = 1
-): StyleStValue | null => {
+): StyleStBucket | null => {
   const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
   return (
-    values.find((value) => toPositiveInt(value.quantity, 0) === resolvedOrderQuantity) ??
+    values.find((value) => toPositiveInt(value.bucketQuantity, 0) === resolvedOrderQuantity) ??
     null
   );
 };
@@ -1708,7 +1712,15 @@ const normalizeStyleProcess = (process: any) => {
   if (!process || typeof process !== "object" || Array.isArray(process)) {
     return process;
   }
-  const { st: _legacySt, processQuantity: _legacyProcessQuantity, ...rest } = process;
+  const {
+    st: _legacySt,
+    processQuantity: _legacyProcessQuantity,
+    quantity: _legacyQuantity,
+    timesPerPiece: _rawTimesPerPiece,
+    stValues: _legacyStValues,
+    stBuckets: _rawStBuckets,
+    ...rest
+  } = process;
   const next = { ...rest };
   const explicitManualName = resolveOptionalString(
     (next as any).manualName ?? (next as any).processText,
@@ -1792,24 +1804,24 @@ const normalizeStyleProcess = (process: any) => {
     (next as any).nameEn = explicitManualName;
     (next as any).nameVi = explicitManualName;
   }
-  const normalizedStValues = normalizeStyleProcessStValues(
-    (next as any).stValues,
+  const normalizedStBuckets = normalizeStyleProcessStBuckets(
+    _rawStBuckets ?? _legacyStValues,
     next
   );
   const resolvedTimeRefQuantity = toPositiveInt(
     (next as any).timeRefQuantity ??
       (next as any).referenceQuantity ??
-      normalizedStValues[0]?.quantity,
+      normalizedStBuckets[0]?.bucketQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
-  const exactStValue = findStyleProcessExactStValue(
-    normalizedStValues,
+  const exactStBucket = findStyleProcessExactStBucket(
+    normalizedStBuckets,
     resolvedTimeRefQuantity
   );
   if ("pt" in next) next.pt = toOptionalProcessSeconds(next.pt);
   const legacyCt =
-    normalizedStValues.length === 0 ? toOptionalProcessSeconds(next.ct) : null;
-  next.ct = exactStValue?.seconds ?? legacyCt;
+    normalizedStBuckets.length === 0 ? toOptionalProcessSeconds(next.ct) : null;
+  next.ct = exactStBucket?.bucketStSeconds ?? legacyCt;
   const normalizedAtParams = toStyleAtParams((next as any).atParams);
   if (normalizedAtParams) {
     (next as any).atParams = normalizedAtParams;
@@ -1819,9 +1831,12 @@ const normalizeStyleProcess = (process: any) => {
   if ("at" in next) {
     delete (next as any).at;
   }
-  if (normalizedStValues.length > 0) {
-    (next as any).stValues = normalizedStValues;
-  } else if ("stValues" in next) {
+  if (normalizedStBuckets.length > 0) {
+    (next as any).stBuckets = normalizedStBuckets;
+  } else if ("stBuckets" in next) {
+    delete (next as any).stBuckets;
+  }
+  if ("stValues" in next) {
     delete (next as any).stValues;
   }
   next.timeRefQuantity = resolvedTimeRefQuantity;
@@ -1833,15 +1848,18 @@ const normalizeStyleProcess = (process: any) => {
     hasAt &&
     Math.abs(Number(next.ct) - Number(atPerPiece)) < 1e-4;
   next.stManual =
-    exactStValue !== null ||
+    exactStBucket !== null ||
     (typeof next.stManual === "boolean" ? next.stManual : hasCt && !isLikelyAutoCt);
   if ("referenceQuantity" in next) {
     delete (next as any).referenceQuantity;
   }
-  next.quantity = toPositiveInt(
-    (next as any).quantity ?? _legacyProcessQuantity,
+  next.timesPerPiece = toPositiveInt(
+    _rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity,
     1
   );
+  if ("quantity" in next) {
+    delete (next as any).quantity;
+  }
   if ("processQuantity" in next) {
     delete (next as any).processQuantity;
   }
@@ -1856,13 +1874,13 @@ const resolveStyleProcessExactStPerPieceSeconds = (
   orderQuantity = 1
 ) => {
   const normalized = normalizeStyleProcess(process);
-  const exactStValue = findStyleProcessExactStValue(
-    ensureArray((normalized as any)?.stValues) as StyleStValue[],
+  const exactStBucket = findStyleProcessExactStBucket(
+    ensureArray((normalized as any)?.stBuckets) as StyleStBucket[],
     orderQuantity
   );
-  if (exactStValue) return exactStValue.seconds;
+  if (exactStBucket) return exactStBucket.bucketStSeconds;
 
-  if (ensureArray((normalized as any)?.stValues).length > 0) {
+  if (ensureArray((normalized as any)?.stBuckets).length > 0) {
     return null;
   }
 
@@ -3561,13 +3579,16 @@ const buildStyleProcessStorageDrafts = (processes: any): any[] =>
       processComposition: normalizedComposition,
       processDescription: resolveOptionalString((process as any)?.description, null),
       processQuantity: toPositiveInt(
-        (process as any)?.quantity ?? (process as any)?.processQuantity,
+        (process as any)?.timesPerPiece ?? (process as any)?.quantity ?? (process as any)?.processQuantity,
         1
       ),
       sortOrder: index,
       ptSeconds: toOptionalProcessSeconds((process as any)?.pt),
       atParams: toStyleAtParams((process as any)?.atParams),
-      stValues: normalizeStyleProcessStValues((process as any)?.stValues, process),
+      stBuckets: normalizeStyleProcessStBuckets(
+        (process as any)?.stBuckets ?? (process as any)?.stValues,
+        process
+      ),
     };
   });
 
@@ -3695,14 +3716,14 @@ const buildStyleProcessMirrorFromRows = (
           nameVi: manualName || localizedNames.nameVi || masterNames?.nameVi,
           processComposition: normalizedComposition,
           description: row.processDescription ?? null,
-          quantity: row.processQuantity ?? 1,
+          timesPerPiece: row.processQuantity ?? 1,
           pt: toOptionalProcessSeconds(row.ptSeconds),
           atParams: toStyleAtParams(row.atParams),
-          stValues: ensureArray(row.standards).map((standard) => ({
-            quantity: resolveStBucketQuantity(
+          stBuckets: ensureArray(row.standards).map((standard) => ({
+            bucketQuantity: resolveStBucketQuantity(
               (standard as any)?.quantity ?? DEFAULT_TIME_REF_QUANTITY
             ),
-            seconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
+            bucketStSeconds: toOptionalProcessSeconds((standard as any)?.stSeconds),
             setBy: resolveOptionalString((standard as any)?.setBy, null),
             setAt:
               (standard as any)?.setAt instanceof Date
@@ -3849,13 +3870,13 @@ const syncStyleProcessStorageForStyle = async ({
     await db.styleProcessStandard.deleteMany({
       where: { styleProcessId: row.id },
     });
-    if (draft.stValues.length > 0) {
+    if (draft.stBuckets.length > 0) {
       await db.styleProcessStandard.createMany({
-        data: draft.stValues.map((stValue: StyleStValue) => ({
+        data: draft.stBuckets.map((stValue: StyleStBucket) => ({
           orgId: processOrgId,
           styleProcessId: row.id,
-          quantity: stValue.quantity,
-          stSeconds: stValue.seconds,
+          quantity: stValue.bucketQuantity,
+          stSeconds: stValue.bucketStSeconds,
           setBy: stValue.setBy,
           setAt: stValue.setAt ? new Date(stValue.setAt) : undefined,
         })),
@@ -8958,7 +8979,10 @@ const calculateAssignmentCardTotalForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
-    const processQuantity = toPositiveInt((process as any)?.quantity, 1);
+    const processQuantity = toPositiveInt(
+      (process as any)?.timesPerPiece ?? (process as any)?.quantity,
+      1
+    );
     const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
     if (key === "at") {
       const atTotal = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
@@ -8978,7 +9002,10 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
-    const processQuantity = toPositiveInt((process as any)?.quantity, 1);
+    const processQuantity = toPositiveInt(
+      (process as any)?.timesPerPiece ?? (process as any)?.quantity,
+      1
+    );
     const stPerPiece = resolveAssignmentCardStSeedSeconds({
       process,
       orderQuantity,
@@ -10890,7 +10917,7 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
     const snapshotStSeconds = toOptionalProcessSeconds(process?.stSeconds);
     const stSeconds = bucketStSeconds ?? snapshotStSeconds;
     if (stSeconds === null) return;
-    const timesPerPiece = toPositiveInt(process?.quantity, 1);
+    const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
     pieceStTotalSeconds += stSeconds * timesPerPiece;
     hasAnyProcessSt = true;
   });

@@ -893,3 +893,25 @@ runtime 조회값:
   - Backend/API endpoint dedicated to previewing split/merge recalculated totals before save.
   - Physical rename of DB columns or JSON keys.
   - Removal of `snapshot.processes[].stSeconds` or `snapshot.totalStPerPieceSeconds`.
+
+### 14. 2026-05-27 Phase 5A implementation status
+
+- Scope:
+  - This phase covers only Style/process JSON naming.
+  - Assignment snapshot/card JSON rename and DB column rename remain separate later phases.
+- Implemented in code:
+  - `Style.processes[].quantity` is now written as `timesPerPiece`.
+  - `Style.processes[].stValues` is now written as `stBuckets`.
+  - `Style.processes[].stValues[].quantity` is now written as `bucketQuantity`.
+  - `Style.processes[].stValues[].seconds` is now written as `bucketStSeconds`.
+  - Frontend/backend read paths keep dual-read fallback for old Style JSON keys:
+    `timesPerPiece ?? quantity`, `stBuckets ?? stValues`,
+    `bucketQuantity ?? quantity`, and `bucketStSeconds ?? seconds`.
+  - `backend/migration_fix.sql` includes a bulk JSON migration for `Style.processes`.
+- Still not implemented in this phase:
+  - `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`.
+  - `AssignmentBoardState.assignments[].ctSnapshot -> assignmentCtSnapshot`.
+  - `AssignmentCard.payload.quantity/totalSt/totalPt/totalAt` JSON rename.
+  - `StyleProcessStandard.quantity/stSeconds` DB column rename.
+  - `AssignmentPlan.quantity/stTotalSeconds/ctTotalSeconds` DB column rename.
+  - Removal of Style JSON dual-read fallback.

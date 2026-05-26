@@ -92,16 +92,22 @@ const resolveProcessLabel = (process, languageCode) => {
   return (
     formatProcessNameWithQuantity(
       localizedName || process?.name || process?.code || '-',
-      process?.quantity
+      process?.timesPerPiece ?? process?.quantity
     ) || '-'
   );
 };
 
 const resolveExactStEntry = (process, quantity) => {
   const bucketQuantity = resolveStBucketQuantity(quantity);
-  const stValues = Array.isArray(process?.stValues) ? process.stValues : [];
+  const stBuckets = Array.isArray(process?.stBuckets)
+    ? process.stBuckets
+    : Array.isArray(process?.stValues)
+      ? process.stValues
+      : [];
   return (
-    stValues.find((entry) => Number(entry?.quantity) === Number(bucketQuantity)) ||
+    stBuckets.find(
+      (entry) => Number(entry?.bucketQuantity ?? entry?.quantity) === Number(bucketQuantity)
+    ) ||
     null
   );
 };
@@ -150,27 +156,27 @@ const parseStInput = (value) => {
   };
 };
 
-const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => {
+const upsertProcessStBuckets = (process, quantity, seconds, setBy = 'MANUAL') => {
   const normalized = normalizeProcess(process);
   const resolvedQuantity = resolveStBucketQuantity(quantity);
-  const nextValues = (Array.isArray(normalized?.stValues) ? normalized.stValues : []).filter(
-    (value) => Number(value?.quantity) !== resolvedQuantity
+  const nextBuckets = (Array.isArray(normalized?.stBuckets) ? normalized.stBuckets : []).filter(
+    (value) => Number(value?.bucketQuantity ?? value?.quantity) !== resolvedQuantity
   );
 
   if (seconds != null) {
-    nextValues.push({
-      quantity: resolvedQuantity,
-      seconds,
+    nextBuckets.push({
+      bucketQuantity: resolvedQuantity,
+      bucketStSeconds: seconds,
       setBy,
       setAt: null,
       updatedAt: null,
     });
   }
 
-  nextValues.sort((left, right) => Number(left.quantity) - Number(right.quantity));
+  nextBuckets.sort((left, right) => Number(left.bucketQuantity) - Number(right.bucketQuantity));
   return normalizeProcess({
     ...normalized,
-    stValues: nextValues,
+    stBuckets: nextBuckets,
     ct: null,
     stManual: false,
   });
@@ -303,7 +309,9 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
       const targetProcess = safeProcesses[processIndex];
       if (!targetProcess) return;
       const currentExactSt = resolveExactStEntry(targetProcess, quantity);
-      const currentExactSeconds = currentExactSt ? Number(currentExactSt.seconds) : null;
+      const currentExactSeconds = currentExactSt
+        ? Number(currentExactSt.bucketStSeconds ?? currentExactSt.seconds)
+        : null;
       const nextSeconds = parsed.seconds;
 
       if (currentExactSeconds == null && nextSeconds == null) return;
@@ -317,7 +325,7 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
 
       const nextProcesses = safeProcesses.map((processItem, index) =>
         index === processIndex
-          ? upsertProcessStValues(processItem, quantity, nextSeconds, 'MANUAL')
+          ? upsertProcessStBuckets(processItem, quantity, nextSeconds, 'MANUAL')
           : processItem
       );
       onProcessesChange(nextProcesses);

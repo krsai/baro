@@ -11,21 +11,22 @@ const findExactStSeconds = (values, orderQuantity) => {
   if (!Array.isArray(values) || values.length === 0) return null;
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
   const matched = values.find((value) => {
-    const quantity = Math.max(0, Math.trunc(toNumber(value?.quantity, 0)));
+    const quantity = Math.max(0, Math.trunc(toNumber(value?.bucketQuantity ?? value?.quantity, 0)));
     return quantity === resolvedOrderQuantity;
   });
-  const seconds = toNumber(matched?.seconds, NaN);
+  const seconds = toNumber(matched?.bucketStSeconds ?? matched?.seconds, NaN);
   return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 };
 
 const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
-  const exactSt = findExactStSeconds(process?.stValues, orderQuantity);
+  const stBuckets = Array.isArray(process?.stBuckets) ? process.stBuckets : process?.stValues;
+  const exactSt = findExactStSeconds(stBuckets, orderQuantity);
   if (exactSt != null) return exactSt;
 
   const pt = toNumber(process?.pt, NaN);
   if (Number.isFinite(pt) && pt > 0) return pt;
 
-  if (Array.isArray(process?.stValues) && process.stValues.length > 0) {
+  if (Array.isArray(stBuckets) && stBuckets.length > 0) {
     return null;
   }
 
@@ -48,7 +49,10 @@ const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
 };
 
 const resolveProcessStTotalSeconds = (process, orderQuantity = 1) => {
-  const processQuantity = Math.max(1, Math.trunc(toNumber(process?.quantity, 1)));
+  const processQuantity = Math.max(
+    1,
+    Math.trunc(toNumber(process?.timesPerPiece ?? process?.quantity, 1))
+  );
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
   const stPerPiece = resolveProcessStPerPieceSeconds(process, resolvedOrderQuantity);
   if (stPerPiece == null) return 0;

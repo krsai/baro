@@ -37,7 +37,10 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   ).trim();
   if (!processKey) return null;
 
-  const quantity = Math.max(1, Math.round(toOptionalNumber(process.quantity, 1) || 1));
+  const quantity = Math.max(
+    1,
+    Math.round(toOptionalNumber(process.timesPerPiece ?? process.quantity, 1) || 1)
+  );
   const ctSeconds = toOptionalProcessSeconds(
     process.ctSeconds ?? process.stSeconds
   );

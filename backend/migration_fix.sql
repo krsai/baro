@@ -355,3 +355,65 @@ SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'
 WHERE "payload" IS NOT NULL
   AND "payload"::jsonb ? 'ctAgreedSnapshot';
 
+-- 7. Style.processes canonical JSON keys for ST buckets and process repeat count.
+--    stValues -> stBuckets
+--    stValues[].quantity -> stBuckets[].bucketQuantity
+--    stValues[].seconds -> stBuckets[].bucketStSeconds
+--    processes[].quantity -> processes[].timesPerPiece
+UPDATE "Style"
+SET "processes" = (
+  SELECT COALESCE(
+    jsonb_agg(
+      proc - 'stValues' - 'stBuckets' - 'quantity'
+      || jsonb_build_object(
+        'timesPerPiece',
+        COALESCE(proc -> 'timesPerPiece', proc -> 'quantity', '1'::jsonb)
+      )
+      || CASE
+        WHEN jsonb_typeof(COALESCE(proc -> 'stBuckets', proc -> 'stValues')) = 'array' THEN
+          jsonb_build_object(
+            'stBuckets',
+            (
+              SELECT COALESCE(
+                jsonb_agg(
+                  bucket - 'quantity' - 'seconds'
+                  || CASE
+                    WHEN bucket ? 'bucketQuantity' THEN
+                      jsonb_build_object('bucketQuantity', bucket -> 'bucketQuantity')
+                    WHEN bucket ? 'quantity' THEN
+                      jsonb_build_object('bucketQuantity', bucket -> 'quantity')
+                    ELSE '{}'::jsonb
+                  END
+                  || CASE
+                    WHEN bucket ? 'bucketStSeconds' THEN
+                      jsonb_build_object('bucketStSeconds', bucket -> 'bucketStSeconds')
+                    WHEN bucket ? 'seconds' THEN
+                      jsonb_build_object('bucketStSeconds', bucket -> 'seconds')
+                    ELSE '{}'::jsonb
+                  END
+                  ORDER BY bucket_ord
+                ),
+                '[]'::jsonb
+              )
+              FROM jsonb_array_elements(COALESCE(proc -> 'stBuckets', proc -> 'stValues'))
+                WITH ORDINALITY AS bucket_items(bucket, bucket_ord)
+            )
+          )
+        ELSE '{}'::jsonb
+      END
+      ORDER BY proc_ord
+    ),
+    '[]'::jsonb
+  )
+  FROM jsonb_array_elements("processes"::jsonb)
+    WITH ORDINALITY AS proc_items(proc, proc_ord)
+)
+WHERE "processes" IS NOT NULL
+  AND jsonb_typeof("processes"::jsonb) = 'array'
+  AND (
+    "processes"::text LIKE '%"stValues"%'
+    OR "processes"::text LIKE '%"stBuckets"%'
+    OR "processes"::text LIKE '%"quantity"%'
+    OR "processes"::text LIKE '%"timesPerPiece"%'
+  );
+

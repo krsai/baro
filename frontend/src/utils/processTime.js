@@ -102,14 +102,14 @@ export const formatStBucketQuantityLabel = (bucketQuantity, locale = 'ko-KR') =>
   return displayQuantity.toLocaleString(locale);
 };
 
-const normalizeProcessStValue = (value) => {
+const normalizeProcessStBucket = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const quantity = resolveStBucketQuantity(value.quantity);
-  const seconds = clampProcessSeconds(value.seconds);
-  if (quantity <= 0 || seconds === null) return null;
+  const bucketQuantity = resolveStBucketQuantity(value.bucketQuantity ?? value.quantity);
+  const bucketStSeconds = clampProcessSeconds(value.bucketStSeconds ?? value.seconds);
+  if (bucketQuantity <= 0 || bucketStSeconds === null) return null;
   return {
-    quantity,
-    seconds,
+    bucketQuantity,
+    bucketStSeconds,
     setBy: typeof value.setBy === 'string' && value.setBy.trim() ? value.setBy.trim() : null,
     setAt: typeof value.setAt === 'string' && value.setAt.trim() ? value.setAt.trim() : null,
     updatedAt:
@@ -119,12 +119,12 @@ const normalizeProcessStValue = (value) => {
   };
 };
 
-const normalizeProcessStValues = (values, legacyProcess = null) => {
+const normalizeProcessStBuckets = (values, legacyProcess = null) => {
   const byQuantity = new Map();
   (Array.isArray(values) ? values : []).forEach((value) => {
-    const normalized = normalizeProcessStValue(value);
+    const normalized = normalizeProcessStBucket(value);
     if (!normalized) return;
-    byQuantity.set(normalized.quantity, normalized);
+    byQuantity.set(normalized.bucketQuantity, normalized);
   });
 
   const legacyCt = clampProcessSeconds(legacyProcess?.ct);
@@ -139,21 +139,23 @@ const normalizeProcessStValues = (values, legacyProcess = null) => {
     legacyQuantity > 0
   ) {
     byQuantity.set(legacyQuantity, {
-      quantity: legacyQuantity,
-      seconds: legacyCt,
+      bucketQuantity: legacyQuantity,
+      bucketStSeconds: legacyCt,
       setBy: 'LEGACY',
       setAt: null,
       updatedAt: null,
     });
   }
 
-  return Array.from(byQuantity.values()).sort((left, right) => left.quantity - right.quantity);
+  return Array.from(byQuantity.values()).sort(
+    (left, right) => left.bucketQuantity - right.bucketQuantity
+  );
 };
 
-const findExactProcessStValue = (stValues = [], orderQuantity = 1) => {
+const findExactProcessStBucket = (stBuckets = [], orderQuantity = 1) => {
   const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
-  return (Array.isArray(stValues) ? stValues : []).find(
-    (value) => toBucketQuantity(value?.quantity, 0) === resolvedOrderQuantity
+  return (Array.isArray(stBuckets) ? stBuckets : []).find(
+    (value) => toBucketQuantity(value?.bucketQuantity ?? value?.quantity, 0) === resolvedOrderQuantity
   ) || null;
 };
 
@@ -440,7 +442,7 @@ export const resolveStyleAtReliability = (processes = []) => {
     const weight =
       Number.isFinite(atPerPieceSeconds) && atPerPieceSeconds > 0
         ? atPerPieceSeconds
-        : toPositiveInt(process?.quantity, 1);
+        : toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
     return {
       reliability: resolveProcessAtReliability(process, referenceQuantity),
       weight,
@@ -457,19 +459,23 @@ export const normalizeProcess = (process = {}, index = 0) => {
     atParams: _rawAtParams,
     processQuantity: _legacyProcessQuantity,
     referenceQuantity: _legacyReferenceQuantity,
+    quantity: _legacyQuantity,
+    timesPerPiece: _rawTimesPerPiece,
+    stValues: _legacyStValues,
+    stBuckets: _rawStBuckets,
     ...safeProcess
   } = process || {};
-  const normalizedStValues = normalizeProcessStValues(process?.stValues, process);
+  const normalizedStBuckets = normalizeProcessStBuckets(_rawStBuckets ?? _legacyStValues, process);
   const resolvedTimeRefQuantity = toPositiveInt(
     process?.timeRefQuantity ??
       process?.referenceQuantity ??
-      normalizedStValues[0]?.quantity,
+      normalizedStBuckets[0]?.bucketQuantity,
     DEFAULT_TIME_REF_QUANTITY
   );
-  const exactStValue = findExactProcessStValue(normalizedStValues, resolvedTimeRefQuantity);
+  const exactStValue = findExactProcessStBucket(normalizedStBuckets, resolvedTimeRefQuantity);
   const legacyCt =
-    normalizedStValues.length === 0 ? clampProcessSeconds(safeProcess.ct) : null;
-  const normalizedCt = exactStValue?.seconds ?? legacyCt;
+    normalizedStBuckets.length === 0 ? clampProcessSeconds(safeProcess.ct) : null;
+  const normalizedCt = exactStValue?.bucketStSeconds ?? legacyCt;
   const normalizedAtParams = resolveAtParamsMeta(process);
   const normalizedAt =
     normalizedAtParams === null
@@ -493,12 +499,12 @@ export const normalizeProcess = (process = {}, index = 0) => {
       typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
         ? safeProcess.instanceId
         : `${safeProcess.code || 'PROC'}-${safeProcess.id || index}-${index}`,
-    quantity: toPositiveInt(safeProcess.quantity ?? _legacyProcessQuantity, 1),
+    timesPerPiece: toPositiveInt(_rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity, 1),
     timeRefQuantity: resolvedTimeRefQuantity,
     stManual: normalizedStManual,
     pt: clampProcessSeconds(safeProcess.pt),
     ...(normalizedAtParams ? { atParams: normalizedAtParams } : {}),
-    ...(normalizedStValues.length > 0 ? { stValues: normalizedStValues } : {}),
+    ...(normalizedStBuckets.length > 0 ? { stBuckets: normalizedStBuckets } : {}),
     ct: normalizedCt,
   };
 };
@@ -531,12 +537,12 @@ export const calculateProcessLineTotal = (process, key) => {
   }
   const time = toOptionalNumber(process[key]);
   if (time === null) return null;
-  const quantity = toPositiveInt(process.quantity, 1);
-  return quantity * time;
+  const timesPerPiece = toPositiveInt(process.timesPerPiece ?? process.quantity, 1);
+  return timesPerPiece * time;
 };
 
 // Calculate total seconds for an order quantity.
-// - pt/ct: linear (processTime * process.quantity * orderQuantity)
+// - pt/ct: linear (processTime * process.timesPerPiece * orderQuantity)
 // - at: always use atParams({a,b}) with a*q + b
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
@@ -605,10 +611,10 @@ export const resolveProcessAtReliability = (process, orderQuantity = 1) => {
 
 export const resolveProcessExactStPerPieceSeconds = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
-  const exactStValue = findExactProcessStValue(normalized?.stValues, orderQuantity);
-  if (exactStValue) return exactStValue.seconds;
+  const exactStValue = findExactProcessStBucket(normalized?.stBuckets, orderQuantity);
+  if (exactStValue) return exactStValue.bucketStSeconds;
 
-  if (Array.isArray(normalized?.stValues) && normalized.stValues.length > 0) {
+  if (Array.isArray(normalized?.stBuckets) && normalized.stBuckets.length > 0) {
     return null;
   }
 
@@ -640,10 +646,10 @@ export const resolveProcessStTotalSecondsForOrderQuantity = (
 ) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const processQuantity = toPositiveInt(normalized?.quantity, 1);
+  const timesPerPiece = toPositiveInt(normalized?.timesPerPiece ?? normalized?.quantity, 1);
   const stPerPiece = resolveProcessStPerPieceSeconds(normalized, resolvedOrderQuantity);
   if (stPerPiece === null) return null;
-  return processQuantity * stPerPiece * resolvedOrderQuantity;
+  return timesPerPiece * stPerPiece * resolvedOrderQuantity;
 };
 
 export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuantity = 1) => {
@@ -651,7 +657,7 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
 
   return normalizeProcesses(processes).reduce((acc, process) => {
-    const processQuantity = toPositiveInt(process?.quantity, 1);
+    const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
 
     if (key === 'at') {
       const atTotal = resolveProcessAtTotalSecondsForOrderQuantity(
@@ -663,7 +669,7 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
 
     const time = toOptionalNumber(process?.[key]);
     if (time === null) return acc;
-    return acc + processQuantity * time * resolvedOrderQuantity;
+    return acc + timesPerPiece * time * resolvedOrderQuantity;
   }, 0);
 };
 
@@ -688,7 +694,7 @@ export const hasAnyProcessTime = (processes, key) =>
 export const hasAnyCt = (processes) =>
   normalizeProcesses(processes).some(
     (process) =>
-      (Array.isArray(process?.stValues) && process.stValues.length > 0) || hasTime(process?.ct)
+      (Array.isArray(process?.stBuckets) && process.stBuckets.length > 0) || hasTime(process?.ct)
   );
 
 export const parseOptionalSecondsInput = (value) => {

@@ -1296,7 +1296,10 @@ const ProductionPlanBoard = () => {
           resolveLocalizedProcessName(process, languageCode) ||
           process?.code ||
           `공정 ${index + 1}`;
-        const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+        const processQuantity = Math.max(
+          1,
+          toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)
+        );
         const ptInfo = resolveProcessPtInfo(process, orderQuantity);
         const atSeconds = resolveProcessAtSeconds(process, orderQuantity);
         const atReliability = resolveProcessAtReliability(process, orderQuantity);
@@ -1685,7 +1688,10 @@ const ProductionPlanBoard = () => {
         const existingSnapshot = resolveAssignmentCtSnapshot(syncedAssignment);
         const processes = normalizeProcesses(style?.processes);
         const baseRows = processes.map((process) => {
-          const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+          const processQuantity = Math.max(
+            1,
+            toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)
+          );
           const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
           const baseSeconds = stSeedInfo.seconds;
           const basePerPieceSeconds = baseSeconds * processQuantity;

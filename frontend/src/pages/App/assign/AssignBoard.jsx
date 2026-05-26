@@ -833,7 +833,7 @@ const getTotalForOrderQuantity = (processes, field, orderQuantity) =>
   calculateProcessTotalForOrderQuantity(processes, field, orderQuantity);
 const getTotalStForOrderQuantity = (processes, orderQuantity) =>
   normalizeProcesses(processes).reduce((sum, process) => {
-    const processQuantity = toPositiveInt(process?.quantity, 1);
+    const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
     const stSeed = resolveProcessStSeedSeconds({
       process,
       orderQuantity,
@@ -1196,7 +1196,7 @@ const buildAssignmentCtSnapshotForSave = ({
               resolveLocalizedProcessName(process, 'vi') ||
               ''
           ).trim(),
-          processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
+          processQuantity: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
         }))
       : (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
           (process, index) => ({
@@ -1223,7 +1223,7 @@ const buildAssignmentCtSnapshotForSave = ({
                 resolveLocalizedProcessName(process, 'vi') ||
                 ''
             ).trim(),
-            processQuantity: Math.max(1, toPositiveInt(process?.quantity, 1)),
+            processQuantity: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
           })
         );
 
@@ -1312,7 +1312,9 @@ const buildAssignmentCtSnapshotForSave = ({
     processes.length > 0
       ? processes.reduce(
           (sum, process) =>
-            sum + ((Number(process?.stSeconds) || 0) * (Number(process?.quantity) || 1)),
+            sum +
+              ((Number(process?.stSeconds) || 0) *
+                (Number(process?.timesPerPiece ?? process?.quantity) || 1)),
           0
         )
       : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackStSeconds / orderQuantity;
@@ -4300,7 +4302,7 @@ const AssignBoard = () => {
         getUiMessage('assign.fallbackProcessName', 'Process {index}', languageCode, {
           index: index + 1,
         });
-      const processQuantity = Math.max(1, toPositiveInt(process?.quantity, 1));
+      const processQuantity = Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1));
       const ptInfo = resolveProcessPtInfo(process, orderQuantity);
       const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
       const atReliability = resolveProcessAtReliability(process, orderQuantity);

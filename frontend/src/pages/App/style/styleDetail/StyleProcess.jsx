@@ -951,7 +951,12 @@ const resolveLocalizedProcessDisplayLabel = (
       languageCode
     ) ||
     composedName;
-  return formatProcessNameWithQuantity(localizedName || process?.name || process?.code, process?.quantity) || fallback;
+  return (
+    formatProcessNameWithQuantity(
+      localizedName || process?.name || process?.code,
+      process?.timesPerPiece ?? process?.quantity
+    ) || fallback
+  );
 };
 
 const getProcessIdentity = (process) => {
@@ -966,7 +971,7 @@ const getProcessIdentity = (process) => {
   const name = String(process.name ?? '')
     .trim()
     .toLowerCase();
-  const quantity = toPositiveInt(process?.quantity, 1);
+  const quantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
   return name ? `name:${name}|qty:${quantity}` : '';
 };
 
@@ -975,34 +980,34 @@ const createInstanceId = (process) =>
     .toString(36)
     .slice(2, 8)}`;
 
-const normalizeStValues = (process) => {
+const normalizeStBuckets = (process) => {
   const normalized = normalizeProcess(process);
-  return Array.isArray(normalized?.stValues) ? normalized.stValues : [];
+  return Array.isArray(normalized?.stBuckets) ? normalized.stBuckets : [];
 };
 
 const resolveExactStPerPiece = (process, quantity) =>
   resolveProcessExactStPerPieceSeconds(process, quantity);
 
-const upsertProcessStValues = (process, quantity, seconds, setBy = 'MANUAL') => {
+const upsertProcessStBuckets = (process, quantity, seconds, setBy = 'MANUAL') => {
   const normalized = normalizeProcess(process);
   const resolvedQuantity = resolveStBucketQuantity(quantity);
   const nextSeconds = toOptionalSeconds(seconds);
-  const nextValues = normalizeStValues(normalized).filter(
-    (value) => toPositiveInt(value?.quantity, 0) !== resolvedQuantity
+  const nextBuckets = normalizeStBuckets(normalized).filter(
+    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedQuantity
   );
   if (nextSeconds != null) {
-    nextValues.push({
-      quantity: resolvedQuantity,
-      seconds: roundToScale(nextSeconds, 4),
+    nextBuckets.push({
+      bucketQuantity: resolvedQuantity,
+      bucketStSeconds: roundToScale(nextSeconds, 4),
       setBy,
       setAt: null,
       updatedAt: null,
     });
   }
-  nextValues.sort((left, right) => left.quantity - right.quantity);
+  nextBuckets.sort((left, right) => left.bucketQuantity - right.bucketQuantity);
   return normalizeProcess({
     ...normalized,
-    stValues: nextValues,
+    stBuckets: nextBuckets,
     timeRefQuantity: normalized?.timeRefQuantity ?? DEFAULT_TIME_REF_QUANTITY,
     ct: null,
     stManual: false,
@@ -1072,8 +1077,8 @@ const buildProcessPayload = (
     DEFAULT_TIME_REF_QUANTITY
   );
   const resolvedStBucketQuantity = resolveStBucketQuantity(resolvedTimeRefQuantity);
-  const processQuantity = toPositiveInt(
-    draft?.repeatCount ?? existingProcess?.quantity,
+  const timesPerPiece = toPositiveInt(
+    draft?.repeatCount ?? existingProcess?.timesPerPiece ?? existingProcess?.quantity,
     1
   );
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
@@ -1085,33 +1090,33 @@ const buildProcessPayload = (
   const ptPerPiece =
     ptTotalForDisplay == null
       ? null
-      : toOptionalSeconds(roundToScale(ptTotalForDisplay / processQuantity, 4));
+      : toOptionalSeconds(roundToScale(ptTotalForDisplay / timesPerPiece, 4));
   const exactStPerPiece =
     stTotalForDisplay == null
       ? null
-      : toOptionalSeconds(roundToScale(stTotalForDisplay / processQuantity, 4));
-  const existingStValues = normalizeStValues(existingProcess);
-  const nextStValues = existingStValues.filter(
-    (value) => toPositiveInt(value?.quantity, 0) !== resolvedStBucketQuantity
+      : toOptionalSeconds(roundToScale(stTotalForDisplay / timesPerPiece, 4));
+  const existingStBuckets = normalizeStBuckets(existingProcess);
+  const nextStBuckets = existingStBuckets.filter(
+    (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedStBucketQuantity
   );
   if (exactStPerPiece != null) {
-    nextStValues.push({
-      quantity: resolvedStBucketQuantity,
-      seconds: exactStPerPiece,
+    nextStBuckets.push({
+      bucketQuantity: resolvedStBucketQuantity,
+      bucketStSeconds: exactStPerPiece,
       setBy: 'MANUAL',
       setAt: null,
       updatedAt: null,
     });
   } else if (resolvedStBucketQuantity === PT_REFERENCE_QUANTITY && ptPerPiece != null) {
-    nextStValues.push({
-      quantity: PT_REFERENCE_QUANTITY,
-      seconds: ptPerPiece,
+    nextStBuckets.push({
+      bucketQuantity: PT_REFERENCE_QUANTITY,
+      bucketStSeconds: ptPerPiece,
       setBy: 'PT_DERIVED',
       setAt: null,
       updatedAt: null,
     });
   }
-  nextStValues.sort((left, right) => left.quantity - right.quantity);
+  nextStBuckets.sort((left, right) => left.bucketQuantity - right.bucketQuantity);
 
   return normalizeProcess({
     ...(existingProcess || {}),
@@ -1142,10 +1147,10 @@ const buildProcessPayload = (
     description: reviewDescription || null,
     needsReview: reviewNeedsCheck,
     reviewComment: reviewComment || '',
-    quantity: processQuantity,
+    timesPerPiece,
     timeRefQuantity: resolvedTimeRefQuantity,
     pt: ptPerPiece,
-    stValues: nextStValues,
+    stBuckets: nextStBuckets,
     ct: null,
     stManual: false,
     atParams: existingProcess?.atParams ?? null,
@@ -1165,7 +1170,7 @@ const buildDraftFromProcess = (
 ) => {
   const safeProcess = normalizeProcess(process);
   const composition = safeProcess?.processComposition || {};
-  const processQuantity = toPositiveInt(safeProcess?.quantity, 1);
+  const processQuantity = toPositiveInt(safeProcess?.timesPerPiece ?? safeProcess?.quantity, 1);
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
   const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
@@ -1830,7 +1835,7 @@ const StyleProcess = ({
   const totalPT = useMemo(
     () => {
       return safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const ptPerPiece = toOptionalSeconds(process?.pt);
         if (ptPerPiece == null) return acc;
         return acc + processQuantity * ptPerPiece;
@@ -1841,7 +1846,7 @@ const StyleProcess = ({
   const totalAT = useMemo(
     () => {
       return safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const atPerPiece = resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
         if (atPerPiece == null) return acc;
         return acc + processQuantity * atPerPiece;
@@ -1852,7 +1857,7 @@ const StyleProcess = ({
   const totalST = useMemo(
     () =>
       safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.quantity, 1);
+        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const value = resolveProcessStPerPieceSeconds(
           process,
           displayOrderQuantity
@@ -2518,7 +2523,7 @@ const StyleProcess = ({
         resolveExactStPerPiece(process, PT_REFERENCE_QUANTITY) == null &&
         parsed != null
       ) {
-        updatedProcess = upsertProcessStValues(
+        updatedProcess = upsertProcessStBuckets(
           updatedProcess,
           PT_REFERENCE_QUANTITY,
           parsed,
@@ -2527,7 +2532,7 @@ const StyleProcess = ({
       }
     } else if (field === 'st') {
       const parsed = parseOptionalSecondsInput(rawValue);
-      updatedProcess = upsertProcessStValues(
+      updatedProcess = upsertProcessStBuckets(
         process,
         displayOrderQuantity,
         parsed,

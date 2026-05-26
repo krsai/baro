@@ -814,6 +814,14 @@ ST 표준값:
 - `stValues -> stBuckets`
 - `ctSnapshot -> assignmentCtSnapshot`
 - AssignmentBoardState JSON key rename
+- 2026-05-27 Phase 5A status:
+  - Implemented first slice: `Style.processes` JSON only.
+  - `quantity -> timesPerPiece`, `stValues -> stBuckets`,
+    `stValues[].quantity -> bucketQuantity`, and
+    `stValues[].seconds -> bucketStSeconds`.
+  - `backend/migration_fix.sql` includes the `Style.processes` bulk JSON migration.
+  - Read paths keep dual-read fallback for old Style JSON keys.
+  - Assignment snapshot/card JSON rename is still pending and must not be assumed complete.
 
 6. DB 컬럼 rename + Prisma `@map` 과도기
 - `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`
