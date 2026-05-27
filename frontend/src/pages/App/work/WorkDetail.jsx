@@ -437,7 +437,14 @@ const buildPlanProcessOptions = (plan) => {
       nameVi: toText(process?.nameVi || process?.processNameVi),
       ctSeconds: Math.max(
         0,
-        Math.round(Number(process?.ctPerPieceSeconds ?? process?.ctSeconds) || 0)
+        Math.round(
+          Number(
+            process?.pieceCtSeconds ??
+              process?.snapshotCtSeconds ??
+              process?.ctPerPieceSeconds ??
+              process?.ctSeconds
+          ) || 0
+        )
       ),
     };
   });

@@ -1246,7 +1246,9 @@ const buildAssignmentCtSnapshotForSave = ({
               source: seed.process?.basis || snapshotProcess?.basis || 'CT',
             };
       const snapshotStSeconds = toOptionalPositiveNumber(snapshotProcess?.stSeconds);
-      const snapshotCtSeconds = toOptionalPositiveNumber(snapshotProcess?.ctSeconds);
+      const snapshotCtSeconds = toOptionalPositiveNumber(
+        snapshotProcess?.snapshotCtSeconds ?? snapshotProcess?.ctSeconds
+      );
       const stSeconds =
         stDraftSeconds ??
         snapshotStSeconds ??
@@ -1283,11 +1285,11 @@ const buildAssignmentCtSnapshotForSave = ({
         nameVi:
           seed.processNameVi ||
           String(snapshotProcess?.nameVi || snapshotProcess?.processNameVi || '').trim(),
-        quantity: seed.processQuantity,
+        timesPerPiece: seed.processQuantity,
         basis: 'ST',
         stSeconds: resolvedStSeconds,
-        ctSeconds: resolvedCtSeconds,
-        ctPerPieceSeconds: resolvedCtSeconds * seed.processQuantity,
+        snapshotCtSeconds: resolvedCtSeconds,
+        pieceCtSeconds: resolvedCtSeconds * seed.processQuantity,
       };
     })
     .filter(Boolean);
@@ -1318,18 +1320,18 @@ const buildAssignmentCtSnapshotForSave = ({
           0
         )
       : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackStSeconds / orderQuantity;
-  const totalCtPerPieceSeconds =
+  const pieceCtTotalSeconds =
     processes.length > 0
       ? processes.reduce(
-          (sum, process) => sum + (Number(process?.ctPerPieceSeconds) || 0),
+          (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
           0
         )
-      : Number(existingSnapshot?.totalCtPerPieceSeconds) || fallbackCtSeconds / orderQuantity;
-  const totalCtSeconds = Math.max(
+      : Number(existingSnapshot?.pieceCtTotalSeconds) || fallbackCtSeconds / orderQuantity;
+  const assignmentCtTotalSeconds = Math.max(
     0,
     Math.round(
-      totalCtPerPieceSeconds > 0
-        ? totalCtPerPieceSeconds * orderQuantity
+      pieceCtTotalSeconds > 0
+        ? pieceCtTotalSeconds * orderQuantity
         : fallbackCtSeconds
     )
   );
@@ -1339,8 +1341,8 @@ const buildAssignmentCtSnapshotForSave = ({
     quantity: orderQuantity,
     schedule: buildAssignmentSchedulePatch(assignment, baseDate),
     totalStPerPieceSeconds,
-    totalCtPerPieceSeconds,
-    totalCtSeconds,
+    pieceCtTotalSeconds,
+    assignmentCtTotalSeconds,
     processes,
   };
   const currentComparable = toComparableCtSnapshot(snapshotCore);
@@ -1400,8 +1402,8 @@ const applyAssignmentCtSnapshotForSave = ({
     )
   );
   const nextCtTotalSeconds =
-    ctSnapshot?.totalCtSeconds != null
-      ? Math.max(0, Math.round(Number(ctSnapshot.totalCtSeconds) || 0))
+    ctSnapshot?.assignmentCtTotalSeconds != null
+      ? Math.max(0, Math.round(Number(ctSnapshot.assignmentCtTotalSeconds) || 0))
       : assignment.ctTotalSeconds ?? null;
 
   return normalizeAssignmentLayout({
@@ -4288,7 +4290,7 @@ const AssignBoard = () => {
       if (!processKey) return map;
       map.set(processKey, {
         stSeconds: toOptionalPositiveNumber(item?.stSeconds),
-        ctSeconds: toOptionalPositiveNumber(item?.ctSeconds),
+        snapshotCtSeconds: toOptionalPositiveNumber(item?.snapshotCtSeconds ?? item?.ctSeconds),
       });
       return map;
     }, new Map());
@@ -4312,7 +4314,7 @@ const AssignBoard = () => {
       });
       const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
       const savedSnapshotStSeconds = savedSnapshotEntry?.stSeconds ?? null;
-      const savedSnapshotCtSeconds = savedSnapshotEntry?.ctSeconds ?? null;
+      const savedSnapshotCtSeconds = savedSnapshotEntry?.snapshotCtSeconds ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
       const ctDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
       const baseSeconds = stDraftSeconds ?? savedSnapshotStSeconds ?? baseStSeedInfo.seconds;

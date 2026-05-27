@@ -872,10 +872,59 @@ ST 표준값:
   `assignmentCtSnapshot ?? ctSnapshot`.
 - `migration_fix.sql` physically renames `AssignmentPlan.ctSnapshot -> assignmentCtSnapshot`
   and migrates `AssignmentBoardState.assignments[].ctSnapshot -> assignmentCtSnapshot`.
-- Nested snapshot JSON keys are still pending:
+- Nested snapshot JSON keys are handled by Phase 6D, not by this phase:
   `totalCtSeconds`, `totalCtPerPieceSeconds`, `processes[].quantity`,
   `processes[].ctSeconds`, and `processes[].ctPerPieceSeconds`.
 - Snapshot ST removal is still blocked until StyleProcessStandard backfill is verified.
+
+### Phase 6D Status Addendum
+
+- 2026-05-27 Phase 6D implemented nested assignment CT snapshot key rename.
+- Snapshot process rows now write:
+  - `processes[].timesPerPiece`
+  - `processes[].snapshotCtSeconds`
+  - `processes[].pieceCtSeconds`
+- Snapshot totals now write:
+  - `pieceCtTotalSeconds`
+  - `assignmentCtTotalSeconds`
+- Backend and frontend normalizers keep dual-read fallback for old nested keys:
+  `quantity`, `ctSeconds`, `ctPerPieceSeconds`, `totalCtPerPieceSeconds`, and `totalCtSeconds`.
+- `migration_fix.sql` migrates nested CT keys inside both
+  `AssignmentPlan.assignmentCtSnapshot` and
+  `AssignmentBoardState.assignments[].assignmentCtSnapshot`.
+- Snapshot ST removal remains blocked until StyleProcessStandard backfill is verified.
+
+### Dual-read Cleanup Backlog
+
+- Dual-read fallback is temporary migration protection.
+- Do not remove dual-read fallback in the same phase/commit as the rename/migration.
+- Remove fallback later in a dedicated cleanup commit after production data migration is verified.
+- Verification must confirm old-key records no longer require fallback reads:
+  - `Style.processes[].stValues`
+  - `Style.processes[].stValues[].quantity`
+  - `Style.processes[].stValues[].seconds`
+  - `Style.processes[].quantity`
+  - `Style.processes[].processQuantity`
+  - `AssignmentBoardState.assignments[].ctSnapshot`
+  - `AssignmentBoardState.assignments[].ctAgreedSnapshot`
+  - `assignmentCtSnapshot.totalCtSeconds`
+  - `assignmentCtSnapshot.totalCtPerPieceSeconds`
+  - `assignmentCtSnapshot.processes[].quantity`
+  - `assignmentCtSnapshot.processes[].ctSeconds`
+  - `assignmentCtSnapshot.processes[].ctPerPieceSeconds`
+  - old `AssignmentCard.payload` keys after the card payload rename phase
+- Cleanup targets:
+  - `stBuckets ?? stValues`
+  - `bucketQuantity ?? quantity`
+  - `bucketStSeconds ?? seconds`
+  - `timesPerPiece ?? quantity/processQuantity`
+  - `assignmentCtSnapshot ?? ctSnapshot`
+  - `assignmentCtTotalSeconds ?? totalCtSeconds`
+  - `pieceCtTotalSeconds ?? totalCtPerPieceSeconds`
+  - `snapshotCtSeconds ?? ctSeconds`
+  - `pieceCtSeconds ?? ctPerPieceSeconds`
+- Snapshot ST fallback is not part of the normal dual-read cleanup. Remove it only after
+  existing active assignment ST backfill into StyleProcessStandard is complete and verified.
 
 ### F. Recommended Lock Before Coding
 

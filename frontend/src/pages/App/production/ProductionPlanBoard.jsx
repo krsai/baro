@@ -1279,8 +1279,9 @@ const ProductionPlanBoard = () => {
       ).reduce((map, item) => {
         const processKey = String(item?.processKey || '').trim();
         if (!processKey) return map;
-        const assignedSeconds = toOptionalPositiveNumber(item?.ctSeconds);
-        const savedSeconds = toOptionalPositiveNumber(item?.ctSeconds);
+        const snapshotCtSeconds = toOptionalPositiveNumber(item?.snapshotCtSeconds ?? item?.ctSeconds);
+        const assignedSeconds = snapshotCtSeconds;
+        const savedSeconds = snapshotCtSeconds;
         map.set(processKey, {
           assignedSeconds,
           savedSeconds,
@@ -1715,11 +1716,11 @@ const ProductionPlanBoard = () => {
             return {
               processKey: row.processKey,
               name: row.name,
-              quantity: row.processQuantity,
+              timesPerPiece: row.processQuantity,
               basis: row.basis,
               stSeconds: row.baseSeconds,
-              ctSeconds,
-              ctPerPieceSeconds: ctSeconds * row.processQuantity,
+              snapshotCtSeconds: ctSeconds,
+              pieceCtSeconds: ctSeconds * row.processQuantity,
             };
           })
           .filter(Boolean);
@@ -1727,14 +1728,14 @@ const ProductionPlanBoard = () => {
           snapshotProcesses.length > 0
             ? snapshotProcesses.reduce(
                 (sum, row) =>
-                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.quantity) || 1)),
+                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.timesPerPiece ?? row?.quantity) || 1)),
                 0
               )
             : Number(existingSnapshot?.totalStPerPieceSeconds) || 0;
-        const totalCtPerPieceSeconds = totalStPerPieceSeconds;
+        const pieceCtTotalSeconds = totalStPerPieceSeconds;
         const currentCtSeconds = Math.max(
           0,
-          Math.round(totalCtPerPieceSeconds > 0 ? totalCtPerPieceSeconds * orderQuantity : 0)
+          Math.round(pieceCtTotalSeconds > 0 ? pieceCtTotalSeconds * orderQuantity : 0)
         );
 
         return {
@@ -1754,8 +1755,8 @@ const ProductionPlanBoard = () => {
               endDateKey: syncedAssignment?.endDateKey || syncedAssignment?.startDateKey || null,
             },
             totalStPerPieceSeconds,
-            totalCtPerPieceSeconds,
-            totalCtSeconds: currentCtSeconds,
+            pieceCtTotalSeconds,
+            assignmentCtTotalSeconds: currentCtSeconds,
             processes: snapshotProcesses,
             updatedBy,
             updatedAt,

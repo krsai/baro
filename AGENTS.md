@@ -968,7 +968,57 @@ runtime 조회값:
   - Frontend writes assignment board state with `assignmentCtSnapshot`.
   - `backend/migration_fix.sql` physically renames the DB column and migrates board-state JSON keys.
 - Boundary:
-  - Snapshot nested keys are not renamed in this phase:
+  - Snapshot nested keys are handled by Phase 6D, not by this phase:
     `totalCtSeconds`, `totalCtPerPieceSeconds`, `processes[].quantity`,
-    `processes[].ctSeconds`, and `processes[].ctPerPieceSeconds` remain pending.
+    `processes[].ctSeconds`, and `processes[].ctPerPieceSeconds`.
   - Snapshot ST fields are still present until the final backfill/removal phase.
+
+### 18. 2026-05-27 Dual-read cleanup backlog
+
+- Dual-read fallback is temporary migration protection, not permanent application logic.
+- Do not remove dual-read fallback in the same phase/commit that introduces a rename or migration.
+- Remove fallback only after production data has been migrated and verified.
+- Cleanup must be a separate follow-up commit so regressions can be isolated from rename/migration work.
+- Before cleanup, verify there are no remaining records that require old-key reads:
+  - `Style.processes[].stValues`
+  - `Style.processes[].stValues[].quantity`
+  - `Style.processes[].stValues[].seconds`
+  - `Style.processes[].quantity`
+  - `Style.processes[].processQuantity`
+  - `AssignmentBoardState.assignments[].ctSnapshot`
+  - `AssignmentBoardState.assignments[].ctAgreedSnapshot`
+  - `assignmentCtSnapshot.totalCtSeconds`
+  - `assignmentCtSnapshot.totalCtPerPieceSeconds`
+  - `assignmentCtSnapshot.processes[].quantity`
+  - `assignmentCtSnapshot.processes[].ctSeconds`
+  - `assignmentCtSnapshot.processes[].ctPerPieceSeconds`
+  - old `AssignmentCard.payload` keys after the card payload rename phase is implemented
+- Cleanup targets after verification:
+  - `stBuckets ?? stValues`
+  - `bucketQuantity ?? quantity`
+  - `bucketStSeconds ?? seconds`
+  - `timesPerPiece ?? quantity/processQuantity`
+  - `assignmentCtSnapshot ?? ctSnapshot`
+  - `assignmentCtTotalSeconds ?? totalCtSeconds`
+  - `pieceCtTotalSeconds ?? totalCtPerPieceSeconds`
+  - `snapshotCtSeconds ?? ctSeconds`
+  - `pieceCtSeconds ?? ctPerPieceSeconds`
+- Snapshot ST fallback must not be removed until the StyleProcessStandard backfill for existing active assignments is complete and verified.
+
+### 19. 2026-05-27 Phase 6D implementation status
+
+- Scope:
+  - This phase covers nested JSON keys inside `assignmentCtSnapshot`.
+  - It does not remove snapshot ST fields.
+- Implemented in code:
+  - Snapshot processes write `timesPerPiece`, `snapshotCtSeconds`, and `pieceCtSeconds`.
+  - Snapshot totals write `pieceCtTotalSeconds` and `assignmentCtTotalSeconds`.
+  - Frontend/backend normalizers keep dual-read fallback for old nested keys:
+    `quantity`, `ctSeconds`, `ctPerPieceSeconds`, `totalCtPerPieceSeconds`, and `totalCtSeconds`.
+  - `backend/migration_fix.sql` migrates nested CT keys inside both
+    `AssignmentPlan.assignmentCtSnapshot` and
+    `AssignmentBoardState.assignments[].assignmentCtSnapshot`.
+- Still not implemented in this phase:
+  - Snapshot ST field removal.
+  - AssignmentCard payload JSON rename.
+  - AssignmentPlan `quantity/stTotalSeconds/ctTotalSeconds` physical column rename.

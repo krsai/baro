@@ -37,14 +37,16 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   ).trim();
   if (!processKey) return null;
 
-  const quantity = Math.max(
+  const timesPerPiece = Math.max(
     1,
     Math.round(toOptionalNumber(process.timesPerPiece ?? process.quantity, 1) || 1)
   );
-  const ctSeconds = toOptionalProcessSeconds(
-    process.ctSeconds ?? process.stSeconds
-  );
-  if (ctSeconds == null) return null;
+  const rawPieceCtSeconds = toOptionalPositiveNumber(process.pieceCtSeconds ?? process.ctPerPieceSeconds);
+  const snapshotCtSeconds =
+    toOptionalProcessSeconds(process.snapshotCtSeconds ?? process.ctSeconds ?? process.stSeconds) ??
+    (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
+  if (snapshotCtSeconds == null) return null;
+  const pieceCtSeconds = rawPieceCtSeconds ?? snapshotCtSeconds * timesPerPiece;
 
   const fallbackName = `\uACF5\uC815 ${index + 1}`;
   return {
@@ -54,13 +56,11 @@ const normalizeSnapshotProcess = (process, index = 0) => {
     nameKo: String(process.nameKo || process.processNameKo || '').trim(),
     nameEn: String(process.nameEn || process.processNameEn || '').trim(),
     nameVi: String(process.nameVi || process.processNameVi || '').trim(),
-    quantity,
+    timesPerPiece,
     basis: String(process.basis || '').trim() || null,
     stSeconds: toOptionalProcessSeconds(process.stSeconds),
-    ctSeconds,
-    ctPerPieceSeconds:
-      toOptionalPositiveNumber(process.ctPerPieceSeconds) ??
-      ctSeconds * quantity,
+    snapshotCtSeconds,
+    pieceCtSeconds,
   };
 };
 
@@ -84,14 +84,14 @@ export const normalizeAssignmentCtSnapshot = (value) => {
           )
         )
       : null;
-  const totalCtPerPieceSeconds =
-    toOptionalNonNegativeNumber(value.totalCtPerPieceSeconds) ??
+  const pieceCtTotalSeconds =
+    toOptionalNonNegativeNumber(value.pieceCtTotalSeconds ?? value.totalCtPerPieceSeconds) ??
     (processes.length > 0
-      ? processes.reduce((sum, process) => sum + (Number(process.ctPerPieceSeconds) || 0), 0)
+      ? processes.reduce((sum, process) => sum + (Number(process.pieceCtSeconds) || 0), 0)
       : null);
-  const totalCtSeconds =
-    toOptionalNonNegativeNumber(value.totalCtSeconds) ??
-    (totalCtPerPieceSeconds != null && quantity != null ? totalCtPerPieceSeconds * quantity : null);
+  const assignmentCtTotalSeconds =
+    toOptionalNonNegativeNumber(value.assignmentCtTotalSeconds ?? value.totalCtSeconds) ??
+    (pieceCtTotalSeconds != null && quantity != null ? pieceCtTotalSeconds * quantity : null);
 
   return {
     updatedAt: toOptionalDateString(value.updatedAt),
@@ -110,8 +110,8 @@ export const normalizeAssignmentCtSnapshot = (value) => {
           }
         : null,
     totalStPerPieceSeconds: toOptionalPositiveNumber(value.totalStPerPieceSeconds),
-    totalCtPerPieceSeconds,
-    totalCtSeconds,
+    pieceCtTotalSeconds,
+    assignmentCtTotalSeconds,
     processes,
   };
 };
@@ -121,8 +121,8 @@ export const resolveAssignmentCtSnapshot = (item) =>
 
 const resolveAssignmentCtTotalSecondsOrNull = (item) => {
   const snapshot = resolveAssignmentCtSnapshot(item);
-  if (snapshot?.totalCtSeconds != null) {
-    return Math.round(Number(snapshot.totalCtSeconds) || 0);
+  if (snapshot?.assignmentCtTotalSeconds != null) {
+    return Math.round(Number(snapshot.assignmentCtTotalSeconds) || 0);
   }
   const ctTotalSeconds = toOptionalNonNegativeNumber(item?.ctTotalSeconds);
   if (ctTotalSeconds != null) return Math.round(ctTotalSeconds);

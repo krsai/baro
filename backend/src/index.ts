@@ -8552,15 +8552,19 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
       value?.processKey ?? value?.code ?? value?.id,
       null
     ) ?? `PROCESS-${index + 1}`;
-  const quantity = Math.max(1, toOptionalNonNegativeInt(value?.quantity, 1) ?? 1);
-  const stSeconds = toOptionalProcessSeconds(value?.stSeconds);
-  const ctSeconds = toOptionalProcessSeconds(
-    value?.ctSeconds ?? value?.stSeconds
+  const timesPerPiece = Math.max(
+    1,
+    toOptionalNonNegativeInt(value?.timesPerPiece ?? value?.quantity, 1) ?? 1
   );
-  if (ctSeconds == null || ctSeconds <= 0) return null;
-  const ctPerPieceSeconds = toOptionalFloat(
-    value?.ctPerPieceSeconds ?? ctSeconds * quantity,
-    quantity * ctSeconds
+  const stSeconds = toOptionalProcessSeconds(value?.stSeconds);
+  const rawPieceCtSeconds = toOptionalFloat(value?.pieceCtSeconds ?? value?.ctPerPieceSeconds, null);
+  const snapshotCtSeconds =
+    toOptionalProcessSeconds(value?.snapshotCtSeconds ?? value?.ctSeconds ?? value?.stSeconds) ??
+    (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
+  if (snapshotCtSeconds == null || snapshotCtSeconds <= 0) return null;
+  const pieceCtSeconds = toOptionalFloat(
+    rawPieceCtSeconds ?? snapshotCtSeconds * timesPerPiece,
+    timesPerPiece * snapshotCtSeconds
   );
   const processCode = resolveOptionalString(
     value?.processCode ?? value?.code,
@@ -8586,11 +8590,11 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
       value?.nameVi ?? value?.processNameVi ?? value?.labelVi,
       null
     ),
-    quantity,
+    timesPerPiece,
     basis: resolveOptionalString(value?.basis, null),
     stSeconds,
-    ctSeconds,
-    ctPerPieceSeconds,
+    snapshotCtSeconds,
+    pieceCtSeconds,
   };
 };
 
@@ -8600,18 +8604,18 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     .map((item, index) => normalizeAssignmentCtSnapshotProcess(item, index))
     .filter((item): item is any => Boolean(item));
   const quantity = toOptionalNonNegativeInt(value?.quantity, null);
-  const totalCtPerPieceSeconds =
-    toOptionalFloat(value?.totalCtPerPieceSeconds, null) ??
+  const pieceCtTotalSeconds =
+    toOptionalFloat(value?.pieceCtTotalSeconds ?? value?.totalCtPerPieceSeconds, null) ??
     (processes.length > 0
       ? processes.reduce(
-          (sum, item) => sum + (Number(item?.ctPerPieceSeconds) || 0),
+          (sum, item) => sum + (Number(item?.pieceCtSeconds) || 0),
           0
         )
       : null);
-  const totalCtSeconds =
-    toOptionalNonNegativeInt(value?.totalCtSeconds, null) ??
-    (quantity != null && totalCtPerPieceSeconds != null
-      ? Math.max(0, Math.round(totalCtPerPieceSeconds * quantity))
+  const assignmentCtTotalSeconds =
+    toOptionalNonNegativeInt(value?.assignmentCtTotalSeconds ?? value?.totalCtSeconds, null) ??
+    (quantity != null && pieceCtTotalSeconds != null
+      ? Math.max(0, Math.round(pieceCtTotalSeconds * quantity))
       : null);
 
   return {
@@ -8620,8 +8624,8 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     quantity,
     schedule: normalizeAssignmentCtSnapshotSchedule(value?.schedule),
     totalStPerPieceSeconds: toOptionalFloat(value?.totalStPerPieceSeconds, null),
-    totalCtPerPieceSeconds,
-    totalCtSeconds,
+    pieceCtTotalSeconds,
+    assignmentCtTotalSeconds,
     processes,
   };
 };
@@ -8632,8 +8636,8 @@ const resolveNormalizedAssignmentCtSnapshot = (item: any) =>
 
 const resolveAssignmentCtTotalSeconds = (item: any) => {
   const snapshot = resolveNormalizedAssignmentCtSnapshot(item);
-  if (snapshot?.totalCtSeconds != null) {
-    return Math.max(0, Math.round(Number(snapshot.totalCtSeconds) || 0));
+  if (snapshot?.assignmentCtTotalSeconds != null) {
+    return Math.max(0, Math.round(Number(snapshot.assignmentCtTotalSeconds) || 0));
   }
   const ctTotalSeconds = toOptionalNonNegativeInt(item?.ctTotalSeconds, null);
   if (ctTotalSeconds != null) return ctTotalSeconds;

@@ -409,6 +409,188 @@ WHERE "assignments" IS NOT NULL
     WHERE elem ? 'ctSnapshot' OR elem ? 'ctAgreedSnapshot'
   );
 
+-- 6-4c. assignmentCtSnapshot nested CT keys -> scoped canonical names.
+UPDATE "AssignmentPlan"
+SET "assignmentCtSnapshot" = (
+  "assignmentCtSnapshot"::jsonb
+  - 'totalCtSeconds' - 'totalCtPerPieceSeconds'
+  || CASE
+    WHEN COALESCE(
+      "assignmentCtSnapshot"::jsonb -> 'assignmentCtTotalSeconds',
+      "assignmentCtSnapshot"::jsonb -> 'totalCtSeconds'
+    ) IS NOT NULL THEN
+      jsonb_build_object(
+        'assignmentCtTotalSeconds',
+        COALESCE(
+          "assignmentCtSnapshot"::jsonb -> 'assignmentCtTotalSeconds',
+          "assignmentCtSnapshot"::jsonb -> 'totalCtSeconds'
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+  || CASE
+    WHEN COALESCE(
+      "assignmentCtSnapshot"::jsonb -> 'pieceCtTotalSeconds',
+      "assignmentCtSnapshot"::jsonb -> 'totalCtPerPieceSeconds'
+    ) IS NOT NULL THEN
+      jsonb_build_object(
+        'pieceCtTotalSeconds',
+        COALESCE(
+          "assignmentCtSnapshot"::jsonb -> 'pieceCtTotalSeconds',
+          "assignmentCtSnapshot"::jsonb -> 'totalCtPerPieceSeconds'
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+  || CASE
+    WHEN jsonb_typeof("assignmentCtSnapshot"::jsonb -> 'processes') = 'array' THEN
+      jsonb_build_object(
+        'processes',
+        (
+          SELECT COALESCE(
+            jsonb_agg(
+              elem - 'quantity' - 'ctSeconds' - 'ctPerPieceSeconds'
+              || CASE
+                WHEN COALESCE(elem -> 'timesPerPiece', elem -> 'quantity') IS NOT NULL THEN
+                  jsonb_build_object('timesPerPiece', COALESCE(elem -> 'timesPerPiece', elem -> 'quantity'))
+                ELSE '{}'::jsonb
+              END
+              || CASE
+                WHEN COALESCE(elem -> 'snapshotCtSeconds', elem -> 'ctSeconds') IS NOT NULL THEN
+                  jsonb_build_object('snapshotCtSeconds', COALESCE(elem -> 'snapshotCtSeconds', elem -> 'ctSeconds'))
+                ELSE '{}'::jsonb
+              END
+              || CASE
+                WHEN COALESCE(elem -> 'pieceCtSeconds', elem -> 'ctPerPieceSeconds') IS NOT NULL THEN
+                  jsonb_build_object('pieceCtSeconds', COALESCE(elem -> 'pieceCtSeconds', elem -> 'ctPerPieceSeconds'))
+                ELSE '{}'::jsonb
+              END
+            ),
+            '[]'::jsonb
+          )
+          FROM jsonb_array_elements("assignmentCtSnapshot"::jsonb -> 'processes') elem
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+)
+WHERE "assignmentCtSnapshot" IS NOT NULL
+  AND (
+    "assignmentCtSnapshot"::jsonb ? 'totalCtSeconds'
+    OR "assignmentCtSnapshot"::jsonb ? 'totalCtPerPieceSeconds'
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof("assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+            THEN "assignmentCtSnapshot"::jsonb -> 'processes'
+          ELSE '[]'::jsonb
+        END
+      ) elem
+      WHERE elem ? 'quantity' OR elem ? 'ctSeconds' OR elem ? 'ctPerPieceSeconds'
+    )
+  );
+
+UPDATE "AssignmentBoardState"
+SET "assignments" = (
+  SELECT jsonb_agg(
+    CASE
+      WHEN jsonb_typeof(elem -> 'assignmentCtSnapshot') = 'object' THEN
+        jsonb_set(
+          elem,
+          '{assignmentCtSnapshot}',
+          (
+            (elem -> 'assignmentCtSnapshot')
+            - 'totalCtSeconds' - 'totalCtPerPieceSeconds'
+            || CASE
+              WHEN COALESCE(
+                (elem -> 'assignmentCtSnapshot') -> 'assignmentCtTotalSeconds',
+                (elem -> 'assignmentCtSnapshot') -> 'totalCtSeconds'
+              ) IS NOT NULL THEN
+                jsonb_build_object(
+                  'assignmentCtTotalSeconds',
+                  COALESCE(
+                    (elem -> 'assignmentCtSnapshot') -> 'assignmentCtTotalSeconds',
+                    (elem -> 'assignmentCtSnapshot') -> 'totalCtSeconds'
+                  )
+                )
+              ELSE '{}'::jsonb
+            END
+            || CASE
+              WHEN COALESCE(
+                (elem -> 'assignmentCtSnapshot') -> 'pieceCtTotalSeconds',
+                (elem -> 'assignmentCtSnapshot') -> 'totalCtPerPieceSeconds'
+              ) IS NOT NULL THEN
+                jsonb_build_object(
+                  'pieceCtTotalSeconds',
+                  COALESCE(
+                    (elem -> 'assignmentCtSnapshot') -> 'pieceCtTotalSeconds',
+                    (elem -> 'assignmentCtSnapshot') -> 'totalCtPerPieceSeconds'
+                  )
+                )
+              ELSE '{}'::jsonb
+            END
+            || CASE
+              WHEN jsonb_typeof((elem -> 'assignmentCtSnapshot') -> 'processes') = 'array' THEN
+                jsonb_build_object(
+                  'processes',
+                  (
+                    SELECT COALESCE(
+                      jsonb_agg(
+                        proc - 'quantity' - 'ctSeconds' - 'ctPerPieceSeconds'
+                        || CASE
+                          WHEN COALESCE(proc -> 'timesPerPiece', proc -> 'quantity') IS NOT NULL THEN
+                            jsonb_build_object('timesPerPiece', COALESCE(proc -> 'timesPerPiece', proc -> 'quantity'))
+                          ELSE '{}'::jsonb
+                        END
+                        || CASE
+                          WHEN COALESCE(proc -> 'snapshotCtSeconds', proc -> 'ctSeconds') IS NOT NULL THEN
+                            jsonb_build_object('snapshotCtSeconds', COALESCE(proc -> 'snapshotCtSeconds', proc -> 'ctSeconds'))
+                          ELSE '{}'::jsonb
+                        END
+                        || CASE
+                          WHEN COALESCE(proc -> 'pieceCtSeconds', proc -> 'ctPerPieceSeconds') IS NOT NULL THEN
+                            jsonb_build_object('pieceCtSeconds', COALESCE(proc -> 'pieceCtSeconds', proc -> 'ctPerPieceSeconds'))
+                          ELSE '{}'::jsonb
+                        END
+                      ),
+                      '[]'::jsonb
+                    )
+                    FROM jsonb_array_elements((elem -> 'assignmentCtSnapshot') -> 'processes') proc
+                  )
+                )
+              ELSE '{}'::jsonb
+            END
+          )
+        )
+      ELSE elem
+    END
+  )
+  FROM jsonb_array_elements("assignments"::jsonb) elem
+)
+WHERE "assignments" IS NOT NULL
+  AND jsonb_typeof("assignments"::jsonb) = 'array'
+  AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements("assignments"::jsonb) elem
+    WHERE jsonb_typeof(elem -> 'assignmentCtSnapshot') = 'object'
+      AND (
+        (elem -> 'assignmentCtSnapshot') ? 'totalCtSeconds'
+        OR (elem -> 'assignmentCtSnapshot') ? 'totalCtPerPieceSeconds'
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof((elem -> 'assignmentCtSnapshot') -> 'processes') = 'array'
+                THEN (elem -> 'assignmentCtSnapshot') -> 'processes'
+              ELSE '[]'::jsonb
+            END
+          ) proc
+          WHERE proc ? 'quantity' OR proc ? 'ctSeconds' OR proc ? 'ctPerPieceSeconds'
+        )
+      )
+  );
+
 -- 6-5. AssignmentCard.payload ctAgreedSnapshot cleanup
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'
