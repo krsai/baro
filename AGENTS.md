@@ -1043,3 +1043,9 @@ runtime 조회값:
   - Do not remove `assignmentCtSnapshot.processes[].stSeconds` or
     `assignmentCtSnapshot.totalStPerPieceSeconds` until the backfill notice reports
     zero unmatched processes and zero missing/zero standards in production.
+  - Before starting snapshot ST removal, deployment logs must be checked and recorded:
+    - `unmatched_processes = 0`
+    - `missing_or_zero_standards = 0`
+  - If either count is non-zero, stop Phase 7 and inspect the cause first.
+    Common causes are `cardId/originOrderId` styleId parsing mismatch or
+    snapshot process keys that no longer match `StyleProcess`.

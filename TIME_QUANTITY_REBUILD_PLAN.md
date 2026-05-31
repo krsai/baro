@@ -907,6 +907,11 @@ ST 표준값:
 - Migration emits a notice:
   `Phase 6E preflight snapshot ST backfill check: unmatched_processes=..., missing_or_zero_standards=...`.
 - Snapshot ST removal is still blocked until production shows both counts as zero.
+- Phase 7 start checklist:
+  - Confirm Railway deployment logs show `unmatched_processes = 0`.
+  - Confirm Railway deployment logs show `missing_or_zero_standards = 0`.
+  - If either count is non-zero, do not remove snapshot ST fields. Investigate
+    styleId parsing from `cardId/originOrderId` and process key/name matching first.
 
 ### Dual-read Cleanup Backlog
 
