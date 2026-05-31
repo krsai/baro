@@ -894,6 +894,20 @@ ST 표준값:
   `AssignmentBoardState.assignments[].assignmentCtSnapshot`.
 - Snapshot ST removal remains blocked until StyleProcessStandard backfill is verified.
 
+### Phase 6E Preflight Status Addendum
+
+- 2026-05-31 Phase 6E preflight implemented the prerequisites for later snapshot ST removal.
+- `migration_fix.sql` now normalizes legacy completion consistency:
+  `isCompleted=false AND completedAt IS NOT NULL` rows are updated to `isCompleted=true`.
+- Backend completion checks use `isCompleted === true` as the source of truth.
+- `migration_fix.sql` backfills `StyleProcessStandard.bucketStSeconds` from active
+  `assignmentCtSnapshot.processes[].stSeconds` values.
+- Existing positive `StyleProcessStandard.bucketStSeconds` values are preserved.
+  The backfill only fills missing or zero standards.
+- Migration emits a notice:
+  `Phase 6E preflight snapshot ST backfill check: unmatched_processes=..., missing_or_zero_standards=...`.
+- Snapshot ST removal is still blocked until production shows both counts as zero.
+
 ### Dual-read Cleanup Backlog
 
 - Dual-read fallback is temporary migration protection.

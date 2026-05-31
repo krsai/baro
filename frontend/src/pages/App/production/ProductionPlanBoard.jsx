@@ -266,7 +266,7 @@ const resolveDistributedSeconds = ({
   totalPerPieceSeconds,
   totalBasePerPieceSeconds,
   basePerPieceSeconds,
-  processQuantity = 1,
+  timesPerPiece = 1,
   processCount = 1,
 }) => {
   const total = Number(totalPerPieceSeconds);
@@ -281,7 +281,7 @@ const resolveDistributedSeconds = ({
     distributedPerPieceSeconds = total / Math.max(1, toPositiveInt(processCount, 1));
   }
 
-  const normalizedQuantity = Math.max(1, toPositiveInt(processQuantity, 1));
+  const normalizedQuantity = Math.max(1, toPositiveInt(timesPerPiece, 1));
   if (!Number.isFinite(distributedPerPieceSeconds) || distributedPerPieceSeconds <= 0) return null;
   return distributedPerPieceSeconds / normalizedQuantity;
 };
@@ -1297,7 +1297,7 @@ const ProductionPlanBoard = () => {
           resolveLocalizedProcessName(process, languageCode) ||
           process?.code ||
           `공정 ${index + 1}`;
-        const processQuantity = Math.max(
+        const timesPerPiece = Math.max(
           1,
           toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)
         );
@@ -1306,8 +1306,8 @@ const ProductionPlanBoard = () => {
         const atReliability = resolveProcessAtReliability(process, orderQuantity);
         const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
         const baseSeconds = stSeedInfo.seconds;
-        const basePerPieceSeconds = baseSeconds * processQuantity;
-        const atPerPieceSeconds = atSeconds == null ? null : atSeconds * processQuantity;
+        const basePerPieceSeconds = baseSeconds * timesPerPiece;
+        const atPerPieceSeconds = atSeconds == null ? null : atSeconds * timesPerPiece;
         const atVsBasePercent = calcDivergencePercent(atPerPieceSeconds, basePerPieceSeconds);
         const needsStReview =
           atVsBasePercent != null &&
@@ -1319,7 +1319,7 @@ const ProductionPlanBoard = () => {
         return {
           processKey,
           processName,
-          processQuantity,
+          timesPerPiece,
           baseBasis: stSeedInfo.source,
           ptSeconds: ptInfo.seconds,
           ptReferenceQuantity: ptInfo.referenceQuantity,
@@ -1353,7 +1353,7 @@ const ProductionPlanBoard = () => {
             totalPerPieceSeconds: totalAssignedPerPieceSeconds,
             totalBasePerPieceSeconds,
             basePerPieceSeconds: row.basePerPieceSeconds,
-            processQuantity: row.processQuantity,
+            timesPerPiece: row.timesPerPiece,
             processCount: baseRows.length,
           }) ??
           row.baseSeconds;
@@ -1363,14 +1363,14 @@ const ProductionPlanBoard = () => {
               totalPerPieceSeconds: totalSavedPerPieceSeconds,
               totalBasePerPieceSeconds,
               basePerPieceSeconds: row.basePerPieceSeconds,
-              processQuantity: row.processQuantity,
+              timesPerPiece: row.timesPerPiece,
               processCount: baseRows.length,
             }) ??
             assignedSeconds
           : null;
-        const assignedPerPieceSeconds = assignedSeconds * row.processQuantity;
+        const assignedPerPieceSeconds = assignedSeconds * row.timesPerPiece;
         const savedPerPieceSeconds =
-          savedSeconds == null ? null : savedSeconds * row.processQuantity;
+          savedSeconds == null ? null : savedSeconds * row.timesPerPiece;
         const totalAssignedSeconds = assignedPerPieceSeconds * orderQuantity;
 
         return {
@@ -1689,17 +1689,17 @@ const ProductionPlanBoard = () => {
         const existingSnapshot = resolveAssignmentCtSnapshot(syncedAssignment);
         const processes = normalizeProcesses(style?.processes);
         const baseRows = processes.map((process) => {
-          const processQuantity = Math.max(
+          const timesPerPiece = Math.max(
             1,
             toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)
           );
           const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
           const baseSeconds = stSeedInfo.seconds;
-          const basePerPieceSeconds = baseSeconds * processQuantity;
+          const basePerPieceSeconds = baseSeconds * timesPerPiece;
           return {
             processKey: String(process?.instanceId || process?.id || process?.code || '').trim(),
             name: process?.name || process?.processName || process?.code || '공정',
-            processQuantity,
+            timesPerPiece,
             baseSeconds,
             basePerPieceSeconds,
             basis: stSeedInfo.source,
@@ -1716,11 +1716,11 @@ const ProductionPlanBoard = () => {
             return {
               processKey: row.processKey,
               name: row.name,
-              timesPerPiece: row.processQuantity,
+              timesPerPiece: row.timesPerPiece,
               basis: row.basis,
               stSeconds: row.baseSeconds,
               snapshotCtSeconds: ctSeconds,
-              pieceCtSeconds: ctSeconds * row.processQuantity,
+              pieceCtSeconds: ctSeconds * row.timesPerPiece,
             };
           })
           .filter(Boolean);
@@ -1728,7 +1728,7 @@ const ProductionPlanBoard = () => {
           snapshotProcesses.length > 0
             ? snapshotProcesses.reduce(
                 (sum, row) =>
-                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.timesPerPiece ?? row?.quantity) || 1)),
+                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.timesPerPiece) || 1)),
                 0
               )
             : Number(existingSnapshot?.totalStPerPieceSeconds) || 0;
@@ -2805,7 +2805,7 @@ const ProductionPlanBoard = () => {
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
                                   {formatProcessNameWithQuantity(
                                     row.processName,
-                                    row.processQuantity
+                                    row.timesPerPiece
                                   )}
                                 </Typography>
                               </TableCell>

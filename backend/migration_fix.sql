@@ -259,6 +259,323 @@ END $$;
 ALTER TABLE "AssignmentPlan"
   ADD COLUMN IF NOT EXISTS "assignmentCtSnapshot" JSONB;
 
+-- Phase 6E preflight runs after AssignmentPlan.assignmentCtSnapshot is available
+-- and before the later StyleProcessStandard no-op rename section, so ensure
+-- StyleProcessStandard already exposes the final physical column names here.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'quantity'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) THEN
+    ALTER TABLE "StyleProcessStandard" RENAME COLUMN "quantity" TO "bucketQuantity";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'quantity'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketQuantity'
+  ) THEN
+    UPDATE "StyleProcessStandard"
+    SET "bucketQuantity" = COALESCE("bucketQuantity", "quantity");
+    ALTER TABLE "StyleProcessStandard" DROP COLUMN "quantity";
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'stSeconds'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketStSeconds'
+  ) THEN
+    ALTER TABLE "StyleProcessStandard" RENAME COLUMN "stSeconds" TO "bucketStSeconds";
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'stSeconds'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcessStandard'
+      AND column_name = 'bucketStSeconds'
+  ) THEN
+    UPDATE "StyleProcessStandard"
+    SET "bucketStSeconds" = COALESCE("bucketStSeconds", "stSeconds");
+    ALTER TABLE "StyleProcessStandard" DROP COLUMN "stSeconds";
+  END IF;
+END $$;
+
+-- 6-0b. Phase 6E preflight: completion-source cleanup and snapshot ST backfill.
+--     Snapshot ST fields must not be removed until this backfill has been applied
+--     and the notice counts below have been reviewed.
+UPDATE "AssignmentPlan"
+SET "isCompleted" = TRUE
+WHERE "isCompleted" = FALSE
+  AND "completedAt" IS NOT NULL;
+
+WITH snapshot_st_targets AS (
+  SELECT
+    plan."orgId",
+    style."uid" AS "styleUid",
+    CASE
+      WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
+      WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
+      WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
+      WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
+      WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
+      WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
+      WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
+      WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
+      WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
+      WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
+      WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
+      WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+      ELSE 1
+    END AS "bucketQuantity",
+    ROUND((process ->> 'stSeconds')::numeric)::double precision AS "bucketStSeconds",
+    LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
+    LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
+    LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
+    LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+  FROM "AssignmentPlan" plan
+  JOIN "Style" style
+    ON style."orgId" = plan."orgId"
+   AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+  CROSS JOIN LATERAL jsonb_array_elements(
+    CASE
+      WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+        THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+      ELSE '[]'::jsonb
+    END
+  ) process
+  WHERE plan."isCompleted" = FALSE
+    AND plan."assignmentCtSnapshot" IS NOT NULL
+    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+    AND process ? 'stSeconds'
+    AND (process ->> 'stSeconds') ~ '^[0-9]+(\.[0-9]+)?$'
+    AND (process ->> 'stSeconds')::numeric > 0
+),
+matched_snapshot_st AS (
+  SELECT
+    target."orgId",
+    style_process."id" AS "styleProcessId",
+    target."bucketQuantity",
+    MAX(target."bucketStSeconds") AS "bucketStSeconds"
+  FROM snapshot_st_targets target
+  JOIN "StyleProcess" style_process
+    ON style_process."orgId" = target."orgId"
+   AND style_process."styleUid" = target."styleUid"
+   AND (
+      LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
+      OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
+      OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
+      OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
+   )
+  GROUP BY target."orgId", style_process."id", target."bucketQuantity"
+)
+INSERT INTO "StyleProcessStandard" (
+  "orgId",
+  "styleProcessId",
+  "bucketQuantity",
+  "bucketStSeconds",
+  "setBy",
+  "setAt",
+  "updatedAt"
+)
+SELECT
+  "orgId",
+  "styleProcessId",
+  "bucketQuantity",
+  "bucketStSeconds",
+  'ASSIGNMENT_SNAPSHOT_BACKFILL',
+  NOW(),
+  NOW()
+FROM matched_snapshot_st
+ON CONFLICT ("styleProcessId", "bucketQuantity")
+DO UPDATE SET
+  "bucketStSeconds" = CASE
+    WHEN "StyleProcessStandard"."bucketStSeconds" <= 0 THEN EXCLUDED."bucketStSeconds"
+    ELSE "StyleProcessStandard"."bucketStSeconds"
+  END,
+  "setBy" = CASE
+    WHEN "StyleProcessStandard"."bucketStSeconds" <= 0 THEN EXCLUDED."setBy"
+    ELSE "StyleProcessStandard"."setBy"
+  END,
+  "setAt" = CASE
+    WHEN "StyleProcessStandard"."bucketStSeconds" <= 0 THEN EXCLUDED."setAt"
+    ELSE "StyleProcessStandard"."setAt"
+  END,
+  "updatedAt" = CASE
+    WHEN "StyleProcessStandard"."bucketStSeconds" <= 0 THEN NOW()
+    ELSE "StyleProcessStandard"."updatedAt"
+  END;
+
+DO $$
+DECLARE
+  unmatched_process_count integer := 0;
+  missing_standard_count integer := 0;
+BEGIN
+  WITH snapshot_st_targets AS (
+    SELECT
+      plan."orgId",
+      style."uid" AS "styleUid",
+      CASE
+        WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
+        WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
+        WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
+        WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
+        WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
+        WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
+        WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
+        WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
+        WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
+        WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
+        WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
+        WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+        ELSE 1
+      END AS "bucketQuantity",
+      LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
+      LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
+      LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
+      LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+    FROM "AssignmentPlan" plan
+    JOIN "Style" style
+      ON style."orgId" = plan."orgId"
+     AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+          THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+        ELSE '[]'::jsonb
+      END
+    ) process
+    WHERE plan."isCompleted" = FALSE
+      AND plan."assignmentCtSnapshot" IS NOT NULL
+      AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+      AND process ? 'stSeconds'
+      AND (process ->> 'stSeconds') ~ '^[0-9]+(\.[0-9]+)?$'
+      AND (process ->> 'stSeconds')::numeric > 0
+  ),
+  matched_snapshot_st AS (
+    SELECT DISTINCT
+      target."orgId",
+      target."styleUid",
+      target."bucketQuantity",
+      style_process."id" AS "styleProcessId"
+    FROM snapshot_st_targets target
+    JOIN "StyleProcess" style_process
+      ON style_process."orgId" = target."orgId"
+     AND style_process."styleUid" = target."styleUid"
+     AND (
+        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
+        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
+     )
+  )
+  SELECT COUNT(*)
+  INTO unmatched_process_count
+  FROM snapshot_st_targets target
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM "StyleProcess" style_process
+    WHERE style_process."orgId" = target."orgId"
+      AND style_process."styleUid" = target."styleUid"
+      AND (
+        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
+        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
+      )
+  );
+
+  WITH snapshot_st_targets AS (
+    SELECT
+      plan."orgId",
+      style."uid" AS "styleUid",
+      CASE
+        WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
+        WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
+        WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
+        WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
+        WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
+        WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
+        WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
+        WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
+        WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
+        WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
+        WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
+        WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+        ELSE 1
+      END AS "bucketQuantity",
+      LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
+      LOWER(BTRIM(COALESCE(process ->> 'processKey', ''))) AS "processKey",
+      LOWER(BTRIM(REGEXP_REPLACE(COALESCE(process ->> 'processKey', ''), '-[0-9]+-[0-9]+$', ''))) AS "processKeyBase",
+      LOWER(BTRIM(COALESCE(process ->> 'name', process ->> 'processName', process ->> 'label', ''))) AS "processNameKey"
+    FROM "AssignmentPlan" plan
+    JOIN "Style" style
+      ON style."orgId" = plan."orgId"
+     AND style."styleId" = NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '')
+    CROSS JOIN LATERAL jsonb_array_elements(
+      CASE
+        WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+          THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+        ELSE '[]'::jsonb
+      END
+    ) process
+    WHERE plan."isCompleted" = FALSE
+      AND plan."assignmentCtSnapshot" IS NOT NULL
+      AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+      AND process ? 'stSeconds'
+      AND (process ->> 'stSeconds') ~ '^[0-9]+(\.[0-9]+)?$'
+      AND (process ->> 'stSeconds')::numeric > 0
+  ),
+  matched_snapshot_st AS (
+    SELECT DISTINCT
+      style_process."id" AS "styleProcessId",
+      target."bucketQuantity"
+    FROM snapshot_st_targets target
+    JOIN "StyleProcess" style_process
+      ON style_process."orgId" = target."orgId"
+     AND style_process."styleUid" = target."styleUid"
+     AND (
+        LOWER(BTRIM(style_process."processCode")) = target."processCodeKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKey"
+        OR LOWER(BTRIM(style_process."processCode")) = target."processKeyBase"
+        OR LOWER(BTRIM(style_process."processName")) = target."processNameKey"
+     )
+  )
+  SELECT COUNT(*)
+  INTO missing_standard_count
+  FROM matched_snapshot_st matched
+  LEFT JOIN "StyleProcessStandard" standard
+    ON standard."styleProcessId" = matched."styleProcessId"
+   AND standard."bucketQuantity" = matched."bucketQuantity"
+  WHERE standard."id" IS NULL
+     OR standard."bucketStSeconds" <= 0;
+
+  RAISE NOTICE
+    'Phase 6E preflight snapshot ST backfill check: unmatched_processes=%, missing_or_zero_standards=%',
+    unmatched_process_count,
+    missing_standard_count;
+END $$;
+
 -- Step 6: ctSnapshot JSON 내부 구 키명 정리 (20260525)
 -- 구 이름: totalAgreedSeconds/totalAgreedPerPieceSeconds/agreedAt/agreedBy/agreedSeconds/agreedPerPieceSeconds/requestedSeconds/proposedSeconds/ctAgreedSnapshot
 -- 신 이름: totalCtSeconds/totalCtPerPieceSeconds/updatedAt/updatedBy/ctSeconds/ctPerPieceSeconds/ctSnapshot

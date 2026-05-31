@@ -6894,9 +6894,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
     };
   }
 
-  const completedPlans = plans.filter((plan) =>
-    Boolean(plan?.isCompleted || toOptionalDateValue(plan?.completedAt, null))
-  );
+  const completedPlans = plans.filter((plan) => plan?.isCompleted === true);
   if (completedPlans.length > 0) {
     const preview = completedPlans
       .slice(0, 3)
@@ -7602,7 +7600,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     });
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   const completedAt = closedAt;
-  const isCompleted = Boolean(plan?.isCompleted || completedAt);
+  const isCompleted = plan?.isCompleted === true;
   return {
     dbId: plan?.id ?? null,
     id: resolveOptionalString(plan?.externalId, "") ?? "",
@@ -10262,7 +10260,7 @@ const toAssignmentPlanResponse = (plan: any) => {
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
   const closedQty = resolveAssignmentPlanClosedQty(plan);
   const completedAt = resolveAssignmentPlanClosedAt(plan);
-  const isCompleted = Boolean(plan?.isCompleted || completedAt);
+  const isCompleted = plan?.isCompleted === true;
   const closeMode =
     resolveOptionalString(plan?.closeMode, null) ??
     resolveAssignmentPlanCloseMode({
@@ -15715,7 +15713,7 @@ app.get("/assignment-plans", async (req, res) => {
       const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
       const closedQty = resolveAssignmentPlanClosedQty(plan);
       const completedAt = resolveAssignmentPlanClosedAt(plan);
-      const isCompleted = Boolean(plan?.isCompleted || completedAt);
+      const isCompleted = plan?.isCompleted === true;
       const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
       const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
       const closeMode =
@@ -16492,9 +16490,7 @@ const buildAssignmentPlanProgressRows = async (
         ? baselineQuantityRaw * processCount
         : null;
     const totalDone = sumByPlanId.get(planId) || 0;
-    const isMarkedCompleted = Boolean(
-      plan?.isCompleted || toOptionalDateValue(plan?.completedAt, null)
-    );
+    const isMarkedCompleted = plan?.isCompleted === true;
     const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
       processTotalsByKey: stats.processTotalsByKey,
       processKeyGroups: requiredProcessGroups,
@@ -17010,7 +17006,7 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
   const productionCompletedAt =
     toIsoDateStringOrNull(productionCompletedAtDate?.toISOString?.() || null) ||
     completedAt;
-  const isCompleted = Boolean(plan?.isCompleted || completedAt || productionCompletedAt);
+  const isCompleted = plan?.isCompleted === true;
   const closeMode =
     resolveOptionalString(plan?.closeMode, null) ??
     resolveAssignmentPlanCloseMode({
@@ -17102,7 +17098,7 @@ const completeAssignmentPlanProduction = async ({
   }
   if (
     toOptionalDateValue(plan.productionCompletedAt, null) ||
-    plan.isCompleted ||
+    plan.isCompleted === true ||
     resolveAssignmentPlanClosedAtValue(plan)
   ) {
     return {
@@ -17444,7 +17440,7 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
     return res.status(404).json({ ok: false, error: "assignment plan not found" });
   }
 
-  if (plan.isCompleted || toOptionalDateValue(plan.completedAt, null)) {
+  if (plan.isCompleted === true) {
     return res.status(409).json({
       ok: false,
       error: "assignment plan already completed",

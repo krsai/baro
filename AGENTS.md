@@ -1022,3 +1022,24 @@ runtime 조회값:
   - Snapshot ST field removal.
   - AssignmentCard payload JSON rename.
   - AssignmentPlan `quantity/stTotalSeconds/ctTotalSeconds` physical column rename.
+
+### 20. 2026-05-31 Phase 6E preflight implementation status
+
+- Scope:
+  - This phase prepares for snapshot ST removal but does not remove snapshot ST fields.
+- Implemented:
+  - `backend/migration_fix.sql` updates legacy inconsistent completion rows:
+    `isCompleted=false AND completedAt IS NOT NULL` -> `isCompleted=true`.
+  - Backend completion checks now use `isCompleted === true` as the assignment completion source.
+  - `backend/migration_fix.sql` backfills missing `StyleProcessStandard.bucketStSeconds`
+    from active assignment snapshots:
+    `assignmentCtSnapshot.processes[].stSeconds`.
+  - The backfill preserves existing positive `StyleProcessStandard.bucketStSeconds`
+    values and only fills missing/zero standards.
+  - The migration emits a notice with:
+    `unmatched_processes` and `missing_or_zero_standards`.
+  - `ProductionPlanBoard` local process repeat naming was cleaned up to `timesPerPiece`.
+- Still blocked:
+  - Do not remove `assignmentCtSnapshot.processes[].stSeconds` or
+    `assignmentCtSnapshot.totalStPerPieceSeconds` until the backfill notice reports
+    zero unmatched processes and zero missing/zero standards in production.
