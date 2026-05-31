@@ -4,17 +4,20 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { getGenderLabel } from '../../../../constants/productAttributes';
+import {
+  resolveAssignmentCardBasis,
+  resolveCardPtTotalSeconds,
+  resolveCardQuantity,
+  resolveCardStOnlyTotalSeconds,
+} from '../utils/assignmentCard';
 
-const hasSt = (card) => Number(card?.totalSt) > 0;
-const hasPt = (card) => Number(card?.totalPt) > 0;
+const hasSt = (card) => resolveCardStOnlyTotalSeconds(card, 0) > 0;
+const hasPt = (card) => resolveCardPtTotalSeconds(card, 0) > 0;
 
 const getCardBasis = (card) => {
-  if (hasSt(card)) return 'ST';
-  if (hasPt(card)) return 'PT';
-
-  const legacyStatus = String(card?.status || '').trim().toUpperCase();
-  if (legacyStatus === 'ST') return 'ST';
-  if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
+  const basis = resolveAssignmentCardBasis(card);
+  if (basis === 'ST' && hasSt(card)) return 'ST';
+  if (basis === 'PT' && hasPt(card)) return 'PT';
   return 'NONE';
 };
 
@@ -70,7 +73,7 @@ const StyleCard = ({ card, onSelect, onOpenContextMenu, onDisabledDragAttempt })
     genderLabel
       ? `${getUiMessage('assign.genderLabel', 'Gender', languageCode)}: ${genderLabel}`
       : '',
-    `${getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}: ${card.quantity}`,
+    `${getUiMessage('assign.quantityLabel', 'Quantity', languageCode)}: ${resolveCardQuantity(card, 0)}`,
   ].filter(Boolean);
 
   return (

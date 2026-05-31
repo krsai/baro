@@ -70,6 +70,17 @@ import {
   formatProcessNameWithQuantity,
   resolveLocalizedProcessName,
 } from '../../../utils/processDisplay';
+import {
+  normalizeAssignmentCardForBoard,
+  normalizeAssignmentCardForPersistence,
+  resolveAssignmentCardBasis,
+  resolveAssignmentCardStatus,
+  resolveCardAtTotalSeconds,
+  resolveCardPtTotalSeconds,
+  resolveCardQuantity,
+  resolveCardScheduleTotalSeconds,
+  resolveCardStOnlyTotalSeconds,
+} from './utils/assignmentCard';
 import { subscribeOrderModificationLockChanged } from '../../../utils/orderSyncEvents';
 import {
   emitWorkspaceDataChanged,
@@ -500,7 +511,7 @@ const mergeCardsWithSaved = (baseCards, savedCards) => {
   (Array.isArray(baseCards) ? baseCards : []).forEach((card) => {
     if (!card?.id) return;
     indexById.set(card.id, merged.length);
-    merged.push(card);
+    merged.push(normalizeAssignmentCardForBoard(card));
   });
 
   (Array.isArray(savedCards) ? savedCards : []).forEach((card) => {
@@ -508,16 +519,16 @@ const mergeCardsWithSaved = (baseCards, savedCards) => {
     const existingIndex = indexById.get(card.id);
     if (existingIndex == null) {
       indexById.set(card.id, merged.length);
-      merged.push(card);
+      merged.push(normalizeAssignmentCardForBoard(card));
       return;
     }
     const baseCard = merged[existingIndex];
-    merged[existingIndex] = {
+    merged[existingIndex] = normalizeAssignmentCardForBoard({
       ...card,
       ...baseCard,
       id: baseCard.id,
       originOrderId: baseCard.originOrderId || card.originOrderId || baseCard.id,
-    };
+    });
   });
 
   return merged;
@@ -921,7 +932,7 @@ const buildCardsFromOrders = ({ orders, styles }) => {
         styleId
       );
 
-      cards.push({
+      cards.push(normalizeAssignmentCardForBoard({
         id: cardId,
         originOrderId: cardId,
         orderNo: order?.orderNumber || order?.id || '-',
@@ -933,15 +944,14 @@ const buildCardsFromOrders = ({ orders, styles }) => {
         colorId: '',
         colorName: '',
         gender: '',
-        quantity: group.quantity,
+        cardQuantity: group.quantity,
         processCount,
         status,
-        stTotalSeconds,
-        totalPt,
-        totalAt,
-        totalSt,
+        cardStTotalSeconds: totalSt,
+        cardPtTotalSeconds: totalPt,
+        cardAtTotalSeconds: totalAt,
         previewUrl: processSummary?.previewUrl ?? '',
-      });
+      }));
     });
   });
 
@@ -968,24 +978,22 @@ const getDayCapacitySeconds = (dayIndex, lineId, days, lineCapacityById = null) 
   return getLineCapacitySeconds(lineId, lineCapacityById);
 };
 
-const hasPt = (card) => Number(card.totalPt) > 0;
-const hasSt = (card) =>
-  Number(card?.totalSt) > 0 || String(card?.status || '').trim().toUpperCase() === 'ST';
+const hasPt = (card) => resolveCardPtTotalSeconds(card, 0) > 0;
+const hasSt = (card) => resolveCardStOnlyTotalSeconds(card, 0) > 0;
 
 const getCardBasis = (card) => {
-  if (hasSt(card)) return 'ST';
-  const legacyStatus = String(card?.status || '').trim().toUpperCase();
-  if (legacyStatus === 'PT' || legacyStatus === 'CT') return 'PT';
-  if (!hasPt(card)) return 'NONE';
-  return 'PT';
+  const basis = resolveAssignmentCardBasis(card);
+  if (basis === 'ST' && hasSt(card)) return 'ST';
+  if (basis === 'PT' && hasPt(card)) return 'PT';
+  return 'NONE';
 };
 
 const resolveCardStatus = (_card, nextPt, _nextAt, nextSt = null) => {
-  const stPresent = Number(nextSt) > 0;
-  const ptPresent = Number(nextPt) > 0;
-  if (!ptPresent && !stPresent) return 'NONE';
-  if (stPresent) return 'ST';
-  return 'PT';
+  return resolveAssignmentCardStatus({
+    card: _card,
+    cardPtTotalSeconds: nextPt,
+    cardStTotalSeconds: nextSt,
+  });
 };
 
 const scaleValue = (value, ratio) => {
@@ -1020,21 +1028,23 @@ const mergeTimeLists = (first = [], second = []) => {
 };
 
 const mergeCardData = (target, source) => {
-  const mergedQuantity = (target.quantity ?? 0) + (source.quantity ?? 0);
-  const mergedStTotalSeconds = (target.stTotalSeconds ?? 0) + (source.stTotalSeconds ?? 0);
-  const mergedTotalPt = (target.totalPt ?? 0) + (source.totalPt ?? 0);
-  const mergedTotalAt = (target.totalAt ?? 0) + (source.totalAt ?? 0);
-  const mergedTotalSt = (target.totalSt ?? 0) + (source.totalSt ?? 0);
-  return {
+  const mergedQuantity = resolveCardQuantity(target, 0) + resolveCardQuantity(source, 0);
+  const mergedStTotalSeconds =
+    resolveCardStOnlyTotalSeconds(target, 0) + resolveCardStOnlyTotalSeconds(source, 0);
+  const mergedTotalPt =
+    resolveCardPtTotalSeconds(target, 0) + resolveCardPtTotalSeconds(source, 0);
+  const mergedTotalAt =
+    resolveCardAtTotalSeconds(target, 0) + resolveCardAtTotalSeconds(source, 0);
+  const mergedCard = {
     ...target,
-    quantity: mergedQuantity,
-    stTotalSeconds: mergedStTotalSeconds,
-    totalPt: mergedTotalPt,
-    totalAt: mergedTotalAt,
-    totalSt: mergedTotalSt,
-    status: resolveCardStatus(target, mergedTotalPt, mergedTotalAt, mergedTotalSt),
+    cardQuantity: mergedQuantity,
+    cardStTotalSeconds: mergedStTotalSeconds,
+    cardPtTotalSeconds: mergedTotalPt,
+    cardAtTotalSeconds: mergedTotalAt,
+    status: resolveCardStatus(target, mergedTotalPt, mergedTotalAt, mergedStTotalSeconds),
     originOrderId: getCardOriginId(target),
   };
+  return normalizeAssignmentCardForBoard(mergedCard);
 };
 
 const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacityById = null) => {
@@ -1125,12 +1135,7 @@ const recomputeAssignmentRange = (assignment, stTotalSeconds, days, lineCapacity
 };
 
 const resolveCardStTotalSeconds = (card) => {
-  // Always prefer ST when available
-  if (Number(card?.totalSt) > 0) return card.totalSt;
-  if (Number(card?.stTotalSeconds) > 0) return card.stTotalSeconds;
-  const basis = getCardBasis(card);
-  if (basis === 'NONE') return 0;
-  return card.totalPt ?? 0;
+  return resolveCardScheduleTotalSeconds(card, 0);
 };
 
 const toComparableCtSnapshot = (snapshot) => {
@@ -2769,9 +2774,9 @@ const AssignBoard = () => {
   const resolvePersistedBoardState = useCallback(
     (payload, fallbackCards, fallbackAssignments) => {
       const persistedCards = Array.isArray(payload?.cards)
-        ? payload.cards
+        ? payload.cards.map(normalizeAssignmentCardForBoard)
         : Array.isArray(fallbackCards)
-          ? fallbackCards
+          ? fallbackCards.map(normalizeAssignmentCardForBoard)
           : [];
       const persistedAssignmentsRaw = Array.isArray(payload?.assignments)
         ? payload.assignments
@@ -3187,10 +3192,12 @@ const AssignBoard = () => {
           const nextCards = (Array.isArray(assignmentCardsResponse?.cards)
             ? assignmentCardsResponse.cards
             : []
-          ).map((card) => ({
-            ...card,
-            isManualOrderLocked: isCardManualOrderLocked(card),
-          }));
+          ).map((card) =>
+            normalizeAssignmentCardForBoard({
+              ...card,
+              isManualOrderLocked: isCardManualOrderLocked(card),
+            })
+          );
           applyLoadedBoardData({
             nextStyles,
             nextLines,
@@ -3447,7 +3454,7 @@ const AssignBoard = () => {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            cards: currentCards,
+            cards: currentCards.map(normalizeAssignmentCardForPersistence),
             assignments: assignmentPayload,
             stDrafts,
           }),
@@ -3688,44 +3695,47 @@ const AssignBoard = () => {
       const totalPt = getTotalForOrderQuantity(styleProcesses, 'pt', assignmentQuantity);
       const totalAt = getTotalForOrderQuantity(styleProcesses, 'at', assignmentQuantity);
       const totalSt = getTotalStForOrderQuantity(styleProcesses, assignmentQuantity);
-      const stTotalSeconds = Math.max(0, Math.round(Number(totalSt > 0 ? totalSt : totalPt) || 0));
-      return {
+      return normalizeAssignmentCardForBoard({
         ...card,
         styleId: card?.styleId || style?.id,
-        quantity: assignmentQuantity,
+        cardQuantity: assignmentQuantity,
         processCount: styleProcesses.length,
-        stTotalSeconds,
-        totalPt,
-        totalAt,
-        totalSt,
+        cardStTotalSeconds: totalSt,
+        cardPtTotalSeconds: totalPt,
+        cardAtTotalSeconds: totalAt,
         status: resolveCardStatus(card, totalPt, totalAt, totalSt),
-      };
+      });
     }
 
     const totalPt =
-      fallbackRatio == null ? card?.totalPt : scaleValue(card?.totalPt, fallbackRatio);
+      fallbackRatio == null
+        ? resolveCardPtTotalSeconds(card, 0)
+        : scaleValue(resolveCardPtTotalSeconds(card, 0), fallbackRatio);
     const totalAt =
-      fallbackRatio == null ? card?.totalAt : scaleValue(card?.totalAt, fallbackRatio);
+      fallbackRatio == null
+        ? resolveCardAtTotalSeconds(card, 0)
+        : scaleValue(resolveCardAtTotalSeconds(card, 0), fallbackRatio);
     const totalSt =
-      fallbackRatio == null ? card?.totalSt : scaleValue(card?.totalSt, fallbackRatio);
+      fallbackRatio == null
+        ? resolveCardStOnlyTotalSeconds(card, 0)
+        : scaleValue(resolveCardStOnlyTotalSeconds(card, 0), fallbackRatio);
     const fallbackStTotalSeconds =
       fallbackRatio == null
         ? resolveCardStTotalSeconds(card)
-        : scaleValue(card?.stTotalSeconds, fallbackRatio);
+        : scaleValue(resolveCardStTotalSeconds(card), fallbackRatio);
     const stTotalSeconds = Math.max(0, Math.round(Number(fallbackStTotalSeconds) || 0));
     const fallbackStatus =
       getCardBasis(card) === 'ST' && stTotalSeconds > 0
         ? 'ST'
         : resolveCardStatus(card, totalPt, totalAt, totalSt);
-    return {
+    return normalizeAssignmentCardForBoard({
       ...card,
-      quantity: assignmentQuantity,
-      stTotalSeconds,
-      totalPt,
-      totalAt,
-      totalSt,
+      cardQuantity: assignmentQuantity,
+      cardStTotalSeconds: totalSt,
+      cardPtTotalSeconds: totalPt,
+      cardAtTotalSeconds: totalAt,
       status: fallbackStatus,
-    };
+    });
   }, [resolveCardStyle]);
   const assignmentProgressIdsKey = useMemo(
     () =>

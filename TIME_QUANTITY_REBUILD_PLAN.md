@@ -625,7 +625,7 @@ ST 표준값:
 | `AssignmentCard.payload.totalSt` | `cardStTotalSeconds` |
 | `AssignmentCard.payload.totalPt` | `cardPtTotalSeconds` |
 | `AssignmentCard.payload.totalAt` | `cardAtTotalSeconds` |
-| `AssignmentCard.payload.stTotalSeconds` | `cardStTotalSeconds` |
+| `AssignmentCard.payload.stTotalSeconds` | legacy schedule total fallback only. If `status === "ST"` it maps to `cardStTotalSeconds`; otherwise it maps to `cardPtTotalSeconds`. |
 | `AssignmentPlan.quantity` | `assignmentQuantity` |
 | `AssignmentPlan.stTotalSeconds` | `assignmentStTotalSeconds` |
 | `AssignmentPlan.ctTotalSeconds` | `assignmentCtTotalSeconds` |
@@ -913,6 +913,24 @@ ST 표준값:
   - If either count is non-zero, do not remove snapshot ST fields. Investigate
     styleId parsing from `cardId/originOrderId` and process key/name matching first.
 
+### Phase 6F Status Addendum
+
+- 2026-05-31 Phase 6F implemented `AssignmentCard.payload` JSON key rename.
+- Persisted card payloads now write:
+  - `cardQuantity`
+  - `cardPtTotalSeconds`
+  - `cardAtTotalSeconds`
+  - `cardStTotalSeconds`
+- Legacy card payload keys are stripped from new writes:
+  `quantity`, `totalPt`, `totalAt`, `totalSt`, `stTotalSeconds`,
+  `totalSeconds`, `stSeconds`, `contractedSeconds`.
+- Frontend board code still normalizes cards with runtime compatibility aliases
+  so existing UI code can read old and new shapes during the migration window.
+  PUT payloads send canonical card keys only.
+- `migration_fix.sql` migrates existing `AssignmentCard.payload` JSON records
+  to the canonical card keys.
+- Snapshot ST removal remains blocked until StyleProcessStandard backfill is verified.
+
 ### Dual-read Cleanup Backlog
 
 - Dual-read fallback is temporary migration protection.
@@ -931,7 +949,9 @@ ST 표준값:
   - `assignmentCtSnapshot.processes[].quantity`
   - `assignmentCtSnapshot.processes[].ctSeconds`
   - `assignmentCtSnapshot.processes[].ctPerPieceSeconds`
-  - old `AssignmentCard.payload` keys after the card payload rename phase
+  - old `AssignmentCard.payload` keys:
+    `quantity`, `totalPt`, `totalAt`, `totalSt`, `stTotalSeconds`,
+    `totalSeconds`, `stSeconds`, `contractedSeconds`
 - Cleanup targets:
   - `stBuckets ?? stValues`
   - `bucketQuantity ?? quantity`

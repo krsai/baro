@@ -992,7 +992,9 @@ runtime 조회값:
   - `assignmentCtSnapshot.processes[].quantity`
   - `assignmentCtSnapshot.processes[].ctSeconds`
   - `assignmentCtSnapshot.processes[].ctPerPieceSeconds`
-  - old `AssignmentCard.payload` keys after the card payload rename phase is implemented
+  - old `AssignmentCard.payload` keys:
+    `quantity`, `totalPt`, `totalAt`, `totalSt`, `stTotalSeconds`,
+    `totalSeconds`, `stSeconds`, `contractedSeconds`
 - Cleanup targets after verification:
   - `stBuckets ?? stValues`
   - `bucketQuantity ?? quantity`
@@ -1049,3 +1051,25 @@ runtime 조회값:
   - If either count is non-zero, stop Phase 7 and inspect the cause first.
     Common causes are `cardId/originOrderId` styleId parsing mismatch or
     snapshot process keys that no longer match `StyleProcess`.
+
+### 21. 2026-05-31 Phase 6F implementation status
+
+- Scope:
+  - This phase covers `AssignmentCard.payload` JSON key rename only.
+  - It does not remove snapshot ST fields.
+- Implemented:
+  - Persisted cards now write canonical card keys:
+    `cardQuantity`, `cardPtTotalSeconds`, `cardAtTotalSeconds`,
+    `cardStTotalSeconds`.
+  - Backend card storage strips legacy ambiguous card keys before saving:
+    `quantity`, `totalPt`, `totalAt`, `totalSt`, `stTotalSeconds`,
+    `totalSeconds`, `stSeconds`, `contractedSeconds`.
+  - Frontend board code keeps runtime compatibility aliases after read normalization,
+    but PUT payloads send canonical card keys only.
+  - `backend/migration_fix.sql` migrates existing `AssignmentCard.payload`
+    JSON keys to canonical card keys.
+- Still blocked:
+  - Do not remove dual-read/runtime compatibility aliases until production
+    migration has been applied and verified in a separate cleanup commit.
+  - Do not remove `assignmentCtSnapshot.processes[].stSeconds` or
+    `assignmentCtSnapshot.totalStPerPieceSeconds` in this phase.

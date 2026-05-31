@@ -914,6 +914,100 @@ SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'
 WHERE "payload" IS NOT NULL
   AND "payload"::jsonb ? 'ctAgreedSnapshot';
 
+-- 6-6. AssignmentCard.payload canonical quantity/time keys.
+--    quantity -> cardQuantity
+--    totalPt -> cardPtTotalSeconds
+--    totalAt -> cardAtTotalSeconds
+--    totalSt -> cardStTotalSeconds
+UPDATE "AssignmentCard"
+SET "payload" = (
+  "payload"::jsonb
+    - 'quantity'
+    - 'totalPt'
+    - 'totalAt'
+    - 'totalSt'
+    - 'stTotalSeconds'
+    - 'totalSeconds'
+    - 'stSeconds'
+    - 'contractedSeconds'
+  || CASE
+    WHEN COALESCE("payload"::jsonb -> 'cardQuantity', "payload"::jsonb -> 'quantity') IS NOT NULL THEN
+      jsonb_build_object(
+        'cardQuantity',
+        COALESCE("payload"::jsonb -> 'cardQuantity', "payload"::jsonb -> 'quantity')
+      )
+    ELSE '{}'::jsonb
+  END
+  || CASE
+    WHEN COALESCE(
+      "payload"::jsonb -> 'cardPtTotalSeconds',
+      "payload"::jsonb -> 'totalPt',
+      CASE
+        WHEN UPPER(COALESCE("payload"::jsonb ->> 'status', '')) <> 'ST'
+          THEN "payload"::jsonb -> 'stTotalSeconds'
+        ELSE NULL
+      END
+    ) IS NOT NULL THEN
+      jsonb_build_object(
+        'cardPtTotalSeconds',
+        COALESCE(
+          "payload"::jsonb -> 'cardPtTotalSeconds',
+          "payload"::jsonb -> 'totalPt',
+          CASE
+            WHEN UPPER(COALESCE("payload"::jsonb ->> 'status', '')) <> 'ST'
+              THEN "payload"::jsonb -> 'stTotalSeconds'
+            ELSE NULL
+          END
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+  || CASE
+    WHEN COALESCE("payload"::jsonb -> 'cardAtTotalSeconds', "payload"::jsonb -> 'totalAt') IS NOT NULL THEN
+      jsonb_build_object(
+        'cardAtTotalSeconds',
+        COALESCE("payload"::jsonb -> 'cardAtTotalSeconds', "payload"::jsonb -> 'totalAt')
+      )
+    ELSE '{}'::jsonb
+  END
+  || CASE
+    WHEN COALESCE(
+      "payload"::jsonb -> 'cardStTotalSeconds',
+      "payload"::jsonb -> 'totalSt',
+      CASE
+        WHEN UPPER(COALESCE("payload"::jsonb ->> 'status', '')) = 'ST'
+          THEN "payload"::jsonb -> 'stTotalSeconds'
+        ELSE NULL
+      END
+    ) IS NOT NULL THEN
+      jsonb_build_object(
+        'cardStTotalSeconds',
+        COALESCE(
+          "payload"::jsonb -> 'cardStTotalSeconds',
+          "payload"::jsonb -> 'totalSt',
+          CASE
+            WHEN UPPER(COALESCE("payload"::jsonb ->> 'status', '')) = 'ST'
+              THEN "payload"::jsonb -> 'stTotalSeconds'
+            ELSE NULL
+          END
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+)
+WHERE "payload" IS NOT NULL
+  AND jsonb_typeof("payload"::jsonb) = 'object'
+  AND (
+    "payload"::jsonb ? 'quantity'
+    OR "payload"::jsonb ? 'totalPt'
+    OR "payload"::jsonb ? 'totalAt'
+    OR "payload"::jsonb ? 'totalSt'
+    OR "payload"::jsonb ? 'stTotalSeconds'
+    OR "payload"::jsonb ? 'totalSeconds'
+    OR "payload"::jsonb ? 'stSeconds'
+    OR "payload"::jsonb ? 'contractedSeconds'
+  );
+
 -- 7. Style.processes canonical JSON keys for ST buckets and process repeat count.
 --    stValues -> stBuckets
 --    stValues[].quantity -> stBuckets[].bucketQuantity

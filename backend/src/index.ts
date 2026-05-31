@@ -9155,7 +9155,6 @@ const buildAssignmentCardsFromOrders = ({
         group.quantity
       );
       const status = resolveAssignmentCardStatus({ totalPt, totalSt });
-      const stTotalSeconds = status === "ST" ? totalSt : totalPt;
       const resolvedOrderId =
         resolveOptionalString(order?.orderId ?? order?.id, null) ??
         `order-${orderIndex}`;
@@ -9180,13 +9179,12 @@ const buildAssignmentCardsFromOrders = ({
         colorId: null,
         colorName: null,
         gender: null,
-        quantity: group.quantity,
+        cardQuantity: group.quantity,
         processCount,
         status,
-        stTotalSeconds,
-        totalPt,
-        totalAt,
-        totalSt,
+        cardPtTotalSeconds: totalPt,
+        cardAtTotalSeconds: totalAt,
+        cardStTotalSeconds: totalSt,
         previewUrl,
       });
     });
@@ -9228,16 +9226,70 @@ const mergeAssignmentCardsWithSaved = (baseCards: any, savedCards: any) => {
   return merged;
 };
 type AssignmentCardStoreClient = Prisma.TransactionClient | typeof prisma;
+const resolveAssignmentCardPayloadStatus = (card: any) => {
+  const status = (resolveOptionalString(card?.status, "") ?? "").toUpperCase();
+  if (status === "ST" || status === "PT" || status === "CT" || status === "AT") {
+    return status === "ST" ? "ST" : "PT";
+  }
+  const cardStTotalSeconds = toOptionalNonNegativeInt(
+    card?.cardStTotalSeconds ?? card?.totalSt,
+    null
+  );
+  if (cardStTotalSeconds !== null && cardStTotalSeconds > 0) return "ST";
+  const cardPtTotalSeconds = toOptionalNonNegativeInt(
+    card?.cardPtTotalSeconds ?? card?.totalPt,
+    null
+  );
+  if (cardPtTotalSeconds !== null && cardPtTotalSeconds > 0) return "PT";
+  return status || "NONE";
+};
+
 const stripLegacyAssignmentCardPayload = (card: any) => {
   if (!card || typeof card !== "object" || Array.isArray(card)) return card;
+  const status = resolveAssignmentCardPayloadStatus(card);
+  const cardQuantity = toOptionalNonNegativeInt(
+    card?.cardQuantity ?? card?.quantity,
+    null
+  );
+  const cardPtTotalSeconds = toOptionalNonNegativeInt(
+    card?.cardPtTotalSeconds ??
+      card?.totalPt ??
+      (status !== "ST" ? card?.stTotalSeconds : null),
+    null
+  );
+  const cardAtTotalSeconds = toOptionalNonNegativeInt(
+    card?.cardAtTotalSeconds ?? card?.totalAt,
+    null
+  );
+  const cardStTotalSeconds = toOptionalNonNegativeInt(
+    card?.cardStTotalSeconds ??
+      card?.totalSt ??
+      (status === "ST" ? card?.stTotalSeconds : null),
+    null
+  );
   const {
+    quantity: _quantity,
+    totalPt: _totalPt,
+    totalAt: _totalAt,
+    totalSt: _totalSt,
+    stTotalSeconds: _stTotalSeconds,
+    totalSeconds: _totalSeconds,
+    stSeconds: _stSeconds,
+    contractedSeconds: _contractedSeconds,
     operatorCtProposal: _operatorCtProposal,
     pendingCtProposal: _pendingCtProposal,
     ctAgreedSnapshot: _ctAgreedSnapshot,
     ctAgreementHistory: _ctAgreementHistory,
     ...rest
   } = card as Record<string, unknown>;
-  return rest;
+  return {
+    ...rest,
+    status,
+    ...(cardQuantity !== null ? { cardQuantity } : {}),
+    ...(cardPtTotalSeconds !== null ? { cardPtTotalSeconds } : {}),
+    ...(cardAtTotalSeconds !== null ? { cardAtTotalSeconds } : {}),
+    ...(cardStTotalSeconds !== null ? { cardStTotalSeconds } : {}),
+  };
 };
 
 const normalizeAssignmentCardsForStore = (cards: any): any[] => {
@@ -10424,7 +10476,10 @@ const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
       if (!styleId) return null;
       const quantityBucket = resolveStBucketQuantity(
         toPositiveInt(
-          assignment?.quantity ?? ctSnapshot?.quantity ?? linkedCard?.quantity,
+          assignment?.quantity ??
+            ctSnapshot?.quantity ??
+            linkedCard?.cardQuantity ??
+            linkedCard?.quantity,
           1
         )
       );

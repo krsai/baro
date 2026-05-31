@@ -63,6 +63,14 @@ import {
   resolveLocalizedProcessName,
 } from '../../../utils/processDisplay';
 import {
+  normalizeAssignmentCardForBoard,
+  normalizeAssignmentCardForPersistence,
+  resolveAssignmentCardBasis,
+  resolveCardAtTotalSeconds,
+  resolveCardQuantity,
+  resolveCardScheduleTotalSeconds,
+} from '../assign/utils/assignmentCard';
+import {
   emitWorkspaceDataChanged,
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
@@ -197,24 +205,9 @@ const resolveCurrentStTotalSeconds = (assignment) => {
 
 const resolveSavedSeconds = (assignment) => resolveAssignmentCtTotalSeconds(assignment);
 
-const resolveCardCtBasis = (card) => {
-  const status = String(card?.status || '').trim().toUpperCase();
-  if (Number(card?.totalSt) > 0 || status === 'ST') return 'ST';
-  if (Number(card?.totalPt) > 0 || status === 'PT' || status === 'AT' || status === 'CT') {
-    return 'PT';
-  }
-  return 'NONE';
-};
+const resolveCardCtBasis = (card) => resolveAssignmentCardBasis(card);
 
-const resolveCardCurrentStTotalSeconds = (card) => {
-  const stTotalSeconds = Number(card?.stTotalSeconds);
-  if (Number.isFinite(stTotalSeconds) && stTotalSeconds > 0) return stTotalSeconds;
-  const totalSt = Number(card?.totalSt);
-  if (Number.isFinite(totalSt) && totalSt > 0) return totalSt;
-  const totalPt = Number(card?.totalPt);
-  if (Number.isFinite(totalPt) && totalPt > 0) return totalPt;
-  return 0;
-};
+const resolveCardCurrentStTotalSeconds = (card) => resolveCardScheduleTotalSeconds(card, 0);
 
 const formatCurrencyDong = (value) =>
   `${formatNumberWithCommas(Math.round(Number(value)), { fallback: '0', maximumFractionDigits: 0 })} 동`;
@@ -1521,7 +1514,9 @@ const ProductionPlanBoard = () => {
         ]);
         if (cancelled) return;
 
-        const nextCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+        const nextCards = Array.isArray(boardState?.cards)
+          ? boardState.cards.map(normalizeAssignmentCardForBoard)
+          : [];
         const nextAssignments = Array.isArray(boardState?.assignments) ? boardState.assignments : [];
         const assignmentIds = Array.from(
           new Set(
@@ -1582,7 +1577,9 @@ const ProductionPlanBoard = () => {
     }).catch(() => null);
     if (!boardState) return false;
 
-    const nextCards = Array.isArray(boardState?.cards) ? boardState.cards : [];
+    const nextCards = Array.isArray(boardState?.cards)
+      ? boardState.cards.map(normalizeAssignmentCardForBoard)
+      : [];
     const nextAssignments = Array.isArray(boardState?.assignments)
       ? boardState.assignments
       : [];
@@ -1767,9 +1764,14 @@ const ProductionPlanBoard = () => {
         const boardState = await requestJSON('/assignment-board-state' + query, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cards: nextCards, assignments: assignmentsForSave }),
+          body: JSON.stringify({
+            cards: nextCards.map(normalizeAssignmentCardForPersistence),
+            assignments: assignmentsForSave,
+          }),
         });
-        const persistedCards = Array.isArray(boardState?.cards) ? boardState.cards : nextCards;
+        const persistedCards = Array.isArray(boardState?.cards)
+          ? boardState.cards.map(normalizeAssignmentCardForBoard)
+          : nextCards.map(normalizeAssignmentCardForBoard);
         const persistedAssignments = Array.isArray(boardState?.assignments)
           ? boardState.assignments
           : assignmentsForSave;
@@ -1855,6 +1857,7 @@ const ProductionPlanBoard = () => {
   const handleDeltaAssignConfirm = async () => {
     if (!deltaDialog) return;
     const { deltaCard, selectedLineId, startOffset, endOffset } = deltaDialog;
+    const deltaCardQuantity = resolveCardQuantity(deltaCard, 0);
     if (!selectedLineId) {
       showNotification('라인을 선택해 주세요.', 'error');
       return;
@@ -1874,21 +1877,23 @@ const ProductionPlanBoard = () => {
       deltaType: _deltaCardDeltaType,
       ...convertedCardBase
     } = deltaCard || {};
-    const convertedCard = {
+    const convertedCard = normalizeAssignmentCardForBoard({
       ...convertedCardBase,
       id: deltaCard.id,
       styleId: deltaCard.styleId,
-      quantity: deltaCard.quantity,
-      stTotalSeconds: currentStTotalSeconds,
+      cardQuantity: deltaCardQuantity,
+      cardPtTotalSeconds: basis === 'PT' ? currentStTotalSeconds : 0,
+      cardAtTotalSeconds: resolveCardAtTotalSeconds(deltaCard, 0),
+      cardStTotalSeconds: basis === 'ST' ? currentStTotalSeconds : 0,
       status: basis === 'ST' ? 'ST' : basis === 'PT' ? 'PT' : 'NONE',
-    };
+    });
     const newAssignment = {
       id: `assign-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       cardId: convertedCard.id,
       lineId: selectedLineId,
       startIndex,
       endIndex,
-      quantity: deltaCard.quantity,
+      quantity: deltaCardQuantity,
       originOrderId: deltaCard.originOrderId ?? deltaCard.id,
       basis,
       stTotalSeconds: currentStTotalSeconds,
@@ -1920,8 +1925,9 @@ const ProductionPlanBoard = () => {
     const targetView = assignmentViewById.get(String(selectedAssignmentId)) || null;
     if (!targetAssignment || !targetView) return;
 
+    const deltaCardQuantity = resolveCardQuantity(deltaCard, 0);
     const oldQty = Math.max(1, toPositiveInt(targetAssignment.quantity, 1));
-    const newQty = oldQty + deltaCard.quantity;
+    const newQty = oldQty + deltaCardQuantity;
 
     const plannedSeconds = resolveCurrentStTotalSeconds(targetAssignment);
     const lineDailyCapacitySeconds = Number(targetView.lineDailyCapacitySeconds || 0);
@@ -1958,8 +1964,9 @@ const ProductionPlanBoard = () => {
     const targetView = assignmentViewById.get(String(selectedAssignmentId)) || null;
     if (!targetAssignment || !targetView) return;
 
+    const deltaCardQuantity = resolveCardQuantity(deltaCard, 0);
     const oldQty = Math.max(1, toPositiveInt(targetAssignment.quantity, 1));
-    const newQty = Math.max(0, oldQty - deltaCard.quantity);
+    const newQty = Math.max(0, oldQty - deltaCardQuantity);
     const nextCards = cards.filter((c) => String(c?.id) !== String(deltaCard.id));
 
     if (newQty === 0) {
