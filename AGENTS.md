@@ -71,6 +71,7 @@ AT(q) = a*q + b
 
 ### ⚠️ DB 적용 메모
 - 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
+- rename 필수 컬럼(`StyleProcess.timesPerPiece`, `StyleProcessStandard.bucketQuantity/bucketStSeconds`, `AssignmentPlan.assignment*`)이 운영 DB에 없으면 백엔드 시작 시 `migration_fix.sql`을 먼저 적용하고 나서 traffic을 받는다. 비상 시 `STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT=false`로 자동 적용을 끌 수 있다.
 - Prisma migration history drift로 `prisma migrate deploy`는 사용하지 않음. `prisma db push` 사용.
 - `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 additive SQL로 실DB에 반영됨.
 - 시간 컬럼 리네임 (완료):

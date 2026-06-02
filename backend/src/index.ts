@@ -1,5 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
+import { existsSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
+import { spawnSync } from "node:child_process";
 import "./config/env";
 import { Prisma, type OrgUserRole } from "@prisma/client";
 import { prisma } from "./db";
@@ -505,6 +508,19 @@ const STARTUP_BOOTSTRAP_RETRY_DELAY_MS = toPositiveInt(
   process.env.STARTUP_BOOTSTRAP_RETRY_DELAY_MS,
   5000
 );
+const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
+  String(process.env.STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT ?? "true")
+    .trim()
+    .toLowerCase() !== "false";
+const STARTUP_REQUIRED_RENAMED_COLUMNS = [
+  { tableName: "StyleProcess", columnName: "timesPerPiece" },
+  { tableName: "StyleProcessStandard", columnName: "bucketQuantity" },
+  { tableName: "StyleProcessStandard", columnName: "bucketStSeconds" },
+  { tableName: "AssignmentPlan", columnName: "assignmentQuantity" },
+  { tableName: "AssignmentPlan", columnName: "assignmentStTotalSeconds" },
+  { tableName: "AssignmentPlan", columnName: "assignmentCtTotalSeconds" },
+  { tableName: "AssignmentPlan", columnName: "assignmentCtSnapshot" },
+] as const;
 const ROLE_OPTIONS = new Set(["ADMIN", "OPERATOR", "ACCOUNTANT", "WORKER"]);
 const ORG_ACCESS_ROLES: OrgUserRole[] = [
   "ADMIN",
@@ -21516,6 +21532,90 @@ const ensureDatabaseReady = async () => {
   throw lastError;
 };
 
+const findMissingRuntimeRenameColumns = async (): Promise<string[]> => {
+  const rows = await prisma.$queryRaw<
+    Array<{ table_name: string; column_name: string }>
+  >`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name IN ('StyleProcess', 'StyleProcessStandard', 'AssignmentPlan')
+  `;
+  const available = new Set(
+    rows.map((row) => `${row.table_name}.${row.column_name}`)
+  );
+  return STARTUP_REQUIRED_RENAMED_COLUMNS
+    .map((column) => `${column.tableName}.${column.columnName}`)
+    .filter((columnKey) => !available.has(columnKey));
+};
+
+const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) => {
+  if (!STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT) {
+    throw new Error(
+      `[startup] Required renamed DB columns are missing and automatic migration is disabled: ${missingColumns.join(
+        ", "
+      )}`
+    );
+  }
+
+  const backendRoot = resolvePath(__dirname, "..");
+  const migrationFile = resolvePath(backendRoot, "migration_fix.sql");
+  const prismaRunner = resolvePath(backendRoot, "scripts", "run-prisma.js");
+  if (!existsSync(migrationFile) || !existsSync(prismaRunner)) {
+    throw new Error(
+      `[startup] Cannot apply migration_fix.sql automatically; missing file(s): ${migrationFile}, ${prismaRunner}`
+    );
+  }
+
+  console.warn(
+    `[startup] Runtime DB schema drift detected (${missingColumns.join(
+      ", "
+    )}). Applying migration_fix.sql before accepting traffic.`
+  );
+  const result = spawnSync(
+    process.execPath,
+    [
+      prismaRunner,
+      "db",
+      "execute",
+      "--schema",
+      "./prisma/schema.prisma",
+      "--file",
+      "./migration_fix.sql",
+    ],
+    {
+      cwd: backendRoot,
+      encoding: "utf8",
+      env: process.env,
+      stdio: "pipe",
+    }
+  );
+
+  if (result.stdout) console.log(result.stdout.trim());
+  if (result.stderr) console.error(result.stderr.trim());
+  if (result.status !== 0) {
+    throw new Error(
+      `[startup] migration_fix.sql failed with exit code ${result.status ?? "unknown"}`
+    );
+  }
+
+  const remainingColumns = await findMissingRuntimeRenameColumns();
+  if (remainingColumns.length > 0) {
+    throw new Error(
+      `[startup] migration_fix.sql completed but required columns are still missing: ${remainingColumns.join(
+        ", "
+      )}`
+    );
+  }
+  console.log("[startup] migration_fix.sql completed and required renamed columns are present.");
+};
+
+const ensureRuntimeRenameSchemaReady = async () => {
+  const missingColumns = await findMissingRuntimeRenameColumns();
+  if (missingColumns.length === 0) return;
+  await applyMigrationFixForRuntimeSchemaDrift(missingColumns);
+};
+
 const ensureWorkOrderStatusSchemaReady = async () => {
   const enumRows = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
     SELECT enumlabel
@@ -21688,6 +21788,8 @@ const bootstrapApplicationServices = async () => {
 };
 
 const startServer = async () => {
+  await ensureDatabaseReady();
+  await ensureRuntimeRenameSchemaReady();
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });
