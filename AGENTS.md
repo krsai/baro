@@ -1073,3 +1073,23 @@ runtime 조회값:
     migration has been applied and verified in a separate cleanup commit.
   - Do not remove `assignmentCtSnapshot.processes[].stSeconds` or
     `assignmentCtSnapshot.totalStPerPieceSeconds` in this phase.
+
+### 22. 2026-06-02 Phase 7 preflight verification status
+
+- Scope:
+  - This phase adds an executable verification gate before snapshot ST field removal.
+  - It does not remove snapshot ST fields.
+- Implemented:
+  - Backend script: `npm run verify:snapshot-st-backfill`.
+  - The script checks:
+    - active snapshot ST process row count
+    - `styleLookupFailures`
+    - `unmatchedProcesses`
+    - `missingOrZeroStandards`
+    - `completionInconsistencyRows`
+  - Phase 7 can start only when all blocker counts are zero.
+- Important:
+  - `styleLookupFailures` is stricter than the migration notice because it catches
+    `cardId/originOrderId` styleId parsing failures before `StyleProcess` matching.
+  - If the script fails, do not remove `assignmentCtSnapshot.processes[].stSeconds`
+    or `assignmentCtSnapshot.totalStPerPieceSeconds`.

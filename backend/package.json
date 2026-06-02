@@ -24,6 +24,7 @@
     "start": "node dist/index.js",
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
+    "verify:snapshot-st-backfill": "node scripts/verify-snapshot-st-backfill.js",
     "realign:time-model": "node scripts/reset-to-baseline.js time-model",
     "process-master:cleanup-duplicates": "node scripts/cleanup-process-master-duplicates.js",
     "process-master:cleanup-duplicates:apply": "node scripts/cleanup-process-master-duplicates.js --apply",

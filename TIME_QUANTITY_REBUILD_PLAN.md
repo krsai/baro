@@ -931,6 +931,24 @@ ST 표준값:
   to the canonical card keys.
 - Snapshot ST removal remains blocked until StyleProcessStandard backfill is verified.
 
+### Phase 7 Preflight Verification Addendum
+
+- 2026-06-02 added executable verification before snapshot ST field removal.
+- Command:
+  - `cd backend && npm run verify:snapshot-st-backfill`
+- The script checks:
+  - `styleLookupFailures`
+  - `unmatchedProcesses`
+  - `missingOrZeroStandards`
+  - `completionInconsistencyRows`
+- Phase 7 may start only when all four blocker counts are zero.
+- `styleLookupFailures` catches active assignment snapshots whose `cardId/originOrderId`
+  cannot be parsed into a matching `Style.styleId`; this is stricter than the
+  migration notice and prevents false confidence before ST field removal.
+- If the script exits non-zero, do not remove:
+  - `assignmentCtSnapshot.processes[].stSeconds`
+  - `assignmentCtSnapshot.totalStPerPieceSeconds`
+
 ### Dual-read Cleanup Backlog
 
 - Dual-read fallback is temporary migration protection.
