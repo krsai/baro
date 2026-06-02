@@ -7545,7 +7545,7 @@ const buildWorkLogContextAssignmentDisplayKey = (plan: any) => {
     resolveOptionalString(plan?.styleId, null) ??
     "";
   const quantity = toOptionalNonNegativeInt(
-    plan?.finalQuantity ?? plan?.quantity,
+    plan?.finalQuantity ?? resolveAssignmentQuantity(plan),
     null
   );
   if (!orderNo && !label && quantity == null) return "";
@@ -7620,7 +7620,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     colorId: toPositiveIntOrNull(plan?.colorId),
     colorName: resolveAssignmentPlanColorName(plan),
     color: resolveOptionalString(plan?.color, "") ?? "",
-    quantity: plan?.quantity ?? null,
+    quantity: resolveAssignmentQuantity(plan),
     ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
     assignmentCtSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
@@ -8085,7 +8085,7 @@ const buildWorkLogContextResponse = async ({
           externalId: resolveOptionalString(plan?.externalId, null),
           orderNo: resolveOptionalString(plan?.orderNo, null),
           label: resolveOptionalString(plan?.label, null),
-          quantity: toOptionalNonNegativeInt(plan?.quantity, null),
+          quantity: resolveAssignmentQuantity(plan),
           lineId: toPositiveIntOrNull(plan?.lineId),
         }));
       console.log(
@@ -10857,10 +10857,7 @@ const prepareAssignmentBoardStTotalsForSave = async ({
     const stDrafts = stDraftsByExternalId.get(externalId) ?? new Map<string, number>();
     const hasStDrafts = stDrafts.size > 0;
     const hasStructuralChange = hasAssignmentStructuralStChange(assignment, existingPlan);
-    const existingAssignmentStTotalSeconds = toOptionalNonNegativeInt(
-      existingPlan?.stTotalSeconds,
-      null
-    );
+    const existingAssignmentStTotalSeconds = resolveAssignmentStTotalSeconds(existingPlan);
 
     const styleId = resolveAssignmentStyleIdForStCalculation({
       assignment,
@@ -16853,7 +16850,7 @@ const resolveAssignmentPlanProducedQuantity = async ({
 };
 
 const buildAssignmentPlanCloseResponse = (plan: any) => {
-  const quantity = toOptionalNonNegativeInt(plan?.quantity, null);
+  const quantity = resolveAssignmentQuantity(plan);
   const finalQuantity = toOptionalNonNegativeInt(plan?.finalQuantity, null);
   const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
   const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);

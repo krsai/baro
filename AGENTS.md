@@ -70,7 +70,7 @@ AT(q) = a*q + b
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 
 ### ⚠️ DB 적용 메모
-- 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. 배포 시 자동 실행을 기대한다면 Railway 대시보드의 predeploy command를 `npm run railway:predeploy`로 설정해야 한다 (`backend/railway.json`만으로는 보장되지 않음).
+- 모든 스키마/데이터 변경은 `backend/migration_fix.sql`로 관리. `backend/railway.json`의 `deploy.preDeployCommand`가 `npm run railway:predeploy`를 실행하도록 설정되어 있어야 하며, 배포 로그에서 migration 실행 여부를 확인한다.
 - Prisma migration history drift로 `prisma migrate deploy`는 사용하지 않음. `prisma db push` 사용.
 - `AssignmentPlan`의 close 관련 컬럼(`closedQty`, `closedAt`, `closedBy`, `closeMode`, `closeBasis`)은 additive SQL로 실DB에 반영됨.
 - 시간 컬럼 리네임 (완료):

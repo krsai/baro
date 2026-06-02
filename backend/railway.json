@@ -5,6 +5,7 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
+    "preDeployCommand": ["npm run railway:predeploy"],
     "startCommand": "npm start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 120,
