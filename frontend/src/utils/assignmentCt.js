@@ -43,7 +43,7 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   );
   const rawPieceCtSeconds = toOptionalPositiveNumber(process.pieceCtSeconds ?? process.ctPerPieceSeconds);
   const snapshotCtSeconds =
-    toOptionalProcessSeconds(process.snapshotCtSeconds ?? process.ctSeconds ?? process.stSeconds) ??
+    toOptionalProcessSeconds(process.snapshotCtSeconds ?? process.ctSeconds) ??
     (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
   if (snapshotCtSeconds == null) return null;
   const pieceCtSeconds = rawPieceCtSeconds ?? snapshotCtSeconds * timesPerPiece;
@@ -58,7 +58,6 @@ const normalizeSnapshotProcess = (process, index = 0) => {
     nameVi: String(process.nameVi || process.processNameVi || '').trim(),
     timesPerPiece,
     basis: String(process.basis || '').trim() || null,
-    stSeconds: toOptionalProcessSeconds(process.stSeconds),
     snapshotCtSeconds,
     pieceCtSeconds,
   };
@@ -109,7 +108,6 @@ export const normalizeAssignmentCtSnapshot = (value) => {
             endDateKey: String(value.schedule.endDateKey || '').trim() || null,
           }
         : null,
-    totalStPerPieceSeconds: toOptionalPositiveNumber(value.totalStPerPieceSeconds),
     pieceCtTotalSeconds,
     assignmentCtTotalSeconds,
     processes,

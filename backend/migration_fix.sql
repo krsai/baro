@@ -908,6 +908,107 @@ WHERE "assignments" IS NOT NULL
       )
   );
 
+-- 6-4d. assignmentCtSnapshot ST copy cleanup.
+--      StyleProcessStandard.bucketStSeconds is the ST source of truth; persisted CT snapshots
+--      must not keep process stSeconds or totalStPerPieceSeconds copies.
+UPDATE "AssignmentPlan"
+SET "assignmentCtSnapshot" = (
+  ("assignmentCtSnapshot"::jsonb - 'totalStPerPieceSeconds')
+  || CASE
+    WHEN jsonb_typeof("assignmentCtSnapshot"::jsonb -> 'processes') = 'array' THEN
+      jsonb_build_object(
+        'processes',
+        (
+          SELECT COALESCE(jsonb_agg(proc.value - 'stSeconds' ORDER BY proc.ordinality), '[]'::jsonb)
+          FROM jsonb_array_elements("assignmentCtSnapshot"::jsonb -> 'processes')
+            WITH ORDINALITY AS proc(value, ordinality)
+        )
+      )
+    ELSE '{}'::jsonb
+  END
+)
+WHERE "assignmentCtSnapshot" IS NOT NULL
+  AND jsonb_typeof("assignmentCtSnapshot"::jsonb) = 'object'
+  AND (
+    "assignmentCtSnapshot"::jsonb ? 'totalStPerPieceSeconds'
+    OR EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof("assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+            THEN "assignmentCtSnapshot"::jsonb -> 'processes'
+          ELSE '[]'::jsonb
+        END
+      ) proc
+      WHERE proc ? 'stSeconds'
+    )
+  );
+
+UPDATE "AssignmentBoardState"
+SET "assignments" = (
+  SELECT jsonb_agg(
+    CASE
+      WHEN jsonb_typeof(elem.value -> 'assignmentCtSnapshot') = 'object'
+        AND (
+          (elem.value -> 'assignmentCtSnapshot') ? 'totalStPerPieceSeconds'
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              CASE
+                WHEN jsonb_typeof((elem.value -> 'assignmentCtSnapshot') -> 'processes') = 'array'
+                  THEN (elem.value -> 'assignmentCtSnapshot') -> 'processes'
+                ELSE '[]'::jsonb
+              END
+            ) proc
+            WHERE proc ? 'stSeconds'
+          )
+        )
+        THEN elem.value || jsonb_build_object(
+          'assignmentCtSnapshot',
+          (
+            ((elem.value -> 'assignmentCtSnapshot') - 'totalStPerPieceSeconds')
+            || CASE
+              WHEN jsonb_typeof((elem.value -> 'assignmentCtSnapshot') -> 'processes') = 'array' THEN
+                jsonb_build_object(
+                  'processes',
+                  (
+                    SELECT COALESCE(jsonb_agg(proc.value - 'stSeconds' ORDER BY proc.ordinality), '[]'::jsonb)
+                    FROM jsonb_array_elements((elem.value -> 'assignmentCtSnapshot') -> 'processes')
+                      WITH ORDINALITY AS proc(value, ordinality)
+                  )
+                )
+              ELSE '{}'::jsonb
+            END
+          )
+        )
+      ELSE elem.value
+    END
+    ORDER BY elem.ordinality
+  )
+  FROM jsonb_array_elements("assignments"::jsonb) WITH ORDINALITY AS elem(value, ordinality)
+)
+WHERE "assignments" IS NOT NULL
+  AND jsonb_typeof("assignments"::jsonb) = 'array'
+  AND EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements("assignments"::jsonb) elem
+    WHERE jsonb_typeof(elem -> 'assignmentCtSnapshot') = 'object'
+      AND (
+        (elem -> 'assignmentCtSnapshot') ? 'totalStPerPieceSeconds'
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof((elem -> 'assignmentCtSnapshot') -> 'processes') = 'array'
+                THEN (elem -> 'assignmentCtSnapshot') -> 'processes'
+              ELSE '[]'::jsonb
+            END
+          ) proc
+          WHERE proc ? 'stSeconds'
+        )
+      )
+  );
+
 -- 6-5. AssignmentCard.payload ctAgreedSnapshot cleanup
 UPDATE "AssignmentCard"
 SET "payload" = "payload"::jsonb - 'ctAgreedSnapshot'

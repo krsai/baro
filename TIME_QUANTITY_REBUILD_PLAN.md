@@ -572,10 +572,10 @@ ST 표준값:
 - ST는 항상 최신 전역 표준에서 다시 읽어 계산한다.
 - assignment 상세에서 ST를 수정하면 그 값은 전역 ST 표준에 역반영한다.
 
-현재 코드 충돌 메모:
-- 현재 역반영은 `ctSnapshot.processes[].stSeconds`를 읽어 수행된다
-- 따라서 snapshot ST를 제거하려면 그 전에 write-only ST draft payload 경로를 완성해야 한다
-- 제거만 먼저 하면 기존 `snapshot ST -> StyleProcessStandard` 역반영 파이프라인이 끊긴다
+현재 구현 메모:
+- ST 역반영은 write-only `stDrafts` payload로 수행한다.
+- 기존 snapshot ST 기반 역반영 경로는 Phase 2에서 board save 경로에서 제거됐다.
+- Phase 6E 백필과 Phase 7 preflight verification 통과 후 snapshot ST copy fields는 제거됐다.
 
 즉 최신 목표:
 - 유지:
@@ -583,9 +583,9 @@ ST 표준값:
   - `pieceCtSeconds`
   - `pieceCtTotalSeconds`
   - `assignmentCtTotalSeconds`
-- 제거 검토:
-  - `ctSnapshot.processes[].stSeconds`
-  - `ctSnapshot.totalStPerPieceSeconds`
+- 제거 완료:
+  - `assignmentCtSnapshot.processes[].stSeconds`
+  - `assignmentCtSnapshot.totalStPerPieceSeconds`
 
 ### B. card / assignment 설명
 
@@ -892,7 +892,7 @@ ST 표준값:
 - `migration_fix.sql` migrates nested CT keys inside both
   `AssignmentPlan.assignmentCtSnapshot` and
   `AssignmentBoardState.assignments[].assignmentCtSnapshot`.
-- Snapshot ST removal remains blocked until StyleProcessStandard backfill is verified.
+- Snapshot ST removal was completed after StyleProcessStandard backfill verification passed.
 
 ### Phase 6E Preflight Status Addendum
 
@@ -980,8 +980,26 @@ ST 표준값:
   - `pieceCtTotalSeconds ?? totalCtPerPieceSeconds`
   - `snapshotCtSeconds ?? ctSeconds`
   - `pieceCtSeconds ?? ctPerPieceSeconds`
-- Snapshot ST fallback is not part of the normal dual-read cleanup. Remove it only after
-  existing active assignment ST backfill into StyleProcessStandard is complete and verified.
+- Snapshot ST fallback is not part of the normal dual-read cleanup. It was removed in
+  Phase 7 after existing active assignment ST backfill into StyleProcessStandard was
+  verified.
+
+### Phase 7 Snapshot ST Field Removal Addendum
+
+- 2026-06-02 removed persisted ST copies from assignment CT snapshots.
+- Removed write/read output fields:
+  - `assignmentCtSnapshot.processes[].stSeconds`
+  - `assignmentCtSnapshot.totalStPerPieceSeconds`
+- Kept ST source of truth:
+  - `StyleProcessStandard.bucketStSeconds`
+  - write-only `stDrafts` payload for ST edits
+  - `AssignmentPlan.stTotalSeconds` / board `stTotalSeconds` for scheduler length
+- Backend ST recalculation no longer falls back to snapshot process ST.
+- `migration_fix.sql` cleans existing snapshot JSON in both:
+  - `AssignmentPlan.assignmentCtSnapshot`
+  - `AssignmentBoardState.assignments[].assignmentCtSnapshot`
+- Remaining cleanup is separate:
+  - remove normal rename dual-read fallback only after production data migration is verified.
 
 ### F. Recommended Lock Before Coding
 

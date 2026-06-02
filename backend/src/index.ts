@@ -8554,10 +8554,9 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
     1,
     toOptionalNonNegativeInt(value?.timesPerPiece ?? value?.quantity, 1) ?? 1
   );
-  const stSeconds = toOptionalProcessSeconds(value?.stSeconds);
   const rawPieceCtSeconds = toOptionalFloat(value?.pieceCtSeconds ?? value?.ctPerPieceSeconds, null);
   const snapshotCtSeconds =
-    toOptionalProcessSeconds(value?.snapshotCtSeconds ?? value?.ctSeconds ?? value?.stSeconds) ??
+    toOptionalProcessSeconds(value?.snapshotCtSeconds ?? value?.ctSeconds) ??
     (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
   if (snapshotCtSeconds == null || snapshotCtSeconds <= 0) return null;
   const pieceCtSeconds = toOptionalFloat(
@@ -8590,7 +8589,6 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
     ),
     timesPerPiece,
     basis: resolveOptionalString(value?.basis, null),
-    stSeconds,
     snapshotCtSeconds,
     pieceCtSeconds,
   };
@@ -8621,7 +8619,6 @@ const normalizeAssignmentCtSnapshot = (value: any) => {
     updatedBy: resolveOptionalString(value?.updatedBy, null),
     quantity,
     schedule: normalizeAssignmentCtSnapshotSchedule(value?.schedule),
-    totalStPerPieceSeconds: toOptionalFloat(value?.totalStPerPieceSeconds, null),
     pieceCtTotalSeconds,
     assignmentCtTotalSeconds,
     processes,
@@ -10436,201 +10433,6 @@ const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] 
   }
   return Array.from(bucket.values());
 };
-const syncStyleProcessStandardsFromAssignmentSnapshots = async ({
-  organization,
-  cards = [],
-  assignments = [],
-}: {
-  organization: any;
-  cards?: any[];
-  assignments?: any[];
-}) => {
-  const normalizedAssignments = ensureArray(assignments).filter(
-    (item) => item && typeof item === "object"
-  );
-  if (normalizedAssignments.length === 0) return;
-
-  const cardById = ensureArray(cards).reduce((map, card) => {
-    const cardId = resolveOptionalString(card?.id, null);
-    if (!cardId || map.has(cardId)) return map;
-    map.set(cardId, card);
-    return map;
-  }, new Map<string, any>());
-
-  const snapshotTargets = normalizedAssignments
-    .map((assignment) => {
-      const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
-      if (!ctSnapshot || !Array.isArray(ctSnapshot?.processes) || ctSnapshot.processes.length === 0) {
-        return null;
-      }
-      const cardId = resolveOptionalString(
-        assignment?.cardId ?? assignment?.originOrderId,
-        null
-      );
-      const linkedCard = cardId ? cardById.get(cardId) ?? null : null;
-      const parsedCardIdentity = cardId ? parseAssignmentCardIdentity(cardId) : null;
-      const styleId = resolveOptionalString(
-        linkedCard?.styleId ?? parsedCardIdentity?.styleId ?? assignment?.styleId,
-        null
-      );
-      if (!styleId) return null;
-      const quantityBucket = resolveStBucketQuantity(
-        toPositiveInt(
-          assignment?.quantity ??
-            ctSnapshot?.quantity ??
-            linkedCard?.cardQuantity ??
-            linkedCard?.quantity,
-          1
-        )
-      );
-      return {
-        styleId,
-        quantityBucket,
-        processes: ctSnapshot.processes,
-      };
-    })
-    .filter((item): item is any => Boolean(item));
-  if (snapshotTargets.length === 0) return;
-
-  const styleIds = Array.from(
-    new Set(
-      snapshotTargets
-        .map((item) => resolveOptionalString(item?.styleId, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  if (styleIds.length === 0) return;
-
-  const accessibleOwnerOrgIds = await getAccessibleStyleOwnerOrgIds(organization);
-  const styles = await prisma.style.findMany({
-    where: {
-      orgId: { in: accessibleOwnerOrgIds },
-      styleId: { in: styleIds },
-    },
-    orderBy: { uid: "asc" },
-    select: {
-      uid: true,
-      orgId: true,
-      styleId: true,
-      processes: true,
-    },
-  });
-  if (styles.length === 0) return;
-
-  await ensureStyleProcessStorageForStyles(styles, {
-    processOrgId: organization.id,
-  });
-
-  const styleUidByStyleId = styles.reduce((map, style) => {
-    const styleId = resolveOptionalString(style?.styleId, null);
-    const styleUid = toPositiveIntOrNull(style?.uid);
-    if (!styleId || styleUid === null || map.has(styleId)) return map;
-    map.set(styleId, styleUid);
-    return map;
-  }, new Map<string, number>());
-  const styleUids = Array.from(new Set(Array.from(styleUidByStyleId.values())));
-  if (styleUids.length === 0) return;
-
-  const styleProcessRows = await prisma.styleProcess.findMany({
-    where: {
-      orgId: organization.id,
-      styleUid: { in: styleUids },
-    },
-    select: {
-      id: true,
-      styleUid: true,
-      processCode: true,
-      processName: true,
-    },
-  });
-  if (styleProcessRows.length === 0) return;
-
-  const styleProcessIdByCode = new Map<string, number>();
-  const styleProcessIdByName = new Map<string, number>();
-  styleProcessRows.forEach((row) => {
-    const styleUid = toPositiveIntOrNull(row?.styleUid);
-    const rowId = toPositiveIntOrNull(row?.id);
-    if (styleUid === null || rowId === null) return;
-    const codeKey = normalizeProcessCodeKey(row?.processCode);
-    if (codeKey) {
-      styleProcessIdByCode.set(`${styleUid}::${codeKey}`, rowId);
-    }
-    const nameKey = normalizeProcessNameKey(row?.processName);
-    if (nameKey) {
-      styleProcessIdByName.set(`${styleUid}::${nameKey}`, rowId);
-    }
-  });
-
-  const standardUpsertByIdentity = new Map<
-    string,
-    { styleProcessId: number; bucketQuantity: number; bucketStSeconds: number }
-  >();
-  snapshotTargets.forEach((target) => {
-    const styleUid = styleUidByStyleId.get(target.styleId);
-    if (!styleUid) return;
-    ensureArray(target.processes).forEach((process) => {
-      const stSeconds = toOptionalProcessSeconds(process?.stSeconds);
-      if (stSeconds == null || stSeconds <= 0) return;
-
-      let styleProcessId: number | null = null;
-      const codeCandidates = resolveAssignmentSnapshotProcessCodeCandidates(process);
-      for (const codeKey of codeCandidates) {
-        const matchedId = styleProcessIdByCode.get(`${styleUid}::${codeKey}`) ?? null;
-        if (matchedId != null) {
-          styleProcessId = matchedId;
-          break;
-        }
-      }
-      if (styleProcessId === null) {
-        const processNameKey = normalizeProcessNameKey(
-          process?.name ?? process?.processName ?? process?.label
-        );
-        if (processNameKey) {
-          styleProcessId =
-            styleProcessIdByName.get(`${styleUid}::${processNameKey}`) ?? null;
-        }
-      }
-      if (styleProcessId === null) return;
-
-      standardUpsertByIdentity.set(
-        `${styleProcessId}::${target.quantityBucket}`,
-        {
-          styleProcessId,
-          bucketQuantity: target.quantityBucket,
-          bucketStSeconds: stSeconds,
-        }
-      );
-    });
-  });
-  if (standardUpsertByIdentity.size === 0) return;
-
-  const now = new Date();
-  await prisma.$transaction(
-    Array.from(standardUpsertByIdentity.values()).map((item) =>
-      prisma.styleProcessStandard.upsert({
-        where: {
-          styleProcessId_bucketQuantity: {
-            styleProcessId: item.styleProcessId,
-            bucketQuantity: item.bucketQuantity,
-          },
-        },
-        create: {
-          orgId: organization.id,
-          styleProcessId: item.styleProcessId,
-          bucketQuantity: item.bucketQuantity,
-          bucketStSeconds: item.bucketStSeconds,
-          setBy: "ASSIGNMENT_DETAIL",
-          setAt: now,
-        },
-        update: {
-          bucketStSeconds: item.bucketStSeconds,
-          setBy: "ASSIGNMENT_DETAIL",
-          setAt: now,
-        },
-      })
-    )
-  );
-};
 const syncAssignmentPlanColorRefs = async (orgId: number, items: any[]) => {
   const normalizedItems = ensureArray(items).filter(
     (item) => item && typeof item === "object"
@@ -10977,11 +10779,9 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
       matchedRow !== null
         ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
         : null;
-    const snapshotStSeconds = toOptionalProcessSeconds(process?.stSeconds);
-    const stSeconds = bucketStSeconds ?? snapshotStSeconds;
-    if (stSeconds === null) return;
+    if (bucketStSeconds === null) return;
     const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
-    pieceStTotalSeconds += stSeconds * timesPerPiece;
+    pieceStTotalSeconds += bucketStSeconds * timesPerPiece;
     hasAnyProcessSt = true;
   });
   if (!hasAnyProcessSt) return null;
@@ -19543,8 +19343,8 @@ app.put("/assignment-board-state", async (req, res) => {
       );
     }
   }
-  // Phase 2: board save ST reverse propagation is now driven only by
-  // explicit write-only stDrafts. Do not sync every snapshot.stSeconds here.
+  // Board save ST reverse propagation is driven only by explicit write-only stDrafts.
+  // assignmentCtSnapshot is CT-only and must not be used as an ST source.
   await syncOrderProgressStatusesForOrg({
     orgId: organization.id,
     cards: updatedCards,

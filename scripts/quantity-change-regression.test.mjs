@@ -70,7 +70,7 @@ test('changed assigned card is cancelled and rebuilt as unassigned with updated 
   assert.equal(result.cards.length, 1);
   assert.equal(result.cards[0].quantity, 3);
   assert.equal(result.cards[0].status, 'ST');
-  assert.equal(result.cards[0].totalSeconds, 60);
+  assert.equal(result.cards[0].stTotalSeconds, 60);
   assert.equal(result.cards[0].totalPt, 60);
   assert.equal(result.cards[0].totalAt, 70);
   assert.equal(result.cards[0].totalSt, 60);

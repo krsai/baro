@@ -1715,21 +1715,19 @@ const ProductionPlanBoard = () => {
               name: row.name,
               timesPerPiece: row.timesPerPiece,
               basis: row.basis,
-              stSeconds: row.baseSeconds,
               snapshotCtSeconds: ctSeconds,
               pieceCtSeconds: ctSeconds * row.timesPerPiece,
             };
           })
           .filter(Boolean);
-        const totalStPerPieceSeconds =
+        const pieceCtTotalSeconds =
           snapshotProcesses.length > 0
             ? snapshotProcesses.reduce(
                 (sum, row) =>
-                  sum + ((Number(row?.stSeconds) || 0) * (Number(row?.timesPerPiece) || 1)),
+                  sum + (Number(row?.pieceCtSeconds) || 0),
                 0
               )
-            : Number(existingSnapshot?.totalStPerPieceSeconds) || 0;
-        const pieceCtTotalSeconds = totalStPerPieceSeconds;
+            : Number(existingSnapshot?.pieceCtTotalSeconds) || 0;
         const currentCtSeconds = Math.max(
           0,
           Math.round(pieceCtTotalSeconds > 0 ? pieceCtTotalSeconds * orderQuantity : 0)
@@ -1751,7 +1749,6 @@ const ProductionPlanBoard = () => {
               startDateKey: syncedAssignment?.startDateKey || null,
               endDateKey: syncedAssignment?.endDateKey || syncedAssignment?.startDateKey || null,
             },
-            totalStPerPieceSeconds,
             pieceCtTotalSeconds,
             assignmentCtTotalSeconds: currentCtSeconds,
             processes: snapshotProcesses,

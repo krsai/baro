@@ -1247,20 +1247,19 @@ const buildAssignmentCtSnapshotForSave = ({
               orderQuantity,
             })
           : {
-              seconds: toOptionalPositiveNumber(snapshotProcess?.stSeconds),
+              seconds: toOptionalPositiveNumber(
+                snapshotProcess?.snapshotCtSeconds ?? snapshotProcess?.ctSeconds
+              ),
               source: seed.process?.basis || snapshotProcess?.basis || 'CT',
             };
-      const snapshotStSeconds = toOptionalPositiveNumber(snapshotProcess?.stSeconds);
       const snapshotCtSeconds = toOptionalPositiveNumber(
         snapshotProcess?.snapshotCtSeconds ?? snapshotProcess?.ctSeconds
       );
-      const stSeconds =
+      const baseSeconds =
         stDraftSeconds ??
-        snapshotStSeconds ??
         toOptionalPositiveNumber(stSeedInfo?.seconds);
-      const ctSeconds = ctDraftSeconds ?? snapshotCtSeconds ?? stSeconds;
+      const ctSeconds = ctDraftSeconds ?? snapshotCtSeconds ?? baseSeconds;
       if (ctSeconds == null) return null;
-      const resolvedStSeconds = stSeconds ?? ctSeconds;
       const resolvedCtSeconds = ctSeconds;
       const processCode =
         String(
@@ -1291,8 +1290,7 @@ const buildAssignmentCtSnapshotForSave = ({
           seed.processNameVi ||
           String(snapshotProcess?.nameVi || snapshotProcess?.processNameVi || '').trim(),
         timesPerPiece: seed.processQuantity,
-        basis: 'ST',
-        stSeconds: resolvedStSeconds,
+        basis: stDraftSeconds != null ? 'ST' : seed.process?.basis || snapshotProcess?.basis || 'CT',
         snapshotCtSeconds: resolvedCtSeconds,
         pieceCtSeconds: resolvedCtSeconds * seed.processQuantity,
       };
@@ -1315,16 +1313,6 @@ const buildAssignmentCtSnapshotForSave = ({
       Number(resolveAssignmentCtTotalSeconds(assignment) || fallbackStSeconds || 0) || 0
     )
   );
-  const totalStPerPieceSeconds =
-    processes.length > 0
-      ? processes.reduce(
-          (sum, process) =>
-            sum +
-              ((Number(process?.stSeconds) || 0) *
-                (Number(process?.timesPerPiece ?? process?.quantity) || 1)),
-          0
-        )
-      : Number(existingSnapshot?.totalStPerPieceSeconds) || fallbackStSeconds / orderQuantity;
   const pieceCtTotalSeconds =
     processes.length > 0
       ? processes.reduce(
@@ -1345,7 +1333,6 @@ const buildAssignmentCtSnapshotForSave = ({
     lineId: assignment?.lineId ?? null,
     quantity: orderQuantity,
     schedule: buildAssignmentSchedulePatch(assignment, baseDate),
-    totalStPerPieceSeconds,
     pieceCtTotalSeconds,
     assignmentCtTotalSeconds,
     processes,
@@ -1385,22 +1372,11 @@ const applyAssignmentCtSnapshotForSave = ({
     updatedAt,
     updatedBy,
   });
-  const snapshotStTotalSeconds =
-    ctSnapshot?.totalStPerPieceSeconds != null
-      ? Math.max(
-          0,
-          Math.round(
-            Number(ctSnapshot.totalStPerPieceSeconds || 0) *
-              Math.max(1, toPositiveInt(ctSnapshot.quantity ?? assignment?.quantity ?? card?.quantity ?? 1, 1))
-          )
-        )
-      : null;
   const nextStTotalSeconds = Math.max(
     0,
     Math.round(
       Number(
-        snapshotStTotalSeconds ??
-          resolveCardStTotalSeconds(card) ??
+        resolveCardStTotalSeconds(card) ??
           assignment?.stTotalSeconds ??
           0
       ) || 0
@@ -1478,18 +1454,6 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
   if (!Number.isFinite(stTotalSeconds) || stTotalSeconds <= 0) return assignment;
 
   const basis = getCardBasis(card);
-  const ctSnapshot = resolveAssignmentCtSnapshot(assignment);
-  const snapshotStTotalSeconds =
-    ctSnapshot?.totalStPerPieceSeconds != null
-      ? Math.max(
-          0,
-          Math.round(
-            Number(ctSnapshot.totalStPerPieceSeconds || 0) *
-              Math.max(1, toPositiveInt(ctSnapshot.quantity ?? assignment?.quantity ?? card?.quantity ?? 1, 1))
-          )
-        )
-      : null;
-  const nextStTotalSeconds = snapshotStTotalSeconds ?? stTotalSeconds;
   const next = {
     ...assignment,
     orderNo: card.orderNo ?? assignment.orderNo,
@@ -1502,7 +1466,7 @@ const syncAssignmentFromCard = (assignment, card, days, lineCapacityById = null)
         thumbnailUrl: card.thumbnailUrl ?? assignment.thumbnailUrl,
         quantity: card.quantity ?? assignment.quantity,
         basis,
-        stTotalSeconds: nextStTotalSeconds,
+        stTotalSeconds,
         ctTotalSeconds: assignment.ctTotalSeconds ?? null,
   };
   const hasAbsoluteScheduleKeys = Boolean(parseDateKey(assignment?.startDateKey));
@@ -4299,7 +4263,6 @@ const AssignBoard = () => {
       const processKey = String(item?.processKey || '').trim();
       if (!processKey) return map;
       map.set(processKey, {
-        stSeconds: toOptionalPositiveNumber(item?.stSeconds),
         snapshotCtSeconds: toOptionalPositiveNumber(item?.snapshotCtSeconds ?? item?.ctSeconds),
       });
       return map;
@@ -4323,14 +4286,13 @@ const AssignBoard = () => {
         orderQuantity,
       });
       const savedSnapshotEntry = savedSnapshotByProcess.get(processKey) ?? null;
-      const savedSnapshotStSeconds = savedSnapshotEntry?.stSeconds ?? null;
       const savedSnapshotCtSeconds = savedSnapshotEntry?.snapshotCtSeconds ?? null;
       const stDraftSeconds = toOptionalPositiveNumber(detailStDraftByProcess[processKey]);
       const ctDraftSeconds = toOptionalPositiveNumber(detailDraftByProcess[processKey]);
-      const baseSeconds = stDraftSeconds ?? savedSnapshotStSeconds ?? baseStSeedInfo.seconds;
+      const baseSeconds = stDraftSeconds ?? baseStSeedInfo.seconds;
       const hasStDraftChange =
         stDraftSeconds != null &&
-        Math.abs(stDraftSeconds - (savedSnapshotStSeconds ?? baseStSeedInfo.seconds)) > 1e-6;
+        Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
       const proposedSeconds = ctDraftSeconds ?? savedSnapshotCtSeconds ?? baseSeconds;
       const savedSeconds = savedSnapshotCtSeconds ?? baseSeconds;
       const basePerPieceSeconds = baseSeconds * processQuantity;

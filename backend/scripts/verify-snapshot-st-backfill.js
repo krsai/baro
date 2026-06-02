@@ -16,6 +16,65 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const quoteIdent = (value) => {
+  const text = String(value || "");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(text)) {
+    throw new Error(`invalid SQL identifier: ${text}`);
+  }
+  return `"${text}"`;
+};
+
+const hasColumn = async (tableName, columnName) => {
+  const rows = await prisma.$queryRawUnsafe(
+    `
+SELECT 1
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+LIMIT 1
+`,
+    tableName,
+    columnName
+  );
+  return Array.isArray(rows) && rows.length > 0;
+};
+
+const resolveSchemaColumns = async () => {
+  const snapshotColumn = (await hasColumn("AssignmentPlan", "assignmentCtSnapshot"))
+    ? "assignmentCtSnapshot"
+    : (await hasColumn("AssignmentPlan", "ctSnapshot"))
+      ? "ctSnapshot"
+      : null;
+  if (!snapshotColumn) {
+    throw new Error('AssignmentPlan snapshot column not found: expected "assignmentCtSnapshot" or "ctSnapshot"');
+  }
+
+  const standardBucketQuantityColumn = (await hasColumn("StyleProcessStandard", "bucketQuantity"))
+    ? "bucketQuantity"
+    : (await hasColumn("StyleProcessStandard", "quantity"))
+      ? "quantity"
+      : null;
+  if (!standardBucketQuantityColumn) {
+    throw new Error('StyleProcessStandard bucket quantity column not found');
+  }
+
+  const standardBucketStSecondsColumn = (await hasColumn("StyleProcessStandard", "bucketStSeconds"))
+    ? "bucketStSeconds"
+    : (await hasColumn("StyleProcessStandard", "stSeconds"))
+      ? "stSeconds"
+      : null;
+  if (!standardBucketStSecondsColumn) {
+    throw new Error('StyleProcessStandard bucket ST seconds column not found');
+  }
+
+  return {
+    snapshotColumn: quoteIdent(snapshotColumn),
+    standardBucketQuantityColumn: quoteIdent(standardBucketQuantityColumn),
+    standardBucketStSecondsColumn: quoteIdent(standardBucketStSecondsColumn),
+  };
+};
+
 const printRows = (title, rows) => {
   if (!rows || rows.length === 0) return;
   console.log(`\n${title}`);
@@ -28,6 +87,12 @@ const main = async () => {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL or DIRECT_URL is required");
   }
+
+  const {
+    snapshotColumn,
+    standardBucketQuantityColumn,
+    standardBucketStSecondsColumn,
+  } = await resolveSchemaColumns();
 
   const [summary] = await prisma.$queryRawUnsafe(`
 WITH snapshot_process_rows AS (
@@ -60,14 +125,14 @@ WITH snapshot_process_rows AS (
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
-      WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
-        THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+      WHEN jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
+        THEN plan.${snapshotColumn}::jsonb -> 'processes'
       ELSE '[]'::jsonb
     END
   ) process
   WHERE plan."isCompleted" = FALSE
-    AND plan."assignmentCtSnapshot" IS NOT NULL
-    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+    AND plan.${snapshotColumn} IS NOT NULL
+    AND jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
     AND process ? 'stSeconds'
     AND (process ->> 'stSeconds') ~ '^[0-9]+(\\.[0-9]+)?$'
     AND (process ->> 'stSeconds')::numeric > 0
@@ -123,9 +188,9 @@ SELECT
     FROM matched_process_targets matched
     LEFT JOIN "StyleProcessStandard" sps
       ON sps."styleProcessId" = matched."styleProcessId"
-     AND sps."bucketQuantity" = matched."bucketQuantity"
+     AND sps.${standardBucketQuantityColumn} = matched."bucketQuantity"
     WHERE sps."id" IS NULL
-       OR sps."bucketStSeconds" <= 0
+       OR sps.${standardBucketStSecondsColumn} <= 0
   ) AS "missingOrZeroStandards",
   (
     SELECT COUNT(*)
@@ -169,14 +234,14 @@ WITH snapshot_process_rows AS (
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
-      WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
-        THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+      WHEN jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
+        THEN plan.${snapshotColumn}::jsonb -> 'processes'
       ELSE '[]'::jsonb
     END
   ) process
   WHERE plan."isCompleted" = FALSE
-    AND plan."assignmentCtSnapshot" IS NOT NULL
-    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+    AND plan.${snapshotColumn} IS NOT NULL
+    AND jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
     AND process ? 'stSeconds'
     AND (process ->> 'stSeconds') ~ '^[0-9]+(\\.[0-9]+)?$'
     AND (process ->> 'stSeconds')::numeric > 0
@@ -203,14 +268,14 @@ WITH snapshot_process_rows AS (
   FROM "AssignmentPlan" plan
   CROSS JOIN LATERAL jsonb_array_elements(
     CASE
-      WHEN jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
-        THEN plan."assignmentCtSnapshot"::jsonb -> 'processes'
+      WHEN jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
+        THEN plan.${snapshotColumn}::jsonb -> 'processes'
       ELSE '[]'::jsonb
     END
   ) process
   WHERE plan."isCompleted" = FALSE
-    AND plan."assignmentCtSnapshot" IS NOT NULL
-    AND jsonb_typeof(plan."assignmentCtSnapshot"::jsonb -> 'processes') = 'array'
+    AND plan.${snapshotColumn} IS NOT NULL
+    AND jsonb_typeof(plan.${snapshotColumn}::jsonb -> 'processes') = 'array'
     AND process ? 'stSeconds'
     AND (process ->> 'stSeconds') ~ '^[0-9]+(\\.[0-9]+)?$'
     AND (process ->> 'stSeconds')::numeric > 0

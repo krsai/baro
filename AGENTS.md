@@ -65,7 +65,7 @@ AT(q) = a*q + b
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)
 - `stTotalSeconds`: 스케줄러 계획 길이 계산에 쓰는 배정카드 전체 ST 총초. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체.
 - `ctTotalSeconds`: 급여/계약 계산에 쓰는 배정카드 전체 CT 총초. 과거 `contractedSeconds` 명칭을 대체하며 스케줄러 길이 계산에 사용 금지.
-- `ctSnapshot`: 프론트에서 계산한 CT/ST 스냅샷 JSON 저장. `processes[].stSeconds`는 계획 ST, `processes[].ctSeconds`는 계약 CT.
+- `assignmentCtSnapshot`: assignment 저장 시점의 CT 스냅샷 JSON. `processes[].snapshotCtSeconds`와 `processes[].pieceCtSeconds`는 급여/계약 CT 기준이며, snapshot 안에 ST 복사본을 저장하지 않는다.
 - `isCompleted / finalQuantity / completedAt`: 생산 완료 확정 결과 (`PATCH /assignment-plans/:externalId/production-complete`)
 - `closedQty / closedAt / closedBy / closeMode / closeBasis`: 제작 완료 확정 상태 스냅샷 (구 `/close` 경로와 신규 `/production-complete` 공통 반영)
 
@@ -658,12 +658,12 @@ CT는 assignment snapshot 전용값이다.
 - CT는 스케줄 길이 계산 기준이 아니다
 - 단, split이 일어나면 기존 CT 수동 수정값은 승계하지 않고 새 ST 기준으로 다시 초기화한다
 
-최신 목표 구조:
-- snapshot은 CT 중심 구조로 정리한다
-- ST는 snapshot에 영구 저장하지 않는 방향으로 검토한다
-- ST는 항상 최신 전역 표준에서 다시 읽어 계산한다
+최신 구조:
+- snapshot은 CT 중심 구조다
+- ST는 snapshot에 영구 저장하지 않는다
+- ST는 최신 전역 표준(`StyleProcessStandard.bucketStSeconds`)에서 다시 읽어 계산한다
 
-권장 설계:
+저장 설계:
 - persisted snapshot은 CT만 저장
 - ST 수정값은 저장 요청 payload의 write-only draft로 전달
 - 백엔드는 그 draft로
@@ -671,9 +671,9 @@ CT는 assignment snapshot 전용값이다.
   2. `pieceStTotalSeconds` / `assignmentStTotalSeconds` 재계산
   3. persisted snapshot에는 ST를 남기지 않음
 
-즉 제거 검토 대상:
-- `ctSnapshot.processes[].stSeconds`
-- `ctSnapshot.totalStPerPieceSeconds`
+제거 완료 대상:
+- `assignmentCtSnapshot.processes[].stSeconds`
+- `assignmentCtSnapshot.totalStPerPieceSeconds`
 
 ### 7. ST 수정 정책
 
@@ -853,6 +853,7 @@ runtime 조회값:
   - 기존 활성 assignment의 `assignmentCtSnapshot.processes[].stSeconds`를 읽어 `StyleProcessStandard.bucketStSeconds`로 일회성 upsert한다
   - 백필 대상은 완료/미완료를 포함한 활성 assignment이며, 삭제/취소된 assignment는 제외한다
   - 백필 검증 전에는 `assignmentCtSnapshot.processes[].stSeconds`와 `assignmentCtSnapshot.totalStPerPieceSeconds`를 제거하지 않는다
+  - 2026-06-02 Phase 7에서 백필 검증 통과 후 위 두 snapshot ST 복사 필드는 제거됐다
   - 자연스럽게 PUT이 돌며 채워지기를 기다리는 방식은 금지한다
   - 이유: 한 번도 PUT되지 않은 assignment는 기존 sync 경로를 타지 않아 ST 표준 row가 비어 있을 수 있다
 
@@ -1005,7 +1006,7 @@ runtime 조회값:
   - `pieceCtTotalSeconds ?? totalCtPerPieceSeconds`
   - `snapshotCtSeconds ?? ctSeconds`
   - `pieceCtSeconds ?? ctPerPieceSeconds`
-- Snapshot ST fallback must not be removed until the StyleProcessStandard backfill for existing active assignments is complete and verified.
+- Snapshot ST fallback was removed in Phase 7 after the StyleProcessStandard backfill verification passed.
 
 ### 19. 2026-05-27 Phase 6D implementation status
 
@@ -1093,3 +1094,24 @@ runtime 조회값:
     `cardId/originOrderId` styleId parsing failures before `StyleProcess` matching.
   - If the script fails, do not remove `assignmentCtSnapshot.processes[].stSeconds`
     or `assignmentCtSnapshot.totalStPerPieceSeconds`.
+
+### 23. 2026-06-02 Phase 7 snapshot ST field removal status
+
+- Scope:
+  - This phase removes only persisted ST copies from `assignmentCtSnapshot`.
+  - It does not remove `StyleProcessStandard.bucketStSeconds`.
+  - It does not remove normal rename dual-read fallback for old CT/card/style keys.
+- Implemented:
+  - New assignment snapshots no longer write `processes[].stSeconds`.
+  - New assignment snapshots no longer write `totalStPerPieceSeconds`.
+  - Frontend/backend snapshot normalizers output CT-only process rows:
+    `timesPerPiece`, `snapshotCtSeconds`, and `pieceCtSeconds`.
+  - Backend ST recalculation no longer reads snapshot ST fallback; it uses
+    `StyleProcessStandard.bucketStSeconds` with PT fallback only where policy allows.
+  - `backend/migration_fix.sql` removes existing snapshot ST copy fields from
+    both `AssignmentPlan.assignmentCtSnapshot` and
+    `AssignmentBoardState.assignments[].assignmentCtSnapshot`.
+- Boundary:
+  - `stDrafts` remains the only board-save path for editing ST.
+  - `assignmentStTotalSeconds`/`stTotalSeconds` remains scheduler length data and is not removed.
+  - Dual-read cleanup for migrated CT/card/style keys remains a later dedicated cleanup commit.
