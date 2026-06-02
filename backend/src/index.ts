@@ -21588,11 +21588,25 @@ const applyMigrationFixForRuntimeSchemaDrift = async (missingColumns: string[]) 
       encoding: "utf8",
       env: process.env,
       stdio: "pipe",
+      timeout: 120_000,
     }
   );
 
   if (result.stdout) console.log(result.stdout.trim());
   if (result.stderr) console.error(result.stderr.trim());
+  if (result.error) {
+    throw new Error(
+      `[startup] migration_fix.sql failed to execute: ${getErrorMessage(
+        result.error,
+        "unknown spawn error"
+      )}`
+    );
+  }
+  if (result.signal) {
+    throw new Error(
+      `[startup] migration_fix.sql terminated by signal ${result.signal}`
+    );
+  }
   if (result.status !== 0) {
     throw new Error(
       `[startup] migration_fix.sql failed with exit code ${result.status ?? "unknown"}`
