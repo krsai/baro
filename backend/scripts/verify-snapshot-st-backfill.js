@@ -68,10 +68,20 @@ const resolveSchemaColumns = async () => {
     throw new Error('StyleProcessStandard bucket ST seconds column not found');
   }
 
+  const assignmentQuantityColumn = (await hasColumn("AssignmentPlan", "assignmentQuantity"))
+    ? "assignmentQuantity"
+    : (await hasColumn("AssignmentPlan", "quantity"))
+      ? "quantity"
+      : null;
+  if (!assignmentQuantityColumn) {
+    throw new Error('AssignmentPlan quantity column not found');
+  }
+
   return {
     snapshotColumn: quoteIdent(snapshotColumn),
     standardBucketQuantityColumn: quoteIdent(standardBucketQuantityColumn),
     standardBucketStSecondsColumn: quoteIdent(standardBucketStSecondsColumn),
+    assignmentQuantityColumn: quoteIdent(assignmentQuantityColumn),
   };
 };
 
@@ -92,6 +102,7 @@ const main = async () => {
     snapshotColumn,
     standardBucketQuantityColumn,
     standardBucketStSecondsColumn,
+    assignmentQuantityColumn,
   } = await resolveSchemaColumns();
 
   const [summary] = await prisma.$queryRawUnsafe(`
@@ -103,18 +114,18 @@ WITH snapshot_process_rows AS (
     COALESCE(plan."cardId", plan."originOrderId", '') AS "cardIdentityText",
     NULLIF(SPLIT_PART(COALESCE(plan."cardId", plan."originOrderId", ''), '::', 2), '') AS "styleId",
     CASE
-      WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
-      WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
-      WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
-      WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
-      WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
-      WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
-      WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
-      WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
-      WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
-      WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
-      WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
-      WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 10000 THEN 10000
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 5000 THEN 5000
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 3000 THEN 3000
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 1000 THEN 1000
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 500 THEN 500
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 300 THEN 300
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 100 THEN 100
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 50 THEN 50
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 30 THEN 30
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 10 THEN 10
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 5 THEN 5
+      WHEN COALESCE(plan.${assignmentQuantityColumn}, 1) >= 3 THEN 3
       ELSE 1
     END AS "bucketQuantity",
     ROUND((process ->> 'stSeconds')::numeric)::double precision AS "bucketStSeconds",

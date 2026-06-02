@@ -1115,3 +1115,29 @@ runtime 조회값:
   - `stDrafts` remains the only board-save path for editing ST.
   - `assignmentStTotalSeconds`/`stTotalSeconds` remains scheduler length data and is not removed.
   - Dual-read cleanup for migrated CT/card/style keys remains a later dedicated cleanup commit.
+
+### 24. 2026-06-02 AssignmentPlan physical column rename status
+
+- Scope:
+  - This phase renames only `AssignmentPlan` physical DB/Prisma fields for assignment totals and assignment quantity.
+  - It does not rename board state JSON compatibility keys in API payloads.
+  - It does not remove normal dual-read fallback.
+- Implemented field names:
+  - `AssignmentPlan.quantity` -> `AssignmentPlan.assignmentQuantity`
+  - `AssignmentPlan.stTotalSeconds` -> `AssignmentPlan.assignmentStTotalSeconds`
+  - `AssignmentPlan.ctTotalSeconds` -> `AssignmentPlan.assignmentCtTotalSeconds`
+- Runtime/API boundary:
+  - Public assignment/board payloads may still expose compatibility keys:
+    `quantity`, `stTotalSeconds`, `ctTotalSeconds`.
+  - Backend maps those compatibility keys to the canonical Prisma fields at DB write/read boundaries.
+  - `AssignmentBoardState.assignments[]` may still use compatibility total keys for now.
+- Migration:
+  - `backend/migration_fix.sql` performs idempotent three-state column handling:
+    old-only, old+new, and new-only.
+  - Existing `AssignmentPlan` values are preserved via `COALESCE(new, old)` before dropping old columns.
+- Maintenance scripts:
+  - Scripts that touch `AssignmentPlan`, `StyleProcess`, or `StyleProcessStandard` must use canonical Prisma fields:
+    `assignmentQuantity`, `assignmentStTotalSeconds`, `assignmentCtTotalSeconds`,
+    `timesPerPiece`, `bucketQuantity`, `bucketStSeconds`.
+- Still separate:
+  - Removal of compatibility payload aliases and dual-read fallback is a later cleanup commit after production migration verification.

@@ -1001,6 +1001,30 @@ ST 표준값:
 - Remaining cleanup is separate:
   - remove normal rename dual-read fallback only after production data migration is verified.
 
+### AssignmentPlan Physical Column Rename Addendum
+
+- 2026-06-02 implemented `AssignmentPlan` physical DB/Prisma column rename for assignment quantity and assignment totals.
+- Implemented physical/Prisma field names:
+  - `AssignmentPlan.quantity` -> `AssignmentPlan.assignmentQuantity`
+  - `AssignmentPlan.stTotalSeconds` -> `AssignmentPlan.assignmentStTotalSeconds`
+  - `AssignmentPlan.ctTotalSeconds` -> `AssignmentPlan.assignmentCtTotalSeconds`
+- Scope boundary:
+  - Backend DB read/write paths use canonical Prisma fields.
+  - Public board/API compatibility keys may still be `quantity`, `stTotalSeconds`, and `ctTotalSeconds`.
+  - `AssignmentBoardState.assignments[]` compatibility total keys are not removed in this phase.
+  - This phase does not remove dual-read fallback.
+- Migration:
+  - `migration_fix.sql` handles old-only, old+new, and new-only states idempotently.
+  - Data preservation direction is `COALESCE(new, old)`.
+  - Phase 6E/Phase 7 verification SQL uses `assignmentQuantity` with legacy `quantity` fallback while the migration is in transition.
+- Scripts:
+  - Maintenance scripts now need to use canonical Prisma fields:
+    `assignmentQuantity`, `assignmentStTotalSeconds`, `assignmentCtTotalSeconds`,
+    `timesPerPiece`, `bucketQuantity`, `bucketStSeconds`.
+- Later cleanup:
+  - Remove compatibility aliases and normal dual-read fallback only after production migration is verified.
+  - This cleanup must be a dedicated commit, not bundled with a rename/migration commit.
+
 ### F. Recommended Lock Before Coding
 
 - 완료 판정 단일 소스:

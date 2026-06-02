@@ -53,12 +53,12 @@ const normalizeStValues = (values, legacyProcess = null) => {
   const byQuantity = new Map();
   (Array.isArray(values) ? values : []).forEach((value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
-    const quantity = toPositiveInt(value.quantity, 0);
-    const seconds = toOptionalSeconds(value.seconds);
+    const quantity = toPositiveInt(value.bucketQuantity ?? value.quantity, 0);
+    const seconds = toOptionalSeconds(value.bucketStSeconds ?? value.seconds);
     if (quantity <= 0 || seconds === null) return;
     byQuantity.set(quantity, {
-      quantity,
-      seconds,
+      bucketQuantity: quantity,
+      bucketStSeconds: seconds,
       setBy: toOptionalString(value.setBy, null),
       setAt: toOptionalString(value.setAt, null),
       updatedAt: toOptionalString(value.updatedAt, null),
@@ -78,15 +78,17 @@ const normalizeStValues = (values, legacyProcess = null) => {
     legacyQuantity > 0
   ) {
     byQuantity.set(legacyQuantity, {
-      quantity: legacyQuantity,
-      seconds: legacyCt,
+      bucketQuantity: legacyQuantity,
+      bucketStSeconds: legacyCt,
       setBy: "MIGRATED",
       setAt: null,
       updatedAt: null,
     });
   }
 
-  return Array.from(byQuantity.values()).sort((left, right) => left.quantity - right.quantity);
+  return Array.from(byQuantity.values()).sort(
+    (left, right) => left.bucketQuantity - right.bucketQuantity
+  );
 };
 
 const normalizeProcesses = (processes) => {
@@ -115,11 +117,14 @@ const buildDrafts = (processes) =>
       toOptionalString(process?.code, null) ??
       resolveStorageCode(process, index),
     processDescription: toOptionalString(process?.description, null),
-    processQuantity: toPositiveInt(process?.quantity ?? process?.processQuantity, 1),
+    timesPerPiece: toPositiveInt(
+      process?.timesPerPiece ?? process?.quantity ?? process?.processQuantity,
+      1
+    ),
     sortOrder: index,
     ptSeconds: toOptionalSeconds(process?.pt),
     atParams: normalizeAtParams(process?.atParams),
-    stValues: normalizeStValues(process?.stValues, process),
+    stValues: normalizeStValues(process?.stBuckets ?? process?.stValues, process),
   }));
 
 const buildMirrorProcesses = (rows) =>
@@ -127,39 +132,43 @@ const buildMirrorProcesses = (rows) =>
     .slice()
     .sort(
       (left, right) =>
-        Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
-        Number(left?.id ?? 0) - Number(right?.id ?? 0)
+            Number(left?.sortOrder ?? 0) - Number(right?.sortOrder ?? 0) ||
+            Number(left?.id ?? 0) - Number(right?.id ?? 0)
     )
     .map((row) => {
       const standards = (Array.isArray(row?.standards) ? row.standards : [])
         .slice()
         .sort(
           (left, right) =>
-            Number(left?.quantity ?? 0) - Number(right?.quantity ?? 0) ||
+            Number(left?.bucketQuantity ?? left?.quantity ?? 0) -
+              Number(right?.bucketQuantity ?? right?.quantity ?? 0) ||
             Number(left?.id ?? 0) - Number(right?.id ?? 0)
         )
         .map((standard) => ({
-          quantity: toPositiveInt(standard.quantity, DEFAULT_TIME_REF_QUANTITY),
-          seconds: toOptionalSeconds(standard.stSeconds),
+          bucketQuantity: toPositiveInt(
+            standard.bucketQuantity ?? standard.quantity,
+            DEFAULT_TIME_REF_QUANTITY
+          ),
+          bucketStSeconds: toOptionalSeconds(standard.bucketStSeconds ?? standard.stSeconds),
           setBy: toOptionalString(standard.setBy, null),
           setAt: standard.setAt instanceof Date ? standard.setAt.toISOString() : null,
           updatedAt: standard.updatedAt instanceof Date ? standard.updatedAt.toISOString() : null,
         }));
       const firstStandard = standards[0] || null;
-      const timeRefQuantity = firstStandard?.quantity ?? DEFAULT_TIME_REF_QUANTITY;
+      const timeRefQuantity = firstStandard?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY;
       const exactStandard =
-        standards.find((standard) => standard.quantity === timeRefQuantity) || null;
+        standards.find((standard) => standard.bucketQuantity === timeRefQuantity) || null;
 
       return {
         code: row.processCode,
         name: row.processName,
         description: row.processDescription ?? null,
-        quantity: toPositiveInt(row.processQuantity, 1),
+        timesPerPiece: toPositiveInt(row.timesPerPiece ?? row.processQuantity, 1),
         pt: toOptionalSeconds(row.ptSeconds),
         atParams: normalizeAtParams(row.atParams),
-        stValues: standards,
+        stBuckets: standards,
         timeRefQuantity,
-        ct: exactStandard?.seconds ?? null,
+        ct: exactStandard?.bucketStSeconds ?? null,
         stManual: standards.length > 0,
       };
     });
@@ -197,7 +206,7 @@ const syncStyle = async (style) => {
             processCode: draft.processCode,
             processName: draft.processName,
             processDescription: draft.processDescription,
-            processQuantity: draft.processQuantity,
+            timesPerPiece: draft.timesPerPiece,
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
@@ -210,7 +219,7 @@ const syncStyle = async (style) => {
             processCode: draft.processCode,
             processName: draft.processName,
             processDescription: draft.processDescription,
-            processQuantity: draft.processQuantity,
+            timesPerPiece: draft.timesPerPiece,
             sortOrder: draft.sortOrder,
             ptSeconds: draft.ptSeconds,
             atParams: draft.atParams,
@@ -226,8 +235,8 @@ const syncStyle = async (style) => {
         data: draft.stValues.map((stValue) => ({
           orgId: style.orgId,
           styleProcessId: row.id,
-          quantity: stValue.quantity,
-          stSeconds: stValue.seconds,
+          bucketQuantity: stValue.bucketQuantity,
+          bucketStSeconds: stValue.bucketStSeconds,
           setBy: stValue.setBy,
           ...(stValue.setAt ? { setAt: new Date(stValue.setAt) } : {}),
         })),
@@ -242,7 +251,7 @@ const syncStyle = async (style) => {
     where: { styleUid: style.uid },
     include: {
       standards: {
-        orderBy: [{ quantity: "asc" }, { id: "asc" }],
+        orderBy: [{ bucketQuantity: "asc" }, { id: "asc" }],
       },
     },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],

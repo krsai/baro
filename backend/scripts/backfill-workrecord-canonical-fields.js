@@ -73,7 +73,11 @@ const resolveWorkRecordProcessBucketKey = (record) => {
 };
 
 const resolveAssignmentPlanRequiredProcessGroups = (plan) => {
-  const snapshot = plan?.ctSnapshot && typeof plan.ctSnapshot === "object" ? plan.ctSnapshot : null;
+  const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
+    ? plan.assignmentCtSnapshot
+    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
+      ? plan.ctSnapshot
+      : null;
   const processRows = Array.isArray(snapshot?.processes) ? snapshot.processes : [];
   if (processRows.length === 0) return [];
   return processRows
@@ -89,7 +93,11 @@ const resolveAssignmentPlanRequiredProcessGroups = (plan) => {
 };
 
 const resolveAssignmentPlanStyleMatchKeys = (plan) => {
-  const snapshot = plan?.ctSnapshot && typeof plan.ctSnapshot === "object" ? plan.ctSnapshot : null;
+  const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
+    ? plan.assignmentCtSnapshot
+    : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
+      ? plan.ctSnapshot
+      : null;
   return Array.from(
     new Set(
       [
@@ -133,7 +141,11 @@ const buildPlanMatchCandidates = (plans, assignmentsByExternalId) =>
       if (!planId) return null;
       const externalId = resolveOptionalString(plan?.externalId, null);
       const assignment = externalId ? assignmentsByExternalId.get(externalId) || null : null;
-      const snapshot = plan?.ctSnapshot && typeof plan.ctSnapshot === "object" ? plan.ctSnapshot : null;
+      const snapshot = plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === "object"
+        ? plan.assignmentCtSnapshot
+        : plan?.ctSnapshot && typeof plan.ctSnapshot === "object"
+          ? plan.ctSnapshot
+          : null;
       const schedule = snapshot?.schedule && typeof snapshot.schedule === "object" ? snapshot.schedule : null;
       return {
         planId,
@@ -264,7 +276,7 @@ async function main() {
               label: true,
               cardId: true,
               originOrderId: true,
-              ctSnapshot: true,
+              assignmentCtSnapshot: true,
             },
           })
         : Promise.resolve([]),

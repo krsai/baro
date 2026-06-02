@@ -667,19 +667,19 @@ model AssignmentPlan {
   previewUrl            String?
   imageUrl              String?
   thumbnailUrl          String?
-  quantity              Int?
-  originOrderId         String?
-  basis                 String?
-  ctTotalSeconds       Int?
-  assignmentCtSnapshot  Json?
-  color                 String?
-  stripeColor           String?
-  stTotalSeconds        Int?
-  startIndex            Int
-  endIndex              Int
-  startDayOffsetPercent Float?
-  startDayPercent       Float?
-  endDayPercent         Float?
+  assignmentQuantity       Int?
+  originOrderId            String?
+  basis                    String?
+  assignmentCtTotalSeconds Int?
+  assignmentCtSnapshot     Json?
+  color                    String?
+  stripeColor              String?
+  assignmentStTotalSeconds Int?
+  startIndex               Int
+  endIndex                 Int
+  startDayOffsetPercent    Float?
+  startDayPercent          Float?
+  endDayPercent            Float?
   isCompleted           Boolean   @default(false)
   finalQuantity         Int?
   completedAt           DateTime?

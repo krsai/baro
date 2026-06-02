@@ -123,6 +123,33 @@ BEGIN
     ALTER TABLE "AssignmentPlan" DROP COLUMN "contractedSeconds";
   END IF;
 
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'quantity')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentQuantity') THEN
+    ALTER TABLE "AssignmentPlan" RENAME COLUMN "quantity" TO "assignmentQuantity";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'quantity')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentQuantity') THEN
+    UPDATE "AssignmentPlan" SET "assignmentQuantity" = COALESCE("assignmentQuantity", "quantity");
+    ALTER TABLE "AssignmentPlan" DROP COLUMN "quantity";
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'stTotalSeconds')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentStTotalSeconds') THEN
+    ALTER TABLE "AssignmentPlan" RENAME COLUMN "stTotalSeconds" TO "assignmentStTotalSeconds";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'stTotalSeconds')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentStTotalSeconds') THEN
+    UPDATE "AssignmentPlan" SET "assignmentStTotalSeconds" = COALESCE("assignmentStTotalSeconds", "stTotalSeconds");
+    ALTER TABLE "AssignmentPlan" DROP COLUMN "stTotalSeconds";
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'ctTotalSeconds')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentCtTotalSeconds') THEN
+    ALTER TABLE "AssignmentPlan" RENAME COLUMN "ctTotalSeconds" TO "assignmentCtTotalSeconds";
+  ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'ctTotalSeconds')
+     AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AssignmentPlan' AND column_name = 'assignmentCtTotalSeconds') THEN
+    UPDATE "AssignmentPlan" SET "assignmentCtTotalSeconds" = COALESCE("assignmentCtTotalSeconds", "ctTotalSeconds");
+    ALTER TABLE "AssignmentPlan" DROP COLUMN "ctTotalSeconds";
+  END IF;
+
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucket' AND column_name = 'totalSeconds')
      AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'AtTrainingBucket' AND column_name = 'laborInputSeconds') THEN
     ALTER TABLE "AtTrainingBucket" RENAME COLUMN "totalSeconds" TO "laborInputSeconds";
@@ -151,9 +178,10 @@ BEGIN
   END IF;
 END $$;
 
--- Step 4b-safety: ensure new column names exist even when neither old nor new name existed
-ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "stTotalSeconds" DOUBLE PRECISION;
-ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "ctTotalSeconds" DOUBLE PRECISION;
+-- Step 4b-safety: ensure final column names exist even when neither old nor new name existed
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentQuantity" INTEGER;
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentStTotalSeconds" INTEGER;
+ALTER TABLE "AssignmentPlan" ADD COLUMN IF NOT EXISTS "assignmentCtTotalSeconds" INTEGER;
 ALTER TABLE "AtTrainingBucket" ADD COLUMN IF NOT EXISTS "laborInputSeconds" DOUBLE PRECISION;
 ALTER TABLE "WorkLog" ADD COLUMN IF NOT EXISTS "totalCtSeconds" DOUBLE PRECISION;
 
@@ -334,18 +362,18 @@ WITH snapshot_st_targets AS (
     plan."orgId",
     style."uid" AS "styleUid",
     CASE
-      WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
-      WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
-      WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
-      WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
-      WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
-      WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
-      WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
-      WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
-      WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
-      WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
-      WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
-      WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3000 THEN 3000
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 1000 THEN 1000
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 500 THEN 500
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 300 THEN 300
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 100 THEN 100
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 50 THEN 50
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 30 THEN 30
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10 THEN 10
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5 THEN 5
+      WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3 THEN 3
       ELSE 1
     END AS "bucketQuantity",
     ROUND((process ->> 'stSeconds')::numeric)::double precision AS "bucketStSeconds",
@@ -436,18 +464,18 @@ BEGIN
       plan."orgId",
       style."uid" AS "styleUid",
       CASE
-        WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
-        WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
-        WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
-        WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
-        WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
-        WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
-        WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
-        WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
-        WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
-        WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
-        WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
-        WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3000 THEN 3000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 1000 THEN 1000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 500 THEN 500
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 300 THEN 300
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 100 THEN 100
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 50 THEN 50
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 30 THEN 30
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10 THEN 10
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5 THEN 5
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3 THEN 3
         ELSE 1
       END AS "bucketQuantity",
       LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",
@@ -510,18 +538,18 @@ BEGIN
       plan."orgId",
       style."uid" AS "styleUid",
       CASE
-        WHEN COALESCE(plan."quantity", 1) >= 10000 THEN 10000
-        WHEN COALESCE(plan."quantity", 1) >= 5000 THEN 5000
-        WHEN COALESCE(plan."quantity", 1) >= 3000 THEN 3000
-        WHEN COALESCE(plan."quantity", 1) >= 1000 THEN 1000
-        WHEN COALESCE(plan."quantity", 1) >= 500 THEN 500
-        WHEN COALESCE(plan."quantity", 1) >= 300 THEN 300
-        WHEN COALESCE(plan."quantity", 1) >= 100 THEN 100
-        WHEN COALESCE(plan."quantity", 1) >= 50 THEN 50
-        WHEN COALESCE(plan."quantity", 1) >= 30 THEN 30
-        WHEN COALESCE(plan."quantity", 1) >= 10 THEN 10
-        WHEN COALESCE(plan."quantity", 1) >= 5 THEN 5
-        WHEN COALESCE(plan."quantity", 1) >= 3 THEN 3
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10000 THEN 10000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5000 THEN 5000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3000 THEN 3000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 1000 THEN 1000
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 500 THEN 500
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 300 THEN 300
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 100 THEN 100
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 50 THEN 50
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 30 THEN 30
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 10 THEN 10
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 5 THEN 5
+        WHEN COALESCE(NULLIF(to_jsonb(plan) ->> 'assignmentQuantity', '')::numeric, NULLIF(to_jsonb(plan) ->> 'quantity', '')::numeric, 1) >= 3 THEN 3
         ELSE 1
       END AS "bucketQuantity",
       LOWER(BTRIM(COALESCE(process ->> 'processCode', process ->> 'code', ''))) AS "processCodeKey",

@@ -411,7 +411,7 @@ const repairOrganization = async (orgId) => {
       select: {
         id: true,
         externalId: true,
-        ctSnapshot: true,
+        assignmentCtSnapshot: true,
         startIndex: true,
         endIndex: true,
         startDayOffsetPercent: true,
@@ -503,7 +503,10 @@ const repairOrganization = async (orgId) => {
       linkedPlan
     );
     const currentCtSnapshot = normalizeCtSnapshot(
-      assignment?.ctSnapshot ?? assignment?.ctAgreedSnapshot ?? linkedPlan?.ctSnapshot
+      assignment?.assignmentCtSnapshot ??
+        assignment?.ctSnapshot ??
+        assignment?.ctAgreedSnapshot ??
+        linkedPlan?.assignmentCtSnapshot
     );
     if (
       sameSchedule(currentSchedule, targetSchedule) &&
@@ -515,7 +518,7 @@ const repairOrganization = async (orgId) => {
     updatedAssignmentCount += 1;
     return {
       ...applySchedule(assignment, targetSchedule),
-      ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
+      ...(nextCtSnapshot ? { assignmentCtSnapshot: nextCtSnapshot } : {}),
       version: Math.max(0, toSignedInt(assignment?.version, 0)) + 1,
       versionUpdatedAt: nowIso,
     };
@@ -536,7 +539,9 @@ const repairOrganization = async (orgId) => {
       const currentSchedule = extractCurrentSchedule(plan);
       const nextCtSnapshot = applyScheduleToCtSnapshot(plan, targetSchedule, linkedAssignment);
       const currentCtSnapshot = normalizeCtSnapshot(
-        plan?.ctSnapshot ?? linkedAssignment?.ctSnapshot
+        plan?.assignmentCtSnapshot ??
+          linkedAssignment?.assignmentCtSnapshot ??
+          linkedAssignment?.ctSnapshot
       );
       if (
         sameSchedule(currentSchedule, targetSchedule) &&
@@ -550,7 +555,7 @@ const repairOrganization = async (orgId) => {
         id: plan.id,
         data: {
           ...targetSchedule,
-          ...(nextCtSnapshot ? { ctSnapshot: nextCtSnapshot } : {}),
+          ...(nextCtSnapshot ? { assignmentCtSnapshot: nextCtSnapshot } : {}),
           updatedAt: nowDate,
         },
       };

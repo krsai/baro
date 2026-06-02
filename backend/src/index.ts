@@ -6115,7 +6115,7 @@ const findAssignmentPlanForQcEvent = async ({
       select: {
         id: true,
         externalId: true,
-        quantity: true,
+        assignmentQuantity: true,
         isCompleted: true,
         finalQuantity: true,
         completedAt: true,
@@ -6133,7 +6133,7 @@ const findAssignmentPlanForQcEvent = async ({
     select: {
       id: true,
       externalId: true,
-      quantity: true,
+      assignmentQuantity: true,
       isCompleted: true,
       finalQuantity: true,
       completedAt: true,
@@ -6232,7 +6232,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       id: true,
       externalId: true,
       lineId: true,
-      quantity: true,
+      assignmentQuantity: true,
       startIndex: true,
       endIndex: true,
       startDayOffsetPercent: true,
@@ -6268,7 +6268,7 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
       : [];
 
   const baselineQuantityByPlanId = linePlans.reduce((map, plan) => {
-    const baselineQuantity = toOptionalNonNegativeInt(plan?.quantity, null);
+    const baselineQuantity = resolveAssignmentQuantity(plan);
     if (baselineQuantity != null && baselineQuantity > 0) {
       map.set(plan.id, baselineQuantity);
     }
@@ -6857,7 +6857,7 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
         externalId: true,
         lineId: true,
         assignmentCtSnapshot: true,
-        ctTotalSeconds: true,
+        assignmentCtTotalSeconds: true,
         orderNo: true,
         label: true,
         colorName: true,
@@ -7596,7 +7596,7 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     resolveOptionalString(plan?.closeMode, null) ??
     resolveAssignmentPlanCloseMode({
       closedQty,
-      targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+      targetQty: resolveAssignmentQuantity(plan),
     });
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   const completedAt = closedAt;
@@ -7900,8 +7900,8 @@ const buildWorkLogContextResponse = async ({
           label: true,
           colorId: true,
           colorName: true,
-          quantity: true,
-          ctTotalSeconds: true,
+          assignmentQuantity: true,
+          assignmentCtTotalSeconds: true,
           assignmentCtSnapshot: true,
           color: true,
           startIndex: true,
@@ -7925,7 +7925,7 @@ const buildWorkLogContextResponse = async ({
           label: true,
           colorId: true,
           colorName: true,
-          quantity: true,
+          assignmentQuantity: true,
           assignmentCtSnapshot: true,
           color: true,
           startIndex: true,
@@ -8028,8 +8028,8 @@ const buildWorkLogContextResponse = async ({
                 label: item.label ?? null,
                 colorId: item.colorId ?? null,
                 colorName: item.colorName ?? null,
-                quantity: item.quantity ?? null,
-                ctTotalSeconds: item.ctTotalSeconds ?? null,
+                quantity: resolveAssignmentQuantity(item),
+                ctTotalSeconds: resolveAssignmentCtTotalSeconds(item),
                 assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
                 color: item.color ?? null,
                 startIndex: item.startIndex ?? 0,
@@ -8634,17 +8634,23 @@ const resolveAssignmentCtTotalSeconds = (item: any) => {
   if (snapshot?.assignmentCtTotalSeconds != null) {
     return Math.max(0, Math.round(Number(snapshot.assignmentCtTotalSeconds) || 0));
   }
-  const ctTotalSeconds = toOptionalNonNegativeInt(item?.ctTotalSeconds, null);
+  const ctTotalSeconds = toOptionalNonNegativeInt(
+    item?.assignmentCtTotalSeconds ?? item?.ctTotalSeconds,
+    null
+  );
   if (ctTotalSeconds != null) return ctTotalSeconds;
   return null;
 };
+const resolveAssignmentQuantity = (item: any): number | null =>
+  toOptionalNonNegativeInt(item?.assignmentQuantity ?? item?.quantity, null);
+const resolveAssignmentStTotalSeconds = (item: any): number | null =>
+  toOptionalNonNegativeInt(item?.assignmentStTotalSeconds ?? item?.stTotalSeconds, null);
 
 const normalizeStateAssignmentItem = (item: any): any => {
   if (!item || typeof item !== "object") return item;
   const externalId = resolveAssignmentExternalId(item);
   const ctTotalSeconds = resolveAssignmentCtTotalSeconds(item);
-  const stTotalSeconds =
-    toOptionalNonNegativeInt(item?.stTotalSeconds, null);
+  const stTotalSeconds = resolveAssignmentStTotalSeconds(item);
   const version = toNonNegativeInt(item?.version, 0);
   const versionUpdatedAt = toIsoDateStringOrNull(item?.versionUpdatedAt);
   const assignmentCtSnapshot = resolveNormalizedAssignmentCtSnapshot(item);
@@ -9902,7 +9908,7 @@ const loadOrderAssignmentModificationLockMap = async (
     lockedPlans = await prisma.assignmentPlan.findMany({
       where: {
         orgId: { in: orgIds },
-        ctTotalSeconds: { not: null },
+        assignmentCtTotalSeconds: { not: null },
       },
       select: {
         originOrderId: true,
@@ -9943,7 +9949,7 @@ const isOrderAssignmentModificationLocked = async (order: any): Promise<boolean>
     lockedPlan = await prisma.assignmentPlan.findFirst({
       where: {
         orgId: { in: orgIds },
-        ctTotalSeconds: { not: null },
+        assignmentCtTotalSeconds: { not: null },
         OR: [
           { originOrderId: { startsWith: prefix } },
           { cardId: { startsWith: prefix } },
@@ -10314,7 +10320,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     resolveOptionalString(plan?.closeMode, null) ??
     resolveAssignmentPlanCloseMode({
       closedQty,
-      targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+      targetQty: resolveAssignmentQuantity(plan),
     });
   const closeBasis = resolveAssignmentPlanCloseBasis(plan);
   return {
@@ -10329,7 +10335,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     previewUrl: plan.previewUrl ?? "",
     imageUrl: plan.imageUrl ?? "",
     thumbnailUrl: plan.thumbnailUrl ?? "",
-    quantity: plan.quantity ?? null,
+    quantity: resolveAssignmentQuantity(plan),
     originOrderId: plan.originOrderId ?? "",
     basis: plan.basis ?? "",
     ctTotalSeconds,
@@ -10338,7 +10344,7 @@ const toAssignmentPlanResponse = (plan: any) => {
     ctUpdatedAt: assignmentCtSnapshot?.updatedAt ?? null,
     color: plan.color ?? "",
     stripeColor: plan.stripeColor ?? "",
-    stTotalSeconds: plan.stTotalSeconds ?? null,
+    stTotalSeconds: resolveAssignmentStTotalSeconds(plan),
     startIndex: plan.startIndex,
     endIndex: plan.endIndex,
     startDayOffsetPercent: plan.startDayOffsetPercent ?? null,
@@ -10377,8 +10383,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         ...item,
         assignmentCtSnapshot,
       });
-      const stTotalSeconds =
-        toOptionalNonNegativeInt(item.stTotalSeconds, null);
+      const stTotalSeconds = resolveAssignmentStTotalSeconds(item);
       return {
         lineId: lineIdNum,
         externalId,
@@ -10391,7 +10396,7 @@ const normalizeAssignmentPlanPayload = (items: any, lineIdSet: Set<number> | nul
         previewUrl: resolveOptionalString(item.previewUrl, null),
         imageUrl: resolveOptionalString(item.imageUrl, null),
         thumbnailUrl: resolveOptionalString(item.thumbnailUrl, null),
-        quantity: toOptionalNonNegativeInt(item.quantity, null),
+        quantity: resolveAssignmentQuantity(item),
         originOrderId: resolveOptionalString(item.originOrderId, null),
         basis: resolveOptionalString(item.basis, null),
         ctTotalSeconds,
@@ -10504,14 +10509,14 @@ const toAssignmentPlanWriteData = (item: any) => {
     previewUrl: item.previewUrl ?? null,
     imageUrl: item.imageUrl ?? null,
     thumbnailUrl: item.thumbnailUrl ?? null,
-    quantity: item.quantity ?? null,
+    assignmentQuantity: item.assignmentQuantity ?? item.quantity ?? null,
     originOrderId: item.originOrderId ?? null,
     basis: item.basis ?? null,
-    ctTotalSeconds,
+    assignmentCtTotalSeconds: ctTotalSeconds,
     assignmentCtSnapshot: (assignmentCtSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
     color: item.color ?? null,
     stripeColor: item.stripeColor ?? null,
-    stTotalSeconds: item.stTotalSeconds ?? null,
+    assignmentStTotalSeconds: item.assignmentStTotalSeconds ?? item.stTotalSeconds ?? null,
     startIndex: item.startIndex,
     endIndex: item.endIndex,
     startDayOffsetPercent: item.startDayOffsetPercent ?? null,
@@ -10533,14 +10538,14 @@ const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   previewUrl: true,
   imageUrl: true,
   thumbnailUrl: true,
-  quantity: true,
+  assignmentQuantity: true,
   originOrderId: true,
   basis: true,
-  ctTotalSeconds: true,
+  assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
   color: true,
   stripeColor: true,
-  stTotalSeconds: true,
+  assignmentStTotalSeconds: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -10791,7 +10796,7 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
 const hasAssignmentStructuralStChange = (assignment: any, existingPlan: any) => {
   if (!existingPlan) return true;
   const assignmentQuantity = toOptionalNonNegativeInt(assignment?.quantity, null);
-  const existingQuantity = toOptionalNonNegativeInt(existingPlan?.quantity, null);
+  const existingQuantity = resolveAssignmentQuantity(existingPlan);
   if (assignmentQuantity !== existingQuantity) return true;
 
   const lineId = normalizeAssignmentLineIdForWriteCompare(assignment?.lineId);
@@ -11174,14 +11179,14 @@ const ASSIGNMENT_PLAN_SELECT_CORE = {
   previewUrl: true,
   imageUrl: true,
   thumbnailUrl: true,
-  quantity: true,
+  assignmentQuantity: true,
   originOrderId: true,
   basis: true,
-  ctTotalSeconds: true,
+  assignmentCtTotalSeconds: true,
   assignmentCtSnapshot: true,
   color: true,
   stripeColor: true,
-  stTotalSeconds: true,
+  assignmentStTotalSeconds: true,
   startIndex: true,
   endIndex: true,
   startDayOffsetPercent: true,
@@ -11226,7 +11231,7 @@ const ASSIGNMENT_PLAN_SELECT_LEGACY = {
   previewUrl: true,
   imageUrl: true,
   thumbnailUrl: true,
-  quantity: true,
+  assignmentQuantity: true,
   originOrderId: true,
   basis: true,
   assignmentCtSnapshot: true,
@@ -15575,7 +15580,7 @@ app.get("/assignment-plans", async (req, res) => {
         resolveOptionalString(plan?.closeMode, null) ??
         resolveAssignmentPlanCloseMode({
           closedQty,
-          targetQty: toOptionalNonNegativeInt(plan?.quantity, null),
+          targetQty: resolveAssignmentQuantity(plan),
         });
       const closeBasis = resolveAssignmentPlanCloseBasis(plan);
       return {
@@ -15594,7 +15599,7 @@ app.get("/assignment-plans", async (req, res) => {
         colorId: toPositiveIntOrNull(plan.colorId),
         colorName: resolveAssignmentPlanColorName(plan),
         color: plan.color ?? "",
-        quantity: plan.quantity ?? null,
+        quantity: resolveAssignmentQuantity(plan),
         ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
         assignmentCtSnapshot: resolveNormalizedAssignmentCtSnapshot(plan),
         ctUpdatedBy:
@@ -16317,7 +16322,7 @@ const buildAssignmentPlanProgressRows = async (
       hasRangeCoverage: false,
     };
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
-    const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
+    const plannedQuantity = resolveAssignmentQuantity(plan);
     const baselineQuantityRaw =
       plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
     const ctSnapshotRaw = resolveAssignmentCtSnapshotInput(plan);
@@ -16933,7 +16938,7 @@ const completeAssignmentPlanProduction = async ({
       id: true,
       externalId: true,
       lineId: true,
-      quantity: true,
+      assignmentQuantity: true,
       finalQuantity: true,
       isCompleted: true,
       completedAt: true,
@@ -16963,7 +16968,7 @@ const completeAssignmentPlanProduction = async ({
     };
   }
 
-  const plannedQuantity = toOptionalNonNegativeInt(plan.quantity, null);
+  const plannedQuantity = resolveAssignmentQuantity(plan);
   const baselineQuantity =
     plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
   const producedQuantity = await resolveAssignmentPlanProducedQuantity({
@@ -17284,7 +17289,7 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
       lineId: true,
       isCompleted: true,
       completedAt: true,
-      quantity: true,
+      assignmentQuantity: true,
       finalQuantity: true,
       orderNo: true,
       label: true,
@@ -17315,7 +17320,7 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
     },
   });
 
-  const plannedQuantity = toOptionalNonNegativeInt(updatedPlan.quantity, null);
+  const plannedQuantity = resolveAssignmentQuantity(updatedPlan);
   const baselineQuantity =
     plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
   const producedQuantity = await resolveAssignmentPlanProducedQuantity({
@@ -19070,10 +19075,10 @@ app.put("/assignment-board-state", async (req, res) => {
               id: true,
               externalId: true,
               lineId: true,
-              quantity: true,
+              assignmentQuantity: true,
               startIndex: true,
               endIndex: true,
-              stTotalSeconds: true,
+              assignmentStTotalSeconds: true,
               cardId: true,
               originOrderId: true,
               isCompleted: true,

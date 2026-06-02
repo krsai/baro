@@ -120,11 +120,13 @@ const buildProcessMirror = (rows = []) =>
     .map((row, index) => {
       const standards = (Array.isArray(row?.standards) ? row.standards : [])
         .map((standard) => {
-          const seconds = clampProcessSeconds(standard?.stSeconds);
+          const seconds = clampProcessSeconds(standard?.bucketStSeconds ?? standard?.stSeconds);
           if (seconds === null) return null;
           return {
-            quantity: resolveStBucketQuantity(standard?.quantity),
-            seconds,
+            bucketQuantity: resolveStBucketQuantity(
+              standard?.bucketQuantity ?? standard?.quantity
+            ),
+            bucketStSeconds: seconds,
             setBy:
               typeof standard?.setBy === 'string' && standard.setBy.trim()
                 ? standard.setBy.trim()
@@ -134,20 +136,20 @@ const buildProcessMirror = (rows = []) =>
           };
         })
         .filter(Boolean)
-        .sort((left, right) => left.quantity - right.quantity);
+        .sort((left, right) => left.bucketQuantity - right.bucketQuantity);
 
       return {
         code: row?.processCode || '',
         name: row?.processName || row?.processCode || `Process ${index + 1}`,
         description: row?.processDescription ?? null,
-        quantity: toPositiveInt(row?.processQuantity, 1),
+        timesPerPiece: toPositiveInt(row?.timesPerPiece ?? row?.processQuantity, 1),
         pt: clampProcessSeconds(row?.ptSeconds),
         atParams:
           row?.atParams && typeof row.atParams === 'object' && !Array.isArray(row.atParams)
             ? row.atParams
             : null,
-        stValues: standards,
-        timeRefQuantity: standards[0]?.quantity ?? DEFAULT_TIME_REF_QUANTITY,
+        stBuckets: standards,
+        timeRefQuantity: standards[0]?.bucketQuantity ?? DEFAULT_TIME_REF_QUANTITY,
         instanceId: resolveProcessInstanceId(row?.processCode, row?.id, index),
       };
     });
@@ -216,60 +218,68 @@ const normalizeAssignmentSchedule = (plan, existingSnapshot) => {
 
 const resolveStPerPieceSeconds = (process, orderQuantity) => {
   const bucketQuantity = resolveStBucketQuantity(orderQuantity);
-  const standards = Array.isArray(process?.stValues) ? process.stValues : [];
+  const standards = Array.isArray(process?.stBuckets)
+    ? process.stBuckets
+    : Array.isArray(process?.stValues)
+      ? process.stValues
+      : [];
   const exact = standards.find(
-    (value) => resolveStBucketQuantity(value?.quantity) === bucketQuantity
+    (value) => resolveStBucketQuantity(value?.bucketQuantity ?? value?.quantity) === bucketQuantity
   );
-  if (exact?.seconds != null) {
-    return clampProcessSeconds(exact.seconds);
+  const exactSeconds = exact?.bucketStSeconds ?? exact?.seconds;
+  if (exactSeconds != null) {
+    return clampProcessSeconds(exactSeconds);
   }
   return clampProcessSeconds(process?.pt);
 };
 
 const buildAssignmentSnapshot = ({ plan, styleProcesses, updatedAtIso, updatedBy }) => {
   const existingSnapshot =
-    plan?.ctSnapshot && typeof plan.ctSnapshot === 'object' && !Array.isArray(plan.ctSnapshot)
-      ? plan.ctSnapshot
+    plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === 'object' && !Array.isArray(plan.assignmentCtSnapshot)
+      ? plan.assignmentCtSnapshot
+      : plan?.ctSnapshot && typeof plan.ctSnapshot === 'object' && !Array.isArray(plan.ctSnapshot)
+        ? plan.ctSnapshot
       : null;
   const orderQuantity = toPositiveInt(
-    plan?.finalQuantity ?? plan?.quantity ?? existingSnapshot?.quantity ?? 1,
+    plan?.finalQuantity ?? plan?.assignmentQuantity ?? plan?.quantity ?? existingSnapshot?.quantity ?? 1,
     1
   );
   const snapshotProcesses = styleProcesses
     .map((process, index) => {
       const stSeconds = resolveStPerPieceSeconds(process, orderQuantity);
       if (stSeconds == null) return null;
-      const processQuantity = toPositiveInt(process?.quantity, 1);
+      const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
       return {
         processKey: String(
           process?.instanceId || process?.id || process?.code || `PROCESS-${index + 1}`
         ).trim(),
         name: process?.name || process?.processName || process?.code || `Process ${index + 1}`,
-        quantity: processQuantity,
+        timesPerPiece,
         basis: 'ST',
-        stSeconds,
-        ctSeconds: stSeconds,
-        ctPerPieceSeconds: stSeconds * processQuantity,
+        snapshotCtSeconds: stSeconds,
+        pieceCtSeconds: stSeconds * timesPerPiece,
       };
     })
     .filter(Boolean);
 
   if (snapshotProcesses.length === 0) return null;
 
-  const totalStPerPieceSeconds = snapshotProcesses.reduce(
-    (sum, process) => sum + (Number(process?.ctPerPieceSeconds) || 0),
+  const pieceCtTotalSeconds = snapshotProcesses.reduce(
+    (sum, process) => sum + (Number(process?.pieceCtSeconds) || 0),
     0
   );
-  const totalCtSeconds = Math.max(0, Math.round(totalStPerPieceSeconds * orderQuantity));
+  const assignmentCtTotalSeconds = Math.max(
+    0,
+    Math.round(pieceCtTotalSeconds * orderQuantity)
+  );
 
   return {
     updatedAt: updatedAtIso,
     updatedBy,
     quantity: orderQuantity,
     schedule: normalizeAssignmentSchedule(plan, existingSnapshot),
-    totalStPerPieceSeconds,
-    totalCtPerPieceSeconds: totalStPerPieceSeconds,
-    totalCtSeconds,
+    pieceCtTotalSeconds,
+    assignmentCtTotalSeconds,
     processes: snapshotProcesses,
   };
 };
@@ -292,8 +302,11 @@ const normalizeBoardAssignmentForComparison = (assignment) => {
 
   const nextAssignment = {
     ...assignment,
-    ctSnapshot: normalizeAssignmentSnapshotForComparison(assignment.ctSnapshot),
+    assignmentCtSnapshot: normalizeAssignmentSnapshotForComparison(
+      assignment.assignmentCtSnapshot ?? assignment.ctSnapshot
+    ),
   };
+  delete nextAssignment.ctSnapshot;
   delete nextAssignment.version;
   delete nextAssignment.versionUpdatedAt;
   return nextAssignment;
@@ -349,7 +362,7 @@ async function runTimeModelRealignment(prisma, options = {}) {
         },
       },
       standards: {
-        orderBy: [{ quantity: 'asc' }, { id: 'asc' }],
+        orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
       },
     },
     orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
@@ -364,9 +377,9 @@ async function runTimeModelRealignment(prisma, options = {}) {
     const groupedStandards = new Map();
 
     for (const standard of Array.isArray(row?.standards) ? row.standards : []) {
-      const stSeconds = clampProcessSeconds(standard?.stSeconds);
+      const stSeconds = clampProcessSeconds(standard?.bucketStSeconds ?? standard?.stSeconds);
       if (stSeconds === null) continue;
-      const quantity = resolveStBucketQuantity(standard?.quantity);
+      const quantity = resolveStBucketQuantity(standard?.bucketQuantity ?? standard?.quantity);
       const candidate = {
         id: standard.id,
         quantity,
@@ -391,10 +404,12 @@ async function runTimeModelRealignment(prisma, options = {}) {
       ptSeconds: clampProcessSeconds(row?.ptSeconds),
       standards: (Array.isArray(row?.standards) ? row.standards : [])
         .map((standard) => {
-          const stSeconds = clampProcessSeconds(standard?.stSeconds);
+          const stSeconds = clampProcessSeconds(
+            standard?.bucketStSeconds ?? standard?.stSeconds
+          );
           if (stSeconds === null) return null;
           return {
-            quantity: resolveStBucketQuantity(standard?.quantity),
+            quantity: resolveStBucketQuantity(standard?.bucketQuantity ?? standard?.quantity),
             stSeconds,
             setBy:
               typeof standard?.setBy === 'string' && standard.setBy.trim()
@@ -435,8 +450,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
           data: nextStandards.map((standard) => ({
             orgId: row.orgId,
             styleProcessId: row.id,
-            quantity: standard.quantity,
-            stSeconds: standard.stSeconds,
+            bucketQuantity: standard.quantity,
+            bucketStSeconds: standard.stSeconds,
             setBy: standard.setBy,
             setAt: standard.setAt ? new Date(standard.setAt) : undefined,
           })),
@@ -463,7 +478,7 @@ async function runTimeModelRealignment(prisma, options = {}) {
       : undefined,
     include: {
       standards: {
-        orderBy: [{ quantity: 'asc' }, { id: 'asc' }],
+        orderBy: [{ bucketQuantity: 'asc' }, { id: 'asc' }],
       },
     },
     orderBy: [{ styleUid: 'asc' }, { sortOrder: 'asc' }, { id: 'asc' }],
@@ -540,14 +555,14 @@ async function runTimeModelRealignment(prisma, options = {}) {
       cardId: true,
       originOrderId: true,
       label: true,
-      quantity: true,
+      assignmentQuantity: true,
       finalQuantity: true,
       lineId: true,
       startIndex: true,
       endIndex: true,
-      stTotalSeconds: true,
-      ctTotalSeconds: true,
-      ctSnapshot: true,
+      assignmentStTotalSeconds: true,
+      assignmentCtTotalSeconds: true,
+      assignmentCtSnapshot: true,
     },
     orderBy: [{ orgId: 'asc' }, { id: 'asc' }],
   });
@@ -573,13 +588,13 @@ async function runTimeModelRealignment(prisma, options = {}) {
 
     const nextStTotalSeconds = Math.max(
       0,
-      Math.round(Number(nextSnapshot.totalStPerPieceSeconds || 0) * Number(nextSnapshot.quantity || 0))
+      Math.round(Number(nextSnapshot.pieceCtTotalSeconds || 0) * Number(nextSnapshot.quantity || 0))
     );
-    const nextCtTotalSeconds = nextSnapshot.totalCtSeconds;
+    const nextCtTotalSeconds = nextSnapshot.assignmentCtTotalSeconds;
     const comparableCurrent = {
-      ctTotalSeconds: Number(plan?.ctTotalSeconds) || 0,
-      stTotalSeconds: Number(plan?.stTotalSeconds) || 0,
-      ctSnapshot: normalizeAssignmentSnapshotForComparison(plan?.ctSnapshot),
+      ctTotalSeconds: Number(plan?.assignmentCtTotalSeconds) || 0,
+      stTotalSeconds: Number(plan?.assignmentStTotalSeconds) || 0,
+      ctSnapshot: normalizeAssignmentSnapshotForComparison(plan?.assignmentCtSnapshot),
     };
     const comparableNext = {
       ctTotalSeconds: nextCtTotalSeconds,
@@ -589,8 +604,8 @@ async function runTimeModelRealignment(prisma, options = {}) {
     if (normalizeJson(comparableCurrent) === normalizeJson(comparableNext)) {
       nextSnapshotByExternalId.set(
         plan.externalId,
-        plan?.ctSnapshot && typeof plan.ctSnapshot === 'object' && !Array.isArray(plan.ctSnapshot)
-          ? plan.ctSnapshot
+        plan?.assignmentCtSnapshot && typeof plan.assignmentCtSnapshot === 'object' && !Array.isArray(plan.assignmentCtSnapshot)
+          ? plan.assignmentCtSnapshot
           : nextSnapshot
       );
       continue;
@@ -599,9 +614,9 @@ async function runTimeModelRealignment(prisma, options = {}) {
     await prisma.assignmentPlan.update({
       where: { id: plan.id },
       data: {
-        ctTotalSeconds: nextCtTotalSeconds,
-        stTotalSeconds: nextStTotalSeconds,
-        ctSnapshot: nextSnapshot,
+        assignmentCtTotalSeconds: nextCtTotalSeconds,
+        assignmentStTotalSeconds: nextStTotalSeconds,
+        assignmentCtSnapshot: nextSnapshot,
       },
     });
     assignmentPlanUpdateCount += 1;
@@ -635,18 +650,19 @@ async function runTimeModelRealignment(prisma, options = {}) {
       const nextSnapshot = nextSnapshotByExternalId.get(externalId);
       const nextStTotalSeconds = Math.max(
         0,
-        Math.round(Number(nextSnapshot.totalStPerPieceSeconds || 0) * Number(nextSnapshot.quantity || 0))
+        Math.round(Number(nextSnapshot.pieceCtTotalSeconds || 0) * Number(nextSnapshot.quantity || 0))
       );
-      const nextCtTotalSeconds = nextSnapshot.totalCtSeconds;
+      const nextCtTotalSeconds = nextSnapshot.assignmentCtTotalSeconds;
       const nextAssignment = {
         ...assignment,
         ctTotalSeconds: nextCtTotalSeconds,
         stTotalSeconds: nextStTotalSeconds,
         basis: 'ST',
-        ctSnapshot: nextSnapshot,
+        assignmentCtSnapshot: nextSnapshot,
         version: toPositiveInt(assignment?.version ?? 1, 1) + 1,
         versionUpdatedAt: updatedAtIso,
       };
+      delete nextAssignment.ctSnapshot;
       const isMeaningfullyChanged =
         normalizeJson(normalizeBoardAssignmentForComparison(assignment)) !==
         normalizeJson(normalizeBoardAssignmentForComparison(nextAssignment));
@@ -1764,12 +1780,12 @@ const runReplaceStyleProcessMaster = (() => {
       code: master.code,
       name: `${master.nameKo} / ${master.nameVi}`,
       description: row.description || null,
-      quantity: row.quantity,
+      timesPerPiece: row.quantity,
       pt: row.calibratedPtSeconds ?? row.seededPtSeconds,
-      stValues: [
-        ...SEEDED_ST_BUCKETS.map((quantity) => ({
-          quantity,
-          seconds: row.calibratedPtSeconds ?? row.seededPtSeconds,
+      stBuckets: [
+        ...SEEDED_ST_BUCKETS.map((bucketQuantity) => ({
+          bucketQuantity,
+          bucketStSeconds: row.calibratedPtSeconds ?? row.seededPtSeconds,
           setBy: "SEED",
           setAt: null,
           updatedAt: null,
@@ -1785,7 +1801,7 @@ const runReplaceStyleProcessMaster = (() => {
   
   const summarizeTotalSeconds = (processes) =>
     processes.reduce(
-      (sum, process) => sum + (Number(process.quantity) || 0) * (Number(process.pt) || 0),
+      (sum, process) => sum + (Number(process.timesPerPiece ?? process.quantity) || 0) * (Number(process.pt) || 0),
       0
     );
   
@@ -1915,7 +1931,7 @@ const runReplaceStyleProcessMaster = (() => {
                   processCode: process.code,
                   processName: process.name,
                   processDescription: process.description,
-                  processQuantity: process.quantity,
+                  timesPerPiece: process.timesPerPiece ?? process.quantity,
                   sortOrder: index,
                   ptSeconds: process.pt,
                   atParams: null,
@@ -1923,11 +1939,11 @@ const runReplaceStyleProcessMaster = (() => {
               });
   
               await tx.styleProcessStandard.createMany({
-                data: (Array.isArray(process.stValues) ? process.stValues : []).map((standard) => ({
+                data: (Array.isArray(process.stBuckets) ? process.stBuckets : process.stValues || []).map((standard) => ({
                   orgId: resolvedOrgId,
                   styleProcessId: createdStyleProcess.id,
-                  quantity: standard.quantity,
-                  stSeconds: standard.seconds,
+                  bucketQuantity: standard.bucketQuantity ?? standard.quantity,
+                  bucketStSeconds: standard.bucketStSeconds ?? standard.seconds,
                   setBy: standard.setBy ?? "SEED",
                 })),
               });
@@ -2219,12 +2235,12 @@ async function runComposedStyleProcessReplacement({
           nameEn: master.nameEn,
           nameVi: master.nameVi,
           description: null,
-          quantity,
+          timesPerPiece: quantity,
           pt,
-          stValues: [
+          stBuckets: [
             {
-              quantity: COMPOSED_TIME_REF_QUANTITY,
-              seconds: pt,
+              bucketQuantity: COMPOSED_TIME_REF_QUANTITY,
+              bucketStSeconds: pt,
               setBy: 'SEED',
               setAt: null,
               updatedAt: null,
@@ -2264,7 +2280,7 @@ async function runComposedStyleProcessReplacement({
             processCode: process.code,
             processName: process.name,
             processDescription: process.description,
-            processQuantity: process.quantity,
+            timesPerPiece: process.timesPerPiece ?? process.quantity,
             sortOrder: index,
             ptSeconds: process.pt,
             atParams: null,
@@ -2275,8 +2291,8 @@ async function runComposedStyleProcessReplacement({
           data: {
             orgId: resolvedOrgId,
             styleProcessId: createdStyleProcess.id,
-            quantity: COMPOSED_TIME_REF_QUANTITY,
-            stSeconds: process.pt,
+            bucketQuantity: COMPOSED_TIME_REF_QUANTITY,
+            bucketStSeconds: process.pt,
             setBy: 'SEED',
           },
         });
@@ -3903,17 +3919,25 @@ function buildAssignmentPlanWriteDataFromSnapshot(orgId, assignment, timestamp =
     previewUrl: assignment?.previewUrl ? String(assignment.previewUrl) : null,
     imageUrl: assignment?.imageUrl ? String(assignment.imageUrl) : null,
     thumbnailUrl: assignment?.thumbnailUrl ? String(assignment.thumbnailUrl) : null,
-    quantity: sampleToPositiveIntOrNull(assignment?.quantity),
+    assignmentQuantity: sampleToPositiveIntOrNull(
+      assignment?.assignmentQuantity ?? assignment?.quantity
+    ),
     originOrderId: assignment?.originOrderId ? String(assignment.originOrderId) : null,
     basis: assignment?.basis ? String(assignment.basis) : null,
-    ctTotalSeconds: sampleToPositiveIntOrNull(assignment?.ctTotalSeconds),
-    ctSnapshot:
-      assignment?.ctSnapshot && typeof assignment.ctSnapshot === 'object'
-        ? cloneJsonValue(assignment.ctSnapshot)
+    assignmentCtTotalSeconds: sampleToPositiveIntOrNull(
+      assignment?.assignmentCtTotalSeconds ?? assignment?.ctTotalSeconds
+    ),
+    assignmentCtSnapshot:
+      assignment?.assignmentCtSnapshot && typeof assignment.assignmentCtSnapshot === 'object'
+          ? cloneJsonValue(assignment.assignmentCtSnapshot)
+          : assignment?.ctSnapshot && typeof assignment.ctSnapshot === 'object'
+            ? cloneJsonValue(assignment.ctSnapshot)
         : null,
     color: assignment?.color ? String(assignment.color) : null,
     stripeColor: assignment?.stripeColor ? String(assignment.stripeColor) : null,
-    stTotalSeconds: sampleToPositiveIntOrNull(assignment?.stTotalSeconds),
+    assignmentStTotalSeconds: sampleToPositiveIntOrNull(
+      assignment?.assignmentStTotalSeconds ?? assignment?.stTotalSeconds
+    ),
     startIndex,
     endIndex,
     startDayOffsetPercent: sampleToFiniteNumber(assignment?.startDayOffsetPercent, null),
@@ -4085,7 +4109,7 @@ function sampleExtractProcessCode(process, index) {
 function sampleNormalizePlanProcesses(rows, orderQuantity) {
   return (Array.isArray(rows) ? rows : [])
     .map((process, index) => {
-      const processQuantity = sampleToPositiveInt(process?.quantity, 1);
+      const processQuantity = sampleToPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
       const ctSeconds = sampleToPositiveInt(
         process?.ctPerPieceSeconds ??
           process?.agreedPerPieceSeconds ??
@@ -4115,10 +4139,17 @@ function sampleNormalizePlanProcesses(rows, orderQuantity) {
 
 function sampleBuildPlanProcesses(plan, processMirrorByStyleId) {
   const orderQuantity = sampleToPositiveInt(
-    plan?.finalQuantity ?? plan?.quantity ?? plan?.ctSnapshot?.quantity,
+    plan?.finalQuantity ??
+      plan?.assignmentQuantity ??
+      plan?.quantity ??
+      plan?.assignmentCtSnapshot?.quantity ??
+      plan?.ctSnapshot?.quantity,
     1
   );
-  const snapshotProcesses = sampleNormalizePlanProcesses(plan?.ctSnapshot?.processes, orderQuantity);
+  const snapshotProcesses = sampleNormalizePlanProcesses(
+    (plan?.assignmentCtSnapshot ?? plan?.ctSnapshot)?.processes,
+    orderQuantity
+  );
   if (snapshotProcesses.length > 0) {
     return snapshotProcesses;
   }
