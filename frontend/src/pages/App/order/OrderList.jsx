@@ -79,6 +79,7 @@ import {
   toggleOrderModificationLock as toggleOrderModificationLockToApi,
 } from '../../../utils/orderApi';
 import {
+  emitOrderDeleted,
   emitOrderModificationLockChanged,
   subscribeOrderModificationLockChanged,
 } from '../../../utils/orderSyncEvents';
@@ -2457,6 +2458,11 @@ const OrderList = () => {
     try {
       await deleteOrderToApi(order.id, { orgId: activeOrgId });
       setOrders((prev) => prev.filter((target) => target.id !== order.id));
+      emitOrderDeleted({
+        orgId: activeOrgId,
+        orderId: order.id,
+        source: orderDataChangedEventSourceRef.current,
+      });
       emitOrderDataChanged();
       showNotification(orderPageText.deleteSuccess, 'success');
     } catch (error) {

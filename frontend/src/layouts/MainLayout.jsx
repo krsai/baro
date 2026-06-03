@@ -50,6 +50,7 @@ import Inventory2Icon from '@mui/icons-material/Inventory2';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
+import { subscribeOrderDeleted } from '../utils/orderSyncEvents';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
 import { getUiMessage } from '../constants/uiMessages';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -1358,6 +1359,43 @@ const MainLayout = () => {
   useEffect(() => {
     setNavigateToPath(handleNavigation);
   }, [handleNavigation, setNavigateToPath]);
+
+  useEffect(() => {
+    const normalizedActiveOrgId = Number(activeOrgId);
+    return subscribeOrderDeleted((detail) => {
+      const deletedOrderId = String(detail?.orderId || '').trim();
+      if (!deletedOrderId) return;
+
+      const eventOrgId = Number(detail?.orgId);
+      if (
+        Number.isFinite(eventOrgId) &&
+        eventOrgId > 0 &&
+        Number.isFinite(normalizedActiveOrgId) &&
+        normalizedActiveOrgId > 0 &&
+        eventOrgId !== normalizedActiveOrgId
+      ) {
+        return;
+      }
+
+      const deletedTabPath = `/order/${deletedOrderId}`;
+      const hasDeletedTabOpen = openTabs.some(
+        (tab) => toPathname(tab?.id || tab?.path || '') === deletedTabPath
+      );
+
+      if (currentPath === deletedTabPath) {
+        handleNavigation('/order', {
+          label: resolveTabLabel('/order'),
+          closeTabId: deletedTabPath,
+          skipUnsavedChangesCheck: true,
+        });
+        return;
+      }
+
+      if (hasDeletedTabOpen) {
+        closeTab(deletedTabPath);
+      }
+    });
+  }, [activeOrgId, closeTab, currentPath, handleNavigation, openTabs, resolveTabLabel]);
 
   const handleLogout = async () => {
     isLoggingOutRef.current = true;
