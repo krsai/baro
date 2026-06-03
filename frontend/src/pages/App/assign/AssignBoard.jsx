@@ -1201,7 +1201,7 @@ const buildAssignmentCtSnapshotForSave = ({
               resolveLocalizedProcessName(process, 'vi') ||
               ''
           ).trim(),
-          processQuantity: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
+          timesPerPiece: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
         }))
       : (Array.isArray(existingSnapshot?.processes) ? existingSnapshot.processes : []).map(
           (process, index) => ({
@@ -1228,7 +1228,7 @@ const buildAssignmentCtSnapshotForSave = ({
                 resolveLocalizedProcessName(process, 'vi') ||
                 ''
             ).trim(),
-            processQuantity: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
+            timesPerPiece: Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1)),
           })
         );
 
@@ -1289,10 +1289,10 @@ const buildAssignmentCtSnapshotForSave = ({
         nameVi:
           seed.processNameVi ||
           String(snapshotProcess?.nameVi || snapshotProcess?.processNameVi || '').trim(),
-        timesPerPiece: seed.processQuantity,
+        timesPerPiece: seed.timesPerPiece,
         basis: stDraftSeconds != null ? 'ST' : seed.process?.basis || snapshotProcess?.basis || 'CT',
         snapshotCtSeconds: resolvedCtSeconds,
-        pieceCtSeconds: resolvedCtSeconds * seed.processQuantity,
+        pieceCtSeconds: resolvedCtSeconds * seed.timesPerPiece,
       };
     })
     .filter(Boolean);
@@ -4277,7 +4277,7 @@ const AssignBoard = () => {
         getUiMessage('assign.fallbackProcessName', 'Process {index}', languageCode, {
           index: index + 1,
         });
-      const processQuantity = Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1));
+      const timesPerPiece = Math.max(1, toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1));
       const ptInfo = resolveProcessPtInfo(process, orderQuantity);
       const atSeconds = resolveProcessAtPerPieceSeconds(process, orderQuantity);
       const atReliability = resolveProcessAtReliability(process, orderQuantity);
@@ -4295,15 +4295,15 @@ const AssignBoard = () => {
         Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
       const proposedSeconds = ctDraftSeconds ?? savedSnapshotCtSeconds ?? baseSeconds;
       const savedSeconds = savedSnapshotCtSeconds ?? baseSeconds;
-      const basePerPieceSeconds = baseSeconds * processQuantity;
-      const proposedPerPieceSeconds = proposedSeconds * processQuantity;
+      const basePerPieceSeconds = baseSeconds * timesPerPiece;
+      const proposedPerPieceSeconds = proposedSeconds * timesPerPiece;
       const savedPerPieceSeconds =
-        savedSeconds == null ? null : savedSeconds * processQuantity;
+        savedSeconds == null ? null : savedSeconds * timesPerPiece;
       const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
       return {
         processKey,
         processName,
-        processQuantity,
+        timesPerPiece,
         basis: stDraftSeconds != null ? 'ST' : baseStSeedInfo.source,
         ptSeconds: ptInfo.seconds,
         ptReferenceQuantity: ptInfo.referenceQuantity,
@@ -5078,10 +5078,11 @@ const AssignBoard = () => {
       colorName: assignment.colorName || '',
       gender: normalizeGenderKey(assignment.gender),
       quantity: assignment.quantity ?? 0,
+      cardQuantity: assignment.quantity ?? 0,
       stTotalSeconds: assignment.stTotalSeconds ?? 0,
       totalPt: basis === 'PT' ? assignment.stTotalSeconds ?? 0 : 0,
       totalAt: basis === 'AT' ? assignment.stTotalSeconds ?? 0 : 0,
-      totalSt: basis === 'ST' ? assignment.stTotalSeconds ?? 0 : 0,
+      cardStTotalSeconds: basis === 'ST' ? assignment.stTotalSeconds ?? 0 : 0,
       status: basis === 'ST' ? 'ST' : basis === 'PT' || basis === 'CT' ? 'PT' : 'NONE',
       isManualOrderLocked: true,
     };
@@ -5762,7 +5763,7 @@ const AssignBoard = () => {
                               <TableCell>
                                 {formatProcessNameWithQuantity(
                                   row.processName,
-                                  row.processQuantity
+                                  row.timesPerPiece
                                 )}
                               </TableCell>
                               <TableCell align="right">

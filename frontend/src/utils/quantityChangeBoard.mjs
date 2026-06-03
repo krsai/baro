@@ -49,14 +49,14 @@ const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
 };
 
 const resolveProcessStTotalSeconds = (process, orderQuantity = 1) => {
-  const processQuantity = Math.max(
+  const timesPerPiece = Math.max(
     1,
     Math.trunc(toNumber(process?.timesPerPiece ?? process?.quantity, 1))
   );
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
   const stPerPiece = resolveProcessStPerPieceSeconds(process, resolvedOrderQuantity);
   if (stPerPiece == null) return 0;
-  return processQuantity * stPerPiece * resolvedOrderQuantity;
+  return timesPerPiece * stPerPiece * resolvedOrderQuantity;
 };
 
 const resolveCardOriginId = (card) => normalizeBoardKey(card?.originOrderId || card?.id);
@@ -134,13 +134,31 @@ export const reconcileBoardStateForQuantityChanges = ({
         previousCard || {};
       const styleId = normalizeBoardKey(nextVariant?.styleId);
 
-      const previousQty = toNumber(previousCardBase.quantity, 0);
+      const previousQty = toNumber(
+        previousCardBase.cardQuantity ?? previousCardBase.quantity,
+        0
+      );
       const fallbackUnitPt =
-        previousQty > 0 ? toNumber(previousCardBase.totalPt, 0) / previousQty : 0;
+        previousQty > 0
+          ? toNumber(
+              previousCardBase.cardPtTotalSeconds ?? previousCardBase.totalPt,
+              0
+            ) / previousQty
+          : 0;
       const fallbackUnitAt =
-        previousQty > 0 ? toNumber(previousCardBase.totalAt, 0) / previousQty : 0;
+        previousQty > 0
+          ? toNumber(
+              previousCardBase.cardAtTotalSeconds ?? previousCardBase.totalAt,
+              0
+            ) / previousQty
+          : 0;
       const fallbackUnitSt =
-        previousQty > 0 ? toNumber(previousCardBase.totalSt, 0) / previousQty : 0;
+        previousQty > 0
+          ? toNumber(
+              previousCardBase.cardStTotalSeconds ?? previousCardBase.totalSt,
+              0
+            ) / previousQty
+          : 0;
 
       const processSummary = styleSummaryMap.get(styleId) || null;
       const hasProcessSummary =
@@ -187,10 +205,13 @@ export const reconcileBoardStateForQuantityChanges = ({
           ? toNumber(processSummary.processCount, 0)
           : toNumber(previousCardBase.processCount, 0),
         status,
+        cardQuantity: nextQty,
+        cardPtTotalSeconds: totalPt,
+        cardAtTotalSeconds: totalAt,
+        cardStTotalSeconds: totalSt,
         stTotalSeconds,
         totalPt,
         totalAt,
-        totalSt,
         previewUrl:
           (hasProcessSummary ? processSummary.previewUrl : '') ||
           previousCardBase.previewUrl ||

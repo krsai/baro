@@ -110,7 +110,6 @@ export const normalizeAssignmentCardForBoard = (card) => {
     quantity: cardQuantity,
     totalPt: cardPtTotalSeconds,
     totalAt: cardAtTotalSeconds,
-    totalSt: nextStatus === 'ST' ? cardStTotalSeconds : 0,
     stTotalSeconds: scheduledTotalSeconds,
     status: nextStatus,
   };

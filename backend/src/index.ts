@@ -9044,12 +9044,12 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
 };
 const resolveAssignmentCardStatus = ({
   totalPt,
-  totalSt,
+  cardStTotalSeconds,
 }: {
   totalPt: number;
-  totalSt: number;
+  cardStTotalSeconds: number;
 }) => {
-  if (Number(totalSt) > 0) return "ST";
+  if (Number(cardStTotalSeconds) > 0) return "ST";
   if (Number(totalPt) > 0) return "PT";
   return "NONE";
 };
@@ -9173,7 +9173,10 @@ const buildAssignmentCardsFromOrders = ({
         processes,
         group.quantity
       );
-      const status = resolveAssignmentCardStatus({ totalPt, totalSt });
+      const status = resolveAssignmentCardStatus({
+        totalPt,
+        cardStTotalSeconds: totalSt,
+      });
       const resolvedOrderId =
         resolveOptionalString(order?.orderId ?? order?.id, null) ??
         `order-${orderIndex}`;
