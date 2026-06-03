@@ -828,6 +828,15 @@ const buildProcessComposition = (draft) => {
   };
 };
 
+const hasStructuredProcessComposition = (composition) => {
+  if (!composition || typeof composition !== 'object') return false;
+  return (
+    resolveCompositionLocations(composition).length > 0 ||
+    resolveCompositionTargetPairs(composition).length > 0 ||
+    resolveCompositionActionPairs(composition).length > 0
+  );
+};
+
 const resolveProcessCompositionText = (entry, languageCode, masterLookupByCode = null) => {
   if (!entry || typeof entry !== 'object') return '';
   const codeKey = normalizeStyleProcessCodeSegment(entry?.code);
@@ -1077,24 +1086,21 @@ const buildProcessPayload = (
     DEFAULT_TIME_REF_QUANTITY
   );
   const resolvedStBucketQuantity = resolveStBucketQuantity(resolvedTimeRefQuantity);
-  const timesPerPiece = toPositiveInt(
-    draft?.repeatCount ?? existingProcess?.timesPerPiece ?? existingProcess?.quantity,
-    1
-  );
+  const timesPerPiece = hasStructuredProcessComposition(composition)
+    ? toPositiveInt(
+        draft?.repeatCount ?? existingProcess?.timesPerPiece ?? existingProcess?.quantity,
+        1
+      )
+    : 1;
   const ptTotalForDisplay = parseOptionalSecondsInput(draft.pt);
   const stTotalForDisplay = parseOptionalSecondsInput(draft.st);
   const reviewComment = String(draft?.reviewComment ?? '').trim();
   const reviewNeedsCheck =
     Boolean(draft?.needsReview) || hasReviewCommentText(reviewComment);
   const reviewDescription = buildReviewDescription(reviewNeedsCheck, reviewComment);
-  const ptPerPiece =
-    ptTotalForDisplay == null
-      ? null
-      : toOptionalSeconds(roundToScale(ptTotalForDisplay / timesPerPiece, 4));
+  const ptPerPiece = ptTotalForDisplay == null ? null : toOptionalSeconds(ptTotalForDisplay);
   const exactStPerPiece =
-    stTotalForDisplay == null
-      ? null
-      : toOptionalSeconds(roundToScale(stTotalForDisplay / timesPerPiece, 4));
+    stTotalForDisplay == null ? null : toOptionalSeconds(stTotalForDisplay);
   const existingStBuckets = normalizeStBuckets(existingProcess);
   const nextStBuckets = existingStBuckets.filter(
     (value) => toPositiveInt(value?.bucketQuantity ?? value?.quantity, 0) !== resolvedStBucketQuantity
@@ -1170,7 +1176,9 @@ const buildDraftFromProcess = (
 ) => {
   const safeProcess = normalizeProcess(process);
   const composition = safeProcess?.processComposition || {};
-  const processQuantity = toPositiveInt(safeProcess?.timesPerPiece ?? safeProcess?.quantity, 1);
+  const processQuantity = hasStructuredProcessComposition(composition)
+    ? toPositiveInt(safeProcess?.timesPerPiece ?? safeProcess?.quantity, 1)
+    : 1;
   const ptPerPiece = toOptionalSeconds(safeProcess?.pt);
   const exactStPerPiece = resolveExactStPerPiece(safeProcess, timeRefQuantity);
   const reviewMeta = parseProcessReviewMeta(safeProcess);
@@ -1211,13 +1219,9 @@ const buildDraftFromProcess = (
     processCode: String(safeProcess?.code ?? '').trim(),
     repeatCount: String(processQuantity),
     pt:
-      ptPerPiece == null
-        ? ''
-        : toDraftNumberText(roundToScale(ptPerPiece * processQuantity, 4)),
+      ptPerPiece == null ? '' : toDraftNumberText(ptPerPiece),
     st:
-      exactStPerPiece == null
-        ? ''
-        : toDraftNumberText(roundToScale(exactStPerPiece * processQuantity, 4)),
+      exactStPerPiece == null ? '' : toDraftNumberText(exactStPerPiece),
     needsReview: Boolean(reviewMeta.needsReview),
     reviewComment: reviewMeta.reviewComment || '',
   };
@@ -1835,10 +1839,9 @@ const StyleProcess = ({
   const totalPT = useMemo(
     () => {
       return safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const ptPerPiece = toOptionalSeconds(process?.pt);
         if (ptPerPiece == null) return acc;
-        return acc + processQuantity * ptPerPiece;
+        return acc + ptPerPiece;
       }, 0);
     },
     [safeProcesses]
@@ -1846,10 +1849,9 @@ const StyleProcess = ({
   const totalAT = useMemo(
     () => {
       return safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const atPerPiece = resolveProcessAtPerPieceSeconds(process, displayOrderQuantity);
         if (atPerPiece == null) return acc;
-        return acc + processQuantity * atPerPiece;
+        return acc + atPerPiece;
       }, 0);
     },
     [safeProcesses, displayOrderQuantity]
@@ -1857,12 +1859,11 @@ const StyleProcess = ({
   const totalST = useMemo(
     () =>
       safeProcesses.reduce((acc, process) => {
-        const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
         const value = resolveProcessStPerPieceSeconds(
           process,
           displayOrderQuantity
         );
-        return value == null ? acc : acc + processQuantity * value;
+        return value == null ? acc : acc + value;
       }, 0),
     [safeProcesses, displayOrderQuantity]
   );
@@ -2940,21 +2941,6 @@ const StyleProcess = ({
                   }}
                   placeholder={getStyleProcessMessage(languageCode, 'textProcessPlaceholder')}
                   sx={{ flex: 2, minWidth: 320 }}
-                />
-                <TextField
-                  size="small"
-                  type="number"
-                  label={getStyleProcessMessage(languageCode, 'repeatCountLabel')}
-                  value={addDraft.repeatCount ?? '1'}
-                  onChange={(event) => {
-                    setAddDraft((prev) => ({
-                      ...prev,
-                      repeatCount: event.target.value,
-                    }));
-                    setAddError('');
-                  }}
-                  inputProps={{ min: 1, step: 1 }}
-                  sx={{ width: 120 }}
                 />
                 <TextField
                   size="small"

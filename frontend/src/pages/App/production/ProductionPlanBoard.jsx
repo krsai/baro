@@ -259,7 +259,6 @@ const resolveDistributedSeconds = ({
   totalPerPieceSeconds,
   totalBasePerPieceSeconds,
   basePerPieceSeconds,
-  timesPerPiece = 1,
   processCount = 1,
 }) => {
   const total = Number(totalPerPieceSeconds);
@@ -274,9 +273,8 @@ const resolveDistributedSeconds = ({
     distributedPerPieceSeconds = total / Math.max(1, toPositiveInt(processCount, 1));
   }
 
-  const normalizedQuantity = Math.max(1, toPositiveInt(timesPerPiece, 1));
   if (!Number.isFinite(distributedPerPieceSeconds) || distributedPerPieceSeconds <= 0) return null;
-  return distributedPerPieceSeconds / normalizedQuantity;
+  return distributedPerPieceSeconds;
 };
 
 const resolveProcessAtSeconds = (process, orderQuantity = 1) => {
@@ -1272,7 +1270,12 @@ const ProductionPlanBoard = () => {
       ).reduce((map, item) => {
         const processKey = String(item?.processKey || '').trim();
         if (!processKey) return map;
-        const snapshotCtSeconds = toOptionalPositiveNumber(item?.snapshotCtSeconds ?? item?.ctSeconds);
+        const snapshotCtSeconds = toOptionalPositiveNumber(
+          item?.pieceCtSeconds ??
+            item?.snapshotCtSeconds ??
+            item?.ctPerPieceSeconds ??
+            item?.ctSeconds
+        );
         const assignedSeconds = snapshotCtSeconds;
         const savedSeconds = snapshotCtSeconds;
         map.set(processKey, {
@@ -1299,8 +1302,8 @@ const ProductionPlanBoard = () => {
         const atReliability = resolveProcessAtReliability(process, orderQuantity);
         const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
         const baseSeconds = stSeedInfo.seconds;
-        const basePerPieceSeconds = baseSeconds * timesPerPiece;
-        const atPerPieceSeconds = atSeconds == null ? null : atSeconds * timesPerPiece;
+        const basePerPieceSeconds = baseSeconds;
+        const atPerPieceSeconds = atSeconds;
         const atVsBasePercent = calcDivergencePercent(atPerPieceSeconds, basePerPieceSeconds);
         const needsStReview =
           atVsBasePercent != null &&
@@ -1343,27 +1346,24 @@ const ProductionPlanBoard = () => {
         const assignedSeconds =
           toOptionalPositiveNumber(snapshotEntry?.assignedSeconds) ??
           resolveDistributedSeconds({
-            totalPerPieceSeconds: totalAssignedPerPieceSeconds,
-            totalBasePerPieceSeconds,
-            basePerPieceSeconds: row.basePerPieceSeconds,
-            timesPerPiece: row.timesPerPiece,
-            processCount: baseRows.length,
-          }) ??
-          row.baseSeconds;
+              totalPerPieceSeconds: totalAssignedPerPieceSeconds,
+              totalBasePerPieceSeconds,
+              basePerPieceSeconds: row.basePerPieceSeconds,
+              processCount: baseRows.length,
+            }) ??
+            row.baseSeconds;
         const savedSeconds = hasSavedSnapshot
           ? toOptionalPositiveNumber(snapshotEntry?.savedSeconds) ??
             resolveDistributedSeconds({
               totalPerPieceSeconds: totalSavedPerPieceSeconds,
               totalBasePerPieceSeconds,
               basePerPieceSeconds: row.basePerPieceSeconds,
-              timesPerPiece: row.timesPerPiece,
               processCount: baseRows.length,
             }) ??
             assignedSeconds
           : null;
-        const assignedPerPieceSeconds = assignedSeconds * row.timesPerPiece;
-        const savedPerPieceSeconds =
-          savedSeconds == null ? null : savedSeconds * row.timesPerPiece;
+        const assignedPerPieceSeconds = assignedSeconds;
+        const savedPerPieceSeconds = savedSeconds == null ? null : savedSeconds;
         const totalAssignedSeconds = assignedPerPieceSeconds * orderQuantity;
 
         return {
@@ -1692,7 +1692,7 @@ const ProductionPlanBoard = () => {
           );
           const stSeedInfo = resolveProcessStSeedSeconds({ process, orderQuantity });
           const baseSeconds = stSeedInfo.seconds;
-          const basePerPieceSeconds = baseSeconds * timesPerPiece;
+          const basePerPieceSeconds = baseSeconds;
           return {
             processKey: String(process?.instanceId || process?.id || process?.code || '').trim(),
             name: process?.name || process?.processName || process?.code || '공정',
@@ -1716,7 +1716,7 @@ const ProductionPlanBoard = () => {
               timesPerPiece: row.timesPerPiece,
               basis: row.basis,
               snapshotCtSeconds: ctSeconds,
-              pieceCtSeconds: ctSeconds * row.timesPerPiece,
+              pieceCtSeconds: ctSeconds,
             };
           })
           .filter(Boolean);

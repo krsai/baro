@@ -1291,3 +1291,149 @@ BEGIN
   END IF;
 END $$;
 
+-- 10. Process row time model normalization (20260604)
+-- `timesPerPiece` remains metadata, but PT/ST/CT values now represent the
+-- whole process row time for one garment, so persisted per-repeat values must
+-- be expanded exactly once.
+CREATE TABLE IF NOT EXISTS "_BaroMigrationState" (
+  "key" TEXT PRIMARY KEY,
+  "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'StyleProcess'
+      AND column_name = 'timesPerPiece'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM "_BaroMigrationState"
+    WHERE "key" = '20260604_process_row_total_time_v1'
+  ) THEN
+    UPDATE "StyleProcess"
+    SET "ptSeconds" = ROUND(("ptSeconds"::numeric * GREATEST(1, "timesPerPiece"))::numeric, 4)::double precision
+    WHERE COALESCE("timesPerPiece", 1) > 1
+      AND "ptSeconds" IS NOT NULL;
+
+    UPDATE "StyleProcessStandard" sps
+    SET "bucketStSeconds" = ROUND((sps."bucketStSeconds"::numeric * GREATEST(1, sp."timesPerPiece"))::numeric, 4)::double precision
+    FROM "StyleProcess" sp
+    WHERE sps."styleProcessId" = sp.id
+      AND COALESCE(sp."timesPerPiece", 1) > 1;
+
+    UPDATE "Style"
+    SET "processes" = (
+      SELECT COALESCE(
+        jsonb_agg(
+          CASE
+            WHEN process_repeat_count > 1 THEN
+              proc
+              || CASE
+                WHEN proc ? 'pt' AND jsonb_typeof(proc -> 'pt') = 'number' THEN
+                  jsonb_build_object(
+                    'pt',
+                    to_jsonb(
+                      ROUND((((proc ->> 'pt')::numeric) * process_repeat_count)::numeric, 4)
+                    )
+                  )
+                ELSE '{}'::jsonb
+              END
+              || CASE
+                WHEN proc ? 'ct' AND jsonb_typeof(proc -> 'ct') = 'number' THEN
+                  jsonb_build_object(
+                    'ct',
+                    to_jsonb(
+                      ROUND((((proc ->> 'ct')::numeric) * process_repeat_count)::numeric, 4)
+                    )
+                  )
+                ELSE '{}'::jsonb
+              END
+              || CASE
+                WHEN proc ? 'stBuckets' THEN
+                  jsonb_build_object(
+                    'stBuckets',
+                    (
+                      SELECT COALESCE(
+                        jsonb_agg(
+                          CASE
+                            WHEN bucket ? 'bucketStSeconds'
+                                 AND jsonb_typeof(bucket -> 'bucketStSeconds') = 'number' THEN
+                              bucket
+                              || jsonb_build_object(
+                                'bucketStSeconds',
+                                to_jsonb(
+                                  ROUND((((bucket ->> 'bucketStSeconds')::numeric) * process_repeat_count)::numeric, 4)
+                                )
+                              )
+                            ELSE bucket
+                          END
+                          ORDER BY bucket_ord
+                        ),
+                        '[]'::jsonb
+                      )
+                      FROM jsonb_array_elements(COALESCE(proc -> 'stBuckets', '[]'::jsonb))
+                        WITH ORDINALITY AS bucket_items(bucket, bucket_ord)
+                    )
+                  )
+                ELSE '{}'::jsonb
+              END
+              || CASE
+                WHEN proc ? 'stValues' THEN
+                  jsonb_build_object(
+                    'stValues',
+                    (
+                      SELECT COALESCE(
+                        jsonb_agg(
+                          CASE
+                            WHEN bucket ? 'seconds'
+                                 AND jsonb_typeof(bucket -> 'seconds') = 'number' THEN
+                              bucket
+                              || jsonb_build_object(
+                                'seconds',
+                                to_jsonb(
+                                  ROUND((((bucket ->> 'seconds')::numeric) * process_repeat_count)::numeric, 4)
+                                )
+                              )
+                            ELSE bucket
+                          END
+                          ORDER BY bucket_ord
+                        ),
+                        '[]'::jsonb
+                      )
+                      FROM jsonb_array_elements(COALESCE(proc -> 'stValues', '[]'::jsonb))
+                        WITH ORDINALITY AS bucket_items(bucket, bucket_ord)
+                    )
+                  )
+                ELSE '{}'::jsonb
+              END
+            ELSE proc
+          END
+          ORDER BY proc_ord
+        ),
+        '[]'::jsonb
+      )
+      FROM (
+        SELECT
+          proc,
+          proc_ord,
+          CASE
+            WHEN COALESCE(proc ->> 'timesPerPiece', proc ->> 'quantity', proc ->> 'processQuantity', '') ~ '^\d+$'
+              THEN GREATEST(1, (COALESCE(proc ->> 'timesPerPiece', proc ->> 'quantity', proc ->> 'processQuantity'))::integer)
+            ELSE 1
+          END AS process_repeat_count
+        FROM jsonb_array_elements(COALESCE("processes"::jsonb, '[]'::jsonb))
+          WITH ORDINALITY AS proc_items(proc, proc_ord)
+      ) AS normalized_proc
+    )
+    WHERE "processes" IS NOT NULL
+      AND jsonb_typeof("processes"::jsonb) = 'array'
+      AND "processes"::text LIKE '%timesPerPiece%';
+
+    INSERT INTO "_BaroMigrationState" ("key")
+    VALUES ('20260604_process_row_total_time_v1');
+  END IF;
+END $$;
+

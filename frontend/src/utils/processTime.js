@@ -152,6 +152,25 @@ const normalizeProcessStBuckets = (values, legacyProcess = null) => {
   );
 };
 
+const hasStructuredProcessComposition = (process) => {
+  const composition = process?.processComposition;
+  if (!composition || typeof composition !== 'object' || Array.isArray(composition)) {
+    return false;
+  }
+  const locations = Array.isArray(composition.locations)
+    ? composition.locations.filter(Boolean)
+    : Array.isArray(composition.parts)
+      ? composition.parts.filter(Boolean)
+      : [];
+  const targetPairs = Array.isArray(composition.targetPairs)
+    ? composition.targetPairs.filter((pair) => pair?.target)
+    : [];
+  const actionPairs = Array.isArray(composition.actionPairs)
+    ? composition.actionPairs.filter((pair) => pair?.action)
+    : [];
+  return locations.length > 0 || targetPairs.length > 0 || actionPairs.length > 0;
+};
+
 const findExactProcessStBucket = (stBuckets = [], orderQuantity = 1) => {
   const resolvedOrderQuantity = resolveStBucketQuantity(orderQuantity);
   return (Array.isArray(stBuckets) ? stBuckets : []).find(
@@ -499,7 +518,9 @@ export const normalizeProcess = (process = {}, index = 0) => {
       typeof safeProcess.instanceId === 'string' && safeProcess.instanceId.trim()
         ? safeProcess.instanceId
         : `${safeProcess.code || 'PROC'}-${safeProcess.id || index}-${index}`,
-    timesPerPiece: toPositiveInt(_rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity, 1),
+    timesPerPiece: hasStructuredProcessComposition(process)
+      ? toPositiveInt(_rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity, 1)
+      : 1,
     timeRefQuantity: resolvedTimeRefQuantity,
     stManual: normalizedStManual,
     pt: clampProcessSeconds(safeProcess.pt),
@@ -537,12 +558,11 @@ export const calculateProcessLineTotal = (process, key) => {
   }
   const time = toOptionalNumber(process[key]);
   if (time === null) return null;
-  const timesPerPiece = toPositiveInt(process.timesPerPiece ?? process.quantity, 1);
-  return timesPerPiece * time;
+  return time;
 };
 
 // Calculate total seconds for an order quantity.
-// - pt/ct: linear (processTime * process.timesPerPiece * orderQuantity)
+// - pt/ct/st: linear (processRowTime * orderQuantity)
 // - at: always use atParams({a,b}) with a*q + b
 export const resolveProcessAtTotalSecondsForOrderQuantity = (process, orderQuantity = 1) => {
   const normalized = normalizeProcess(process);
@@ -646,10 +666,9 @@ export const resolveProcessStTotalSecondsForOrderQuantity = (
 ) => {
   const normalized = normalizeProcess(process);
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const timesPerPiece = toPositiveInt(normalized?.timesPerPiece ?? normalized?.quantity, 1);
   const stPerPiece = resolveProcessStPerPieceSeconds(normalized, resolvedOrderQuantity);
   if (stPerPiece === null) return null;
-  return timesPerPiece * stPerPiece * resolvedOrderQuantity;
+  return stPerPiece * resolvedOrderQuantity;
 };
 
 export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuantity = 1) => {
@@ -657,8 +676,6 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
   const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
 
   return normalizeProcesses(processes).reduce((acc, process) => {
-    const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
-
     if (key === 'at') {
       const atTotal = resolveProcessAtTotalSecondsForOrderQuantity(
         process,
@@ -669,7 +686,7 @@ export const calculateProcessTotalForOrderQuantity = (processes, key, orderQuant
 
     const time = toOptionalNumber(process?.[key]);
     if (time === null) return acc;
-    return acc + timesPerPiece * time * resolvedOrderQuantity;
+    return acc + time * resolvedOrderQuantity;
   }, 0);
 };
 

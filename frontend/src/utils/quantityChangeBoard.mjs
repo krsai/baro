@@ -49,14 +49,10 @@ const resolveProcessStPerPieceSeconds = (process, orderQuantity = 1) => {
 };
 
 const resolveProcessStTotalSeconds = (process, orderQuantity = 1) => {
-  const timesPerPiece = Math.max(
-    1,
-    Math.trunc(toNumber(process?.timesPerPiece ?? process?.quantity, 1))
-  );
   const resolvedOrderQuantity = Math.max(1, Math.trunc(toNumber(orderQuantity, 1)));
   const stPerPiece = resolveProcessStPerPieceSeconds(process, resolvedOrderQuantity);
   if (stPerPiece == null) return 0;
-  return timesPerPiece * stPerPiece * resolvedOrderQuantity;
+  return stPerPiece * resolvedOrderQuantity;
 };
 
 const resolveCardOriginId = (card) => normalizeBoardKey(card?.originOrderId || card?.id);

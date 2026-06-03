@@ -257,7 +257,7 @@ const buildAssignmentSnapshot = ({ plan, styleProcesses, updatedAtIso, updatedBy
         timesPerPiece,
         basis: 'ST',
         snapshotCtSeconds: stSeconds,
-        pieceCtSeconds: stSeconds * timesPerPiece,
+        pieceCtSeconds: stSeconds,
       };
     })
     .filter(Boolean);
@@ -1781,11 +1781,11 @@ const runReplaceStyleProcessMaster = (() => {
       name: `${master.nameKo} / ${master.nameVi}`,
       description: row.description || null,
       timesPerPiece: row.quantity,
-      pt: row.calibratedPtSeconds ?? row.seededPtSeconds,
+      pt: (row.calibratedPtSeconds ?? row.seededPtSeconds) * row.quantity,
       stBuckets: [
         ...SEEDED_ST_BUCKETS.map((bucketQuantity) => ({
           bucketQuantity,
-          bucketStSeconds: row.calibratedPtSeconds ?? row.seededPtSeconds,
+          bucketStSeconds: (row.calibratedPtSeconds ?? row.seededPtSeconds) * row.quantity,
           setBy: "SEED",
           setAt: null,
           updatedAt: null,
@@ -1801,7 +1801,7 @@ const runReplaceStyleProcessMaster = (() => {
   
   const summarizeTotalSeconds = (processes) =>
     processes.reduce(
-      (sum, process) => sum + (Number(process.timesPerPiece ?? process.quantity) || 0) * (Number(process.pt) || 0),
+      (sum, process) => sum + (Number(process.pt) || 0),
       0
     );
   
@@ -4109,17 +4109,16 @@ function sampleExtractProcessCode(process, index) {
 function sampleNormalizePlanProcesses(rows, orderQuantity) {
   return (Array.isArray(rows) ? rows : [])
     .map((process, index) => {
-      const processQuantity = sampleToPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
       const ctSeconds = sampleToPositiveInt(
         process?.ctPerPieceSeconds ??
           process?.agreedPerPieceSeconds ??
           process?.agreedSeconds ??
           process?.requestedSeconds ??
-          (process?.stSeconds != null ? Number(process.stSeconds) * processQuantity : null) ??
+          (process?.stSeconds != null ? Number(process.stSeconds) : null) ??
           (resolveStPerPieceSeconds(process, orderQuantity) != null
-            ? Number(resolveStPerPieceSeconds(process, orderQuantity)) * processQuantity
+            ? Number(resolveStPerPieceSeconds(process, orderQuantity))
             : null) ??
-          (process?.pt != null ? Number(process.pt) * processQuantity : null),
+          (process?.pt != null ? Number(process.pt) : null),
         0
       );
       if (!ctSeconds) return null;

@@ -91,6 +91,13 @@ export const formatProcessNameWithQuantity = (name, quantity) => {
   const parsedQuantity = Number.parseInt(quantity, 10);
   if (!baseName) return '';
   if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 1) return baseName;
+  const normalizedSuffixPatterns = [
+    new RegExp(`(?:^|\\s)(?:x|×)\\s*${parsedQuantity}(?:\\b|$)`, 'i'),
+    new RegExp(`${parsedQuantity}\\s*회(?:\\b|$)`),
+  ];
+  if (normalizedSuffixPatterns.some((pattern) => pattern.test(baseName))) {
+    return baseName;
+  }
   return `${baseName} x${parsedQuantity}`;
 };
 

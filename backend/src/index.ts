@@ -1767,6 +1767,11 @@ const normalizeStyleProcess = (process: any) => {
   const normalizedComposition = normalizeStyleProcessComposition(
     (next as any).processComposition
   );
+  const hasStructuredComposition =
+    normalizedComposition !== null &&
+    (ensureArray((normalizedComposition as any)?.locations).length > 0 ||
+      ensureArray((normalizedComposition as any)?.targetPairs).length > 0 ||
+      ensureArray((normalizedComposition as any)?.actionPairs).length > 0);
   if (normalizedComposition) {
     (next as any).processComposition = normalizedComposition;
     if (explicitManualName) {
@@ -1869,10 +1874,9 @@ const normalizeStyleProcess = (process: any) => {
   if ("referenceQuantity" in next) {
     delete (next as any).referenceQuantity;
   }
-  next.timesPerPiece = toPositiveInt(
-    _rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity,
-    1
-  );
+  next.timesPerPiece = hasStructuredComposition
+    ? toPositiveInt(_rawTimesPerPiece ?? _legacyQuantity ?? _legacyProcessQuantity, 1)
+    : 1;
   if ("quantity" in next) {
     delete (next as any).quantity;
   }
@@ -2070,10 +2074,9 @@ const toAtTrainingStyleProcessMetricKey = (styleProcessId: number) =>
   `STYLE_PROCESS:${styleProcessId}`;
 
 const resolveStoredStyleProcessFallbackPerPieceSeconds = (processRow: any) => {
-  const timesPerPiece = toPositiveInt(processRow?.timesPerPiece, 1);
   const ptSeconds = toOptionalSeconds(processRow?.ptSeconds);
   if (ptSeconds != null) {
-    return roundToScale(ptSeconds * timesPerPiece, 4);
+    return roundToScale(ptSeconds, 4);
   }
   return resolveStyleProcessAtPerPieceSecondsForReferenceQuantity({
     timesPerPiece: processRow?.timesPerPiece,
@@ -8573,12 +8576,9 @@ const normalizeAssignmentCtSnapshotProcess = (value: any, index = 0) => {
   const rawPieceCtSeconds = toOptionalFloat(value?.pieceCtSeconds ?? value?.ctPerPieceSeconds, null);
   const snapshotCtSeconds =
     toOptionalProcessSeconds(value?.snapshotCtSeconds ?? value?.ctSeconds) ??
-    (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
+    rawPieceCtSeconds;
   if (snapshotCtSeconds == null || snapshotCtSeconds <= 0) return null;
-  const pieceCtSeconds = toOptionalFloat(
-    rawPieceCtSeconds ?? snapshotCtSeconds * timesPerPiece,
-    timesPerPiece * snapshotCtSeconds
-  );
+  const pieceCtSeconds = toOptionalFloat(rawPieceCtSeconds ?? snapshotCtSeconds, snapshotCtSeconds);
   const processCode = resolveOptionalString(
     value?.processCode ?? value?.code,
     null
@@ -9006,10 +9006,6 @@ const calculateAssignmentCardTotalForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
-    const processQuantity = toPositiveInt(
-      (process as any)?.timesPerPiece ?? (process as any)?.quantity,
-      1
-    );
     const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
     if (key === "at") {
       const atTotal = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
@@ -9020,7 +9016,7 @@ const calculateAssignmentCardTotalForOrderQuantity = (
     }
     const time = toOptionalSeconds((process as any)?.pt);
     if (time == null) return acc;
-    return acc + processQuantity * time * resolvedOrderQuantity;
+    return acc + time * resolvedOrderQuantity;
   }, 0);
   return Math.round(total);
 };
@@ -9029,16 +9025,12 @@ const calculateAssignmentCardStTotalForOrderQuantity = (
   orderQuantity = 1
 ) => {
   const total = normalizeStyleProcesses(processes).reduce((acc, process) => {
-    const processQuantity = toPositiveInt(
-      (process as any)?.timesPerPiece ?? (process as any)?.quantity,
-      1
-    );
     const stPerPiece = resolveAssignmentCardStSeedSeconds({
       process,
       orderQuantity,
     });
     if (stPerPiece == null) return acc;
-    return acc + processQuantity * stPerPiece * toPositiveInt(orderQuantity, 1);
+    return acc + stPerPiece * toPositiveInt(orderQuantity, 1);
   }, 0);
   return Math.round(total);
 };
@@ -10771,8 +10763,7 @@ const calculateAssignmentStTotalSecondsFromStyleRows = ({
   ensureArray(styleProcessRows).forEach((row) => {
     const bucketStSeconds = resolveStyleProcessBucketStSeconds(row, bucketQuantity);
     if (bucketStSeconds === null) return;
-    const timesPerPiece = toPositiveInt(row?.timesPerPiece, 1);
-    pieceStTotalSeconds += bucketStSeconds * timesPerPiece;
+    pieceStTotalSeconds += bucketStSeconds;
     hasAnyProcessSt = true;
   });
   if (!hasAnyProcessSt) return null;
@@ -10804,8 +10795,7 @@ const calculateAssignmentStTotalSecondsFromSnapshotProcesses = ({
         ? resolveStyleProcessBucketStSeconds(matchedRow, bucketQuantity)
         : null;
     if (bucketStSeconds === null) return;
-    const timesPerPiece = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
-    pieceStTotalSeconds += bucketStSeconds * timesPerPiece;
+    pieceStTotalSeconds += bucketStSeconds;
     hasAnyProcessSt = true;
   });
   if (!hasAnyProcessSt) return null;

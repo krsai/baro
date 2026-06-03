@@ -44,9 +44,9 @@ const normalizeSnapshotProcess = (process, index = 0) => {
   const rawPieceCtSeconds = toOptionalPositiveNumber(process.pieceCtSeconds ?? process.ctPerPieceSeconds);
   const snapshotCtSeconds =
     toOptionalProcessSeconds(process.snapshotCtSeconds ?? process.ctSeconds) ??
-    (rawPieceCtSeconds != null ? toOptionalProcessSeconds(rawPieceCtSeconds / timesPerPiece) : null);
+    rawPieceCtSeconds;
   if (snapshotCtSeconds == null) return null;
-  const pieceCtSeconds = rawPieceCtSeconds ?? snapshotCtSeconds * timesPerPiece;
+  const pieceCtSeconds = rawPieceCtSeconds ?? snapshotCtSeconds;
 
   const fallbackName = `\uACF5\uC815 ${index + 1}`;
   return {

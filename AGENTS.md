@@ -20,8 +20,9 @@
 | **AT** | Actual Time. 작업기록으로 학습한 실제 시간. 모델: `AT(q) = a*q + b` |
 
 ### 시간 필드 규칙 (강제)
-- **ST (`stSeconds`)**: 공정 1개를 1장 만들 때의 표준 제작 시간. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이다.
-- **CT (`ctSeconds`)**: 공정 1개를 1장 만들 때의 계약/급여 기준 시간. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 된다.
+- **PT (`ptSeconds`)**: 공정 row 1개를 1장 수행하는 전체 물리 시간이다. `timesPerPiece`를 다시 곱하지 않는다.
+- **ST (`stSeconds`)**: 공정 row 1개를 1장 수행하는 전체 표준 시간이다. 스케줄러 예상 기간, 배정 카드 길이, 계획 소요 시간 계산의 기준이며 `timesPerPiece`를 다시 곱하지 않는다.
+- **CT (`ctSeconds`)**: 공정 row 1개를 1장 수행하는 전체 계약/급여 기준 시간이다. 배정 카드에서 수정할 수 있지만, 스케줄러 길이 계산에 사용하면 안 되며 `timesPerPiece`를 다시 곱하지 않는다.
 - **AT**: WorkLog/WorkRecord와 출퇴근 데이터로 학습한 실제 시간 추정값이다. 스케줄 보정/예측 참고값이지 CT가 아니다.
 - `AssignmentPlan.stTotalSeconds`: 배정 카드 전체의 계획 ST 총초. 스케줄러 길이 계산 전용이다. 과거 `totalSeconds`/`stSeconds` 카드 총합 명칭을 대체한다.
 - `AssignmentPlan.ctTotalSeconds`: 배정 카드 전체의 계약 CT 총초. 급여/계약 기준 전용이며 스케줄러 길이 계산에 사용 금지.
@@ -413,114 +414,67 @@ npm run test:regression
 ## Time Naming Examples
 
 ### 핵심 규칙
-- `quantityBucket`: 수량 구간 key. ST 전용이 아니라 일반 수량 구간이다.
-- `timesPerPiece`: 한 벌 안에서 해당 공정이 몇 회 들어가는지 뜻한다.
-- `standardProcessStSeconds`: 스타일 표준표에서 조회한 공정 1장 기준 ST.
-- `snapshotProcessStSeconds`: assignment snapshot에 얼려 저장된 공정 1장 기준 ST.
-- `resolvedProcessStSeconds`: 화면/저장 직전 실제 계산에 사용되는 공정 1장 기준 ST.
-- `snapshotProcessCtSeconds`: assignment snapshot에 저장된 공정 1장 기준 CT.
-- `pieceStTotalSeconds`: 한 벌 기준 전체 ST 합.
-- `pieceCtTotalSeconds`: 한 벌 기준 전체 CT 합.
-- `assignmentStTotalSeconds`: assignment 전체 수량 기준 ST 합.
-- `assignmentCtTotalSeconds`: assignment 전체 수량 기준 CT 합.
-- `cardStTotalSeconds`: card 전체 수량 기준 ST 합.
-- `workLogCtTotalSeconds`: WorkLog 헤더 전체 CT 합.
+- `quantityBucket`: ST 조회용 수량 버킷 key다.
+- `timesPerPiece`: 공정을 설명하는 메타데이터다. 예: `주머니 달기 2회`, `May miệng túi x2`.
+- `standardProcessStSeconds`: 스타일 표준표에서 조회한 공정 row 전체의 1장 기준 ST다.
+- `snapshotProcessCtSeconds`: assignment snapshot에 저장된 공정 row 전체의 1장 기준 CT다.
+- `resolvedProcessStSeconds`: 화면/저장 직전 실제 계산에 사용되는 공정 row 전체의 1장 기준 ST다.
+- `pieceStTotalSeconds`: 한 벌 기준 전체 ST 합이다.
+- `pieceCtTotalSeconds`: 한 벌 기준 전체 CT 합이다.
+- `assignmentStTotalSeconds`: assignment 전체 수량 기준 ST 합이다.
+- `assignmentCtTotalSeconds`: assignment 전체 수량 기준 CT 합이다.
+- `cardStTotalSeconds`: card 전체 수량 기준 ST 합이다.
 
-### 예시 1: 특정 스타일의 특정 공정 ST(q)
-- 스타일: `AJ1972`
-- 공정: `주머니 상침`
-- quantity bucket: `100`
-- 표준 ST: `12초`
-
-이때 의미는 아래와 같다.
-- `quantityBucket = 100`
-- `standardProcessStSeconds = 12`
-- 뜻: `AJ1972`의 `주머니 상침` 공정은 `100장 버킷`에서 `1장당 12초`
-
-### 예시 2: 한 공정이 한 벌에 2회 들어가는 경우
-- 스타일: `AJ1972`
-- 공정: `주머니 바텍 2회`
-- 표준 ST: `5초`
-- 한 벌당 횟수: `2`
-
-이때 의미는 아래와 같다.
-- `standardProcessStSeconds = 5`
+### 예시 1: 반복횟수가 이름 안에 들어간 공정
+- 공정명: `주머니 달기 2회`
 - `timesPerPiece = 2`
-- 한 벌 기준 공정 ST 합 = `5 * 2 = 10초`
+- `standardProcessStSeconds = 500`
 
-중요:
-- `timesPerPiece = 2`는 "공정이 2개"라는 뜻이 아니다.
-- 하나의 공정 행이 한 벌 안에서 2회 수행된다는 뜻이다.
+이 의미는 아래와 같다.
+- `주머니 달기 2회`라는 공정 row 전체가 1장 기준 `500초`
+- 계산은 `500 × 수량`
+- 계산을 `500 × 2 × 수량`으로 하면 안 된다
+
+### 예시 2: 선택 방식 공정
+- 대상=`주머니`
+- 동작=`달기`
+- 반복횟수=`2`
+- `standardProcessStSeconds = 500`
+
+이 의미는 아래와 같다.
+- `주머니 + 달기 + 2회` 조합 전체가 공정 row 하나다
+- `500초`는 그 row 전체의 1장 기준 시간이다
+- 반복횟수는 표준화/번역/표현용 메타데이터이며 ST/PT/CT에 다시 곱하지 않는다
 
 ### 예시 3: 한 벌 기준 ST 합
-- 공정 A: `12초`, `timesPerPiece = 1`
-- 공정 B: `5초`, `timesPerPiece = 2`
-- 공정 C: `8초`, `timesPerPiece = 1`
+- 공정 A: `12초`
+- 공정 B: `주머니 달기 2회`, `500초`
+- 공정 C: `8초`
 
 이때 한 벌 기준 합은 아래와 같다.
-- `pieceStTotalSeconds = (12*1) + (5*2) + (8*1) = 30초`
+- `pieceStTotalSeconds = 12 + 500 + 8 = 520초`
 
 ### 예시 4: assignment 전체 ST 합
-- `pieceStTotalSeconds = 30초`
+- `pieceStTotalSeconds = 520초`
 - assignment 수량 = `100장`
 
 이때 assignment 전체 합은 아래와 같다.
-- `assignmentStTotalSeconds = 30 * 100 = 3000초`
+- `assignmentStTotalSeconds = 520 * 100 = 52000초`
 
-즉:
-- `stTotalSeconds`가 현재 코드에서 뜻하는 것은 이 값이다.
-- 한 벌 기준 값이 아니다.
-
-### 예시 5: card와 assignment의 차이
-- 원본 card 수량: `100장`
-- `cardStTotalSeconds = 3000초`
-- 이 card를 `60장`, `40장`으로 split
-
-split 후에는 아래처럼 된다.
-- 첫 assignment는 `ST(60)`을 다시 조회해서 `assignmentStTotalSeconds`를 새로 계산
-- 둘째 assignment는 `ST(40)`을 다시 조회해서 `assignmentStTotalSeconds`를 새로 계산
-- 따라서 기존 `3000초`를 단순 비율로 나눈 값과 같다는 보장이 없다
-- split 후 두 assignment ST 합이 원래 card ST 합과 같다는 보장도 없다
-
-즉:
-- card는 풀에 있는 주문/스타일 묶음
-- assignment는 실제 라인에 배치된 조각
-- split/merge가 있으므로 `cardStTotalSeconds`와 `assignmentStTotalSeconds`는 구분해야 한다.
+### 예시 5: split 정책
+- `100장` card를 `60장`, `40장`으로 split하면
+- 각 assignment는 자기 수량 버킷 기준 ST를 다시 조회해 계산한다
+- 단, 공정 row 시간 자체를 `timesPerPiece`로 다시 곱하지는 않는다
 
 ### 예시 6: CT의 의미
-- `exactStSeconds = 12`
-- 사용자가 CT를 안 바꾸면 `snapshotCtSeconds = 12`
-- 사용자가 급여 보정을 위해 CT를 올리면 `snapshotCtSeconds = 14`
-
-즉:
-- 기본은 `ST = CT`
-- CT는 assignment snapshot 전용값
+- 사용자가 CT를 안 바꾸면 `snapshotProcessCtSeconds = resolvedProcessStSeconds`
+- 사용자가 급여 보정을 위해 CT를 올리면 그 공정 row 전체 CT만 바뀐다
 - CT를 올려도 ST 표준값 자체가 바뀌는 것은 아니다
 
-### 예시 7: WorkLog CT 합의 의미
-- 작업기록 헤더 1개 아래 records 3개가 있다
-- 각 record의 CT 총합이 `120초`, `200초`, `180초`
-
-이때:
-- `workLogCtTotalSeconds = 500초`
-
-즉:
-- `workLogCtTotalSeconds`는 스케줄러용 시간이 아니다
-- WorkLog 헤더 아래 여러 작업행을 묶은 급여/요약용 CT 합이다
-
-### 예시 8: AT의 의미
+### 예시 7: AT의 의미
 - 공정 AT 모델: `AT(q) = a*q + b`
-- 예: `a = 0.4`, `b = 20`
-- 수량 `q = 100`
-
-이때:
-- 공정 총 AT = `0.4 * 100 + 20 = 60초`
-- 공정 1장 기준 AT = `60 / 100 = 0.6초`
-
-중요:
-- AT는 ST처럼 bucket별 초값이 저장되는 구조가 아니다
-- AT는 `a`, `b` 계수 기반 선형 모델이다
-- `processAtSeconds`라는 표현은 런타임 계산 결과를 가리킬 때만 쓴다
+- AT도 반복횟수 메타데이터를 다시 곱하는 모델이 아니다
+- 실제 작업기록으로 학습된 공정 row 전체 시간 모델이다
 
 ### 신규 문서/리뷰에서 피할 이름
 - `totalSt`
@@ -535,91 +489,68 @@ split 후에는 아래처럼 된다.
 
 ---
 
-## 2026-05-25 Time Quantity Latest Lock
+## 2026-06-04 Time Quantity Latest Lock
 
 이 섹션은 시간/수량 개념에 대한 최신 잠금 규칙이다.
-위 문서의 예전 예시와 충돌하면 이 섹션을 우선한다.
+위 문서의 예전 예시나 과거 구현 메모와 충돌하면 이 섹션을 우선한다.
 
 ### 1. `quantity`는 하나가 아니다
 
 반드시 아래 축을 분리해서 읽는다.
 
 - `timesPerPiece`
-  - 현재 여러 곳의 `process.quantity`
-  - 뜻: 한 벌 안에서 해당 공정이 몇 회 들어가는가
-  - 예: `주머니 바텍 2회`는 공정 row 하나이고 `timesPerPiece = 2`
+  - 공정을 설명하는 메타데이터다.
+  - 예: `주머니 달기 2회`, `May miệng túi x2`
+  - 시간 계산 변수로 다시 곱하지 않는다.
 
 - `bucketQuantity`
-  - 현재 `stValues[].quantity`, `StyleProcessStandard.quantity`
-  - 뜻: ST 표준 조회용 주문/배정 수량 버킷 key
+  - ST 표준 조회용 수량 버킷 key다.
   - 예: `40`, `60`, `100`
 
 - `cardQuantity`
-  - 현재 `AssignmentCard.quantity`
-  - 뜻: 원본 카드가 몇 장인가
-  - 주의: 현재 `AssignmentCard`에는 DB 컬럼 `quantity`가 없고 `payload` JSON key로 저장된다
+  - 원본 카드가 몇 장인가를 뜻한다.
 
 - `assignmentQuantity`
-  - 현재 `AssignmentPlan.quantity`, `ctSnapshot.quantity`
-  - 뜻: 실제 배정된 assignment가 몇 장인가
+  - 실제 배정된 assignment가 몇 장인가를 뜻한다.
 
 - `producedQuantity`
-  - 현재 `WorkRecord.quantity`
-  - 뜻: 작업기록에서 실제 몇 장 생산했는가
+  - 작업기록에서 실제 몇 장 생산했는가를 뜻한다.
 
-- 정규화 테이블 기준 같은 축
-  - `StyleProcess.processQuantity`도 같은 축이며 문서상 `timesPerPiece`
-  - `AtTrainingBucketProcess.quantity`도 생산 수량 축이며 문서상 `producedQuantity`
-  - 차이:
-    - `WorkRecord.producedQuantity`는 개별 작업기록 행
-    - `AtTrainingBucketProcess.producedQuantity`는 AT 학습용 집계 생산 수량 행
+### 2. 시간 필드의 기준 단위
 
-### 2. ST는 버킷별 표준값이다
+PT/ST/CT는 모두 "공정 row 1개를 1장 수행하는 전체 시간"이다.
 
-ST는 공정 단독값이 아니다.
-반드시 공정과 수량 버킷이 함께 있어야 의미가 완성된다.
+예:
+- 공정명: `주머니 달기 2회`
+- `timesPerPiece = 2`
+- `bucketStSeconds = 500`
 
-정확한 표현:
-- `주머니 바텍 2회 공정의 60장 버킷 ST = 5.0초`
-- `주머니 바텍 2회 공정의 100장 버킷 ST = 4.6초`
-
-부정확한 표현:
-- `주머니 바텍 2회 공정 ST = 5초`
-
-저장값과 조회값은 구분해서 부른다.
-
-- 저장 필드명:
-  - `bucketStSeconds`
-- 런타임에서 특정 `bucketQuantity`로 조회해 얻은 값:
-  - `exactStSeconds`
+이 의미는 아래와 같다.
+- `주머니 달기 2회`라는 공정 row 전체가 `500초`
+- 계산은 `500 × 수량`
+- `500 × 2 × 수량`이 아니다
 
 ### 3. 공정 row 예시
 
 스타일 `AJ1972`에 아래 공정 row가 있다고 가정한다.
 
-- `주머니 상침`
-  - `timesPerPiece = 1`
-- `주머니 바텍 2회`
-  - `timesPerPiece = 2`
-- `어깨 봉제`
-  - `timesPerPiece = 1`
-
-60장 버킷 기준 ST가 아래와 같다면
-
-- 주머니 상침: `12.0초`
-- 주머니 바텍 2회: `4.6초`
-- 어깨 봉제: `8.0초`
+- `주머니 상침`: `12초`
+- `주머니 달기 2회`: `500초`
+- `어깨 봉제`: `8초`
 
 한 벌 기준 ST 합은
 
-- `pieceStTotalSeconds = (12.0*1) + (4.6*2) + (8.0*1)`
-- `pieceStTotalSeconds = 29.2초`
+- `pieceStTotalSeconds = 12 + 500 + 8 = 520초`
+
+즉:
+- `timesPerPiece`가 `2`여도 ST를 다시 곱하지 않는다
+- 반복 의미는 이름/표현/번역용 메타데이터다
 
 ### 4. assignment 전체 ST 합 예시
 
 위 예시에서 `assignmentQuantity = 60`이면
 
-- `assignmentStTotalSeconds = 29.2 * 60 = 1752초`
+- `assignmentStTotalSeconds = 520 * 60 = 31200초`
 
 즉:
 - 한 벌 기준 합은 `pieceStTotalSeconds`
@@ -627,11 +558,7 @@ ST는 공정 단독값이 아니다.
 
 ### 5. split 정책
 
-`100장` 카드/assignment를 `60장`과 `40장`으로 split할 때
-기존 총초를 비율로 나누지 않는다.
-
-잘못된 방식:
-- `cardStTotalSeconds(100)`을 `60:40` 비율로 분배
+`100장` 카드/assignment를 `60장`과 `40장`으로 split할 때 기존 총초를 비율로 나누지 않는다.
 
 올바른 방식:
 1. `60장` 버킷 기준 ST를 다시 조회
@@ -640,14 +567,6 @@ ST는 공정 단독값이 아니다.
 4. 각각 새 `assignmentStTotalSeconds`를 계산
 
 즉 split은 "비율 분배"가 아니라 "split 수량 기준 재조회"다.
-따라서 split 후 두 assignment ST 합이 원래 card ST 합과 같다는 보장은 없다.
-
-CT도 split 시 기존 수동 수정값을 승계하지 않는다.
-
-- `60장` split이면 `ST(60)`을 다시 조회하고 `CT = ST(60)`으로 다시 초기화
-- `40장` split이면 `ST(40)`을 다시 조회하고 `CT = ST(40)`으로 다시 초기화
-
-즉 split은 ST뿐 아니라 CT도 "새 수량 기준으로 다시 만든다"가 원칙이다.
 
 ### 6. CT snapshot 정책
 
@@ -657,7 +576,7 @@ CT는 assignment snapshot 전용값이다.
 - 필요하면 특정 assignment에 한해 CT를 올릴 수 있다
 - CT는 급여 계산 기준이다
 - CT는 스케줄 길이 계산 기준이 아니다
-- 단, split이 일어나면 기존 CT 수동 수정값은 승계하지 않고 새 ST 기준으로 다시 초기화한다
+- CT 행 값도 공정 row 전체의 1장 기준 시간이다
 
 최신 구조:
 - snapshot은 CT 중심 구조다
@@ -671,10 +590,6 @@ CT는 assignment snapshot 전용값이다.
   1. `StyleProcessStandard.bucketStSeconds` 역반영
   2. `pieceStTotalSeconds` / `assignmentStTotalSeconds` 재계산
   3. persisted snapshot에는 ST를 남기지 않음
-
-제거 완료 대상:
-- `assignmentCtSnapshot.processes[].stSeconds`
-- `assignmentCtSnapshot.totalStPerPieceSeconds`
 
 ### 7. ST 수정 정책
 

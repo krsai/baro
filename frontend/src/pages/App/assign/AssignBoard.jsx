@@ -844,14 +844,13 @@ const getTotalForOrderQuantity = (processes, field, orderQuantity) =>
   calculateProcessTotalForOrderQuantity(processes, field, orderQuantity);
 const getTotalStForOrderQuantity = (processes, orderQuantity) =>
   normalizeProcesses(processes).reduce((sum, process) => {
-    const processQuantity = toPositiveInt(process?.timesPerPiece ?? process?.quantity, 1);
     const stSeed = resolveProcessStSeedSeconds({
       process,
       orderQuantity,
     });
     const stPerPiece = toOptionalPositiveNumber(stSeed?.seconds);
     if (stPerPiece == null) return sum;
-    return sum + processQuantity * stPerPiece * orderQuantity;
+    return sum + stPerPiece * orderQuantity;
   }, 0);
 
 const createCardId = (orderId, styleId) =>
@@ -1248,12 +1247,18 @@ const buildAssignmentCtSnapshotForSave = ({
             })
           : {
               seconds: toOptionalPositiveNumber(
-                snapshotProcess?.snapshotCtSeconds ?? snapshotProcess?.ctSeconds
+                snapshotProcess?.pieceCtSeconds ??
+                  snapshotProcess?.snapshotCtSeconds ??
+                  snapshotProcess?.ctPerPieceSeconds ??
+                  snapshotProcess?.ctSeconds
               ),
               source: seed.process?.basis || snapshotProcess?.basis || 'CT',
             };
       const snapshotCtSeconds = toOptionalPositiveNumber(
-        snapshotProcess?.snapshotCtSeconds ?? snapshotProcess?.ctSeconds
+        snapshotProcess?.pieceCtSeconds ??
+          snapshotProcess?.snapshotCtSeconds ??
+          snapshotProcess?.ctPerPieceSeconds ??
+          snapshotProcess?.ctSeconds
       );
       const baseSeconds =
         stDraftSeconds ??
@@ -1292,7 +1297,7 @@ const buildAssignmentCtSnapshotForSave = ({
         timesPerPiece: seed.timesPerPiece,
         basis: stDraftSeconds != null ? 'ST' : seed.process?.basis || snapshotProcess?.basis || 'CT',
         snapshotCtSeconds: resolvedCtSeconds,
-        pieceCtSeconds: resolvedCtSeconds * seed.timesPerPiece,
+        pieceCtSeconds: resolvedCtSeconds,
       };
     })
     .filter(Boolean);
@@ -4263,7 +4268,12 @@ const AssignBoard = () => {
       const processKey = String(item?.processKey || '').trim();
       if (!processKey) return map;
       map.set(processKey, {
-        snapshotCtSeconds: toOptionalPositiveNumber(item?.snapshotCtSeconds ?? item?.ctSeconds),
+        snapshotCtSeconds: toOptionalPositiveNumber(
+          item?.pieceCtSeconds ??
+            item?.snapshotCtSeconds ??
+            item?.ctPerPieceSeconds ??
+            item?.ctSeconds
+        ),
       });
       return map;
     }, new Map());
@@ -4295,10 +4305,9 @@ const AssignBoard = () => {
         Math.abs(stDraftSeconds - baseStSeedInfo.seconds) > 1e-6;
       const proposedSeconds = ctDraftSeconds ?? savedSnapshotCtSeconds ?? baseSeconds;
       const savedSeconds = savedSnapshotCtSeconds ?? baseSeconds;
-      const basePerPieceSeconds = baseSeconds * timesPerPiece;
-      const proposedPerPieceSeconds = proposedSeconds * timesPerPiece;
-      const savedPerPieceSeconds =
-        savedSeconds == null ? null : savedSeconds * timesPerPiece;
+      const basePerPieceSeconds = baseSeconds;
+      const proposedPerPieceSeconds = proposedSeconds;
+      const savedPerPieceSeconds = savedSeconds == null ? null : savedSeconds;
       const totalProposedSeconds = proposedPerPieceSeconds * orderQuantity;
       return {
         processKey,
