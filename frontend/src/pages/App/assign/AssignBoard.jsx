@@ -7,7 +7,6 @@ import {
   CircularProgress,
   Divider,
   Drawer,
-  Grid,
   IconButton,
   Menu,
   MenuItem,
@@ -5434,8 +5433,56 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Grid container spacing={2} sx={{ minWidth: 0 }}>
-          <Grid item xs={12} md={4} sx={{ minWidth: 0 }}>
+        <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+          <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="subtitle2">
+                {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <CustomDatePicker
+                  value={viewStart}
+                  onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
+                  disabled={controlsDisabled}
+                />
+                <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
+                <CustomDatePicker
+                  value={viewEnd}
+                  onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
+                  disabled={controlsDisabled}
+                />
+                <Stack sx={{ gap: '2px' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleMonthPlus}
+                    disabled={controlsDisabled}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M+
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={handleMonthMinus}
+                    disabled={controlsDisabled}
+                    sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+                  >
+                    M-
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+            <ScheduleTimeline
+              lines={lines}
+              days={days}
+              dayCount={dayCount}
+              assignments={assignmentsForRender}
+              onLinkPrev={handleLinkPrev}
+              onOpenContextMenu={handleContextMenuOpen}
+            />
+          </Stack>
+          <Box sx={{ minWidth: 0, pt: 0.5 }}>
             <UnassignedCardGroupsPanel
               filteredCardCount={filteredCards.length}
               groupedFilteredCards={groupedFilteredCards}
@@ -5448,58 +5495,8 @@ const AssignBoard = () => {
               onOpenContextMenu={handleContextMenuOpen}
               onDisabledCardDragAttempt={handleDisabledCardDragAttempt}
             />
-          </Grid>
-          <Grid item xs={12} md={8} sx={{ minWidth: 0 }}>
-            <Stack spacing={1.5} sx={{ minWidth: 0 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2">
-                  {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <CustomDatePicker
-                    value={viewStart}
-                    onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
-                    disabled={controlsDisabled}
-                  />
-                  <Typography sx={{ fontSize: 13, color: 'text.secondary', mx: 0.25 }}>~</Typography>
-                  <CustomDatePicker
-                    value={viewEnd}
-                    onChange={(val) => { if (val?.isValid?.()) handleViewEndChange(val.toDate()); }}
-                    disabled={controlsDisabled}
-                  />
-                  <Stack sx={{ gap: '2px' }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={handleMonthPlus}
-                      disabled={controlsDisabled}
-                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                    >
-                      M+
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={handleMonthMinus}
-                      disabled={controlsDisabled}
-                      sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
-                    >
-                      M-
-                    </Button>
-                  </Stack>
-                </Box>
-              </Box>
-              <ScheduleTimeline
-                lines={lines}
-                days={days}
-                dayCount={dayCount}
-                assignments={assignmentsForRender}
-                onLinkPrev={handleLinkPrev}
-                onOpenContextMenu={handleContextMenuOpen}
-              />
-            </Stack>
-          </Grid>
-        </Grid>
+          </Box>
+        </Stack>
 
         <DragOverlay style={{ zIndex: 50 }} >
           {activeDrag ? (
