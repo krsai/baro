@@ -16315,6 +16315,15 @@ const buildAssignmentPlanProgressRows = async (
     const productionCompletedDateKey = persistedProductionCompletedAt
       ? toDateKeyInTimeZone(persistedProductionCompletedAt, BUSINESS_TIME_ZONE)
       : null;
+    const isCompletionInconsistent = Boolean(
+      productionCompletedDateKey &&
+        baselineQuantityRaw != null &&
+        baselineQuantityRaw > 0 &&
+        producedQuantity < baselineQuantityRaw
+    );
+    const completionGapQuantity = isCompletionInconsistent
+      ? Math.max(0, baselineQuantityRaw! - producedQuantity)
+      : 0;
 
     const scheduleStatus: "IN_PROGRESS" | "READY_TO_COMPLETE" | "PRODUCTION_COMPLETED" =
       productionCompletedDateKey
@@ -16393,6 +16402,11 @@ const buildAssignmentPlanProgressRows = async (
       remainingQty,
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
+      isCompletionInconsistent,
+      completionWarningCode: isCompletionInconsistent
+        ? "COMPLETED_BELOW_BASELINE"
+        : null,
+      completionGapQuantity,
       progressPercent,
       operationalProgressPercent: progressPercent,
       officialProgressPercent:
@@ -16555,7 +16569,7 @@ const resolveAutoWorklogCompletionDate = (row: any) => {
   return (
     toDateValueFromDateKeyForAssignmentSchedule(preferredDateKey) ||
     toOptionalDateValue(row?.productionCompletedAt, null) ||
-    new Date()
+    null
   );
 };
 
@@ -16604,6 +16618,8 @@ const persistAssignmentPlanProgressSnapshot = async ({
       closeBasis: true,
       completedAt: true,
       productionCompletedAt: true,
+      candidateEndDate: true,
+      renderEndDate: true,
     },
   });
   if (targetPlans.length === 0) {
@@ -16637,15 +16653,16 @@ const persistAssignmentPlanProgressSnapshot = async ({
         0,
         Math.round(Number(row?.producedQuantity ?? 0) || 0)
       );
-      const shouldAutoComplete =
+      const shouldAutoCompleteByQuantity =
         row?.baselineQuantity != null &&
         row?.baselineQuantity > 0 &&
         resolvedProducedQuantity >= row.baselineQuantity;
       const isAutoCompleted = isAutoWorklogCompletedPlan(plan);
       const isManuallyCompleted = plan?.isCompleted === true && !isAutoCompleted;
-      const autoCompletionDate = shouldAutoComplete
+      const autoCompletionDate = shouldAutoCompleteByQuantity
         ? resolveAutoWorklogCompletionDate(row)
         : null;
+      const shouldAutoComplete = shouldAutoCompleteByQuantity && autoCompletionDate != null;
       const productionCompletedAt =
         shouldAutoComplete && autoCompletionDate && !isManuallyCompleted
           ? autoCompletionDate
@@ -16657,7 +16674,9 @@ const persistAssignmentPlanProgressSnapshot = async ({
       );
       const originalEndDate = toDateValueFromDateKeyForAssignmentSchedule(
         row?._originalEndDateKey
-      );
+      ) ||
+        toOptionalDateValue(plan?.renderEndDate, null) ||
+        toOptionalDateValue(plan?.candidateEndDate, null);
       const forecastCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.forecastCompletedAt
       );
@@ -16913,10 +16932,14 @@ const completeAssignmentPlanProduction = async ({
   if (!plan) {
     return { ok: false as const, status: 404, error: "assignment plan not found" };
   }
+  const canOverrideAutoWorklogCompletion = isAutoWorklogCompletedPlan(plan);
   if (
-    toOptionalDateValue(plan.productionCompletedAt, null) ||
-    plan.isCompleted === true ||
-    resolveAssignmentPlanClosedAtValue(plan)
+    !canOverrideAutoWorklogCompletion &&
+    (
+      toOptionalDateValue(plan.productionCompletedAt, null) ||
+      plan.isCompleted === true ||
+      resolveAssignmentPlanClosedAtValue(plan)
+    )
   ) {
     return {
       ok: false as const,

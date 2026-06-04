@@ -335,6 +335,11 @@ const BatchProgress = () => {
           const closeMode =
             String(progress?.closeMode || plan?.closeMode || '').trim() ||
             (closedQty !== null ? getCloseMode(closedQty, orderQty) : null);
+          const isCompletionInconsistent = Boolean(progress?.isCompletionInconsistent);
+          const completionGapQuantity =
+            toNonNegativeIntOrNull(progress?.completionGapQuantity) ?? 0;
+          const closedBy = String(progress?.closedBy || plan?.closedBy || '').trim() || null;
+          const isAutoCompleted = closedBy === 'system:auto-worklog';
 
           return {
             id,
@@ -362,6 +367,10 @@ const BatchProgress = () => {
             closedQty,
             closeMode,
             closeBasis: String(progress?.closeBasis || plan?.closeBasis || '').trim() || null,
+            closedBy,
+            isAutoCompleted,
+            isCompletionInconsistent,
+            completionGapQuantity,
           };
         });
 
@@ -553,7 +562,8 @@ const BatchProgress = () => {
                 ? String(batch.closeMode || '').trim() || getCloseMode(batch.closedQty, batch.orderQty)
                 : null;
               const StatusIcon = statusMeta.icon;
-              const canClose = status !== 'pending' && !batch.isCompleted;
+              const canClose =
+                status !== 'pending' && (!batch.isCompleted || batch.isAutoCompleted);
               const isClosing = closingId === batch.id;
 
               return (
@@ -608,6 +618,14 @@ const BatchProgress = () => {
                             label={getCloseModeLabel(closeMode)}
                           />
                         ) : null}
+                        {batch.isCompletionInconsistent ? (
+                          <Chip
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            label={`완료 경고 -${formatInt(batch.completionGapQuantity)}장`}
+                          />
+                        ) : null}
                       </Stack>
                       <Box sx={{ flex: 1 }} />
                       <Typography variant="body2" color="text.secondary">
@@ -654,6 +672,18 @@ const BatchProgress = () => {
                             <Typography variant="caption" color="text.secondary">
                               확정수량 {formatInt(batch.closedQty)}장
                             </Typography>
+                            {batch.isAutoCompleted ? (
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="warning"
+                                disabled={submittingCloseId === batch.id}
+                                startIcon={<CheckCircleOutlineIcon />}
+                                onClick={() => setClosingId((current) => (current === batch.id ? null : batch.id))}
+                              >
+                                수동 확정
+                              </Button>
+                            ) : null}
                           </>
                         ) : canClose ? (
                           <Button

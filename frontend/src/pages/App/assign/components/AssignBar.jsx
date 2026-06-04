@@ -107,6 +107,20 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
         label: getUiMessage('assign.unsavedCtBadge', 'CT Unsaved', languageCode),
         labelColor: '#888898',
       };
+  const rawProgressPercent = Math.max(
+    0,
+    Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0
+  );
+  const progressPercent = Math.min(100, rawProgressPercent);
+  const progressSummary = formatProgressPercent(rawProgressPercent, languageCode);
+  const hasCompletionWarning = Boolean(assignment?.isCompletionInconsistent);
+  const completionWarningMessage = hasCompletionWarning
+    ? getUiMessage(
+        'assign.completionWarning',
+        '완료 상태지만 현재 작업기록 합계가 계획 수량보다 부족합니다.',
+        languageCode
+      )
+    : '';
   const statusType = assignment?.statusType || (isCompleted ? 'completed' : 'active');
   const statusMeta =
     statusType === 'completed'
@@ -116,7 +130,9 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           chipColor: '#334155',
           cardBg: '#E5E7EB',
           progressBg: '#B8C0CC',
-          borderColor: 'rgba(100,116,139,0.38)',
+          borderColor: hasCompletionWarning
+            ? 'rgba(245,158,11,0.72)'
+            : 'rgba(100,116,139,0.38)',
         }
       : statusType === 'overdue'
         ? {
@@ -139,17 +155,11 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
           : {
               label: getUiMessage('assign.statusActive', '진행중', languageCode),
               chipBg: 'rgba(255,255,255,0.92)',
-              chipColor: '#1D4ED8',
-              cardBg: '#E6F3FF',
-              progressBg: '#7CB8F5',
-              borderColor: 'rgba(59,130,246,0.28)',
-            };
-  const rawProgressPercent = Math.max(
-    0,
-    Number(assignment.workProgressPercent ?? assignment.progressPercent) || 0
-  );
-  const progressPercent = Math.min(100, rawProgressPercent);
-  const progressSummary = formatProgressPercent(rawProgressPercent, languageCode);
+          chipColor: '#1D4ED8',
+          cardBg: '#E6F3FF',
+          progressBg: '#7CB8F5',
+          borderColor: 'rgba(59,130,246,0.28)',
+        };
   const shiftedCompletedLabel =
     String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED' &&
     assignment?.renderEndDate &&
@@ -224,6 +234,7 @@ const AssignBar = ({ assignment, showLinkPrev, onLinkPrev, onOpenContextMenu, sh
               languageCode
             )
           : null,
+        completionWarningMessage || null,
       ])}
       {...attributes}
       {...listeners}

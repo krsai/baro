@@ -3917,6 +3917,13 @@ const AssignBoard = () => {
             progressRow?.closedQty ?? item?.closedQty ?? item?.finalQuantity ?? null,
           closeMode: progressRow?.closeMode ?? item?.closeMode ?? null,
           closeBasis: progressRow?.closeBasis ?? item?.closeBasis ?? null,
+          isCompletionInconsistent: Boolean(
+            progressRow?.isCompletionInconsistent ?? item?.isCompletionInconsistent
+          ),
+          completionWarningCode:
+            progressRow?.completionWarningCode ?? item?.completionWarningCode ?? null,
+          completionGapQuantity:
+            Number(progressRow?.completionGapQuantity ?? item?.completionGapQuantity) || 0,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
           producedQty:
