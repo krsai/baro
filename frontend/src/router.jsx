@@ -76,7 +76,6 @@ const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
 const ProductionPlan = lazyImportWithRetry(() => import('./pages/App/ProductionPlan'));
-const ProductionResult = lazyImportWithRetry(() => import('./pages/App/ProductionResult'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
 const BatchProgress = lazyImportWithRetry(() => import('./pages/App/BatchProgress'));
 const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
@@ -344,7 +343,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'production-result',
-            element: <ProductionResult />,
+            element: <Navigate to="/workspace" replace />,
           },
           {
             path: 'inventory',

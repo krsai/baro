@@ -1119,3 +1119,11 @@ runtime 조회값:
 - Variable naming guidance:
   - Local/runtime variable names should also reflect exact scope when they carry domain meaning.
   - Example: prefer `workLogCtTotalSeconds` over ambiguous `totalCtSeconds` for a WorkLog-header aggregate variable.
+
+### 27. 2026-06-05 Auto Completion Phase 1 Lock
+
+- WorkLog 저장/수정/삭제는 `assignment isCompleted === true`만으로 차단하지 않는다. 이 차단은 구 생산 현황/수동 완료 레거시로 본다.
+- assignment 공식 진행도/완료 판정은 `WorkRecord.assignmentPlanId`가 명확한 행만 사용한다. orphan/추정 매칭 WorkRecord는 공식 완료 근거에서 제외한다.
+- 작업기록 기반 자동 완료는 `AssignmentPlan.closedBy = "system:auto-worklog"` 표식으로 남긴다.
+- 작업기록 기반 자동 롤백은 위 표식으로 자동 완료된 assignment에만 적용한다. 수동/QC 완료 assignment는 이 자동 롤백이 덮어쓰지 않는다.
+- 구 생산 현황 경로 `/production-result`는 재설계 전까지 비활성화하고 워크스페이스로 리다이렉트한다.

@@ -6916,22 +6916,6 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
     };
   }
 
-  const completedPlans = plans.filter((plan) => plan?.isCompleted === true);
-  if (completedPlans.length > 0) {
-    const preview = completedPlans
-      .slice(0, 3)
-      .map((plan) => formatAssignmentPlanLabel(plan))
-      .join(", ");
-    const extraText =
-      completedPlans.length > 3
-        ? ` (+${completedPlans.length - 3} more)`
-        : "";
-    return {
-      status: 409,
-      error: `assignment plan already completed (${preview}${extraText})`,
-    };
-  }
-
   const missingSnapshotPlans = plans.filter((plan) => {
     const ctSnapshot = resolveNormalizedAssignmentCtSnapshot(plan);
     return !ctSnapshot || resolveAssignmentCtTotalSeconds(plan) == null;
@@ -15646,6 +15630,7 @@ const ASSIGNMENT_CONFIDENCE_HIGH = "HIGH";
 const ASSIGNMENT_STATUS_IN_PROGRESS = "IN_PROGRESS";
 const ASSIGNMENT_STATUS_READY_TO_COMPLETE = "READY_TO_COMPLETE";
 const ASSIGNMENT_STATUS_PRODUCTION_COMPLETED = "PRODUCTION_COMPLETED";
+const AUTO_WORKLOG_COMPLETED_BY = "system:auto-worklog";
 
 type AssignmentPlanWorkStats = {
   processTotalsByKey: Map<string, number>;
@@ -15940,136 +15925,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
     );
   }
 
-  const candidates = buildAssignmentPlanProgressMatchCandidates({
-    plans: normalizedPlans,
-    stateAssignmentsByExternalId,
-  });
-  if (candidates.length === 0) return directRows;
-
-  const styleLabels = Array.from(
-    new Set(
-      normalizedPlans
-        .flatMap((plan) => resolveAssignmentPlanStyleQueryValues(plan))
-        .map((value) => resolveOptionalString(value, null))
-        .filter((value): value is string => Boolean(value))
-    )
-  );
-  if (styleLabels.length === 0) return directRows;
-
-  const datedCandidates = candidates.filter(
-    (candidate) => candidate.startDateKey || candidate.endDateKey
-  );
-  const dateBounds =
-    datedCandidates.length > 0
-      ? datedCandidates.reduce(
-          (range, candidate) => {
-            const startDateKey = normalizeDateKey(candidate.startDateKey);
-            const endDateKey = normalizeDateKey(candidate.endDateKey);
-            return {
-              minDateKey:
-                startDateKey &&
-                (!range.minDateKey || startDateKey < range.minDateKey)
-                  ? startDateKey
-                  : range.minDateKey,
-              maxDateKey:
-                endDateKey && (!range.maxDateKey || endDateKey > range.maxDateKey)
-                  ? endDateKey
-                  : range.maxDateKey,
-            };
-          },
-          { minDateKey: null as string | null, maxDateKey: null as string | null }
-        )
-      : { minDateKey: null as string | null, maxDateKey: null as string | null };
-
-  let orphanRows: any[] = [];
-  try {
-    orphanRows = await selectWorkRows({
-      where: {
-        orgId,
-        assignmentPlanId: null,
-        quantity: { gt: 0 },
-        OR: [
-          { styleId: { in: styleLabels } },
-          { styleName: { in: styleLabels } },
-        ],
-        workLog: {
-          ...(dateBounds.minDateKey && !dateBounds.maxDateKey
-            ? { displayDate: { gte: dateBounds.minDateKey } }
-            : {}),
-          ...(!dateBounds.minDateKey && dateBounds.maxDateKey
-            ? { displayDate: { lte: dateBounds.maxDateKey } }
-            : {}),
-          ...(dateBounds.minDateKey && dateBounds.maxDateKey
-            ? {
-                displayDate: {
-                  gte: dateBounds.minDateKey,
-                  lte: dateBounds.maxDateKey,
-                },
-              }
-            : {}),
-        },
-      },
-      includeCoverage: true,
-    });
-  } catch (error) {
-    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
-    orphanRows = await selectWorkRows({
-      where: {
-        orgId,
-        assignmentPlanId: null,
-        quantity: { gt: 0 },
-        OR: [
-          { styleId: { in: styleLabels } },
-          { styleName: { in: styleLabels } },
-        ],
-        workLog: {
-          ...(dateBounds.minDateKey && !dateBounds.maxDateKey
-            ? { displayDate: { gte: dateBounds.minDateKey } }
-            : {}),
-          ...(!dateBounds.minDateKey && dateBounds.maxDateKey
-            ? { displayDate: { lte: dateBounds.maxDateKey } }
-            : {}),
-          ...(dateBounds.minDateKey && dateBounds.maxDateKey
-            ? {
-                displayDate: {
-                  gte: dateBounds.minDateKey,
-                  lte: dateBounds.maxDateKey,
-                },
-              }
-            : {}),
-        },
-      },
-      includeCoverage: false,
-    });
-  }
-
-  let inferredCount = 0;
-  let unmatchedCount = 0;
-  const inferredRows = orphanRows.reduce((rows, record) => {
-    const matchedCandidate = resolveOrphanWorkRecordAssignmentPlanMatch({
-      record,
-      candidates,
-    });
-    if (!matchedCandidate) {
-      unmatchedCount += 1;
-      return rows;
-    }
-    inferredCount += 1;
-    rows.push({
-      ...record,
-      assignmentPlanId: matchedCandidate.planId,
-      _inferredAssignmentPlanId: matchedCandidate.planId,
-    });
-    return rows;
-  }, [] as any[]);
-
-  if (inferredCount > 0 || unmatchedCount > 0) {
-    console.info(
-      `[assignment-plan-progress] orgId=${orgId} ${context}: directRows=${directRows.length} inferredRows=${inferredCount} unmatchedOrphans=${unmatchedCount}`
-    );
-  }
-
-  return [...directRows, ...inferredRows];
+  void stateAssignmentsByExternalId;
+  return directRows;
 };
 
 const resolveProducedQtyFromProcessKeyTotals = ({
@@ -16683,6 +16540,25 @@ const buildAssignmentPlanProgressRows = async (
   });
 };
 
+const isAutoWorklogCompletedPlan = (plan: any) =>
+  plan?.isCompleted === true &&
+  resolveOptionalString(plan?.closedBy, null) === AUTO_WORKLOG_COMPLETED_BY;
+
+const resolveAutoWorklogCompletionDate = (row: any) => {
+  const preferredDateKey =
+    normalizeDateKey(row?.actualProducedCompletedAt) ||
+    normalizeDateKey(row?.lastWorkDate) ||
+    normalizeDateKey(row?.candidateEndDate) ||
+    normalizeDateKey(row?.renderEndDate) ||
+    normalizeDateKey(row?.forecastCompletedAt) ||
+    null;
+  return (
+    toDateValueFromDateKeyForAssignmentSchedule(preferredDateKey) ||
+    toOptionalDateValue(row?.productionCompletedAt, null) ||
+    new Date()
+  );
+};
+
 const persistAssignmentPlanProgressSnapshot = async ({
   orgId,
   assignmentPlanIds = [],
@@ -16715,7 +16591,20 @@ const persistAssignmentPlanProgressSnapshot = async ({
           : []),
       ],
     },
-    select: { id: true, externalId: true },
+    select: {
+      id: true,
+      externalId: true,
+      assignmentQuantity: true,
+      isCompleted: true,
+      finalQuantity: true,
+      closedQty: true,
+      closedAt: true,
+      closedBy: true,
+      closeMode: true,
+      closeBasis: true,
+      completedAt: true,
+      productionCompletedAt: true,
+    },
   });
   if (targetPlans.length === 0) {
     return { updatedPlanCount: 0 };
@@ -16744,36 +16633,92 @@ const persistAssignmentPlanProgressSnapshot = async ({
     .map((plan) => {
       const row = rowByExternalId.get(plan.externalId);
       if (!row) return null;
-      const productionCompletedAt = toOptionalDateValue(
-        row?.productionCompletedAt,
-        null
+      const resolvedProducedQuantity = Math.max(
+        0,
+        Math.round(Number(row?.producedQuantity ?? 0) || 0)
       );
+      const shouldAutoComplete =
+        row?.baselineQuantity != null &&
+        row?.baselineQuantity > 0 &&
+        resolvedProducedQuantity >= row.baselineQuantity;
+      const isAutoCompleted = isAutoWorklogCompletedPlan(plan);
+      const isManuallyCompleted = plan?.isCompleted === true && !isAutoCompleted;
+      const autoCompletionDate = shouldAutoComplete
+        ? resolveAutoWorklogCompletionDate(row)
+        : null;
+      const productionCompletedAt =
+        shouldAutoComplete && autoCompletionDate && !isManuallyCompleted
+          ? autoCompletionDate
+          : !shouldAutoComplete && isAutoCompleted
+            ? null
+          : toOptionalDateValue(row?.productionCompletedAt, null);
       const actualProducedCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.actualProducedCompletedAt
       );
-      const candidateEndDate = toDateValueFromDateKeyForAssignmentSchedule(
-        row?.candidateEndDate
-      );
-      const renderEndDate = toDateValueFromDateKeyForAssignmentSchedule(
-        row?.renderEndDate
+      const originalEndDate = toDateValueFromDateKeyForAssignmentSchedule(
+        row?._originalEndDateKey
       );
       const forecastCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.forecastCompletedAt
       );
+      const candidateEndDate =
+        !shouldAutoComplete && isAutoCompleted
+          ? forecastCompletedAt || originalEndDate
+          : toDateValueFromDateKeyForAssignmentSchedule(row?.candidateEndDate);
+      const renderEndDate =
+        !shouldAutoComplete && isAutoCompleted
+          ? originalEndDate
+          : toDateValueFromDateKeyForAssignmentSchedule(row?.renderEndDate);
+      const resolvedPlannedQuantity =
+        toOptionalNonNegativeInt(plan?.assignmentQuantity, null) ??
+        toOptionalNonNegativeInt(row?.plannedQuantity, null);
+      const nextCloseMode = shouldAutoComplete
+        ? resolveAssignmentPlanCloseMode({
+            closedQty: resolvedProducedQuantity,
+            targetQty: resolvedPlannedQuantity,
+          }) ?? null
+        : null;
+
+      const data: Prisma.AssignmentPlanUncheckedUpdateInput = {
+        productionCompletedAt,
+        actualProducedCompletedAt,
+        candidateEndDate,
+        renderEndDate,
+        forecastCompletedAt,
+        forecastBasis: resolveOptionalString(row?.forecastBasis, null),
+        confidence: resolveOptionalString(row?.confidence, null),
+        scheduleStatus: resolveOptionalString(row?.scheduleStatus, null),
+        updatedAt: new Date(),
+      };
+
+      if (shouldAutoComplete && !isManuallyCompleted) {
+        data.isCompleted = true;
+        data.completedAt = autoCompletionDate;
+        data.finalQuantity = resolvedProducedQuantity;
+        data.closedQty = resolvedProducedQuantity;
+        data.closedAt = autoCompletionDate;
+        data.closedBy = AUTO_WORKLOG_COMPLETED_BY;
+        data.closeMode = nextCloseMode;
+        if (plan?.closeBasis == null) {
+          data.closeBasis = null;
+        }
+        data.scheduleStatus = ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
+      } else if (isAutoCompleted) {
+        data.productionCompletedAt = null;
+        data.isCompleted = false;
+        data.completedAt = null;
+        data.finalQuantity = null;
+        data.closedQty = null;
+        data.closedAt = null;
+        data.closedBy = null;
+        data.closeMode = null;
+        data.closeBasis = null;
+        data.scheduleStatus = ASSIGNMENT_STATUS_IN_PROGRESS;
+      }
 
       return {
         id: plan.id,
-        data: {
-          productionCompletedAt,
-          actualProducedCompletedAt,
-          candidateEndDate,
-          renderEndDate,
-          forecastCompletedAt,
-          forecastBasis: resolveOptionalString(row?.forecastBasis, null),
-          confidence: resolveOptionalString(row?.confidence, null),
-          scheduleStatus: resolveOptionalString(row?.scheduleStatus, null),
-          updatedAt: new Date(),
-        } as Prisma.AssignmentPlanUncheckedUpdateInput,
+        data,
       };
     })
     .filter((row): row is { id: number; data: Prisma.AssignmentPlanUncheckedUpdateInput } =>
