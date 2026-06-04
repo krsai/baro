@@ -16,9 +16,11 @@ const toText = (value) => String(value || '').trim();
 const buildAssignmentDisplayKey = (assignment) => {
   const orderNo = toText(assignment?.orderNo);
   const label = toText(assignment?.label || assignment?.styleId);
-  const quantity = toText(assignment?.finalQuantity ?? assignment?.quantity);
-  if (!orderNo && !label && !quantity) return '';
-  return [orderNo, label, quantity].join('|');
+  const assignmentQuantityText = toText(
+    assignment?.finalQuantity ?? assignment?.assignmentQuantity
+  );
+  if (!orderNo && !label && !assignmentQuantityText) return '';
+  return [orderNo, label, assignmentQuantityText].join('|');
 };
 const summarizeDuplicateAssignments = (assignments = []) => {
   const buckets = (Array.isArray(assignments) ? assignments : []).reduce((map, assignment) => {

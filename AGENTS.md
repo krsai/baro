@@ -1057,3 +1057,41 @@ runtime 조회값:
     `timesPerPiece`, `bucketQuantity`, `bucketStSeconds`.
 - Still separate:
   - Removal of compatibility payload aliases and dual-read fallback is a later cleanup commit after production migration verification.
+
+### 25. 2026-06-04 Scheduler completion planning direction
+
+- Status:
+  - Product planning lock. This section records the chosen UX/operation direction before implementation details.
+- Completion options considered:
+  - `Option 1`: one finishing process on style acts as the completion signal.
+  - `Option 2`: user always marks completion manually from assignment/dashboard.
+  - `Option 3`: system auto-detects completion from work records, and user only corrects exceptions.
+- Chosen direction:
+  - Use `Option 3`.
+  - Reason:
+    - BARO should stay simple for operators.
+    - Routine completion state changes should happen automatically from work records.
+    - Users must still be able to override mistakes or exceptional cases.
+- Current planning policy:
+  - The system should auto-switch an assignment to completed when work-record-based progress reaches `>= 100%` of the planned/order quantity.
+  - Users must be able to toggle final `completed / incomplete` state from both the dashboard and the assignment board.
+  - The dashboard should act primarily as a tracking/report + exception-handling screen, not as a mandatory completion-click flow.
+- Follow-up development items after this planning lock:
+  - Card progress visualization from work records.
+  - Scheduler card length re-adjustment.
+  - Scheduler card order/position re-adjustment.
+  - Warning UI for overflow or process-quantity imbalance.
+- Refined completion policy (2026-06-05):
+  - Auto completion/rollback must use only `WorkRecord` rows with explicit `assignmentPlanId`.
+  - Work records without `assignmentPlanId` are reference/warning data only; they must not drive official completion state.
+  - Official completion quantity should follow the minimum across required process-group totals.
+  - Overflow production does not block completion, but must raise a visible warning for review.
+  - Before payroll settlement lock, completion state may auto-change again when work logs are corrected.
+  - After payroll settlement lock, completion state is frozen; no automatic rollback is allowed.
+- Separate emergency recovery concept (2026-06-05):
+  - Normal completion rollback and scheduler recovery are different features.
+  - Normal rollback is routine app behavior from work-log recalculation before payroll lock.
+  - Emergency recovery is a system-admin-only safety tool for scheduler corruption or bad recalculation.
+  - Emergency recovery must not delete historical cards, work logs, or completion history.
+  - Emergency recovery should let admins treat all work up to a checkpoint date as closed for scheduler purposes, then reopen scheduling from the next date.
+  - Example: if scheduler calculation became corrupted after `2026-04-30`, admin may restart scheduler usage from `2026-05-01` without deleting April history.

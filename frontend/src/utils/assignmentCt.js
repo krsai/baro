@@ -122,8 +122,10 @@ const resolveAssignmentCtTotalSecondsOrNull = (item) => {
   if (snapshot?.assignmentCtTotalSeconds != null) {
     return Math.round(Number(snapshot.assignmentCtTotalSeconds) || 0);
   }
-  const ctTotalSeconds = toOptionalNonNegativeNumber(item?.ctTotalSeconds);
-  if (ctTotalSeconds != null) return Math.round(ctTotalSeconds);
+  const assignmentCtTotalSeconds = toOptionalNonNegativeNumber(
+    item?.assignmentCtTotalSeconds ?? item?.ctTotalSeconds
+  );
+  if (assignmentCtTotalSeconds != null) return Math.round(assignmentCtTotalSeconds);
   return null;
 };
 export const hasAssignmentCtSnapshot = (item) => {

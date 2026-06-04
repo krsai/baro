@@ -98,6 +98,7 @@ const LABELS = {
   firstLineCoverage: '이 라인의 첫 작업기록입니다. 시작 날짜를 직접 입력하세요.',
   zeroCoverageHint: '직전 작업기록이 없으면 시작일을 직접 입력해 주세요.',
   coverageValidation: '작업 시작일은 종료일보다 늦을 수 없습니다.',
+  assignmentLinkRequired: '배정카드 연결이 없는 작업은 저장할 수 없습니다.',
 };
 
 const toText = (value) => String(value || '').trim();
@@ -485,7 +486,7 @@ const buildLegacyAssignment = (record, index = 0) => {
     colorId: toPositiveIdOrNull(record?.colorId),
     color: toText(record?.colorCode),
     colorName: toText(record?.colorName || record?.colorCode),
-    quantity: Number(record?.quantity) || null,
+    assignmentQuantity: Number(record?.quantity) || null,
     finalQuantity: null,
     isLegacy: true,
     processes: fallbackProcess ? [fallbackProcess] : [],
@@ -494,8 +495,10 @@ const buildLegacyAssignment = (record, index = 0) => {
 const resolveBaselineQuantity = (plan) => {
   const finalQuantity = Number(plan?.finalQuantity);
   if (Number.isFinite(finalQuantity) && finalQuantity > 0) return Math.round(finalQuantity);
-  const quantity = Number(plan?.quantity);
-  if (Number.isFinite(quantity) && quantity > 0) return Math.round(quantity);
+  const assignmentQuantity = Number(plan?.assignmentQuantity);
+  if (Number.isFinite(assignmentQuantity) && assignmentQuantity > 0) {
+    return Math.round(assignmentQuantity);
+  }
   return null;
 };
 const collectAssignmentStyleKeys = (assignment) =>
@@ -847,7 +850,7 @@ const dedupeAssignmentPlans = (plans = []) => {
       toText(plan?.orderNo),
       toText(plan?.label || plan?.styleId),
       toText(plan?.colorId || plan?.colorName || plan?.color),
-      toText(plan?.quantity),
+      toText(plan?.assignmentQuantity),
       toText(plan?.startIndex),
       toText(plan?.endIndex),
     ].join('|');
@@ -1636,7 +1639,7 @@ const WorkDetail = ({
             matchedAssignment?.styleId
         ),
         styleId: toText(row?.assignment?.styleId || matchedAssignment?.styleId),
-        quantity:
+        assignmentQuantity:
           resolveBaselineQuantity(matchedAssignment) ??
           resolveBaselineQuantity(row?.assignment) ??
           null,
@@ -1967,6 +1970,28 @@ const WorkDetail = ({
       ),
     [rowResolvedMetaById, rows]
   );
+  const missingAssignmentPlanLinkLabels = useMemo(() => {
+    const labels = [];
+    const seen = new Set();
+    summary.records.forEach((record) => {
+      if (toPositiveIdOrNull(record?.assignmentPlanId) !== null) return;
+      const styleLabel = toText(record?.orderNo) || toText(record?.styleId);
+      const processLabel = toText(record?.processName) || toText(record?.processCode);
+      const label = [styleLabel, processLabel].filter(Boolean).join(' / ');
+      if (!label || seen.has(label)) return;
+      seen.add(label);
+      labels.push(label);
+    });
+    return labels;
+  }, [summary.records]);
+  const missingAssignmentPlanLinkMessage = useMemo(() => {
+    if (missingAssignmentPlanLinkLabels.length === 0) return '';
+    const preview = missingAssignmentPlanLinkLabels.slice(0, 3).join(', ');
+    const extraCount = missingAssignmentPlanLinkLabels.length - 3;
+    return preview
+      ? `${LABELS.assignmentLinkRequired} ${preview}${extraCount > 0 ? ` (+${extraCount} more)` : ''}`
+      : LABELS.assignmentLinkRequired;
+  }, [missingAssignmentPlanLinkLabels]);
   const ctWarningMessage = useMemo(() => {
     if (ctAssignmentPool.length > 0) return '';
     if (hasRowsWithAssignmentPlanId) return '';
@@ -2514,6 +2539,10 @@ const WorkDetail = ({
       setFormError('같은 작업자가 같은 스타일의 같은 공정을 같은 날짜에 중복 입력할 수 없습니다.');
       return;
     }
+    if (missingAssignmentPlanLinkMessage) {
+      setFormError(missingAssignmentPlanLinkMessage);
+      return;
+    }
     onSave?.({
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey,
@@ -2531,7 +2560,7 @@ const WorkDetail = ({
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalCtSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalCtSeconds, summary.workerCount, workDateKey]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -2968,6 +2997,9 @@ const WorkDetail = ({
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
               {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
+              {missingAssignmentPlanLinkMessage ? (
+                <Alert severity="warning">{missingAssignmentPlanLinkMessage}</Alert>
+              ) : null}
               {isMobile ? (
                 <Stack spacing={1}>
                   {visibleRowViewModels.map((rowViewModel) => {

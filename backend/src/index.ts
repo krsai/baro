@@ -5559,9 +5559,12 @@ const resolveWorkLogRecordResponses = (workLog: any) => {
     return workLog.workRecords.map(toWorkRecordResponse);
   }
   if (Array.isArray(workLog?.records?.rows)) {
-    return ensureArray(workLog.records.rows);
+    return ensureArray(workLog.records.rows).map(toWorkRecordResponse);
   }
-  return Array.isArray(workLog?.records) ? ensureArray(workLog.records) : [];
+  if (Array.isArray(workLog?.records)) {
+    return ensureArray(workLog.records).map(toWorkRecordResponse);
+  }
+  return [];
 };
 const collectWorkRecordWorkerIds = (records: any): number[] =>
   Array.from(
@@ -7639,8 +7642,9 @@ const toWorkLogContextAssignmentResponse = (plan: any) => {
     colorId: toPositiveIntOrNull(plan?.colorId),
     colorName: resolveAssignmentPlanColorName(plan),
     color: resolveOptionalString(plan?.color, "") ?? "",
-    quantity: resolveAssignmentQuantity(plan),
-    ctTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
+    assignmentQuantity: resolveAssignmentQuantity(plan),
+    assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(plan),
+    assignmentStTotalSeconds: resolveAssignmentStTotalSeconds(plan),
     assignmentCtSnapshot: normalizedSnapshot,
     ctUpdatedBy: normalizedSnapshot?.updatedBy ?? "",
     ctUpdatedAt: normalizedSnapshot?.updatedAt ?? null,
@@ -7920,6 +7924,7 @@ const buildWorkLogContextResponse = async ({
           colorId: true,
           colorName: true,
           assignmentQuantity: true,
+          assignmentStTotalSeconds: true,
           assignmentCtTotalSeconds: true,
           assignmentCtSnapshot: true,
           color: true,
@@ -8047,8 +8052,9 @@ const buildWorkLogContextResponse = async ({
                 label: item.label ?? null,
                 colorId: item.colorId ?? null,
                 colorName: item.colorName ?? null,
-                quantity: resolveAssignmentQuantity(item),
-                ctTotalSeconds: resolveAssignmentCtTotalSeconds(item),
+                assignmentQuantity: resolveAssignmentQuantity(item),
+                assignmentCtTotalSeconds: resolveAssignmentCtTotalSeconds(item),
+                assignmentStTotalSeconds: resolveAssignmentStTotalSeconds(item),
                 assignmentCtSnapshot: item.assignmentCtSnapshot ?? item.ctSnapshot ?? null,
                 color: item.color ?? null,
                 startIndex: item.startIndex ?? 0,
