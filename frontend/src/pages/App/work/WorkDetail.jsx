@@ -486,7 +486,8 @@ const buildLegacyAssignment = (record, index = 0) => {
     colorId: toPositiveIdOrNull(record?.colorId),
     color: toText(record?.colorCode),
     colorName: toText(record?.colorName || record?.colorCode),
-    assignmentQuantity: Number(record?.quantity) || null,
+    // A legacy row without a linked assignment has no known planned quantity.
+    assignmentQuantity: null,
     finalQuantity: null,
     isLegacy: true,
     processes: fallbackProcess ? [fallbackProcess] : [],
@@ -1773,8 +1774,11 @@ const WorkDetail = ({
         assignmentPlanId: toPositiveIdOrNull(assignment?.dbId),
       }));
     const workerCount = new Set(records.map((record) => record.workerId).filter((workerId) => workerId !== null)).size;
-    const totalCtSeconds = records.reduce((sum, record) => sum + record.ctSeconds * record.quantity, 0);
-    return { records, workerCount, totalCtSeconds };
+    const workLogCtTotalSeconds = records.reduce(
+      (sum, record) => sum + record.ctSeconds * record.quantity,
+      0
+    );
+    return { records, workerCount, workLogCtTotalSeconds };
   }, [resolveAssignmentForRow, resolveProcessForRow, rowResolvedMetaById, rows]);
   const assignmentLimitGroupMeta = useMemo(() => {
     const planMetaById = new Map();
@@ -2556,11 +2560,11 @@ const WorkDetail = ({
       ctBasis: 'CT',
       workerCount: summary.workerCount,
       itemCount: summary.records.length,
-      totalCtSeconds: summary.totalCtSeconds,
+      totalCtSeconds: summary.workLogCtTotalSeconds,
       records: summary.records,
       note: buildCombinedNote({ manualNote: note, autoNote: autoExceededNote }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.totalCtSeconds, summary.workerCount, workDateKey]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, entryMode, hasFactoryWage, initialLog?.id, isDirty, lineWorkers, missingAssignmentPlanLinkMessage, note, onSave, selectedFactoryId, selectedFactoryWagePerSecond, selectedLine?.name, selectedLineId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {

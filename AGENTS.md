@@ -1092,6 +1092,30 @@ runtime 조회값:
   - Normal completion rollback and scheduler recovery are different features.
   - Normal rollback is routine app behavior from work-log recalculation before payroll lock.
   - Emergency recovery is a system-admin-only safety tool for scheduler corruption or bad recalculation.
-  - Emergency recovery must not delete historical cards, work logs, or completion history.
-  - Emergency recovery should let admins treat all work up to a checkpoint date as closed for scheduler purposes, then reopen scheduling from the next date.
-  - Example: if scheduler calculation became corrupted after `2026-04-30`, admin may restart scheduler usage from `2026-05-01` without deleting April history.
+- Emergency recovery must not delete historical cards, work logs, or completion history.
+- Emergency recovery should let admins treat all work up to a checkpoint date as closed for scheduler purposes, then reopen scheduling from the next date.
+- Example: if scheduler calculation became corrupted after `2026-04-30`, admin may restart scheduler usage from `2026-05-01` without deleting April history.
+
+### 26. 2026-06-05 Meaning Exactness Lock
+
+- AI/code review policy:
+  - Canonical naming is not enough by itself.
+  - The value stored in that field must also match the exact domain meaning.
+  - "Mostly similar" or "close enough" fallback is not acceptable when the scope is different.
+- Strict rule:
+  - Never populate an assignment-scoped field with WorkLog/WorkRecord meaning as a substitute.
+  - Never populate a WorkLog/WorkRecord field with assignment-scoped meaning as a substitute.
+  - If the exact meaning is unknown, store `null` or add a new explicit concept.
+- Concrete lock:
+  - `assignmentQuantity` must mean the planned assignment quantity only.
+  - `WorkRecord.quantity` must mean the recorded produced quantity only.
+  - `assignmentQuantity = WorkRecord.quantity` is forbidden as a fallback.
+  - `assignmentCtTotalSeconds` must mean assignment-level CT total only.
+  - `totalCtSeconds` on `WorkLog` must mean WorkLog header CT total only.
+- Implementation guidance:
+  - When a legacy row has no linked assignment, do not synthesize fake assignment quantity/CT/ST values from work-record values.
+  - Keep the assignment-scoped field `null` and treat the row as legacy/unlinked instead.
+  - If product behavior needs a visible placeholder concept, add a new explicitly named field instead of overloading an existing canonical field.
+- Variable naming guidance:
+  - Local/runtime variable names should also reflect exact scope when they carry domain meaning.
+  - Example: prefer `workLogCtTotalSeconds` over ambiguous `totalCtSeconds` for a WorkLog-header aggregate variable.
