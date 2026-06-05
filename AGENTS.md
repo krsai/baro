@@ -1127,3 +1127,14 @@ runtime 조회값:
 - 작업기록 기반 자동 완료는 `AssignmentPlan.closedBy = "system:auto-worklog"` 표식으로 남긴다.
 - 작업기록 기반 자동 롤백은 위 표식으로 자동 완료된 assignment에만 적용한다. 수동/QC 완료 assignment는 이 자동 롤백이 덮어쓰지 않는다.
 - 구 생산 현황 경로 `/production-result`는 재설계 전까지 비활성화하고 워크스페이스로 리다이렉트한다.
+
+### 28. 2026-06-05 Auto Completion Phase 2 Payroll Lock
+
+- 급여 잠금은 assignment 카드별 완료 월 기준으로 판정한다.
+- 완료 월은 `AssignmentPlan.productionCompletedAt`를 우선 사용하고, 없으면 `closedAt/completedAt`로 fallback한다.
+- 그 완료 월에 `PayrollSnapshot`이 이미 있으면 해당 assignment는 payroll-locked 상태로 본다.
+- payroll-locked assignment는 WorkLog 생성/수정/삭제로 변경할 수 없다.
+- payroll-locked 상태의 auto-completed assignment는 이후 작업기록 합계가 줄어도 자동 롤백하지 않는다.
+- payroll-locked assignment는 `/assignment-plans/:externalId/production-complete`로 수동 재확정할 수 없다.
+- progress row는 `isPayrollLocked`, `payrollLockMonth`를 노출할 수 있고, UI는 이 값을 경고/버튼 차단에 사용한다.
+- 이 잠금 규칙은 이후 시스템 관리자용 비상 복구 기능과 별개다.

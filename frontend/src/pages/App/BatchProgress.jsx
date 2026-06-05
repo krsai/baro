@@ -338,6 +338,9 @@ const BatchProgress = () => {
           const isCompletionInconsistent = Boolean(progress?.isCompletionInconsistent);
           const completionGapQuantity =
             toNonNegativeIntOrNull(progress?.completionGapQuantity) ?? 0;
+          const isPayrollLocked = Boolean(progress?.isPayrollLocked);
+          const payrollLockMonth =
+            String(progress?.payrollLockMonth || '').trim() || null;
           const closedBy = String(progress?.closedBy || plan?.closedBy || '').trim() || null;
           const isAutoCompleted = closedBy === 'system:auto-worklog';
 
@@ -369,6 +372,8 @@ const BatchProgress = () => {
             closeBasis: String(progress?.closeBasis || plan?.closeBasis || '').trim() || null,
             closedBy,
             isAutoCompleted,
+            isPayrollLocked,
+            payrollLockMonth,
             isCompletionInconsistent,
             completionGapQuantity,
           };
@@ -471,7 +476,12 @@ const BatchProgress = () => {
         setClosingId(null);
         await loadBatches({ forceRefresh: true });
       } catch (error) {
-        showNotification(error?.message || '제작 완료 확정에 실패했습니다.', 'error');
+        const message = String(error?.message || '').trim();
+        if (message.includes('assignment plan payroll locked')) {
+          showNotification('급여 잠금이 끝난 배정카드는 완료 수량을 다시 확정할 수 없습니다.', 'warning');
+        } else {
+          showNotification(message || '제작 완료 확정에 실패했습니다.', 'error');
+        }
       } finally {
         setSubmittingCloseId(null);
       }
@@ -563,7 +573,9 @@ const BatchProgress = () => {
                 : null;
               const StatusIcon = statusMeta.icon;
               const canClose =
-                status !== 'pending' && (!batch.isCompleted || batch.isAutoCompleted);
+                status !== 'pending' &&
+                !batch.isPayrollLocked &&
+                (!batch.isCompleted || batch.isAutoCompleted);
               const isClosing = closingId === batch.id;
 
               return (
@@ -626,6 +638,13 @@ const BatchProgress = () => {
                             label={`완료 경고 -${formatInt(batch.completionGapQuantity)}장`}
                           />
                         ) : null}
+                        {batch.isPayrollLocked ? (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={`급여 잠금${batch.payrollLockMonth ? ` ${batch.payrollLockMonth}` : ''}`}
+                          />
+                        ) : null}
                       </Stack>
                       <Box sx={{ flex: 1 }} />
                       <Typography variant="body2" color="text.secondary">
@@ -672,7 +691,7 @@ const BatchProgress = () => {
                             <Typography variant="caption" color="text.secondary">
                               확정수량 {formatInt(batch.closedQty)}장
                             </Typography>
-                            {batch.isAutoCompleted ? (
+                            {batch.isAutoCompleted && !batch.isPayrollLocked ? (
                               <Button
                                 size="small"
                                 variant="outlined"

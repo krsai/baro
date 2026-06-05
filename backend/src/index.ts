@@ -6017,6 +6017,20 @@ const resolveAssignmentPlanClosedAtValue = (plan: any) =>
 const resolveAssignmentPlanClosedAt = (plan: any) =>
   toIsoDateStringOrNull(resolveAssignmentPlanClosedAtValue(plan));
 
+const resolveAssignmentPlanCompletionDateValue = (plan: any) =>
+  toOptionalDateValue(
+    plan?.productionCompletedAt,
+    resolveAssignmentPlanClosedAtValue(plan)
+  );
+
+const resolveAssignmentPlanPayrollLockMonth = (plan: any) => {
+  const completionDate = resolveAssignmentPlanCompletionDateValue(plan);
+  const completionDateKey = completionDate
+    ? toDateKeyInTimeZone(completionDate, BUSINESS_TIME_ZONE)
+    : null;
+  return completionDateKey ? completionDateKey.slice(0, 7) : null;
+};
+
 const resolveAssignmentPlanCloseMode = ({
   closedQty,
   targetQty,
@@ -6855,6 +6869,88 @@ const formatAssignmentPlanLabel = (plan: any) => {
   if (parts.length > 0) return parts.join(" · ");
   return resolveOptionalString(plan?.externalId, null) || `assignmentPlan#${plan?.id ?? "?"}`;
 };
+const loadLockedPayrollMonthSet = async (
+  orgId: number,
+  monthKeys: string[]
+): Promise<Set<string>> => {
+  const normalizedMonths = Array.from(
+    new Set(
+      ensureArray(monthKeys).filter(
+        (month): month is string => typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
+      )
+    )
+  );
+  if (normalizedMonths.length === 0) return new Set<string>();
+  const snapshots = await prisma.payrollSnapshot.findMany({
+    where: {
+      orgId,
+      month: { in: normalizedMonths },
+    },
+    select: { month: true },
+  });
+  return new Set(
+    snapshots
+      .map((snapshot) => resolveOptionalString(snapshot?.month, null))
+      .filter((month): month is string => Boolean(month))
+  );
+};
+const validateAssignmentPlanPayrollLock = async ({
+  orgId,
+  assignmentPlanIds,
+}: {
+  orgId: number;
+  assignmentPlanIds: number[];
+}) => {
+  const normalizedPlanIds = normalizePlanIdList(assignmentPlanIds);
+  if (normalizedPlanIds.length === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const plans = await prisma.assignmentPlan.findMany({
+    where: { orgId, id: { in: normalizedPlanIds } },
+    select: {
+      id: true,
+      externalId: true,
+      orderNo: true,
+      label: true,
+      colorName: true,
+      completedAt: true,
+      closedAt: true,
+      productionCompletedAt: true,
+    },
+  });
+  const monthByPlanId = new Map<number, string>();
+  plans.forEach((plan) => {
+    const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
+    if (monthKey) monthByPlanId.set(Number(plan.id), monthKey);
+  });
+  const lockedMonthSet = await loadLockedPayrollMonthSet(
+    orgId,
+    Array.from(monthByPlanId.values())
+  );
+  const lockedPlans = plans.filter((plan) => {
+    const monthKey = monthByPlanId.get(Number(plan.id));
+    return monthKey ? lockedMonthSet.has(monthKey) : false;
+  });
+  if (lockedPlans.length === 0) {
+    return { status: 200, error: null as string | null };
+  }
+
+  const preview = lockedPlans
+    .slice(0, 3)
+    .map((plan) => {
+      const label = formatAssignmentPlanLabel(plan);
+      const monthKey = monthByPlanId.get(Number(plan.id));
+      return monthKey ? `${label} [${monthKey}]` : label;
+    })
+    .join(", ");
+  const extraText =
+    lockedPlans.length > 3 ? ` (+${lockedPlans.length - 3} more)` : "";
+  return {
+    status: 409,
+    error: `assignment plan payroll locked (${preview}${extraText})`,
+  };
+};
 const validateWorkLogAssignmentPlanCtSnapshot = async ({
   orgId,
   lineId,
@@ -7346,6 +7442,9 @@ const translateWorkLogErrorMessage = (error: any) => {
   }
   if (text.startsWith("assignment plan already completed")) {
     return "이미 마감완료된 배정카드가 포함되어 있습니다. 관리자에게 확인해 주세요.";
+  }
+  if (text.startsWith("assignment plan payroll locked")) {
+    return "급여 잠금이 끝난 배정카드가 포함되어 있어 작업기록을 수정할 수 없습니다.";
   }
   if (
     text.startsWith("ct snapshot required before work log") ||
@@ -16115,6 +16214,15 @@ const buildAssignmentPlanProgressRows = async (
     stateAssignmentsByExternalId,
     context: "buildAssignmentPlanProgressRows",
   });
+  const payrollLockMonthByPlanId = new Map<number, string>();
+  plans.forEach((plan) => {
+    const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
+    if (monthKey) payrollLockMonthByPlanId.set(Number(plan.id), monthKey);
+  });
+  const payrollLockedMonthSet = await loadLockedPayrollMonthSet(
+    orgId,
+    Array.from(payrollLockMonthByPlanId.values())
+  );
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
   const sumByPlanId = new Map<number, number>();
@@ -16338,6 +16446,10 @@ const buildAssignmentPlanProgressRows = async (
     const completionGapQuantity = isCompletionInconsistent
       ? Math.max(0, completionTargetQuantity! - producedQuantity)
       : 0;
+    const payrollLockMonth = payrollLockMonthByPlanId.get(planId) || null;
+    const isPayrollLocked = payrollLockMonth
+      ? payrollLockedMonthSet.has(payrollLockMonth)
+      : false;
 
     const scheduleStatus: "IN_PROGRESS" | "READY_TO_COMPLETE" | "PRODUCTION_COMPLETED" =
       productionCompletedDateKey
@@ -16405,6 +16517,8 @@ const buildAssignmentPlanProgressRows = async (
       remainingQty,
       overflowQuantity,
       isOverflow: overflowQuantity > 0,
+      isPayrollLocked,
+      payrollLockMonth,
       isCompletionInconsistent,
       completionWarningCode: isCompletionInconsistent
         ? "COMPLETED_BELOW_BASELINE"
@@ -16647,6 +16761,40 @@ const persistAssignmentPlanProgressSnapshot = async ({
     map.set(externalId, row);
     return map;
   }, new Map<string, any>());
+  const payrollLockMonthByPlanId = new Map<number, string>();
+  targetPlans.forEach((plan) => {
+    const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
+    if (monthKey) payrollLockMonthByPlanId.set(Number(plan.id), monthKey);
+  });
+  const prospectivePayrollLockMonthByPlanId = new Map<number, string>();
+  targetPlans.forEach((plan) => {
+    const row = rowByExternalId.get(plan.externalId);
+    if (!row) return;
+    const resolvedProducedQuantity = Math.max(
+      0,
+      Math.round(Number(row?.producedQuantity ?? 0) || 0)
+    );
+    const shouldAutoCompleteByQuantity =
+      row?.baselineQuantity != null &&
+      row?.baselineQuantity > 0 &&
+      resolvedProducedQuantity >= row.baselineQuantity;
+    const autoCompletionDate = shouldAutoCompleteByQuantity
+      ? resolveAutoWorklogCompletionDate(row)
+      : null;
+    const prospectiveMonthKey = autoCompletionDate
+      ? toDateKeyInTimeZone(autoCompletionDate, BUSINESS_TIME_ZONE)?.slice(0, 7) || null
+      : null;
+    if (prospectiveMonthKey) {
+      prospectivePayrollLockMonthByPlanId.set(Number(plan.id), prospectiveMonthKey);
+    }
+  });
+  const payrollLockedMonthSet = await loadLockedPayrollMonthSet(
+    orgId,
+    [
+      ...Array.from(payrollLockMonthByPlanId.values()),
+      ...Array.from(prospectivePayrollLockMonthByPlanId.values()),
+    ]
+  );
 
   const updates = targetPlans
     .map((plan) => {
@@ -16665,11 +16813,24 @@ const persistAssignmentPlanProgressSnapshot = async ({
       const autoCompletionDate = shouldAutoCompleteByQuantity
         ? resolveAutoWorklogCompletionDate(row)
         : null;
-      const shouldAutoComplete = shouldAutoCompleteByQuantity && autoCompletionDate != null;
+      const prospectivePayrollLockMonth =
+        prospectivePayrollLockMonthByPlanId.get(Number(plan.id)) || null;
+      const isProspectivePayrollLocked = prospectivePayrollLockMonth
+        ? payrollLockedMonthSet.has(prospectivePayrollLockMonth)
+        : false;
+      const shouldAutoComplete =
+        shouldAutoCompleteByQuantity &&
+        autoCompletionDate != null &&
+        !isProspectivePayrollLocked;
+      const payrollLockMonth = payrollLockMonthByPlanId.get(Number(plan.id)) || null;
+      const isPayrollLocked = payrollLockMonth
+        ? payrollLockedMonthSet.has(payrollLockMonth)
+        : false;
+      const canAutoRollback = isAutoCompleted && !isPayrollLocked;
       const productionCompletedAt =
         shouldAutoComplete && autoCompletionDate && !isManuallyCompleted
           ? autoCompletionDate
-          : !shouldAutoComplete && isAutoCompleted
+          : !shouldAutoComplete && canAutoRollback
             ? null
           : toOptionalDateValue(row?.productionCompletedAt, null);
       const actualProducedCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
@@ -16682,11 +16843,11 @@ const persistAssignmentPlanProgressSnapshot = async ({
         row?.forecastCompletedAt
       );
       const candidateEndDate =
-        !shouldAutoComplete && isAutoCompleted
+        !shouldAutoComplete && canAutoRollback
           ? forecastCompletedAt || originalEndDate
           : toDateValueFromDateKeyForAssignmentSchedule(row?.candidateEndDate);
       const renderEndDate =
-        !shouldAutoComplete && isAutoCompleted
+        !shouldAutoComplete && canAutoRollback
           ? originalEndDate
           : toDateValueFromDateKeyForAssignmentSchedule(row?.renderEndDate);
       const resolvedPlannedQuantity =
@@ -16723,7 +16884,7 @@ const persistAssignmentPlanProgressSnapshot = async ({
           data.closeBasis = null;
         }
         data.scheduleStatus = ASSIGNMENT_STATUS_PRODUCTION_COMPLETED;
-      } else if (isAutoCompleted) {
+      } else if (canAutoRollback) {
         data.productionCompletedAt = null;
         data.isCompleted = false;
         data.completedAt = null;
@@ -16933,6 +17094,17 @@ const completeAssignmentPlanProduction = async ({
   if (!plan) {
     return { ok: false as const, status: 404, error: "assignment plan not found" };
   }
+  const payrollLockValidation = await validateAssignmentPlanPayrollLock({
+    orgId,
+    assignmentPlanIds: [plan.id],
+  });
+  if (payrollLockValidation.error) {
+    return {
+      ok: false as const,
+      status: payrollLockValidation.status,
+      error: payrollLockValidation.error,
+    };
+  }
   const canOverrideAutoWorklogCompletion = isAutoWorklogCompletedPlan(plan);
   if (
     !canOverrideAutoWorklogCompletion &&
@@ -16969,6 +17141,22 @@ const completeAssignmentPlanProduction = async ({
       targetQty: plannedQuantity,
     }) ?? "FULL";
   const completionDateKey = toDateKeyInTimeZone(completedAt, BUSINESS_TIME_ZONE);
+  const prospectivePayrollLockMonth =
+    completionDateKey && /^\d{4}-\d{2}-\d{2}$/.test(completionDateKey)
+      ? completionDateKey.slice(0, 7)
+      : null;
+  if (prospectivePayrollLockMonth) {
+    const lockedMonthSet = await loadLockedPayrollMonthSet(orgId, [
+      prospectivePayrollLockMonth,
+    ]);
+    if (lockedMonthSet.has(prospectivePayrollLockMonth)) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: `assignment plan payroll locked (${formatAssignmentPlanLabel(plan)} [${prospectivePayrollLockMonth}])`,
+      };
+    }
+  }
   const completionDate =
     toDateValueFromDateKeyForAssignmentSchedule(completionDateKey) || completedAt;
   const actor = getCurrentRequestActor();
@@ -18062,6 +18250,17 @@ app.post("/work-logs", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
+  const payrollLockValidation = await validateAssignmentPlanPayrollLock({
+    orgId: organization.id,
+    assignmentPlanIds: collectWorkRecordAssignmentPlanIds(normalized.records),
+  });
+  if (payrollLockValidation.error) {
+    return res.status(payrollLockValidation.status).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(payrollLockValidation.error),
+    });
+  }
+  updateWorkLogMutationTrace(trace, "payroll-lock-validated");
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -18312,6 +18511,23 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
+  const previousPlanIds = normalizePlanIdList(
+    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+  );
+  const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
+  const payrollLockValidation = await validateAssignmentPlanPayrollLock({
+    orgId: organization.id,
+    assignmentPlanIds: [...previousPlanIds, ...nextPlanIds],
+  });
+  if (payrollLockValidation.error) {
+    return res.status(payrollLockValidation.status).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(payrollLockValidation.error),
+    });
+  }
+  updateWorkLogMutationTrace(trace, "payroll-lock-validated", {
+    assignmentPlanIds: normalizePlanIdList([...previousPlanIds, ...nextPlanIds]),
+  });
   normalized.records = await attachCanonicalFieldsToWorkRecords({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
@@ -18411,10 +18627,6 @@ app.put("/work-logs/:id", async (req, res) => {
     mode: "update",
   });
   updateWorkLogMutationTrace(trace, "order-sync-finished");
-  const previousPlanIds = normalizePlanIdList(
-    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
-  );
-  const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   const touchedPlanIds = normalizePlanIdList([...previousPlanIds, ...nextPlanIds]);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
     orgId: organization.id,
@@ -18462,11 +18674,25 @@ app.delete("/work-logs/:id", async (req, res) => {
   if (!existing) {
     return res.status(404).json({ ok: false, error: "work log not found" });
   }
+  const deletedPlanIds = normalizePlanIdList(
+    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+  );
+  const payrollLockValidation = await validateAssignmentPlanPayrollLock({
+    orgId: organization.id,
+    assignmentPlanIds: deletedPlanIds,
+  });
+  if (payrollLockValidation.error) {
+    return res.status(payrollLockValidation.status).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(payrollLockValidation.error),
+    });
+  }
   updateWorkLogMutationTrace(trace, "work-log-found", {
     workLogId: existing.id,
-    assignmentPlanIds: normalizePlanIdList(
-      ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
-    ),
+    assignmentPlanIds: deletedPlanIds,
+  });
+  updateWorkLogMutationTrace(trace, "payroll-lock-validated", {
+    assignmentPlanIds: deletedPlanIds,
   });
   const deleteResult = await prisma.workLog.deleteMany({
     where: { id: existing.id, orgId: organization.id },
@@ -18478,9 +18704,6 @@ app.delete("/work-logs/:id", async (req, res) => {
     workLogId: existing.id,
     deletedCount: deleteResult.count,
   });
-  const deletedPlanIds = normalizePlanIdList(
-    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
-  );
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
     orgId: organization.id,
     assignmentPlanIds: deletedPlanIds,
