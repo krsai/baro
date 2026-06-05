@@ -16306,6 +16306,20 @@ const buildAssignmentPlanProgressRows = async (
       }
     }
 
+    const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
+    const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
+    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
+    const closedQty = resolveAssignmentPlanClosedQty(plan);
+    const closeMode =
+      resolveOptionalString(plan?.closeMode, null) ??
+      resolveAssignmentPlanCloseMode({
+        closedQty,
+        targetQty: plannedQuantity,
+      });
+    const closeBasis = resolveAssignmentPlanCloseBasis(plan);
+    const completionTargetQuantity =
+      closedQty ?? finalQuantity ?? baselineQuantityRaw;
+
     const persistedProductionCompletedAt =
       toOptionalDateValue(plan?.productionCompletedAt, null) ??
       resolveAssignmentPlanClosedAtValue(plan);
@@ -16317,12 +16331,12 @@ const buildAssignmentPlanProgressRows = async (
       : null;
     const isCompletionInconsistent = Boolean(
       productionCompletedDateKey &&
-        baselineQuantityRaw != null &&
-        baselineQuantityRaw > 0 &&
-        producedQuantity < baselineQuantityRaw
+        completionTargetQuantity != null &&
+        completionTargetQuantity > 0 &&
+        producedQuantity < completionTargetQuantity
     );
     const completionGapQuantity = isCompletionInconsistent
-      ? Math.max(0, baselineQuantityRaw! - producedQuantity)
+      ? Math.max(0, completionTargetQuantity! - producedQuantity)
       : 0;
 
     const scheduleStatus: "IN_PROGRESS" | "READY_TO_COMPLETE" | "PRODUCTION_COMPLETED" =
@@ -16370,18 +16384,6 @@ const buildAssignmentPlanProgressRows = async (
       isProxy: actualProducedCompletedIsProxy,
     });
 
-    const qcPassedTotal = resolveAssignmentPlanQcPassedTotal(plan);
-    const latestQcDate = resolveAssignmentPlanLatestQcDate(plan);
-    const finalQuantity = toOptionalNonNegativeInt(plan.finalQuantity, null);
-    const closedQty = resolveAssignmentPlanClosedQty(plan);
-    const closeMode =
-      resolveOptionalString(plan?.closeMode, null) ??
-      resolveAssignmentPlanCloseMode({
-        closedQty,
-        targetQty: plannedQuantity,
-      });
-    const closeBasis = resolveAssignmentPlanCloseBasis(plan);
-
     return {
       id: plan.externalId,
       dbId: planId,
@@ -16394,6 +16396,7 @@ const buildAssignmentPlanProgressRows = async (
       colorName: resolveAssignmentPlanColorName(plan),
       plannedQuantity,
       finalQuantity,
+      completionTargetQuantity,
       qcPassedTotal,
       latestQcDate,
       baselineQuantity: baselineQuantityRaw,
@@ -16674,9 +16677,7 @@ const persistAssignmentPlanProgressSnapshot = async ({
       );
       const originalEndDate = toDateValueFromDateKeyForAssignmentSchedule(
         row?._originalEndDateKey
-      ) ||
-        toOptionalDateValue(plan?.renderEndDate, null) ||
-        toOptionalDateValue(plan?.candidateEndDate, null);
+      );
       const forecastCompletedAt = toDateValueFromDateKeyForAssignmentSchedule(
         row?.forecastCompletedAt
       );
