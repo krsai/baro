@@ -39,6 +39,21 @@ const formatHoursLabel = (seconds, fallback = '-') => {
   return `${formatNumberWithCommas(hours, { fallback: '0', maximumFractionDigits: 1 })}h`;
 };
 
+const formatProgressChipLabel = (value, languageCode = 'en') =>
+  getUiMessage('assign.progressCompact', 'Progress {percent}', languageCode, {
+    percent: formatPercentLabel(value, '0%'),
+  });
+
+const formatHoursChipLabel = (
+  key,
+  fallback,
+  seconds,
+  languageCode = 'en'
+) =>
+  getUiMessage(key, fallback, languageCode, {
+    hours: formatHoursLabel(seconds, '-'),
+  });
+
 const resolvePlanTone = (plannedLoadPercent) => {
   const value = Number(plannedLoadPercent);
   if (!Number.isFinite(value)) {
@@ -98,25 +113,23 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', mt: 1 }}>
         <Chip
           size="small"
-          label={getUiMessage(
-            'assign.progressCompact',
-            `Progress ${formatPercentLabel(assignment.progressPercent, '0%')}`,
-            languageCode
-          )}
+          label={formatProgressChipLabel(assignment.progressPercent, languageCode)}
         />
         <Chip
           size="small"
-          label={getUiMessage(
+          label={formatHoursChipLabel(
             'assign.remainingHoursCompact',
-            `Remain ${formatHoursLabel(assignment.remainingStTotalSeconds, '-')}`,
+            'Remain {hours}',
+            assignment.remainingStTotalSeconds,
             languageCode
           )}
         />
         <Chip
           size="small"
-          label={getUiMessage(
+          label={formatHoursChipLabel(
             'assign.visiblePlanHoursCompact',
-            `In view ${formatHoursLabel(assignment.visiblePlannedStTotalSeconds, '-')}`,
+            'In view {hours}',
+            assignment.visiblePlannedStTotalSeconds,
             languageCode
           )}
         />
@@ -191,7 +204,13 @@ const LineMonthCapacityBoard = ({
                         <IconButton
                           size="small"
                           onClick={() => toggleExpanded(row.lineId)}
-                          aria-label={isExpanded ? 'collapse line' : 'expand line'}
+                          aria-label={getUiMessage(
+                            isExpanded
+                              ? 'assign.collapseLineAria'
+                              : 'assign.expandLineAria',
+                            isExpanded ? 'Collapse line' : 'Expand line',
+                            languageCode
+                          )}
                           sx={{ mt: -0.25 }}
                         >
                           {isExpanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
@@ -206,7 +225,7 @@ const LineMonthCapacityBoard = ({
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {getUiMessage(
                               'assign.assignmentCountCompact',
-                              `${row.assignments.length} assignments`,
+                              '{count} assignments',
                               languageCode,
                               { count: row.assignments.length }
                             )}
@@ -282,15 +301,27 @@ const LineMonthCapacityBoard = ({
                               <Typography variant="caption" color="text.secondary">
                                 {getUiMessage(
                                   'assign.carryOutCompact',
-                                  `Carry ${formatHoursLabel(summary?.carryOutStSeconds, '-')}`,
-                                  languageCode
+                                  'Carry {hours}',
+                                  languageCode,
+                                  {
+                                    hours: formatHoursLabel(
+                                      summary?.carryOutStSeconds,
+                                      '-'
+                                    ),
+                                  }
                                 )}
                               </Typography>
                               <Typography variant="caption" color="text.secondary">
                                 {getUiMessage(
                                   'assign.capacityCompact',
-                                  `Capacity ${formatHoursLabel(summary?.lineMonthlyCapacitySeconds, '-')}`,
-                                  languageCode
+                                  'Capacity {hours}',
+                                  languageCode,
+                                  {
+                                    hours: formatHoursLabel(
+                                      summary?.lineMonthlyCapacitySeconds,
+                                      '-'
+                                    ),
+                                  }
                                 )}
                               </Typography>
                               {Number(summary?.orphanWorkRecordCount) > 0 ? (
@@ -299,7 +330,7 @@ const LineMonthCapacityBoard = ({
                                   color="warning"
                                   label={getUiMessage(
                                     'assign.unlinkedWorkLogsWithCount',
-                                    `Unlinked logs ${summary.orphanWorkRecordCount}`,
+                                    'Unlinked logs {count}',
                                     languageCode,
                                     { count: summary.orphanWorkRecordCount }
                                   )}
