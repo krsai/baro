@@ -250,6 +250,15 @@ const formatFreeDateLabel = ({ freeDateKey, isOverflowingView, viewEndDateKey, l
   return freeDateKey || viewEndDateKey || '';
 };
 
+const resolveNextWorkingViewDateKey = (viewDays, startIndex) => {
+  for (let index = Math.max(0, Number(startIndex) || 0); index < viewDays.length; index += 1) {
+    const day = viewDays[index];
+    if (!day || day.isSunday || day.isHoliday) continue;
+    return day.key || null;
+  }
+  return null;
+};
+
 const buildLineWorkSummary = ({
   line,
   assignments,
@@ -296,16 +305,21 @@ const buildLineWorkSummary = ({
   const remainingDays = remainingSeconds > 0 ? remainingSeconds / dailyCapacity : 0;
 
   let unresolvedSeconds = remainingSeconds;
-  let freeDateKey = futureDays[0]?.key || todayKey;
+  let freeDateKey = resolveNextWorkingViewDateKey(futureDays, 0) || futureDays[0]?.key || todayKey;
   let isOverflowingView = unresolvedSeconds > 0;
-  for (const day of futureDays) {
+  for (let index = 0; index < futureDays.length; index += 1) {
+    const day = futureDays[index];
     if (!day || day.isSunday || day.isHoliday) continue;
-    freeDateKey = day.key;
     if (unresolvedSeconds <= dailyCapacity) {
+      freeDateKey =
+        resolveNextWorkingViewDateKey(futureDays, index + 1) ||
+        day.key ||
+        freeDateKey;
       isOverflowingView = false;
       break;
     }
     unresolvedSeconds -= dailyCapacity;
+    freeDateKey = day.key;
   }
   if (!futureDays.length) {
     isOverflowingView = remainingSeconds > 0;

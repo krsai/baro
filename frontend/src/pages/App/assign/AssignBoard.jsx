@@ -3400,26 +3400,7 @@ const AssignBoard = () => {
     );
 
     // 저장 전 날짜 중첩 제거: 기존 배치를 기준으로 재배치
-    let candidatePersistDays = persistDays;
-    let reflowResult = null;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      reflowResult = reflowAssignmentsByLineCapacity({
-        assignments: assignmentsForPersistence,
-        totalDays: candidatePersistDays.length,
-        days: candidatePersistDays,
-        lineCapacityById,
-        reflowStartIndex: 0,
-      });
-      if (!reflowResult?.needsMoreDays) break;
-      candidatePersistDays = buildDays(
-        persistBaseDate,
-        candidatePersistDays.length + 20,
-        holidaySet
-      );
-    }
-    const assignmentsToSave = Array.isArray(reflowResult?.assignments)
-      ? reflowResult.assignments
-      : assignmentsForPersistence;
+    const assignmentsToSave = assignmentsForPersistence;
 
     const normalizedAssignments = assignmentsToSave.map((item) =>
       applyCtSnapshotForPersistence(
@@ -3832,16 +3813,7 @@ const AssignBoard = () => {
         const assignmentId = String(item?.id || '').trim();
         const progressRow = assignmentProgressById[assignmentId] || null;
         const scheduleStatus = String(progressRow?.scheduleStatus || item?.scheduleStatus || '').trim();
-        const isCompleted = Boolean(
-          (scheduleStatus === 'PRODUCTION_COMPLETED'
-            ? true
-            : null) ??
-            progressRow?.isCompleted ??
-            progressRow?.closedAt ??
-            item?.isCompleted ??
-            item?.closedAt ??
-            item?.completedAt
-        );
+        const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
         const next = {
           ...item,
           isCompleted,
@@ -3853,7 +3825,7 @@ const AssignBoard = () => {
               ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
               : isCompleted
                 ? 0
-                : Math.max(0, Number(item?.stTotalSeconds) || 0),
+                : null,
           completedStTotalSeconds:
             progressRow?.completedStTotalSeconds != null
               ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
@@ -3941,7 +3913,14 @@ const AssignBoard = () => {
         daysOverride: sourceDays,
       }).map((item) => normalizeAssignmentLayout(item));
 
-      if (seededAssignments.length <= 1) {
+      const hasMissingProgressForIncomplete = seededAssignments.some((item) => {
+        if (isAssignmentSchedulerCompleted(item)) return false;
+        const assignmentId = String(item?.id || '').trim();
+        if (!assignmentId) return true;
+        return !assignmentProgressById[assignmentId];
+      });
+
+      if (seededAssignments.length <= 1 || hasMissingProgressForIncomplete) {
         return {
           assignments: seededAssignments,
           days: sourceDays,
@@ -4083,16 +4062,7 @@ const AssignBoard = () => {
             0
         );
         const scheduleStatus = String(progressRow?.scheduleStatus || '').trim();
-        const isCompleted = Boolean(
-          (scheduleStatus === 'PRODUCTION_COMPLETED'
-            ? true
-            : null) ??
-            progressRow?.isCompleted ??
-            progressRow?.closedAt ??
-            item?.isCompleted ??
-            item?.closedAt ??
-            item?.completedAt
-        );
+        const isCompleted = Boolean(progressRow?.isCompleted ?? item?.isCompleted);
         const workProgressPercent = rawProgressPercent;
         const qcProgressPercent = 0;
         const renderStartDateKey =
@@ -4184,7 +4154,7 @@ const AssignBoard = () => {
               ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
               : isCompleted
                 ? 0
-                : Math.max(0, Number(item?.stTotalSeconds) || 0),
+                : null,
           completedStTotalSeconds:
             progressRow?.completedStTotalSeconds != null
               ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
