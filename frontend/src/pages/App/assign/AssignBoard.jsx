@@ -3806,6 +3806,7 @@ const AssignBoard = () => {
       '/assignment-plan-progress' +
         buildQueryString({ orgId: normalizedOrgId, ids: assignmentProgressIdsKey }),
       {
+        forceRefresh: true,
         skipGlobalLoading: true,
         signal: abortController.signal,
       }
@@ -3830,7 +3831,7 @@ const AssignBoard = () => {
       cancelled = true;
       abortController.abort();
     };
-  }, [activeOrgId, assignmentProgressIdsKey]);
+  }, [activeOrgId, assignmentProgressIdsKey, externalReloadTick]);
 
   const applySchedulerProgressToAssignments = useCallback(
     (inputAssignments, { useCompletedRenderRange = false, daysOverride = null } = {}) => {
@@ -4222,12 +4223,6 @@ const AssignBoard = () => {
             Number(progressRow?.completionGapQuantity ?? item?.completionGapQuantity) || 0,
           producedQuantity:
             progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
-          producedQty:
-            progressRow?.producedQty ??
-            progressRow?.producedQuantity ??
-            item?.producedQty ??
-            item?.producedQuantity ??
-            0,
           plannedStTotalSeconds:
             Number(progressRow?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
           remainingStTotalSeconds:
@@ -4428,7 +4423,7 @@ const AssignBoard = () => {
       cancelled = true;
       abortController.abort();
     };
-  }, [activeOrgId, lineIdsKey, planningMonthKeys, planningMonthKeysKey]);
+  }, [activeOrgId, externalReloadTick, lineIdsKey, planningMonthKeys, planningMonthKeysKey]);
   const lineMonthCapacityBoardRows = useMemo(
     () =>
       buildLineMonthCapacityBoardRows({
@@ -5272,9 +5267,7 @@ const AssignBoard = () => {
         const producedQty = Math.max(
           0,
           Number(
-            progressRow?.producedQty ??
-              progressRow?.producedQuantity ??
-              movingAssignment?.producedQty ??
+            progressRow?.producedQuantity ??
               movingAssignment?.producedQuantity ??
               0
           ) || 0
@@ -5588,9 +5581,7 @@ const AssignBoard = () => {
       const producedQty = Math.max(
         0,
         Number(
-          progressRow?.producedQty ??
-            progressRow?.producedQuantity ??
-            movingAssignment?.producedQty ??
+          progressRow?.producedQuantity ??
             movingAssignment?.producedQuantity ??
             0
         ) || 0

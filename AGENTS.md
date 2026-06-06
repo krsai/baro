@@ -53,6 +53,7 @@ AT(q) = a*q + b
   - `lineId Int?` 컬럼은 실제로 존재하지만 FK는 없다. `Line` 테이블과 조인 가능한 정규화 관계가 아니라 비정규화 보조 필드다.
   - 같은 작업자가 같은 기간(또는 같은 날) 여러 공정 입력 가능.
   - 스케줄러 연결의 핵심 키는 `WorkRecord.assignmentPlanId`.
+  - 신규 WorkLog 저장/수정에서는 모든 WorkRecord가 `assignmentPlanId`를 가져야 한다. 연결 없는 작업행은 백엔드에서도 거부한다.
 - **급여 계산용**: 공정별로 몇 개 만들었는지 집계. 주문 100장이어도 실제로는 95장 또는 105장 만들 수 있음.
 
 ### WorkLog 날짜 규칙 (강제)
@@ -61,6 +62,7 @@ AT(q) = a*q + b
 - `coverageEndDate || displayDate` 형태의 fallback 브릿지 로직은 신규 코드에 추가하지 않는다.
 - 기간 입력(`coverageStartDate !== coverageEndDate`)은 절대 하루치로 뭉개지면 안 된다.
 - WorkRecord가 AssignmentPlan과 연결되지 않으면(`assignmentPlanId` 없음) 기간이 정확해도 스케줄러/진행도 반영이 불가능하다.
+- 작업기록이 이미 연결된 AssignmentPlan은 배정 해제/삭제로 orphan WorkRecord를 만들 수 없다. 연결된 작업기록이 있으면 해당 assignment 제거를 거부한다.
 
 ### AssignmentPlan (스케줄 카드)
 - 단위: 기본 `주문 × 스타일` (색상/사이즈 단위 미구현)

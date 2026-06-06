@@ -7427,8 +7427,19 @@ const validateWorkLogWorkerEmploymentWindow = async ({
 };
 const translateWorkLogErrorMessage = (error: any) => {
   const text = resolveOptionalString(error, "") || "";
+  const missingAssignmentPlanMatch = text.match(
+    /^records\[(\d+)\]\.assignmentPlanId is required$/
+  );
+  if (missingAssignmentPlanMatch) {
+    const displayIndex = Number(missingAssignmentPlanMatch[1]) + 1;
+    return `Work log row ${displayIndex} is missing an assignment link. Select an assignment card and save again.`;
+  }
   if (!text) return "작업 기록 처리 중 오류가 발생했습니다.";
 
+  if (missingAssignmentPlanMatch) {
+    const displayIndex = Number(missingAssignmentPlanMatch[1]) + 1;
+    return `${displayIndex}踰덉㎏ ?묒뾽 湲곕줉???諛곗젙移대뱶 ?곌껐???놁뒿?덈떎. 諛곗젙移대뱶瑜??ㅼ떆 ?좏깮??二쇱꽭??`;
+  }
   const invalidWorkerMatch = text.match(/^records\[(\d+)\]\.workerId is required$/);
   if (invalidWorkerMatch) {
     const displayIndex = Number(invalidWorkerMatch[1]) + 1;
@@ -7610,6 +7621,13 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
+const collectMissingWorkRecordAssignmentPlanLinkIndices = (records: any): number[] =>
+  ensureArray(records).reduce((indices, record, index) => {
+    if (!record || typeof record !== "object") return indices;
+    if (toPositiveIntOrNull(record?.assignmentPlanId) !== null) return indices;
+    indices.push(index);
+    return indices;
+  }, [] as number[]);
 const stripCoverageFieldsFromWorkLogData = <T extends Record<string, any>>(
   workLogData: T
 ): Omit<T, "coverageStartDate" | "coverageEndDate" | "entryMode"> => {
@@ -9760,6 +9778,38 @@ const normalizePlanIdList = (planIds: any): number[] =>
         .filter((value): value is number => value !== null)
     )
   );
+const loadLinkedWorkRecordPlanIds = async ({
+  planIds,
+  db = prisma,
+}: {
+  planIds: any;
+  db?: any;
+}): Promise<number[]> => {
+  const normalizedPlanIds = normalizePlanIdList(planIds);
+  if (normalizedPlanIds.length === 0) return [];
+  const rows = await db.workRecord.findMany({
+    where: { assignmentPlanId: { in: normalizedPlanIds } },
+    select: { assignmentPlanId: true },
+    distinct: ["assignmentPlanId"],
+  });
+  return normalizePlanIdList(rows.map((row: any) => row?.assignmentPlanId));
+};
+const assertAssignmentPlansCanBeDetached = async ({
+  planIds,
+  db = prisma,
+}: {
+  planIds: any;
+  db?: any;
+}) => {
+  const linkedPlanIds = await loadLinkedWorkRecordPlanIds({ planIds, db });
+  if (linkedPlanIds.length === 0) return;
+  throw createHttpError(
+    409,
+    `assignment plan has linked work records and cannot be removed (${linkedPlanIds
+      .slice(0, 10)
+      .join(",")})`
+  );
+};
 const detachWorkRecordsAndDeleteAssignmentPlans = async ({
   planIds,
   db = prisma,
@@ -9771,6 +9821,10 @@ const detachWorkRecordsAndDeleteAssignmentPlans = async ({
   if (normalizedPlanIds.length === 0) {
     return { detachedCount: 0, deletedCount: 0 };
   }
+  await assertAssignmentPlansCanBeDetached({
+    planIds: normalizedPlanIds,
+    db,
+  });
   const detachedResult = await db.workRecord.updateMany({
     where: { assignmentPlanId: { in: normalizedPlanIds } },
     data: { assignmentPlanId: null },
@@ -16157,12 +16211,6 @@ const resolveNextWorkingDateKeyForAssignmentSchedule = ({
 const DEFAULT_LINE_DAILY_WORK_SECONDS = 8 * 60 * 60;
 const MAX_LINE_MONTH_CAPACITY_MONTH_SPAN = 18;
 
-const resolveAssignmentEndDateKey = (assignment: any): string | null => {
-  const direct = normalizeDateKey(assignment?.endDateKey);
-  if (direct) return direct;
-  const snapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
-  return normalizeDateKey(snapshot?.schedule?.endDateKey);
-};
 
 const resolveStrictWorkLogCoverageStartDate = (source: any): string | null =>
   normalizeDateKey(source?.coverageStartDate) || null;
@@ -19053,6 +19101,17 @@ app.post("/work-logs", async (req, res) => {
   updateWorkLogMutationTrace(trace, "refs-synced", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });
+  const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
+    normalized.records
+  );
+  if (missingAssignmentPlanLinkIndices.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `records[${missingAssignmentPlanLinkIndices[0]}].assignmentPlanId is required`
+      ),
+    });
+  }
   const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
     orgId: organization.id,
     workDate: normalized.displayDate,
@@ -19314,6 +19373,17 @@ app.put("/work-logs/:id", async (req, res) => {
   updateWorkLogMutationTrace(trace, "refs-synced", {
     payload: summarizeWorkLogPayloadForDebug(normalized),
   });
+  const missingAssignmentPlanLinkIndices = collectMissingWorkRecordAssignmentPlanLinkIndices(
+    normalized.records
+  );
+  if (missingAssignmentPlanLinkIndices.length > 0) {
+    return res.status(400).json({
+      ok: false,
+      error: translateWorkLogErrorMessage(
+        `records[${missingAssignmentPlanLinkIndices[0]}].assignmentPlanId is required`
+      ),
+    });
+  }
   const duplicateValidation = await validateWorkLogWorkerStyleProcessDuplicates({
     orgId: organization.id,
     workDate: normalized.displayDate,
@@ -19808,6 +19878,15 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
       error: "completed assignment cannot be cancelled",
     });
   }
+  if (targetExternalId) {
+    const planRows = await prisma.assignmentPlan.findMany({
+      where: { orgId: organization.id, externalId: targetExternalId },
+      select: { id: true },
+    });
+    await assertAssignmentPlansCanBeDetached({
+      planIds: planRows.map((plan) => plan.id),
+    });
+  }
 
   const nextAssignments = currentAssignments.filter(
     (a: any) => String(a?.id) !== assignmentId
@@ -19866,6 +19945,13 @@ app.delete("/assignment-board-state", async (req, res) => {
   });
   if (!accessContext) return;
   const { organization } = accessContext;
+  const planRows = await prisma.assignmentPlan.findMany({
+    where: { orgId: organization.id },
+    select: { id: true },
+  });
+  await assertAssignmentPlansCanBeDetached({
+    planIds: planRows.map((plan) => plan.id),
+  });
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.assignmentBoardState.findUnique({
@@ -19923,6 +20009,36 @@ app.put("/assignment-board-state", async (req, res) => {
     });
     cardsForSave = repairedIncomingPayload.cards;
     incomingAssignmentsForSave = repairedIncomingPayload.assignments;
+  }
+  const existingStateForDetachGuard = await prisma.assignmentBoardState.findUnique({
+    where: { orgId: organization.id },
+    select: { assignments: true },
+  });
+  const {
+    assignments: currentAssignmentsForDetachGuard,
+  } = applySentTimeoutEscalation(existingStateForDetachGuard?.assignments);
+  const currentAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
+    normalizeStateAssignments(currentAssignmentsForDetachGuard)
+  );
+  const nextAssignmentsByExternalIdForDetachGuard = buildAssignmentByExternalId(
+    normalizeStateAssignments(incomingAssignmentsForSave)
+  );
+  const removedExternalIdsForDetachGuard = Array.from(
+    currentAssignmentsByExternalIdForDetachGuard.keys()
+  )
+    .map((externalId) => String(externalId))
+    .filter((externalId) => !nextAssignmentsByExternalIdForDetachGuard.has(externalId));
+  if (removedExternalIdsForDetachGuard.length > 0) {
+    const removedPlanRowsForDetachGuard = await prisma.assignmentPlan.findMany({
+      where: {
+        orgId: organization.id,
+        externalId: { in: removedExternalIdsForDetachGuard },
+      },
+      select: { id: true },
+    });
+    await assertAssignmentPlansCanBeDetached({
+      planIds: removedPlanRowsForDetachGuard.map((plan) => plan.id),
+    });
   }
   const updated = await prisma.$transaction(async (tx) => {
     const existingState = await tx.assignmentBoardState.findUnique({

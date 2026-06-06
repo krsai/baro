@@ -193,11 +193,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       variant: 'outlined',
     });
   }
-  const accentColor = assignment.isCompleted
-    ? '#15803D'
-    : assignment.hasOrphanWorkRecords
-      ? '#D97706'
-      : '#2563EB';
+  const accentColor = assignment.isCompleted ? '#15803D' : '#2563EB';
 
   return (
     <CompactBoardCard
