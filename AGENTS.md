@@ -1220,3 +1220,25 @@ runtime 조회값:
 - 현재 구현은 완료 카드의 과거 위치를 새로 복원하는 것이 아니라, 완료/과거 구간은 anchor로 두고 오늘 이후 미완료 카드만 다시 배치한다.
 - 같은 규칙을 보드 렌더와 저장 전 재배치에 같이 적용한다.
 - 따라서 사용자가 보는 미래 라인 점유와 실제 저장되는 미래 좌표가 서로 다른 방향으로 벌어지지 않게 유지한다.
+### 35. 2026-06-06 Scheduler Remaining Work Conservative Lock
+
+- `remainingStTotalSeconds`는 낙관적으로 계산하지 않는다.
+- scheduler 남은 일감 계산에는 아래 두 비율을 모두 계산한다.
+  - `producedRatio = producedQuantity / plannedQty`
+  - `totalDoneRatio = totalDone / totalExpected`
+- canonical remaining progress는 아래다.
+  - `progressForRemaining = min(producedRatio, totalDoneRatio)`
+- canonical remaining workload는 아래다.
+  - `remainingStTotalSeconds = plannedStTotalSeconds * (1 - progressForRemaining)`
+- 이유:
+  - 공정 불균형이 있으면 `totalDoneRatio`는 높아도 실제 완성 가능한 수량(`producedQuantity`)은 낮을 수 있다.
+  - line free date 계산은 항상 더 보수적인 쪽을 우선한다.
+- fixed / anchor 카드 기준:
+  - completed 카드이거나
+  - 과거 구간에 있고 `remainingStTotalSeconds <= 0`인 카드만 fixed로 본다.
+- 미완료 카드가 `remainingStTotalSeconds > 0`이면, 저장된 end date가 과거에 있어도 reflow queue에 남겨서 미래로 다시 배치한다.
+- 아래 상태는 scheduler warning 대상으로 본다.
+  - orphan WorkRecord (`assignmentPlanId` 없음)
+  - `assignmentStTotalSeconds` 미산정 또는 0
+  - period-only 기반 low-confidence free-date estimate
+  - `producedRatio`와 `totalDoneRatio` 차이가 큰 공정 불균형

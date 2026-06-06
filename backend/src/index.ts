@@ -15763,6 +15763,8 @@ type AssignmentPlanWorkStats = {
   hasRangeCoverage: boolean;
 };
 
+const SCHEDULER_PROGRESS_IMBALANCE_WARNING_THRESHOLD = 0.2;
+
 const toDateValueFromDateKeyForAssignmentSchedule = (
   dateKeyInput: any
 ): Date | null => {
@@ -16238,6 +16240,32 @@ const buildAssignmentPlanProgressRows = async (
     stateAssignmentsByExternalId,
     context: "buildAssignmentPlanProgressRows",
   });
+  const orphanWorkRecordCountByLine = new Map<number, number>();
+  if (lineIds.length > 0) {
+    const orphanRows = await prisma.workRecord.findMany({
+      where: {
+        orgId,
+        assignmentPlanId: null,
+        OR: [{ lineId: { in: lineIds } }, { lineId: null }],
+      },
+      select: {
+        lineId: true,
+        workLog: {
+          select: {
+            records: true,
+          },
+        },
+      },
+    });
+    orphanRows.forEach((record) => {
+      const lineId = resolveOrphanWorkRecordLineId(record);
+      if (!lineId || !lineIds.includes(lineId)) return;
+      orphanWorkRecordCountByLine.set(
+        lineId,
+        (orphanWorkRecordCountByLine.get(lineId) || 0) + 1
+      );
+    });
+  }
   const payrollLockMonthByPlanId = new Map<number, string>();
   plans.forEach((plan) => {
     const monthKey = resolveAssignmentPlanPayrollLockMonth(plan);
@@ -16362,24 +16390,50 @@ const buildAssignmentPlanProgressRows = async (
         : Math.max(0, baselineQuantityRaw - producedQuantity);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
+    const producedRatio =
+      isMarkedCompleted
+        ? 1
+        : baselineQuantityRaw != null && baselineQuantityRaw > 0
+          ? Math.min(1, Math.max(0, producedQuantity / baselineQuantityRaw))
+          : null;
     const operationalProgressRatio = isMarkedCompleted
       ? 1
       : totalExpected != null && totalExpected > 0
         ? Math.min(1, Math.max(0, totalDone / totalExpected))
         : null;
+    const progressForRemainingRatio = isMarkedCompleted
+      ? 1
+      : producedRatio != null && operationalProgressRatio != null
+        ? Math.min(producedRatio, operationalProgressRatio)
+        : producedRatio ?? operationalProgressRatio ?? null;
+    const progressImbalanceGapRatio =
+      producedRatio != null && operationalProgressRatio != null
+        ? Math.max(0, operationalProgressRatio - producedRatio)
+        : 0;
+    const hasProgressImbalanceWarning =
+      progressImbalanceGapRatio >=
+      SCHEDULER_PROGRESS_IMBALANCE_WARNING_THRESHOLD;
     const progressPercent =
       operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
+    const schedulerProgressPercent =
+      progressForRemainingRatio == null
+        ? null
+        : Math.min(100, Math.round(progressForRemainingRatio * 100));
     const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    const isStUnknown =
+      plannedStTotalSeconds == null || plannedStTotalSeconds <= 0;
     const remainingStTotalSeconds =
       plannedStTotalSeconds == null
         ? null
-        : operationalProgressRatio == null
+        : progressForRemainingRatio == null
           ? plannedStTotalSeconds
           : Math.max(
               0,
               Math.round(
                 plannedStTotalSeconds *
-                  (operationalProgressRatio >= 1 ? 0 : 1 - operationalProgressRatio)
+                  (progressForRemainingRatio >= 1
+                    ? 0
+                    : 1 - progressForRemainingRatio)
               )
             );
     const completedStTotalSeconds =
@@ -16493,6 +16547,8 @@ const buildAssignmentPlanProgressRows = async (
     const isPayrollLocked = payrollLockMonth
       ? payrollLockedMonthSet.has(payrollLockMonth)
       : false;
+    const lineOrphanWorkRecordCount =
+      orphanWorkRecordCountByLine.get(Number(plan.lineId)) || 0;
 
     const scheduleStatus: "IN_PROGRESS" | "READY_TO_COMPLETE" | "PRODUCTION_COMPLETED" =
       productionCompletedDateKey
@@ -16571,8 +16627,17 @@ const buildAssignmentPlanProgressRows = async (
       remainingStTotalSeconds,
       completedStTotalSeconds,
       operationalProgressRatio,
+      producedRatio,
+      progressForRemainingRatio,
+      progressImbalanceGapRatio,
+      hasProgressImbalanceWarning,
       progressPercent,
       operationalProgressPercent: progressPercent,
+      schedulerProgressPercent,
+      isStUnknown,
+      hasRangeCoverage: stats.hasRangeCoverage,
+      lineOrphanWorkRecordCount,
+      hasOrphanWorkRecords: lineOrphanWorkRecordCount > 0,
       officialProgressPercent:
         scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED ? 100 : null,
       isCompleted: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,

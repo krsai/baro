@@ -250,6 +250,29 @@ const formatFreeDateLabel = ({ freeDateKey, isOverflowingView, viewEndDateKey, l
   return freeDateKey || viewEndDateKey || '';
 };
 
+const getLineSummaryWarningLabel = ({ type, count = 0, languageCode }) => {
+  switch (type) {
+    case 'ORPHAN_WORKLOG':
+      if (languageCode === 'vi') return `Ban ghi chua noi: ${count}`;
+      if (languageCode === 'en') return `Unlinked logs: ${count}`;
+      return `미연결 기록: ${count}`;
+    case 'ST_UNKNOWN':
+      if (languageCode === 'vi') return 'Co card chua co ST';
+      if (languageCode === 'en') return 'ST missing on some cards';
+      return 'ST 미산정 카드 있음';
+    case 'PERIOD_ESTIMATE':
+      if (languageCode === 'vi') return 'Ngay trong la uoc tinh tu period log';
+      if (languageCode === 'en') return 'Free date is estimated from period logs';
+      return '빈 날짜는 period 입력 기준 추정';
+    case 'PROCESS_IMBALANCE':
+      if (languageCode === 'vi') return 'Co kha nang lech tien do theo cong doan';
+      if (languageCode === 'en') return 'Possible process imbalance';
+      return '공정 진행 불균형 가능';
+    default:
+      return '';
+  }
+};
+
 const resolveNextWorkingViewDateKey = (viewDays, startIndex) => {
   for (let index = Math.max(0, Number(startIndex) || 0); index < viewDays.length; index += 1) {
     const day = viewDays[index];
@@ -303,6 +326,19 @@ const buildLineWorkSummary = ({
     return sum + nextValue;
   }, 0);
   const remainingDays = remainingSeconds > 0 ? remainingSeconds / dailyCapacity : 0;
+  const orphanCount = (Array.isArray(assignments) ? assignments : []).reduce(
+    (max, assignment) => Math.max(max, Number(assignment?.lineOrphanWorkRecordCount) || 0),
+    0
+  );
+  const hasUnknownSt = (Array.isArray(assignments) ? assignments : []).some(
+    (assignment) => !assignment?.isCompleted && assignment?.isStUnknown
+  );
+  const hasRangeEstimate = (Array.isArray(assignments) ? assignments : []).some(
+    (assignment) => !assignment?.isCompleted && assignment?.hasRangeCoverage
+  );
+  const hasProcessImbalance = (Array.isArray(assignments) ? assignments : []).some(
+    (assignment) => !assignment?.isCompleted && assignment?.hasProgressImbalanceWarning
+  );
 
   let unresolvedSeconds = remainingSeconds;
   let freeDateKey = resolveNextWorkingViewDateKey(futureDays, 0) || futureDays[0]?.key || todayKey;
@@ -328,16 +364,41 @@ const buildLineWorkSummary = ({
   }
 
   const availableDays = Math.max(0, (availableSecondsInView - remainingSeconds) / dailyCapacity);
+  const warningTypes = [];
+  if (orphanCount > 0) warningTypes.push({ type: 'ORPHAN_WORKLOG', count: orphanCount });
+  if (hasUnknownSt) warningTypes.push({ type: 'ST_UNKNOWN' });
+  if (hasRangeEstimate) warningTypes.push({ type: 'PERIOD_ESTIMATE' });
+  if (hasProcessImbalance) warningTypes.push({ type: 'PROCESS_IMBALANCE' });
+  const warnings = warningTypes
+    .map((warning) => getLineSummaryWarningLabel({ ...warning, languageCode }))
+    .filter(Boolean);
+  const unresolvedLabel =
+    languageCode === 'vi' ? 'Chua ro' : languageCode === 'en' ? 'TBD' : '미정';
+  const remainingDaysLabel = hasUnknownSt
+    ? unresolvedLabel
+    : formatWorkDaysLabel(remainingDays, languageCode);
+  const freeDateLabel = hasUnknownSt
+    ? unresolvedLabel
+    : formatFreeDateLabel({
+        freeDateKey,
+        isOverflowingView,
+        viewEndDateKey: viewDays[viewDays.length - 1]?.key || null,
+        languageCode,
+      });
+  const availableDaysLabel = hasUnknownSt
+    ? unresolvedLabel
+    : formatWorkDaysLabel(availableDays, languageCode);
   return {
     remainingDays,
-    freeDateLabel: formatFreeDateLabel({
-      freeDateKey,
-      isOverflowingView,
-      viewEndDateKey: viewDays[viewDays.length - 1]?.key || null,
-      languageCode,
-    }),
-    availableDaysLabel: formatWorkDaysLabel(availableDays, languageCode),
+    remainingDaysLabel,
+    freeDateLabel,
+    availableDaysLabel,
     isOverflowingView,
+    warnings,
+    orphanCount,
+    hasUnknownSt,
+    hasRangeEstimate,
+    hasProcessImbalance,
   };
 };
 
@@ -415,7 +476,9 @@ const LineTimelineRow = memo(({
       </Typography>
       <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
         {getUiMessage('assign.lineRemainingWork', '남은 일감 {value}', languageCode, {
-          value: formatWorkDaysLabel(summary?.remainingDays ?? 0, languageCode),
+          value:
+            summary?.remainingDaysLabel ??
+            formatWorkDaysLabel(summary?.remainingDays ?? 0, languageCode),
         })}
       </Typography>
       <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
@@ -428,6 +491,15 @@ const LineTimelineRow = memo(({
           value: summary?.availableDaysLabel ?? formatWorkDaysLabel(0, languageCode),
         })}
       </Typography>
+      {(summary?.warnings || []).map((warning) => (
+        <Typography
+          key={warning}
+          variant="caption"
+          sx={{ display: 'block', color: 'warning.main' }}
+        >
+          {warning}
+        </Typography>
+      ))}
     </TableCell>
     <TableCell colSpan={viewDays.length} sx={{ p: 0 }}>
       <Box

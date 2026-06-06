@@ -1784,6 +1784,13 @@ const resolveAssignmentRemainingStTotalSeconds = (assignment) => {
   return Math.max(0, Math.round(parsed));
 };
 
+const hasAssignmentRemainingSchedulerWork = (assignment) => {
+  if (isAssignmentSchedulerCompleted(assignment)) return false;
+  const remainingSeconds = resolveAssignmentRemainingStTotalSeconds(assignment);
+  if (remainingSeconds == null) return true;
+  return remainingSeconds > 0;
+};
+
 const getUsageSecondsBeforeIndex = (
   assignment,
   beforeIndex,
@@ -1860,11 +1867,17 @@ const reflowSingleLineAssignmentsByCapacity = ({
 
   const fallbackAssignments = sorted.map((item) => ({ ...item, lineId }));
   const fixed = sorted
-    .filter((item) => toNonNegativeInt(item?.endIndex, 0) < safeReflowStartIndex)
+    .filter((item) => {
+      const endIndex = toNonNegativeInt(item?.endIndex, 0);
+      if (endIndex >= safeReflowStartIndex) return false;
+      return !hasAssignmentRemainingSchedulerWork(item);
+    })
     .map((item) => ({ ...item, lineId }));
-  const queue = sorted.filter(
-    (item) => toNonNegativeInt(item?.endIndex, 0) >= safeReflowStartIndex
-  );
+  const queue = sorted.filter((item) => {
+    const endIndex = toNonNegativeInt(item?.endIndex, 0);
+    if (endIndex >= safeReflowStartIndex) return true;
+    return hasAssignmentRemainingSchedulerWork(item);
+  });
 
   const placed = [...fixed];
   let cursorStart = Math.max(
@@ -3834,11 +3847,38 @@ const AssignBoard = () => {
             progressRow?.operationalProgressRatio != null
               ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
               : item?.operationalProgressRatio ?? null,
+          producedRatio:
+            progressRow?.producedRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.producedRatio) || 0))
+              : item?.producedRatio ?? null,
+          progressForRemainingRatio:
+            progressRow?.progressForRemainingRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.progressForRemainingRatio) || 0))
+              : item?.progressForRemainingRatio ?? null,
+          progressImbalanceGapRatio:
+            progressRow?.progressImbalanceGapRatio != null
+              ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
+              : item?.progressImbalanceGapRatio ?? 0,
+          hasProgressImbalanceWarning: Boolean(
+            progressRow?.hasProgressImbalanceWarning ?? item?.hasProgressImbalanceWarning
+          ),
+          schedulerProgressPercent:
+            progressRow?.schedulerProgressPercent != null
+              ? clampPercentValue(progressRow.schedulerProgressPercent)
+              : item?.schedulerProgressPercent ?? null,
+          isStUnknown: Boolean(progressRow?.isStUnknown ?? item?.isStUnknown),
+          hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
+          lineOrphanWorkRecordCount:
+            Number(
+              progressRow?.lineOrphanWorkRecordCount ?? item?.lineOrphanWorkRecordCount
+            ) || 0,
+          hasOrphanWorkRecords: Boolean(
+            progressRow?.hasOrphanWorkRecords ?? item?.hasOrphanWorkRecords
+          ),
           progressPercent: clampPercentValue(
             progressRow?.operationalProgressPercent ??
               progressRow?.progressPercent ??
               item?.workProgressPercent ??
-              item?.progressPercent ??
               item?.progressPercent ??
               0
           ),
@@ -4163,6 +4203,34 @@ const AssignBoard = () => {
             progressRow?.operationalProgressRatio != null
               ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
               : null,
+          producedRatio:
+            progressRow?.producedRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.producedRatio) || 0))
+              : item?.producedRatio ?? null,
+          progressForRemainingRatio:
+            progressRow?.progressForRemainingRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.progressForRemainingRatio) || 0))
+              : item?.progressForRemainingRatio ?? null,
+          progressImbalanceGapRatio:
+            progressRow?.progressImbalanceGapRatio != null
+              ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
+              : item?.progressImbalanceGapRatio ?? 0,
+          hasProgressImbalanceWarning: Boolean(
+            progressRow?.hasProgressImbalanceWarning ?? item?.hasProgressImbalanceWarning
+          ),
+          schedulerProgressPercent:
+            progressRow?.schedulerProgressPercent != null
+              ? clampPercentValue(progressRow.schedulerProgressPercent)
+              : item?.schedulerProgressPercent ?? null,
+          isStUnknown: Boolean(progressRow?.isStUnknown ?? item?.isStUnknown),
+          hasRangeCoverage: Boolean(progressRow?.hasRangeCoverage ?? item?.hasRangeCoverage),
+          lineOrphanWorkRecordCount:
+            Number(
+              progressRow?.lineOrphanWorkRecordCount ?? item?.lineOrphanWorkRecordCount
+            ) || 0,
+          hasOrphanWorkRecords: Boolean(
+            progressRow?.hasOrphanWorkRecords ?? item?.hasOrphanWorkRecords
+          ),
           progressPercent: clampPercentValue(workProgressPercent),
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
