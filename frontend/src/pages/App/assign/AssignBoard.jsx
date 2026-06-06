@@ -3340,7 +3340,7 @@ const AssignBoard = () => {
     syncHistoryStatus,
   ]);
 
-  const handleSaveBoard = useCallback(async () => {
+  const handleSaveBoard = async () => {
     if (!activeOrgId || !persistReady || persisting || !isDirty) return;
 
     blurActiveElement();
@@ -3553,34 +3553,7 @@ const AssignBoard = () => {
     } finally {
       setPersisting(false);
     }
-  }, [
-    activeOrgId,
-    assignments,
-    buildPredictiveAssignments,
-    cards,
-    cardsRef,
-    blurActiveElement,
-    days,
-    daysRef,
-    holidaySet,
-    lineCapacityById,
-    alignAssignmentsForBoardPut,
-    createPersistSnapshotText,
-    isDirty,
-    persistReady,
-    persisting,
-    resolveBoardSaveErrorMessage,
-    resolvePersistedBoardState,
-    resetBoardHistory,
-    showNotification,
-    assignmentsRef,
-    activeProfile?.employeeName,
-    activeProfile?.name,
-    activeProfile?.email,
-    activeProfile?.label,
-    stylesRef,
-    languageCode,
-  ]);
+  };
 
   const navigationBlocker = useBlocker(
     isAssignmentRouteActive && persistReady && isDirty && !persisting
