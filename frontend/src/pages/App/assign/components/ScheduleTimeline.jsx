@@ -13,6 +13,7 @@ import {
 import { useDndMonitor, useDroppable } from '@dnd-kit/core';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { todayDateKey as getTodayDateKey } from '../../../../utils/dateKey.mjs';
 import AssignBar from './AssignBar';
 import { ASSIGN_TIMELINE_CELL_WIDTH } from '../constants';
 
@@ -212,6 +213,120 @@ const getAssignmentDisplayDuration = (assignment, lineCapacityById, days) => {
   return getWorkingDuration(assignment, days);
 };
 
+const formatWorkDaysLabel = (value, languageCode) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return languageCode === 'vi'
+      ? '0 ngày'
+      : languageCode === 'en'
+        ? '0d'
+        : '0일';
+  }
+  const rounded = Math.round(value * 10) / 10;
+  return languageCode === 'vi'
+    ? `${rounded} ngày`
+    : languageCode === 'en'
+      ? `${rounded}d`
+      : `${rounded}일`;
+};
+
+const formatFreeDateLabel = ({ freeDateKey, isOverflowingView, viewEndDateKey, languageCode }) => {
+  if (!freeDateKey && !viewEndDateKey) {
+    return languageCode === 'vi'
+      ? 'Chưa xác định'
+      : languageCode === 'en'
+        ? 'TBD'
+        : '미정';
+  }
+  if (isOverflowingView) {
+    const fallback = viewEndDateKey || freeDateKey;
+    return fallback
+      ? `>${fallback}`
+      : languageCode === 'vi'
+        ? 'Vượt phạm vi'
+        : languageCode === 'en'
+          ? 'Beyond view'
+          : '범위 이후';
+  }
+  return freeDateKey || viewEndDateKey || '';
+};
+
+const buildLineWorkSummary = ({
+  line,
+  assignments,
+  viewDays,
+  lineCapacityById,
+  languageCode,
+}) => {
+  const lineId = String(line?.id ?? '');
+  const dailyCapacity = Number(
+    lineCapacityById.get(lineId) ?? lineCapacityById.get(Number(line?.id))
+  );
+  if (!Number.isFinite(dailyCapacity) || dailyCapacity <= 0) {
+    return {
+      remainingDays: 0,
+      freeDateLabel:
+        languageCode === 'vi'
+          ? 'Chưa xác định'
+          : languageCode === 'en'
+            ? 'TBD'
+            : '미정',
+      availableDaysLabel: formatWorkDaysLabel(0, languageCode),
+      isOverflowingView: false,
+    };
+  }
+
+  const todayKey = getTodayDateKey();
+  const foundTodayIndex = viewDays.findIndex((day) => String(day?.key || '') === todayKey);
+  const todayIndex = foundTodayIndex >= 0 ? foundTodayIndex : 0;
+  const futureDays = viewDays.slice(todayIndex);
+  const availableSecondsInView = futureDays.reduce((sum, day) => {
+    if (day?.isSunday || day?.isHoliday) return sum;
+    return sum + dailyCapacity;
+  }, 0);
+  const remainingSeconds = (Array.isArray(assignments) ? assignments : []).reduce((sum, assignment) => {
+    if (assignment?.isCompleted) return sum;
+    const nextValue = Number(
+      assignment?.remainingStTotalSeconds ??
+        assignment?.plannedStTotalSeconds ??
+        assignment?.stTotalSeconds
+    );
+    if (!Number.isFinite(nextValue) || nextValue <= 0) return sum;
+    return sum + nextValue;
+  }, 0);
+  const remainingDays = remainingSeconds > 0 ? remainingSeconds / dailyCapacity : 0;
+
+  let unresolvedSeconds = remainingSeconds;
+  let freeDateKey = futureDays[0]?.key || todayKey;
+  let isOverflowingView = unresolvedSeconds > 0;
+  for (const day of futureDays) {
+    if (!day || day.isSunday || day.isHoliday) continue;
+    freeDateKey = day.key;
+    if (unresolvedSeconds <= dailyCapacity) {
+      isOverflowingView = false;
+      break;
+    }
+    unresolvedSeconds -= dailyCapacity;
+  }
+  if (!futureDays.length) {
+    isOverflowingView = remainingSeconds > 0;
+  } else if (remainingSeconds <= 0) {
+    isOverflowingView = false;
+  }
+
+  const availableDays = Math.max(0, (availableSecondsInView - remainingSeconds) / dailyCapacity);
+  return {
+    remainingDays,
+    freeDateLabel: formatFreeDateLabel({
+      freeDateKey,
+      isOverflowingView,
+      viewEndDateKey: viewDays[viewDays.length - 1]?.key || null,
+      languageCode,
+    }),
+    availableDaysLabel: formatWorkDaysLabel(availableDays, languageCode),
+    isOverflowingView,
+  };
+};
+
 const getPointerX = (event) => {
   const activator = event.activatorEvent;
   if (!activator) return null;
@@ -262,6 +377,7 @@ const LineTimelineRow = memo(({
   onLinkPrev,
   onOpenContextMenu,
   languageCode,
+  summary,
 }) => (
   <TableRow hover>
     <TableCell
@@ -282,6 +398,21 @@ const LineTimelineRow = memo(({
         {` (${getUiMessage('assign.headcount', '{count} ppl', languageCode, {
           count: line.headcount,
         })})`}
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mt: 0.5 }}>
+        {getUiMessage('assign.lineRemainingWork', '남은 일감 {value}', languageCode, {
+          value: formatWorkDaysLabel(summary?.remainingDays ?? 0, languageCode),
+        })}
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+        {getUiMessage('assign.lineFreeDate', '비는 예상일 {value}', languageCode, {
+          value: summary?.freeDateLabel ?? '',
+        })}
+      </Typography>
+      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+        {getUiMessage('assign.lineAvailableWork', '추가 배정 여유 {value}', languageCode, {
+          value: summary?.availableDaysLabel ?? formatWorkDaysLabel(0, languageCode),
+        })}
       </Typography>
     </TableCell>
     <TableCell colSpan={viewDays.length} sx={{ p: 0 }}>
@@ -369,7 +500,8 @@ const LineTimelineRow = memo(({
   prevProps.linkableIds === nextProps.linkableIds &&
   prevProps.onLinkPrev === nextProps.onLinkPrev &&
   prevProps.onOpenContextMenu === nextProps.onOpenContextMenu &&
-  prevProps.languageCode === nextProps.languageCode
+  prevProps.languageCode === nextProps.languageCode &&
+  prevProps.summary === nextProps.summary
 ));
 
 const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOpenContextMenu }) => {
@@ -502,6 +634,23 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
 
     return map;
   }, [lines, assignmentsByLine, days, viewDays, lineCapacityById]);
+
+  const lineSummaries = useMemo(() => {
+    const map = new Map();
+    lines.forEach((line) => {
+      map.set(
+        line.id,
+        buildLineWorkSummary({
+          line,
+          assignments: assignmentsByLine.get(line.id) || [],
+          viewDays,
+          lineCapacityById,
+          languageCode,
+        })
+      );
+    });
+    return map;
+  }, [assignmentsByLine, languageCode, lineCapacityById, lines, viewDays]);
 
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -697,6 +846,7 @@ const ScheduleTimeline = ({ lines, days, dayCount, assignments, onLinkPrev, onOp
                   onLinkPrev={onLinkPrev}
                   onOpenContextMenu={onOpenContextMenu}
                   languageCode={languageCode}
+                  summary={lineSummaries.get(line.id) || null}
                 />
               );
             })}

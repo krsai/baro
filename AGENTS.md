@@ -1138,3 +1138,85 @@ runtime 조회값:
 - payroll-locked assignment는 `/assignment-plans/:externalId/production-complete`로 수동 재확정할 수 없다.
 - progress row는 `isPayrollLocked`, `payrollLockMonth`를 노출할 수 있고, UI는 이 값을 경고/버튼 차단에 사용한다.
 - 이 잠금 규칙은 이후 시스템 관리자용 비상 복구 기능과 별개다.
+
+### 29. 2026-06-05 Scheduler Length Adjustment Phase 1 Lock
+
+- 이 섹션은 `카드 길이 계산 기준`만 잠근다.
+- 카드 순서 재정리(reflow)와 실제 저장 좌표 반영 정책은 아래 `Scheduler Serial Reflow Lock`을 따른다.
+- 완료 카드는 기존 완료 로직을 그대로 사용한다. 실제 완료 날짜 기준 표시를 유지한다.
+- 미완료 카드는 작업기록 진행률에 따라 길이 조정 대상이 될 수 있다.
+- 단, 진행률이 `0%`인 미완료 카드는 길이를 조정하지 않고 원래 계획 길이를 유지한다.
+- 진행률이 `0% 초과`이고 `100% 미만`인 미완료 카드는 spillover 길이 조정 대상이다.
+- spillover 연장 기준은 실제 속도 예측이 아니라 `계획 길이 기준`이다.
+- 기본 개념:
+  - `planDays = 원래 계획 길이`
+  - `progress = producedQuantity / baselineQuantity`
+- `extension = progress > 0 && progress < 1 ? ceil((1 - progress) * planDays) : 0`
+- `new visible span = planDays + extension`
+- 이 단계의 목적은 `a,b 완료 + c 10%/90%`처럼 미완료 카드에 남은 비율이 얼마든, 작업기록 수정 때마다 남은 일부를 다음 날짜/다음 달로 자연스럽게 넘겨 보이게 하는 것이다.
+- 앞 카드가 빨리 끝나서 뒤 카드 시작일이 당겨지는 문제는 길이 공식만으로는 해결되지 않으며, 실제 적용 정책은 아래 직렬 reflow 규칙을 따른다.
+
+### 30. 2026-06-05 Scheduler Serial Reflow Lock
+
+- BARO 스케줄러는 라인 단위로 `무조건 직렬`로 본다. 한 라인의 카드들은 순차 체인처럼 앞 카드의 결과가 뒤 카드 시작에 전파된다.
+- 따라서 앞 카드가 늦어지면 뒤 카드들도 모두 같이 밀리고, 앞 카드가 빨리 끝나면 뒤 카드들도 같이 당겨진다.
+- 이 reflow는 render-only 표현이 아니라 실제 저장 좌표에도 반영하는 방향을 기본으로 한다.
+- 즉 `AssignmentBoardState.assignments[].startIndex/endIndex`와 대응 `AssignmentPlan.startIndex/endIndex`는 직렬 재계산 결과로 업데이트될 수 있다.
+- 단, 급여 잠금된 카드와 관리자 복구로 닫힌 과거 구간은 `anchor`로 고정한다. reflow는 그 뒤의 미잠금 카드에만 전파된다.
+- period 입력이 있어도 보드 해석은 직렬 체인을 우선한다. 실제 현장 세부 병렬성보다 운영 보드의 순차 계획/재배치를 우선한다.
+- 다만 period 입력만으로는 정확한 중간 전환 시점(예: 4/18 종료, 4/19 시작)을 알 수 없으므로, reflow 규칙은 추정 가능한 단일 기준으로 deterministic하게 계산해야 한다.
+- 이후 길이/순서 재조정 phase에서는 `카드 길이 계산`과 `라인 전체 직렬 reflow`를 분리해서 설계한다.
+### 31. 2026-06-05 WorkLog Completed Assignment Selection Lock
+
+- 완료된 assignment는 새 WorkLog/WorkRecord에서 신규 선택 대상으로 쓰지 않는다.
+- `work-log-context`가 내려주는 assignment 목록에서는 `isCompleted === true`인 카드를 제외한다.
+- 프론트 WorkDetail의 assignment 선택 목록도 완료 카드를 제외한 상태를 유지한다.
+- 다만 이미 해당 completed assignment에 연결되어 저장된 기존 WorkLog/WorkRecord는 예외다.
+  - 급여 잠금 전에는 기존 연결 기록의 정정(수정/삭제)을 허용한다.
+  - 이 예외는 “기존 연결 유지”에만 해당한다.
+  - completed assignment로의 신규 연결 생성은 금지한다.
+- 운영 의미:
+  - 완료는 “이 카드에 새 작업을 더 쌓지 않는다”는 뜻이다.
+  - 완료 후 추가 생산이 필요하면 먼저 assignment를 미완료로 되돌린 뒤 작업기록을 추가한다.
+
+### 32. 2026-06-05 Scheduler Purpose Lock
+
+- 스케줄러의 1차 목적은 과거 실제 작업 날짜를 정밀 복원하는 것이 아니다.
+- 스케줄러의 1차 목적은 현재 기준으로:
+  - 각 라인에 일이 얼마나 남아 있는지
+  - 각 라인이 언제 비는지
+  - 어느 라인에 일이 부족한지
+  를 보여주는 것이다.
+- 카드 길이 계산의 기준 작업량은 `assignmentStTotalSeconds`다.
+- WorkLog/WorkRecord는 실제 시간값이 아니라 progress 계산의 근거다.
+- 따라서 스케줄러는 `remainingStSeconds = assignmentStTotalSeconds × (1 - progress)`를 중심으로 남은 일감과 라인 비는 시점을 계산한다.
+- CT는 급여 기준이므로 스케줄러 길이 계산에 쓰지 않는다.
+- AT는 ST 보정 참고값이지 스케줄러 길이의 직접 기준이 아니다.
+
+### 33. 2026-06-05 Scheduler Remaining Work Summary Lock
+
+- `assignment-plan-progress` 응답은 스케줄러용 workload summary 필드를 함께 노출할 수 있다.
+- canonical scheduler summary field:
+  - `plannedStTotalSeconds`
+  - `remainingStTotalSeconds`
+  - `completedStTotalSeconds`
+  - `operationalProgressRatio`
+- `remainingStTotalSeconds = assignmentStTotalSeconds × (1 - operationalProgressRatio)`를 기본 규칙으로 사용한다.
+- 완료 assignment는 `remainingStTotalSeconds = 0`으로 본다.
+- 라인 요약은 같은 라인의 미완료 assignment들의 `remainingStTotalSeconds` 합으로 계산한다.
+- 1차 UI 목표:
+  - 이 라인에 일이 얼마나 남았는지
+  - 이 라인이 언제 비는지
+  - 현재 보이는 기간 안에서 일을 얼마나 더 넣을 수 있는지
+
+### 34. 2026-06-06 Scheduler Predictive Reflow Lock
+
+- 현재 스케줄러 재배치는 `과거 실제 작업일 복원`이 아니라 `오늘 이후 남은 일감 재배치`를 기준으로 한다.
+- 미완료 assignment의 직렬 reflow 기준 작업량은 `remainingStTotalSeconds`다.
+- `remainingStTotalSeconds`가 있으면 기존 계획 구간에서 이미 지나간 사용량을 다시 차감하지 않는다.
+- 즉 진행 중 카드의 미래 점유는 `전체 ST`가 아니라 `남은 ST`만 다시 라인 뒤에 쌓는다.
+- reflow 시작점은 기본적으로 `today index`다. 오늘 이전에 끝난 카드/구간은 고정한다.
+- 완료 assignment는 신규 WorkLog 선택 대상이 아니며, 스케줄러 reflow에서도 미래 작업량을 소비하지 않는다.
+- 현재 구현은 완료 카드의 과거 위치를 새로 복원하는 것이 아니라, 완료/과거 구간은 anchor로 두고 오늘 이후 미완료 카드만 다시 배치한다.
+- 같은 규칙을 보드 렌더와 저장 전 재배치에 같이 적용한다.
+- 따라서 사용자가 보는 미래 라인 점유와 실제 저장되는 미래 좌표가 서로 다른 방향으로 벌어지지 않게 유지한다.

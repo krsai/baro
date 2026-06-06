@@ -1772,6 +1772,18 @@ const getAssignmentScheduledStTotalSeconds = (assignment, days, lineCapacityById
   );
 };
 
+const isAssignmentSchedulerCompleted = (assignment) => {
+  if (!assignment || typeof assignment !== 'object') return false;
+  if (assignment?.isCompleted) return true;
+  return String(assignment?.scheduleStatus || '').trim() === 'PRODUCTION_COMPLETED';
+};
+
+const resolveAssignmentRemainingStTotalSeconds = (assignment) => {
+  const parsed = Number(assignment?.remainingStTotalSeconds);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.max(0, Math.round(parsed));
+};
+
 const getUsageSecondsBeforeIndex = (
   assignment,
   beforeIndex,
@@ -1872,6 +1884,18 @@ const reflowSingleLineAssignmentsByCapacity = ({
 
   for (let index = 0; index < queue.length; index += 1) {
     const item = queue[index];
+    if (isAssignmentSchedulerCompleted(item)) {
+      const fixedItem = { ...item, lineId };
+      placed.push(fixedItem);
+      const nextCursorStart = getNextStartIndex(
+        fixedItem,
+        days,
+        lineCapacityById
+      );
+      cursorStart = nextCursorStart == null ? fixedItem.endIndex : nextCursorStart;
+      continue;
+    }
+
     const startIndex = Math.max(
       cursorStart,
       toNonNegativeInt(item?.startIndex, cursorStart)
@@ -1896,13 +1920,20 @@ const reflowSingleLineAssignmentsByCapacity = ({
         needsMoreDays: false,
       };
     }
-    const usedBeforeReflow = getUsageSecondsBeforeIndex(
-      item,
-      safeReflowStartIndex,
-      days,
-      capacityForSource
-    );
-    const remainingSeconds = Math.max(0, stTotalSeconds - usedBeforeReflow);
+    const explicitRemainingSeconds = resolveAssignmentRemainingStTotalSeconds(item);
+    const usedBeforeReflow =
+      explicitRemainingSeconds == null
+        ? getUsageSecondsBeforeIndex(
+            item,
+            safeReflowStartIndex,
+            days,
+            capacityForSource
+          )
+        : 0;
+    const remainingSeconds =
+      explicitRemainingSeconds != null
+        ? explicitRemainingSeconds
+        : Math.max(0, stTotalSeconds - usedBeforeReflow);
     if (remainingSeconds <= 0) continue;
 
     const planResult = planAssignmentDetailed({
@@ -3345,14 +3376,22 @@ const AssignBoard = () => {
     const assignmentsWithCtSnapshot = currentAssignments.map((item) =>
       applyCtSnapshotForPersistence(item, startDateRef.current)
     );
+    const {
+      assignments: predictiveAssignmentsForSave,
+      days: predictiveDaysForSave,
+    } = buildPredictiveAssignments(assignmentsWithCtSnapshot, {
+      daysOverride: currentDays,
+      lineCapacityOverride: lineCapacityById,
+      useCompletedRenderRange: false,
+    });
 
     const { baseDate: persistBaseDate, days: persistDays } = buildAssignmentPersistenceWindow({
-      assignments: assignmentsWithCtSnapshot,
-      days: currentDays,
+      assignments: predictiveAssignmentsForSave,
+      days: predictiveDaysForSave,
       baseDate: startDateRef.current,
       holidaySet,
     });
-    const assignmentsForPersistence = assignmentsWithCtSnapshot.map((item) =>
+    const assignmentsForPersistence = predictiveAssignmentsForSave.map((item) =>
       remapAssignmentToDayWindow(
         syncAssignmentDateKeys(item, startDateRef.current),
         persistDays,
@@ -3512,6 +3551,7 @@ const AssignBoard = () => {
   }, [
     activeOrgId,
     assignments,
+    buildPredictiveAssignments,
     cards,
     cardsRef,
     blurActiveElement,
@@ -3756,6 +3796,211 @@ const AssignBoard = () => {
       abortController.abort();
     };
   }, [activeOrgId, assignmentProgressIdsKey]);
+
+  const applySchedulerProgressToAssignments = useCallback(
+    (inputAssignments, { useCompletedRenderRange = false, daysOverride = null } = {}) => {
+      const sourceDays = Array.isArray(daysOverride) && daysOverride.length > 0 ? daysOverride : days;
+      const dayIndexByDateKey = new Map(
+        sourceDays
+          .map((day, index) => {
+            const key = typeof day?.key === 'string' ? day.key.trim() : '';
+            return key ? [key, index] : null;
+          })
+          .filter(Boolean)
+      );
+      const firstDayDate =
+        Array.isArray(sourceDays) && sourceDays.length > 0 ? parseDateKey(sourceDays[0]?.key) : null;
+      const resolveDateKey = (value) => {
+        if (typeof value === 'string' && value.trim()) {
+          const trimmed = value.trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+          const parsed = new Date(trimmed);
+          if (!Number.isNaN(parsed.getTime())) return buildDateKey(parsed);
+        }
+        return null;
+      };
+      const resolveIndexFromDateKey = (dateKey, fallbackIndex) => {
+        const normalized = resolveDateKey(dateKey);
+        if (!normalized) return fallbackIndex;
+        if (dayIndexByDateKey.has(normalized)) return dayIndexByDateKey.get(normalized);
+        const targetDate = parseDateKey(normalized);
+        if (!targetDate || !firstDayDate) return fallbackIndex;
+        return Math.round((targetDate.getTime() - firstDayDate.getTime()) / 86400000);
+      };
+
+      return (Array.isArray(inputAssignments) ? inputAssignments : []).map((item) => {
+        const assignmentId = String(item?.id || '').trim();
+        const progressRow = assignmentProgressById[assignmentId] || null;
+        const scheduleStatus = String(progressRow?.scheduleStatus || item?.scheduleStatus || '').trim();
+        const isCompleted = Boolean(
+          (scheduleStatus === 'PRODUCTION_COMPLETED'
+            ? true
+            : null) ??
+            progressRow?.isCompleted ??
+            progressRow?.closedAt ??
+            item?.isCompleted ??
+            item?.closedAt ??
+            item?.completedAt
+        );
+        const next = {
+          ...item,
+          isCompleted,
+          scheduleStatus: scheduleStatus || item?.scheduleStatus || null,
+          plannedStTotalSeconds:
+            Number(progressRow?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
+          remainingStTotalSeconds:
+            progressRow?.remainingStTotalSeconds != null
+              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
+              : isCompleted
+                ? 0
+                : Math.max(0, Number(item?.stTotalSeconds) || 0),
+          completedStTotalSeconds:
+            progressRow?.completedStTotalSeconds != null
+              ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
+              : item?.completedStTotalSeconds ?? null,
+          operationalProgressRatio:
+            progressRow?.operationalProgressRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
+              : item?.operationalProgressRatio ?? null,
+          progressPercent: clampPercentValue(
+            progressRow?.operationalProgressPercent ??
+              progressRow?.progressPercent ??
+              item?.workProgressPercent ??
+              item?.progressPercent ??
+              item?.progressPercent ??
+              0
+          ),
+        };
+
+        if (!useCompletedRenderRange || !isCompleted) {
+          return next;
+        }
+
+        const defaultStartIndex = toSignedInt(item?.startIndex, 0);
+        const defaultEndIndex = Math.max(
+          defaultStartIndex,
+          toSignedInt(item?.endIndex, defaultStartIndex)
+        );
+        const renderStartDateKey =
+          resolveDateKey(progressRow?.renderStartDate) ||
+          (typeof item?.renderStartDate === 'string' && item.renderStartDate.trim()
+            ? item.renderStartDate.trim()
+            : null) ||
+          (typeof item?.startDateKey === 'string' && item.startDateKey.trim()
+            ? item.startDateKey.trim()
+            : null);
+        const renderEndDateKey =
+          resolveDateKey(progressRow?.renderEndDate) ||
+          resolveDateKey(progressRow?.candidateEndDate) ||
+          (typeof item?.renderEndDate === 'string' && item.renderEndDate.trim()
+            ? item.renderEndDate.trim()
+            : null) ||
+          (typeof item?.endDateKey === 'string' && item.endDateKey.trim()
+            ? item.endDateKey.trim()
+            : null);
+        if (!renderStartDateKey || !renderEndDateKey) {
+          return next;
+        }
+        const renderStartIndex = resolveIndexFromDateKey(renderStartDateKey, defaultStartIndex);
+        const renderEndIndex = Math.max(
+          renderStartIndex,
+          resolveIndexFromDateKey(renderEndDateKey, defaultEndIndex)
+        );
+        return {
+          ...next,
+          startIndex: renderStartIndex,
+          endIndex: renderEndIndex,
+          startDateKey: renderStartDateKey,
+          endDateKey: renderEndDateKey,
+          startDayOffsetPercent: 0,
+          startDayPercent: 100,
+          endDayPercent: 100,
+          renderStartDate: renderStartDateKey,
+          renderEndDate: renderEndDateKey,
+          renderStartIndex,
+          renderEndIndex,
+        };
+      });
+    },
+    [assignmentProgressById, days]
+  );
+
+  const buildPredictiveAssignments = useCallback(
+    (
+      inputAssignments,
+      {
+        daysOverride = null,
+        lineCapacityOverride = null,
+        useCompletedRenderRange = false,
+      } = {}
+    ) => {
+      const sourceDays = Array.isArray(daysOverride) && daysOverride.length > 0 ? daysOverride : days;
+      const capacityMap = lineCapacityOverride || lineCapacityById;
+      const seededAssignments = applySchedulerProgressToAssignments(inputAssignments, {
+        useCompletedRenderRange,
+        daysOverride: sourceDays,
+      }).map((item) => normalizeAssignmentLayout(item));
+
+      if (seededAssignments.length <= 1) {
+        return {
+          assignments: seededAssignments,
+          days: sourceDays,
+        };
+      }
+
+      const safeReflowStartIndex = getTodayDayIndex(sourceDays);
+      let candidateDays = sourceDays;
+      let reflowResult = null;
+
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        reflowResult = reflowAssignmentsByLineCapacity({
+          assignments: seededAssignments,
+          totalDays: candidateDays.length,
+          days: candidateDays,
+          lineCapacityById: capacityMap,
+          sourceLineCapacityById: capacityMap,
+          reflowStartIndex: safeReflowStartIndex,
+        });
+        if (!reflowResult?.needsMoreDays) break;
+        candidateDays = buildDays(
+          startDateRef.current,
+          candidateDays.length + 20,
+          holidaySet,
+          languageCode
+        );
+      }
+
+      const nextAssignments = Array.isArray(reflowResult?.assignments)
+        ? reflowResult.assignments
+        : seededAssignments;
+      const byId = new Map(
+        nextAssignments
+          .filter((item) => item?.id)
+          .map((item) => [String(item.id), normalizeAssignmentLayout(item)])
+      );
+
+      return {
+        assignments: seededAssignments.map((item) => {
+          const nextItem = byId.get(String(item?.id || ''));
+          if (!nextItem) return item;
+          if (isAssignmentSchedulerCompleted(item)) return item;
+          return {
+            ...item,
+            startIndex: nextItem.startIndex,
+            endIndex: nextItem.endIndex,
+            startDateKey: nextItem.startDateKey,
+            endDateKey: nextItem.endDateKey,
+            startDayOffsetPercent: nextItem.startDayOffsetPercent,
+            startDayPercent: nextItem.startDayPercent,
+            endDayPercent: nextItem.endDayPercent,
+          };
+        }),
+        days: candidateDays,
+      };
+    },
+    [applySchedulerProgressToAssignments, days, holidaySet, languageCode, lineCapacityById]
+  );
+
   const assignmentCtDisplayStateById = useMemo(() => {
     const map = new Map();
 
@@ -3932,6 +4177,22 @@ const AssignBoard = () => {
             item?.producedQty ??
             item?.producedQuantity ??
             0,
+          plannedStTotalSeconds:
+            Number(progressRow?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
+          remainingStTotalSeconds:
+            progressRow?.remainingStTotalSeconds != null
+              ? Math.max(0, Number(progressRow.remainingStTotalSeconds) || 0)
+              : isCompleted
+                ? 0
+                : Math.max(0, Number(item?.stTotalSeconds) || 0),
+          completedStTotalSeconds:
+            progressRow?.completedStTotalSeconds != null
+              ? Math.max(0, Number(progressRow.completedStTotalSeconds) || 0)
+              : null,
+          operationalProgressRatio:
+            progressRow?.operationalProgressRatio != null
+              ? Math.max(0, Math.min(1, Number(progressRow.operationalProgressRatio) || 0))
+              : null,
           progressPercent: clampPercentValue(workProgressPercent),
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
@@ -3944,6 +4205,15 @@ const AssignBoard = () => {
             (hasSavedCtSnapshot(item) ? 'SAVED' : 'UNSAVED'),
         };
       });
+    const { assignments: predictiveAssignments } = buildPredictiveAssignments(
+      mappedAssignments,
+      {
+        daysOverride: days,
+        lineCapacityOverride: lineCapacityById,
+        useCompletedRenderRange: true,
+      }
+    );
+
     const compareDisplayOrder = (left, right) => {
       const leftLineId = String(left?.lineId ?? '');
       const rightLineId = String(right?.lineId ?? '');
@@ -3969,14 +4239,16 @@ const AssignBoard = () => {
       });
     };
 
-    return [...mappedAssignments].sort(compareDisplayOrder);
+    return [...predictiveAssignments].sort(compareDisplayOrder);
   }, [
     assignments,
+    buildPredictiveAssignments,
     assignmentCtDisplayStateById,
     assignmentProgressById,
     cardById,
     days,
     dayCount,
+    lineCapacityById,
     todayDateKey,
   ]);
 

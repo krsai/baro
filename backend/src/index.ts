@@ -6955,16 +6955,21 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
   orgId,
   lineId,
   records,
+  allowCompletedAssignmentPlanIds = [],
 }: {
   orgId: number;
   lineId: number | null;
   records: any;
+  allowCompletedAssignmentPlanIds?: number[];
 }) => {
   const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(records);
   if (assignmentPlanIds.length === 0) {
     return { status: 200, error: null as string | null };
   }
   void lineId;
+  const allowedCompletedPlanIdSet = new Set(
+    normalizePlanIdList(allowCompletedAssignmentPlanIds)
+  );
 
   let plans: any[] = [];
   try {
@@ -7009,6 +7014,25 @@ const validateWorkLogAssignmentPlanCtSnapshot = async ({
     return {
       status: 400,
       error: `assignment plan not found (${missingPlanIds.join(",")})`,
+    };
+  }
+
+  const newlySelectedCompletedPlans = plans.filter((plan) => {
+    if (plan?.isCompleted !== true) return false;
+    return !allowedCompletedPlanIdSet.has(Number(plan.id));
+  });
+  if (newlySelectedCompletedPlans.length > 0) {
+    const preview = newlySelectedCompletedPlans
+      .slice(0, 3)
+      .map((plan) => formatAssignmentPlanLabel(plan))
+      .join(", ");
+    const extraText =
+      newlySelectedCompletedPlans.length > 3
+        ? ` (+${newlySelectedCompletedPlans.length - 3} more)`
+        : "";
+    return {
+      status: 409,
+      error: `assignment plan already completed (${preview}${extraText})`,
     };
   }
 
@@ -16338,11 +16362,30 @@ const buildAssignmentPlanProgressRows = async (
         : Math.max(0, baselineQuantityRaw - producedQuantity);
     const overflowQuantity =
       baselineQuantityRaw == null ? 0 : Math.max(0, producedQuantity - baselineQuantityRaw);
-    const progressPercent = isMarkedCompleted
-      ? 100
+    const operationalProgressRatio = isMarkedCompleted
+      ? 1
       : totalExpected != null && totalExpected > 0
-        ? Math.min(100, Math.round((totalDone / totalExpected) * 100))
+        ? Math.min(1, Math.max(0, totalDone / totalExpected))
         : null;
+    const progressPercent =
+      operationalProgressRatio == null ? null : Math.min(100, Math.round(operationalProgressRatio * 100));
+    const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    const remainingStTotalSeconds =
+      plannedStTotalSeconds == null
+        ? null
+        : operationalProgressRatio == null
+          ? plannedStTotalSeconds
+          : Math.max(
+              0,
+              Math.round(
+                plannedStTotalSeconds *
+                  (operationalProgressRatio >= 1 ? 0 : 1 - operationalProgressRatio)
+              )
+            );
+    const completedStTotalSeconds =
+      plannedStTotalSeconds == null || remainingStTotalSeconds == null
+        ? null
+        : Math.max(0, plannedStTotalSeconds - remainingStTotalSeconds);
 
     const firstWorkDate = stats.firstWorkDate;
     const lastWorkDate = stats.lastWorkDate;
@@ -16524,6 +16567,10 @@ const buildAssignmentPlanProgressRows = async (
         ? "COMPLETED_BELOW_BASELINE"
         : null,
       completionGapQuantity,
+      plannedStTotalSeconds,
+      remainingStTotalSeconds,
+      completedStTotalSeconds,
+      operationalProgressRatio,
       progressPercent,
       operationalProgressPercent: progressPercent,
       officialProgressPercent:
@@ -18243,6 +18290,7 @@ app.post("/work-logs", async (req, res) => {
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
+    allowCompletedAssignmentPlanIds: [],
   });
   if (ctSnapshotValidation.error) {
     return res
@@ -18500,10 +18548,14 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(duplicateValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "duplicates-validated");
+  const previousPlanIds = normalizePlanIdList(
+    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
+  );
   const ctSnapshotValidation = await validateWorkLogAssignmentPlanCtSnapshot({
     orgId: organization.id,
     lineId: lineValidation.line?.id ?? normalized.lineId,
     records: normalized.records,
+    allowCompletedAssignmentPlanIds: previousPlanIds,
   });
   if (ctSnapshotValidation.error) {
     return res
@@ -18511,9 +18563,6 @@ app.put("/work-logs/:id", async (req, res) => {
       .json({ ok: false, error: translateWorkLogErrorMessage(ctSnapshotValidation.error) });
   }
   updateWorkLogMutationTrace(trace, "ct-snapshot-validated");
-  const previousPlanIds = normalizePlanIdList(
-    ensureArray(existing?.workRecords).map((row) => row?.assignmentPlanId)
-  );
   const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   const payrollLockValidation = await validateAssignmentPlanPayrollLock({
     orgId: organization.id,
