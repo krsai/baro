@@ -1,4 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import {
   Box,
   Chip,
@@ -19,6 +20,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { formatNumberWithCommas } from '../../../../utils/numberFormat';
+import CompactBoardCard from './CompactBoardCard';
 
 const formatMonthLabel = (monthKey = '') => {
   if (!/^\d{4}-\d{2}$/.test(monthKey)) return monthKey || '-';
@@ -38,6 +40,13 @@ const formatHoursLabel = (seconds, fallback = '-') => {
   const hours = Math.round((parsed / 3600) * 10) / 10;
   return `${formatNumberWithCommas(hours, { fallback: '0', maximumFractionDigits: 1 })}h`;
 };
+const formatQuantityLabel = (quantity, languageCode = 'en') =>
+  getUiMessage('assign.quantityCompact', 'Qty {quantity}', languageCode, {
+    quantity: formatNumberWithCommas(Math.max(0, Number(quantity) || 0), {
+      fallback: '0',
+      maximumFractionDigits: 0,
+    }),
+  });
 
 const formatProgressChipLabel = (value, languageCode = 'en') =>
   getUiMessage('assign.progressCompact', 'Progress {percent}', languageCode, {
@@ -84,66 +93,142 @@ const resolvePlanTone = (plannedLoadPercent) => {
   };
 };
 
+const LineRowDropArea = memo(function LineRowDropArea({ lineId, languageCode }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `line-row-drop::${lineId}`,
+    data: { dropMode: 'line-row', lineId },
+  });
+
+  return (
+    <Box
+      ref={setNodeRef}
+      sx={{
+        mt: 1,
+        px: 1,
+        py: 0.75,
+        borderRadius: 1.5,
+        border: '1px dashed',
+        borderColor: isOver ? 'primary.main' : 'divider',
+        backgroundColor: isOver ? 'rgba(37, 99, 235, 0.08)' : '#F8FAFC',
+      }}
+    >
+      <Typography variant="caption" color={isOver ? 'primary.main' : 'text.secondary'}>
+        {getUiMessage('assign.lineDropHint', 'Drop cards here to assign to this line', languageCode)}
+      </Typography>
+    </Box>
+  );
+});
+
+const LineAssignmentDropSlot = memo(function LineAssignmentDropSlot({
+  lineId,
+  beforeAssignmentId = null,
+  afterAssignmentId = null,
+  languageCode,
+}) {
+  const dropId = beforeAssignmentId
+    ? `line-slot-drop::${lineId}::before::${beforeAssignmentId}`
+    : afterAssignmentId
+      ? `line-slot-drop::${lineId}::after::${afterAssignmentId}`
+      : `line-slot-drop::${lineId}::empty`;
+  const { setNodeRef, isOver } = useDroppable({
+    id: dropId,
+    data: {
+      dropMode: 'line-slot',
+      lineId,
+      beforeAssignmentId,
+      afterAssignmentId,
+    },
+  });
+
+  return (
+    <Box
+      ref={setNodeRef}
+      aria-label={getUiMessage('assign.insertAssignmentAria', 'Insert assignment here', languageCode)}
+      sx={{
+        width: 26,
+        minWidth: 26,
+        height: 92,
+        borderRadius: 2,
+        border: '1px dashed',
+        borderColor: isOver ? 'primary.main' : 'divider',
+        backgroundColor: isOver ? 'rgba(37, 99, 235, 0.08)' : '#FCFCFD',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: isOver ? 'primary.main' : 'text.secondary',
+        flexShrink: 0,
+      }}
+    >
+      <Typography variant="caption" sx={{ fontWeight: 700 }}>
+        +
+      </Typography>
+    </Box>
+  );
+});
+
 const AssignmentDetailCard = memo(function AssignmentDetailCard({
   assignment,
   languageCode,
+  onOpenDetail,
+  onOpenContextMenu,
 }) {
+  const chips = [
+    {
+      label: formatProgressChipLabel(assignment.progressPercent, languageCode),
+      variant: 'outlined',
+    },
+    {
+      label: formatHoursChipLabel(
+        'assign.remainingHoursCompact',
+        'Remain {hours}',
+        assignment.remainingStTotalSeconds,
+        languageCode
+      ),
+      variant: 'outlined',
+    },
+  ];
+  if (Number(assignment?.quantity) > 0) {
+    chips.push({
+      label: formatQuantityLabel(assignment.quantity, languageCode),
+      variant: 'outlined',
+    });
+  }
+  const accentColor = assignment.isCompleted
+    ? '#15803D'
+    : assignment.hasOrphanWorkRecords
+      ? '#D97706'
+      : '#2563EB';
+
   return (
-    <Box
-      sx={{
-        minWidth: 220,
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 1.5,
-        p: 1.25,
-        backgroundColor: '#FAFAFB',
+    <CompactBoardCard
+      draggableId={`assign-${assignment.id}`}
+      droppableId={assignment.isCompleted ? null : `assign-drop-${assignment.id}`}
+      droppableData={
+        assignment.isCompleted
+          ? null
+          : { dropId: `assign-drop-${assignment.id}`, dropMode: 'assignment-card' }
+      }
+      disabled={assignment.isCompleted}
+      title={assignment.label || '-'}
+      subtitle={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
+      meta={[assignment.customer, assignment.colorName].filter(Boolean).join(' / ')}
+      chips={chips}
+      footer={(assignment.startDateKey || '-') + ' ~ ' + (assignment.endDateKey || '-')}
+      previewUrl={assignment.previewUrl || ''}
+      accentColor={accentColor}
+      backgroundColor={assignment.isCompleted ? '#F3F4F6' : '#FFFFFF'}
+      onClick={() => onOpenDetail?.(assignment.id)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenContextMenu?.({
+          targetType: 'assignment',
+          id: assignment.id,
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+        });
       }}
-    >
-      <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
-        {assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-        {assignment.label || '-'}
-      </Typography>
-      {assignment.customer ? (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
-          {assignment.customer}
-        </Typography>
-      ) : null}
-      <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', mt: 1 }}>
-        <Chip
-          size="small"
-          label={formatProgressChipLabel(assignment.progressPercent, languageCode)}
-        />
-        <Chip
-          size="small"
-          label={formatHoursChipLabel(
-            'assign.remainingHoursCompact',
-            'Remain {hours}',
-            assignment.remainingStTotalSeconds,
-            languageCode
-          )}
-        />
-        <Chip
-          size="small"
-          label={formatHoursChipLabel(
-            'assign.visiblePlanHoursCompact',
-            'In view {hours}',
-            assignment.visiblePlannedStTotalSeconds,
-            languageCode
-          )}
-        />
-      </Stack>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-        {(assignment.startDateKey || '-') + ' ~ ' + (assignment.endDateKey || '-')}
-      </Typography>
-      {assignment.isCompleted ? (
-        <Chip size="small" color="success" label={getUiMessage('common.completed', 'Completed', languageCode)} sx={{ mt: 1 }} />
-      ) : null}
-      {assignment.hasOrphanWorkRecords ? (
-        <Chip size="small" color="warning" label={getUiMessage('assign.unlinkedWorkLogsCompact', 'Unlinked logs', languageCode)} sx={{ mt: 1, ml: assignment.isCompleted ? 0.75 : 0 }} />
-      ) : null}
-    </Box>
+    />
   );
 });
 
@@ -152,6 +237,8 @@ const LineMonthCapacityBoard = ({
   monthKeys,
   loading = false,
   languageCode = 'en',
+  onOpenAssignmentDetail,
+  onOpenContextMenu,
 }) => {
   const [expandedLineIds, setExpandedLineIds] = useState(() => new Set());
 
@@ -230,6 +317,7 @@ const LineMonthCapacityBoard = ({
                               { count: row.assignments.length }
                             )}
                           </Typography>
+                          <LineRowDropArea lineId={row.lineId} languageCode={languageCode} />
                         </Box>
                       </Stack>
                     </TableCell>
@@ -357,23 +445,44 @@ const LineMonthCapacityBoard = ({
                               languageCode
                             )}
                           </Typography>
-                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
+                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'stretch' }}>
                             {row.assignments.length > 0 ? (
-                              row.assignments.map((assignment) => (
-                                <AssignmentDetailCard
-                                  key={assignment.id || `${row.lineId}:${assignment.label}`}
-                                  assignment={assignment}
+                              <>
+                                <LineAssignmentDropSlot
+                                  lineId={row.lineId}
+                                  beforeAssignmentId={row.assignments[0]?.id || null}
                                   languageCode={languageCode}
                                 />
-                              ))
+                                {row.assignments.map((assignment) => (
+                                  <React.Fragment key={assignment.id || `${row.lineId}:${assignment.label}`}>
+                                    <AssignmentDetailCard
+                                      assignment={assignment}
+                                      languageCode={languageCode}
+                                      onOpenDetail={onOpenAssignmentDetail}
+                                      onOpenContextMenu={onOpenContextMenu}
+                                    />
+                                    <LineAssignmentDropSlot
+                                      lineId={row.lineId}
+                                      afterAssignmentId={assignment.id}
+                                      languageCode={languageCode}
+                                    />
+                                  </React.Fragment>
+                                ))}
+                              </>
                             ) : (
-                              <Typography variant="body2" color="text.secondary">
-                                {getUiMessage(
-                                  'assign.noAssignmentsInLine',
-                                  'No assignments in this line.',
-                                  languageCode
-                                )}
-                              </Typography>
+                              <>
+                                <LineAssignmentDropSlot
+                                  lineId={row.lineId}
+                                  languageCode={languageCode}
+                                />
+                                <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                  {getUiMessage(
+                                    'assign.noAssignmentsInLine',
+                                    'No assignments in this line.',
+                                    languageCode
+                                  )}
+                                </Typography>
+                              </>
                             )}
                           </Stack>
                         </Box>

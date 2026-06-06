@@ -590,6 +590,26 @@ Object.assign(UI_MESSAGES, {
       en: 'No line capacity data is available.',
       vi: 'Khong co du lieu cong suat chuyen de hien thi.',
     },
+    manualLockRequiredCompact: {
+      ko: '수동 잠금 필요',
+      en: 'Manual lock required',
+      vi: 'Can khoa thu cong',
+    },
+    ctMissingCompact: {
+      ko: '시간 미설정',
+      en: 'Time missing',
+      vi: 'Chua co thoi gian',
+    },
+    lineDropHint: {
+      ko: '이 라인에 배정하려면 여기에 놓으세요.',
+      en: 'Drop cards here to assign to this line',
+      vi: 'Tha the vao day de phan cong cho chuyen nay',
+    },
+    insertAssignmentAria: {
+      ko: '여기에 배정 삽입',
+      en: 'Insert assignment here',
+      vi: 'Chen phan cong vao day',
+    },
     expandLineAria: { ko: '라인 펼치기', en: 'Expand line', vi: 'Mo rong chuyen' },
     collapseLineAria: { ko: '라인 접기', en: 'Collapse line', vi: 'Thu gon chuyen' },
   },

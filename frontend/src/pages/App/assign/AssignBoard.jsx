@@ -38,9 +38,8 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
-import StyleCard from './components/StyleCard';
+import CompactBoardCard from './components/CompactBoardCard';
 import LineMonthCapacityBoard from './components/LineMonthCapacityBoard';
-import ScheduleTimeline from './components/ScheduleTimeline';
 import {
   ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS,
   ASSIGN_TIMELINE_CELL_WIDTH,
@@ -182,32 +181,90 @@ const formatQuantityRatio = (unassignedQuantity, orderTotalQuantity) =>
     fallback: '0',
     maximumFractionDigits: 0,
   })}`;
+const formatCompactHoursLabel = (seconds) => {
+  const resolved = Number(seconds);
+  if (!Number.isFinite(resolved) || resolved <= 0) return null;
+  return `${formatNumberWithCommas(Math.round((resolved / 3600) * 10) / 10, {
+    fallback: '0',
+    maximumFractionDigits: 1,
+  })}h`;
+};
+const COMPACT_CARD_ACCENT_BY_BASIS = {
+  CT: '#2563EB',
+  ST: '#2563EB',
+  PT: '#2563EB',
+  AT: '#2563EB',
+  NONE: '#D97706',
+};
 
 const UnassignedCardItem = React.memo(function UnassignedCardItem({
   card,
   isSelected,
+  languageCode,
   onSelect,
   onOpenContextMenu,
   onDisabledCardDragAttempt,
 }) {
+  const basis = getCardBasis(card);
+  const isLocked = isCardManualOrderLocked(card);
+  const stHoursLabel = formatCompactHoursLabel(resolveCardStTotalSeconds(card));
+  const quantityLabel = getUiMessage(
+    'assign.quantityCompact',
+    'Qty {quantity}',
+    languageCode,
+    { quantity: resolveCardQuantity(card, 0) }
+  );
+  const basisLabel =
+    basis === 'NONE'
+      ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
+      : `${basis}`;
   return (
-    <Box
-      sx={{
-        minWidth: { xs: 250, sm: 280 },
-        maxWidth: 320,
-        flex: '0 0 auto',
-        border: isSelected ? '1px solid' : '1px solid transparent',
-        borderColor: isSelected ? 'primary.main' : 'transparent',
-        borderRadius: 1,
+    <CompactBoardCard
+      draggableId={`card-${card.id}`}
+      droppableId={`card-drop-${card.id}`}
+      droppableData={{ dropId: `card-drop-${card.id}` }}
+      disabled={!isLocked || basis === 'NONE'}
+      selected={isSelected}
+      title={card.styleName}
+      subtitle={card.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
+      meta={card.customer || card.colorName || ''}
+      chips={[
+        { label: quantityLabel, variant: 'outlined' },
+        ...(stHoursLabel ? [{ label: stHoursLabel, variant: 'outlined' }] : []),
+        { label: basisLabel, color: basis === 'NONE' ? 'warning' : 'primary' },
+      ]}
+      footer={
+        !isLocked
+          ? getUiMessage(
+              'assign.manualLockRequiredCompact',
+              'Manual lock required',
+              languageCode
+            )
+          : ''
+      }
+      previewUrl={card.previewUrl || card.imageUrl || card.thumbnailUrl || ''}
+      accentColor={COMPACT_CARD_ACCENT_BY_BASIS[basis] || COMPACT_CARD_ACCENT_BY_BASIS.PT}
+      backgroundColor={isSelected ? 'rgba(37, 99, 235, 0.05)' : '#FFFFFF'}
+      onClick={() => onSelect?.(card.id)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenContextMenu?.({
+          targetType: 'card',
+          id: card.id,
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+        });
       }}
-    >
-      <StyleCard
-        card={card}
-        onSelect={onSelect}
-        onOpenContextMenu={onOpenContextMenu}
-        onDisabledDragAttempt={onDisabledCardDragAttempt}
-      />
-    </Box>
+      onDisabledDragAttempt={(payload) =>
+        onDisabledCardDragAttempt?.({
+          card,
+          reason: !isLocked ? 'ORDER_UNLOCKED' : 'MISSING_PT_OR_ST',
+          clientX: payload?.clientX,
+          clientY: payload?.clientY,
+        })
+      }
+    />
   );
 });
 
@@ -338,6 +395,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
                   key={card.id}
                   card={card}
                   isSelected={card.id === selectedCardId}
+                  languageCode={languageCode}
                   onSelect={onSelectCard}
                   onOpenContextMenu={onOpenContextMenu}
                   onDisabledCardDragAttempt={onDisabledCardDragAttempt}
@@ -2451,7 +2509,6 @@ const AssignBoard = () => {
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
   const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
   const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
-  const [scheduleViewMode, setScheduleViewMode] = useState('capacity');
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -4908,6 +4965,11 @@ const AssignBoard = () => {
   const handleSelectCard = useCallback((cardId) => {
     setSelectedCardId(cardId);
   }, []);
+  const handleOpenAssignmentDetail = useCallback((assignmentId) => {
+    if (!assignmentId) return;
+    blurActiveElement();
+    setDetailState({ targetType: 'assignment', assignmentId: String(assignmentId) });
+  }, [blurActiveElement]);
   const handleContextMenuClose = useCallback(() => setContextMenuState(null), []);
   const handleContextOpenDetail = useCallback(() => {
     if (!contextMenuState) return;
@@ -4973,6 +5035,78 @@ const AssignBoard = () => {
     });
   }, [detailAssignmentIsCompleted, detailTargetKey]);
 
+  const getNextWorkingDropIndex = (startIndex = 0, sourceDays = days) => {
+    let cursor = Math.max(0, toNonNegativeInt(startIndex, 0));
+    while (cursor < sourceDays.length && isNonWorkingDay(cursor, sourceDays)) {
+      cursor += 1;
+    }
+    return cursor < sourceDays.length ? cursor : null;
+  };
+
+  const resolveLineStripDropPlacement = ({
+    lineId,
+    beforeAssignmentId = null,
+    afterAssignmentId = null,
+    excludeAssignmentId = null,
+    sourceAssignments = assignments,
+  }) => {
+    const normalizedLineId = String(lineId || '').trim();
+    if (!normalizedLineId) return null;
+    const lineItems = (Array.isArray(sourceAssignments) ? sourceAssignments : [])
+      .filter(
+        (item) =>
+          String(item?.lineId || '').trim() === normalizedLineId &&
+          item?.id !== excludeAssignmentId
+      )
+      .slice()
+      .sort((left, right) => getAssignmentStartKey(left) - getAssignmentStartKey(right));
+
+    if (beforeAssignmentId) {
+      const target = lineItems.find((item) => item.id === beforeAssignmentId);
+      if (!target) return null;
+      return {
+        lineId: normalizedLineId,
+        insertIndex: Math.max(0, toSignedInt(target.startIndex, 0)),
+        insertBeforeId: target.id,
+        insertAfterId: null,
+      };
+    }
+
+    if (afterAssignmentId) {
+      const target = lineItems.find((item) => item.id === afterAssignmentId);
+      if (!target) return null;
+      const insertIndex = getNextStartIndex(target, days, lineCapacityById);
+      if (insertIndex == null) return null;
+      return {
+        lineId: normalizedLineId,
+        insertIndex,
+        insertBeforeId: null,
+        insertAfterId: target.id,
+      };
+    }
+
+    if (lineItems.length === 0) {
+      const insertIndex = getNextWorkingDropIndex(getTodayDayIndex(days));
+      if (insertIndex == null) return null;
+      return {
+        lineId: normalizedLineId,
+        insertIndex,
+        insertBeforeId: null,
+        insertAfterId: null,
+      };
+    }
+
+    const lastItem = lineItems[lineItems.length - 1];
+    const insertIndex = getNextStartIndex(lastItem, days, lineCapacityById);
+    if (insertIndex == null) return null;
+    return {
+      lineId: normalizedLineId,
+      insertIndex,
+      insertBeforeId: null,
+      insertAfterId: lastItem.id,
+    };
+  };
+
   const handleDragEnd = (event) => {
     if (!persistReady || loading) {
       setActiveDrag(null);
@@ -5012,6 +5146,215 @@ const AssignBoard = () => {
           ),
           'warning'
         );
+        setActiveDrag(null);
+        return;
+      }
+    }
+
+    const overDropMode = String(over?.data?.current?.dropMode || '').trim();
+    if (overDropMode === 'line-row' || overDropMode === 'line-slot') {
+      const placement = resolveLineStripDropPlacement({
+        lineId: over?.data?.current?.lineId,
+        beforeAssignmentId:
+          overDropMode === 'line-slot'
+            ? String(over?.data?.current?.beforeAssignmentId || '').trim() || null
+            : null,
+        afterAssignmentId:
+          overDropMode === 'line-slot'
+            ? String(over?.data?.current?.afterAssignmentId || '').trim() || null
+            : null,
+        excludeAssignmentId: activeId.startsWith('assign-')
+          ? activeId.replace('assign-', '')
+          : null,
+      });
+      if (!placement || placement.insertIndex == null) {
+        setActiveDrag(null);
+        return;
+      }
+
+      if (activeId.startsWith('card-')) {
+        const cardId = activeId.replace('card-', '');
+        const card = cardById.get(cardId);
+        if (!card) {
+          setActiveDrag(null);
+          return;
+        }
+        if (!isCardManualOrderLocked(card)) {
+          showNotification(
+            getUiMessage(
+              'assign.dragRequiresOrderManualLock',
+              languageCode === 'vi'
+                ? 'Chi co the phan cong khi don hang da duoc khoa thu cong.'
+                : languageCode === 'en'
+                  ? 'Scheduling is allowed only when the order is manually locked.'
+                  : '주문이 수동 잠금 상태일 때만 배정할 수 있습니다.',
+              languageCode
+            ),
+            'warning'
+          );
+          setActiveDrag(null);
+          return;
+        }
+        const basis = getCardBasis(card);
+        const stTotalSeconds = resolveCardStTotalSeconds(card);
+        if (basis === 'NONE' || !stTotalSeconds) {
+          setActiveDrag(null);
+          return;
+        }
+        const colors = BASIS_COLORS[basis] || BASIS_COLORS.PT;
+        const newItem = {
+          id: `A-${cardId}-${placement.lineId}-${placement.insertIndex}`,
+          cardId,
+          lineId: placement.lineId,
+          orderNo: card.orderNo ?? `ORD-NEW-${cardId}`,
+          customer: card.customer,
+          label: card.styleName,
+          colorName: card.colorName,
+          gender: card.gender,
+          previewUrl: card.previewUrl,
+          imageUrl: card.imageUrl,
+          thumbnailUrl: card.thumbnailUrl,
+          quantity: card.quantity,
+          originOrderId: getCardOriginId(card) ?? cardId,
+          basis,
+          ctTotalSeconds: null,
+          assignmentCtSnapshot: null,
+          color: colors.color,
+          stripeColor: colors.stripe,
+          stTotalSeconds,
+          startDateKey: days[placement.insertIndex]?.key,
+          endDateKey: days[placement.insertIndex]?.key,
+        };
+
+        if (!placement.insertBeforeId && !placement.insertAfterId) {
+          const planned = tryPlanAssignment({
+            startIndex: placement.insertIndex,
+            stTotalSeconds,
+            lineId: placement.lineId,
+            assignments,
+          });
+          if (planned) {
+            setAssignments((prev) => [
+              ...prev,
+              syncAssignmentDateKeys(
+                {
+                  ...newItem,
+                  ...planned,
+                },
+                startDateRef.current
+              ),
+            ]);
+          }
+          setActiveDrag(null);
+          return;
+        }
+
+        const pushed = tryRebuildLineWithInsert({
+          lineId: placement.lineId,
+          insertIndex: placement.insertIndex,
+          insertAfterId: placement.insertAfterId,
+          insertBeforeId: placement.insertBeforeId,
+          insertItem: newItem,
+          assignments,
+        });
+        if (pushed) {
+          setAssignments(pushed);
+        }
+        setActiveDrag(null);
+        return;
+      }
+
+      if (activeId.startsWith('assign-')) {
+        const assignmentId = activeId.replace('assign-', '');
+        const movingAssignment = assignmentById.get(assignmentId);
+        const progressRow =
+          assignmentProgressById[String(assignmentId || '').trim()] || null;
+        const producedQty = Math.max(
+          0,
+          Number(
+            progressRow?.producedQty ??
+              progressRow?.producedQuantity ??
+              movingAssignment?.producedQty ??
+              movingAssignment?.producedQuantity ??
+              0
+          ) || 0
+        );
+        const sameStartAnchor =
+          String(placement.lineId) === String(movingAssignment?.lineId) &&
+          placement.insertIndex === toSignedInt(movingAssignment?.startIndex, 0) &&
+          !placement.insertBeforeId &&
+          !placement.insertAfterId;
+        if (producedQty > 0 && !sameStartAnchor) {
+          showNotification(
+            getUiMessage(
+              'assign.startedCardStartLocked',
+              'Started assignments cannot change their start position.',
+              languageCode
+            ),
+            'warning'
+          );
+          setActiveDrag(null);
+          return;
+        }
+        setAssignments((prev) => {
+          const target = prev.find((item) => item.id === assignmentId);
+          if (!target || target?.isCompleted) return prev;
+          if (
+            placement.insertBeforeId === assignmentId ||
+            placement.insertAfterId === assignmentId
+          ) {
+            return prev;
+          }
+
+          const filtered = prev.filter((item) => item.id !== assignmentId);
+          const stTotalSeconds = getAssignmentScheduledStTotalSeconds(
+            target,
+            days,
+            lineCapacityById
+          );
+
+          if (!placement.insertBeforeId && !placement.insertAfterId) {
+            if (
+              placement.insertIndex === target.startIndex &&
+              String(placement.lineId) === String(target.lineId)
+            ) {
+              return prev;
+            }
+            const planned = tryPlanAssignment({
+              startIndex: placement.insertIndex,
+              stTotalSeconds,
+              lineId: placement.lineId,
+              assignments: filtered,
+            });
+            if (planned) {
+              return filtered.concat(
+                syncAssignmentDateKeys(
+                  {
+                    ...target,
+                    lineId: placement.lineId,
+                    ...planned,
+                  },
+                  startDateRef.current
+                )
+              );
+            }
+            return prev;
+          }
+
+          const pushed = tryRebuildLineWithInsert({
+            lineId: placement.lineId,
+            insertIndex: placement.insertIndex,
+            insertAfterId: placement.insertAfterId,
+            insertBeforeId: placement.insertBeforeId,
+            insertItem: {
+              ...target,
+              lineId: placement.lineId,
+              stTotalSeconds,
+            },
+            assignments: filtered,
+          });
+          return pushed || prev;
+        });
         setActiveDrag(null);
         return;
       }
@@ -5337,34 +5680,6 @@ const AssignBoard = () => {
       setActiveDrag(null);
     }
   };
-
-  const handleLinkPrev = useCallback((assignmentId) => {
-    setAssignments((prev) => {
-      const target = prev.find((item) => item.id === assignmentId);
-      if (!target) return prev;
-      const lineItems = prev
-        .filter((item) => item.lineId === target.lineId)
-        .slice()
-        .sort((a, b) => getAssignmentStartKey(a) - getAssignmentStartKey(b));
-      const targetIndex = lineItems.findIndex((item) => item.id === assignmentId);
-      if (targetIndex <= 0) return prev;
-      const prevItem = lineItems[targetIndex - 1];
-      const insertIndex = getNextStartIndex(prevItem, days, lineCapacityById);
-      if (insertIndex == null) return prev;
-      const chain = buildConnectedChain(lineItems, targetIndex, days, lineCapacityById);
-      if (chain.length === 0) return prev;
-
-      const moved = tryRebuildLineWithChain({
-        lineId: target.lineId,
-        insertIndex,
-        insertAfterId: prevItem.id,
-        chainItems: chain,
-        assignments: prev,
-      });
-
-      return moved || prev;
-    });
-  }, [days, lineCapacityById]);
 
   const promptSplitQuantity = useCallback((quantity) => {
     if (!quantity || quantity <= 1) return null;
@@ -5863,35 +6178,9 @@ const AssignBoard = () => {
                 flexWrap: 'wrap',
               }}
             >
-              {scheduleViewMode === 'capacity' ? (
-                <Typography variant="subtitle2">
-                  {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
-                </Typography>
-              ) : null}
-              <Typography
-                variant="subtitle2"
-                sx={{ display: scheduleViewMode === 'capacity' ? 'none' : undefined }}
-              >
-                {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
+              <Typography variant="subtitle2">
+                {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
               </Typography>
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                <Button
-                  size="small"
-                  variant={scheduleViewMode === 'capacity' ? 'contained' : 'outlined'}
-                  onClick={() => setScheduleViewMode('capacity')}
-                  disabled={controlsDisabled}
-                >
-                  {getUiMessage('assign.capacityMode', 'Capacity', languageCode)}
-                </Button>
-                <Button
-                  size="small"
-                  variant={scheduleViewMode === 'timeline' ? 'contained' : 'outlined'}
-                  onClick={() => setScheduleViewMode('timeline')}
-                  disabled={controlsDisabled}
-                >
-                  {getUiMessage('assign.timelineMode', 'Timeline', languageCode)}
-                </Button>
-              </Stack>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <CustomDatePicker
                   value={viewStart}
@@ -5926,32 +6215,23 @@ const AssignBoard = () => {
                 </Stack>
               </Box>
             </Box>
-            {scheduleViewMode === 'capacity' ? (
-              <Stack spacing={1}>
-                <Typography variant="caption" color="text.secondary">
-                  {getUiMessage(
-                    'assign.capacitySummaryHint',
-                    'Planned load follows the current board. Actual output and unlinked-log warnings follow saved work logs.',
-                    languageCode
-                  )}
-                </Typography>
-                <LineMonthCapacityBoard
-                  rows={lineMonthCapacityBoardRows}
-                  monthKeys={visibleMonthKeys}
-                  loading={lineMonthCapacityLoading}
-                  languageCode={languageCode}
-                />
-              </Stack>
-            ) : (
-              <ScheduleTimeline
-                lines={lines}
-                days={days}
-                dayCount={dayCount}
-                assignments={assignmentsForRender}
-                onLinkPrev={handleLinkPrev}
+            <Stack spacing={1}>
+              <Typography variant="caption" color="text.secondary">
+                {getUiMessage(
+                  'assign.capacitySummaryHint',
+                  'Planned load follows the current board. Actual output and unlinked-log warnings follow saved work logs.',
+                  languageCode
+                )}
+              </Typography>
+              <LineMonthCapacityBoard
+                rows={lineMonthCapacityBoardRows}
+                monthKeys={visibleMonthKeys}
+                loading={lineMonthCapacityLoading}
+                languageCode={languageCode}
+                onOpenAssignmentDetail={handleOpenAssignmentDetail}
                 onOpenContextMenu={handleContextMenuOpen}
               />
-            )}
+            </Stack>
           </Stack>
           <Box sx={{ minWidth: 0, pt: 0.5 }}>
             <UnassignedCardGroupsPanel

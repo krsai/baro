@@ -429,6 +429,9 @@ export const buildLineMonthCapacityBoardRows = ({
           label: assignment?.label || '',
           orderNo: assignment?.orderNo || '',
           customer: assignment?.customer || '',
+          colorName: assignment?.colorName || '',
+          quantity: Math.max(0, Math.round(Number(assignment?.quantity) || 0)),
+          previewUrl: assignment?.previewUrl || assignment?.imageUrl || assignment?.thumbnailUrl || '',
           startDateKey: normalizeDateKey(assignment?.startDateKey),
           endDateKey: normalizeDateKey(assignment?.endDateKey),
           plannedStTotalSeconds: Math.max(

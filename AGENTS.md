@@ -136,7 +136,8 @@ AT(q) = a*q + b
 - **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 포함되며, 현재는 `sum(WorkRecord.quantity) / (planQuantity × processCount)` 공식으로 계산.
 - **작업기록 총량 집계**: 진행도 계산 함수(`buildAssignmentPlanProgressRows`)에서 plan별 총 작업량 집계가 가능.
 - **라인-월 capacity 보드**: `AssignBoard.jsx` 기본 뷰는 line-month capacity summary이며, 계획 ST는 현재 보드 assignment를 기준으로 월별 분배하고 실제 산출은 `/line-month-capacity`가 WorkLog 기간과 WorkRecord를 기준으로 집계한다.
-- **직렬 타임라인 보조모드**: 기존 `ScheduleTimeline`과 프론트 reflow는 detail/timeline 모드로 유지된다. 기본 계획 판단은 line-month capacity summary를 우선 본다.
+- **가로형 drag/drop 배정 보드**: 미배정 카드와 라인 배정 카드는 모두 한 줄 가로 카드로 표시한다. 라인 summary row에 바로 drop 해서 append 할 수 있고, 확장 영역에서는 카드 사이 slot drop으로 순서를 바꾼다.
+- **직렬 타임라인 비노출**: 기존 `ScheduleTimeline`과 프론트 reflow 코드는 내부 호환을 위해 남아 있을 수 있지만, 운영 화면의 기본 배정 UX로는 사용하지 않는다.
 
 ### 현재 이슈 분류 가드레일 (중요)
 - WorkLog 기간 입력이 존재하는데도 카드가 밀리거나 길이가 비정상 변경되면, 1차 의심 지점은 날짜 저장이 아니라 **렌더/재배치 로직(C+D)** 이다.
