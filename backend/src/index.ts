@@ -16154,6 +16154,681 @@ const resolveNextWorkingDateKeyForAssignmentSchedule = ({
   return cursor;
 };
 
+const DEFAULT_LINE_DAILY_WORK_SECONDS = 8 * 60 * 60;
+const MAX_LINE_MONTH_CAPACITY_MONTH_SPAN = 18;
+
+const resolveAssignmentEndDateKey = (assignment: any): string | null => {
+  const direct = normalizeDateKey(assignment?.endDateKey);
+  if (direct) return direct;
+  const snapshot = resolveNormalizedAssignmentCtSnapshot(assignment);
+  return normalizeDateKey(snapshot?.schedule?.endDateKey);
+};
+
+const resolveStrictWorkLogCoverageStartDate = (source: any): string | null =>
+  normalizeDateKey(source?.coverageStartDate) || null;
+
+const resolveStrictWorkLogCoverageEndDate = (source: any): string | null =>
+  normalizeDateKey(source?.coverageEndDate) || null;
+
+const getMonthStartDateKeyForLineMonthCapacity = (
+  monthKeyInput: string
+): string | null => {
+  const monthKey = normalizeMonthKey(monthKeyInput);
+  return monthKey ? `${monthKey}-01` : null;
+};
+
+const getMonthEndDateKeyForLineMonthCapacity = (
+  monthKeyInput: string
+): string | null => {
+  const monthKey = normalizeMonthKey(monthKeyInput);
+  if (!monthKey) return null;
+  const nextMonthKey = shiftMonthKey(monthKey, 1);
+  if (!nextMonthKey) return null;
+  return (
+    shiftDateKeyByDaysForAssignmentSchedule(`${nextMonthKey}-01`, -1) || null
+  );
+};
+
+const buildMonthKeyRangeForLineMonthCapacity = (
+  monthFromInput: string,
+  monthToInput: string
+): string[] => {
+  const monthFrom = normalizeMonthKey(monthFromInput);
+  const monthTo = normalizeMonthKey(monthToInput);
+  if (!monthFrom || !monthTo || monthFrom > monthTo) return [];
+  const monthKeys: string[] = [];
+  let cursor = monthFrom;
+  for (let i = 0; i < MAX_LINE_MONTH_CAPACITY_MONTH_SPAN; i += 1) {
+    monthKeys.push(cursor);
+    if (cursor === monthTo) break;
+    const shifted = shiftMonthKey(cursor, 1);
+    if (!shifted || shifted === cursor) break;
+    cursor = shifted;
+  }
+  return monthKeys;
+};
+
+const listDateKeysInclusiveForLineMonthCapacity = (
+  startDateKeyInput: string,
+  endDateKeyInput: string
+): string[] => {
+  const startDateKey = normalizeDateKey(startDateKeyInput);
+  const endDateKey = normalizeDateKey(endDateKeyInput);
+  if (!startDateKey || !endDateKey || startDateKey > endDateKey) return [];
+  const dateKeys: string[] = [];
+  let cursor = startDateKey;
+  for (let i = 0; i < 366 * 4; i += 1) {
+    dateKeys.push(cursor);
+    if (cursor === endDateKey) break;
+    const shifted = shiftDateKeyByDaysForAssignmentSchedule(cursor, 1);
+    if (!shifted || shifted === cursor) break;
+    cursor = shifted;
+  }
+  return dateKeys;
+};
+
+const isWorkingDateKeyForLineMonthCapacity = ({
+  dateKey,
+  holidaySet,
+}: {
+  dateKey: string;
+  holidaySet: Set<string>;
+}) => {
+  const date = toUtcDateFromDateKeyForAssignmentSchedule(dateKey);
+  if (!date) return false;
+  return date.getUTCDay() !== 0 && !holidaySet.has(dateKey);
+};
+
+const countWorkingDateKeysInRangeForLineMonthCapacity = ({
+  startDateKey,
+  endDateKey,
+  holidaySet,
+}: {
+  startDateKey: string;
+  endDateKey: string;
+  holidaySet: Set<string>;
+}) =>
+  listDateKeysInclusiveForLineMonthCapacity(startDateKey, endDateKey).reduce(
+    (sum, dateKey) =>
+      isWorkingDateKeyForLineMonthCapacity({ dateKey, holidaySet })
+        ? sum + 1
+        : sum,
+    0
+  );
+
+const countCalendarDateKeysInRangeForLineMonthCapacity = ({
+  startDateKey,
+  endDateKey,
+}: {
+  startDateKey: string;
+  endDateKey: string;
+}) => countDateRangeDaysInclusiveForAssignmentSchedule(startDateKey, endDateKey);
+
+const buildLineMonthCapacityWeightRows = ({
+  coverageStartDate,
+  coverageEndDate,
+  monthKeys,
+  holidaySet,
+}: {
+  coverageStartDate: string;
+  coverageEndDate: string;
+  monthKeys: string[];
+  holidaySet: Set<string>;
+}) => {
+  const rows = monthKeys
+    .map((monthKey) => {
+      const monthStartDateKey =
+        getMonthStartDateKeyForLineMonthCapacity(monthKey);
+      const monthEndDateKey =
+        getMonthEndDateKeyForLineMonthCapacity(monthKey);
+      if (!monthStartDateKey || !monthEndDateKey) return null;
+      const overlapStartDateKey =
+        coverageStartDate > monthStartDateKey
+          ? coverageStartDate
+          : monthStartDateKey;
+      const overlapEndDateKey =
+        coverageEndDate < monthEndDateKey ? coverageEndDate : monthEndDateKey;
+      if (overlapStartDateKey > overlapEndDateKey) return null;
+      const workingDays = countWorkingDateKeysInRangeForLineMonthCapacity({
+        startDateKey: overlapStartDateKey,
+        endDateKey: overlapEndDateKey,
+        holidaySet,
+      });
+      const calendarDays = countCalendarDateKeysInRangeForLineMonthCapacity({
+        startDateKey: overlapStartDateKey,
+        endDateKey: overlapEndDateKey,
+      });
+      return {
+        monthKey,
+        workingDays,
+        calendarDays,
+      };
+    })
+    .filter((item): item is { monthKey: string; workingDays: number; calendarDays: number } =>
+      Boolean(item)
+    );
+
+  const totalWorkingDays = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.workingDays),
+    0
+  );
+  const totalCalendarDays = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.calendarDays),
+    0
+  );
+  const useCalendarFallback =
+    totalWorkingDays <= 0 && totalCalendarDays > 0;
+
+  return rows
+    .map((row) => ({
+      monthKey: row.monthKey,
+      weight: useCalendarFallback
+        ? Math.max(0, row.calendarDays)
+        : Math.max(0, row.workingDays),
+    }))
+    .filter((row) => row.weight > 0);
+};
+
+const distributeIntegerTotalByWeightsForLineMonthCapacity = ({
+  total,
+  weightedRows,
+}: {
+  total: number;
+  weightedRows: Array<{ monthKey: string; weight: number }>;
+}) => {
+  const normalizedTotal = Math.max(0, Math.round(Number(total) || 0));
+  const normalizedRows = weightedRows.filter(
+    (row) =>
+      normalizeMonthKey(row?.monthKey) &&
+      Number.isFinite(Number(row?.weight)) &&
+      Number(row.weight) > 0
+  );
+  if (normalizedTotal <= 0 || normalizedRows.length === 0) return [];
+  const weightSum = normalizedRows.reduce(
+    (sum, row) => sum + Number(row.weight),
+    0
+  );
+  if (!Number.isFinite(weightSum) || weightSum <= 0) return [];
+
+  const rawRows = normalizedRows.map((row, index) => {
+    const rawValue = (normalizedTotal * Number(row.weight)) / weightSum;
+    const flooredValue = Math.floor(rawValue);
+    return {
+      monthKey: row.monthKey,
+      floorValue: flooredValue,
+      fraction: rawValue - flooredValue,
+      order: index,
+    };
+  });
+  let remainder =
+    normalizedTotal -
+    rawRows.reduce((sum, row) => sum + row.floorValue, 0);
+  rawRows
+    .slice()
+    .sort((left, right) => {
+      if (right.fraction !== left.fraction) {
+        return right.fraction - left.fraction;
+      }
+      return left.order - right.order;
+    })
+    .forEach((row) => {
+      if (remainder <= 0) return;
+      row.floorValue += 1;
+      remainder -= 1;
+    });
+
+  return rawRows
+    .map((row) => ({
+      monthKey: row.monthKey,
+      allocatedTotal: row.floorValue,
+    }))
+    .filter((row) => row.allocatedTotal > 0);
+};
+
+const parseLineIdsForLineMonthCapacity = (input: any): number[] =>
+  Array.from(
+    new Set(
+      (resolveOptionalString(input, "") || "")
+        .split(",")
+        .map((item) => toPositiveIntOrNull(item.trim()))
+        .filter((value): value is number => value !== null)
+    )
+  );
+
+const buildLineMonthCapacityRows = async ({
+  orgId,
+  monthFrom,
+  monthTo,
+  lineIds = [],
+}: {
+  orgId: number;
+  monthFrom: string;
+  monthTo: string;
+  lineIds?: number[];
+}) => {
+  const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+  if (monthKeys.length === 0) {
+    return { monthKeys: [], rows: [] };
+  }
+
+  const requestedStartDateKey =
+    getMonthStartDateKeyForLineMonthCapacity(monthKeys[0]!);
+  const requestedEndDateKey =
+    getMonthEndDateKeyForLineMonthCapacity(monthKeys[monthKeys.length - 1]!);
+  if (!requestedStartDateKey || !requestedEndDateKey) {
+    return { monthKeys: [], rows: [] };
+  }
+
+  const requestedLineIds = lineIds.length
+    ? lineIds
+    : (
+        await prisma.line.findMany({
+          where: { orgId },
+          select: { id: true },
+          orderBy: [{ id: "asc" }],
+        })
+      )
+        .map((row) => toPositiveIntOrNull(row?.id))
+        .filter((value): value is number => value !== null);
+
+  if (requestedLineIds.length === 0) {
+    return { monthKeys, rows: [] };
+  }
+
+  const holidayModel = (prisma as any).organizationHoliday;
+  const holidayRows =
+    holidayModel && typeof holidayModel.findMany === "function"
+      ? await holidayModel
+          .findMany({
+            where: { orgId },
+            select: { holidayDate: true },
+          })
+          .catch(() => [])
+      : [];
+  const holidaySet = new Set<string>(
+    ensureArray(holidayRows)
+      .map((row) => normalizeDateKey(row?.holidayDate))
+      .filter((value): value is string => Boolean(value))
+  );
+
+  const requestedMonthKeySet = new Set(monthKeys);
+  const requestedLineIdSet = new Set(requestedLineIds);
+  const lineMonthBaseByKey = new Map<
+    string,
+    {
+      lineId: string;
+      monthKey: string;
+      workingDayCount: number;
+      headcountDayUnits: number;
+      lineMonthlyCapacitySeconds: number;
+      lineMonthlyActualOutputStSeconds: number;
+      orphanWorkRecordCount: number;
+    }
+  >();
+  requestedLineIds.forEach((lineId) => {
+    monthKeys.forEach((monthKey) => {
+      const monthStartDateKey =
+        getMonthStartDateKeyForLineMonthCapacity(monthKey) ||
+        requestedStartDateKey;
+      const monthEndDateKey =
+        getMonthEndDateKeyForLineMonthCapacity(monthKey) || requestedEndDateKey;
+      const workingDayCount = countWorkingDateKeysInRangeForLineMonthCapacity({
+        startDateKey: monthStartDateKey,
+        endDateKey: monthEndDateKey,
+        holidaySet,
+      });
+      lineMonthBaseByKey.set(`${lineId}:${monthKey}`, {
+        lineId: String(lineId),
+        monthKey,
+        workingDayCount,
+        headcountDayUnits: 0,
+        lineMonthlyCapacitySeconds: 0,
+        lineMonthlyActualOutputStSeconds: 0,
+        orphanWorkRecordCount: 0,
+      });
+    });
+  });
+
+  const lineAssignmentRows = await prisma.lineAssignment.findMany({
+    where: {
+      lineId: { in: requestedLineIds },
+      startAt: {
+        lte:
+          toDateValueFromDateKeyForAssignmentSchedule(requestedEndDateKey) ||
+          new Date(),
+      },
+      OR: [
+        { endAt: null },
+        {
+          endAt: {
+            gte:
+              toDateValueFromDateKeyForAssignmentSchedule(requestedStartDateKey) ||
+              new Date(),
+          },
+        },
+      ],
+    },
+    select: {
+      lineId: true,
+      employeeId: true,
+      startAt: true,
+      endAt: true,
+      employee: {
+        select: {
+          joinedAt: true,
+          leftAt: true,
+        },
+      },
+    },
+  });
+
+  const employeeIdsByLineDateKey = new Map<string, Set<number>>();
+  lineAssignmentRows.forEach((row) => {
+    const lineId = toPositiveIntOrNull(row?.lineId);
+    const employeeId = toPositiveIntOrNull(row?.employeeId);
+    if (!lineId || !employeeId || !requestedLineIdSet.has(lineId)) return;
+    const assignmentStartDateKey = toDateKeyInTimeZone(
+      row?.startAt,
+      BUSINESS_TIME_ZONE
+    );
+    const assignmentEndDateKey =
+      toDateKeyInTimeZone(row?.endAt, BUSINESS_TIME_ZONE) || requestedEndDateKey;
+    const joinedDateKey = toDateKeyInTimeZone(
+      row?.employee?.joinedAt,
+      BUSINESS_TIME_ZONE
+    );
+    const leftDateKey =
+      toDateKeyInTimeZone(row?.employee?.leftAt, BUSINESS_TIME_ZONE) ||
+      requestedEndDateKey;
+
+    const activeStartDateKey = [
+      requestedStartDateKey,
+      assignmentStartDateKey,
+      joinedDateKey || null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right))
+      .pop();
+    const activeEndDateKey = [
+      requestedEndDateKey,
+      assignmentEndDateKey,
+      leftDateKey || null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right))[0];
+
+    if (!activeStartDateKey || !activeEndDateKey || activeStartDateKey > activeEndDateKey) {
+      return;
+    }
+
+    listDateKeysInclusiveForLineMonthCapacity(
+      activeStartDateKey,
+      activeEndDateKey
+    ).forEach((dateKey) => {
+      if (
+        !isWorkingDateKeyForLineMonthCapacity({
+          dateKey,
+          holidaySet,
+        })
+      ) {
+        return;
+      }
+      const monthKey = normalizeMonthKey(dateKey.slice(0, 7));
+      if (!requestedMonthKeySet.has(monthKey)) return;
+      const compositeKey = `${lineId}:${dateKey}`;
+      const current = employeeIdsByLineDateKey.get(compositeKey) || new Set<number>();
+      current.add(employeeId);
+      employeeIdsByLineDateKey.set(compositeKey, current);
+    });
+  });
+
+  employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
+    const [lineIdText, dateKey] = compositeKey.split(":");
+    const lineId = toPositiveIntOrNull(lineIdText);
+    const monthKey = normalizeMonthKey(dateKey?.slice(0, 7));
+    if (!lineId || !monthKey) return;
+    const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+    if (!target) return;
+    const dayHeadcount = employeeIds.size;
+    target.headcountDayUnits += dayHeadcount;
+    target.lineMonthlyCapacitySeconds +=
+      dayHeadcount * DEFAULT_LINE_DAILY_WORK_SECONDS;
+  });
+
+  const plans = await findAssignmentPlansWithSelectFallback({
+    where: {
+      orgId,
+      lineId: { in: requestedLineIds },
+    },
+    orderBy: [{ lineId: "asc" }, { id: "asc" }],
+    selectAttempts: [
+      ASSIGNMENT_PLAN_SELECT_WITH_SCHEDULE_REALIZATION,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE,
+      ASSIGNMENT_PLAN_SELECT_CORE,
+      ASSIGNMENT_PLAN_SELECT_WITH_CLOSE_LEGACY,
+      ASSIGNMENT_PLAN_SELECT_LEGACY,
+    ],
+    context: "buildLineMonthCapacityRows",
+  });
+  const stateAssignmentsByExternalId = new Map<string, any>();
+  const workRows = await loadAssignmentPlanProgressWorkRows({
+    orgId,
+    plans,
+    stateAssignmentsByExternalId,
+    context: "buildLineMonthCapacityRows",
+  });
+  const workRowsByPlanId = workRows.reduce((map, row) => {
+    const planId = toPositiveIntOrNull(row?.assignmentPlanId);
+    if (!planId) return map;
+    const bucket = map.get(planId) || [];
+    bucket.push(row);
+    map.set(planId, bucket);
+    return map;
+  }, new Map<number, any[]>());
+
+  plans.forEach((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    const lineId = toPositiveIntOrNull(plan?.lineId);
+    if (!planId || !lineId || !requestedLineIdSet.has(lineId)) return;
+    const plannedQuantity = resolveAssignmentQuantity(plan);
+    const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    if (
+      plannedQuantity == null ||
+      plannedQuantity <= 0 ||
+      plannedStTotalSeconds == null ||
+      plannedStTotalSeconds <= 0
+    ) {
+      return;
+    }
+
+    const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
+    const snapshot = resolveNormalizedAssignmentCtSnapshot(plan);
+    const processCountFromSnapshot =
+      Array.isArray(snapshot?.processes) && snapshot.processes.length > 0
+        ? snapshot.processes.length
+        : null;
+    const monthlyProcessTotalsByMonthKey = new Map<string, Map<string, number>>();
+    const monthlyTotalDoneByMonthKey = new Map<string, number>();
+    const processKeySet = new Set<string>();
+
+    ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
+      const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
+      if (quantity <= 0) return;
+      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
+      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+      if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
+        return;
+      }
+      const monthWeightRows = buildLineMonthCapacityWeightRows({
+        coverageStartDate,
+        coverageEndDate,
+        monthKeys,
+        holidaySet,
+      });
+      const monthAllocations =
+        distributeIntegerTotalByWeightsForLineMonthCapacity({
+          total: quantity,
+          weightedRows: monthWeightRows,
+        });
+      if (monthAllocations.length === 0) return;
+      const processKey =
+        resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
+      processKeySet.add(processKey);
+      monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
+        if (!requestedMonthKeySet.has(monthKey) || allocatedTotal <= 0) return;
+        monthlyTotalDoneByMonthKey.set(
+          monthKey,
+          (monthlyTotalDoneByMonthKey.get(monthKey) || 0) + allocatedTotal
+        );
+        const processTotalsByKey =
+          monthlyProcessTotalsByMonthKey.get(monthKey) || new Map<string, number>();
+        processTotalsByKey.set(
+          processKey,
+          (processTotalsByKey.get(processKey) || 0) + allocatedTotal
+        );
+        monthlyProcessTotalsByMonthKey.set(monthKey, processTotalsByKey);
+      });
+    });
+
+    const processCountFromRecords =
+      processKeySet.size > 0 ? processKeySet.size : null;
+    const processCount =
+      processCountFromSnapshot ?? processCountFromRecords;
+    const totalExpected =
+      plannedQuantity != null && processCount != null && processCount > 0
+        ? plannedQuantity * processCount
+        : null;
+    const cumulativeProcessTotalsByKey = new Map<string, number>();
+    let cumulativeTotalDone = 0;
+    let previousCompletedStTotalSeconds = 0;
+
+    monthKeys.forEach((monthKey) => {
+      cumulativeTotalDone +=
+        Math.max(0, Math.round(Number(monthlyTotalDoneByMonthKey.get(monthKey) || 0)));
+      const monthlyProcessTotals =
+        monthlyProcessTotalsByMonthKey.get(monthKey) || new Map<string, number>();
+      monthlyProcessTotals.forEach((value, processKey) => {
+        cumulativeProcessTotalsByKey.set(
+          processKey,
+          (cumulativeProcessTotalsByKey.get(processKey) || 0) +
+            Math.max(0, Math.round(Number(value) || 0))
+        );
+      });
+
+      const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
+        processTotalsByKey: cumulativeProcessTotalsByKey,
+        processKeyGroups: requiredProcessGroups,
+      });
+      const producedRatio =
+        plannedQuantity > 0
+          ? Math.max(
+              0,
+              Math.min(1, producedQuantity / plannedQuantity)
+            )
+          : null;
+      const operationalProgressRatio =
+        totalExpected != null && totalExpected > 0
+          ? Math.max(0, Math.min(1, cumulativeTotalDone / totalExpected))
+          : null;
+      const progressRatio =
+        producedRatio != null && operationalProgressRatio != null
+          ? Math.min(producedRatio, operationalProgressRatio)
+          : producedRatio ?? operationalProgressRatio ?? null;
+      const completedStTotalSeconds =
+        progressRatio == null
+          ? previousCompletedStTotalSeconds
+          : Math.max(
+              0,
+              Math.round(plannedStTotalSeconds * progressRatio)
+            );
+      const monthlyActualOutputStSeconds = Math.max(
+        0,
+        completedStTotalSeconds - previousCompletedStTotalSeconds
+      );
+      previousCompletedStTotalSeconds = completedStTotalSeconds;
+      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+      if (!target) return;
+      target.lineMonthlyActualOutputStSeconds += monthlyActualOutputStSeconds;
+    });
+  });
+
+  let orphanRows: any[] = [];
+  try {
+    orphanRows = await prisma.workRecord.findMany({
+      where: {
+        orgId,
+        assignmentPlanId: null,
+        lineId: { in: requestedLineIds },
+      },
+      select: {
+        lineId: true,
+        workLog: {
+          select: {
+            coverageStartDate: true,
+            coverageEndDate: true,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    if (!isWorkLogCoverageMissingColumnError(error)) throw error;
+    orphanRows = [];
+  }
+
+  orphanRows.forEach((record) => {
+    const lineId = toPositiveIntOrNull(record?.lineId);
+    if (!lineId || !requestedLineIdSet.has(lineId)) return;
+    const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
+    const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+    if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
+      return;
+    }
+    buildLineMonthCapacityWeightRows({
+      coverageStartDate,
+      coverageEndDate,
+      monthKeys,
+      holidaySet,
+    }).forEach(({ monthKey }) => {
+      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+      if (!target) return;
+      target.orphanWorkRecordCount += 1;
+    });
+  });
+
+  const rows = Array.from(lineMonthBaseByKey.values())
+    .sort((left, right) => {
+      const lineCompare = Number(left.lineId) - Number(right.lineId);
+      if (lineCompare !== 0) return lineCompare;
+      return left.monthKey.localeCompare(right.monthKey);
+    })
+    .map((row) => {
+      const averageHeadcount =
+        row.workingDayCount > 0
+          ? Math.round((row.headcountDayUnits / row.workingDayCount) * 10) / 10
+          : 0;
+      const actualOutputPercent =
+        row.lineMonthlyCapacitySeconds > 0
+          ? Math.round(
+              (row.lineMonthlyActualOutputStSeconds /
+                row.lineMonthlyCapacitySeconds) *
+                1000
+            ) / 10
+          : null;
+      return {
+        lineId: row.lineId,
+        monthKey: row.monthKey,
+        workingDayCount: row.workingDayCount,
+        averageHeadcount,
+        lineMonthlyCapacitySeconds: row.lineMonthlyCapacitySeconds,
+        lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
+        actualOutputPercent,
+        orphanWorkRecordCount: row.orphanWorkRecordCount,
+      };
+    });
+
+  return { monthKeys, rows };
+};
+
 const buildAssignmentPlanProgressRows = async (
   orgId: number,
   externalIds: string[] = []
@@ -17332,6 +18007,44 @@ app.get("/assignment-plan-progress", async (req, res) => {
 
   const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
   res.json(rows);
+});
+
+app.get("/line-month-capacity", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) {
+    return res.status(404).json({ ok: false, error: "organization not found" });
+  }
+
+  const todayMonthKey = todayDateKey().slice(0, 7);
+  const monthFrom =
+    normalizeMonthKey(req.query.monthFrom) ||
+    normalizeMonthKey(req.query.monthKey) ||
+    todayMonthKey;
+  const monthTo =
+    normalizeMonthKey(req.query.monthTo) || monthFrom;
+  if (!monthFrom || !monthTo || monthFrom > monthTo) {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid month range",
+    });
+  }
+
+  const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+  if (monthKeys.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "month range exceeds supported span",
+    });
+  }
+
+  const lineIds = parseLineIdsForLineMonthCapacity(req.query.lineIds);
+  const payload = await buildLineMonthCapacityRows({
+    orgId: organization.id,
+    monthFrom,
+    monthTo,
+    lineIds,
+  });
+  res.json(payload);
 });
 
 app.get("/assignment-plans/:externalId/qc-history", async (req, res) => {

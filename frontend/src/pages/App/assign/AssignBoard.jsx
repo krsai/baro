@@ -39,6 +39,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getGenderLabel } from '../../../constants/productAttributes';
 import StyleCard from './components/StyleCard';
+import LineMonthCapacityBoard from './components/LineMonthCapacityBoard';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import {
   ASSIGN_RECOMPUTE_RANGE_BUFFER_DAYS,
@@ -87,6 +88,13 @@ import {
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
 import { todayDateKey as getTodayDateKey } from '../../../utils/dateKey.mjs';
+import {
+  buildLineMonthCapacityBoardRows,
+  buildMonthKeyRange,
+  normalizeDateKey as normalizeCapacityDateKey,
+  normalizeMonthKey as normalizeCapacityMonthKey,
+  resolvePlanningMonthKeys,
+} from './utils/lineMonthCapacity';
 
 const { useDeferredValue } = React;
 const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
@@ -2441,6 +2449,9 @@ const AssignBoard = () => {
   const [lines, setLines] = useState(() => initialLines);
   const [assignments, setAssignments] = useState(initialAssignments);
   const [assignmentProgressById, setAssignmentProgressById] = useState({});
+  const [lineMonthCapacityRows, setLineMonthCapacityRows] = useState([]);
+  const [lineMonthCapacityLoading, setLineMonthCapacityLoading] = useState(false);
+  const [scheduleViewMode, setScheduleViewMode] = useState('capacity');
   const [activeDrag, setActiveDrag] = useState(null);
   const [loading, setLoading] = useState(false);
   const [persisting, setPersisting] = useState(false);
@@ -4289,6 +4300,124 @@ const AssignBoard = () => {
     lineCapacityById,
     todayDateKey,
   ]);
+  const visibleMonthKeys = useMemo(() => {
+    const startMonthKey = normalizeCapacityMonthKey(buildDateKey(viewStart).slice(0, 7));
+    const endMonthKey = normalizeCapacityMonthKey(buildDateKey(viewEnd).slice(0, 7));
+    return buildMonthKeyRange(startMonthKey, endMonthKey);
+  }, [viewEnd, viewStart]);
+  const assignmentsForCapacityBoard = useMemo(
+    () =>
+      applySchedulerProgressToAssignments(assignments, {
+        useCompletedRenderRange: false,
+        daysOverride: days,
+      }).map((item) => {
+        const startIndex = Math.max(0, toSignedInt(item?.startIndex, 0));
+        const endIndex = Math.max(startIndex, toSignedInt(item?.endIndex, startIndex));
+        const fallbackStartDateKey =
+          typeof days[startIndex]?.key === 'string' ? days[startIndex].key : '';
+        const fallbackEndDateKey =
+          typeof days[endIndex]?.key === 'string' ? days[endIndex].key : fallbackStartDateKey;
+        return {
+          ...item,
+          startDateKey:
+            normalizeCapacityDateKey(item?.startDateKey) || fallbackStartDateKey || null,
+          endDateKey:
+            normalizeCapacityDateKey(item?.endDateKey) || fallbackEndDateKey || null,
+          plannedStTotalSeconds:
+            Number(item?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
+        };
+      }),
+    [applySchedulerProgressToAssignments, assignments, days]
+  );
+  const planningMonthKeys = useMemo(
+    () =>
+      resolvePlanningMonthKeys({
+        assignments: assignmentsForCapacityBoard,
+        visibleMonthKeys,
+      }),
+    [assignmentsForCapacityBoard, visibleMonthKeys]
+  );
+  const planningMonthKeysKey = useMemo(
+    () => planningMonthKeys.join(','),
+    [planningMonthKeys]
+  );
+  const lineIdsKey = useMemo(
+    () =>
+      lines
+        .map((line) => String(line?.id || '').trim())
+        .filter(Boolean)
+        .join(','),
+    [lines]
+  );
+  useEffect(() => {
+    const normalizedOrgId = Number(activeOrgId);
+    if (
+      !Number.isFinite(normalizedOrgId) ||
+      normalizedOrgId <= 0 ||
+      !planningMonthKeysKey ||
+      !lineIdsKey
+    ) {
+      setLineMonthCapacityRows([]);
+      setLineMonthCapacityLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const abortController = new AbortController();
+    setLineMonthCapacityLoading(true);
+    requestJSON(
+      '/line-month-capacity' +
+        buildQueryString({
+          orgId: normalizedOrgId,
+          monthFrom: planningMonthKeys[0],
+          monthTo: planningMonthKeys[planningMonthKeys.length - 1],
+          lineIds: lineIdsKey,
+        }),
+      {
+        forceRefresh: true,
+        skipGlobalLoading: true,
+        signal: abortController.signal,
+      }
+    )
+      .then((payload) => {
+        if (cancelled) return;
+        setLineMonthCapacityRows(Array.isArray(payload?.rows) ? payload.rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLineMonthCapacityRows([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLineMonthCapacityLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [activeOrgId, lineIdsKey, planningMonthKeys, planningMonthKeysKey]);
+  const lineMonthCapacityBoardRows = useMemo(
+    () =>
+      buildLineMonthCapacityBoardRows({
+        lines,
+        assignments: assignmentsForCapacityBoard,
+        planningMonthKeys,
+        visibleMonthKeys,
+        holidaySet,
+        backendRows: lineMonthCapacityRows,
+      }),
+    [
+      assignmentsForCapacityBoard,
+      holidaySet,
+      lineMonthCapacityRows,
+      lines,
+      planningMonthKeys,
+      visibleMonthKeys,
+    ]
+  );
 
   const unassignedCards = useMemo(
     () => cards.filter((card) => !assignedCardIds.has(card.id)),
@@ -5752,11 +5881,45 @@ const AssignBoard = () => {
         ) : null}
         <Stack spacing={2.5} sx={{ minWidth: 0 }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="subtitle2">
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 1,
+                flexWrap: 'wrap',
+              }}
+            >
+              {scheduleViewMode === 'capacity' ? (
+                <Typography variant="subtitle2">
+                  {getUiMessage('assign.lineCapacityBoard', 'Line Capacity', languageCode)}
+                </Typography>
+              ) : null}
+              <Typography
+                variant="subtitle2"
+                sx={{ display: scheduleViewMode === 'capacity' ? 'none' : undefined }}
+              >
                 {getUiMessage('assign.lineTimeline', '라인 타임라인', languageCode)}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant={scheduleViewMode === 'capacity' ? 'contained' : 'outlined'}
+                  onClick={() => setScheduleViewMode('capacity')}
+                  disabled={controlsDisabled}
+                >
+                  {getUiMessage('assign.capacityMode', 'Capacity', languageCode)}
+                </Button>
+                <Button
+                  size="small"
+                  variant={scheduleViewMode === 'timeline' ? 'contained' : 'outlined'}
+                  onClick={() => setScheduleViewMode('timeline')}
+                  disabled={controlsDisabled}
+                >
+                  {getUiMessage('assign.timelineMode', 'Timeline', languageCode)}
+                </Button>
+              </Stack>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
                 <CustomDatePicker
                   value={viewStart}
                   onChange={(val) => { if (val?.isValid?.()) handleViewStartChange(val.toDate()); }}
@@ -5790,14 +5953,32 @@ const AssignBoard = () => {
                 </Stack>
               </Box>
             </Box>
-            <ScheduleTimeline
-              lines={lines}
-              days={days}
-              dayCount={dayCount}
-              assignments={assignmentsForRender}
-              onLinkPrev={handleLinkPrev}
-              onOpenContextMenu={handleContextMenuOpen}
-            />
+            {scheduleViewMode === 'capacity' ? (
+              <Stack spacing={1}>
+                <Typography variant="caption" color="text.secondary">
+                  {getUiMessage(
+                    'assign.capacitySummaryHint',
+                    'Planned load follows the current board. Actual output and unlinked-log warnings follow saved work logs.',
+                    languageCode
+                  )}
+                </Typography>
+                <LineMonthCapacityBoard
+                  rows={lineMonthCapacityBoardRows}
+                  monthKeys={visibleMonthKeys}
+                  loading={lineMonthCapacityLoading}
+                  languageCode={languageCode}
+                />
+              </Stack>
+            ) : (
+              <ScheduleTimeline
+                lines={lines}
+                days={days}
+                dayCount={dayCount}
+                assignments={assignmentsForRender}
+                onLinkPrev={handleLinkPrev}
+                onOpenContextMenu={handleContextMenuOpen}
+              />
+            )}
           </Stack>
           <Box sx={{ minWidth: 0, pt: 0.5 }}>
             <UnassignedCardGroupsPanel
