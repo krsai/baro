@@ -40,6 +40,21 @@ const formatHoursLabel = (seconds, fallback = '-') => {
   const hours = Math.round((parsed / 3600) * 10) / 10;
   return `${formatNumberWithCommas(hours, { fallback: '0', maximumFractionDigits: 1 })}h`;
 };
+
+const formatDateKeyLabel = (dateKey = '', fallback = '-') => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return fallback;
+  return dateKey;
+};
+
+const formatDaysLabel = (value, fallback = '-') => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return `${formatNumberWithCommas(Math.round(parsed * 10) / 10, {
+    fallback: '0',
+    maximumFractionDigits: 1,
+  })}d`;
+};
+
 const formatQuantityLabel = (quantity, languageCode = 'en') =>
   getUiMessage('assign.quantityCompact', 'Qty {quantity}', languageCode, {
     quantity: formatNumberWithCommas(Math.max(0, Number(quantity) || 0), {
@@ -61,6 +76,11 @@ const formatHoursChipLabel = (
 ) =>
   getUiMessage(key, fallback, languageCode, {
     hours: formatHoursLabel(seconds, '-'),
+  });
+
+const formatDaysChipLabel = (key, fallback, days, languageCode = 'en') =>
+  getUiMessage(key, fallback, languageCode, {
+    days: formatDaysLabel(days, '-'),
   });
 
 const resolvePlanTone = (plannedLoadPercent) => {
@@ -172,20 +192,65 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   onOpenDetail,
   onOpenContextMenu,
 }) {
+  const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
+  const isCompleted = queueStatus === 'completed';
+  const isReadyToComplete = queueStatus === 'ready_to_complete';
+  const isLocked = isCompleted || isReadyToComplete;
   const chips = [
-    {
-      label: formatProgressChipLabel(assignment.progressPercent, languageCode),
-      variant: 'outlined',
-    },
-    {
-      label: formatHoursChipLabel(
-        'assign.remainingHoursCompact',
-        'Remain {hours}',
-        assignment.remainingStTotalSeconds,
-        languageCode
-      ),
-      variant: 'outlined',
-    },
+    isCompleted
+      ? {
+          label: getUiMessage(
+            'assign.completedStatusCompact',
+            'Completed',
+            languageCode
+          ),
+          variant: 'outlined',
+          color: 'success',
+        }
+      : isReadyToComplete
+        ? {
+            label: getUiMessage(
+              'assign.readyStatusCompact',
+              'Work done',
+              languageCode
+            ),
+            variant: 'outlined',
+            color: 'warning',
+          }
+      : {
+          label: formatProgressChipLabel(assignment.progressPercent, languageCode),
+          variant: 'outlined',
+        },
+    !isLocked
+      ? {
+          label: formatHoursChipLabel(
+            'assign.remainingHoursCompact',
+            'Remain {hours}',
+            assignment.remainingStTotalSeconds,
+            languageCode
+          ),
+          variant: 'outlined',
+        }
+      : null,
+    !isLocked
+      ? {
+          label: formatDaysChipLabel(
+            'assign.etaDaysCompact',
+            'ETA {days}',
+            assignment.estimatedRemainingWorkDays,
+            languageCode
+          ),
+          variant: 'outlined',
+        }
+      : null,
+    !isLocked && Number(assignment?.queuePosition) > 0
+      ? {
+          label: getUiMessage('assign.queuePositionCompact', 'Q{position}', languageCode, {
+            position: assignment.queuePosition,
+          }),
+          variant: 'outlined',
+        }
+      : null,
   ];
   if (Number(assignment?.quantity) > 0) {
     chips.push({
@@ -193,26 +258,66 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       variant: 'outlined',
     });
   }
-  const accentColor = assignment.isCompleted ? '#15803D' : '#2563EB';
+  const footer = isCompleted
+    ? assignment.completedAt
+      ? getUiMessage(
+          assignment.completionDateIsEstimated
+            ? 'assign.completedEstimatedAtCompact'
+            : 'assign.completedAtCompact',
+          assignment.completionDateIsEstimated
+            ? 'Done est. {date}'
+            : 'Done {date}',
+          languageCode,
+          {
+            date: formatDateKeyLabel(assignment.completedAt, '-'),
+          }
+        )
+      : ''
+    : isReadyToComplete
+      ? assignment.completedAt
+        ? getUiMessage(
+            assignment.completionDateIsEstimated
+              ? 'assign.workDoneEstimatedAtCompact'
+              : 'assign.workDoneAtCompact',
+            assignment.completionDateIsEstimated
+              ? 'Work done est. {date}'
+              : 'Work done {date}',
+            languageCode,
+            {
+              date: formatDateKeyLabel(assignment.completedAt, '-'),
+            }
+          )
+        : getUiMessage(
+            'assign.awaitingCompletionCompact',
+            'Awaiting completion',
+            languageCode
+          )
+      : assignment.forecastEndDateKey
+        ? getUiMessage('assign.forecastEndCompact', 'Finish {date}', languageCode, {
+            date: formatDateKeyLabel(assignment.forecastEndDateKey, '-'),
+          })
+        : getUiMessage('assign.etaUnavailableCompact', 'ETA unavailable', languageCode);
+  const accentColor = isCompleted ? '#15803D' : isReadyToComplete ? '#D97706' : '#2563EB';
+  const backgroundColor = isCompleted ? '#F3F4F6' : isReadyToComplete ? '#FFF7ED' : '#FFFFFF';
 
   return (
     <CompactBoardCard
       draggableId={`assign-${assignment.id}`}
-      droppableId={assignment.isCompleted ? null : `assign-drop-${assignment.id}`}
+      droppableId={isLocked ? null : `assign-drop-${assignment.id}`}
       droppableData={
-        assignment.isCompleted
+        isLocked
           ? null
           : { dropId: `assign-drop-${assignment.id}`, dropMode: 'assignment-card' }
       }
-      disabled={assignment.isCompleted}
+      disabled={isLocked}
       title={assignment.label || '-'}
       subtitle={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
       meta={[assignment.customer, assignment.colorName].filter(Boolean).join(' / ')}
-      chips={chips}
-      footer={(assignment.startDateKey || '-') + ' ~ ' + (assignment.endDateKey || '-')}
+      chips={chips.filter(Boolean)}
+      footer={footer}
       previewUrl={assignment.previewUrl || ''}
       accentColor={accentColor}
-      backgroundColor={assignment.isCompleted ? '#F3F4F6' : '#FFFFFF'}
+      backgroundColor={backgroundColor}
       onClick={() => onOpenDetail?.(assignment.id)}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -304,6 +409,75 @@ const LineMonthCapacityBoard = ({
                             {getUiMessage('assign.headcount', '{count} ppl', languageCode, {
                               count: row.headcount || 0,
                             })}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {getUiMessage(
+                              'assign.queueCountCompact',
+                              '{count} queued',
+                              languageCode,
+                              { count: row.activeAssignmentCount || 0 }
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {getUiMessage(
+                              'assign.completedCountCompact',
+                              '{count} completed',
+                              languageCode,
+                              { count: row.completedAssignmentCount || 0 }
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {getUiMessage(
+                              'assign.readyCountCompact',
+                              '{count} awaiting completion',
+                              languageCode,
+                              { count: row.readyToCompleteAssignmentCount || 0 }
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {getUiMessage(
+                              'assign.remainingLoadCompact',
+                              'Remain {hours}',
+                              languageCode,
+                              {
+                                hours: formatHoursLabel(
+                                  row.totalRemainingStTotalSeconds,
+                                  '-'
+                                ),
+                              }
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {getUiMessage(
+                              'assign.backlogDaysCompact',
+                              'Backlog {days}',
+                              languageCode,
+                              {
+                                days: formatDaysLabel(row.queueBacklogDays, '-'),
+                              }
+                            )}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {row.lineFreeDateKey
+                              ? getUiMessage(
+                                  'assign.lineFreeByCompact',
+                                  'Free by {date}',
+                                  languageCode,
+                                  {
+                                    date: formatDateKeyLabel(row.lineFreeDateKey, '-'),
+                                  }
+                                )
+                              : Number(row.activeAssignmentCount) > 0
+                                ? getUiMessage(
+                                    'assign.etaUnavailableCompact',
+                                    'ETA unavailable',
+                                    languageCode
+                                  )
+                              : getUiMessage(
+                                  'assign.lineFreeNowCompact',
+                                  'Free now',
+                                  languageCode
+                                )}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {getUiMessage(
@@ -436,20 +610,20 @@ const LineMonthCapacityBoard = ({
                         <Box sx={{ px: 2, py: 1.5, backgroundColor: '#FCFCFD' }}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                             {getUiMessage(
-                              'assign.lineAssignments',
-                              'Assignments on this line',
+                              'assign.activeAssignmentsHeader',
+                              'Queued on this line',
                               languageCode
                             )}
                           </Typography>
                           <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'stretch' }}>
-                            {row.assignments.length > 0 ? (
+                            {row.queuedAssignments.length > 0 ? (
                               <>
                                 <LineAssignmentDropSlot
                                   lineId={row.lineId}
-                                  beforeAssignmentId={row.assignments[0]?.id || null}
+                                  beforeAssignmentId={row.queuedAssignments[0]?.id || null}
                                   languageCode={languageCode}
                                 />
-                                {row.assignments.map((assignment) => (
+                                {row.queuedAssignments.map((assignment) => (
                                   <React.Fragment key={assignment.id || `${row.lineId}:${assignment.label}`}>
                                     <AssignmentDetailCard
                                       assignment={assignment}
@@ -473,12 +647,44 @@ const LineMonthCapacityBoard = ({
                                 />
                                 <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                                   {getUiMessage(
-                                    'assign.noAssignmentsInLine',
-                                    'No assignments in this line.',
+                                    'assign.noQueuedAssignmentsInLine',
+                                    'No queued assignments in this line.',
                                     languageCode
                                   )}
                                 </Typography>
                               </>
+                            )}
+                          </Stack>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block', mt: 1.5, mb: 1 }}
+                          >
+                            {getUiMessage(
+                              'assign.finishedAssignmentsHeader',
+                              'Finished on this line',
+                              languageCode
+                            )}
+                          </Typography>
+                          <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5, alignItems: 'stretch' }}>
+                            {row.completedAssignments.length > 0 ? (
+                              row.completedAssignments.map((assignment) => (
+                                <AssignmentDetailCard
+                                  key={assignment.id || `${row.lineId}:${assignment.label}:completed`}
+                                  assignment={assignment}
+                                  languageCode={languageCode}
+                                  onOpenDetail={onOpenAssignmentDetail}
+                                  onOpenContextMenu={onOpenContextMenu}
+                                />
+                              ))
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                                {getUiMessage(
+                                  'assign.noFinishedAssignmentsInLine',
+                                  'No finished assignments in this line.',
+                                  languageCode
+                                )}
+                              </Typography>
                             )}
                           </Stack>
                         </Box>

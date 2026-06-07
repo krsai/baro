@@ -7435,11 +7435,6 @@ const translateWorkLogErrorMessage = (error: any) => {
     return `Work log row ${displayIndex} is missing an assignment link. Select an assignment card and save again.`;
   }
   if (!text) return "작업 기록 처리 중 오류가 발생했습니다.";
-
-  if (missingAssignmentPlanMatch) {
-    const displayIndex = Number(missingAssignmentPlanMatch[1]) + 1;
-    return `${displayIndex}踰덉㎏ ?묒뾽 湲곕줉???諛곗젙移대뱶 ?곌껐???놁뒿?덈떎. 諛곗젙移대뱶瑜??ㅼ떆 ?좏깮??二쇱꽭??`;
-  }
   const invalidWorkerMatch = text.match(/^records\[(\d+)\]\.workerId is required$/);
   if (invalidWorkerMatch) {
     const displayIndex = Number(invalidWorkerMatch[1]) + 1;

@@ -233,6 +233,192 @@ const roundPercent = (numerator, denominator) => {
   return Math.round((Number(numerator || 0) / safeDenominator) * 1000) / 10;
 };
 
+const resolveLineDailyCapacitySeconds = (line) => {
+  const explicitDailyCapacity = Number(line?.dailyCapacitySeconds);
+  if (Number.isFinite(explicitDailyCapacity) && explicitDailyCapacity > 0) {
+    return Math.round(explicitDailyCapacity);
+  }
+  const headcount = Math.max(0, Math.round(Number(line?.headcount) || 0));
+  return headcount > 0 ? headcount * 8 * 60 * 60 : 0;
+};
+
+const resolveWorkingDateCursor = (
+  dateKeyInput,
+  holidaySet = new Set(),
+  { allowSameDay = true } = {}
+) => {
+  let cursor = normalizeDateKey(dateKeyInput);
+  if (!cursor) return '';
+  if (allowSameDay && isWorkingDateKey(cursor, holidaySet)) return cursor;
+  for (let index = 0; index < 366 * 3; index += 1) {
+    cursor = shiftDateKeyByDays(cursor, 1);
+    if (!cursor) return '';
+    if (isWorkingDateKey(cursor, holidaySet)) return cursor;
+  }
+  return '';
+};
+
+const addWorkingDaysToDateKey = (dateKeyInput, workingDaysToAdd, holidaySet = new Set()) => {
+  const startDateKey = resolveWorkingDateCursor(dateKeyInput, holidaySet, {
+    allowSameDay: true,
+  });
+  if (!startDateKey) return '';
+  let remaining = Math.max(0, Math.trunc(workingDaysToAdd));
+  let cursor = startDateKey;
+  while (remaining > 0) {
+    cursor = resolveWorkingDateCursor(shiftDateKeyByDays(cursor, 1), holidaySet, {
+      allowSameDay: true,
+    });
+    if (!cursor) return '';
+    remaining -= 1;
+  }
+  return cursor;
+};
+
+const roundDaysEstimate = (seconds, dailyCapacitySeconds) => {
+  const normalizedSeconds = Math.max(0, Number(seconds) || 0);
+  const normalizedDailyCapacity = Math.max(0, Number(dailyCapacitySeconds) || 0);
+  if (normalizedSeconds <= 0 || normalizedDailyCapacity <= 0) return 0;
+  return Math.round((normalizedSeconds / normalizedDailyCapacity) * 10) / 10;
+};
+
+const buildLineQueueForecast = ({
+  assignments,
+  line,
+  holidaySet,
+  todayDateKey,
+}) => {
+  const normalizedTodayDateKey =
+    normalizeDateKey(todayDateKey) || new Date().toISOString().slice(0, 10);
+  const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
+  const queuedAssignments = [];
+  const completedAssignments = [];
+  let queueCursorDateKey = resolveWorkingDateCursor(normalizedTodayDateKey, holidaySet, {
+    allowSameDay: true,
+  });
+  let lastForecastEndDateKey = '';
+  let queuedCount = 0;
+  let completedCount = 0;
+  let readyToCompleteCount = 0;
+  let finishedCount = 0;
+
+  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
+    const rawRemainingStTotalSeconds =
+      assignment?.remainingStTotalSeconds ??
+      assignment?.plannedStTotalSeconds ??
+      assignment?.stTotalSeconds ??
+      null;
+    const remainingStTotalSeconds =
+      rawRemainingStTotalSeconds == null
+        ? null
+        : Math.max(0, Math.round(Number(rawRemainingStTotalSeconds) || 0));
+    const isCompleted = Boolean(assignment?.isCompleted);
+    const actualProducedCompletedAt = normalizeDateKey(
+      assignment?.actualProducedCompletedAt
+    );
+    const productionCompletedAt = normalizeDateKey(
+      assignment?.productionCompletedAt
+    );
+    const persistedCompletedAt =
+      productionCompletedAt || normalizeDateKey(assignment?.completedAt);
+    const completedAt = persistedCompletedAt || actualProducedCompletedAt || null;
+    const isWorkFinished =
+      isCompleted ||
+      Boolean(actualProducedCompletedAt) ||
+      (remainingStTotalSeconds != null && remainingStTotalSeconds <= 0);
+    const elapsedDays = Math.max(0, Number(assignment?.elapsedDays) || 0);
+    const baseAssignment = {
+      ...assignment,
+      remainingStTotalSeconds,
+      actualProducedCompletedAt: actualProducedCompletedAt || null,
+      productionCompletedAt: productionCompletedAt || null,
+      completedAt: completedAt || null,
+      completionDateIsEstimated:
+        Boolean(completedAt) && !Boolean(persistedCompletedAt),
+      isWorkFinished,
+      elapsedDays: elapsedDays > 0 ? elapsedDays : null,
+      dailyCapacitySeconds,
+    };
+
+    if (isWorkFinished) {
+      finishedCount += 1;
+      if (isCompleted) {
+        completedCount += 1;
+      } else {
+        readyToCompleteCount += 1;
+      }
+      completedAssignments.push({
+        ...baseAssignment,
+        queuePosition: finishedCount,
+        queueStatus: isCompleted ? 'completed' : 'ready_to_complete',
+        estimatedRemainingWorkDays: 0,
+        forecastStartDateKey: null,
+        forecastEndDateKey: completedAt || null,
+      });
+      return;
+    }
+
+    const estimatedRemainingWorkDays =
+      remainingStTotalSeconds == null
+        ? null
+        : roundDaysEstimate(remainingStTotalSeconds, dailyCapacitySeconds);
+    const requiredWorkingDays =
+      estimatedRemainingWorkDays == null
+        ? null
+        : Math.max(1, Math.ceil(estimatedRemainingWorkDays || 0));
+    const forecastStartDateKey = queueCursorDateKey || normalizedTodayDateKey;
+    const forecastEndDateKey =
+      dailyCapacitySeconds > 0 && requiredWorkingDays != null
+        ? addWorkingDaysToDateKey(
+            forecastStartDateKey,
+            Math.max(0, requiredWorkingDays - 1),
+            holidaySet
+          )
+        : '';
+    if (forecastEndDateKey) {
+      lastForecastEndDateKey = forecastEndDateKey;
+      queueCursorDateKey = resolveWorkingDateCursor(
+        shiftDateKeyByDays(forecastEndDateKey, 1),
+        holidaySet,
+        { allowSameDay: true }
+      );
+    }
+
+    queuedCount += 1;
+    queuedAssignments.push({
+      ...baseAssignment,
+      queuePosition: queuedCount,
+      queueStatus: 'queued',
+      estimatedRemainingWorkDays,
+      forecastStartDateKey: forecastStartDateKey || null,
+      forecastEndDateKey: forecastEndDateKey || null,
+    });
+  });
+
+  const totalRemainingStTotalSeconds = queuedAssignments.reduce(
+    (sum, assignment) =>
+      sum +
+      Math.max(
+        0,
+        assignment?.remainingStTotalSeconds == null
+          ? 0
+          : Number(assignment.remainingStTotalSeconds) || 0
+      ),
+    0
+  );
+
+  return {
+    dailyCapacitySeconds,
+    queuedAssignments,
+    completedAssignments,
+    completedCount,
+    readyToCompleteCount,
+    totalRemainingStTotalSeconds,
+    queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
+    lineFreeDateKey: lastForecastEndDateKey || '',
+  };
+};
+
 const resolveAssignmentScheduleRange = (assignment) => {
   const startDateKey = normalizeDateKey(assignment?.startDateKey);
   const endDateKey = normalizeDateKey(assignment?.endDateKey);
@@ -304,6 +490,7 @@ export const buildLineMonthCapacityBoardRows = ({
   visibleMonthKeys,
   holidaySet,
   backendRows,
+  todayDateKey,
 }) => {
   const normalizedPlanningMonthKeys = (Array.isArray(planningMonthKeys) ? planningMonthKeys : [])
     .map((monthKey) => normalizeMonthKey(monthKey))
@@ -422,7 +609,7 @@ export const buildLineMonthCapacityBoardRows = ({
 
     const assignmentsForLine = (Array.isArray(assignments) ? assignments : [])
       .filter((assignment) => String(assignment?.lineId || '').trim() === lineId)
-      .map((assignment) => {
+      .map((assignment, sourceOrderIndex) => {
         const assignmentId = String(assignment?.id || '').trim();
         return {
           id: assignmentId,
@@ -434,10 +621,20 @@ export const buildLineMonthCapacityBoardRows = ({
           previewUrl: assignment?.previewUrl || assignment?.imageUrl || assignment?.thumbnailUrl || '',
           startDateKey: normalizeDateKey(assignment?.startDateKey),
           endDateKey: normalizeDateKey(assignment?.endDateKey),
+          startIndex: Number.isFinite(Number(assignment?.startIndex))
+            ? Number(assignment.startIndex)
+            : null,
+          endIndex: Number.isFinite(Number(assignment?.endIndex))
+            ? Number(assignment.endIndex)
+            : null,
           plannedStTotalSeconds: Math.max(
             0,
             Math.round(Number(assignment?.plannedStTotalSeconds ?? assignment?.stTotalSeconds) || 0)
           ),
+          producedQuantity:
+            assignment?.producedQuantity == null
+              ? null
+              : Math.max(0, Math.round(Number(assignment.producedQuantity) || 0)),
           remainingStTotalSeconds:
             assignment?.remainingStTotalSeconds == null
               ? null
@@ -449,24 +646,70 @@ export const buildLineMonthCapacityBoardRows = ({
           visiblePlannedStTotalSeconds:
             assignmentVisiblePlanById.get(assignmentId) || 0,
           isCompleted: Boolean(assignment?.isCompleted),
+          completedAt: normalizeDateKey(assignment?.completedAt),
+          productionCompletedAt: normalizeDateKey(assignment?.productionCompletedAt),
+          actualProducedCompletedAt: normalizeDateKey(assignment?.actualProducedCompletedAt),
+          candidateEndDate: normalizeDateKey(assignment?.candidateEndDate),
+          renderEndDate: normalizeDateKey(assignment?.renderEndDate),
+          forecastCompletedAt: normalizeDateKey(assignment?.forecastCompletedAt),
+          firstWorkDate: normalizeDateKey(assignment?.firstWorkDate),
+          lastWorkDate: normalizeDateKey(assignment?.lastWorkDate),
+          elapsedDays:
+            assignment?.elapsedDays == null
+              ? null
+              : Math.max(0, Number(assignment.elapsedDays) || 0),
+          confidence: assignment?.confidence || null,
+          forecastBasis: assignment?.forecastBasis || null,
           hasOrphanWorkRecords: Boolean(assignment?.hasOrphanWorkRecords),
+          sourceOrderIndex,
         };
       })
       .sort((left, right) => {
-        if (left.startDateKey !== right.startDateKey) {
-          return String(left.startDateKey || '').localeCompare(String(right.startDateKey || ''));
+        const leftStartIndex =
+          left.startIndex == null ? Number.MAX_SAFE_INTEGER : Number(left.startIndex);
+        const rightStartIndex =
+          right.startIndex == null ? Number.MAX_SAFE_INTEGER : Number(right.startIndex);
+        if (leftStartIndex !== rightStartIndex) {
+          return leftStartIndex - rightStartIndex;
+        }
+        const leftEndIndex =
+          left.endIndex == null ? leftStartIndex : Number(left.endIndex);
+        const rightEndIndex =
+          right.endIndex == null ? rightStartIndex : Number(right.endIndex);
+        if (leftEndIndex !== rightEndIndex) {
+          return leftEndIndex - rightEndIndex;
+        }
+        if (left.sourceOrderIndex !== right.sourceOrderIndex) {
+          return left.sourceOrderIndex - right.sourceOrderIndex;
         }
         return String(left.id || '').localeCompare(String(right.id || ''), undefined, {
           numeric: true,
         });
       });
 
+    const queueForecast = buildLineQueueForecast({
+      assignments: assignmentsForLine,
+      line,
+      holidaySet,
+      todayDateKey,
+    });
+
     return {
       lineId,
       lineName: line?.name || `Line ${lineId}`,
       headcount: Math.max(0, Math.round(Number(line?.headcount) || 0)),
+      dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
+      totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
+      queueBacklogDays: queueForecast.queueBacklogDays,
+      lineFreeDateKey: queueForecast.lineFreeDateKey || null,
+      activeAssignmentCount: queueForecast.queuedAssignments.length,
+      completedAssignmentCount: queueForecast.completedCount,
+      readyToCompleteAssignmentCount: queueForecast.readyToCompleteCount,
+      finishedAssignmentCount: queueForecast.completedAssignments.length,
       months: months.filter((row) => visibleMonthKeySet.has(row.monthKey)),
       assignments: assignmentsForLine,
+      queuedAssignments: queueForecast.queuedAssignments,
+      completedAssignments: queueForecast.completedAssignments,
     };
   });
 };

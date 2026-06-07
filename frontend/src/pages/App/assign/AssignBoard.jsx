@@ -4336,6 +4336,8 @@ const AssignBoard = () => {
         useCompletedRenderRange: false,
         daysOverride: days,
       }).map((item) => {
+        const assignmentId = String(item?.id || '').trim();
+        const progressRow = assignmentProgressById[assignmentId] || null;
         const startIndex = Math.max(0, toSignedInt(item?.startIndex, 0));
         const endIndex = Math.max(startIndex, toSignedInt(item?.endIndex, startIndex));
         const fallbackStartDateKey =
@@ -4350,9 +4352,38 @@ const AssignBoard = () => {
             normalizeCapacityDateKey(item?.endDateKey) || fallbackEndDateKey || null,
           plannedStTotalSeconds:
             Number(item?.plannedStTotalSeconds ?? item?.stTotalSeconds) || 0,
+          producedQuantity:
+            progressRow?.producedQuantity ?? item?.producedQuantity ?? null,
+          completedAt:
+            progressRow?.completedAt ??
+            progressRow?.productionCompletedAt ??
+            progressRow?.closedAt ??
+            item?.completedAt ??
+            item?.closedAt ??
+            null,
+          productionCompletedAt:
+            progressRow?.productionCompletedAt ?? item?.productionCompletedAt ?? null,
+          actualProducedCompletedAt:
+            progressRow?.actualProducedCompletedAt ?? item?.actualProducedCompletedAt ?? null,
+          candidateEndDate:
+            progressRow?.candidateEndDate ?? item?.candidateEndDate ?? null,
+          renderEndDate:
+            progressRow?.renderEndDate ?? item?.renderEndDate ?? null,
+          forecastCompletedAt:
+            progressRow?.forecastCompletedAt ?? item?.forecastCompletedAt ?? null,
+          forecastBasis:
+            progressRow?.forecastBasis ?? item?.forecastBasis ?? null,
+          firstWorkDate:
+            progressRow?.firstWorkDate ?? item?.firstWorkDate ?? null,
+          lastWorkDate:
+            progressRow?.lastWorkDate ?? item?.lastWorkDate ?? null,
+          elapsedDays:
+            progressRow?.elapsedDays ?? item?.elapsedDays ?? null,
+          confidence:
+            progressRow?.confidence ?? item?.confidence ?? null,
         };
       }),
-    [applySchedulerProgressToAssignments, assignments, days]
+    [applySchedulerProgressToAssignments, assignmentProgressById, assignments, days]
   );
   const planningMonthKeys = useMemo(
     () =>
@@ -4433,6 +4464,7 @@ const AssignBoard = () => {
         visibleMonthKeys,
         holidaySet,
         backendRows: lineMonthCapacityRows,
+        todayDateKey,
       }),
     [
       assignmentsForCapacityBoard,
@@ -4440,6 +4472,7 @@ const AssignBoard = () => {
       lineMonthCapacityRows,
       lines,
       planningMonthKeys,
+      todayDateKey,
       visibleMonthKeys,
     ]
   );
