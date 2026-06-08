@@ -215,9 +215,16 @@ export const UI_MESSAGES = {
       vi: '{count} phan cong',
     },
     plannedLoad: { ko: '계획 부하', en: 'Planned load', vi: 'Tai trong ke hoach' },
+    forecastLoad: { ko: '예측 부하', en: 'Forecast load', vi: 'Tai du bao' },
     actualOutput: { ko: '실제 산출', en: 'Actual output', vi: 'San luong thuc te' },
+    totalEstimatedLoad: { ko: '총 예상', en: 'Total est.', vi: 'Tong du kien' },
     carryOutCompact: { ko: '이월 {hours}', en: 'Carry {hours}', vi: 'Chuyen sang {hours}' },
     capacityCompact: { ko: '용량 {hours}', en: 'Capacity {hours}', vi: 'Cong suat {hours}' },
+    forecastFromCompact: {
+      ko: '{date}부터 예측',
+      en: 'Forecast from {date}',
+      vi: 'Du bao tu {date}',
+    },
     queueCountCompact: { ko: '대기 {count}건', en: '{count} queued', vi: '{count} dang cho' },
     completedCountCompact: { ko: '완료 {count}건', en: '{count} completed', vi: '{count} hoan thanh' },
     readyCountCompact: {

@@ -479,6 +479,18 @@ const LineMonthCapacityBoard = ({
                                   languageCode
                                 )}
                           </Typography>
+                          {row.forecastAnchorDateKey ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              {getUiMessage(
+                                'assign.forecastFromCompact',
+                                'Forecast from {date}',
+                                languageCode,
+                                {
+                                  date: formatDateKeyLabel(row.forecastAnchorDateKey, '-'),
+                                }
+                              )}
+                            </Typography>
+                          ) : null}
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {getUiMessage(
                               'assign.assignmentCountCompact',
@@ -497,9 +509,15 @@ const LineMonthCapacityBoard = ({
                           (item) => item?.monthKey === monthKey
                         ) || null;
                       const tone = resolvePlanTone(summary?.plannedLoadPercent);
+                      const isForecastMonth = Boolean(summary?.isForecastMonth);
+                      const isAnchorMonth = Boolean(summary?.isAnchorMonth);
+                      const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
                       const planBarValue = Math.max(
                         0,
-                        Math.min(100, Number(summary?.plannedLoadPercent) || 0)
+                        Math.min(
+                          100,
+                          isHistoricalMonth ? 0 : Number(summary?.plannedLoadPercent) || 0
+                        )
                       );
                       const actualBarValue = Math.max(
                         0,
@@ -519,10 +537,16 @@ const LineMonthCapacityBoard = ({
                             <Stack spacing={0.75}>
                               <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  {getUiMessage('assign.plannedLoad', 'Planned load', languageCode)}
+                                  {getUiMessage(
+                                    isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
+                                    isForecastMonth ? 'Forecast load' : 'Planned load',
+                                    languageCode
+                                  )}
                                 </Typography>
                                 <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
-                                  {formatPercentLabel(summary?.plannedLoadPercent)}
+                                  {formatPercentLabel(
+                                    isHistoricalMonth ? null : summary?.plannedLoadPercent
+                                  )}
                                 </Typography>
                                 <LinearProgress
                                   variant="determinate"
@@ -537,6 +561,22 @@ const LineMonthCapacityBoard = ({
                                     },
                                   }}
                                 />
+                                {isAnchorMonth && summary?.forecastAnchorDateKey ? (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ display: 'block', mt: 0.5 }}
+                                  >
+                                    {getUiMessage(
+                                      'assign.forecastFromCompact',
+                                      'Forecast from {date}',
+                                      languageCode,
+                                      {
+                                        date: formatDateKeyLabel(summary.forecastAnchorDateKey, '-'),
+                                      }
+                                    )}
+                                  </Typography>
+                                ) : null}
                               </Box>
                               <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -556,6 +596,16 @@ const LineMonthCapacityBoard = ({
                                   }}
                                 />
                               </Box>
+                              {isForecastMonth ? (
+                                <Typography variant="caption" color="text.secondary">
+                                  {getUiMessage(
+                                    'assign.totalEstimatedLoad',
+                                    'Total est.',
+                                    languageCode
+                                  )}{' '}
+                                  {formatPercentLabel(summary?.totalEstimatedLoadPercent)}
+                                </Typography>
+                              ) : null}
                               <Typography variant="caption" color="text.secondary">
                                 {getUiMessage(
                                   'assign.carryOutCompact',
@@ -563,7 +613,7 @@ const LineMonthCapacityBoard = ({
                                   languageCode,
                                   {
                                     hours: formatHoursLabel(
-                                      summary?.carryOutStSeconds,
+                                      isForecastMonth ? summary?.carryOutStSeconds : null,
                                       '-'
                                     ),
                                   }

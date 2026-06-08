@@ -287,13 +287,16 @@ const buildLineQueueForecast = ({
   line,
   holidaySet,
   todayDateKey,
+  anchorDateKey,
 }) => {
-  const normalizedTodayDateKey =
-    normalizeDateKey(todayDateKey) || new Date().toISOString().slice(0, 10);
+  const normalizedAnchorDateKey =
+    normalizeDateKey(anchorDateKey) ||
+    normalizeDateKey(todayDateKey) ||
+    new Date().toISOString().slice(0, 10);
   const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
   const queuedAssignments = [];
   const completedAssignments = [];
-  let queueCursorDateKey = resolveWorkingDateCursor(normalizedTodayDateKey, holidaySet, {
+  let queueCursorDateKey = resolveWorkingDateCursor(normalizedAnchorDateKey, holidaySet, {
     allowSameDay: true,
   });
   let lastForecastEndDateKey = '';
@@ -366,7 +369,7 @@ const buildLineQueueForecast = ({
       estimatedRemainingWorkDays == null
         ? null
         : Math.max(1, Math.ceil(estimatedRemainingWorkDays || 0));
-    const forecastStartDateKey = queueCursorDateKey || normalizedTodayDateKey;
+    const forecastStartDateKey = queueCursorDateKey || normalizedAnchorDateKey;
     const forecastEndDateKey =
       dailyCapacitySeconds > 0 && requiredWorkingDays != null
         ? addWorkingDaysToDateKey(
@@ -427,44 +430,12 @@ const resolveAssignmentScheduleRange = (assignment) => {
 };
 
 export const resolvePlanningMonthKeys = ({
-  assignments,
   visibleMonthKeys,
-  maxMonthSpan = MAX_PLANNING_MONTH_SPAN,
 }) => {
   const normalizedVisibleMonthKeys = (Array.isArray(visibleMonthKeys) ? visibleMonthKeys : [])
     .map((monthKey) => normalizeMonthKey(monthKey))
     .filter(Boolean);
-  if (normalizedVisibleMonthKeys.length === 0) return [];
-  const visibleStartMonthKey = normalizedVisibleMonthKeys[0];
-  const visibleEndMonthKey =
-    normalizedVisibleMonthKeys[normalizedVisibleMonthKeys.length - 1];
-  const eligibleStartMonthKeys = (Array.isArray(assignments) ? assignments : [])
-    .filter((assignment) => {
-      const scheduleRange = resolveAssignmentScheduleRange(assignment);
-      if (!scheduleRange) return false;
-      const plannedStTotalSeconds = Number(
-        assignment?.plannedStTotalSeconds ?? assignment?.stTotalSeconds
-      );
-      if (!Number.isFinite(plannedStTotalSeconds) || plannedStTotalSeconds <= 0) {
-        return false;
-      }
-      if (assignment?.isCompleted) {
-        return scheduleRange.endDateKey.slice(0, 7) >= visibleStartMonthKey;
-      }
-      return true;
-    })
-    .map((assignment) => normalizeMonthKey(String(assignment?.startDateKey || '').slice(0, 7)))
-    .filter(Boolean)
-    .sort((left, right) => left.localeCompare(right));
-  const earliestMonthKey =
-    eligibleStartMonthKeys[0] && eligibleStartMonthKeys[0] < visibleStartMonthKey
-      ? eligibleStartMonthKeys[0]
-      : visibleStartMonthKey;
-  let planningMonthKeys = buildMonthKeyRange(earliestMonthKey, visibleEndMonthKey);
-  if (planningMonthKeys.length > maxMonthSpan) {
-    planningMonthKeys = planningMonthKeys.slice(planningMonthKeys.length - maxMonthSpan);
-  }
-  return planningMonthKeys;
+  return normalizedVisibleMonthKeys;
 };
 
 const buildFallbackLineMonthlyCapacitySeconds = (line, monthKey, holidaySet) => {
@@ -498,6 +469,10 @@ export const buildLineMonthCapacityBoardRows = ({
   const normalizedVisibleMonthKeys = (Array.isArray(visibleMonthKeys) ? visibleMonthKeys : [])
     .map((monthKey) => normalizeMonthKey(monthKey))
     .filter(Boolean);
+  const monthKeysForDisplay =
+    normalizedVisibleMonthKeys.length > 0
+      ? normalizedVisibleMonthKeys
+      : normalizedPlanningMonthKeys;
   const backendRowByKey = new Map(
     (Array.isArray(backendRows) ? backendRows : [])
       .map((row) => {
@@ -507,49 +482,24 @@ export const buildLineMonthCapacityBoardRows = ({
       })
       .filter(Boolean)
   );
-  const visibleMonthKeySet = new Set(normalizedVisibleMonthKeys);
-  const assignmentPlannedByLineMonthKey = new Map();
-  const assignmentVisiblePlanById = new Map();
-
-  (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
-    const assignmentId = String(assignment?.id || '').trim();
-    const lineId = String(assignment?.lineId || '').trim();
-    const scheduleRange = resolveAssignmentScheduleRange(assignment);
-    const plannedStTotalSeconds = Math.max(
-      0,
-      Math.round(Number(assignment?.plannedStTotalSeconds ?? assignment?.stTotalSeconds) || 0)
-    );
-    if (!lineId || !scheduleRange || plannedStTotalSeconds <= 0) return;
-    const weightedRows = buildMonthWeightRows({
-      startDateKey: scheduleRange.startDateKey,
-      endDateKey: scheduleRange.endDateKey,
-      monthKeys: normalizedPlanningMonthKeys,
-      holidaySet,
+  const lineBackendMetaByLineId = new Map();
+  (Array.isArray(backendRows) ? backendRows : []).forEach((row) => {
+    const lineId = String(row?.lineId || '').trim();
+    if (!lineId || lineBackendMetaByLineId.has(lineId)) return;
+    lineBackendMetaByLineId.set(lineId, {
+      latestActualCoverageEndDateKey: normalizeDateKey(row?.latestActualCoverageEndDateKey),
+      forecastAnchorDateKey: normalizeDateKey(row?.forecastAnchorDateKey),
+      lineRemainingBacklogStSeconds:
+        row?.lineRemainingBacklogStSeconds == null
+          ? null
+          : Math.max(0, Math.round(Number(row.lineRemainingBacklogStSeconds) || 0)),
     });
-    const allocations = distributeIntegerTotalByWeights({
-      total: plannedStTotalSeconds,
-      weightedRows,
-    });
-    let visiblePlannedStTotalSeconds = 0;
-    allocations.forEach(({ monthKey, allocatedTotal }) => {
-      const compositeKey = `${lineId}:${monthKey}`;
-      assignmentPlannedByLineMonthKey.set(
-        compositeKey,
-        (assignmentPlannedByLineMonthKey.get(compositeKey) || 0) + allocatedTotal
-      );
-      if (visibleMonthKeySet.has(monthKey)) {
-        visiblePlannedStTotalSeconds += allocatedTotal;
-      }
-    });
-    if (assignmentId) {
-      assignmentVisiblePlanById.set(assignmentId, visiblePlannedStTotalSeconds);
-    }
   });
 
   return (Array.isArray(lines) ? lines : []).map((line) => {
     const lineId = String(line?.id || '').trim();
-    let previousCarryOutStSeconds = 0;
-    const months = normalizedPlanningMonthKeys.map((monthKey) => {
+    const lineMeta = lineBackendMetaByLineId.get(lineId) || null;
+    const months = monthKeysForDisplay.map((monthKey) => {
       const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
       const lineMonthlyCapacitySeconds =
         Number(backendRow?.lineMonthlyCapacitySeconds) > 0
@@ -559,18 +509,19 @@ export const buildLineMonthCapacityBoardRows = ({
         0,
         Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
       );
-      const carryInStSeconds = previousCarryOutStSeconds;
-      const newPlannedStSeconds = Math.max(
+      const forecastLoadStSeconds = Math.max(
         0,
-        Math.round(Number(assignmentPlannedByLineMonthKey.get(`${lineId}:${monthKey}`) || 0))
+        Math.round(Number(backendRow?.forecastLoadStSeconds) || 0)
       );
-      const lineMonthlyPlannedLoadStSeconds =
-        carryInStSeconds + newPlannedStSeconds;
-      const carryOutStSeconds = Math.max(
-        0,
-        lineMonthlyPlannedLoadStSeconds - lineMonthlyActualOutputStSeconds
+      const totalEstimatedLoadStSeconds = Math.max(
+        lineMonthlyActualOutputStSeconds,
+        Math.round(
+          Number(
+            backendRow?.totalEstimatedLoadStSeconds ??
+              lineMonthlyActualOutputStSeconds + forecastLoadStSeconds
+          ) || 0
+        )
       );
-      previousCarryOutStSeconds = carryOutStSeconds;
       return {
         lineId,
         monthKey,
@@ -592,18 +543,49 @@ export const buildLineMonthCapacityBoardRows = ({
                 lineMonthlyActualOutputStSeconds,
                 lineMonthlyCapacitySeconds
               ),
-        carryInStSeconds,
-        newPlannedStSeconds,
-        lineMonthlyPlannedLoadStSeconds,
-        plannedLoadPercent: roundPercent(
-          lineMonthlyPlannedLoadStSeconds,
-          lineMonthlyCapacitySeconds
-        ),
-        carryOutStSeconds,
-        overflowStSeconds: Math.max(
+        latestActualCoverageEndDateKey:
+          normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
+          lineMeta?.latestActualCoverageEndDateKey ||
+          null,
+        forecastAnchorDateKey:
+          normalizeDateKey(backendRow?.forecastAnchorDateKey) ||
+          lineMeta?.forecastAnchorDateKey ||
+          null,
+        forecastAvailableCapacitySeconds:
+          backendRow?.forecastAvailableCapacitySeconds == null
+            ? lineMonthlyCapacitySeconds
+            : Math.max(
+                0,
+                Math.round(Number(backendRow.forecastAvailableCapacitySeconds) || 0)
+              ),
+        forecastWorkingDayCount: Math.max(
           0,
-          lineMonthlyPlannedLoadStSeconds - lineMonthlyCapacitySeconds
+          Math.round(Number(backendRow?.forecastWorkingDayCount) || 0)
         ),
+        forecastLoadStSeconds,
+        plannedLoadPercent:
+          backendRow?.forecastLoadPercent != null
+            ? Number(backendRow.forecastLoadPercent)
+            : roundPercent(forecastLoadStSeconds, lineMonthlyCapacitySeconds),
+        carryInStSeconds: Math.max(
+          0,
+          Math.round(Number(backendRow?.carryInStSeconds) || 0)
+        ),
+        carryOutStSeconds: Math.max(
+          0,
+          Math.round(Number(backendRow?.carryOutStSeconds) || 0)
+        ),
+        totalEstimatedLoadStSeconds,
+        totalEstimatedLoadPercent:
+          backendRow?.totalEstimatedLoadPercent != null
+            ? Number(backendRow.totalEstimatedLoadPercent)
+            : roundPercent(totalEstimatedLoadStSeconds, lineMonthlyCapacitySeconds),
+        monthType: backendRow?.monthType || 'historical',
+        isAnchorMonth: backendRow?.monthType === 'anchor',
+        isForecastMonth:
+          backendRow?.monthType === 'anchor' || backendRow?.monthType === 'forecast',
+        isHistoricalMonth:
+          !backendRow?.monthType || backendRow?.monthType === 'historical',
       };
     });
 
@@ -643,8 +625,7 @@ export const buildLineMonthCapacityBoardRows = ({
             assignment?.progressPercent == null
               ? null
               : Math.max(0, Math.min(100, Number(assignment.progressPercent) || 0)),
-          visiblePlannedStTotalSeconds:
-            assignmentVisiblePlanById.get(assignmentId) || 0,
+          visiblePlannedStTotalSeconds: 0,
           isCompleted: Boolean(assignment?.isCompleted),
           completedAt: normalizeDateKey(assignment?.completedAt),
           productionCompletedAt: normalizeDateKey(assignment?.productionCompletedAt),
@@ -692,12 +673,17 @@ export const buildLineMonthCapacityBoardRows = ({
       line,
       holidaySet,
       todayDateKey,
+      anchorDateKey: lineMeta?.forecastAnchorDateKey || null,
     });
 
     return {
       lineId,
       lineName: line?.name || `Line ${lineId}`,
       headcount: Math.max(0, Math.round(Number(line?.headcount) || 0)),
+      latestActualCoverageEndDateKey: lineMeta?.latestActualCoverageEndDateKey || null,
+      forecastAnchorDateKey: lineMeta?.forecastAnchorDateKey || null,
+      lineRemainingBacklogStSeconds:
+        lineMeta?.lineRemainingBacklogStSeconds ?? queueForecast.totalRemainingStTotalSeconds,
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,
@@ -706,7 +692,7 @@ export const buildLineMonthCapacityBoardRows = ({
       completedAssignmentCount: queueForecast.completedCount,
       readyToCompleteAssignmentCount: queueForecast.readyToCompleteCount,
       finishedAssignmentCount: queueForecast.completedAssignments.length,
-      months: months.filter((row) => visibleMonthKeySet.has(row.monthKey)),
+      months,
       assignments: assignmentsForLine,
       queuedAssignments: queueForecast.queuedAssignments,
       completedAssignments: queueForecast.completedAssignments,

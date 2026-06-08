@@ -16282,6 +16282,25 @@ const isWorkingDateKeyForLineMonthCapacity = ({
   return date.getUTCDay() !== 0 && !holidaySet.has(dateKey);
 };
 
+const resolveSameOrNextWorkingDateKeyForLineMonthCapacity = ({
+  fromDateKey,
+  holidaySet,
+}: {
+  fromDateKey: string;
+  holidaySet: Set<string>;
+}): string => {
+  let cursor = normalizeDateKey(fromDateKey) || fromDateKey;
+  for (let i = 0; i < 366 * 3; i += 1) {
+    if (isWorkingDateKeyForLineMonthCapacity({ dateKey: cursor, holidaySet })) {
+      return cursor;
+    }
+    const shifted = shiftDateKeyByDaysForAssignmentSchedule(cursor, 1);
+    if (!shifted) return cursor;
+    cursor = shifted;
+  }
+  return cursor;
+};
+
 const countWorkingDateKeysInRangeForLineMonthCapacity = ({
   startDateKey,
   endDateKey,
@@ -16449,15 +16468,17 @@ const buildLineMonthCapacityRows = async ({
   monthTo: string;
   lineIds?: number[];
 }) => {
-  const monthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
-  if (monthKeys.length === 0) {
+  const requestedMonthKeys = buildMonthKeyRangeForLineMonthCapacity(monthFrom, monthTo);
+  if (requestedMonthKeys.length === 0) {
     return { monthKeys: [], rows: [] };
   }
 
   const requestedStartDateKey =
-    getMonthStartDateKeyForLineMonthCapacity(monthKeys[0]!);
+    getMonthStartDateKeyForLineMonthCapacity(requestedMonthKeys[0]!);
   const requestedEndDateKey =
-    getMonthEndDateKeyForLineMonthCapacity(monthKeys[monthKeys.length - 1]!);
+    getMonthEndDateKeyForLineMonthCapacity(
+      requestedMonthKeys[requestedMonthKeys.length - 1]!
+    );
   if (!requestedStartDateKey || !requestedEndDateKey) {
     return { monthKeys: [], rows: [] };
   }
@@ -16475,7 +16496,7 @@ const buildLineMonthCapacityRows = async ({
         .filter((value): value is number => value !== null);
 
   if (requestedLineIds.length === 0) {
-    return { monthKeys, rows: [] };
+    return { monthKeys: requestedMonthKeys, rows: [] };
   }
 
   const holidayModel = (prisma as any).organizationHoliday;
@@ -16494,150 +16515,8 @@ const buildLineMonthCapacityRows = async ({
       .filter((value): value is string => Boolean(value))
   );
 
-  const requestedMonthKeySet = new Set(monthKeys);
+  const requestedMonthKeySet = new Set(requestedMonthKeys);
   const requestedLineIdSet = new Set(requestedLineIds);
-  const lineMonthBaseByKey = new Map<
-    string,
-    {
-      lineId: string;
-      monthKey: string;
-      workingDayCount: number;
-      headcountDayUnits: number;
-      lineMonthlyCapacitySeconds: number;
-      lineMonthlyActualOutputStSeconds: number;
-      orphanWorkRecordCount: number;
-    }
-  >();
-  requestedLineIds.forEach((lineId) => {
-    monthKeys.forEach((monthKey) => {
-      const monthStartDateKey =
-        getMonthStartDateKeyForLineMonthCapacity(monthKey) ||
-        requestedStartDateKey;
-      const monthEndDateKey =
-        getMonthEndDateKeyForLineMonthCapacity(monthKey) || requestedEndDateKey;
-      const workingDayCount = countWorkingDateKeysInRangeForLineMonthCapacity({
-        startDateKey: monthStartDateKey,
-        endDateKey: monthEndDateKey,
-        holidaySet,
-      });
-      lineMonthBaseByKey.set(`${lineId}:${monthKey}`, {
-        lineId: String(lineId),
-        monthKey,
-        workingDayCount,
-        headcountDayUnits: 0,
-        lineMonthlyCapacitySeconds: 0,
-        lineMonthlyActualOutputStSeconds: 0,
-        orphanWorkRecordCount: 0,
-      });
-    });
-  });
-
-  const lineAssignmentRows = await prisma.lineAssignment.findMany({
-    where: {
-      lineId: { in: requestedLineIds },
-      startAt: {
-        lte:
-          toDateValueFromDateKeyForAssignmentSchedule(requestedEndDateKey) ||
-          new Date(),
-      },
-      OR: [
-        { endAt: null },
-        {
-          endAt: {
-            gte:
-              toDateValueFromDateKeyForAssignmentSchedule(requestedStartDateKey) ||
-              new Date(),
-          },
-        },
-      ],
-    },
-    select: {
-      lineId: true,
-      employeeId: true,
-      startAt: true,
-      endAt: true,
-      employee: {
-        select: {
-          joinedAt: true,
-          leftAt: true,
-        },
-      },
-    },
-  });
-
-  const employeeIdsByLineDateKey = new Map<string, Set<number>>();
-  lineAssignmentRows.forEach((row) => {
-    const lineId = toPositiveIntOrNull(row?.lineId);
-    const employeeId = toPositiveIntOrNull(row?.employeeId);
-    if (!lineId || !employeeId || !requestedLineIdSet.has(lineId)) return;
-    const assignmentStartDateKey = toDateKeyInTimeZone(
-      row?.startAt,
-      BUSINESS_TIME_ZONE
-    );
-    const assignmentEndDateKey =
-      toDateKeyInTimeZone(row?.endAt, BUSINESS_TIME_ZONE) || requestedEndDateKey;
-    const joinedDateKey = toDateKeyInTimeZone(
-      row?.employee?.joinedAt,
-      BUSINESS_TIME_ZONE
-    );
-    const leftDateKey =
-      toDateKeyInTimeZone(row?.employee?.leftAt, BUSINESS_TIME_ZONE) ||
-      requestedEndDateKey;
-
-    const activeStartDateKey = [
-      requestedStartDateKey,
-      assignmentStartDateKey,
-      joinedDateKey || null,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .sort((left, right) => left.localeCompare(right))
-      .pop();
-    const activeEndDateKey = [
-      requestedEndDateKey,
-      assignmentEndDateKey,
-      leftDateKey || null,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .sort((left, right) => left.localeCompare(right))[0];
-
-    if (!activeStartDateKey || !activeEndDateKey || activeStartDateKey > activeEndDateKey) {
-      return;
-    }
-
-    listDateKeysInclusiveForLineMonthCapacity(
-      activeStartDateKey,
-      activeEndDateKey
-    ).forEach((dateKey) => {
-      if (
-        !isWorkingDateKeyForLineMonthCapacity({
-          dateKey,
-          holidaySet,
-        })
-      ) {
-        return;
-      }
-      const monthKey = normalizeMonthKey(dateKey.slice(0, 7));
-      if (!requestedMonthKeySet.has(monthKey)) return;
-      const compositeKey = `${lineId}:${dateKey}`;
-      const current = employeeIdsByLineDateKey.get(compositeKey) || new Set<number>();
-      current.add(employeeId);
-      employeeIdsByLineDateKey.set(compositeKey, current);
-    });
-  });
-
-  employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
-    const [lineIdText, dateKey] = compositeKey.split(":");
-    const lineId = toPositiveIntOrNull(lineIdText);
-    const monthKey = normalizeMonthKey(dateKey?.slice(0, 7));
-    if (!lineId || !monthKey) return;
-    const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
-    if (!target) return;
-    const dayHeadcount = employeeIds.size;
-    target.headcountDayUnits += dayHeadcount;
-    target.lineMonthlyCapacitySeconds +=
-      dayHeadcount * DEFAULT_LINE_DAILY_WORK_SECONDS;
-  });
-
   const plans = await findAssignmentPlansWithSelectFallback({
     where: {
       orgId,
@@ -16668,6 +16547,18 @@ const buildLineMonthCapacityRows = async ({
     map.set(planId, bucket);
     return map;
   }, new Map<number, any[]>());
+  const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
+  const lineRemainingBacklogStSecondsByLineId = new Map<number, number>();
+  const planProgressMetaById = new Map<
+    number,
+    {
+      plannedQuantity: number;
+      plannedStTotalSeconds: number;
+      requiredProcessGroups: ReturnType<typeof resolveAssignmentPlanRequiredProcessGroups>;
+      processCount: number | null;
+      totalExpected: number | null;
+    }
+  >();
 
   plans.forEach((plan) => {
     const planId = toPositiveIntOrNull(plan?.id);
@@ -16690,9 +16581,319 @@ const buildLineMonthCapacityRows = async ({
       Array.isArray(snapshot?.processes) && snapshot.processes.length > 0
         ? snapshot.processes.length
         : null;
+    const processKeySet = new Set<string>();
+    const cumulativeProcessTotalsByKey = new Map<string, number>();
+    let cumulativeTotalDone = 0;
+
+    ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
+      const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
+      if (quantity <= 0) return;
+      cumulativeTotalDone += quantity;
+      const processKey =
+        resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
+      processKeySet.add(processKey);
+      cumulativeProcessTotalsByKey.set(
+        processKey,
+        (cumulativeProcessTotalsByKey.get(processKey) || 0) + quantity
+      );
+      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
+      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+      if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
+        return;
+      }
+      const latestCoverageEndDateKey =
+        lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
+      if (!latestCoverageEndDateKey || coverageEndDate > latestCoverageEndDateKey) {
+        lineLatestActualCoverageEndDateKeyByLineId.set(lineId, coverageEndDate);
+      }
+    });
+
+    const processCountFromRecords =
+      processKeySet.size > 0 ? processKeySet.size : null;
+    const processCount =
+      processCountFromSnapshot ?? processCountFromRecords;
+    const totalExpected =
+      plannedQuantity != null && processCount != null && processCount > 0
+        ? plannedQuantity * processCount
+        : null;
+    const producedQuantity = resolveProducedQtyFromProcessKeyTotals({
+      processTotalsByKey: cumulativeProcessTotalsByKey,
+      processKeyGroups: requiredProcessGroups,
+    });
+    const producedRatio =
+      plannedQuantity > 0
+        ? Math.max(0, Math.min(1, producedQuantity / plannedQuantity))
+        : null;
+    const operationalProgressRatio =
+      totalExpected != null && totalExpected > 0
+        ? Math.max(0, Math.min(1, cumulativeTotalDone / totalExpected))
+        : null;
+    const progressRatio =
+      producedRatio != null && operationalProgressRatio != null
+        ? Math.min(producedRatio, operationalProgressRatio)
+        : producedRatio ?? operationalProgressRatio ?? null;
+    const remainingStTotalSeconds =
+      plan?.isCompleted === true
+        ? 0
+        : progressRatio == null
+          ? plannedStTotalSeconds
+          : Math.max(
+              0,
+              plannedStTotalSeconds -
+                Math.max(0, Math.round(plannedStTotalSeconds * progressRatio))
+            );
+    if (remainingStTotalSeconds > 0) {
+      lineRemainingBacklogStSecondsByLineId.set(
+        lineId,
+        (lineRemainingBacklogStSecondsByLineId.get(lineId) || 0) +
+          remainingStTotalSeconds
+      );
+    }
+    planProgressMetaById.set(planId, {
+      plannedQuantity,
+      plannedStTotalSeconds,
+      requiredProcessGroups,
+      processCount,
+      totalExpected,
+    });
+  });
+
+  const currentMonthKey = todayDateKey().slice(0, 7);
+  const currentMonthStartDateKey =
+    getMonthStartDateKeyForLineMonthCapacity(currentMonthKey) ||
+    todayDateKey();
+  const defaultForecastAnchorDateKey =
+    resolveSameOrNextWorkingDateKeyForLineMonthCapacity({
+      fromDateKey: currentMonthStartDateKey,
+      holidaySet,
+    }) || currentMonthStartDateKey;
+
+  let internalMonthFrom = requestedMonthKeys[0] || monthFrom;
+  const lineForecastMetaByLineId = new Map<
+    number,
+    {
+      latestActualCoverageEndDateKey: string | null;
+      forecastAnchorDateKey: string;
+      remainingBacklogStSeconds: number;
+    }
+  >();
+  requestedLineIds.forEach((lineId) => {
+    const latestActualCoverageEndDateKey =
+      lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
+    const forecastAnchorDateKey = latestActualCoverageEndDateKey
+      ? resolveNextWorkingDateKeyForAssignmentSchedule({
+          fromDateKey: latestActualCoverageEndDateKey,
+          holidaySet,
+        })
+      : defaultForecastAnchorDateKey;
+    const anchorMonthKey = normalizeMonthKey(forecastAnchorDateKey.slice(0, 7));
+    if (anchorMonthKey && anchorMonthKey < internalMonthFrom) {
+      internalMonthFrom = anchorMonthKey;
+    }
+    lineForecastMetaByLineId.set(lineId, {
+      latestActualCoverageEndDateKey,
+      forecastAnchorDateKey,
+      remainingBacklogStSeconds: Math.max(
+        0,
+        Math.round(Number(lineRemainingBacklogStSecondsByLineId.get(lineId) || 0))
+      ),
+    });
+  });
+
+  const internalMonthKeys = buildMonthKeyRangeForLineMonthCapacity(
+    internalMonthFrom,
+    monthTo
+  );
+  if (internalMonthKeys.length === 0) {
+    return { monthKeys: requestedMonthKeys, rows: [] };
+  }
+  const internalStartDateKey =
+    getMonthStartDateKeyForLineMonthCapacity(internalMonthKeys[0]!) ||
+    requestedStartDateKey;
+  const internalEndDateKey =
+    getMonthEndDateKeyForLineMonthCapacity(
+      internalMonthKeys[internalMonthKeys.length - 1]!
+    ) || requestedEndDateKey;
+
+  const lineMonthBaseByKey = new Map<
+    string,
+    {
+      lineId: string;
+      monthKey: string;
+      workingDayCount: number;
+      headcountDayUnits: number;
+      lineMonthlyCapacitySeconds: number;
+      lineMonthlyActualOutputStSeconds: number;
+      orphanWorkRecordCount: number;
+      latestActualCoverageEndDateKey: string | null;
+      forecastAnchorDateKey: string | null;
+      forecastAvailableCapacitySeconds: number;
+      forecastWorkingDayCount: number;
+      forecastLoadStSeconds: number;
+      forecastLoadPercent: number | null;
+      carryInStSeconds: number;
+      carryOutStSeconds: number;
+      totalEstimatedLoadStSeconds: number;
+      totalEstimatedLoadPercent: number | null;
+      monthType: "historical" | "anchor" | "forecast";
+    }
+  >();
+  requestedLineIds.forEach((lineId) => {
+    const forecastMeta = lineForecastMetaByLineId.get(lineId) || null;
+    internalMonthKeys.forEach((monthKey) => {
+      const monthStartDateKey =
+        getMonthStartDateKeyForLineMonthCapacity(monthKey) ||
+        internalStartDateKey;
+      const monthEndDateKey =
+        getMonthEndDateKeyForLineMonthCapacity(monthKey) || internalEndDateKey;
+      const workingDayCount = countWorkingDateKeysInRangeForLineMonthCapacity({
+        startDateKey: monthStartDateKey,
+        endDateKey: monthEndDateKey,
+        holidaySet,
+      });
+      lineMonthBaseByKey.set(`${lineId}:${monthKey}`, {
+        lineId: String(lineId),
+        monthKey,
+        workingDayCount,
+        headcountDayUnits: 0,
+        lineMonthlyCapacitySeconds: 0,
+        lineMonthlyActualOutputStSeconds: 0,
+        orphanWorkRecordCount: 0,
+        latestActualCoverageEndDateKey:
+          forecastMeta?.latestActualCoverageEndDateKey || null,
+        forecastAnchorDateKey: forecastMeta?.forecastAnchorDateKey || null,
+        forecastAvailableCapacitySeconds: 0,
+        forecastWorkingDayCount: 0,
+        forecastLoadStSeconds: 0,
+        forecastLoadPercent: null,
+        carryInStSeconds: 0,
+        carryOutStSeconds: 0,
+        totalEstimatedLoadStSeconds: 0,
+        totalEstimatedLoadPercent: null,
+        monthType: "historical",
+      });
+    });
+  });
+
+  const lineAssignmentRows = await prisma.lineAssignment.findMany({
+    where: {
+      lineId: { in: requestedLineIds },
+      startAt: {
+        lte:
+          toDateValueFromDateKeyForAssignmentSchedule(internalEndDateKey) ||
+          new Date(),
+      },
+      OR: [
+        { endAt: null },
+        {
+          endAt: {
+            gte:
+              toDateValueFromDateKeyForAssignmentSchedule(internalStartDateKey) ||
+              new Date(),
+          },
+        },
+      ],
+    },
+    select: {
+      lineId: true,
+      employeeId: true,
+      startAt: true,
+      endAt: true,
+      employee: {
+        select: {
+          joinedAt: true,
+          leftAt: true,
+        },
+      },
+    },
+  });
+
+  const employeeIdsByLineDateKey = new Map<string, Set<number>>();
+  lineAssignmentRows.forEach((row) => {
+    const lineId = toPositiveIntOrNull(row?.lineId);
+    const employeeId = toPositiveIntOrNull(row?.employeeId);
+    if (!lineId || !employeeId || !requestedLineIdSet.has(lineId)) return;
+    const assignmentStartDateKey = toDateKeyInTimeZone(
+      row?.startAt,
+      BUSINESS_TIME_ZONE
+    );
+    const assignmentEndDateKey =
+      toDateKeyInTimeZone(row?.endAt, BUSINESS_TIME_ZONE) || internalEndDateKey;
+    const joinedDateKey = toDateKeyInTimeZone(
+      row?.employee?.joinedAt,
+      BUSINESS_TIME_ZONE
+    );
+    const leftDateKey =
+      toDateKeyInTimeZone(row?.employee?.leftAt, BUSINESS_TIME_ZONE) ||
+      internalEndDateKey;
+
+    const activeStartDateKey = [
+      internalStartDateKey,
+      assignmentStartDateKey,
+      joinedDateKey || null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right))
+      .pop();
+    const activeEndDateKey = [
+      internalEndDateKey,
+      assignmentEndDateKey,
+      leftDateKey || null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .sort((left, right) => left.localeCompare(right))[0];
+
+    if (!activeStartDateKey || !activeEndDateKey || activeStartDateKey > activeEndDateKey) {
+      return;
+    }
+
+    listDateKeysInclusiveForLineMonthCapacity(
+      activeStartDateKey,
+      activeEndDateKey
+    ).forEach((dateKey) => {
+      if (
+        !isWorkingDateKeyForLineMonthCapacity({
+          dateKey,
+          holidaySet,
+        })
+      ) {
+        return;
+      }
+      const monthKey = normalizeMonthKey(dateKey.slice(0, 7));
+      if (!monthKey) return;
+      const compositeKey = `${lineId}:${dateKey}`;
+      const current = employeeIdsByLineDateKey.get(compositeKey) || new Set<number>();
+      current.add(employeeId);
+      employeeIdsByLineDateKey.set(compositeKey, current);
+    });
+  });
+
+  employeeIdsByLineDateKey.forEach((employeeIds, compositeKey) => {
+    const [lineIdText, dateKey] = compositeKey.split(":");
+    const lineId = toPositiveIntOrNull(lineIdText);
+    const monthKey = normalizeMonthKey(dateKey?.slice(0, 7));
+    if (!lineId || !monthKey) return;
+    const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+    if (!target) return;
+    const dayHeadcount = employeeIds.size;
+    target.headcountDayUnits += dayHeadcount;
+    target.lineMonthlyCapacitySeconds +=
+      dayHeadcount * DEFAULT_LINE_DAILY_WORK_SECONDS;
+  });
+
+  plans.forEach((plan) => {
+    const planId = toPositiveIntOrNull(plan?.id);
+    const lineId = toPositiveIntOrNull(plan?.lineId);
+    const progressMeta = planId ? planProgressMetaById.get(planId) : null;
+    if (!planId || !lineId || !progressMeta || !requestedLineIdSet.has(lineId)) return;
+    const {
+      plannedQuantity,
+      plannedStTotalSeconds,
+      requiredProcessGroups,
+      totalExpected,
+    } = progressMeta;
     const monthlyProcessTotalsByMonthKey = new Map<string, Map<string, number>>();
     const monthlyTotalDoneByMonthKey = new Map<string, number>();
-    const processKeySet = new Set<string>();
 
     ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
       const quantity = Math.max(0, Math.round(Number(record?.quantity ?? 0)));
@@ -16705,7 +16906,7 @@ const buildLineMonthCapacityRows = async ({
       const monthWeightRows = buildLineMonthCapacityWeightRows({
         coverageStartDate,
         coverageEndDate,
-        monthKeys,
+        monthKeys: internalMonthKeys,
         holidaySet,
       });
       const monthAllocations =
@@ -16716,9 +16917,8 @@ const buildLineMonthCapacityRows = async ({
       if (monthAllocations.length === 0) return;
       const processKey =
         resolveWorkRecordProcessBucketKeyForAssignmentSchedule(record) || "unknown";
-      processKeySet.add(processKey);
       monthAllocations.forEach(({ monthKey, allocatedTotal }) => {
-        if (!requestedMonthKeySet.has(monthKey) || allocatedTotal <= 0) return;
+        if (allocatedTotal <= 0) return;
         monthlyTotalDoneByMonthKey.set(
           monthKey,
           (monthlyTotalDoneByMonthKey.get(monthKey) || 0) + allocatedTotal
@@ -16733,19 +16933,10 @@ const buildLineMonthCapacityRows = async ({
       });
     });
 
-    const processCountFromRecords =
-      processKeySet.size > 0 ? processKeySet.size : null;
-    const processCount =
-      processCountFromSnapshot ?? processCountFromRecords;
-    const totalExpected =
-      plannedQuantity != null && processCount != null && processCount > 0
-        ? plannedQuantity * processCount
-        : null;
     const cumulativeProcessTotalsByKey = new Map<string, number>();
     let cumulativeTotalDone = 0;
     let previousCompletedStTotalSeconds = 0;
-
-    monthKeys.forEach((monthKey) => {
+    internalMonthKeys.forEach((monthKey) => {
       cumulativeTotalDone +=
         Math.max(0, Math.round(Number(monthlyTotalDoneByMonthKey.get(monthKey) || 0)));
       const monthlyProcessTotals =
@@ -16764,10 +16955,7 @@ const buildLineMonthCapacityRows = async ({
       });
       const producedRatio =
         plannedQuantity > 0
-          ? Math.max(
-              0,
-              Math.min(1, producedQuantity / plannedQuantity)
-            )
+          ? Math.max(0, Math.min(1, producedQuantity / plannedQuantity))
           : null;
       const operationalProgressRatio =
         totalExpected != null && totalExpected > 0
@@ -16829,12 +17017,123 @@ const buildLineMonthCapacityRows = async ({
     buildLineMonthCapacityWeightRows({
       coverageStartDate,
       coverageEndDate,
-      monthKeys,
+      monthKeys: internalMonthKeys,
       holidaySet,
     }).forEach(({ monthKey }) => {
       const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
       if (!target) return;
       target.orphanWorkRecordCount += 1;
+    });
+  });
+
+  const resolveLineCapacitySecondsForDateRange = ({
+    lineId,
+    startDateKey,
+    endDateKey,
+  }: {
+    lineId: number;
+    startDateKey: string;
+    endDateKey: string;
+  }) =>
+    listDateKeysInclusiveForLineMonthCapacity(startDateKey, endDateKey).reduce(
+      (sum, dateKey) => {
+        const employeeIds = employeeIdsByLineDateKey.get(`${lineId}:${dateKey}`);
+        return (
+          sum +
+          Math.max(0, (employeeIds?.size || 0) * DEFAULT_LINE_DAILY_WORK_SECONDS)
+        );
+      },
+      0
+    );
+
+  requestedLineIds.forEach((lineId) => {
+    const forecastMeta = lineForecastMetaByLineId.get(lineId);
+    if (!forecastMeta) return;
+    const anchorDateKey = normalizeDateKey(forecastMeta.forecastAnchorDateKey);
+    const anchorMonthKey = normalizeMonthKey(anchorDateKey?.slice(0, 7));
+    let remainingBacklog = Math.max(
+      0,
+      Math.round(Number(forecastMeta.remainingBacklogStSeconds) || 0)
+    );
+    let previousCarryOutStSeconds = 0;
+
+    internalMonthKeys.forEach((monthKey) => {
+      const target = lineMonthBaseByKey.get(`${lineId}:${monthKey}`);
+      if (!target) return;
+      if (!anchorMonthKey || monthKey < anchorMonthKey) {
+        target.monthType = "historical";
+        target.totalEstimatedLoadStSeconds = target.lineMonthlyActualOutputStSeconds;
+        target.totalEstimatedLoadPercent =
+          target.lineMonthlyCapacitySeconds > 0
+            ? Math.round(
+                (target.totalEstimatedLoadStSeconds /
+                  target.lineMonthlyCapacitySeconds) *
+                  1000
+              ) / 10
+            : null;
+        return;
+      }
+
+      target.monthType = monthKey === anchorMonthKey ? "anchor" : "forecast";
+      const monthStartDateKey =
+        getMonthStartDateKeyForLineMonthCapacity(monthKey) || internalStartDateKey;
+      const monthEndDateKey =
+        getMonthEndDateKeyForLineMonthCapacity(monthKey) || internalEndDateKey;
+      const forecastStartDateKey =
+        monthKey === anchorMonthKey
+          ? anchorDateKey
+          : resolveSameOrNextWorkingDateKeyForLineMonthCapacity({
+              fromDateKey: monthStartDateKey,
+              holidaySet,
+            });
+      const forecastAvailableCapacitySeconds =
+        forecastStartDateKey && forecastStartDateKey <= monthEndDateKey
+          ? resolveLineCapacitySecondsForDateRange({
+              lineId,
+              startDateKey: forecastStartDateKey,
+              endDateKey: monthEndDateKey,
+            })
+          : 0;
+      const forecastWorkingDayCount =
+        forecastStartDateKey && forecastStartDateKey <= monthEndDateKey
+          ? countWorkingDateKeysInRangeForLineMonthCapacity({
+              startDateKey: forecastStartDateKey,
+              endDateKey: monthEndDateKey,
+              holidaySet,
+            })
+          : 0;
+      const carryInStSeconds = monthKey === anchorMonthKey ? 0 : previousCarryOutStSeconds;
+      const backlogEntering = monthKey === anchorMonthKey ? remainingBacklog : carryInStSeconds;
+      const forecastLoadStSeconds = Math.max(
+        0,
+        Math.min(backlogEntering, forecastAvailableCapacitySeconds)
+      );
+      const carryOutStSeconds = Math.max(
+        0,
+        backlogEntering - forecastAvailableCapacitySeconds
+      );
+      previousCarryOutStSeconds = carryOutStSeconds;
+      target.forecastAvailableCapacitySeconds = forecastAvailableCapacitySeconds;
+      target.forecastWorkingDayCount = forecastWorkingDayCount;
+      target.forecastLoadStSeconds = forecastLoadStSeconds;
+      target.forecastLoadPercent =
+        target.lineMonthlyCapacitySeconds > 0
+          ? Math.round(
+              (forecastLoadStSeconds / target.lineMonthlyCapacitySeconds) * 1000
+            ) / 10
+          : null;
+      target.carryInStSeconds = carryInStSeconds;
+      target.carryOutStSeconds = carryOutStSeconds;
+      target.totalEstimatedLoadStSeconds =
+        target.lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+      target.totalEstimatedLoadPercent =
+        target.lineMonthlyCapacitySeconds > 0
+          ? Math.round(
+              (target.totalEstimatedLoadStSeconds /
+                target.lineMonthlyCapacitySeconds) *
+                1000
+            ) / 10
+          : null;
     });
   });
 
@@ -16844,6 +17143,7 @@ const buildLineMonthCapacityRows = async ({
       if (lineCompare !== 0) return lineCompare;
       return left.monthKey.localeCompare(right.monthKey);
     })
+    .filter((row) => requestedMonthKeySet.has(row.monthKey))
     .map((row) => {
       const averageHeadcount =
         row.workingDayCount > 0
@@ -16866,10 +17166,23 @@ const buildLineMonthCapacityRows = async ({
         lineMonthlyActualOutputStSeconds: row.lineMonthlyActualOutputStSeconds,
         actualOutputPercent,
         orphanWorkRecordCount: row.orphanWorkRecordCount,
+        latestActualCoverageEndDateKey: row.latestActualCoverageEndDateKey,
+        forecastAnchorDateKey: row.forecastAnchorDateKey,
+        forecastAvailableCapacitySeconds: row.forecastAvailableCapacitySeconds,
+        forecastWorkingDayCount: row.forecastWorkingDayCount,
+        forecastLoadStSeconds: row.forecastLoadStSeconds,
+        forecastLoadPercent: row.forecastLoadPercent,
+        carryInStSeconds: row.carryInStSeconds,
+        carryOutStSeconds: row.carryOutStSeconds,
+        totalEstimatedLoadStSeconds: row.totalEstimatedLoadStSeconds,
+        totalEstimatedLoadPercent: row.totalEstimatedLoadPercent,
+        monthType: row.monthType,
+        lineRemainingBacklogStSeconds:
+          lineForecastMetaByLineId.get(Number(row.lineId))?.remainingBacklogStSeconds ?? 0,
       };
     });
 
-  return { monthKeys, rows };
+  return { monthKeys: requestedMonthKeys, rows };
 };
 
 const buildAssignmentPlanProgressRows = async (
