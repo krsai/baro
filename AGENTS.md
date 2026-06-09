@@ -138,6 +138,10 @@ AT(q) = a*q + b
 - **`progressPercent` 필드**: `/assignment-plan-progress` 응답에 포함되며, 현재는 `sum(WorkRecord.quantity) / (planQuantity × processCount)` 공식으로 계산.
 - **작업기록 총량 집계**: 진행도 계산 함수(`buildAssignmentPlanProgressRows`)에서 plan별 총 작업량 집계가 가능.
 - **라인-월 capacity 보드**: `AssignBoard.jsx` 기본 뷰는 line-month capacity summary이며, 계획 ST는 현재 보드 assignment를 기준으로 월별 분배하고 실제 산출은 `/line-month-capacity`가 WorkLog 기간과 WorkRecord를 기준으로 집계한다.
+- **rolling forecast 기준**: line-month 보드의 forecast load/carry는 저장된 예전 assignment range가 아니라 **현재 보드의 미완료 assignment queue**와 `remainingStTotalSeconds`를 기준으로 다시 계산한다. 따라서 현재 보드에서 라인 queue가 0건이면 forecast load도 0이어야 한다.
+- **forecast anchor 규칙**: line-level forecast 시작점은 `nextWorkingDay(lastActualCoverageEndDateKey)`다. 아직 actual WorkLog가 하나도 없으면 fallback은 `today` 또는 그 다음 working day다. 기본 working day는 월~토, 일요일과 휴일관리 날짜만 제외한다.
+- **anchor month 의미**: actual이 있는 과거 month는 history다. anchor month와 미래 month는 현재 남은 backlog를 앞으로 capacity에 fill-forward 한 rolling forecast다. 6월 capacity를 먼저 채우고 초과분은 7월, 다시 초과하면 8월로 carry한다.
+- **UI 최소 정보 원칙**: 라인 요약 행은 `라인명`, `인원`, `배정 작업 수(완료 제외)`, `완료 예상 시점`만 우선 표시한다. 월 cell의 carry는 시간(hours)이 아니라 **다음으로 넘어가는 날짜**로 표시한다.
 - **가로형 drag/drop 배정 보드**: 미배정 카드와 라인 배정 카드는 모두 한 줄 가로 카드로 표시한다. 라인 summary row에 바로 drop 해서 append 할 수 있고, 확장 영역에서는 카드 사이 slot drop으로 순서를 바꾼다.
 - **직렬 타임라인 비노출**: 기존 `ScheduleTimeline`과 프론트 reflow 코드는 내부 호환을 위해 남아 있을 수 있지만, 운영 화면의 기본 배정 UX로는 사용하지 않는다.
 
