@@ -448,6 +448,17 @@ const resolveAssignmentForecastStTotalSeconds = (assignment) => {
   return Math.max(0, Math.round(parsed));
 };
 
+const resolveCarryOutDateKey = ({ monthKey, carryOutStSeconds, holidaySet }) => {
+  if (Math.max(0, Number(carryOutStSeconds) || 0) <= 0) return '';
+  const monthEndDateKey = getMonthEndDateKey(monthKey);
+  if (!monthEndDateKey) return '';
+  return (
+    resolveWorkingDateCursor(shiftDateKeyByDays(monthEndDateKey, 1), holidaySet, {
+      allowSameDay: true,
+    }) || ''
+  );
+};
+
 export const buildLineMonthCapacityBoardRows = ({
   lines,
   assignments,
@@ -677,6 +688,11 @@ export const buildLineMonthCapacityBoardRows = ({
         inferredMonthType === 'historical'
           ? lineMonthlyActualOutputStSeconds
           : lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+      const carryOutDateKey = resolveCarryOutDateKey({
+        monthKey,
+        carryOutStSeconds,
+        holidaySet,
+      });
       monthSummaryByKey.set(monthKey, {
         lineId,
         monthKey,
@@ -709,6 +725,7 @@ export const buildLineMonthCapacityBoardRows = ({
         ),
         carryInStSeconds,
         carryOutStSeconds,
+        carryOutDateKey,
         totalEstimatedLoadStSeconds,
         totalEstimatedLoadPercent: roundPercent(
           totalEstimatedLoadStSeconds,
@@ -768,6 +785,7 @@ export const buildLineMonthCapacityBoardRows = ({
         plannedLoadPercent: 0,
         carryInStSeconds: 0,
         carryOutStSeconds: 0,
+        carryOutDateKey: '',
         totalEstimatedLoadStSeconds: lineMonthlyActualOutputStSeconds,
         totalEstimatedLoadPercent: roundPercent(
           lineMonthlyActualOutputStSeconds,

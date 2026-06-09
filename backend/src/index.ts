@@ -16666,15 +16666,12 @@ const buildLineMonthCapacityRows = async ({
     });
   });
 
-  const currentMonthKey = todayDateKey().slice(0, 7);
-  const currentMonthStartDateKey =
-    getMonthStartDateKeyForLineMonthCapacity(currentMonthKey) ||
-    todayDateKey();
+  const currentDateKey = todayDateKey();
   const defaultForecastAnchorDateKey =
     resolveSameOrNextWorkingDateKeyForLineMonthCapacity({
-      fromDateKey: currentMonthStartDateKey,
+      fromDateKey: currentDateKey,
       holidaySet,
-    }) || currentMonthStartDateKey;
+    }) || currentDateKey;
 
   let internalMonthFrom = requestedMonthKeys[0] || monthFrom;
   const lineForecastMetaByLineId = new Map<

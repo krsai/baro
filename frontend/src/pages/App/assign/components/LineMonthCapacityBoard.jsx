@@ -55,6 +55,27 @@ const formatDaysLabel = (value, fallback = '-') => {
   })}d`;
 };
 
+const formatCarryDateLabel = (dateKey, languageCode = 'en') => {
+  if (!dateKey) return '';
+  const template =
+    languageCode === 'ko'
+      ? '이월 {date}'
+      : languageCode === 'vi'
+        ? 'Chuyen sang {date}'
+        : 'Carry to {date}';
+  return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
+};
+
+const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
+  const template =
+    languageCode === 'ko'
+      ? '완료 예상 {date}'
+      : languageCode === 'vi'
+        ? 'Du kien xong {date}'
+        : 'Finish est. {date}';
+  return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
+};
+
 const formatQuantityLabel = (quantity, languageCode = 'en') =>
   getUiMessage('assign.quantityCompact', 'Qty {quantity}', languageCode, {
     quantity: formatNumberWithCommas(Math.max(0, Number(quantity) || 0), {
@@ -416,54 +437,8 @@ const LineMonthCapacityBoard = ({
                             )}
                           </Typography>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.completedCountCompact',
-                              '{count} completed',
-                              languageCode,
-                              { count: row.completedAssignmentCount || 0 }
-                            )}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.readyCountCompact',
-                              '{count} awaiting completion',
-                              languageCode,
-                              { count: row.readyToCompleteAssignmentCount || 0 }
-                            )}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.remainingLoadCompact',
-                              'Remain {hours}',
-                              languageCode,
-                              {
-                                hours: formatHoursLabel(
-                                  row.totalRemainingStTotalSeconds,
-                                  '-'
-                                ),
-                              }
-                            )}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.backlogDaysCompact',
-                              'Backlog {days}',
-                              languageCode,
-                              {
-                                days: formatDaysLabel(row.queueBacklogDays, '-'),
-                              }
-                            )}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                             {row.lineFreeDateKey
-                              ? getUiMessage(
-                                  'assign.lineFreeByCompact',
-                                  'Free by {date}',
-                                  languageCode,
-                                  {
-                                    date: formatDateKeyLabel(row.lineFreeDateKey, '-'),
-                                  }
-                                )
+                              ? formatLineCompletionLabel(row.lineFreeDateKey, languageCode)
                               : Number(row.activeAssignmentCount) > 0
                                 ? getUiMessage(
                                     'assign.etaUnavailableCompact',
@@ -475,26 +450,6 @@ const LineMonthCapacityBoard = ({
                                   'Free now',
                                   languageCode
                                 )}
-                          </Typography>
-                          {row.forecastAnchorDateKey ? (
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                              {getUiMessage(
-                                'assign.forecastFromCompact',
-                                'Forecast from {date}',
-                                languageCode,
-                                {
-                                  date: formatDateKeyLabel(row.forecastAnchorDateKey, '-'),
-                                }
-                              )}
-                            </Typography>
-                          ) : null}
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {getUiMessage(
-                              'assign.assignmentCountCompact',
-                              '{count} assignments',
-                              languageCode,
-                              { count: row.assignments.length }
-                            )}
                           </Typography>
                           {Number(row.stUnknownAssignmentCount) > 0 ? (
                             <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
@@ -519,7 +474,6 @@ const LineMonthCapacityBoard = ({
                         ) || null;
                       const tone = resolvePlanTone(summary?.plannedLoadPercent);
                       const isForecastMonth = Boolean(summary?.isForecastMonth);
-                      const isAnchorMonth = Boolean(summary?.isAnchorMonth);
                       const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
                       const planBarValue = Math.max(
                         0,
@@ -540,7 +494,7 @@ const LineMonthCapacityBoard = ({
                               p: 1,
                               backgroundColor: tone.backgroundColor,
                               border: '1px solid rgba(0,0,0,0.05)',
-                              minHeight: 132,
+                              minHeight: 108,
                             }}
                           >
                             <Stack spacing={0.75}>
@@ -570,7 +524,7 @@ const LineMonthCapacityBoard = ({
                                     },
                                   }}
                                 />
-                                {isAnchorMonth && summary?.forecastAnchorDateKey ? (
+                                {isForecastMonth && summary?.forecastAnchorDateKey ? (
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
@@ -605,42 +559,11 @@ const LineMonthCapacityBoard = ({
                                   }}
                                 />
                               </Box>
-                              {isForecastMonth ? (
+                              {isForecastMonth && summary?.carryOutDateKey ? (
                                 <Typography variant="caption" color="text.secondary">
-                                  {getUiMessage(
-                                    'assign.totalEstimatedLoad',
-                                    'Total est.',
-                                    languageCode
-                                  )}{' '}
-                                  {formatPercentLabel(summary?.totalEstimatedLoadPercent)}
+                                  {formatCarryDateLabel(summary.carryOutDateKey, languageCode)}
                                 </Typography>
                               ) : null}
-                              <Typography variant="caption" color="text.secondary">
-                                {getUiMessage(
-                                  'assign.carryOutCompact',
-                                  'Carry {hours}',
-                                  languageCode,
-                                  {
-                                    hours: formatHoursLabel(
-                                      isForecastMonth ? summary?.carryOutStSeconds : null,
-                                      '-'
-                                    ),
-                                  }
-                                )}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {getUiMessage(
-                                  'assign.capacityCompact',
-                                  'Capacity {hours}',
-                                  languageCode,
-                                  {
-                                    hours: formatHoursLabel(
-                                      summary?.lineMonthlyCapacitySeconds,
-                                      '-'
-                                    ),
-                                  }
-                                )}
-                              </Typography>
                               {Number(summary?.orphanWorkRecordCount) > 0 ? (
                                 <Chip
                                   size="small"
