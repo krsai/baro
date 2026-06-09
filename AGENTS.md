@@ -146,6 +146,25 @@ AT(q) = a*q + b
 - **가로형 drag/drop 배정 보드**: 미배정 카드와 라인 배정 카드는 모두 한 줄 가로 카드로 표시한다. 라인 summary row에 바로 drop 해서 append 할 수 있고, 확장 영역에서는 카드 사이 slot drop으로 순서를 바꾼다.
 - **직렬 타임라인 비노출**: 기존 `ScheduleTimeline`과 프론트 reflow 코드는 내부 호환을 위해 남아 있을 수 있지만, 운영 화면의 기본 배정 UX로는 사용하지 않는다.
 
+### 2026-06-09 Assignment Forecast Latest Lock
+- line-month board의 forecast는 저장된 `AssignmentPlan.startDate/endDate` range가 아니라 **현재 보드의 active assignment queue**를 기준으로 다시 계산한다.
+- 따라서 현재 보드에서 특정 line의 active queue가 0건이면 forecast load도 0이어야 한다.
+- line-level actual history는 저장된 WorkLog/WorkRecord를 기준으로 유지하고, future forecast만 현재 보드 backlog로 재시뮬레이션한다.
+- forecast backlog 입력값은 `remainingStTotalSeconds`다. partially worked assignment도 original planned ST가 아니라 remaining ST만 future forecast에 기여한다.
+- actual이 하나도 없는 line의 default forecast anchor는 `today` 또는 그 다음 working day다. actual이 있으면 `nextWorkingDay(lastActualCoverageEndDateKey)`를 사용한다.
+- anchor month의 `forecast load percent` 분모는 full-month capacity가 아니라 **anchor 이후 남은 `forecastAvailableCapacitySeconds`**다. 예: `2026-06-10~2026-06-30` 구간을 꽉 채우면 anchor month는 `100%`로 보여야 한다.
+- anchor month 보조 문구는 `Forecast from {date}`보다 실제 forecast window range (`2026-06-10~2026-06-30`)를 우선 표시한다.
+- carry는 hours가 아니라 **다음으로 넘어가는 날짜**로 보여준다. 의미는 “그 달 capacity로 다 못 끝낸 backlog가 실제로 다음에 이어서 시작되는 예상 date”다.
+- 라인 요약 행의 최소 표시 정보는 `라인명`, `인원`, `배정 작업 수(완료 제외)`, `완료 예상 시점`이다.
+- `lineFreeDateKey`와 line-level ETA는 현재 queue 정렬(`startIndex/endIndex` + source order)에 기대는 추정값이다. DB canonical `queuePosition`이 아직 없으므로 card-level exact ETA보다 **line-level rough ETA**로 해석한다.
+- `ready_to_complete`는 canonical completed가 아니다. backlog/queue에서는 active로 남고, `isCompleted === true`가 되기 전까지 finished로 보내지 않는다.
+- ST missing assignment는 forecast에서 제외하고 warning만 준다. 따라서 line-level forecast는 과소 추정될 수 있으며, `stUnknownAssignmentCount` 경고를 함께 봐야 한다.
+- 관련 핵심 파일:
+  - backend: `backend/src/index.ts` (`/line-month-capacity`, anchor date, forecastLoadPercent)
+  - frontend util: `frontend/src/pages/App/assign/utils/lineMonthCapacity.js`
+  - frontend UI: `frontend/src/pages/App/assign/components/LineMonthCapacityBoard.jsx`
+  - docs: `AGENTS.md`
+
 ### 현재 이슈 분류 가드레일 (중요)
 - WorkLog 기간 입력이 존재하는데도 카드가 밀리거나 길이가 비정상 변경되면, 1차 의심 지점은 날짜 저장이 아니라 **렌더/재배치 로직(C+D)** 이다.
 - WorkLog/WorkRecord 날짜 해석 이슈와 프론트 reflow/render-range 이슈를 분리해서 진단한다.
