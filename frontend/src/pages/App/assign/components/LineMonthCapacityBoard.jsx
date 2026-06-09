@@ -485,6 +485,7 @@ const LineMonthCapacityBoard = ({
                         ) || null;
                       const tone = resolvePlanTone(summary?.plannedLoadPercent);
                       const isForecastMonth = Boolean(summary?.isForecastMonth);
+                      const isAnchorMonth = Boolean(summary?.isAnchorMonth);
                       const isHistoricalMonth = Boolean(summary?.isHistoricalMonth);
                       const planBarValue = Math.max(
                         0,
