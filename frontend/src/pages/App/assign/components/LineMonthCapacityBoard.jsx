@@ -76,6 +76,17 @@ const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
   return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
 };
 
+const formatForecastWindowRangeLabel = (
+  startDateKey,
+  endDateKey,
+  fallback = '-'
+) => {
+  const startLabel = formatDateKeyLabel(startDateKey, '');
+  const endLabel = formatDateKeyLabel(endDateKey, '');
+  if (!startLabel || !endLabel) return fallback;
+  return `${startLabel}~${endLabel}`;
+};
+
 const formatQuantityLabel = (quantity, languageCode = 'en') =>
   getUiMessage('assign.quantityCompact', 'Qty {quantity}', languageCode, {
     quantity: formatNumberWithCommas(Math.max(0, Number(quantity) || 0), {
@@ -524,19 +535,17 @@ const LineMonthCapacityBoard = ({
                                     },
                                   }}
                                 />
-                                {isForecastMonth && summary?.forecastAnchorDateKey ? (
+                                {isAnchorMonth &&
+                                summary?.forecastWindowStartDateKey &&
+                                summary?.forecastWindowEndDateKey ? (
                                   <Typography
                                     variant="caption"
                                     color="text.secondary"
                                     sx={{ display: 'block', mt: 0.5 }}
                                   >
-                                    {getUiMessage(
-                                      'assign.forecastFromCompact',
-                                      'Forecast from {date}',
-                                      languageCode,
-                                      {
-                                        date: formatDateKeyLabel(summary.forecastAnchorDateKey, '-'),
-                                      }
+                                    {formatForecastWindowRangeLabel(
+                                      summary.forecastWindowStartDateKey,
+                                      summary.forecastWindowEndDateKey
                                     )}
                                   </Typography>
                                 ) : null}

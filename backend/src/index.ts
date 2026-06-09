@@ -17129,9 +17129,9 @@ const buildLineMonthCapacityRows = async ({
       target.forecastWorkingDayCount = forecastWorkingDayCount;
       target.forecastLoadStSeconds = forecastLoadStSeconds;
       target.forecastLoadPercent =
-        target.lineMonthlyCapacitySeconds > 0
+        forecastAvailableCapacitySeconds > 0
           ? Math.round(
-              (forecastLoadStSeconds / target.lineMonthlyCapacitySeconds) * 1000
+              (forecastLoadStSeconds / forecastAvailableCapacitySeconds) * 1000
             ) / 10
           : null;
       target.carryInStSeconds = carryInStSeconds;

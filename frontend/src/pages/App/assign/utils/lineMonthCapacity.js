@@ -459,6 +459,35 @@ const resolveCarryOutDateKey = ({ monthKey, carryOutStSeconds, holidaySet }) => 
   );
 };
 
+const resolveForecastWindowRange = ({
+  monthKey,
+  monthType,
+  forecastAnchorDateKey,
+}) => {
+  if (monthType !== 'anchor') {
+    return {
+      forecastWindowStartDateKey: '',
+      forecastWindowEndDateKey: '',
+    };
+  }
+  const forecastWindowStartDateKey = normalizeDateKey(forecastAnchorDateKey);
+  const forecastWindowEndDateKey = getMonthEndDateKey(monthKey);
+  if (
+    !forecastWindowStartDateKey ||
+    !forecastWindowEndDateKey ||
+    forecastWindowStartDateKey > forecastWindowEndDateKey
+  ) {
+    return {
+      forecastWindowStartDateKey: '',
+      forecastWindowEndDateKey: '',
+    };
+  }
+  return {
+    forecastWindowStartDateKey,
+    forecastWindowEndDateKey,
+  };
+};
+
 export const buildLineMonthCapacityBoardRows = ({
   lines,
   assignments,
@@ -688,6 +717,12 @@ export const buildLineMonthCapacityBoardRows = ({
         inferredMonthType === 'historical'
           ? lineMonthlyActualOutputStSeconds
           : lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+      const { forecastWindowStartDateKey, forecastWindowEndDateKey } =
+        resolveForecastWindowRange({
+          monthKey,
+          monthType: inferredMonthType,
+          forecastAnchorDateKey: rowForecastAnchorDateKey || null,
+        });
       const carryOutDateKey = resolveCarryOutDateKey({
         monthKey,
         carryOutStSeconds,
@@ -716,12 +751,16 @@ export const buildLineMonthCapacityBoardRows = ({
               ),
         latestActualCoverageEndDateKey,
         forecastAnchorDateKey: rowForecastAnchorDateKey || null,
+        forecastWindowStartDateKey,
+        forecastWindowEndDateKey,
         forecastAvailableCapacitySeconds,
         forecastWorkingDayCount,
         forecastLoadStSeconds,
         plannedLoadPercent: roundPercent(
           forecastLoadStSeconds,
-          lineMonthlyCapacitySeconds
+          inferredMonthType === 'historical'
+            ? lineMonthlyCapacitySeconds
+            : forecastAvailableCapacitySeconds
         ),
         carryInStSeconds,
         carryOutStSeconds,
@@ -779,6 +818,8 @@ export const buildLineMonthCapacityBoardRows = ({
           normalizeDateKey(backendRow?.forecastAnchorDateKey) ||
           forecastAnchorDateKey ||
           null,
+        forecastWindowStartDateKey: '',
+        forecastWindowEndDateKey: '',
         forecastAvailableCapacitySeconds: 0,
         forecastWorkingDayCount: 0,
         forecastLoadStSeconds: 0,
