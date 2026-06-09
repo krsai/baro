@@ -16549,6 +16549,7 @@ const buildLineMonthCapacityRows = async ({
   }, new Map<number, any[]>());
   const lineLatestActualCoverageEndDateKeyByLineId = new Map<number, string>();
   const lineRemainingBacklogStSecondsByLineId = new Map<number, number>();
+  const lineStUnknownAssignmentCountByLineId = new Map<number, number>();
   const planProgressMetaById = new Map<
     number,
     {
@@ -16566,12 +16567,30 @@ const buildLineMonthCapacityRows = async ({
     if (!planId || !lineId || !requestedLineIdSet.has(lineId)) return;
     const plannedQuantity = resolveAssignmentQuantity(plan);
     const plannedStTotalSeconds = resolveAssignmentStTotalSeconds(plan);
+    ensureArray(workRowsByPlanId.get(planId)).forEach((record) => {
+      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
+      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
+      if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
+        return;
+      }
+      const latestCoverageEndDateKey =
+        lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
+      if (!latestCoverageEndDateKey || coverageEndDate > latestCoverageEndDateKey) {
+        lineLatestActualCoverageEndDateKeyByLineId.set(lineId, coverageEndDate);
+      }
+    });
     if (
       plannedQuantity == null ||
       plannedQuantity <= 0 ||
       plannedStTotalSeconds == null ||
       plannedStTotalSeconds <= 0
     ) {
+      if (plan?.isCompleted !== true) {
+        lineStUnknownAssignmentCountByLineId.set(
+          lineId,
+          (lineStUnknownAssignmentCountByLineId.get(lineId) || 0) + 1
+        );
+      }
       return;
     }
 
@@ -16596,16 +16615,6 @@ const buildLineMonthCapacityRows = async ({
         processKey,
         (cumulativeProcessTotalsByKey.get(processKey) || 0) + quantity
       );
-      const coverageStartDate = resolveStrictWorkLogCoverageStartDate(record?.workLog);
-      const coverageEndDate = resolveStrictWorkLogCoverageEndDate(record?.workLog);
-      if (!coverageStartDate || !coverageEndDate || coverageStartDate > coverageEndDate) {
-        return;
-      }
-      const latestCoverageEndDateKey =
-        lineLatestActualCoverageEndDateKeyByLineId.get(lineId) || null;
-      if (!latestCoverageEndDateKey || coverageEndDate > latestCoverageEndDateKey) {
-        lineLatestActualCoverageEndDateKeyByLineId.set(lineId, coverageEndDate);
-      }
     });
 
     const processCountFromRecords =
@@ -16675,6 +16684,7 @@ const buildLineMonthCapacityRows = async ({
       latestActualCoverageEndDateKey: string | null;
       forecastAnchorDateKey: string;
       remainingBacklogStSeconds: number;
+      stUnknownAssignmentCount: number;
     }
   >();
   requestedLineIds.forEach((lineId) => {
@@ -16696,6 +16706,10 @@ const buildLineMonthCapacityRows = async ({
       remainingBacklogStSeconds: Math.max(
         0,
         Math.round(Number(lineRemainingBacklogStSecondsByLineId.get(lineId) || 0))
+      ),
+      stUnknownAssignmentCount: Math.max(
+        0,
+        Math.round(Number(lineStUnknownAssignmentCountByLineId.get(lineId) || 0))
       ),
     });
   });
@@ -16735,8 +16749,9 @@ const buildLineMonthCapacityRows = async ({
       carryOutStSeconds: number;
       totalEstimatedLoadStSeconds: number;
       totalEstimatedLoadPercent: number | null;
-      monthType: "historical" | "anchor" | "forecast";
-    }
+        monthType: "historical" | "anchor" | "forecast";
+        stUnknownAssignmentCount: number;
+      }
   >();
   requestedLineIds.forEach((lineId) => {
     const forecastMeta = lineForecastMetaByLineId.get(lineId) || null;
@@ -16771,6 +16786,7 @@ const buildLineMonthCapacityRows = async ({
         totalEstimatedLoadStSeconds: 0,
         totalEstimatedLoadPercent: null,
         monthType: "historical",
+        stUnknownAssignmentCount: forecastMeta?.stUnknownAssignmentCount || 0,
       });
     });
   });
@@ -17179,6 +17195,8 @@ const buildLineMonthCapacityRows = async ({
         monthType: row.monthType,
         lineRemainingBacklogStSeconds:
           lineForecastMetaByLineId.get(Number(row.lineId))?.remainingBacklogStSeconds ?? 0,
+        stUnknownAssignmentCount:
+          lineForecastMetaByLineId.get(Number(row.lineId))?.stUnknownAssignmentCount ?? 0,
       };
     });
 

@@ -296,14 +296,9 @@ const buildLineQueueForecast = ({
   const dailyCapacitySeconds = resolveLineDailyCapacitySeconds(line);
   const queuedAssignments = [];
   const completedAssignments = [];
-  let queueCursorDateKey = resolveWorkingDateCursor(normalizedAnchorDateKey, holidaySet, {
-    allowSameDay: true,
-  });
-  let lastForecastEndDateKey = '';
   let queuedCount = 0;
   let completedCount = 0;
   let readyToCompleteCount = 0;
-  let finishedCount = 0;
 
   (Array.isArray(assignments) ? assignments : []).forEach((assignment) => {
     const rawRemainingStTotalSeconds =
@@ -325,10 +320,8 @@ const buildLineQueueForecast = ({
     const persistedCompletedAt =
       productionCompletedAt || normalizeDateKey(assignment?.completedAt);
     const completedAt = persistedCompletedAt || actualProducedCompletedAt || null;
-    const isWorkFinished =
-      isCompleted ||
-      Boolean(actualProducedCompletedAt) ||
-      (remainingStTotalSeconds != null && remainingStTotalSeconds <= 0);
+    const isReadyToComplete =
+      !isCompleted && Boolean(actualProducedCompletedAt);
     const elapsedDays = Math.max(0, Number(assignment?.elapsedDays) || 0);
     const baseAssignment = {
       ...assignment,
@@ -338,63 +331,40 @@ const buildLineQueueForecast = ({
       completedAt: completedAt || null,
       completionDateIsEstimated:
         Boolean(completedAt) && !Boolean(persistedCompletedAt),
-      isWorkFinished,
+      isWorkFinished: isCompleted,
       elapsedDays: elapsedDays > 0 ? elapsedDays : null,
       dailyCapacitySeconds,
     };
 
-    if (isWorkFinished) {
-      finishedCount += 1;
-      if (isCompleted) {
-        completedCount += 1;
-      } else {
-        readyToCompleteCount += 1;
-      }
+    if (isCompleted) {
+      completedCount += 1;
       completedAssignments.push({
         ...baseAssignment,
-        queuePosition: finishedCount,
-        queueStatus: isCompleted ? 'completed' : 'ready_to_complete',
+        queuePosition: completedCount,
+        queueStatus: 'completed',
         estimatedRemainingWorkDays: 0,
         forecastStartDateKey: null,
         forecastEndDateKey: completedAt || null,
       });
       return;
     }
+    if (isReadyToComplete) {
+      readyToCompleteCount += 1;
+    }
 
     const estimatedRemainingWorkDays =
       remainingStTotalSeconds == null
         ? null
         : roundDaysEstimate(remainingStTotalSeconds, dailyCapacitySeconds);
-    const requiredWorkingDays =
-      estimatedRemainingWorkDays == null
-        ? null
-        : Math.max(1, Math.ceil(estimatedRemainingWorkDays || 0));
-    const forecastStartDateKey = queueCursorDateKey || normalizedAnchorDateKey;
-    const forecastEndDateKey =
-      dailyCapacitySeconds > 0 && requiredWorkingDays != null
-        ? addWorkingDaysToDateKey(
-            forecastStartDateKey,
-            Math.max(0, requiredWorkingDays - 1),
-            holidaySet
-          )
-        : '';
-    if (forecastEndDateKey) {
-      lastForecastEndDateKey = forecastEndDateKey;
-      queueCursorDateKey = resolveWorkingDateCursor(
-        shiftDateKeyByDays(forecastEndDateKey, 1),
-        holidaySet,
-        { allowSameDay: true }
-      );
-    }
 
     queuedCount += 1;
     queuedAssignments.push({
       ...baseAssignment,
       queuePosition: queuedCount,
-      queueStatus: 'queued',
+      queueStatus: isReadyToComplete ? 'ready_to_complete' : 'queued',
       estimatedRemainingWorkDays,
-      forecastStartDateKey: forecastStartDateKey || null,
-      forecastEndDateKey: forecastEndDateKey || null,
+      forecastStartDateKey: null,
+      forecastEndDateKey: null,
     });
   });
 
@@ -409,6 +379,18 @@ const buildLineQueueForecast = ({
       ),
     0
   );
+  const totalRequiredWorkingDays =
+    dailyCapacitySeconds > 0
+      ? Math.max(1, Math.ceil(totalRemainingStTotalSeconds / dailyCapacitySeconds))
+      : 0;
+  const lineFreeDateKey =
+    totalRemainingStTotalSeconds > 0 && totalRequiredWorkingDays > 0
+      ? addWorkingDaysToDateKey(
+          normalizedAnchorDateKey,
+          Math.max(0, totalRequiredWorkingDays - 1),
+          holidaySet
+        ) || ''
+      : '';
 
   return {
     dailyCapacitySeconds,
@@ -418,7 +400,7 @@ const buildLineQueueForecast = ({
     readyToCompleteCount,
     totalRemainingStTotalSeconds,
     queueBacklogDays: roundDaysEstimate(totalRemainingStTotalSeconds, dailyCapacitySeconds),
-    lineFreeDateKey: lastForecastEndDateKey || '',
+    lineFreeDateKey,
   };
 };
 
@@ -493,6 +475,10 @@ export const buildLineMonthCapacityBoardRows = ({
         row?.lineRemainingBacklogStSeconds == null
           ? null
           : Math.max(0, Math.round(Number(row.lineRemainingBacklogStSeconds) || 0)),
+      stUnknownAssignmentCount: Math.max(
+        0,
+        Math.round(Number(row?.stUnknownAssignmentCount) || 0)
+      ),
     });
   });
 
@@ -684,6 +670,7 @@ export const buildLineMonthCapacityBoardRows = ({
       forecastAnchorDateKey: lineMeta?.forecastAnchorDateKey || null,
       lineRemainingBacklogStSeconds:
         lineMeta?.lineRemainingBacklogStSeconds ?? queueForecast.totalRemainingStTotalSeconds,
+      stUnknownAssignmentCount: lineMeta?.stUnknownAssignmentCount || 0,
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,

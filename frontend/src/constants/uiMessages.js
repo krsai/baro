@@ -255,6 +255,11 @@ export const UI_MESSAGES = {
     etaUnavailableCompact: { ko: 'ETA 계산 불가', en: 'ETA unavailable', vi: 'Khong tinh duoc ETA' },
     completedStatusCompact: { ko: '완료', en: 'Completed', vi: 'Hoan thanh' },
     readyStatusCompact: { ko: '작업 완료', en: 'Work done', vi: 'Da xong viec' },
+    stUnknownExcludedCompact: {
+      ko: 'ST 미설정 {count}건 제외',
+      en: '{count} ST-missing excluded',
+      vi: 'Loai tru {count} cong viec thieu ST',
+    },
     unlinkedWorkLogsWithCount: {
       ko: '미연결 기록 {count}건',
       en: 'Unlinked logs {count}',

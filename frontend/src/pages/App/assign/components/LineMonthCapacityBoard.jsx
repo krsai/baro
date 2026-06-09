@@ -195,7 +195,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
   const isCompleted = queueStatus === 'completed';
   const isReadyToComplete = queueStatus === 'ready_to_complete';
-  const isLocked = isCompleted || isReadyToComplete;
+  const isLocked = isCompleted;
   const chips = [
     isCompleted
       ? {
@@ -214,14 +214,15 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
               'Work done',
               languageCode
             ),
-            variant: 'outlined',
-            color: 'warning',
-          }
-      : {
-          label: formatProgressChipLabel(assignment.progressPercent, languageCode),
           variant: 'outlined',
-        },
-    !isLocked
+          color: 'warning',
+        }
+      : null,
+    {
+      label: formatProgressChipLabel(assignment.progressPercent, languageCode),
+      variant: 'outlined',
+    },
+    !isCompleted
       ? {
           label: formatHoursChipLabel(
             'assign.remainingHoursCompact',
@@ -232,7 +233,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           variant: 'outlined',
         }
       : null,
-    !isLocked
+    !isCompleted
       ? {
           label: formatDaysChipLabel(
             'assign.etaDaysCompact',
@@ -243,7 +244,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
           variant: 'outlined',
         }
       : null,
-    !isLocked && Number(assignment?.queuePosition) > 0
+    !isCompleted && Number(assignment?.queuePosition) > 0
       ? {
           label: getUiMessage('assign.queuePositionCompact', 'Q{position}', languageCode, {
             position: assignment.queuePosition,
@@ -292,11 +293,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
             'Awaiting completion',
             languageCode
           )
-      : assignment.forecastEndDateKey
-        ? getUiMessage('assign.forecastEndCompact', 'Finish {date}', languageCode, {
-            date: formatDateKeyLabel(assignment.forecastEndDateKey, '-'),
-          })
-        : getUiMessage('assign.etaUnavailableCompact', 'ETA unavailable', languageCode);
+      : '';
   const accentColor = isCompleted ? '#15803D' : isReadyToComplete ? '#D97706' : '#2563EB';
   const backgroundColor = isCompleted ? '#F3F4F6' : isReadyToComplete ? '#FFF7ED' : '#FFFFFF';
 
@@ -499,6 +496,18 @@ const LineMonthCapacityBoard = ({
                               { count: row.assignments.length }
                             )}
                           </Typography>
+                          {Number(row.stUnknownAssignmentCount) > 0 ? (
+                            <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+                              {getUiMessage(
+                                'assign.stUnknownExcludedCompact',
+                                '{count} ST-missing excluded',
+                                languageCode,
+                                {
+                                  count: row.stUnknownAssignmentCount,
+                                }
+                              )}
+                            </Typography>
+                          ) : null}
                           <LineRowDropArea lineId={row.lineId} languageCode={languageCode} />
                         </Box>
                       </Stack>
