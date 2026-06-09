@@ -16515,7 +16515,6 @@ const buildLineMonthCapacityRows = async ({
       .filter((value): value is string => Boolean(value))
   );
 
-  const requestedMonthKeySet = new Set(requestedMonthKeys);
   const requestedLineIdSet = new Set(requestedLineIds);
   const plans = await findAssignmentPlansWithSelectFallback({
     where: {
@@ -17159,7 +17158,6 @@ const buildLineMonthCapacityRows = async ({
       if (lineCompare !== 0) return lineCompare;
       return left.monthKey.localeCompare(right.monthKey);
     })
-    .filter((row) => requestedMonthKeySet.has(row.monthKey))
     .map((row) => {
       const averageHeadcount =
         row.workingDayCount > 0

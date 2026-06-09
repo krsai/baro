@@ -436,6 +436,18 @@ const buildFallbackLineMonthlyCapacitySeconds = (line, monthKey, holidaySet) => 
   return Math.max(0, Math.round(dailyCapacitySeconds * workingDayCount));
 };
 
+const resolveAssignmentForecastStTotalSeconds = (assignment) => {
+  const rawValue =
+    assignment?.remainingStTotalSeconds ??
+    assignment?.plannedStTotalSeconds ??
+    assignment?.stTotalSeconds ??
+    null;
+  if (rawValue == null) return null;
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.round(parsed));
+};
+
 export const buildLineMonthCapacityBoardRows = ({
   lines,
   assignments,
@@ -464,20 +476,32 @@ export const buildLineMonthCapacityBoardRows = ({
       })
       .filter(Boolean)
   );
-  const lineBackendMetaByLineId = new Map();
+  const backendRowsByLineId = new Map();
   (Array.isArray(backendRows) ? backendRows : []).forEach((row) => {
     const lineId = String(row?.lineId || '').trim();
-    if (!lineId || lineBackendMetaByLineId.has(lineId)) return;
+    if (!lineId) return;
+    const current = backendRowsByLineId.get(lineId) || [];
+    current.push(row);
+    backendRowsByLineId.set(lineId, current);
+  });
+  backendRowsByLineId.forEach((rows, lineId) => {
+    rows.sort((left, right) =>
+      String(left?.monthKey || '').localeCompare(String(right?.monthKey || ''))
+    );
+  });
+  const lineBackendMetaByLineId = new Map();
+  backendRowsByLineId.forEach((rows, lineId) => {
+    const sourceRow = rows[0] || null;
     lineBackendMetaByLineId.set(lineId, {
-      latestActualCoverageEndDateKey: normalizeDateKey(row?.latestActualCoverageEndDateKey),
-      forecastAnchorDateKey: normalizeDateKey(row?.forecastAnchorDateKey),
+      latestActualCoverageEndDateKey: normalizeDateKey(sourceRow?.latestActualCoverageEndDateKey),
+      forecastAnchorDateKey: normalizeDateKey(sourceRow?.forecastAnchorDateKey),
       lineRemainingBacklogStSeconds:
-        row?.lineRemainingBacklogStSeconds == null
+        sourceRow?.lineRemainingBacklogStSeconds == null
           ? null
-          : Math.max(0, Math.round(Number(row.lineRemainingBacklogStSeconds) || 0)),
+          : Math.max(0, Math.round(Number(sourceRow.lineRemainingBacklogStSeconds) || 0)),
       stUnknownAssignmentCount: Math.max(
         0,
-        Math.round(Number(row?.stUnknownAssignmentCount) || 0)
+        Math.round(Number(sourceRow?.stUnknownAssignmentCount) || 0)
       ),
     });
   });
@@ -485,96 +509,6 @@ export const buildLineMonthCapacityBoardRows = ({
   return (Array.isArray(lines) ? lines : []).map((line) => {
     const lineId = String(line?.id || '').trim();
     const lineMeta = lineBackendMetaByLineId.get(lineId) || null;
-    const months = monthKeysForDisplay.map((monthKey) => {
-      const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
-      const lineMonthlyCapacitySeconds =
-        Number(backendRow?.lineMonthlyCapacitySeconds) > 0
-          ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
-          : buildFallbackLineMonthlyCapacitySeconds(line, monthKey, holidaySet);
-      const lineMonthlyActualOutputStSeconds = Math.max(
-        0,
-        Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
-      );
-      const forecastLoadStSeconds = Math.max(
-        0,
-        Math.round(Number(backendRow?.forecastLoadStSeconds) || 0)
-      );
-      const totalEstimatedLoadStSeconds = Math.max(
-        lineMonthlyActualOutputStSeconds,
-        Math.round(
-          Number(
-            backendRow?.totalEstimatedLoadStSeconds ??
-              lineMonthlyActualOutputStSeconds + forecastLoadStSeconds
-          ) || 0
-        )
-      );
-      return {
-        lineId,
-        monthKey,
-        workingDayCount: Math.max(
-          0,
-          Math.round(Number(backendRow?.workingDayCount) || 0)
-        ),
-        averageHeadcount: Number(backendRow?.averageHeadcount) || 0,
-        orphanWorkRecordCount: Math.max(
-          0,
-          Math.round(Number(backendRow?.orphanWorkRecordCount) || 0)
-        ),
-        lineMonthlyCapacitySeconds,
-        lineMonthlyActualOutputStSeconds,
-        actualOutputPercent:
-          backendRow?.actualOutputPercent != null
-            ? Number(backendRow.actualOutputPercent)
-            : roundPercent(
-                lineMonthlyActualOutputStSeconds,
-                lineMonthlyCapacitySeconds
-              ),
-        latestActualCoverageEndDateKey:
-          normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
-          lineMeta?.latestActualCoverageEndDateKey ||
-          null,
-        forecastAnchorDateKey:
-          normalizeDateKey(backendRow?.forecastAnchorDateKey) ||
-          lineMeta?.forecastAnchorDateKey ||
-          null,
-        forecastAvailableCapacitySeconds:
-          backendRow?.forecastAvailableCapacitySeconds == null
-            ? lineMonthlyCapacitySeconds
-            : Math.max(
-                0,
-                Math.round(Number(backendRow.forecastAvailableCapacitySeconds) || 0)
-              ),
-        forecastWorkingDayCount: Math.max(
-          0,
-          Math.round(Number(backendRow?.forecastWorkingDayCount) || 0)
-        ),
-        forecastLoadStSeconds,
-        plannedLoadPercent:
-          backendRow?.forecastLoadPercent != null
-            ? Number(backendRow.forecastLoadPercent)
-            : roundPercent(forecastLoadStSeconds, lineMonthlyCapacitySeconds),
-        carryInStSeconds: Math.max(
-          0,
-          Math.round(Number(backendRow?.carryInStSeconds) || 0)
-        ),
-        carryOutStSeconds: Math.max(
-          0,
-          Math.round(Number(backendRow?.carryOutStSeconds) || 0)
-        ),
-        totalEstimatedLoadStSeconds,
-        totalEstimatedLoadPercent:
-          backendRow?.totalEstimatedLoadPercent != null
-            ? Number(backendRow.totalEstimatedLoadPercent)
-            : roundPercent(totalEstimatedLoadStSeconds, lineMonthlyCapacitySeconds),
-        monthType: backendRow?.monthType || 'historical',
-        isAnchorMonth: backendRow?.monthType === 'anchor',
-        isForecastMonth:
-          backendRow?.monthType === 'anchor' || backendRow?.monthType === 'forecast',
-        isHistoricalMonth:
-          !backendRow?.monthType || backendRow?.monthType === 'historical',
-      };
-    });
-
     const assignmentsForLine = (Array.isArray(assignments) ? assignments : [])
       .filter((assignment) => String(assignment?.lineId || '').trim() === lineId)
       .map((assignment, sourceOrderIndex) => {
@@ -654,6 +588,198 @@ export const buildLineMonthCapacityBoardRows = ({
         });
       });
 
+    const lineBackendRows = backendRowsByLineId.get(lineId) || [];
+    const internalMonthKeys = Array.from(
+      new Set([
+        ...lineBackendRows
+          .map((row) => normalizeMonthKey(row?.monthKey))
+          .filter(Boolean),
+        ...normalizedPlanningMonthKeys,
+      ])
+    ).sort((left, right) => left.localeCompare(right));
+    const forecastAnchorDateKey = lineMeta?.forecastAnchorDateKey || null;
+    const forecastAnchorMonthKey = normalizeMonthKey(
+      forecastAnchorDateKey ? forecastAnchorDateKey.slice(0, 7) : ''
+    );
+    const currentBoardRemainingBacklogStSeconds = assignmentsForLine.reduce(
+      (sum, assignment) => {
+        if (assignment?.isCompleted) return sum;
+        return sum + Math.max(0, resolveAssignmentForecastStTotalSeconds(assignment) || 0);
+      },
+      0
+    );
+    const currentBoardStUnknownAssignmentCount = assignmentsForLine.reduce(
+      (count, assignment) => {
+        if (assignment?.isCompleted) return count;
+        return resolveAssignmentForecastStTotalSeconds(assignment) == null ? count + 1 : count;
+      },
+      0
+    );
+    const monthSummaryByKey = new Map();
+    let previousCarryOutStSeconds = 0;
+    internalMonthKeys.forEach((monthKey) => {
+      const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
+      const lineMonthlyCapacitySeconds =
+        Number(backendRow?.lineMonthlyCapacitySeconds) > 0
+          ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
+          : buildFallbackLineMonthlyCapacitySeconds(line, monthKey, holidaySet);
+      const lineMonthlyActualOutputStSeconds = Math.max(
+        0,
+        Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
+      );
+      const latestActualCoverageEndDateKey =
+        normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
+        lineMeta?.latestActualCoverageEndDateKey ||
+        null;
+      const rowForecastAnchorDateKey =
+        normalizeDateKey(backendRow?.forecastAnchorDateKey) || forecastAnchorDateKey;
+      const inferredMonthType =
+        forecastAnchorMonthKey && monthKey >= forecastAnchorMonthKey
+          ? monthKey === forecastAnchorMonthKey
+            ? 'anchor'
+            : 'forecast'
+          : 'historical';
+      const forecastAvailableCapacitySeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : backendRow?.forecastAvailableCapacitySeconds == null
+            ? lineMonthlyCapacitySeconds
+            : Math.max(
+                0,
+                Math.round(Number(backendRow.forecastAvailableCapacitySeconds) || 0)
+              );
+      const forecastWorkingDayCount =
+        inferredMonthType === 'historical'
+          ? 0
+          : Math.max(0, Math.round(Number(backendRow?.forecastWorkingDayCount) || 0));
+      const carryInStSeconds = inferredMonthType === 'forecast' ? previousCarryOutStSeconds : 0;
+      const backlogEnteringStSeconds =
+        inferredMonthType === 'anchor'
+          ? currentBoardRemainingBacklogStSeconds
+          : inferredMonthType === 'forecast'
+            ? carryInStSeconds
+            : 0;
+      const forecastLoadStSeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : Math.max(
+              0,
+              Math.min(backlogEnteringStSeconds, forecastAvailableCapacitySeconds)
+            );
+      const carryOutStSeconds =
+        inferredMonthType === 'historical'
+          ? 0
+          : Math.max(0, backlogEnteringStSeconds - forecastAvailableCapacitySeconds);
+      if (inferredMonthType !== 'historical') {
+        previousCarryOutStSeconds = carryOutStSeconds;
+      }
+      const totalEstimatedLoadStSeconds =
+        inferredMonthType === 'historical'
+          ? lineMonthlyActualOutputStSeconds
+          : lineMonthlyActualOutputStSeconds + forecastLoadStSeconds;
+      monthSummaryByKey.set(monthKey, {
+        lineId,
+        monthKey,
+        workingDayCount: Math.max(
+          0,
+          Math.round(Number(backendRow?.workingDayCount) || 0)
+        ),
+        averageHeadcount: Number(backendRow?.averageHeadcount) || 0,
+        orphanWorkRecordCount: Math.max(
+          0,
+          Math.round(Number(backendRow?.orphanWorkRecordCount) || 0)
+        ),
+        lineMonthlyCapacitySeconds,
+        lineMonthlyActualOutputStSeconds,
+        actualOutputPercent:
+          backendRow?.actualOutputPercent != null
+            ? Number(backendRow.actualOutputPercent)
+            : roundPercent(
+                lineMonthlyActualOutputStSeconds,
+                lineMonthlyCapacitySeconds
+              ),
+        latestActualCoverageEndDateKey,
+        forecastAnchorDateKey: rowForecastAnchorDateKey || null,
+        forecastAvailableCapacitySeconds,
+        forecastWorkingDayCount,
+        forecastLoadStSeconds,
+        plannedLoadPercent: roundPercent(
+          forecastLoadStSeconds,
+          lineMonthlyCapacitySeconds
+        ),
+        carryInStSeconds,
+        carryOutStSeconds,
+        totalEstimatedLoadStSeconds,
+        totalEstimatedLoadPercent: roundPercent(
+          totalEstimatedLoadStSeconds,
+          lineMonthlyCapacitySeconds
+        ),
+        monthType: inferredMonthType,
+        isAnchorMonth: inferredMonthType === 'anchor',
+        isForecastMonth:
+          inferredMonthType === 'anchor' || inferredMonthType === 'forecast',
+        isHistoricalMonth: inferredMonthType === 'historical',
+      });
+    });
+    const months = monthKeysForDisplay.map((monthKey) => {
+      const summary = monthSummaryByKey.get(monthKey);
+      if (summary) return summary;
+      const backendRow = backendRowByKey.get(`${lineId}:${monthKey}`) || null;
+      const lineMonthlyCapacitySeconds =
+        Number(backendRow?.lineMonthlyCapacitySeconds) > 0
+          ? Math.round(Number(backendRow.lineMonthlyCapacitySeconds))
+          : buildFallbackLineMonthlyCapacitySeconds(line, monthKey, holidaySet);
+      const lineMonthlyActualOutputStSeconds = Math.max(
+        0,
+        Math.round(Number(backendRow?.lineMonthlyActualOutputStSeconds) || 0)
+      );
+      return {
+        lineId,
+        monthKey,
+        workingDayCount: Math.max(
+          0,
+          Math.round(Number(backendRow?.workingDayCount) || 0)
+        ),
+        averageHeadcount: Number(backendRow?.averageHeadcount) || 0,
+        orphanWorkRecordCount: Math.max(
+          0,
+          Math.round(Number(backendRow?.orphanWorkRecordCount) || 0)
+        ),
+        lineMonthlyCapacitySeconds,
+        lineMonthlyActualOutputStSeconds,
+        actualOutputPercent:
+          backendRow?.actualOutputPercent != null
+            ? Number(backendRow.actualOutputPercent)
+            : roundPercent(
+                lineMonthlyActualOutputStSeconds,
+                lineMonthlyCapacitySeconds
+              ),
+        latestActualCoverageEndDateKey:
+          normalizeDateKey(backendRow?.latestActualCoverageEndDateKey) ||
+          lineMeta?.latestActualCoverageEndDateKey ||
+          null,
+        forecastAnchorDateKey:
+          normalizeDateKey(backendRow?.forecastAnchorDateKey) ||
+          forecastAnchorDateKey ||
+          null,
+        forecastAvailableCapacitySeconds: 0,
+        forecastWorkingDayCount: 0,
+        forecastLoadStSeconds: 0,
+        plannedLoadPercent: 0,
+        carryInStSeconds: 0,
+        carryOutStSeconds: 0,
+        totalEstimatedLoadStSeconds: lineMonthlyActualOutputStSeconds,
+        totalEstimatedLoadPercent: roundPercent(
+          lineMonthlyActualOutputStSeconds,
+          lineMonthlyCapacitySeconds
+        ),
+        monthType: 'historical',
+        isAnchorMonth: false,
+        isForecastMonth: false,
+        isHistoricalMonth: true,
+      };
+    });
+
     const queueForecast = buildLineQueueForecast({
       assignments: assignmentsForLine,
       line,
@@ -667,10 +793,9 @@ export const buildLineMonthCapacityBoardRows = ({
       lineName: line?.name || `Line ${lineId}`,
       headcount: Math.max(0, Math.round(Number(line?.headcount) || 0)),
       latestActualCoverageEndDateKey: lineMeta?.latestActualCoverageEndDateKey || null,
-      forecastAnchorDateKey: lineMeta?.forecastAnchorDateKey || null,
-      lineRemainingBacklogStSeconds:
-        lineMeta?.lineRemainingBacklogStSeconds ?? queueForecast.totalRemainingStTotalSeconds,
-      stUnknownAssignmentCount: lineMeta?.stUnknownAssignmentCount || 0,
+      forecastAnchorDateKey: forecastAnchorDateKey,
+      lineRemainingBacklogStSeconds: queueForecast.totalRemainingStTotalSeconds,
+      stUnknownAssignmentCount: currentBoardStUnknownAssignmentCount,
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,
