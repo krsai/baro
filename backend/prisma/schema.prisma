@@ -268,6 +268,7 @@ model Factory {
   id                Int      @id @default(autoincrement())
   orgId             Int
   name              String
+  factoryCode       String?
   address           String?
   country           String?
   countryCode       String?
@@ -284,6 +285,7 @@ model Factory {
   lines             Line[]
   attendanceEntries AttendanceEntry[]
 
+  @@unique([orgId, factoryCode])
   @@index([orgId])
 }
 
@@ -315,6 +317,7 @@ model Employee {
   orgMembershipId   Int       @unique
   factoryId         Int?
   roleId            Int?
+  employeeNo        String?
   payType           String?
   fixedSalary       Int?
   name              String?

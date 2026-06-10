@@ -599,11 +599,6 @@ const MainLayout = () => {
         isOpen: adminOpen,
         children: [
           {
-            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
-            icon: <BusinessIcon />,
-            path: '/business',
-          },
-          {
             label: getUiMessage('menu.employee', '\uC9C1\uC6D0 \uAD00\uB9AC', languageCode),
             icon: <GroupIcon />,
             path: '/employee',
@@ -641,6 +636,11 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.MISC,
         isOpen: miscOpen,
         children: [
+          {
+            label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4 \uAD00\uB9AC', languageCode),
+            icon: <BusinessIcon />,
+            path: '/business',
+          },
           {
             label: getUiMessage('menu.holiday', '\uD734\uC77C \uAD00\uB9AC', languageCode),
             icon: <CalendarMonthIcon />,

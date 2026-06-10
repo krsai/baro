@@ -35,6 +35,13 @@ const resolveFactoryWageFields = (
   };
 };
 
+const normalizeFactoryCode = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase().replace(/[^A-Z]/g, "");
+  if (normalized.length < 2 || normalized.length > 3) return null;
+  return normalized;
+};
+
 const normalizeFactoryCountry = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toUpperCase();
@@ -109,6 +116,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     }
     const {
       name,
+      factoryCode,
       address,
       country,
       countryCode,
@@ -121,6 +129,16 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (!name || typeof name !== "string") {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
+    const normalizedCode = normalizeFactoryCode(factoryCode);
+    if (!normalizedCode) {
+      return res.status(400).json({ ok: false, error: "factoryCode must be 2-3 uppercase English letters" });
+    }
+    const codeConflict = await prisma.factory.findFirst({
+      where: { orgId: organization.id, factoryCode: normalizedCode },
+    });
+    if (codeConflict) {
+      return res.status(409).json({ ok: false, error: "factoryCode already in use" });
+    }
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
@@ -131,6 +149,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       data: {
         orgId: organization.id,
         name: name.trim(),
+        factoryCode: normalizedCode,
         address: address?.trim?.() ?? address ?? null,
         country: phoneFields.country,
         countryCode: phoneFields.countryCode,
@@ -167,6 +186,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
 
     const {
       name,
+      factoryCode,
       address,
       country,
       countryCode,
@@ -175,6 +195,22 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       targetMonthlyWage,
       wagePerSecond,
     } = req.body ?? {};
+
+    let resolvedCode = (existing as any).factoryCode ?? null;
+    if (factoryCode !== undefined) {
+      const normalizedCode = normalizeFactoryCode(factoryCode);
+      if (!normalizedCode) {
+        return res.status(400).json({ ok: false, error: "factoryCode must be 2-3 uppercase English letters" });
+      }
+      const codeConflict = await prisma.factory.findFirst({
+        where: { orgId: organization.id, factoryCode: normalizedCode, id: { not: id } },
+      });
+      if (codeConflict) {
+        return res.status(409).json({ ok: false, error: "factoryCode already in use" });
+      }
+      resolvedCode = normalizedCode;
+    }
+
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
@@ -187,6 +223,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       where: { id },
       data: {
         name: typeof name === "string" ? name.trim() : existing.name,
+        factoryCode: resolvedCode,
         address: address?.trim?.() ?? address ?? null,
         country: phoneFields.country,
         countryCode: phoneFields.countryCode,

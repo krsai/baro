@@ -49,12 +49,17 @@ const resolveCountryFromCountryCode = (countryCode) => {
 const resolveDefaultCountryCode = (country) =>
   COUNTRY_CODE_BY_COUNTRY[normalizeCountry(country)] || DEFAULT_COUNTRY_CODE;
 
+const normalizeFactoryCode = (value) => {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+};
+
 const buildFactoryFormData = (factory) => {
   const rawCountry = normalizeCountry(factory?.country);
   const countryFromCode = resolveCountryFromCountryCode(factory?.countryCode);
   const country = rawCountry || countryFromCode || DEFAULT_COUNTRY;
   return {
     name: factory?.name || '',
+    factoryCode: factory?.factoryCode || '',
     address: factory?.address || '',
     country,
     countryCode: factory?.countryCode || resolveDefaultCountryCode(country),
@@ -77,6 +82,8 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
       editTitle: getUiMessage('factoryDetail.editTitle', 'Edit Factory', languageCode),
       createTitle: getUiMessage('factoryDetail.createTitle', 'Add Factory', languageCode),
       name: getUiMessage('factoryDetail.name', 'Factory Name', languageCode),
+      factoryCode: getUiMessage('factoryDetail.factoryCode', '공장 코드', languageCode),
+      factoryCodeHelper: getUiMessage('factoryDetail.factoryCodeHelper', '영문 2~3자리 (예: HN, SEO)', languageCode),
       address: getUiMessage('factoryDetail.address', 'Address', languageCode),
       manager: getUiMessage('factoryDetail.manager', 'Manager', languageCode),
       country: getUiMessage('factoryDetail.country', 'Country', languageCode),
@@ -100,6 +107,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
 
   const [formData, setFormData] = useState({
     name: '',
+    factoryCode: '',
     address: '',
     country: DEFAULT_COUNTRY,
     countryCode: DEFAULT_COUNTRY_CODE,
@@ -118,8 +126,19 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
     setFormData(buildFactoryFormData(null));
   }, [factory, open]);
 
+  const factoryCodeError = useMemo(() => {
+    const code = normalizeFactoryCode(formData.factoryCode);
+    if (!code) return text.factoryCodeHelper;
+    if (code.length < 2) return text.factoryCodeHelper;
+    return '';
+  }, [formData.factoryCode, text.factoryCodeHelper]);
+
   const handleInputChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'factoryCode') {
+      setFormData((prev) => ({ ...prev, factoryCode: normalizeFactoryCode(value) }));
+      return;
+    }
     if (name === 'country') {
       const nextCountry = normalizeCountry(value) || DEFAULT_COUNTRY;
       setFormData((prev) => ({
@@ -193,7 +212,7 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
         <Divider sx={{ mb: 3 }} />
 
         <Grid container spacing={2.25}>
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={8}>
             <TextField
               fullWidth
               size="small"
@@ -202,6 +221,21 @@ const FactoryDetail = ({ open, onClose, onSave, factory }) => {
               value={formData.name}
               onChange={handleInputChange}
               required
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={4}>
+            <TextField
+              fullWidth
+              size="small"
+              label={text.factoryCode}
+              name="factoryCode"
+              value={formData.factoryCode}
+              onChange={handleInputChange}
+              required
+              inputProps={{ maxLength: 3, style: { textTransform: 'uppercase', letterSpacing: 2 } }}
+              helperText={factoryCodeError || ' '}
+              error={!!factoryCodeError}
             />
           </Grid>
 

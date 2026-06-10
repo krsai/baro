@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Drawer,
+  IconButton,
   MenuItem,
   Paper,
   Table,
@@ -13,8 +14,10 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
@@ -112,6 +115,22 @@ const EMPLOYEE_BOARD_TEXT = {
   },
   nameColumn: { ko: '이름', en: 'Name', vi: 'Ten' },
   emailOrCodeColumn: { ko: '이메일/사번', en: 'Email/Code', vi: 'Email/Ma NV' },
+  employeeNoColumn: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
+  deleteEmployee: { ko: '직원 삭제', en: 'Delete Employee', vi: 'Xoa nhan vien' },
+  deleteConfirm: {
+    ko: "'{name}' 직원을 삭제하시겠습니까?\n출퇴근 기록도 함께 삭제됩니다.",
+    en: "Delete employee '{name}'?\nAttendance records will also be deleted.",
+    vi: "Xoa nhan vien '{name}'?\nBan ghi cham cong cung se bi xoa.",
+  },
+  deleteSuccess: { ko: '직원이 삭제되었습니다.', en: 'Employee deleted.', vi: 'Da xoa nhan vien.' },
+  deleteError: { ko: '직원 삭제에 실패했습니다.', en: 'Failed to delete employee.', vi: 'Xoa nhan vien that bai.' },
+  employeeNoLabel: { ko: '사번', en: 'Employee No.', vi: 'Ma NV' },
+  employeeNoAutoHint: { ko: '공장 코드 기준으로 자동 생성됩니다.', en: 'Auto-generated from factory code.', vi: 'Tu dong tao tu ma nha may.' },
+  loginEmailHelperAllOptional: {
+    ko: '이메일 없이 저장하면 사번으로만 로그인 불가. 나중에 이메일 추가 가능.',
+    en: 'Without email, login is unavailable. Email can be added later.',
+    vi: 'Khong co email, khong the dang nhap. Co the them email sau.',
+  },
   payTypeColumn: { ko: '급여 타입', en: 'Pay Type', vi: 'Loai luong' },
   joinedAtColumn: { ko: '입사일', en: 'Join Date', vi: 'Ngay vao lam' },
   leftAtColumn: { ko: '퇴사일', en: 'Leave Date', vi: 'Ngay nghi viec' },
@@ -1204,10 +1223,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setStatusMessage({ type: 'error', text: text('errNameRequired', languageCode) });
       return;
     }
-    if (roleNeedsLoginEmail && (!normalizedDrawerEmail || !normalizedDrawerEmail.includes('@'))) {
-      setStatusMessage({ type: 'error', text: text('errNeedLoginEmail', languageCode) });
-      return;
-    }
+    // email is optional for all roles
     if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
       setStatusMessage({ type: 'error', text: text('errInvalidDateRange', languageCode) });
       return;
@@ -1339,6 +1355,22 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     roleOptions,
     selectedMemberId,
   ]);
+
+  const handleDeleteEmployee = useCallback(async (member) => {
+    if (!canManageMembers) return;
+    const displayName = member?.name || member?.email || String(member?.id || '');
+    const confirmMsg = text('deleteConfirm', languageCode).replace('{name}', displayName);
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      await requestJSON(`/employees/${encodeURIComponent(String(member.id))}${buildQueryString({ orgId: activeOrgId })}`, {
+        method: 'DELETE',
+      });
+      setActiveMembers((prev) => prev.filter((m) => m.id !== member.id));
+      showNotification(text('deleteSuccess', languageCode), 'success');
+    } catch (error) {
+      showNotification(error?.message || text('deleteError', languageCode), 'error');
+    }
+  }, [activeOrgId, canManageMembers, languageCode, showNotification]);
 
   const visibleActiveMembers = useMemo(() => {
     if (!selectedFactoryFilterId) return activeMembers;
@@ -1516,16 +1548,24 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 placeholder="admin@company.com"
                 disabled={isDrawerSaving}
                 autoFocus
-                helperText={
-                  isLoginRequiredRole(drawerDraft.orgRole)
-                    ? text('loginEmailHelperRequired', languageCode)
-                    : text('loginEmailHelperOptional', languageCode)
-                }
+                helperText={text('loginEmailHelperAllOptional', languageCode)}
               />
-              {!isCreateDrawerMode && isInternalMemberEmail(selectedMember?.email) && (
+              {!isCreateDrawerMode && (() => {
+                const emp = employeeByMembership.get(selectedMember?.id);
+                const empNo = emp?.employeeNo;
+                return empNo ? (
+                  <TextField
+                    size="small"
+                    label={text('employeeNoLabel', languageCode)}
+                    value={empNo}
+                    InputProps={{ readOnly: true }}
+                    sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+                  />
+                ) : null;
+              })()}
+              {isCreateDrawerMode && (
                 <Typography variant="caption" color="text.secondary">
-                  {text('employeeCodePrefix', languageCode)}:{' '}
-                  {getMemberUniqueCode(selectedMember?.id, selectedMember?.orgId)}
+                  {text('employeeNoAutoHint', languageCode)}
                 </Typography>
               )}
               <TextField
@@ -1864,6 +1904,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TableHead>
                 <TableRow>
                   <TableCell>{text('nameColumn', languageCode)}</TableCell>
+                  <TableCell>{text('employeeNoColumn', languageCode)}</TableCell>
                   <TableCell>{text('emailOrCodeColumn', languageCode)}</TableCell>
                   <TableCell>{text('roleLabel', languageCode)}</TableCell>
                   <TableCell>{text('jobLabel', languageCode)}</TableCell>
@@ -1874,12 +1915,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   <TableCell>{text('statusLabel', languageCode)}</TableCell>
                   <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
                   <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
+                  {canManageMembers && <TableCell sx={{ width: 56 }} />}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sortedActiveMembers.length === 0 ? (
                   <TableStatusRow
-                    colSpan={canViewFixedSalary ? 9 : 8}
+                    colSpan={canViewFixedSalary ? (canManageMembers ? 11 : 10) : (canManageMembers ? 10 : 9)}
                     message={
                       searchTerm
                         ? text('noSearchResult', languageCode)
@@ -1922,6 +1964,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
                       >
                         <TableCell>{displayName}</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', letterSpacing: 1, color: 'text.secondary' }}>
+                          {employee?.employeeNo || '-'}
+                        </TableCell>
                         <TableCell>{getMemberIdentityLabel(member)}</TableCell>
                         <TableCell>{roleLabel}</TableCell>
                         <TableCell>{jobRoleLabel}</TableCell>
@@ -1932,6 +1977,19 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                         <TableCell>{getEmployeeStatusLabel(member.status, languageCode)}</TableCell>
                         <TableCell>{formatDate(employee?.joinedAt || member.approvedAt)}</TableCell>
                         <TableCell>{formatDate(employee?.leftAt)}</TableCell>
+                        {canManageMembers && (
+                          <TableCell sx={{ textAlign: 'center' }}>
+                            <Tooltip title={text('deleteEmployee', languageCode)}>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteEmployee(member); }}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })

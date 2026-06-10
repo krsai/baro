@@ -62,12 +62,33 @@ const toOptionalDateOrNull = (
   return { ok: true, hasInput: true, value: parsedDate };
 };
 
+const generateEmployeeNo = async (orgId: number, factoryId: number): Promise<string | null> => {
+  const factory = await prisma.factory.findFirst({ where: { id: factoryId, orgId } });
+  const code = (factory as any)?.factoryCode;
+  if (!code) return null;
+
+  const existing = await prisma.employee.findMany({
+    where: { factoryId, orgId },
+    select: { employeeNo: true },
+  });
+  const prefix = `${code}-`;
+  let maxSeq = 0;
+  for (const emp of existing) {
+    if (typeof emp.employeeNo === "string" && emp.employeeNo.startsWith(prefix)) {
+      const seq = parseInt(emp.employeeNo.slice(prefix.length), 10);
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+  }
+  return `${code}-${String(maxSeq + 1).padStart(4, "0")}`;
+};
+
 const toEmployeeResponse = (employee: any) => ({
   id: employee?.id ?? null,
   orgId: employee?.orgId ?? null,
   orgMembershipId: employee?.orgMembershipId ?? null,
   factoryId: employee?.factoryId ?? null,
   roleId: employee?.roleId ?? null,
+  employeeNo: employee?.employeeNo ?? null,
   roleCode: String(employee?.role?.code ?? "").trim(),
   roleName: String(employee?.role?.name ?? "").trim(),
   roleDefaultPayType: resolveRoleDefaultPayType(employee?.role),
@@ -388,6 +409,12 @@ export const createEmployeeRouter = ({
       });
     }
 
+    const isNewEmployee = !existingEmployee;
+    let autoEmployeeNo: string | null = null;
+    if (isNewEmployee && resolvedFactoryId) {
+      autoEmployeeNo = await generateEmployeeNo(membership.orgId, resolvedFactoryId);
+    }
+
     const data: any = {
       orgId: membership.orgId,
       orgMembershipId: membership.id,
@@ -402,6 +429,7 @@ export const createEmployeeRouter = ({
         existingEmployee?.bankAccountNumber ?? null
       ),
       position: resolveOptionalString(position, existingEmployee?.position ?? null),
+      ...(isNewEmployee && autoEmployeeNo ? { employeeNo: autoEmployeeNo } : {}),
       ...(joinedAtParseResult.hasInput ? { joinedAt: joinedAtParseResult.value } : {}),
       ...(leftAtParseResult.hasInput ? { leftAt: leftAtParseResult.value } : {}),
     };
@@ -448,6 +476,48 @@ export const createEmployeeRouter = ({
     }
 
     return res.json(toEmployeeResponse(refreshedEmployee));
+  });
+
+  employeeRouter.delete("/employees/:memberId", async (req, res) => {
+    const memberId = Number(req.params.memberId);
+    if (!Number.isFinite(memberId)) {
+      return res.status(400).json({ ok: false, error: "invalid memberId" });
+    }
+
+    const organization = await getOrganizationByQuery(req);
+    if (!organization) {
+      return res.status(404).json({ ok: false, error: "organization not found" });
+    }
+
+    const membership = await prisma.orgMembership.findFirst({
+      where: { id: memberId, orgId: organization.id },
+    });
+    if (!membership) {
+      return res.status(404).json({ ok: false, error: "membership not found" });
+    }
+
+    const employee = await prisma.employee.findUnique({
+      where: { orgMembershipId: memberId },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      if (employee) {
+        await tx.line.updateMany({
+          where: { orgId: organization.id, managerEmployeeId: employee.id },
+          data: { managerEmployeeId: null },
+        });
+        await tx.lineAssignment.deleteMany({
+          where: { employeeId: employee.id },
+        });
+        await tx.attendanceEntry.deleteMany({
+          where: { employeeId: employee.id, orgId: organization.id },
+        });
+        await tx.employee.delete({ where: { id: employee.id } });
+      }
+      await tx.orgMembership.delete({ where: { id: memberId } });
+    });
+
+    return res.json({ ok: true, deletedMemberId: memberId });
   });
 
   return employeeRouter;

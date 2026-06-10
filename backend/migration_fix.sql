@@ -1,3 +1,10 @@
+-- Step 0: factory code and employee number (20260610)
+ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "factoryCode" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"
+  ON "Factory"("orgId", "factoryCode") WHERE "factoryCode" IS NOT NULL;
+
+ALTER TABLE "Employee" ADD COLUMN IF NOT EXISTS "employeeNo" TEXT;
+
 -- Step 1: close fields (20260517)
 DO $$ BEGIN
   CREATE TYPE "AssignmentCloseMode" AS ENUM ('FULL', 'SHORT', 'OVER');

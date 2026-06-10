@@ -37,6 +37,7 @@ const FactoryList = () => {
     addFactory: getUiMessage('factoryBoard.addFactory', 'Add Factory', languageCode),
     deleteFactory: getUiMessage('factoryBoard.deleteFactory', 'Delete Factory', languageCode),
     columnName: getUiMessage('factoryBoard.columnName', 'Factory Name', languageCode),
+    columnCode: getUiMessage('factoryBoard.columnCode', '공장 코드', languageCode),
     columnAddress: getUiMessage('factoryBoard.columnAddress', 'Address', languageCode),
     columnContact: getUiMessage('factoryBoard.columnContact', 'Contact', languageCode),
     columnManager: getUiMessage('factoryBoard.columnManager', 'Manager', languageCode),
@@ -213,6 +214,7 @@ const FactoryList = () => {
             <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
               <TableRow>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnName}</TableCell>
+                <TableCell sx={{ fontWeight: 'bold', width: 80 }}>{text.columnCode}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnAddress}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnContact}</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>{text.columnManager}</TableCell>
@@ -226,7 +228,7 @@ const FactoryList = () => {
               {loading ? (
                 <TableStatusRow colSpan={6} message={text.loading} />
               ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={6} message={text.empty} />
+                <TableStatusRow colSpan={7} message={text.empty} />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
@@ -243,6 +245,7 @@ const FactoryList = () => {
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell>{factory.name || '-'}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold', color: 'primary.main', letterSpacing: 1 }}>{factory.factoryCode || '-'}</TableCell>
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{factory.manager || '-'}</TableCell>
