@@ -1,3 +1,7 @@
+-- Step 0a: style revenue fields (20260611)
+ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "unitPriceUsd" DOUBLE PRECISION;
+ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "revenueMemo" TEXT;
+
 -- Step 0: factory code and employee number (20260610)
 ALTER TABLE "Factory" ADD COLUMN IF NOT EXISTS "factoryCode" TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"

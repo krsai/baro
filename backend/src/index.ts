@@ -3350,6 +3350,8 @@ const normalizeStylePayload = (
     processes: includeProcesses ? normalizeStyleProcesses(payload?.processes) : [],
     bom: ensureArray(payload?.bom),
     bomNotes: resolveOptionalString(payload?.bomNotes, null),
+    unitPriceUsd: payload?.unitPriceUsd != null ? Number(payload.unitPriceUsd) || null : null,
+    revenueMemo: resolveOptionalString(payload?.revenueMemo, null),
   };
 };
 const toOrganizationOption = (organization: any) => ({
@@ -4121,6 +4123,8 @@ const toStyleResponse = (
         normalizeStyleProcesses(style.processes),
   bom: ensureArray(style.bom),
   bomNotes: style.bomNotes ?? "",
+  unitPriceUsd: style.unitPriceUsd ?? null,
+  revenueMemo: style.revenueMemo ?? "",
   createdAt: style.createdAt,
   updatedAt: style.updatedAt,
 });
