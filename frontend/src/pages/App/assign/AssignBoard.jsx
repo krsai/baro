@@ -207,7 +207,6 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
 }) {
   const basis = getCardBasis(card);
   const isLocked = isCardManualOrderLocked(card);
-  const stHoursLabel = formatCompactHoursLabel(resolveCardStTotalSeconds(card));
   const basisLabel =
     basis === 'NONE'
       ? getUiMessage('assign.ctMissingCompact', 'Time missing', languageCode)
@@ -224,9 +223,8 @@ const UnassignedCardItem = React.memo(function UnassignedCardItem({
       orderNo={card.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
       styleName={card.styleName}
       quantity={resolveCardQuantity(card, 0)}
-      progressPercent={0}
+      showProgress={false}
       chips={[
-        ...(stHoursLabel ? [{ label: stHoursLabel, variant: 'outlined' }] : []),
         { label: basisLabel, color: basis === 'NONE' ? 'warning' : 'primary' },
       ]}
       footer={
@@ -280,19 +278,27 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
       ref={setNodeRef}
       variant="outlined"
       sx={{
-        px: 2,
-        py: 1.25,
+        px: 1.5,
+        py: 2,
         borderStyle: 'dashed',
         borderWidth: 2,
         borderColor: isOver ? 'error.main' : 'divider',
         backgroundColor: isOver ? 'rgba(211, 47, 47, 0.08)' : '#FAFAFB',
         textAlign: 'center',
         transition: 'border-color 0.12s ease, background-color 0.12s ease',
+        height: '100%',
+        minHeight: 120,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 0.5,
+        boxSizing: 'border-box',
       }}
     >
       <Typography
         variant="body2"
-        sx={{ fontWeight: 700 }}
+        sx={{ fontWeight: 700, writingMode: { lg: 'vertical-lr' }, textOrientation: { lg: 'mixed' } }}
         color={isOver ? 'error.main' : 'text.primary'}
       >
         {getUiMessage(
@@ -301,7 +307,7 @@ const AssignmentCancelDropZone = React.memo(function AssignmentCancelDropZone({
           languageCode
         )}
       </Typography>
-      <Typography variant="caption" color="text.secondary">
+      <Typography variant="caption" color="text.secondary" sx={{ writingMode: { lg: 'vertical-lr' }, textOrientation: { lg: 'mixed' } }}>
         {getUiMessage(
           'assign.assignmentCancelRecordedWorkHint',
           'Tasks with work records cannot be unassigned.',
@@ -360,7 +366,7 @@ const UnassignedCardGroupsPanel = React.memo(function UnassignedCardGroupsPanel(
       <Stack
         spacing={1}
         sx={{
-          maxHeight: { xs: 360, md: 520 },
+          maxHeight: { xs: 360, lg: 'calc(100vh - 260px)' },
           overflowY: 'auto',
           pr: 0.5,
         }}
@@ -6232,7 +6238,7 @@ const AssignBoard = () => {
             )}
           </Alert>
         ) : null}
-        <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '6fr 1fr 3fr' }, gap: 2, alignItems: 'start', minWidth: 0 }}>
           <Stack spacing={1.5} sx={{ minWidth: 0 }}>
             <Box
               sx={{
@@ -6298,11 +6304,13 @@ const AssignBoard = () => {
               />
             </Stack>
           </Stack>
-          <AssignmentCancelDropZone
-            activeDragType={activeDrag?.type || null}
-            languageCode={languageCode}
-          />
-          <Box sx={{ minWidth: 0, pt: 0.5 }}>
+          <Box sx={{ alignSelf: 'stretch' }}>
+            <AssignmentCancelDropZone
+              activeDragType={activeDrag?.type || null}
+              languageCode={languageCode}
+            />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
             <UnassignedCardGroupsPanel
               filteredCardCount={filteredCards.length}
               groupedFilteredCards={groupedFilteredCards}
@@ -6316,7 +6324,7 @@ const AssignBoard = () => {
               onDisabledCardDragAttempt={handleDisabledCardDragAttempt}
             />
           </Box>
-        </Stack>
+        </Box>
 
         <DragOverlay style={{ zIndex: 50 }} >
           {activeDrag ? (

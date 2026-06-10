@@ -38,6 +38,7 @@ const CompactBoardCard = ({
   styleName = '',
   quantity = null,
   progressPercent = 0,
+  showProgress = true,
   chips = [],
   footer = '',
   previewUrl = '',
@@ -225,25 +226,27 @@ const CompactBoardCard = ({
           value={quantityLabel}
           minWidth={80}
         />
-        <CardField
-          label={getUiMessage('assign.cardProgressLabel', 'Progress', languageCode)}
-          minWidth={160}
-        >
-          <Stack spacing={0.25}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {displayProgress}%
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={progressBarValue}
-              sx={{
-                height: 5,
-                borderRadius: 999,
-                backgroundColor: 'rgba(0,0,0,0.08)',
-              }}
-            />
-          </Stack>
-        </CardField>
+        {showProgress ? (
+          <CardField
+            label={getUiMessage('assign.cardProgressLabel', 'Progress', languageCode)}
+            minWidth={160}
+          >
+            <Stack spacing={0.25}>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {displayProgress}%
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={progressBarValue}
+                sx={{
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.08)',
+                }}
+              />
+            </Stack>
+          </CardField>
+        ) : null}
       </Stack>
     </Box>
   );
