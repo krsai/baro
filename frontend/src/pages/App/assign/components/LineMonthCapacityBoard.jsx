@@ -55,17 +55,6 @@ const formatDaysLabel = (value, fallback = '-') => {
   })}d`;
 };
 
-const formatCarryDateLabel = (dateKey, languageCode = 'en') => {
-  if (!dateKey) return '';
-  const template =
-    languageCode === 'ko'
-      ? '이월 {date}'
-      : languageCode === 'vi'
-        ? 'Chuyen sang {date}'
-        : 'Carry to {date}';
-  return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
-};
-
 const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
   const template =
     languageCode === 'ko'
@@ -74,17 +63,6 @@ const formatLineCompletionLabel = (dateKey, languageCode = 'en') => {
         ? 'Du kien xong {date}'
         : 'Finish est. {date}';
   return template.replace('{date}', formatDateKeyLabel(dateKey, '-'));
-};
-
-const formatForecastWindowRangeLabel = (
-  startDateKey,
-  endDateKey,
-  fallback = '-'
-) => {
-  const startLabel = formatDateKeyLabel(startDateKey, '');
-  const endLabel = formatDateKeyLabel(endDateKey, '');
-  if (!startLabel || !endLabel) return fallback;
-  return `${startLabel}~${endLabel}`;
 };
 
 const formatQuantityLabel = (quantity, languageCode = 'en') =>
@@ -447,21 +425,6 @@ const LineMonthCapacityBoard = ({
                               { count: row.activeAssignmentCount || 0 }
                             )}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                            {row.lineFreeDateKey
-                              ? formatLineCompletionLabel(row.lineFreeDateKey, languageCode)
-                              : Number(row.activeAssignmentCount) > 0
-                                ? getUiMessage(
-                                    'assign.etaUnavailableCompact',
-                                    'ETA unavailable',
-                                    languageCode
-                                  )
-                              : getUiMessage(
-                                  'assign.lineFreeNowCompact',
-                                  'Free now',
-                                  languageCode
-                                )}
-                          </Typography>
                           {Number(row.stUnknownAssignmentCount) > 0 ? (
                             <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
                               {getUiMessage(
@@ -511,13 +474,46 @@ const LineMonthCapacityBoard = ({
                           >
                             <Stack spacing={0.75}>
                               <Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  {getUiMessage(
-                                    isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
-                                    isForecastMonth ? 'Forecast load' : 'Planned load',
-                                    languageCode
-                                  )}
-                                </Typography>
+                                <Stack
+                                  direction="row"
+                                  spacing={1}
+                                  alignItems="baseline"
+                                  justifyContent="space-between"
+                                  useFlexGap
+                                  sx={{ width: '100%' }}
+                                >
+                                  <Typography variant="caption" color="text.secondary">
+                                    {getUiMessage(
+                                      isForecastMonth ? 'assign.forecastLoad' : 'assign.plannedLoad',
+                                      isForecastMonth ? 'Forecast load' : 'Planned load',
+                                      languageCode
+                                    )}
+                                  </Typography>
+                                  {isAnchorMonth ? (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ textAlign: 'right' }}
+                                    >
+                                      {row.lineFreeDateKey
+                                        ? formatLineCompletionLabel(
+                                            row.lineFreeDateKey,
+                                            languageCode
+                                          )
+                                        : Number(row.activeAssignmentCount) > 0
+                                          ? getUiMessage(
+                                              'assign.etaUnavailableCompact',
+                                              'ETA unavailable',
+                                              languageCode
+                                            )
+                                          : getUiMessage(
+                                              'assign.lineFreeNowCompact',
+                                              'Free now',
+                                              languageCode
+                                            )}
+                                    </Typography>
+                                  ) : null}
+                                </Stack>
                                 <Typography variant="body2" sx={{ fontWeight: 700, color: tone.textColor }}>
                                   {formatPercentLabel(
                                     isHistoricalMonth ? null : summary?.plannedLoadPercent
@@ -536,20 +532,6 @@ const LineMonthCapacityBoard = ({
                                     },
                                   }}
                                 />
-                                {isAnchorMonth &&
-                                summary?.forecastWindowStartDateKey &&
-                                summary?.forecastWindowEndDateKey ? (
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    sx={{ display: 'block', mt: 0.5 }}
-                                  >
-                                    {formatForecastWindowRangeLabel(
-                                      summary.forecastWindowStartDateKey,
-                                      summary.forecastWindowEndDateKey
-                                    )}
-                                  </Typography>
-                                ) : null}
                               </Box>
                               <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -569,11 +551,6 @@ const LineMonthCapacityBoard = ({
                                   }}
                                 />
                               </Box>
-                              {isForecastMonth && summary?.carryOutDateKey ? (
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatCarryDateLabel(summary.carryOutDateKey, languageCode)}
-                                </Typography>
-                              ) : null}
                               {Number(summary?.orphanWorkRecordCount) > 0 ? (
                                 <Chip
                                   size="small"
