@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildCommand": "npm run build"
+    "buildCommand": "npm run prisma:prepare-client && npm run build"
   },
   "deploy": {
     "preDeployCommand": ["npm run railway:predeploy"],

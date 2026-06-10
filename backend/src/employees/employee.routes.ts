@@ -478,47 +478,5 @@ export const createEmployeeRouter = ({
     return res.json(toEmployeeResponse(refreshedEmployee));
   });
 
-  employeeRouter.delete("/employees/:memberId", async (req, res) => {
-    const memberId = Number(req.params.memberId);
-    if (!Number.isFinite(memberId)) {
-      return res.status(400).json({ ok: false, error: "invalid memberId" });
-    }
-
-    const organization = await getOrganizationByQuery(req);
-    if (!organization) {
-      return res.status(404).json({ ok: false, error: "organization not found" });
-    }
-
-    const membership = await prisma.orgMembership.findFirst({
-      where: { id: memberId, orgId: organization.id },
-    });
-    if (!membership) {
-      return res.status(404).json({ ok: false, error: "membership not found" });
-    }
-
-    const employee = await prisma.employee.findUnique({
-      where: { orgMembershipId: memberId },
-    });
-
-    await prisma.$transaction(async (tx) => {
-      if (employee) {
-        await tx.line.updateMany({
-          where: { orgId: organization.id, managerEmployeeId: employee.id },
-          data: { managerEmployeeId: null },
-        });
-        await tx.lineAssignment.deleteMany({
-          where: { employeeId: employee.id },
-        });
-        await tx.attendanceEntry.deleteMany({
-          where: { employeeId: employee.id, orgId: organization.id },
-        });
-        await tx.employee.delete({ where: { id: employee.id } });
-      }
-      await tx.orgMembership.delete({ where: { id: memberId } });
-    });
-
-    return res.json({ ok: true, deletedMemberId: memberId });
-  });
-
   return employeeRouter;
 };
