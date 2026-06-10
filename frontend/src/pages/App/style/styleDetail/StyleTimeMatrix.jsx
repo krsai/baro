@@ -1,8 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
-  Chip,
-  Collapse,
   Paper,
   Stack,
   Table,
@@ -33,10 +31,15 @@ import {
 
 const MANUAL_ST_SET_BY = new Set(['MANUAL', 'LEGACY', 'ASSIGNMENT_DETAIL']);
 const PROCESS_GROUP_ACCENTS = ['#3B82F6', '#10B981', '#F97316', '#A855F7', '#0EA5E9', '#E11D48'];
-const MATRIX_BORDER = '1px solid rgba(17,24,39,0.1)';
-const ST_CELL_WIDTH = 78;
 
-// ── helpers ────────────────────────────────────────────────────────────────
+// 3~, 30~ 숨김 처리
+const HIDDEN_BUCKETS = new Set([3, 30]);
+const VISIBLE_BUCKETS = ST_STANDARD_BUCKETS.filter((q) => !HIDDEN_BUCKETS.has(q));
+
+const BORDER = '1px solid rgba(17,24,39,0.1)';
+const ST_CELL_W = 76;
+
+// ── utils ──────────────────────────────────────────────────────────────────
 
 const roundTo = (v, d = 4) => {
   const n = Number(v);
@@ -91,57 +94,8 @@ const upsertStBuckets = (process, quantity, seconds) => {
   return normalizeProcess({ ...norm, stBuckets: next, ct: null, stManual: false });
 };
 
-const draftKey = (id, qty) => `${id}::${qty}`;
-
+const dk = (id, qty) => `${id}::${qty}`;
 const getAccent = (i) => PROCESS_GROUP_ACCENTS[Math.abs(i) % PROCESS_GROUP_ACCENTS.length];
-
-// ── StCell ─────────────────────────────────────────────────────────────────
-
-const StCell = React.memo(({ processIndex, processInstanceId, quantity, process, stDrafts, onStChange, onStBlur, isVariant }) => {
-  const dk = draftKey(processInstanceId, quantity);
-  const entry = resolveStEntry(process, quantity);
-  const resolved = resolveProcessStPerPieceSeconds(process, quantity);
-  const manual = isManualSt(entry);
-  const value = Object.prototype.hasOwnProperty.call(stDrafts, dk) ? stDrafts[dk] : toEditText(resolved);
-
-  return (
-    <TableCell key={dk} align="center" sx={{ p: '4px 3px', border: 'none' }}>
-      <TextField
-        value={value}
-        onChange={(e) => onStChange(processInstanceId, quantity, e.target.value)}
-        onBlur={(e) => onStBlur(processIndex, processInstanceId, quantity, e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-        size="small"
-        inputProps={{ inputMode: 'decimal' }}
-        sx={{
-          width: ST_CELL_WIDTH,
-          '& .MuiInputBase-input': {
-            textAlign: 'center',
-            px: 0.5,
-            py: 0.5,
-            fontSize: 12,
-            fontVariantNumeric: 'tabular-nums',
-            fontWeight: manual ? 700 : 400,
-          },
-          '& .MuiOutlinedInput-root': {
-            borderRadius: 1,
-            backgroundColor: manual
-              ? (isVariant ? '#DBEAFE' : '#EFF6FF')
-              : '#FAFAFA',
-            '& fieldset': {
-              borderColor: manual
-                ? (isVariant ? '#3B82F6' : alpha('#3B82F6', 0.45))
-                : 'rgba(17,24,39,0.13)',
-              borderWidth: manual ? (isVariant ? 1.5 : 1) : 1,
-            },
-            '&:hover fieldset': { borderColor: '#3B82F6' },
-            '&.Mui-focused fieldset': { borderColor: '#1D4ED8', borderWidth: 1.5 },
-          },
-        }}
-      />
-    </TableCell>
-  );
-});
 
 // ── StyleTimeMatrix ─────────────────────────────────────────────────────────
 
@@ -149,22 +103,21 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [stDrafts, setStDrafts] = useState({});
-  const [showAt, setShowAt] = useState(false);
 
-  // detect if any process has real AT data
-  const hasAnyAt = useMemo(() =>
-    safeProcesses.some((p) =>
-      ST_STANDARD_BUCKETS.some((q) => resolveProcessAtPerPieceSeconds(p, q) != null)
-    ), [safeProcesses]);
+  const msg = languageCode === 'vi'
+    ? { title: 'ST/AT theo so luong (giay)', process: 'Cong doan', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST: co the chinh sua', atHint: 'AT: tu dong hoc tu ban ghi', unit: 'Don vi: giay / 1 san pham', empty: 'Chua co cong doan.' }
+    : languageCode === 'en'
+    ? { title: 'ST / AT by Quantity (sec)', process: 'Process', ptHint: 'PT: base physical time (read-only)', stHint: 'ST: editable standard time per quantity bucket', atHint: 'AT: auto-learned from work records', unit: 'Unit: seconds / per piece', empty: 'No processes registered.' }
+    : { title: '수량별 ST / AT (초)', process: '공정', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: 'ST: 수량 구간별 표준 시간 (이 페이지에서 수동 입력 가능)', atHint: 'AT: 작업기록으로 자동 학습한 실제 시간 (참고용)', unit: '단위: 초 / 1장 기준', empty: '등록된 공정이 없습니다.' };
 
   const handleStChange = useCallback((id, qty, val) => {
-    setStDrafts((prev) => ({ ...prev, [draftKey(id, qty)]: val }));
+    setStDrafts((prev) => ({ ...prev, [dk(id, qty)]: val }));
   }, []);
 
   const handleStBlur = useCallback((pIdx, id, qty, val) => {
-    const dk = draftKey(id, qty);
-    if (!Object.prototype.hasOwnProperty.call(stDrafts, dk)) return;
-    setStDrafts((prev) => { const n = { ...prev }; delete n[dk]; return n; });
+    const key = dk(id, qty);
+    if (!Object.prototype.hasOwnProperty.call(stDrafts, key)) return;
+    setStDrafts((prev) => { const n = { ...prev }; delete n[key]; return n; });
     const parsed = parseStInput(val);
     if (!parsed.ok || typeof onProcessesChange !== 'function') return;
     const target = safeProcesses[pIdx];
@@ -177,184 +130,217 @@ const StyleTimeMatrix = ({ processes = [], onProcessesChange = null }) => {
     onProcessesChange(safeProcesses.map((p, i) => i === pIdx ? upsertStBuckets(p, qty, nxt) : p));
   }, [onProcessesChange, safeProcesses, stDrafts]);
 
-  const msg = (key) => ({
-    ko: { title: '수량별 ST (초)', pt: 'PT', st: 'ST', at: 'AT', uniform: '전 구간 동일', showAt: 'AT 표시', hideAt: 'AT 숨기기', empty: '등록된 공정이 없습니다.', ptHint: 'PT: 공정 정보에서 입력한 기본 물리 시간 (수정 불가)', stHint: 'ST: 수량 구간별 표준 시간 (수동 입력 가능)', atHint: 'AT: 작업기록에서 자동 학습한 실제 시간', unitHint: '단위: 초 / 1장 기준' },
-    en: { title: 'ST by Quantity (sec)', pt: 'PT', st: 'ST', at: 'AT', uniform: 'Uniform', showAt: 'Show AT', hideAt: 'Hide AT', empty: 'No processes.', ptHint: 'PT: base physical time from process setup (read-only)', stHint: 'ST: standard time per quantity bucket (editable)', atHint: 'AT: auto-learned from work records', unitHint: 'Unit: seconds / per piece' },
-    vi: { title: 'ST theo so luong (giay)', pt: 'PT', st: 'ST', at: 'AT', uniform: 'Dong deu', showAt: 'Hien AT', hideAt: 'An AT', empty: 'Chua co cong doan.', ptHint: 'PT: thoi gian co ban (khong sua)', stHint: 'ST: thoi gian chuan theo so luong (co the sua)', atHint: 'AT: tu dong hoc tu ban ghi lam viec', unitHint: 'Don vi: giay / 1 san pham' },
-  }[languageCode === 'vi' ? 'vi' : languageCode === 'en' ? 'en' : 'ko'][key]);
-
-  if (safeProcesses.length === 0) {
-    return (
-      <Paper variant="outlined" sx={{ borderRadius: 2, p: 4, textAlign: 'center' }}>
-        <Typography color="text.secondary">{msg('empty')}</Typography>
-      </Paper>
-    );
-  }
+  const colCount = 2 + VISIBLE_BUCKETS.length; // 공정명 + ST/AT라벨 + 수량열
 
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-      {/* Header */}
-      <Box sx={{ px: 2.5, pt: 2, pb: 1.5, borderBottom: MATRIX_BORDER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg('title')}</Typography>
-        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
-          <Tooltip title={msg('ptHint')} placement="top">
-            <Chip label="PT" size="small" variant="outlined" sx={{ fontSize: 11, height: 20, color: 'text.secondary', borderColor: 'divider', cursor: 'default' }} />
+      {/* 헤더 */}
+      <Box sx={{ px: 2.5, py: 1.5, borderBottom: BORDER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{msg.title}</Typography>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Tooltip title={msg.stHint} placement="top">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: 0.5, backgroundColor: '#DBEAFE', border: '1.5px solid #3B82F6' }} />
+              <Typography variant="caption" color="text.secondary">ST 수동 입력</Typography>
+            </Box>
           </Tooltip>
-          <Tooltip title={msg('stHint')} placement="top">
-            <Chip label="ST 수동 입력" size="small" sx={{ fontSize: 11, height: 20, backgroundColor: '#DBEAFE', color: '#1D4ED8', cursor: 'default' }} />
+          <Tooltip title={msg.atHint} placement="top">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: 0.5, backgroundColor: '#DCFCE7', border: '1.5px solid #22C55E' }} />
+              <Typography variant="caption" color="text.secondary">AT 참고</Typography>
+            </Box>
           </Tooltip>
-          {hasAnyAt && (
-            <Tooltip title={msg('atHint')} placement="top">
-              <Chip
-                label={showAt ? msg('hideAt') : msg('showAt')}
-                size="small"
-                onClick={() => setShowAt((v) => !v)}
-                sx={{ fontSize: 11, height: 20, backgroundColor: showAt ? '#DCFCE7' : undefined, color: showAt ? '#15803D' : 'text.secondary', cursor: 'pointer' }}
-              />
-            </Tooltip>
-          )}
-          <Typography variant="caption" color="text.disabled">{msg('unitHint')}</Typography>
+          <Typography variant="caption" color="text.disabled">{msg.unit}</Typography>
         </Stack>
       </Box>
 
-      {/* Process cards */}
-      <Stack spacing={0} divider={<Box sx={{ borderBottom: MATRIX_BORDER }} />}>
-        {safeProcesses.map((process, pIdx) => {
-          const accent = getAccent(pIdx);
-          const id = process?.instanceId || process?.id || process?.code || `P${pIdx + 1}`;
-          const label = formatProcessNameWithQuantity(
-            resolveLocalizedProcessName(process, languageCode) || process?.name || process?.code || '-',
-            process?.timesPerPiece ?? process?.quantity
-          ) || '-';
-          const pt = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
+      {/* 테이블 */}
+      <TableContainer sx={{ overflowX: 'auto' }}>
+        <Table
+          size="small"
+          sx={{
+            minWidth: 240 + 56 + VISIBLE_BUCKETS.length * (ST_CELL_W + 8),
+            tableLayout: 'fixed',
+            borderCollapse: 'collapse',
+            '& .MuiTableCell-root': { borderBottom: BORDER, borderRight: 'none' },
+          }}
+        >
+          <TableHead>
+            <TableRow sx={{ backgroundColor: '#F8FAFC' }}>
+              <TableCell sx={{ width: 240, fontWeight: 700, fontSize: 12, pl: 2 }}>
+                {msg.process}
+              </TableCell>
+              <TableCell sx={{ width: 40, fontWeight: 700, fontSize: 12 }} />
+              {VISIBLE_BUCKETS.map((q) => (
+                <TableCell
+                  key={q}
+                  align="center"
+                  sx={{ width: ST_CELL_W + 8, fontWeight: 700, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
 
-          // check if ST varies across buckets
-          const stValues = ST_STANDARD_BUCKETS.map((q) => resolveProcessStPerPieceSeconds(process, q));
-          const uniqueStValues = new Set(stValues.filter((v) => v != null).map((v) => roundTo(v, 4)));
-          const isUniform = uniqueStValues.size <= 1;
-          const minSt = Math.min(...stValues.filter((v) => v != null));
-          const maxSt = Math.max(...stValues.filter((v) => v != null));
+          <TableBody>
+            {safeProcesses.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={colCount} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                  {msg.empty}
+                </TableCell>
+              </TableRow>
+            ) : (
+              safeProcesses.map((process, pIdx) => {
+                const accent = getAccent(pIdx);
+                const id = process?.instanceId || process?.id || process?.code || `P${pIdx + 1}`;
+                const label = formatProcessNameWithQuantity(
+                  resolveLocalizedProcessName(process, languageCode) || process?.name || process?.code || '-',
+                  process?.timesPerPiece ?? process?.quantity
+                ) || '-';
+                const pt = Number.isFinite(Number(process?.pt)) ? Number(process.pt) : null;
 
-          // AT data
-          const atValues = ST_STANDARD_BUCKETS.map((q) => resolveProcessAtPerPieceSeconds(process, q));
-          const hasAt = atValues.some((v) => v != null);
+                const stValues = VISIBLE_BUCKETS.map((q) => resolveProcessStPerPieceSeconds(process, q));
+                const validSt = stValues.filter((v) => v != null);
+                const minSt = validSt.length ? Math.min(...validSt) : null;
+                const maxSt = validSt.length ? Math.max(...validSt) : null;
+                const isUniform = validSt.length === 0 || Math.abs((maxSt ?? 0) - (minSt ?? 0)) < 1e-9;
 
-          return (
-            <Box key={id}>
-              {/* Process header row */}
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                px: 2,
-                py: 1,
-                gap: 1.5,
-                backgroundColor: alpha(accent, 0.04),
-                borderLeft: `3px solid ${accent}`,
-              }}>
-                <Typography variant="body2" sx={{ fontWeight: 700, flex: 1, minWidth: 0, lineHeight: 1.4 }}>
-                  {label}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
-                  {pt != null && (
-                    <Tooltip title={msg('ptHint')} placement="top">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }}>PT</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
-                          {fmtSec(pt)}
+                const rowBorderTop = pIdx > 0
+                  ? `2px solid ${alpha(accent, 0.25)}`
+                  : `1px solid ${alpha(accent, 0.15)}`;
+
+                // 공통 셀 sx
+                const nameColSx = {
+                  borderLeft: `3px solid ${accent}`,
+                  verticalAlign: 'middle',
+                  pl: 1.5,
+                  backgroundColor: alpha(accent, 0.04),
+                };
+
+                return (
+                  <React.Fragment key={id}>
+                    {/* ST 행 */}
+                    <TableRow
+                      sx={{
+                        '& td': { borderTop: rowBorderTop },
+                        '&:hover td': { backgroundColor: alpha(accent, 0.03) },
+                      }}
+                    >
+                      {/* 공정명 — ST+AT 2행 rowSpan */}
+                      <TableCell
+                        rowSpan={2}
+                        sx={nameColSx}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 700, lineHeight: 1.4 }}>
+                          {label}
                         </Typography>
-                      </Box>
-                    </Tooltip>
-                  )}
-                  {isUniform ? (
-                    <Chip
-                      label={`${msg('uniform')} · ${fmtSec(stValues.find((v) => v != null))}`}
-                      size="small"
-                      sx={{ fontSize: 11, height: 20, backgroundColor: alpha(accent, 0.12), color: accent, fontVariantNumeric: 'tabular-nums' }}
-                    />
-                  ) : (
-                    <Chip
-                      label={`${fmtSec(minSt)} ~ ${fmtSec(maxSt)}`}
-                      size="small"
-                      sx={{ fontSize: 11, height: 20, backgroundColor: '#FEF9C3', color: '#92400E', fontVariantNumeric: 'tabular-nums' }}
-                    />
-                  )}
-                </Stack>
-              </Box>
+                        {pt != null && (
+                          <Tooltip title={msg.ptHint} placement="right">
+                            <Typography
+                              variant="caption"
+                              sx={{ color: 'text.disabled', fontVariantNumeric: 'tabular-nums', cursor: 'default', userSelect: 'none' }}
+                            >
+                              PT {fmtSec(pt)}
+                            </Typography>
+                          </Tooltip>
+                        )}
+                        {!isUniform && minSt != null && (
+                          <Box sx={{ mt: 0.25 }}>
+                            <Typography variant="caption" sx={{ color: '#92400E', backgroundColor: '#FEF9C3', px: 0.5, borderRadius: 0.5, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>
+                              {fmtSec(minSt)} ~ {fmtSec(maxSt)}
+                            </Typography>
+                          </Box>
+                        )}
+                      </TableCell>
 
-              {/* ST grid */}
-              <Box sx={{ overflowX: 'auto', borderLeft: `3px solid ${alpha(accent, 0.3)}` }}>
-                <Table size="small" sx={{ tableLayout: 'fixed', minWidth: ST_STANDARD_BUCKETS.length * (ST_CELL_WIDTH + 6) + 60 }}>
-                  <TableHead>
-                    <TableRow sx={{ '& th': { py: '3px', px: '3px', fontSize: 11, fontWeight: 600, textAlign: 'center', backgroundColor: alpha(accent, 0.06), color: 'text.secondary', border: 'none', borderBottom: MATRIX_BORDER } }}>
-                      <TableCell sx={{ width: 40, textAlign: 'left !important', pl: '10px !important' }}>
-                        {msg('st')}
+                      {/* ST 라벨 */}
+                      <TableCell sx={{ fontWeight: 700, fontSize: 11, color: '#1D4ED8', backgroundColor: '#EFF6FF', py: 0.5 }}>
+                        ST
                       </TableCell>
-                      {ST_STANDARD_BUCKETS.map((q) => (
-                        <TableCell key={q} sx={{ width: ST_CELL_WIDTH + 6 }}>
-                          {`${formatNumberWithCommas(q, { maximumFractionDigits: 0 })}~`}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {/* ST row */}
-                    <TableRow sx={{ '& td': { py: '4px' } }}>
-                      <TableCell sx={{ width: 40, border: 'none', pl: '8px' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#1D4ED8', fontSize: 11 }}>ST</Typography>
-                      </TableCell>
-                      {ST_STANDARD_BUCKETS.map((qty, qIdx) => {
-                        const stVal = resolveProcessStPerPieceSeconds(process, qty);
-                        const isVariant = !isUniform && stVal != null && stVal !== stValues[0];
+
+                      {/* ST 값 셀 */}
+                      {VISIBLE_BUCKETS.map((qty) => {
+                        const draftK = dk(id, qty);
+                        const entry = resolveStEntry(process, qty);
+                        const resolved = resolveProcessStPerPieceSeconds(process, qty);
+                        const manual = isManualSt(entry);
+                        const isVariant = !isUniform && resolved != null && roundTo(resolved, 4) !== roundTo(stValues[0], 4);
+                        const value = Object.prototype.hasOwnProperty.call(stDrafts, draftK)
+                          ? stDrafts[draftK]
+                          : toEditText(resolved);
+
                         return (
-                          <StCell
-                            key={qty}
-                            processIndex={pIdx}
-                            processInstanceId={id}
-                            quantity={qty}
-                            process={process}
-                            stDrafts={stDrafts}
-                            onStChange={handleStChange}
-                            onStBlur={handleStBlur}
-                            isVariant={isVariant}
-                          />
+                          <TableCell key={qty} align="center" sx={{ py: '4px', px: '4px', backgroundColor: '#EFF6FF' }}>
+                            <TextField
+                              value={value}
+                              onChange={(e) => handleStChange(id, qty, e.target.value)}
+                              onBlur={(e) => handleStBlur(pIdx, id, qty, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+                              size="small"
+                              inputProps={{ inputMode: 'decimal' }}
+                              sx={{
+                                width: ST_CELL_W,
+                                '& .MuiInputBase-input': {
+                                  textAlign: 'center',
+                                  px: 0.5,
+                                  py: 0.5,
+                                  fontSize: 12,
+                                  fontVariantNumeric: 'tabular-nums',
+                                  fontWeight: manual ? 700 : 400,
+                                },
+                                '& .MuiOutlinedInput-root': {
+                                  borderRadius: 1,
+                                  backgroundColor: isVariant ? '#DBEAFE' : (manual ? '#EFF6FF' : '#FAFAFA'),
+                                  '& fieldset': {
+                                    borderColor: manual ? (isVariant ? '#2563EB' : alpha('#3B82F6', 0.5)) : 'rgba(17,24,39,0.15)',
+                                    borderWidth: isVariant ? 1.5 : 1,
+                                  },
+                                  '&:hover fieldset': { borderColor: '#3B82F6' },
+                                  '&.Mui-focused fieldset': { borderColor: '#1D4ED8', borderWidth: 1.5 },
+                                },
+                              }}
+                            />
+                          </TableCell>
                         );
                       })}
                     </TableRow>
 
-                    {/* AT row — only when showAt and has data */}
-                    <Collapse in={showAt && hasAt} component="tr" sx={{ display: showAt && hasAt ? undefined : 'none' }}>
-                      <TableCell sx={{ border: 'none', pl: '8px' }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: '#15803D', fontSize: 11 }}>AT</Typography>
+                    {/* AT 행 */}
+                    <TableRow sx={{ '& td': { borderBottom: `1px solid ${alpha(accent, 0.15)}` } }}>
+                      <TableCell sx={{ fontWeight: 700, fontSize: 11, color: '#15803D', backgroundColor: '#F0FDF4', py: 0.5 }}>
+                        AT
                       </TableCell>
-                      {ST_STANDARD_BUCKETS.map((qty) => {
+                      {VISIBLE_BUCKETS.map((qty) => {
                         const atVal = resolveProcessAtPerPieceSeconds(process, qty);
                         return (
-                          <TableCell key={qty} align="center" sx={{ border: 'none', p: '2px 3px' }}>
+                          <TableCell key={qty} align="center" sx={{ py: '4px', backgroundColor: '#F0FDF4' }}>
                             <Box sx={{
-                              width: ST_CELL_WIDTH,
-                              height: 26,
+                              width: ST_CELL_W,
+                              mx: 'auto',
+                              height: 28,
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              fontSize: 11,
+                              fontSize: 12,
                               fontVariantNumeric: 'tabular-nums',
-                              color: atVal != null ? '#15803D' : 'text.disabled',
+                              color: atVal != null ? '#15803D' : 'rgba(156,163,175,0.8)',
+                              fontWeight: atVal != null ? 700 : 400,
                               fontStyle: atVal == null ? 'italic' : 'normal',
-                              fontWeight: atVal != null ? 600 : 400,
                             }}>
-                              {atVal != null ? fmtSec(atVal) : '·'}
+                              {atVal != null ? fmtSec(atVal) : '-'}
                             </Box>
                           </TableCell>
                         );
                       })}
-                    </Collapse>
-                  </TableBody>
-                </Table>
-              </Box>
-            </Box>
-          );
-        })}
-      </Stack>
+                    </TableRow>
+                  </React.Fragment>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
     </Paper>
   );
 };
