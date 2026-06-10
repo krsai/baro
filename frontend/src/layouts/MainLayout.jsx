@@ -417,6 +417,8 @@ const MainLayout = () => {
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
+  const isSystemAdminProfile =
+    isSystemProfile && activeProfile?.systemRole === 'SYSTEM_ADMIN';
   const activeOrgName = useMemo(() => {
     const orgName =
       typeof activeProfile?.orgName === 'string' ? activeProfile.orgName.trim() : '';
@@ -611,11 +613,19 @@ const MainLayout = () => {
             icon: <PeopleIcon />,
             path: '/customer',
           },
-          {
-            label: getUiMessage('menu.subscription', '\uAD6C\uB3C5 \uAD00\uB9AC', languageCode),
-            icon: <TuneIcon />,
-            path: '/system-setting',
-          },
+          ...(isSystemAdminProfile
+            ? [
+                {
+                  label: getUiMessage(
+                    'menu.subscription',
+                    '\uAD6C\uB3C5 \uAD00\uB9AC',
+                    languageCode
+                  ),
+                  icon: <TuneIcon />,
+                  path: '/system-setting',
+                },
+              ]
+            : []),
           {
             label: getUiMessage('menu.line', '라인 관리', languageCode),
             icon: <ContentCut />,
@@ -747,6 +757,7 @@ const MainLayout = () => {
     pendingOnboardingCount,
     processMasterOpen,
     recordsOpen,
+    isSystemAdminProfile,
     isSystemProfile,
     systemOpen,
   ]);

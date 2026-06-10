@@ -42,7 +42,9 @@ const POLICY_ORG_ROLES = [
   ORG_ROLE_KEYS.ACCOUNTANT,
   ORG_ROLE_KEYS.WORKER,
 ];
-const POLICY_FEATURES = Object.values(ACCESS_FEATURE_KEYS);
+const POLICY_FEATURES = Object.values(ACCESS_FEATURE_KEYS).filter(
+  (featureKey) => featureKey !== ACCESS_FEATURE_KEYS.SUBSCRIPTION
+);
 
 const MANUFACTURER_ADMIN_DEFAULT_FEATURES = [...POLICY_FEATURES];
 const BRAND_ADMIN_DEFAULT_FEATURES = [
@@ -189,4 +191,3 @@ export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) =
 export const getPolicyOrgTypes = () => [...POLICY_ORG_TYPES];
 export const getPolicyOrgRoles = () => [...POLICY_ORG_ROLES];
 export const getPolicyFeatures = () => [...POLICY_FEATURES];
-

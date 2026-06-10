@@ -279,6 +279,11 @@ AT(q) = a*q + b
 - `/line`, `/business`, `/employee`, `/profile`, `/holiday`
 - 비활성화(메뉴에서 숨김): `/production-plan`, `/st-review`, `/shipment-review`, `/inventory`, `/production-result`
 
+### 구독 관리 접근 규칙
+- `/system-setting`의 구독 관리 화면과 메뉴는 `entryType=SYSTEM`이면서 `systemRole=SYSTEM_ADMIN`인 시스템 운영 계정에만 노출한다.
+- 조직 계정의 역할별 접근 정책에는 `SUBSCRIPTION`을 포함하지 않으며, 저장된 과거 정책에 값이 남아 있어도 직접 URL 접근을 허용하지 않는다.
+- 구독 조회/변경 API(`GET/PATCH /organizations/:id/subscription`)도 `requireSystemAdmin` 검사를 유지한다.
+
 ### API 클라이언트 (`frontend/src/utils/apiClient.js`)
 - `x-user-email`, `x-org-id` 헤더 자동 부착
 - GET 응답 캐시(TTL 기본 45초) + 중복 요청 합치기

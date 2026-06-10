@@ -147,6 +147,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
   switch (featureKey) {
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
+    case FEATURE_KEYS.SUBSCRIPTION:
     case FEATURE_KEYS.SYSTEM_SETTING:
     case FEATURE_KEYS.SYSTEM_ONBOARDING:
       return false;
