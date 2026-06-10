@@ -1,59 +1,67 @@
 #!/usr/bin/env node
 /**
  * 특정 이메일의 직원 기록을 삭제합니다.
- * 사용법: node scripts/delete-employee-by-email.js "123@gmail.com"
+ * 사용법:
+ *   확인:  node scripts/delete-employee-by-email.js "123@gmail.com"
+ *   적용:  node scripts/delete-employee-by-email.js "123@gmail.com" --confirm
  */
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = process.argv[2];
+  const email = (process.argv[2] || '').trim().toLowerCase();
   if (!email) {
     console.error('이메일 인수가 필요합니다. 예: node scripts/delete-employee-by-email.js "123@gmail.com"');
     process.exit(1);
   }
 
-  const membership = await prisma.orgMembership.findFirst({
-    where: { email: email.trim().toLowerCase() },
-  });
+  const memberships = await prisma.$queryRawUnsafe(
+    `SELECT id, "orgId", role, status FROM "OrgMembership" WHERE LOWER(email) = $1 LIMIT 1`,
+    email
+  );
 
-  if (!membership) {
+  if (!memberships.length) {
     console.error(`이메일 '${email}'에 해당하는 멤버십을 찾을 수 없습니다.`);
     process.exit(1);
   }
 
-  console.log(`찾은 멤버십: id=${membership.id}, orgId=${membership.orgId}, role=${membership.role}, status=${membership.status}`);
+  const membership = memberships[0];
+  console.log(`멤버십: id=${membership.id}, orgId=${membership.orgId}, role=${membership.role}, status=${membership.status}`);
 
-  const employee = await prisma.employee.findUnique({
-    where: { orgMembershipId: membership.id },
-  });
+  const employees = await prisma.$queryRawUnsafe(
+    `SELECT id, name, "factoryId" FROM "Employee" WHERE "orgMembershipId" = $1 LIMIT 1`,
+    membership.id
+  );
+  const employee = employees[0] || null;
 
   if (employee) {
-    console.log(`찾은 직원: id=${employee.id}, name=${employee.name}, factoryId=${employee.factoryId}`);
+    console.log(`직원: id=${employee.id}, name=${employee.name}`);
   } else {
     console.log('연결된 Employee 레코드 없음 (OrgMembership만 삭제)');
   }
 
-  const confirm = process.argv[3];
-  if (confirm !== '--confirm') {
-    console.log('\n위 레코드를 삭제하려면 --confirm 옵션을 추가하세요:');
+  if (!process.argv.includes('--confirm')) {
+    console.log('\n실제 삭제하려면 --confirm 옵션을 추가하세요:');
     console.log(`  node scripts/delete-employee-by-email.js "${email}" --confirm`);
-    process.exit(0);
+    return;
   }
 
   await prisma.$transaction(async (tx) => {
     if (employee) {
-      await tx.line.updateMany({
-        where: { orgId: membership.orgId, managerEmployeeId: employee.id },
-        data: { managerEmployeeId: null },
-      });
-      await tx.lineAssignment.deleteMany({ where: { employeeId: employee.id } });
-      await tx.attendanceEntry.deleteMany({ where: { workerId: employee.id, orgId: membership.orgId } });
-      await tx.employee.delete({ where: { id: employee.id } });
+      await tx.$executeRawUnsafe(
+        `UPDATE "Line" SET "managerEmployeeId" = NULL WHERE "orgId" = $1 AND "managerEmployeeId" = $2`,
+        membership.orgId, employee.id
+      );
+      await tx.$executeRawUnsafe(`DELETE FROM "LineAssignment" WHERE "employeeId" = $1`, employee.id);
+      await tx.$executeRawUnsafe(
+        `DELETE FROM "AttendanceEntry" WHERE "workerId" = $1 AND "orgId" = $2`,
+        employee.id, membership.orgId
+      );
+      await tx.$executeRawUnsafe(`DELETE FROM "Employee" WHERE id = $1`, employee.id);
       console.log(`Employee id=${employee.id} 삭제 완료`);
     }
-    await tx.orgMembership.delete({ where: { id: membership.id } });
+    await tx.$executeRawUnsafe(`DELETE FROM "OrgMembership" WHERE id = $1`, membership.id);
     console.log(`OrgMembership id=${membership.id} 삭제 완료`);
   });
 
