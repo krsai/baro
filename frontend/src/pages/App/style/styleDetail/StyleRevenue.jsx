@@ -12,7 +12,7 @@ import { formatNumberWithCommas, parseNumberLike } from '../../../../utils/numbe
 
 const MSG = {
   ko: {
-    title: '매출액',
+    title: '매출 단가',
     unitPrice: '장당 단가',
     unitPriceHelper: '1장(피스)당 판매 단가 (달러)',
     memo: '메모',

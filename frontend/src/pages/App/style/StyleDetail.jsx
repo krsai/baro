@@ -35,7 +35,7 @@ const STYLE_DETAIL_MESSAGES = {
     tabProcessInfo: '공정 정보',
     tabTimeMatrix: '수량별 시간',
     tabBom: 'BOM',
-    tabRevenue: '매출액',
+    tabRevenue: '매출 단가',
     save: '저장',
     loading: '스타일 정보를 불러오는 중입니다.',
     newTab: '스타일 추가',
